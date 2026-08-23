@@ -1,0 +1,52 @@
+name: Sync Linshe fork
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '50 18 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.LINSHE_FORK_TOKEN }}
+      FORK_REPOSITORY: lark-x/galgame-with-comfyUI
+    steps:
+      - name: Sync main and prepare the lark update
+        shell: bash
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "LINSHE_FORK_TOKEN is not configured; skipping fork synchronization."
+            exit 0
+          fi
+
+          gh api --method POST \
+            "repos/${FORK_REPOSITORY}/merge-upstream" \
+            -f branch=main
+
+          ahead=$(gh api \
+            "repos/${FORK_REPOSITORY}/compare/lark...main" \
+            --jq '.ahead_by')
+          if [ "$ahead" = "0" ]; then
+            echo "The lark branch already contains the current main branch."
+            exit 0
+          fi
+
+          existing=$(gh pr list \
+            --repo "$FORK_REPOSITORY" \
+            --base lark \
+            --head main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Update PR #${existing} is already open."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "$FORK_REPOSITORY" \
+            --base lark \
+            --head main \
+            --title "chore: sync upstream Linshe" \
+            --body "Syncs the latest upstream main branch into the SthStart customization branch. Review conflicts and run the Linshe smoke checks before merging."
