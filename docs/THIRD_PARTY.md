@@ -4,7 +4,8 @@
 
 - 来源：`icecranberry/galgame-with-comfyUI`
 - 接入方式：Git Submodule `upstream/linshe`
-- 当前固定版本：v3.0.3（`db47dafbdacb3d877a3cfec30bdefe780f86a58d`）
+- 当前上游基线：v3.0.3（`db47dafbdacb3d877a3cfec30bdefe780f86a58d`）
+- Fork 定制提交：`24cfba5c30ee7d7fb7ac772f47776573b893c22f`（仅增加同步工作流）
 
 SthStart 不复制、改写或重新授权邻舍源码。邻舍的代码、名称、素材及其他内容仍归原项目贡献者所有，并由原项目自身的授权条款约束。
 

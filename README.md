@@ -55,10 +55,10 @@ Fork 的 `main` 只跟随原作者上游，定制修改放在 `lark`。SthStart 
 
 仓库内包含两层自动同步：
 
-1. `sync-linshe-fork.yml` 每日把原项目同步到 Fork 的 `main`，并在有新提交时创建 `main → lark` 审核 PR。
+1. Fork 的 `lark` 分支内置 `sync-upstream.yml`，每日用 Fork 自己的 `GITHUB_TOKEN` 把原项目同步到 `main`，并在有新提交时创建 `main → lark` 审核 PR。
 2. 合并该 PR 后，`update-linshe.yml` 会为 SthStart 创建更新 Submodule 指针的 PR。
 
-在 SthStart 仓库中配置 `LINSHE_FORK_TOKEN` Secret 后第一层才会执行；Token 需要对 `lark-x/galgame-with-comfyUI` 拥有 Contents 与 Pull requests 写权限。未配置时定时任务会安全跳过。这样上游更新不会直接覆盖自定义改动，冲突也会留在 PR 中人工处理。
+不需要额外保存个人访问 Token。上游更新不会直接覆盖自定义改动，冲突会留在 Fork PR 中人工处理；通过邻舍冒烟检查并合并后，SthStart 才会更新固定指针。
 
 ## 公共服务
 
