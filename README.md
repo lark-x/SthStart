@@ -42,11 +42,11 @@ npm run dev:all
 
 ## 邻舍 Fork 与同步
 
-当前 Submodule 临时指向原项目 `icecranberry/galgame-with-comfyUI`。创建 `lark-x/galgame-with-comfyUI` Fork 及 `lark` 分支后运行：
+当前 Submodule 指向 `lark-x/galgame-with-comfyUI` Fork 的 `lark` 分支。若在新的克隆或重新初始化的仓库中需要修复该配置，可运行：
 
 ```bash
 npm run linshe:use-fork
-git submodule update --remote upstream/linshe
+git submodule update --init --recursive
 ```
 
 Fork 的 `main` 只跟随原作者上游，定制修改放在 `lark`。SthStart 只更新经过测试的 Submodule commit，不直接修改 `upstream/linshe`。

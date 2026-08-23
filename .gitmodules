@@ -1,4 +1,4 @@
 [submodule "upstream/linshe"]
 	path = upstream/linshe
-	url = https://github.com/icecranberry/galgame-with-comfyUI.git
-	branch = main
+	url = https://github.com/lark-x/galgame-with-comfyUI.git
+	branch = lark
