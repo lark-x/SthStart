@@ -44,3 +44,8 @@ test('configuration rejects unsafe URL protocols', () => {
   assert.throws(() => readConfig({ LINSHE_APP_URL: 'file:///tmp/index.html' }), /http or https/);
   assert.throws(() => readConfig({ SERVICE_HOST: '0.0.0.0' }), /loopback/);
 });
+
+test('relative storage paths resolve from the project root', () => {
+  const config = readConfig({ STHSTART_DATABASE_PATH: './data/test.db' });
+  assert.match(config.databasePath, /[\\/]SthStart[\\/]data[\\/]test\.db$/);
+});

@@ -13,6 +13,20 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+async function linsheLaunchUrl() {
+  try {
+    const response = await fetch('/api/apps/linshe', { headers: { accept: 'application/json' }, cache: 'no-store' });
+    if (response.ok) {
+      const payload = await response.json() as { launchUrl?: unknown };
+      if (typeof payload.launchUrl === 'string' && payload.launchUrl.trim()) return payload.launchUrl;
+    }
+  } catch {
+    // Fall back to the portal route so a remote browser never receives the
+    // Mac-only 127.0.0.1 address when the registry is temporarily unavailable.
+  }
+  return new URL('/apps/linshe', window.location.href).toString();
+}
+
 function stateLabel(state: string) {
   return ({ running: '运行中', starting: '启动中', stopping: '停止中', stopped: '已停止', external: '外部启动', degraded: '降级', error: '异常' } as Record<string, string>)[state] ?? state;
 }
@@ -49,7 +63,7 @@ export function ControlCenter() {
   async function command(action: 'start' | 'stop' | 'restart', id = 'linshe') {
     setBusy(`${id}:${action}`); setError('');
     const popup = action === 'start' && id === 'linshe' && overview?.settings.autoOpenBrowser ? window.open('', '_blank') : null;
-    try { await api(`runtime/services/${id}/${action}`, { method: 'POST' }); if (popup) popup.location.href = 'http://127.0.0.1:5173'; await new Promise((resolve) => setTimeout(resolve, 600)); await refresh(); }
+    try { await api(`runtime/services/${id}/${action}`, { method: 'POST' }); if (popup) popup.location.href = await linsheLaunchUrl(); await new Promise((resolve) => setTimeout(resolve, 600)); await refresh(); }
     catch (cause) { popup?.close(); const message = cause instanceof Error ? cause.message : String(cause); setError(message === 'comfyui_not_running' ? '没有检测到 ComfyUI。请先启动 ComfyUI，或在运行配置中关闭启动前检查。' : message); }
     finally { setBusy(''); }
   }

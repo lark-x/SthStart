@@ -10,6 +10,7 @@ interface Reading { node: { id: string; workId: string; title: string; summary: 
 interface Connector { id: string; name: string; kind: string; status: string; message: string; capabilities: string[] }
 interface RemoteResult { fileName: string; pathHash: string; totalLines: number; hits: Array<{ line: number; snippet: string }>; tags: Record<string, string>; sourceTier: 'primary' | 'secondary' }
 interface RemoteDocument { fileName: string; pathHash: string; totalLines: number; content: string; lineRange: string; remainingCharacters: number }
+interface SearchResult { workId: string; kind: string; refId: string; nodeId: string | null; title: string; excerpt: string }
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/admin/narrative${url}`, { cache: 'no-store', ...init, headers: init?.body ? { 'content-type': 'application/json', ...init.headers } : init?.headers });
@@ -34,7 +35,7 @@ export function NarrativeClient() {
   const [nodes, setNodes] = useState<StoryNode[]>([]); const [nodeId, setNodeId] = useState(''); const [reading, setReading] = useState<Reading | null>(null);
   const [connectors, setConnectors] = useState<Connector[]>([]); const [mode, setMode] = useState<'read' | 'import'>('read');
   const [importText, setImportText] = useState(sample); const [preview, setPreview] = useState<{ id: string; report: { incoming: Record<string, number>; existing: Record<string, number>; workExists: boolean; note: string } } | null>(null);
-  const [query, setQuery] = useState(''); const [results, setResults] = useState<Array<{ kind: string; refId: string; title: string; excerpt: string }>>([]);
+  const [query, setQuery] = useState(''); const [results, setResults] = useState<SearchResult[]>([]);
   const [mcpWorld, setMcpWorld] = useState<'gi' | 'hsr' | 'bh3'>('gi'); const [mcpQuery, setMcpQuery] = useState('');
   const [remoteResults, setRemoteResults] = useState<RemoteResult[]>([]); const [remoteDocument, setRemoteDocument] = useState<RemoteDocument | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
@@ -53,6 +54,20 @@ export function NarrativeClient() {
   async function searchRemote() { if (!mcpQuery.trim()) return; setBusy(true); setError(''); setRemoteDocument(null); try { const body = await api<{ items: RemoteResult[] }>('/connectors/akasha-mcp/search', { method: 'POST', body: JSON.stringify({ world: mcpWorld, keyword: mcpQuery.trim(), maxResults: 10 }) }); setRemoteResults(body.items); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } }
   async function readRemote(result: RemoteResult) { setBusy(true); setError(''); try { setRemoteDocument(await api('/connectors/akasha-mcp/read', { method: 'POST', body: JSON.stringify({ world: mcpWorld, pathHash: result.pathHash, limit: 80 }) })); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } }
   async function previewRemoteImport(result: RemoteResult) { setBusy(true); setError(''); try { setPreview(await api('/connectors/akasha-mcp/imports/preview', { method: 'POST', body: JSON.stringify({ world: mcpWorld, pathHash: result.pathHash, title: result.fileName }) })); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); } }
+  function openSearchResult(result: SearchResult) {
+    setMode('read');
+    if (result.nodeId) {
+      setNodeId(result.nodeId);
+      return;
+    }
+    if (result.workId !== workId) {
+      setWorkId(result.workId);
+      setNodeId('');
+      return;
+    }
+    const firstNode = nodes.find((node) => node.kind !== 'chapter') ?? nodes[0];
+    if (firstNode) setNodeId(firstNode.id);
+  }
 
   return <main className="narrative-shell">
     <header className="narrative-header"><Link href="/" className="narrative-brand"><span>叙</span><strong>叙事档案</strong></Link><div><button className={mode === 'read' ? 'active' : ''} onClick={() => setMode('read')}>阅读</button><button className={mode === 'import' ? 'active' : ''} onClick={() => setMode('import')}>数据源与导入</button></div></header>
@@ -71,7 +86,7 @@ export function NarrativeClient() {
     </section> : <div className="narrative-workspace">
       <aside className="narrative-tree"><div className="work-picker"><label>当前作品</label><select value={workId} onChange={(event) => setWorkId(event.target.value)}><option value="">尚未导入作品</option>{works.map((work) => <option key={work.id} value={work.id}>{work.title}</option>)}</select></div><nav>{nodes.map((node) => <button className={node.id === nodeId ? 'active' : ''} style={{ paddingLeft: 16 + depth(node) * 16 }} key={node.id} onClick={() => setNodeId(node.id)}><small>{node.kind}</small><span>{node.title}</span></button>)}</nav><button className="tree-import" onClick={() => setMode('import')}>＋ 导入一条任务链</button></aside>
       <article className="narrative-reader">{reading ? <><header><p className="eyebrow">CONTINUOUS READING</p><h1>{reading.node.title}</h1>{reading.node.summary && <p>{reading.node.summary}</p>}</header>{reading.scenes.map((scene, index) => <section className="story-scene" key={scene.id}><div className="scene-heading"><span>{String(index + 1).padStart(2, '0')}</span><div><small>SCENE</small><h2>{scene.title || `场景 ${index + 1}`}</h2></div></div>{scene.summary && <p className="scene-summary">{scene.summary}</p>}<div className="utterance-list">{scene.utterances.map((line) => <div className={`utterance utterance-${line.kind}`} key={line.id}>{line.speaker && <strong>{line.speaker}</strong>}<p>{line.text}</p>{line.condition && <small>条件：{line.condition}</small>}<button className="quote-to-note" onClick={() => void saveToNotebook(line.id)}>存入创作笔记</button></div>)}</div></section>)}</> : <div className="narrative-empty"><span>⌁</span><h1>档案仍是空的</h1><p>从一份规范化 JSON 或数据源连接器导入完整任务链。</p><button onClick={() => setMode('import')}>打开导入工作台</button></div>}</article>
-      <aside className="narrative-inspector"><label className="archive-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索当前作品原文"/></label>{query ? <div className="search-results"><small>SEARCH RESULTS · {results.length}</small>{results.map((result) => <button key={`${result.kind}-${result.refId}`}><strong>{result.title || result.kind}</strong><span>{result.excerpt.replace(/<\/?mark>/g, '')}</span></button>)}</div> : <><p className="eyebrow">CONTEXT</p><h2>研究侧栏</h2><p>实体、事件和已确认结论将在这里随当前场景联动。首个切片先确保原文结构与出处稳定。</p><div className="context-rule"><span>原始资料</span><strong>只读</strong></div><div className="context-rule"><span>AI 提取</span><strong>需确认</strong></div><div className="context-rule"><span>笔记引用</span><strong>保留快照</strong></div></>}</aside>
+      <aside className="narrative-inspector"><label className="archive-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索当前作品原文"/></label>{query ? <div className="search-results"><small>SEARCH RESULTS · {results.length}</small>{results.map((result) => <button type="button" onClick={() => openSearchResult(result)} key={`${result.kind}-${result.refId}`}><strong>{result.title || result.kind}</strong><span>{result.excerpt.replace(/<\/?mark>/g, '')}</span></button>)}</div> : <><p className="eyebrow">CONTEXT</p><h2>研究侧栏</h2><p>实体、事件和已确认结论将在这里随当前场景联动。首个切片先确保原文结构与出处稳定。</p><div className="context-rule"><span>原始资料</span><strong>只读</strong></div><div className="context-rule"><span>AI 提取</span><strong>需确认</strong></div><div className="context-rule"><span>笔记引用</span><strong>保留快照</strong></div></>}</aside>
     </div>}
   </main>;
 }

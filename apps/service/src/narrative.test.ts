@@ -42,7 +42,7 @@ test('narrative JSON preview commits a readable and searchable task chain idempo
   const read = await app.inject({ method: 'GET', url: `/api/v1/admin/narrative/nodes/${quest.id}/read`, headers });
   assert.equal(read.json().scenes[0].utterances[1].text, '末班车已经离开了。');
   const search = await app.inject({ method: 'GET', url: `/api/v1/admin/narrative/search?q=${encodeURIComponent('末班车')}&workId=${workId}`, headers });
-  assert.equal(search.statusCode, 200); assert.equal(search.json().items.length, 1);
+  assert.equal(search.statusCode, 200); assert.equal(search.json().items.length, 1); assert.equal(search.json().items[0].nodeId, quest.id);
   const middleSearch = await app.inject({ method: 'GET', url: `/api/v1/admin/narrative/search?q=${encodeURIComponent('已经')}&workId=${workId}`, headers });
   assert.equal(middleSearch.statusCode, 200); assert.equal(middleSearch.json().items.length, 1);
   const shortSearch = await app.inject({ method: 'GET', url: `/api/v1/admin/narrative/search?q=${encodeURIComponent('已经'.slice(1))}&workId=${workId}`, headers });

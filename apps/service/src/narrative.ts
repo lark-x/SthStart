@@ -195,13 +195,19 @@ export function registerNarrativeRoutes(app: FastifyInstance, database: Narrativ
     if (Array.from(q).length < 3) {
       const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`; const workId = request.query.workId ?? null;
       return { items: database.connection.prepare(`SELECT * FROM (
-        SELECT n.work_id workId,'utterance' kind,u.id refId,COALESCE(u.speaker,'') title,u.body excerpt FROM narrative_utterances u JOIN narrative_scenes s ON s.id=u.scene_id JOIN narrative_nodes n ON n.id=s.node_id WHERE u.body LIKE ? ESCAPE '\\'
-        UNION ALL SELECT e.work_id,'entity',e.id,e.name,e.description FROM narrative_entities e WHERE e.name LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\'
-        UNION ALL SELECT n.work_id,'node',n.id,n.title,n.summary FROM narrative_nodes n WHERE n.title LIKE ? ESCAPE '\\' OR n.summary LIKE ? ESCAPE '\\'
+        SELECT n.work_id workId,'utterance' kind,u.id refId,n.id nodeId,COALESCE(u.speaker,'') title,u.body excerpt FROM narrative_utterances u JOIN narrative_scenes s ON s.id=u.scene_id JOIN narrative_nodes n ON n.id=s.node_id WHERE u.body LIKE ? ESCAPE '\\'
+        UNION ALL SELECT e.work_id,'entity',e.id,NULL,e.name,e.description FROM narrative_entities e WHERE e.name LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\'
+        UNION ALL SELECT n.work_id,'node',n.id,n.id,n.title,n.summary FROM narrative_nodes n WHERE n.title LIKE ? ESCAPE '\\' OR n.summary LIKE ? ESCAPE '\\'
       ) WHERE (? IS NULL OR workId=?) LIMIT 100`).all(like, like, like, like, like, workId, workId) };
     }
     const match = q.split(/\s+/).map((word) => `"${word.replaceAll('"', '""')}"*`).join(' AND ');
-    try { return { items: database.connection.prepare('SELECT work_id workId,kind,ref_id refId,title,snippet(narrative_fts,4,\'<mark>\',\'</mark>\',\'…\',24) excerpt FROM narrative_fts WHERE narrative_fts MATCH ? AND (? IS NULL OR work_id=?) LIMIT 100').all(match, request.query.workId ?? null, request.query.workId ?? null) }; }
+    try { return { items: database.connection.prepare(`SELECT narrative_fts.work_id workId,narrative_fts.kind,narrative_fts.ref_id refId,
+        CASE narrative_fts.kind WHEN 'node' THEN narrative_fts.ref_id WHEN 'utterance' THEN s.node_id ELSE NULL END nodeId,
+        narrative_fts.title,snippet(narrative_fts,4,'<mark>','</mark>','…',24) excerpt
+        FROM narrative_fts
+        LEFT JOIN narrative_utterances u ON narrative_fts.kind='utterance' AND narrative_fts.ref_id=u.id
+        LEFT JOIN narrative_scenes s ON u.scene_id=s.id
+        WHERE narrative_fts MATCH ? AND (? IS NULL OR narrative_fts.work_id=?) LIMIT 100`).all(match, request.query.workId ?? null, request.query.workId ?? null) }; }
     catch { return reply.code(400).send({ error: 'invalid_search' }); }
   });
   app.get<{ Querystring: { workId?: string; status?: string } }>('/api/v1/admin/narrative/claims', async (request) => ({ items: database.connection.prepare(`SELECT id,work_id workId,type,body,status,origin,created_at createdAt FROM narrative_claims WHERE (? IS NULL OR work_id=?) AND (? IS NULL OR status=?) ORDER BY created_at DESC LIMIT 300`).all(request.query.workId ?? null, request.query.workId ?? null, request.query.status ?? null, request.query.status ?? null) }));

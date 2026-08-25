@@ -29,6 +29,13 @@ interface LinsheMetadata {
   sourceRevision: string | null;
 }
 
+const projectRoot = resolve(import.meta.dirname, '../../../');
+
+function projectPath(value: string | undefined, fallback: string) {
+  const configured = value?.trim();
+  return resolve(projectRoot, configured || fallback);
+}
+
 function discoverLinsheMetadata(): LinsheMetadata {
   const root = resolve(import.meta.dirname, '../../../upstream/linshe');
   let version: string | null = null;
@@ -102,15 +109,15 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
     linsheVersion: environment.LINSHE_VERSION?.trim() || metadata.version,
     linsheSourceRevision: environment.LINSHE_SOURCE_REVISION?.trim() || metadata.sourceRevision,
     probeTimeoutMs: integer(environment.PROBE_TIMEOUT_MS, 2_000, 'PROBE_TIMEOUT_MS', 100, 30_000),
-    databasePath: resolve(environment.STHSTART_DATABASE_PATH ?? resolve(import.meta.dirname, '../../../data/sthstart.db')),
-    narrativeDatabasePath: resolve(environment.STHSTART_NARRATIVE_DATABASE_PATH ?? resolve(import.meta.dirname, '../../../data/narrative.db')),
-    artifactDirectory: resolve(environment.STHSTART_ARTIFACT_DIR ?? resolve(import.meta.dirname, '../../../data/artifacts')),
+    databasePath: projectPath(environment.STHSTART_DATABASE_PATH, 'data/sthstart.db'),
+    narrativeDatabasePath: projectPath(environment.STHSTART_NARRATIVE_DATABASE_PATH, 'data/narrative.db'),
+    artifactDirectory: projectPath(environment.STHSTART_ARTIFACT_DIR, 'data/artifacts'),
     adminToken,
     vectorDefaultUrl: httpUrl(environment.STHSTART_VECTOR_URL ?? 'http://127.0.0.1:8765', 'STHSTART_VECTOR_URL'),
     imageSigningSecret: signingSecret ?? adminToken ?? Buffer.from(randomBytes(32)).toString('hex'),
     akashaMcpUrl: optionalHttpUrl(environment.STHSTART_AKASHA_MCP_URL, 'STHSTART_AKASHA_MCP_URL'),
     mcpTimeoutMs: integer(environment.STHSTART_MCP_TIMEOUT_MS, 45_000, 'STHSTART_MCP_TIMEOUT_MS', 1_000, 120_000),
-    linsheRoot: resolve(environment.STHSTART_LINSHE_ROOT ?? resolve(import.meta.dirname, '../../../upstream/linshe')),
-    logDirectory: resolve(environment.STHSTART_LOG_DIR ?? resolve(import.meta.dirname, '../../../data/logs')),
+    linsheRoot: projectPath(environment.STHSTART_LINSHE_ROOT, 'upstream/linshe'),
+    logDirectory: projectPath(environment.STHSTART_LOG_DIR, 'data/logs'),
   };
 }

@@ -121,8 +121,92 @@ npm run build
 
 最稳妥的方式是先停止 SthStart 与邻舍，再整体复制 `data/` 和邻舍数据目录。恢复时使用相同路径，并确保文件只对当前系统用户可读写。
 
-## 手机访问
+## 手机远程访问：最小方案
 
-当前默认部署刻意只允许本机访问。不要简单把 Portal 改为 `0.0.0.0`：Portal 的 BFF 持有管理员权限，而当前尚未实现用户登录。
+第一阶段只暴露 Portal，不需要 Docker、Nginx、公网 IP 或端口映射。公共服务、数据库和向量服务继续保持本机回环监听。
 
-后续手机编辑推荐增加一层带身份验证的 Tailscale、Cloudflare Access 或本地反向代理，只暴露 Portal，公共服务继续保持回环监听。完成访问认证之前，手机访问不属于当前安全支持范围。
+先在 Mac 上启动：
+
+```bash
+npm run deploy:local
+```
+
+这个命令会持续运行 Portal 和公共服务，请保持该终端开启；下面的 `cloudflared` 命令在另一个终端执行。
+
+确认 `http://127.0.0.1:4173` 可以打开后，安装 Cloudflare Tunnel：
+
+```bash
+brew install cloudflared
+cloudflared tunnel login
+cloudflared tunnel create sthstart
+cloudflared tunnel route dns sthstart sth.example.com
+```
+
+创建 `~/.cloudflared/config.yml`，将 `sth.example.com` 替换为你的域名：
+
+```yaml
+tunnel: <Tunnel UUID>
+credentials-file: /Users/<你的用户名>/.cloudflared/<Tunnel UUID>.json
+
+ingress:
+  - hostname: sth.example.com
+    service: http://127.0.0.1:4173
+  - service: http_status:404
+```
+
+启动隧道：
+
+```bash
+cloudflared tunnel run sthstart
+```
+
+需要检查配置时可以先运行：
+
+```bash
+cloudflared tunnel ingress validate
+```
+
+然后在 Cloudflare Zero Trust 中为 `sth.example.com` 创建 Access Application，只允许自己的邮箱。手机访问 `https://sth.example.com` 即可。
+
+### 邻舍远程访问
+
+SthStart、创作笔记和叙事档案只需要 4173。邻舍暂时使用第二个域名：
+
+```text
+linshe.example.com → http://127.0.0.1:5173
+```
+
+开发运行邻舍：
+
+```bash
+npm run dev:linshe
+```
+
+如果不从 SthStart 控制中心启动邻舍，请在第三个终端保持这个命令运行。
+
+并在根目录 `.env` 中设置：
+
+```dotenv
+LINSHE_APP_URL=https://linshe.example.com
+LINSHE_HEALTH_URL=http://127.0.0.1:3099/api/health
+NEXT_PUBLIC_LINSHE_APP_URL=https://linshe.example.com
+```
+
+`NEXT_PUBLIC_LINSHE_APP_URL` 是离线或公共服务暂时不可用时的浏览器回退地址。修改 `.env` 后重新执行 `npm run deploy:local`，让它进入 Portal 构建产物。
+
+需要为 `linshe.example.com` 增加第二条 Tunnel ingress，例如：
+
+```yaml
+  - hostname: linshe.example.com
+    service: http://127.0.0.1:5173
+```
+
+并为两个 hostname 都配置同样的 Cloudflare Access 规则。`LINSHE_APP_URL` 用于让远程手机点击邻舍入口时跳转到第二个域名；健康检查仍然走 Mac 本机的 3099，邻舍 Web 进程状态则探测 Mac 本机的 5173。
+
+邻舍 Web 的 `/api`、`/images` 和 `/avatars` 请求由 5173 代理到本机 3099，所以手机不需要直接访问 3099。8765、8188 也不需要暴露。
+
+### 注意
+
+- `npm run deploy:local` 只启动 SthStart Portal 和公共服务；邻舍需要另运行 `npm run dev:linshe`，或从控制中心按需启动。
+- 不要把 4100、3099、8765 或 8188 直接暴露到公网。
+- 先验证 4173 单域名方案，再接入邻舍第二个域名；开机自启可以最后使用 `launchd` 或 PM2 配置。
