@@ -1,9 +1,12 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { resolveLinsheEnvironment } from './linshe-env.mjs';
 
 const root = resolve(import.meta.dirname, '..');
+const rootEnvironmentPath = resolve(root, '.env');
+if (existsSync(rootEnvironmentPath)) process.loadEnvFile(rootEnvironmentPath);
 const environment = resolveLinsheEnvironment(root);
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const children = new Set();

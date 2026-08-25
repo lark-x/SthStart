@@ -26,10 +26,17 @@
     "test": "npm run test:portal && npm run test --workspaces --if-present",
     "test:portal": "node --import tsx --test app/lib/*.test.ts",
     "verify": "npm run typecheck && npm run test && npm run build && npm run lint",
-    "start": "vinext start",
+    "start": "npm run start:local",
+    "start:portal": "vinext start --port 4173 --hostname 127.0.0.1",
+    "start:service": "npm run start --workspace @sthstart/service",
+    "start:local": "concurrently --kill-others-on-fail --names portal,service --prefix-colors cyan,green \"npm run start:portal\" \"npm run start:service\"",
+    "start:local:all": "npm run start:local",
+    "start:local:legacy": "concurrently --kill-others-on-fail --names portal,service,linshe --prefix-colors cyan,green,magenta \"npm run start:portal\" \"npm run start:service\" \"npm run dev:linshe\"",
+    "deploy:local": "npm run build && npm run start:local",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern upstream"
   },
   "dependencies": {
+    "@sthstart/contracts": "0.1.0",
     "next": "16.3.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"

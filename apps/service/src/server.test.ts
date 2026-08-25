@@ -25,7 +25,9 @@ test('health and capabilities expose stable v1 contracts', async () => {
 
   const capabilities = await app.inject({ method: 'GET', url: '/api/v1/capabilities' });
   assert.equal(capabilities.statusCode, 200);
-  assert.deepEqual(capabilities.json().modules.map((item: { id: string }) => item.id), ['app-registry']);
+  assert.deepEqual(capabilities.json().modules.map((item: { id: string }) => item.id), [
+    'app-registry', 'llm-gateway', 'vector-service', 'image-service', 'persona-catalog', 'creative-notebook', 'narrative-archive', 'runtime-manager',
+  ]);
   await app.close();
 });
 
@@ -40,4 +42,5 @@ test('app registry returns the configured linshe descriptor', async () => {
 
 test('configuration rejects unsafe URL protocols', () => {
   assert.throws(() => readConfig({ LINSHE_APP_URL: 'file:///tmp/index.html' }), /http or https/);
+  assert.throws(() => readConfig({ SERVICE_HOST: '0.0.0.0' }), /loopback/);
 });
