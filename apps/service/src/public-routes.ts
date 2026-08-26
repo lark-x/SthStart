@@ -809,21 +809,32 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       );
       return reply.code(202).send(task);
     } catch (error) {
-      const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'task_creation_failed');
+      const rawCode = (error as { code?: string })?.code;
       const safeMsg = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
-      if (code === 'idempotency_conflict') {
-        return reply.code(409).send({ error: 'idempotency_conflict', message: safeMsg });
+
+      const KNOWN_CODES: Record<string, number> = {
+        idempotency_conflict: 409,
+        workflow_assignment_managed: 400,
+        generation_assignment_not_found: 404,
+        workflow_not_found: 404,
+        workflow_version_not_found: 404,
+        generation_engine_unavailable: 503,
+        unsupported_engine: 400,
+        invalid_input_schema: 400,
+        invalid_node_bindings: 400,
+        invalid_node_binding_path: 400,
+        output_declarations_required: 400,
+        invalid_output_declaration: 400,
+        output_node_not_found: 400,
+        binding_node_not_found: 400,
+        binding_node_inputs_invalid: 400,
+      };
+
+      if (rawCode && KNOWN_CODES[rawCode]) {
+        return reply.code(KNOWN_CODES[rawCode]).send({ error: rawCode, message: safeMsg });
       }
-      if (code === 'workflow_assignment_managed') {
-        return reply.code(400).send({ error: 'workflow_assignment_managed', message: safeMsg });
-      }
-      if (code === 'generation_assignment_not_found' || code === 'workflow_not_found' || code === 'workflow_version_not_found') {
-        return reply.code(404).send({ error: code, message: safeMsg });
-      }
-      if (code === 'generation_engine_unavailable') {
-        return reply.code(503).send({ error: code, message: safeMsg });
-      }
-      return reply.code(400).send({ error: code, message: safeMsg });
+
+      return reply.code(400).send({ error: 'task_creation_failed', message: safeMsg });
     }
   });
 

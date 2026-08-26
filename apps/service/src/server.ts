@@ -14,7 +14,7 @@ import { hashToken, issueToken, SecretStore } from './security.js';
 import { registerManagementRoutes } from './management.js';
 import { registerPublicRoutes } from './public-routes.js';
 import { enforceAllRetention, reconcileArtifacts } from './artifacts.js';
-import { activeGenerationExecutions, reconcileGenerationTasks } from './generation.js';
+import { activeGenerationExecutions, reconcileGenerationTasks, startGenerationScheduler } from './generation.js';
 import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
@@ -172,6 +172,7 @@ export async function createService(options: ServiceOptions = {}) {
   void enforceAllRetention(database).catch(retentionFailure);
   const retentionTimer = setInterval(() => void enforceAllRetention(database).catch(retentionFailure), 60 * 60_000);
   retentionTimer.unref();
+  const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);
   const reconcilePromise = reconcileArtifacts(config, database).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (!msg.includes('database is not open')) {
@@ -187,6 +188,7 @@ export async function createService(options: ServiceOptions = {}) {
 
   app.addHook('onClose', async () => {
     clearInterval(retentionTimer);
+    genScheduler.stop();
     await reconcilePromise.catch(() => {});
     await genReconcilePromise.catch(() => {});
     await Promise.allSettled(Array.from(activeGenerationExecutions));

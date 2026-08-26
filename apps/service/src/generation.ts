@@ -320,6 +320,12 @@ export function resolveWorkflowAndEngine(
     throw err;
   }
 
+  if (engine.kind !== 'comfyui') {
+    const err = new Error(`暂不支持引擎类型 "${engine.kind}"。`);
+    (err as { code?: string }).code = 'unsupported_engine';
+    throw err;
+  }
+
   return {
     workflow: {
       id: wf.id,
@@ -491,27 +497,10 @@ export async function executeQueuedTask(
   taskId: string,
   fetcher: typeof fetch = fetch,
 ): Promise<void> {
-  const leaseOwner = randomUUID();
-  const leaseExpiresAt = new Date(Date.now() + 60_000).toISOString();
-  const now = nowIso();
-
-  // Atomic claim: only succeed if task is currently queued
-  const claimResult = database.connection.prepare(`
-    UPDATE generation_tasks
-    SET status = 'submitting', lease_owner = ?, lease_expires_at = ?, updated_at = ?
-    WHERE id = ? AND status = 'queued'
-  `).run(leaseOwner, leaseExpiresAt, now, taskId);
-
-  if (claimResult.changes === 0) {
-    return;
-  }
-
   const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
-  if (!taskRow) return;
+  if (!taskRow || taskRow.status !== "queued") return;
 
   const appId = String(taskRow.app_id);
-  recordGenerationEvent(database, { taskId, appId, eventType: "submitting", payload: { status: "submitting" } });
-
   const engineId = String(taskRow.engine_id);
   const engineRow = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(engineId) as Record<string, unknown> | undefined;
   if (!engineRow || !engineRow.enabled) {
@@ -525,13 +514,80 @@ export async function executeQueuedTask(
       eventType: "failed",
       payload: { errorCode: "generation_engine_unavailable", errorMessage: "生成引擎不可用" },
     });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
 
+  if (engineRow.kind !== "comfyui") {
+    const nowErr = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'failed', error_code = 'unsupported_engine', error_message = '暂不支持该类型的生成引擎', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowErr, nowErr, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: "failed",
+      payload: { errorCode: "unsupported_engine", errorMessage: "暂不支持该类型的生成引擎" },
+    });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+    return;
+  }
+
+  const concurrencyLimit = Math.max(1, Number(engineRow.concurrency_limit || 1));
+  const leaseOwner = randomUUID();
+  const leaseExpiresAt = new Date(Date.now() + 60_000).toISOString();
+  const now = nowIso();
+
+  let claimed = false;
+  database.transaction(() => {
+    const activeCount = (database.connection.prepare(
+      "SELECT COUNT(*) as count FROM generation_tasks WHERE engine_id = ? AND status IN ('submitting', 'accepted', 'running') AND id != ?",
+    ).get(engineId, taskId) as { count: number }).count;
+
+    if (activeCount >= concurrencyLimit) {
+      return;
+    }
+
+    const claimResult = database.connection.prepare(`
+      UPDATE generation_tasks
+      SET status = 'submitting', lease_owner = ?, lease_expires_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'queued'
+    `).run(leaseOwner, leaseExpiresAt, now, taskId);
+
+    if (claimResult.changes > 0) {
+      claimed = true;
+    }
+  });
+
+  if (!claimed) {
+    return;
+  }
+
+  recordGenerationEvent(database, { taskId, appId, eventType: "submitting", payload: { status: "submitting" } });
+
   const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, "");
   const credentialAccount = engineRow.credential_account ? String(engineRow.credential_account) : null;
-  const credential = credentialAccount ? await secrets.get(credentialAccount) : { value: null };
-  const secret = credential.value;
+  let secret: string | null = null;
+  if (credentialAccount) {
+    try {
+      const credential = await secrets.get(credentialAccount);
+      secret = credential.value;
+    } catch (secErr) {
+      const nowErr = nowIso();
+      const safeMsg = sanitizeErrorMessage(secErr instanceof Error ? secErr.message : String(secErr)).slice(0, 300);
+      database.connection.prepare(
+        "UPDATE generation_tasks SET status = 'failed', error_code = 'keyring_unavailable', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+      ).run(`凭据库读取失败：${safeMsg}`, nowErr, nowErr, taskId);
+      recordGenerationEvent(database, {
+        taskId,
+        appId,
+        eventType: "failed",
+        payload: { errorCode: "keyring_unavailable", errorMessage: `凭据库读取失败：${safeMsg}` },
+      });
+      setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+      return;
+    }
+  }
 
   const workflowSnapshot = JSON.parse(String(taskRow.workflow_snapshot_json));
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -557,6 +613,7 @@ export async function executeQueuedTask(
       eventType: "abandoned",
       payload: { errorCode: "submission_outcome_unknown", errorMessage: "提交状态不确定，禁止自动重复提交" },
     });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
 
@@ -574,6 +631,7 @@ export async function executeQueuedTask(
       eventType: "failed",
       payload: { errorCode: "upstream_rejected", errorMessage: safeMsg },
     });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
 
@@ -590,6 +648,7 @@ export async function executeQueuedTask(
       eventType: "failed",
       payload: { errorCode: "image_missing_task_id", errorMessage: "引擎未返回任务 ID" },
     });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
 
@@ -613,6 +672,7 @@ export async function pollAndCompleteTask(
   secrets: SecretStore,
   taskId: string,
   fetcher: typeof fetch = fetch,
+  options?: { pollTimeoutMs?: number; pollIntervalMs?: number },
 ): Promise<void> {
   const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
   if (!taskRow) return;
@@ -626,10 +686,17 @@ export async function pollAndCompleteTask(
 
   const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, "");
   const credentialAccount = engineRow.credential_account ? String(engineRow.credential_account) : null;
-  const credential = credentialAccount ? await secrets.get(credentialAccount) : { value: null };
-  const secret = credential.value;
+  let secret: string | null = null;
+  if (credentialAccount) {
+    try {
+      const credential = await secrets.get(credentialAccount);
+      secret = credential.value;
+    } catch {}
+  }
 
-  const pollDeadline = Date.now() + 600_000;
+  const pollTimeoutMs = options?.pollTimeoutMs ?? 600_000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 500;
+  const pollDeadline = Date.now() + pollTimeoutMs;
   while (Date.now() < pollDeadline) {
     const currentTask = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
     if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)) return;
@@ -639,6 +706,35 @@ export async function pollAndCompleteTask(
         headers: secret ? { authorization: `Bearer ${secret}` } : {},
         signal: AbortSignal.timeout(15_000),
       });
+
+      if (historyRes.status === 404) {
+        const nowDone = nowIso();
+        database.connection.prepare(
+          "UPDATE generation_tasks SET status = 'abandoned', error_code = 'upstream_not_found', error_message = '上游未找到该任务历史记录', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+        ).run(nowDone, nowDone, taskId);
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: "abandoned",
+          payload: { errorCode: "upstream_not_found", errorMessage: "上游未找到该任务历史记录" },
+        });
+        break;
+      }
+
+      if (!historyRes.ok && historyRes.status >= 400 && historyRes.status < 500) {
+        const nowDone = nowIso();
+        const safeMsg = `上游返回客户端错误 (HTTP ${historyRes.status})`;
+        database.connection.prepare(
+          "UPDATE generation_tasks SET status = 'failed', error_code = 'upstream_client_error', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+        ).run(safeMsg, nowDone, nowDone, taskId);
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: "failed",
+          payload: { errorCode: "upstream_client_error", errorMessage: safeMsg },
+        });
+        break;
+      }
 
       if (historyRes.ok) {
         const historyData = await historyRes.json().catch(() => ({})) as Record<string, unknown>;
@@ -781,8 +877,24 @@ export async function pollAndCompleteTask(
       // transient poll failure
     }
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
+
+  const finalCheck = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+  if (finalCheck && ["submitting", "accepted", "running"].includes(finalCheck.status)) {
+    const nowDone = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'poll_timeout', error_message = '任务轮询超时，上游可能仍在运行', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowDone, nowDone, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: "abandoned",
+      payload: { errorCode: "poll_timeout", errorMessage: "任务轮询超时，上游可能仍在运行" },
+    });
+  }
+
+  setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
 }
 
 export async function processTaskExecution(
@@ -836,6 +948,7 @@ export async function cancelGenerationTask(
       "UPDATE generation_tasks SET status = 'cancelled', updated_at = ?, finished_at = ? WHERE id = ?",
     ).run(now, now, taskId);
     recordGenerationEvent(database, { taskId, appId, eventType: "cancelled", payload: { status: "cancelled" } });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return getGenerationTask(database, taskId, appId)!;
   }
 
@@ -845,8 +958,13 @@ export async function cancelGenerationTask(
   if (engine && providerTaskId) {
     const engineBaseUrl = String(engine.base_url).replace(/\/+$/, "");
     const credentialAccount = engine.credential_account ? String(engine.credential_account) : null;
-    const credential = credentialAccount ? await secrets.get(credentialAccount) : { value: null };
-    const secret = credential.value;
+    let secret: string | null = null;
+    if (credentialAccount) {
+      try {
+        const credential = await secrets.get(credentialAccount);
+        secret = credential.value;
+      } catch {}
+    }
 
     try {
       const qRes = await fetcher(`${engineBaseUrl}/queue`, {
@@ -859,17 +977,34 @@ export async function cancelGenerationTask(
         const runningSet = new Set(Array.isArray(qData.queue_running) ? qData.queue_running.map((item) => Array.isArray(item) ? String(item[1] ?? "") : "").filter(Boolean) : []);
 
         if (pendingSet.has(providerTaskId)) {
-          await fetcher(`${engineBaseUrl}/queue`, {
-            method: "POST",
-            headers: { "content-type": "application/json", ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
-            body: JSON.stringify({ delete: [providerTaskId] }),
-            signal: AbortSignal.timeout(10_000),
-          });
-          database.connection.prepare(
-            "UPDATE generation_tasks SET status = 'cancelled', upstream_may_continue = 0, cancellation_scope = 'queued', updated_at = ?, finished_at = ? WHERE id = ?",
-          ).run(now, now, taskId);
-          recordGenerationEvent(database, { taskId, appId, eventType: "cancelled", payload: { status: "cancelled", scope: "queued" } });
-          return getGenerationTask(database, taskId, appId)!;
+          let deleteSuccess = false;
+          try {
+            const delRes = await fetcher(`${engineBaseUrl}/queue`, {
+              method: "POST",
+              headers: { "content-type": "application/json", ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
+              body: JSON.stringify({ delete: [providerTaskId] }),
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (delRes.ok) {
+              deleteSuccess = true;
+            }
+          } catch {}
+
+          if (deleteSuccess) {
+            database.connection.prepare(
+              "UPDATE generation_tasks SET status = 'cancelled', upstream_may_continue = 0, cancellation_scope = 'queued', updated_at = ?, finished_at = ? WHERE id = ?",
+            ).run(now, now, taskId);
+            recordGenerationEvent(database, { taskId, appId, eventType: "cancelled", payload: { status: "cancelled", scope: "queued" } });
+            setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+            return getGenerationTask(database, taskId, appId)!;
+          } else {
+            database.connection.prepare(
+              "UPDATE generation_tasks SET status = 'abandoned', error_code = 'cancellation_upstream_failed', error_message = '上游队列项删除失败', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+            ).run(now, now, taskId);
+            recordGenerationEvent(database, { taskId, appId, eventType: "abandoned", payload: { errorCode: "cancellation_upstream_failed", errorMessage: "上游队列项删除失败", scope: "local-tracking" } });
+            setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+            return getGenerationTask(database, taskId, appId)!;
+          }
         }
 
         if (runningSet.has(providerTaskId)) {
@@ -877,6 +1012,7 @@ export async function cancelGenerationTask(
             "UPDATE generation_tasks SET status = 'abandoned', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
           ).run(now, now, taskId);
           recordGenerationEvent(database, { taskId, appId, eventType: "abandoned", payload: { status: "abandoned", scope: "local-tracking" } });
+          setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
           return getGenerationTask(database, taskId, appId)!;
         }
       }
@@ -889,6 +1025,7 @@ export async function cancelGenerationTask(
     "UPDATE generation_tasks SET status = 'abandoned', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
   ).run(now, now, taskId);
   recordGenerationEvent(database, { taskId, appId, eventType: "abandoned", payload: { status: "abandoned", scope: "local-tracking" } });
+  setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
   return getGenerationTask(database, taskId, appId)!;
 }
 
@@ -933,6 +1070,96 @@ export async function retryGenerationTask(
     },
     fetcher,
   );
+}
+
+export async function scheduleQueuedTasks(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  try {
+  const queuedTasks = database.connection.prepare(
+    "SELECT id FROM generation_tasks WHERE status = 'queued' ORDER BY created_at ASC",
+  ).all() as Array<{ id: string }>;
+
+  for (const row of queuedTasks) {
+    const p = (async () => {
+      await processTaskExecution(config, database, secrets, row.id, fetcher);
+    })()
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("database is not open") && !msg.includes("closed")) {
+          console.error(`[generation] scheduled task ${row.id} error:`, err);
+        }
+      })
+      .finally(() => activeGenerationExecutions.delete(p));
+    activeGenerationExecutions.add(p);
+  }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("database is not open") || msg.includes("closed")) return;
+    throw err;
+  }
+}
+
+export function cleanupGenerationEvents(
+  database: ServiceDatabase,
+  options?: { maxRetentionDays?: number; maxEvents?: number },
+): { deletedCount: number } {
+  try {
+  const maxDays = options?.maxRetentionDays ?? 7;
+  const maxEvents = options?.maxEvents ?? 10_000;
+
+  let totalDeleted = 0;
+  database.transaction(() => {
+    const res1 = database.connection.prepare(`
+      DELETE FROM generation_events
+      WHERE created_at < datetime('now', '-' || ? || ' days')
+      AND task_id IN (
+        SELECT id FROM generation_tasks WHERE status IN ('succeeded', 'failed', 'cancelled', 'abandoned')
+      )
+    `).run(maxDays);
+    totalDeleted += Number(res1.changes || 0);
+
+    const res2 = database.connection.prepare(`
+      DELETE FROM generation_events
+      WHERE id NOT IN (
+        SELECT id FROM generation_events ORDER BY id DESC LIMIT ?
+      )
+      AND task_id IN (
+        SELECT id FROM generation_tasks WHERE status IN ('succeeded', 'failed', 'cancelled', 'abandoned')
+      )
+    `).run(maxEvents);
+    totalDeleted += Number(res2.changes || 0);
+  });
+
+  return { deletedCount: totalDeleted };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("database is not open") || msg.includes("closed")) return { deletedCount: 0 };
+    throw err;
+  }
+}
+
+export function startGenerationScheduler(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  intervalMs = 2000,
+  fetcher: typeof fetch = fetch,
+): { stop: () => void } {
+  const timer = setInterval(() => {
+    void scheduleQueuedTasks(config, database, secrets, fetcher).catch(() => {});
+    try {
+      cleanupGenerationEvents(database);
+    } catch {}
+  }, intervalMs);
+  timer.unref();
+
+  return {
+    stop: () => clearInterval(timer),
+  };
 }
 
 export async function reconcileGenerationTasks(

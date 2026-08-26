@@ -7,7 +7,7 @@ import { ServiceDatabase, nowIso } from './database.js';
 import { createService } from './server.js';
 import { readConfig } from './config.js';
 import { SecretStore, hashToken, issueToken } from './security.js';
-import { validateComfyApiJson, renderWorkflowSnapshot, reconcileGenerationTasks, activeGenerationExecutions } from './generation.js';
+import { validateComfyApiJson, renderWorkflowSnapshot, reconcileGenerationTasks, activeGenerationExecutions, cleanupGenerationEvents, pollAndCompleteTask } from './generation.js';
 
 const adminToken = 'admin-test-token-that-is-long-12345678';
 const adminHeaders = { 'x-sthstart-admin-token': adminToken };
@@ -630,8 +630,15 @@ test('Generation recovery: reconcileGenerationTasks recovers accepted and runnin
   const res = await reconcileGenerationTasks(config, database, new SecretStore({}), fetcher);
   assert.equal(res.recoveredCount, 3);
 
-  // Wait for all async tasks to finish
-  await Promise.allSettled(Array.from(activeGenerationExecutions));
+  // Wait for all 3 tasks to reach terminal state
+  const recDeadline = Date.now() + 5000;
+  while (Date.now() < recDeadline) {
+    const acc = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = 't-acc'").get() as { status: string };
+    const run = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = 't-run'").get() as { status: string };
+    const que = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = 't-que'").get() as { status: string };
+    if (acc.status === "succeeded" && run.status === "failed" && que.status === "succeeded") break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
 
   const accTaskFinal = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get("t-acc") as { status: string };
   const runTaskFinal = database.connection.prepare("SELECT status, error_code, error_message FROM generation_tasks WHERE id = ?").get("t-run") as { status: string; error_code: string; error_message: string };
@@ -911,6 +918,269 @@ test("Generation retry: only allowed on terminal failed/abandoned/cancelled stat
   });
   assert.equal(retryFailed.statusCode, 202);
   assert.equal(retryFailed.json().retryOf, "t-failed");
+
+  await app.close();
+  database.close();
+});
+
+test("Generation concurrency: limits active tasks to concurrency_limit and scheduler drains queued tasks when capacity is freed", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-conc-"));
+  const token = seedApp(database, "conc-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  // Concurrency limit = 1
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("conc-app", "default", "wf-1", 1, "eng-1", now);
+
+  let task1CanFinish = false;
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/prompt")) {
+      return Response.json({ prompt_id: "prompt-conc-" + Math.random().toString(36).slice(2) });
+    }
+    if (url.includes("/history/")) {
+      if (!task1CanFinish) {
+        return Response.json({});
+      }
+      const promptId = url.split("/").pop()!;
+      return Response.json({
+        [promptId]: {
+          status: { status_str: "success" },
+          outputs: { "9": { images: [{ filename: "out.png", type: "output" }] } },
+        },
+      });
+    }
+    if (url.includes("/view")) {
+      return new Response(Buffer.from("binary-png"), { status: 200, headers: { "content-type": "image/png" } });
+    }
+    if (url.includes("/queue")) return Response.json({ queue_running: [], queue_pending: [] });
+    return new Response(null, { status: 404 });
+  };
+
+  const { app } = await createService({ config, database, secrets: new SecretStore({}), fetcher });
+
+  // 1. Submit task 1 -> will occupy the 1 capacity slot
+  const res1 = await app.inject({
+    method: "POST",
+    url: "/api/v1/generation/tasks",
+    headers: { authorization: `Bearer ${token}`, "idempotency-key": "conc-key-1" },
+    payload: {},
+  });
+  const task1Id = res1.json().id;
+
+  // Wait briefly for task 1 to reach submitting/accepted
+  await new Promise((r) => setTimeout(r, 100));
+
+  // 2. Submit task 2 -> engine at capacity (limit 1), must remain queued
+  const res2 = await app.inject({
+    method: "POST",
+    url: "/api/v1/generation/tasks",
+    headers: { authorization: `Bearer ${token}`, "idempotency-key": "conc-key-2" },
+    payload: {},
+  });
+  const task2Id = res2.json().id;
+
+  await new Promise((r) => setTimeout(r, 100));
+  const t2Before = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(task2Id) as { status: string };
+  assert.equal(t2Before.status, "queued", "Task 2 must remain queued while Task 1 is active");
+
+  // 3. Now let task 1 finish -> frees capacity and scheduler should pick up task 2
+  task1CanFinish = true;
+  const concDeadline = Date.now() + 5000;
+  while (Date.now() < concDeadline) {
+    const t1 = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(task1Id) as { status: string };
+    const t2 = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(task2Id) as { status: string };
+    if (t1.status === "succeeded" && t2.status === "succeeded") break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  const t1After = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(task1Id) as { status: string };
+  const t2After = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(task2Id) as { status: string };
+  assert.equal(t1After.status, "succeeded");
+  assert.equal(t2After.status, "succeeded", "Task 2 must be scheduled and completed once capacity is freed");
+
+  await app.close();
+  database.close();
+});
+
+test("Generation poll timeout and 404: poll deadline marks abandoned with poll_timeout and 404 marks upstream_not_found", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-poll-to-"));
+  seedApp(database, "poll-to-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("poll-to-app", "default", "wf-1", 1, "eng-1", now);
+
+  // 1. Task timeout test with short pollTimeoutMs = 50ms
+  database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, provider_task_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run("t-timeout", "poll-to-app", "eng-1", "wf-1", 1, "h1", "{}", "{}", "accepted", "prompt-to", now, now);
+
+  const timeoutFetcher: typeof fetch = async () => Response.json({});
+  await pollAndCompleteTask(config, database, new SecretStore({}), "t-timeout", timeoutFetcher, { pollTimeoutMs: 50, pollIntervalMs: 10 });
+
+  const toTask = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get("t-timeout") as { status: string; error_code: string; upstream_may_continue: number };
+  assert.equal(toTask.status, "abandoned");
+  assert.equal(toTask.error_code, "poll_timeout");
+  assert.equal(toTask.upstream_may_continue, 1);
+
+  // 2. Upstream 404 test
+  database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, provider_task_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run("t-404", "poll-to-app", "eng-1", "wf-1", 1, "h2", "{}", "{}", "accepted", "prompt-404", now, now);
+
+  const notFoundFetcher: typeof fetch = async () => new Response(null, { status: 404 });
+  await pollAndCompleteTask(config, database, new SecretStore({}), "t-404", notFoundFetcher, { pollTimeoutMs: 500, pollIntervalMs: 10 });
+
+  const nfTask = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get("t-404") as { status: string; error_code: string; upstream_may_continue: number };
+  assert.equal(nfTask.status, "abandoned");
+  assert.equal(nfTask.error_code, "upstream_not_found");
+  assert.equal(nfTask.upstream_may_continue, 1);
+
+  database.close();
+});
+
+test("Generation cancellation upstream error: failsafe marks task as abandoned instead of false cancelled when queue deletion fails", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-cancel-err-"));
+  const token = seedApp(database, "cancel-err-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("cancel-err-app", "default", "wf-1", 1, "eng-1", now);
+  database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, provider_task_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run("t-cancel-fail", "cancel-err-app", "eng-1", "wf-1", 1, "h1", "{}", "{}", "accepted", "prompt-p1", now, now);
+
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("/queue") && init?.method === "POST") {
+      return new Response(JSON.stringify({ error: "Queue delete error" }), { status: 500 });
+    }
+    if (url.includes("/queue")) return Response.json({ queue_running: [], queue_pending: [[1, "prompt-p1"]] });
+    return Response.json({});
+  };
+
+  const { app } = await createService({ config, database, secrets: new SecretStore({}), fetcher });
+
+  const cancelRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/generation/tasks/t-cancel-fail/cancel",
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  assert.equal(cancelRes.statusCode, 200);
+  assert.equal(cancelRes.json().status, "abandoned", "Must not falsely report cancelled when queue deletion fails");
+  assert.equal(cancelRes.json().errorCode, "cancellation_upstream_failed");
+  assert.equal(cancelRes.json().upstreamMayContinue, true);
+
+  await app.close();
+  database.close();
+});
+
+test("Generation security: keyring failure marks task as failed with keyring_unavailable without leaving submitting state", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-keyring-err-"));
+  const token = seedApp(database, "keyring-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-secret", "Engine", "comfyui", "http://comfy.test:8188", "engine:eng-secret", 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-secret", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("keyring-app", "default", "wf-1", 1, "eng-secret", now);
+
+  const throwingSecrets = {
+    get: async () => { throw new Error("Keyring backend crashed"); },
+    set: async () => {},
+    delete: async () => {},
+  } as unknown as SecretStore;
+
+  const { app } = await createService({ config, database, secrets: throwingSecrets });
+
+  const createRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/generation/tasks",
+    headers: { authorization: `Bearer ${token}`, "idempotency-key": "keyring-test-1" },
+    payload: {},
+  });
+  const taskId = createRes.json().id;
+  await Promise.allSettled(Array.from(activeGenerationExecutions));
+
+  const lookup = await app.inject({
+    method: "GET",
+    url: `/api/v1/generation/tasks/${taskId}`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  assert.equal(lookup.json().status, "failed");
+  assert.equal(lookup.json().errorCode, "keyring_unavailable");
+
+  await app.close();
+  database.close();
+});
+
+test("Generation events cleanup: cleanupGenerationEvents purges old events of finished tasks", () => {
+  const database = new ServiceDatabase();
+  const now = nowIso();
+  seedApp(database, "clean-app");
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .run("t-done", "clean-app", "eng-1", "wf-1", 1, "h1", "{}", "{}", "succeeded", now, now);
+  database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .run("t-active", "clean-app", "eng-1", "wf-1", 1, "h2", "{}", "{}", "running", now, now);
+
+  // Seed old event for completed task (8 days ago)
+  const eightDaysAgo = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
+  database.connection.prepare("INSERT INTO generation_events(task_id, app_id, event_type, payload_json, created_at) VALUES (?,?,?,?,?)")
+    .run("t-done", "clean-app", "succeeded", "{}", eightDaysAgo);
+  // Seed recent event for active task
+  database.connection.prepare("INSERT INTO generation_events(task_id, app_id, event_type, payload_json, created_at) VALUES (?,?,?,?,?)")
+    .run("t-active", "clean-app", "running", "{}", now);
+
+  const cleanRes = cleanupGenerationEvents(database, { maxRetentionDays: 7, maxEvents: 100 });
+  assert.equal(cleanRes.deletedCount, 1);
+
+  const remainingEvents = database.connection.prepare("SELECT * FROM generation_events").all();
+  assert.equal(remainingEvents.length, 1);
+  assert.equal((remainingEvents[0] as { task_id: string }).task_id, "t-active");
+
+  database.close();
+});
+
+test("Generation unsupported engine: worker/cloud engine task execution fails with unsupported_engine", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-unsupported-"));
+  const token = seedApp(database, "unsupp-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-worker", "Worker", "worker", "http://worker.test:9000", null, 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-worker", "Worker WF", "", "worker", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-worker", 1, "eng-worker", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("unsupp-app", "default", "wf-worker", 1, "eng-worker", now);
+
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  const createRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/generation/tasks",
+    headers: { authorization: `Bearer ${token}`, "idempotency-key": "unsupp-key-1" },
+    payload: {},
+  });
+
+  assert.equal(createRes.statusCode, 400);
+  assert.equal(createRes.json().error, "unsupported_engine");
 
   await app.close();
   database.close();
