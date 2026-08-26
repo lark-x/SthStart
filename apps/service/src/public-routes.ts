@@ -89,6 +89,56 @@ function signArtifact(secret: string, artifactId: string, expires: number) {
 }
 
 export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
+  app.get('/api/v1/app/config', async (request, reply) => {
+    const identity = requireApp(database, 'llm', request, reply); if (!identity) return;
+    const rows = database.connection.prepare(
+      `SELECT a.role, a.profile_id,
+              CASE WHEN p.updated_at > a.updated_at THEN p.updated_at ELSE a.updated_at END AS updated_at,
+              p.name, p.model, p.enabled, o.capabilities_json
+       FROM app_llm_assignments a
+       JOIN provider_profiles p ON p.id = a.profile_id AND p.kind = 'llm'
+       LEFT JOIN provider_profile_options o ON o.profile_id = p.id
+       WHERE a.app_id = ?`
+    ).all(identity.id) as Array<{
+      role: 'text' | 'multimodal';
+      profile_id: string;
+      updated_at: string | null;
+      name: string;
+      model: string | null;
+      enabled: number | boolean;
+      capabilities_json: string | null;
+    }>;
+
+    const buildRoleStatus = (role: 'text' | 'multimodal') => {
+      const row = rows.find((r) => r.role === role);
+      if (!row) return null;
+      const caps = JSON.parse(row.capabilities_json ?? '["text"]') as string[];
+      const isReady = Boolean(row.enabled && row.model && caps.includes(role));
+      return {
+        profileId: row.profile_id,
+        name: row.name,
+        model: row.model ?? '',
+        ready: isReady,
+        updatedAt: row.updated_at ?? null,
+      };
+    };
+
+    const textStatus = buildRoleStatus('text');
+    const multimodalStatus = buildRoleStatus('multimodal');
+
+    return {
+      app: {
+        id: identity.id,
+        name: identity.name,
+      },
+      llm: {
+        text: textStatus,
+        multimodal: multimodalStatus,
+        ready: Boolean(textStatus?.ready && multimodalStatus?.ready),
+      },
+    };
+  });
+
   app.get('/v1/models', async (request, reply) => {
     const identity = requireApp(database, 'llm', request, reply); if (!identity) return;
     const rows = database.connection.prepare(`SELECT p.id,p.model,o.capabilities_json FROM app_llm_assignments a
@@ -104,11 +154,10 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     if (!role) return reply.code(400).send({ error: 'invalid_model_role', message: 'X-SthStart-Model-Role 只支持 text 或 multimodal。' });
     const profile = await resolveAssignedLlmProfile(database, secrets, identity.id, role);
     if (!profile?.model) return reply.code(503).send({ error: 'llm_profile_not_assigned', role, message: `请先为应用 ${identity.name} 配置${role === 'text' ? '文本' : '多模态'}模型。` });
-    body.model = profile.model;
-    const upstreamBody = { ...profile.extraBody, ...body };
-    if (profile.thinkingMode === 'enabled' && upstreamBody.thinking === undefined) upstreamBody.thinking = { type: 'enabled' };
-    if (profile.thinkingMode === 'disabled' && upstreamBody.thinking === undefined) upstreamBody.thinking = { type: 'disabled' };
-    if (profile.thinkingMode === 'omit') delete upstreamBody.thinking;
+    const upstreamBody: Record<string, unknown> = { ...profile.extraBody, ...body, model: profile.model };
+    if (profile.thinkingMode === 'enabled') upstreamBody.thinking = { type: 'enabled' };
+    else if (profile.thinkingMode === 'disabled') upstreamBody.thinking = { type: 'disabled' };
+    else if (profile.thinkingMode === 'omit') delete upstreamBody.thinking;
     let upstream: Response;
     try {
       upstream = await proxyJson(fetcher, `${profile.baseUrl}/chat/completions`, upstreamBody, profile.secret, 180_000, profile.headers);

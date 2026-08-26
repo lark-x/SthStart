@@ -22,16 +22,16 @@ test('managed Linshe agent receives its public service identity and switch', asy
   const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-env-'));
   mkdirSync(resolve(root, 'agent-core'), { recursive: true });
   const output = resolve(root, 'agent-core/runtime-env.json');
-  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync('runtime-env.json', JSON.stringify({ token: process.env.STHSTART_APP_TOKEN, enabled: process.env.STHSTART_PUBLIC_LLM, url: process.env.STHSTART_SERVICE_URL })); setInterval(() => {}, 1000);`);
+  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync('runtime-env.json', JSON.stringify({ token: process.env.STHSTART_APP_TOKEN, enabled: process.env.STHSTART_PUBLIC_LLM, url: process.env.STHSTART_SERVICE_URL, portalUrl: process.env.STHSTART_PORTAL_URL })); setInterval(() => {}, 1000);`);
   const database = new ServiceDatabase(':memory:');
   const settings = new RuntimeSettingsStore(database);
   const logs = new RuntimeLogService(database, root, false);
-  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', PROBE_TIMEOUT_MS: '100' });
+  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', PROBE_TIMEOUT_MS: '100', PORTAL_ORIGINS: 'http://portal.test:4173' });
   const runtime = new RuntimeManager(config, settings, logs, { appToken: 'sth_app_runtime-test-token' });
   await runtime.start('linshe-agent');
   for (let attempt = 0; attempt < 30 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
   assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), {
-    token: 'sth_app_runtime-test-token', enabled: 'true', url: 'http://127.0.0.1:44123',
+    token: 'sth_app_runtime-test-token', enabled: 'true', url: 'http://127.0.0.1:44123', portalUrl: 'http://portal.test:4173',
   });
   await runtime.close(); database.close();
 });

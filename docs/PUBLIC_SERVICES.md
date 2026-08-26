@@ -17,14 +17,40 @@
 
 ### LLM
 
+- `GET /api/v1/app/config`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - 可选请求头：`X-SthStart-Model-Role: text|multimodal`
-- 每个接入应用必须在公共服务设置中分别选择文本模型和多模态模型。标准 OpenAI 图片内容会自动走多模态模型；请求头可用于无法自动识别的请求。
-- 网关会覆盖客户端请求体中的 `model`，确保使用该应用当前选择的配置。没有分配对应模型时返回 `llm_profile_not_assigned`，不会随机选择其他模型。
-- 同时支持 JSON 与 SSE streaming。公共服务返回的配置或上游错误会直接展示；只有公共服务本身发生传输层故障时，邻舍才会回退到原供应商。
 
-管理页面可以从兼容接口的 `/models` 获取模型列表，也允许手动输入。每个模型由用户标记 `text`、`multimodal` 或两者；复制配置会创建独立的地址、请求参数和系统凭据副本。
+#### 核心概念：LLM 模板与角色绑定
+
+公共 LLM 服务采用 **「LLM 模板 → 应用角色绑定 → 应用调用」** 分层架构：
+1. **LLM 模板库 (`provider_profiles`)**：定义完整、共享、可变的上游配置模板（API Base URL、系统凭据库账户、模型 ID、思考模式 `thinkingMode`、自定义请求头 `headers` 与默认请求体参数 `extraBody`，以及能力标签 `text` / `multimodal`）。修改模板内容后，所有绑定该模板的应用发起的新请求即时生效。
+2. **应用角色绑定 (`app_llm_assignments`)**：每个应用按角色（`text` 文本对话角色、`multimodal` 图文多模态角色）分别绑定对应的模板。系统不存在隐式全局默认模型；当应用调用未绑定的角色时，网关明确返回 503 `llm_profile_not_assigned` 错误。
+3. **使用中保护**：已被应用绑定的模板受到保护，禁止直接停用、删除或移除正在使用的能力标签，必须先在应用绑定中换绑。
+
+#### 安全状态查询 (`GET /api/v1/app/config`)
+
+- 鉴权方式：`Authorization: Bearer <app-token>`，要求 `llm` 能力。
+- 返回结构：返回应用信息与各角色绑定模板的安全摘要（包含 `profileId`、`name`、`model`、`ready`、`updatedAt`）及总体 `ready` 状态。
+- **敏感信息隔离**：该接口绝不向应用客户端返回 API Key、Authorization 头、供应商 Base URL、自定义 headers 或 extraBody。
+- 错误状态：无效令牌返回 401 `invalid_app_token`；无权限返回 403 `capability_denied`；未绑定角色返回 `null` 且 `ready: false`。
+
+#### 标准 OpenAI 兼容调用 (`POST /v1/chat/completions`)
+
+- 网关自动识别或根据 `X-SthStart-Model-Role` 请求头路由到应用的 `text` 或 `multimodal` 绑定模板。
+- **模板强制生效**：请求体中的 `model` 始终由绑定模板的模型覆盖；`thinkingMode`（`enabled` / `disabled` / `omit`）由模板强制决定，客户端无法通过请求体参数绕过模板思考策略。
+- **业务参数保留**：客户端传入的 `messages`、`stream`、`temperature`、`response_format`、`max_tokens` 等业务字段正常透传；模板的 `extraBody` 作为默认参数底色。
+- **错误语义明确**：同时支持 JSON 与 SSE 流式响应。公共服务或上游报错（如 502/503）直接向应用传递，托管模式下不进行隐式本地降级。
+
+#### 未来应用的标准接入流程
+
+1. 注册一个带 `llm` 能力的应用，并安全保存应用令牌。
+2. 在 SthStart 公共服务设置中，为该应用分别绑定文本和多模态 LLM 模板。
+3. 应用启动或设置页通过 `GET /api/v1/app/config` 展示当前绑定状态；该请求只使用服务端保存的应用令牌。
+4. 应用使用同一令牌调用 OpenAI 兼容的 `POST /v1/chat/completions`，不要自行复制供应商凭据、Base URL、模型或思考模式。
+
+本轮不新增 TypeScript SDK；创作笔记和叙事档案仅保留模板分配能力，待后续业务接入时复用这套流程。
 
 ### 向量
 
@@ -72,9 +98,20 @@ STHSTART_PUBLIC_VECTOR=false
 STHSTART_PUBLIC_IMAGE=false
 ```
 
-LLM 生效模型不再通过 `STHSTART_LLM_PROFILE` 选择，而是在“公共服务设置 → 应用生效模型”中按应用配置。升级时若旧环境变量与应用令牌能够明确对应，公共服务会只迁移一次原文本模型选择。
+独立使用 `dev:all` 时，`STHSTART_APP_TOKEN` 应保持为稳定的高熵令牌；通过 SthStart 控制中心托管邻舍时，公共服务会把当前令牌自动注入邻舍进程。
 
-建议按 LLM → 向量 → 图片依次开启。关闭 LLM 公共服务开关即可恢复邻舍原路径。ComfyUI 不再是邻舍启动的前置条件；它离线时仅图片能力不可用。
+### 邻舍托管模式与独立运行模式
+
+1. **托管模式 (`STHSTART_PUBLIC_LLM=true`)**：
+   - 邻舍启动时接收 `STHSTART_PUBLIC_LLM=true` 与 `STHSTART_APP_TOKEN`。
+   - 邻舍设置页展示当前绑定的文本/多模态模板信息、模型 ID、连接状态及返回 SthStart 的控制台入口。
+   - 邻舍本地 LLM 编辑器被屏蔽，任何本地配置写操作（包括 API Key、Base URL、免费鸡蛋开关、Profile 切换与新增）均直接拒绝（返回 403 `llm_managed_by_sthstart`）。
+   - 邻舍所有对话和文本/生图辅助调用严格走 SthStart 公共网关，不发生隐式本地 Provider 回退。
+   - SthStart 的密钥、Base URL 和模型配置仅保存在 SthStart 端，不向邻舍前端或邻舍 SQLite 复制。
+
+2. **独立运行模式 (`STHSTART_PUBLIC_LLM=false`)**：
+   - 邻舍保留其完整的本地设置能力，包括自有 DeepSeek/OpenAI 兼容配置、多套本地 Profile 管理和每日免费鸡蛋。
+   - 邻舍在独立模式下直接调用本地配置的 API，与公共服务底座解耦。
 
 ## Fork 同步
 

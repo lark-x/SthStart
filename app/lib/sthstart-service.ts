@@ -1,4 +1,6 @@
+import { AppDescriptorSchema } from '@sthstart/contracts';
 import type { AppDescriptor } from '@sthstart/contracts';
+import { validateResponse } from './api-client';
 
 export const fallbackLinsheUrl = (process.env.NEXT_PUBLIC_LINSHE_APP_URL ?? 'http://127.0.0.1:5173').replace(/\/$/, '');
 
@@ -11,7 +13,7 @@ export async function getLinshe(): Promise<AppDescriptor> {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Service returned ${response.status}`);
-    return await response.json() as AppDescriptor;
+    return validateResponse<AppDescriptor>(await response.json(), AppDescriptorSchema, '/api/apps/linshe');
   } finally {
     window.clearTimeout(timeout);
   }

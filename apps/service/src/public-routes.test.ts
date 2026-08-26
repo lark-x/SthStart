@@ -9,6 +9,17 @@ import { readConfig } from './config.js';
 import { enforceRetention } from './artifacts.js';
 import { SecretStore, hashToken, issueToken } from './security.js';
 
+class MemorySecrets extends SecretStore {
+  readonly values = new Map<string, string>();
+  override async status() { return { available: true, backend: 'memory', envFallback: false }; }
+  override async get(account: string) {
+    const value = this.values.get(account);
+    return value === undefined ? { value: null, source: 'none' as const } : { value, source: 'keyring' as const };
+  }
+  override async set(account: string, value: string) { this.values.set(account, value); }
+  override async delete(account: string) { this.values.delete(account); }
+}
+
 function testConfig(overrides: Record<string, string> = {}) {
   return readConfig({
     STHSTART_ADMIN_TOKEN: 'admin-test-token-that-is-long-12345678',
@@ -24,6 +35,28 @@ function seedApp(database: ServiceDatabase, id: string) {
   database.connection.prepare("INSERT INTO storage_policies(app_id,mode) VALUES (?,'keep')").run(id);
   return token;
 }
+
+test('configured Linshe app token remains usable for public status calls', async () => {
+  const previousToken = process.env.STHSTART_APP_TOKEN;
+  const configuredToken = 'sth_app_configured-token-for-linshe-test-0123456789';
+  process.env.STHSTART_APP_TOKEN = configuredToken;
+  const database = new ServiceDatabase();
+  try {
+    const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}) });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/app/config',
+      headers: { authorization: `Bearer ${configuredToken}` },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().app.id, 'linshe');
+    await app.close();
+  } finally {
+    database.close();
+    if (previousToken === undefined) delete process.env.STHSTART_APP_TOKEN;
+    else process.env.STHSTART_APP_TOKEN = previousToken;
+  }
+});
 
 test('admin creates high-entropy app tokens and stores only their hash', async () => {
   const database = new ServiceDatabase();
@@ -149,6 +182,136 @@ test('LLM gateway routes text and image messages to per-app models and rejects m
   assert.equal(visionResponse.statusCode, 200); assert.equal(seen[1].body.model, 'vision-upstream'); assert.match(seen[1].url, /vision\.test/);
   const models = await app.inject({ method: 'GET', url: '/v1/models', headers });
   assert.deepEqual(models.json().data.map((item: { id: string }) => item.id).sort(), ['text-upstream', 'vision-upstream']);
+  await app.close(); database.close();
+});
+
+test('GET /api/v1/app/config exposes safe assignment status and strictly hides credentials', async () => {
+  const database = new ServiceDatabase();
+  const token = seedApp(database, 'safe-app');
+  const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('text-tpl', '文本模板', 'llm', 'https://secret-upstream.com/v1', 'deepseek-v4-flash', 'profile:text-tpl', now, now);
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('vision-tpl', '视觉模板', 'llm', 'https://secret-vision.com/v1', 'qwen-vl-max', 'profile:vision-tpl', now, now);
+  database.connection.prepare("INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)")
+    .run('text-tpl', 'enabled', JSON.stringify({ 'x-custom': 'secret-val' }), JSON.stringify({ top_k: 50 }), JSON.stringify(['text']));
+  database.connection.prepare("INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)")
+    .run('vision-tpl', 'omit', '{}', '{}', JSON.stringify(['multimodal']));
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('safe-app','text','text-tpl',?)").run(now);
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('safe-app','multimodal','vision-tpl',?)").run(now);
+
+  const secrets = new MemorySecrets();
+  await secrets.set('profile:text-tpl', 'super-secret-api-key');
+  const { app } = await createService({ config: testConfig(), database, secrets });
+
+  // 401 on missing or invalid token
+  const unauth = await app.inject({ method: 'GET', url: '/api/v1/app/config' });
+  assert.equal(unauth.statusCode, 401);
+  assert.equal(unauth.json().error, 'invalid_app_token');
+
+  const badToken = await app.inject({ method: 'GET', url: '/api/v1/app/config', headers: { authorization: 'Bearer invalid-token' } });
+  assert.equal(badToken.statusCode, 401);
+
+  // 403 when app lacks llm capability
+  const noLlmToken = issueToken('no-llm');
+  database.connection.prepare('INSERT INTO managed_apps VALUES (?,?,?,?,1,?,?)')
+    .run('no-llm-app', 'No LLM', hashToken(noLlmToken), JSON.stringify(['vector']), now, now);
+  const forbidden = await app.inject({ method: 'GET', url: '/api/v1/app/config', headers: { authorization: `Bearer ${noLlmToken}` } });
+  assert.equal(forbidden.statusCode, 403);
+  assert.equal(forbidden.json().error, 'capability_denied');
+
+  // 200 with full assigned status
+  const res = await app.inject({ method: 'GET', url: '/api/v1/app/config', headers: { authorization: `Bearer ${token}` } });
+  assert.equal(res.statusCode, 200);
+  const data = res.json();
+  assert.equal(data.app.id, 'safe-app');
+  assert.equal(data.app.name, 'safe-app');
+  assert.equal(data.llm.ready, true);
+  assert.equal(data.llm.text?.profileId, 'text-tpl');
+  assert.equal(data.llm.text?.name, '文本模板');
+  assert.equal(data.llm.text?.model, 'deepseek-v4-flash');
+  assert.equal(data.llm.text?.ready, true);
+  assert.equal(data.llm.multimodal?.profileId, 'vision-tpl');
+  assert.equal(data.llm.multimodal?.name, '视觉模板');
+  assert.equal(data.llm.multimodal?.model, 'qwen-vl-max');
+  assert.equal(data.llm.multimodal?.ready, true);
+
+  // Verify NO sensitive information is leaked
+  const rawJson = res.body;
+  assert.doesNotMatch(rawJson, /secret-upstream/);
+  assert.doesNotMatch(rawJson, /secret-vision/);
+  assert.doesNotMatch(rawJson, /super-secret-api-key/);
+  assert.doesNotMatch(rawJson, /x-custom/);
+  assert.doesNotMatch(rawJson, /secret-val/);
+  assert.doesNotMatch(rawJson, /top_k/);
+  assert.doesNotMatch(rawJson, /baseUrl/i);
+  assert.doesNotMatch(rawJson, /headers/i);
+  assert.doesNotMatch(rawJson, /extraBody/i);
+
+  // Unassigned app returns null roles and ready: false
+  const unassignedToken = seedApp(database, 'unassigned-app');
+  const unassignedRes = await app.inject({ method: 'GET', url: '/api/v1/app/config', headers: { authorization: `Bearer ${unassignedToken}` } });
+  assert.equal(unassignedRes.statusCode, 200);
+  assert.equal(unassignedRes.json().llm.text, null);
+  assert.equal(unassignedRes.json().llm.multimodal, null);
+  assert.equal(unassignedRes.json().llm.ready, false);
+
+  const textOnlyToken = seedApp(database, 'text-only-app');
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('text-only-app','text','text-tpl',?)").run(now);
+  const textOnlyRes = await app.inject({ method: 'GET', url: '/api/v1/app/config', headers: { authorization: `Bearer ${textOnlyToken}` } });
+  assert.equal(textOnlyRes.statusCode, 200);
+  assert.equal(textOnlyRes.json().llm.text?.ready, true);
+  assert.equal(textOnlyRes.json().llm.multimodal, null);
+  assert.equal(textOnlyRes.json().llm.ready, false);
+
+  await app.close(); database.close();
+});
+
+test('LLM gateway enforces template thinkingMode and supports live shared template updates', async () => {
+  const seenUpstreamBodies: Record<string, unknown>[] = [];
+  const fetcher: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    seenUpstreamBodies.push(body);
+    return Response.json({ choices: [{ message: { role: 'assistant', content: 'hello from upstream' } }] });
+  };
+  const database = new ServiceDatabase();
+  const app1Token = seedApp(database, 'app-one');
+  const app2Token = seedApp(database, 'app-two');
+  const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('shared-tpl', 'Shared', 'llm', 'http://shared.test/v1', 'initial-model', null, now, now);
+  database.connection.prepare("INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)")
+    .run('shared-tpl', 'enabled', '{}', JSON.stringify({ default_param: 123 }), JSON.stringify(['text']));
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('app-one','text','shared-tpl',?)").run(now);
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('app-two','text','shared-tpl',?)").run(now);
+
+  const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+
+  // Client sends thinking: { type: 'disabled' }, but template thinkingMode is 'enabled' -> template wins!
+  const res1 = await app.inject({
+    method: 'POST',
+    url: '/v1/chat/completions',
+    headers: { authorization: `Bearer ${app1Token}` },
+    payload: { model: 'client-sent-model', thinking: { type: 'disabled' }, messages: [{ role: 'user', content: 'test' }] },
+  });
+  assert.equal(res1.statusCode, 200);
+  assert.equal(seenUpstreamBodies[0].model, 'initial-model');
+  assert.deepEqual(seenUpstreamBodies[0].thinking, { type: 'enabled' });
+  assert.equal(seenUpstreamBodies[0].default_param, 123);
+
+  // Live update the shared template (change model to 'updated-model', thinkingMode to 'omit', extraBody)
+  database.connection.prepare("UPDATE provider_profiles SET model='updated-model' WHERE id='shared-tpl'").run();
+  database.connection.prepare("UPDATE provider_profile_options SET thinking_mode='omit', extra_body_json='{\"default_param\":456}' WHERE profile_id='shared-tpl'").run();
+
+  // New request from app2 immediately uses the updated template without restarts
+  const res2 = await app.inject({
+    method: 'POST',
+    url: '/v1/chat/completions',
+    headers: { authorization: `Bearer ${app2Token}` },
+    payload: { model: 'client-model-2', thinking: { type: 'enabled' }, messages: [{ role: 'user', content: 'test 2' }] },
+  });
+  assert.equal(res2.statusCode, 200);
+  assert.equal(seenUpstreamBodies[1].model, 'updated-model');
+  assert.equal(seenUpstreamBodies[1].thinking, undefined);
+  assert.equal(seenUpstreamBodies[1].default_param, 456);
+
   await app.close(); database.close();
 });
 

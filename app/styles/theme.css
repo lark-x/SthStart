@@ -1,0 +1,78 @@
+:root {
+  /* Core Brand Tokens */
+  --ink: #18201d;
+  --muted: #68716d;
+  --paper: #f4f0e7;
+  --accent: #e45d35;
+  --accent-dark: #b83b1b;
+
+  /* Surfaces & Backgrounds */
+  --bg-app: var(--paper);
+  --surface: #fffdf8;
+  --surface-raised: #ffffff;
+  --surface-muted: rgb(244 240 231 / 62%);
+  --surface-hover: rgb(244 240 231 / 90%);
+  --surface-dark: #1b211f;
+
+  /* Text & Foreground */
+  --fg-default: var(--ink);
+  --fg-muted: var(--muted);
+  --fg-subtle: #89908a;
+  --fg-inverse: var(--paper);
+
+  /* Borders */
+  --border-subtle: rgb(24 32 29 / 10%);
+  --border-default: rgb(24 32 29 / 16%);
+  --border-strong: rgb(24 32 29 / 24%);
+
+  /* State Colors */
+  --color-success: #4e9b6b;
+  --color-success-bg: rgb(78 155 107 / 10%);
+  --color-warning: #d0a731;
+  --color-warning-bg: rgb(208 167 49 / 12%);
+  --color-danger: #c9674a;
+  --color-danger-bg: rgb(201 103 74 / 12%);
+  --color-info: #4d6684;
+  --color-info-bg: rgb(77 102 132 / 12%);
+
+  /* Radius Tokens */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Shadow Tokens */
+  --shadow-sm: 0 1px 3px rgb(24 32 29 / 6%);
+  --shadow-panel: 0 8px 24px rgb(62 50 33 / 6%);
+  --shadow-floating: 0 16px 40px rgb(62 50 33 / 10%);
+  --shadow-dialog: 0 24px 64px rgb(24 32 29 / 18%);
+}
+
+@theme {
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-paper: var(--paper);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-dark: var(--surface-dark);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+
+  --color-status-online: #4e9b6b;
+  --color-status-offline: #c9674a;
+  --color-status-unknown: #d0a731;
+
+  --font-serif: Georgia, "Songti SC", "STSong", "SimSun", serif;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+

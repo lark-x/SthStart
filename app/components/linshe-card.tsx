@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import type { AppStatus } from '@sthstart/contracts';
 import { getLinshe } from '../lib/sthstart-service';
 import { homeStatusHint, homeStatusLabel } from '../lib/linshe-state';
@@ -43,13 +44,11 @@ export function LinsheCard() {
         <h3>邻舍.EXE</h3>
         <p>让角色拥有记忆、情绪与生活节奏，在对话中自然延伸出图像与故事。</p>
         <div className="card-actions">
-          <Link className="primary-action" href="/apps/linshe">
-            进入邻舍
-            <span aria-hidden="true">↗</span>
+          <Link className="primary-action inline-flex items-center gap-2" href="/apps/linshe">
+            <span>进入邻舍</span>
+            <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </Link>
-          <span className="service-hint">
-            {homeStatusHint(status)}
-          </span>
+          <span className="service-hint">{homeStatusHint(status)}</span>
         </div>
       </div>
     </article>

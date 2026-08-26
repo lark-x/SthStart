@@ -349,6 +349,7 @@ export class RuntimeManager {
         ...(id === 'linshe-agent' ? {
           STHSTART_APP_TOKEN: this.options.appToken ?? '',
           STHSTART_PUBLIC_LLM: runtime.publicLlmEnabled ? 'true' : 'false',
+          STHSTART_PORTAL_URL: this.config.portalOrigins[0] ?? 'http://127.0.0.1:4173',
         } : {}),
         EXTRA_LORA_FOLDERS: runtime.extraLoraFolders.join(';'),
       },

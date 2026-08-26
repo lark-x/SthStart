@@ -39,7 +39,11 @@ export async function createService(options: ServiceOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 12 * 1024 * 1024 });
   const inspectApp = options.inspectApp ?? (() => inspectLinshe(config));
   const database = options.database ?? new ServiceDatabase(config.databasePath);
-  const linsheAppToken = issueToken('sth_app');
+  // Keep a user-provided token stable for separately started Linshe processes
+  // (for example `dev:all`). The runtime manager still receives the same token
+  // and can inject it into a managed child process. When no token is configured,
+  // generate an ephemeral one for the in-process runtime manager.
+  const linsheAppToken = process.env.STHSTART_APP_TOKEN?.trim() || issueToken('sth_app');
   const identityUpdatedAt = new Date().toISOString();
   database.connection.prepare(`INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at)
     VALUES ('linshe','邻舍',?,?,1,?,?)
