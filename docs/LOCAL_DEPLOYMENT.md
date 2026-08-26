@@ -28,7 +28,7 @@ cp .env.example .env
 npm run setup
 ```
 
-生成两个不同的随机密钥，分别填入 `.env`：
+生成三个不同的随机密钥，分别填入 `.env`：
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -39,10 +39,19 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```dotenv
 STHSTART_ADMIN_TOKEN=<第一个随机值>
 STHSTART_IMAGE_SIGNING_SECRET=<第二个随机值>
+STHSTART_SESSION_SECRET=<第三个随机值>
 STHSTART_AKASHA_MCP_URL=https://agent.zlb.ink/api/mcp/
 ```
 
 Akasha 地址只代表允许主动调用；服务启动和打开页面不会自动请求 MCP。
+
+新版本采用显式数据库版本。若这是从旧开发版本升级，且你已确认旧的主项目数据可删除，请只执行一次：
+
+```bash
+npm run db:reset -- --confirm
+```
+
+该命令只重建 `sthstart.db`、`narrative.db`、对应 WAL/SHM、主项目笔记图片与公共制品；不会删除日志、`.env` 或邻舍自己的数据。日后正常升级使用 `npm run db:migrate`，检查使用 `npm run db:check`，完整检查使用 `npm run db:integrity`。
 
 ## 开发与本地生产运行
 
@@ -64,17 +73,45 @@ npm run deploy:local
 npm start
 ```
 
+从其他终端安全停止当前工作区的 Portal、公共服务以及由公共服务托管的邻舍进程：
+
+```bash
+npm stop
+```
+
+该命令会核对监听进程的工作目录；如果 4173 或 4100 被其他项目占用，会拒绝误杀。前台运行时仍可直接按 `Control + C`。
+
 打开 Portal 后进入“控制中心”，点击“启动邻舍”。公共服务会托管邻舍子进程并收集日志。兼容旧命令的别名仍可使用：
 
 ```bash
 npm run start:local:all
 ```
 
+邻舍启动不再要求 ComfyUI 已运行。没有启动 ComfyUI 时对话等文本功能可正常使用，生图功能会保持不可用；需要时可在控制中心单独启动 ComfyUI。
+
 默认入口：
 
 - Portal：`http://127.0.0.1:4173`
 - 公共服务健康检查：`http://127.0.0.1:4100/api/v1/health`
 - 邻舍：`http://127.0.0.1:5173`
+
+### 受信任家庭局域网
+
+仅在可信的家庭 Wi-Fi 中，可以使用：
+
+```bash
+npm run start:lan
+```
+
+命令会自动识别私有 IPv4 地址并在终端显示手机访问链接，例如 `http://192.168.1.11:4173`。局域网浏览器无需配对即可建立管理会话；Portal 使用 4173，控制中心启动邻舍后其 Web 页面使用 5173。公共服务 4100、邻舍后端 3099、ComfyUI 8188 和向量服务 8765 仍保持回环监听。
+
+此模式等同于信任同一局域网内的设备，不要在公司、学校、酒店或公共 Wi-Fi 使用。若自动选择了错误的网卡，可临时指定：
+
+```bash
+STHSTART_LAN_HOST=192.168.1.11 npm run start:lan
+```
+
+停止仍使用 `npm stop`。
 
 `start:local:all` 现在只启动 Portal 和公共服务，邻舍由控制中心按需启动。仅在调试旧启动流程时使用 `npm run start:local:legacy`；该模式启动的邻舍会显示为“外部启动”，控制中心不会停止它，也无法保证取得完整日志。
 
@@ -119,7 +156,19 @@ npm run build
 - 根目录 `.env`。
 - 邻舍自己的数据库和配置目录。
 
-最稳妥的方式是先停止 SthStart 与邻舍，再整体复制 `data/` 和邻舍数据目录。恢复时使用相同路径，并确保文件只对当前系统用户可读写。
+主项目数据库可以在服务停止后在线性备份：
+
+```bash
+npm run db:backup
+```
+
+恢复时保持服务停止，并显式给出备份目录：
+
+```bash
+npm run db:restore -- ./data/backups/<时间目录> --confirm
+```
+
+制品、日志、`.env` 与邻舍数据仍需按上面的清单单独复制。
 
 ## 手机远程访问：最小方案
 
@@ -167,6 +216,16 @@ cloudflared tunnel ingress validate
 ```
 
 然后在 Cloudflare Zero Trust 中为 `sth.example.com` 创建 Access Application，只允许自己的邮箱。手机访问 `https://sth.example.com` 即可。
+
+Portal 管理接口会复用 Cloudflare Access 身份，并换成 8 小时的 HttpOnly、SameSite=Strict 会话。远程启用前还必须在 `.env` 配置：
+
+```dotenv
+STHSTART_PUBLIC_ORIGINS=https://sth.example.com
+CF_ACCESS_TEAM_DOMAIN=<你的团队名>.cloudflareaccess.com
+CF_ACCESS_AUD=<Access Application Audience Tag>
+```
+
+缺少任一 Cloudflare 配置时，远程浏览器不能建立管理会话；公共服务的 4100 端口仍必须保持回环监听。
 
 ### 邻舍远程访问
 

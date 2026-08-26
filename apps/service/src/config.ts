@@ -22,6 +22,7 @@ export interface ServiceConfig {
   mcpTimeoutMs: number;
   linsheRoot: string;
   logDirectory: string;
+  lanAccess: boolean;
 }
 
 interface LinsheMetadata {
@@ -119,5 +120,6 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
     mcpTimeoutMs: integer(environment.STHSTART_MCP_TIMEOUT_MS, 45_000, 'STHSTART_MCP_TIMEOUT_MS', 1_000, 120_000),
     linsheRoot: projectPath(environment.STHSTART_LINSHE_ROOT, 'upstream/linshe'),
     logDirectory: projectPath(environment.STHSTART_LOG_DIR, 'data/logs'),
+    lanAccess: environment.STHSTART_LAN_ACCESS === 'true',
   };
 }

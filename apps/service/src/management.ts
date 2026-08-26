@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { ManagedApp, PersonaTemplate, ProviderProfile, PublicCapability } from '@sthstart/contracts';
+import type { AppLlmAssignment, LlmModelCapability, ManagedApp, PersonaTemplate, ProviderProfile, PublicCapability } from '@sthstart/contracts';
 import { authenticateAdmin } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
@@ -17,7 +17,7 @@ function appRows(database: ServiceDatabase): ManagedApp[] {
 }
 
 async function profileRows(database: ServiceDatabase, secrets: SecretStore): Promise<ProviderProfile[]> {
-  const rows = database.connection.prepare(`SELECT p.*,o.thinking_mode,o.headers_json,o.extra_body_json FROM provider_profiles p
+  const rows = database.connection.prepare(`SELECT p.*,o.thinking_mode,o.headers_json,o.extra_body_json,o.capabilities_json FROM provider_profiles p
     LEFT JOIN provider_profile_options o ON o.profile_id=p.id ORDER BY p.kind,p.name`).all() as Record<string, unknown>[];
   return Promise.all(rows.map(async (row) => {
     const account = row.credential_account ? String(row.credential_account) : '';
@@ -29,9 +29,40 @@ async function profileRows(database: ServiceDatabase, secrets: SecretStore): Pro
       thinkingMode: (row.thinking_mode ?? 'omit') as ProviderProfile['thinkingMode'],
       headers: JSON.parse(String(row.headers_json ?? '{}')) as Record<string, string>,
       extraBody: JSON.parse(String(row.extra_body_json ?? '{}')) as Record<string, unknown>,
+      capabilities: JSON.parse(String(row.capabilities_json ?? (row.kind === 'llm' ? '["text"]' : '[]'))) as LlmModelCapability[],
       createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     };
   }));
+}
+
+function assignmentRows(database: ServiceDatabase): AppLlmAssignment[] {
+  const rows = database.connection.prepare('SELECT app_id,role,profile_id,updated_at FROM app_llm_assignments').all() as Array<{ app_id: string; role: 'text' | 'multimodal'; profile_id: string; updated_at: string }>;
+  return appRows(database).map((managedApp) => {
+    const assigned = rows.filter((row) => row.app_id === managedApp.id);
+    const updated = assigned.map((row) => row.updated_at).sort().at(-1) ?? null;
+    return {
+      appId: managedApp.id,
+      textProfileId: assigned.find((row) => row.role === 'text')?.profile_id ?? null,
+      multimodalProfileId: assigned.find((row) => row.role === 'multimodal')?.profile_id ?? null,
+      updatedAt: updated,
+    };
+  });
+}
+
+function safeHeaders(headers: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(headers).filter(([key, value]) => typeof value === 'string' && !/authorization|api[-_]?key|token|secret|cookie/i.test(key))) as Record<string, string>;
+}
+
+function validCapabilities(kind: ProviderProfile['kind'], capabilities: unknown): LlmModelCapability[] | null {
+  if (kind !== 'llm') return [];
+  const values = capabilities === undefined ? ['text'] : capabilities;
+  if (!Array.isArray(values) || values.length === 0 || values.some((value) => !['text', 'multimodal'].includes(String(value)))) return null;
+  return [...new Set(values as LlmModelCapability[])];
+}
+
+function profileUsage(database: ServiceDatabase, profileId: string) {
+  return database.connection.prepare(`SELECT a.app_id,m.name,a.role FROM app_llm_assignments a
+    JOIN managed_apps m ON m.id=a.app_id WHERE a.profile_id=? ORDER BY m.name,a.role`).all(profileId) as Array<{ app_id: string; name: string; role: string }>;
 }
 
 function personaRows(database: ServiceDatabase): PersonaTemplate[] {
@@ -43,7 +74,7 @@ function personaRows(database: ServiceDatabase): PersonaTemplate[] {
   }));
 }
 
-export function registerManagementRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore) {
+export function registerManagementRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/v1/admin/')) return;
     if (!config.adminToken) return reply.code(503).send({ error: 'admin_not_configured', message: '请设置 STHSTART_ADMIN_TOKEN。' });
@@ -52,7 +83,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
 
   app.get('/api/v1/admin/overview', async () => ({
     keyring: await secrets.status(), apps: appRows(database),
-    profiles: await profileRows(database, secrets), personas: personaRows(database),
+    profiles: await profileRows(database, secrets), llmAssignments: assignmentRows(database), personas: personaRows(database),
   }));
 
   app.get('/api/v1/admin/apps', async () => ({ items: appRows(database) }));
@@ -60,13 +91,16 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const id = request.body?.id?.trim();
     const name = request.body?.name?.trim();
     const capabilities = request.body?.capabilities ?? ['llm', 'vector', 'image', 'persona', 'logs'];
+    if (id === 'linshe') return reply.code(409).send({ error: 'system_app_reserved', message: 'linshe 是系统内置应用，不能重复创建。' });
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name) return reply.code(400).send({ error: 'invalid_app' });
     const token = issueToken('sth_app');
     const now = nowIso();
     try {
-      database.connection.prepare('INSERT INTO managed_apps VALUES (?, ?, ?, ?, 1, ?, ?)')
-        .run(id, name, hashToken(token), JSON.stringify(capabilities), now, now);
-      database.connection.prepare("INSERT INTO storage_policies(app_id, mode) VALUES (?, 'keep')").run(id);
+      database.transaction(() => {
+        database.connection.prepare('INSERT INTO managed_apps VALUES (?, ?, ?, ?, 1, ?, ?)')
+          .run(id, name, hashToken(token), JSON.stringify(capabilities), now, now);
+        database.connection.prepare("INSERT INTO storage_policies(app_id, mode) VALUES (?, 'keep')").run(id);
+      });
     } catch {
       return reply.code(409).send({ error: 'app_exists' });
     }
@@ -74,6 +108,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   });
 
   app.post<{ Params: { id: string } }>('/api/v1/admin/apps/:id/rotate-token', async (request, reply) => {
+    if (request.params.id === 'linshe') return reply.code(409).send({ error: 'system_app_managed', message: '邻舍令牌由主服务自动管理。' });
     const token = issueToken('sth_app');
     const result = database.connection.prepare('UPDATE managed_apps SET token_hash = ?, updated_at = ? WHERE id = ?')
       .run(hashToken(token), nowIso(), request.params.id);
@@ -82,12 +117,17 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   });
 
   app.get('/api/v1/admin/profiles', async () => ({ items: await profileRows(database, secrets) }));
-  app.post<{ Body: { id?: string; name?: string; kind?: ProviderProfile['kind']; baseUrl?: string; model?: string; secret?: string; thinkingMode?: ProviderProfile['thinkingMode']; headers?: Record<string, string>; extraBody?: Record<string, unknown> } }>('/api/v1/admin/profiles', async (request, reply) => {
-    const { id, name, kind, baseUrl, model, secret, thinkingMode = 'omit', headers = {}, extraBody = {} } = request.body ?? {};
+  app.post<{ Body: { id?: string; name?: string; kind?: ProviderProfile['kind']; baseUrl?: string; model?: string; secret?: string; enabled?: boolean; capabilities?: LlmModelCapability[]; thinkingMode?: ProviderProfile['thinkingMode']; headers?: Record<string, string>; extraBody?: Record<string, unknown> } }>('/api/v1/admin/profiles', async (request, reply) => {
+    const { id, name, kind, baseUrl, model, secret, enabled = true, capabilities: rawCapabilities, thinkingMode = 'omit', headers = {}, extraBody = {} } = request.body ?? {};
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['llm', 'vector', 'image'].includes(kind ?? '')) {
       return reply.code(400).send({ error: 'invalid_profile' });
     }
+    if (kind === 'llm' && !model?.trim()) return reply.code(400).send({ error: 'model_required' });
     if (!['enabled', 'disabled', 'omit'].includes(thinkingMode) || !headers || typeof headers !== 'object' || Array.isArray(headers) || !extraBody || typeof extraBody !== 'object' || Array.isArray(extraBody)) return reply.code(400).send({ error: 'invalid_profile_options' });
+    const capabilities = validCapabilities(kind as ProviderProfile['kind'], rawCapabilities);
+    if (!capabilities || typeof enabled !== 'boolean') return reply.code(400).send({ error: 'invalid_profile_capabilities' });
+    const usage = profileUsage(database, id);
+    if (usage.length && (!enabled || kind !== 'llm' || usage.some((item) => !capabilities.includes(item.role as LlmModelCapability)))) return reply.code(409).send({ error: 'profile_in_use', message: '请先更换使用该模型的应用。' });
     let normalizedUrl: string;
     try { normalizedUrl = new URL(baseUrl ?? '').toString().replace(/\/$/, ''); } catch { return reply.code(400).send({ error: 'invalid_url' }); }
     const account = `profile:${id}`;
@@ -95,16 +135,119 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       try { await secrets.set(account, secret); } catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(error) }); }
     }
     const now = nowIso();
-    database.connection.prepare(`INSERT INTO provider_profiles
-      (id,name,kind,base_url,model,credential_account,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,1,?,?)
-      ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
-      model=excluded.model, credential_account=excluded.credential_account, updated_at=excluded.updated_at`)
-      .run(id, name.trim(), kind as ProviderProfile['kind'], normalizedUrl, model?.trim() || null, account, now, now);
-    const safeHeaders = Object.fromEntries(Object.entries(headers).filter(([key, value]) => typeof value === 'string' && !/authorization|api[-_]?key|token|secret|cookie/i.test(key)));
-    database.connection.prepare(`INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json) VALUES (?,?,?,?)
-      ON CONFLICT(profile_id) DO UPDATE SET thinking_mode=excluded.thinking_mode,headers_json=excluded.headers_json,extra_body_json=excluded.extra_body_json`)
-      .run(id, thinkingMode, JSON.stringify(safeHeaders), JSON.stringify(extraBody));
+    const filteredHeaders = safeHeaders(headers);
+    database.transaction(() => {
+      database.connection.prepare(`INSERT INTO provider_profiles
+        (id,name,kind,base_url,model,credential_account,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
+        model=excluded.model, credential_account=excluded.credential_account, enabled=excluded.enabled, updated_at=excluded.updated_at`)
+        .run(id, name.trim(), kind as ProviderProfile['kind'], normalizedUrl, model?.trim() || null, account, enabled ? 1 : 0, now, now);
+      database.connection.prepare(`INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)
+        ON CONFLICT(profile_id) DO UPDATE SET thinking_mode=excluded.thinking_mode,headers_json=excluded.headers_json,extra_body_json=excluded.extra_body_json,capabilities_json=excluded.capabilities_json`)
+        .run(id, thinkingMode, JSON.stringify(filteredHeaders), JSON.stringify(extraBody), JSON.stringify(capabilities));
+    });
     return reply.code(201).send({ id });
+  });
+
+  app.post<{ Body: { profileId?: string; baseUrl?: string; secret?: string; headers?: Record<string, string> } }>('/api/v1/admin/llm/models/discover', async (request, reply) => {
+    const body = request.body ?? {};
+    let baseUrl = body.baseUrl?.trim() ?? '';
+    let secret = body.secret?.trim() || null;
+    let headers = safeHeaders(body.headers ?? {});
+    if (body.profileId) {
+      const row = database.connection.prepare(`SELECT p.id,p.base_url,p.credential_account,o.headers_json FROM provider_profiles p
+        LEFT JOIN provider_profile_options o ON o.profile_id=p.id WHERE p.id=? AND p.kind='llm'`).get(body.profileId) as { id: string; base_url: string; credential_account: string | null; headers_json: string | null } | undefined;
+      if (!row) return reply.code(404).send({ error: 'profile_not_found' });
+      baseUrl = row.base_url;
+      headers = JSON.parse(row.headers_json ?? '{}') as Record<string, string>;
+      const credential = row.credential_account ? await secrets.get(row.credential_account, `STHSTART_SECRET_${row.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`) : { value: null };
+      secret = credential.value;
+    }
+    if (body.baseUrl?.trim()) baseUrl = body.baseUrl.trim();
+    if (body.headers) headers = safeHeaders(body.headers);
+    if (body.secret?.trim()) secret = body.secret.trim();
+    let endpoint: URL;
+    try { endpoint = new URL(`${baseUrl.replace(/\/+$/, '')}/models`); if (!['http:', 'https:'].includes(endpoint.protocol)) throw new Error(); }
+    catch { return reply.code(400).send({ error: 'invalid_url', message: '请填写有效的 HTTP(S) API 地址。' }); }
+    try {
+      const response = await fetcher(endpoint, { headers: { accept: 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}), ...headers }, signal: AbortSignal.timeout(15_000) });
+      const payload = await response.json().catch(() => null) as { data?: unknown[]; models?: unknown[]; error?: { message?: string }; message?: string } | unknown[] | null;
+      if (!response.ok) {
+        const detail = !Array.isArray(payload) && payload ? payload.error?.message ?? payload.message : null;
+        return reply.code(502).send({ error: 'model_discovery_failed', message: `模型列表请求失败：${String(detail ?? `HTTP ${response.status}`).slice(0, 300)}` });
+      }
+      const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.models) ? payload.models : [];
+      const models = [...new Set(rows.map((item) => typeof item === 'string' ? item : item && typeof item === 'object' ? String((item as { id?: unknown; name?: unknown }).id ?? (item as { name?: unknown }).name ?? '') : '').filter(Boolean).map((id) => id.replace(/^models\//, '')))].sort((left, right) => left.localeCompare(right));
+      if (!models.length) return reply.code(502).send({ error: 'empty_model_list', message: '接口未返回可识别的模型列表；仍可手动填写模型 ID。' });
+      return { models, endpoint: endpoint.toString() };
+    } catch (error) {
+      const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      return reply.code(502).send({ error: 'model_discovery_failed', message: timeout ? '获取模型列表超时。' : '无法连接模型服务。' });
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { id?: string; name?: string; model?: string; capabilities?: LlmModelCapability[] } }>('/api/v1/admin/profiles/:id/clone', async (request, reply) => {
+    const targetId = request.body?.id?.trim();
+    const targetName = request.body?.name?.trim();
+    const model = request.body?.model?.trim();
+    const capabilities = validCapabilities('llm', request.body?.capabilities);
+    if (!targetId?.match(/^[a-z][a-z0-9-]{1,62}$/)) return reply.code(400).send({ error: 'invalid_clone_id', message: '副本配置 ID 必须以小写字母开头，只能包含小写字母、数字和连字符，长度为 2～63 个字符。' });
+    if (!targetName) return reply.code(400).send({ error: 'clone_name_required', message: '请填写副本显示名称。' });
+    if (!model) return reply.code(400).send({ error: 'clone_model_required', message: '请选择或填写副本使用的模型 ID。' });
+    if (!capabilities) return reply.code(400).send({ error: 'invalid_clone_capabilities', message: '请至少选择一个有效的模型能力标签。' });
+    if (database.connection.prepare('SELECT 1 FROM provider_profiles WHERE id=?').get(targetId)) return reply.code(409).send({ error: 'profile_exists' });
+    const source = database.connection.prepare(`SELECT p.*,o.thinking_mode,o.headers_json,o.extra_body_json FROM provider_profiles p
+      LEFT JOIN provider_profile_options o ON o.profile_id=p.id WHERE p.id=? AND p.kind='llm'`).get(request.params.id) as Record<string, unknown> | undefined;
+    if (!source) return reply.code(404).send({ error: 'profile_not_found' });
+    const sourceAccount = source.credential_account ? String(source.credential_account) : '';
+    const credential = sourceAccount ? await secrets.get(sourceAccount, `STHSTART_SECRET_${request.params.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`) : { value: null };
+    const targetAccount = `profile:${targetId}`;
+    if (credential.value) {
+      try { await secrets.set(targetAccount, credential.value); }
+      catch { return reply.code(503).send({ error: 'independent_credential_unavailable', message: '系统凭据库不可用，无法创建独立的 API Key 副本。' }); }
+    }
+    const now = nowIso();
+    try {
+      database.transaction(() => {
+        database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run(targetId, targetName, 'llm', String(source.base_url), model, targetAccount, now, now);
+        database.connection.prepare('INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)')
+          .run(targetId, String(source.thinking_mode ?? 'omit'), String(source.headers_json ?? '{}'), String(source.extra_body_json ?? '{}'), JSON.stringify(capabilities));
+      });
+    } catch (error) {
+      if (credential.value) await secrets.delete(targetAccount).catch(() => undefined);
+      throw error;
+    }
+    return reply.code(201).send({ id: targetId });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/admin/profiles/:id', async (request, reply) => {
+    const usage = profileUsage(database, request.params.id);
+    if (usage.length) return reply.code(409).send({ error: 'profile_in_use', message: '请先更换使用该模型的应用。', apps: usage });
+    const row = database.connection.prepare('SELECT credential_account FROM provider_profiles WHERE id=?').get(request.params.id) as { credential_account: string | null } | undefined;
+    if (!row) return reply.code(404).send({ error: 'profile_not_found' });
+    database.connection.prepare('DELETE FROM provider_profiles WHERE id=?').run(request.params.id);
+    if (row.credential_account) await secrets.delete(row.credential_account).catch(() => undefined);
+    return { ok: true };
+  });
+
+  app.put<{ Params: { appId: string }; Body: { textProfileId?: string | null; multimodalProfileId?: string | null } }>('/api/v1/admin/apps/:appId/llm-assignments', async (request, reply) => {
+    if (!database.connection.prepare('SELECT 1 FROM managed_apps WHERE id=?').get(request.params.appId)) return reply.code(404).send({ error: 'app_not_found' });
+    const requested = [['text', request.body?.textProfileId], ['multimodal', request.body?.multimodalProfileId]] as const;
+    for (const [role, profileId] of requested) {
+      if (!profileId) continue;
+      const row = database.connection.prepare(`SELECT p.model,o.capabilities_json FROM provider_profiles p JOIN provider_profile_options o ON o.profile_id=p.id
+        WHERE p.id=? AND p.kind='llm' AND p.enabled=1`).get(profileId) as { model: string | null; capabilities_json: string } | undefined;
+      if (!row?.model || !(JSON.parse(row.capabilities_json) as string[]).includes(role)) return reply.code(400).send({ error: 'profile_capability_mismatch', role, profileId });
+    }
+    const now = nowIso();
+    database.transaction(() => {
+      for (const [role, profileId] of requested) {
+        if (!profileId) database.connection.prepare('DELETE FROM app_llm_assignments WHERE app_id=? AND role=?').run(request.params.appId, role);
+        else database.connection.prepare(`INSERT INTO app_llm_assignments(app_id,role,profile_id,updated_at) VALUES (?,?,?,?)
+          ON CONFLICT(app_id,role) DO UPDATE SET profile_id=excluded.profile_id,updated_at=excluded.updated_at`).run(request.params.appId, role, profileId, now);
+      }
+    });
+    return { appId: request.params.appId, textProfileId: request.body?.textProfileId ?? null, multimodalProfileId: request.body?.multimodalProfileId ?? null, updatedAt: now };
   });
 
   app.put<{ Params: { appId: string }; Body: { mode?: string; ttlDays?: number; maxBytes?: number } }>('/api/v1/admin/storage-policies/:appId', async (request, reply) => {
@@ -142,12 +285,16 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const body = request.body ?? {};
     const id = body.id?.trim() || randomUUID();
     if (!body.displayName?.trim() || !body.personaPrompt?.trim()) return reply.code(400).send({ error: 'invalid_persona' });
+    const displayName = body.displayName.trim();
+    const personaPrompt = body.personaPrompt.trim();
     const now = nowIso();
     try {
-      database.connection.prepare('INSERT INTO personas VALUES (?,?,?,?,?,?,?)')
-        .run(id, body.displayName.trim(), JSON.stringify(body.tags ?? []), body.source?.trim() || null, 1, now, now);
-      database.connection.prepare('INSERT INTO persona_versions VALUES (?,?,?,?,?,?,?,?)')
-        .run(id, 1, body.displayName.trim(), body.personaPrompt.trim(), body.appearancePrompt?.trim() || null, null, JSON.stringify(body.metadata ?? {}), now);
+      database.transaction(() => {
+        database.connection.prepare('INSERT INTO personas VALUES (?,?,?,?,?,?,?)')
+          .run(id, displayName, JSON.stringify(body.tags ?? []), body.source?.trim() || null, 1, now, now);
+        database.connection.prepare('INSERT INTO persona_versions VALUES (?,?,?,?,?,?,?,?)')
+          .run(id, 1, displayName, personaPrompt, body.appearancePrompt?.trim() || null, null, JSON.stringify(body.metadata ?? {}), now);
+      });
     } catch {
       return reply.code(409).send({ error: 'persona_exists' });
     }
@@ -158,11 +305,14 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const current = database.connection.prepare('SELECT display_name,latest_version FROM personas WHERE id=?').get(request.params.id) as { display_name: string; latest_version: number } | undefined;
     if (!current) return reply.code(404).send({ error: 'not_found' });
     if (!request.body?.personaPrompt?.trim()) return reply.code(400).send({ error: 'persona_prompt_required' });
+    const personaPrompt = request.body.personaPrompt.trim();
     const version = current.latest_version + 1; const now = nowIso();
-    database.connection.prepare('INSERT INTO persona_versions VALUES (?,?,?,?,?,?,?,?)')
-      .run(request.params.id, version, request.body.displayName?.trim() || current.display_name, request.body.personaPrompt.trim(), request.body.appearancePrompt?.trim() || null, null, JSON.stringify(request.body.metadata ?? {}), now);
-    database.connection.prepare('UPDATE personas SET latest_version=?,display_name=?,updated_at=? WHERE id=?')
-      .run(version, request.body.displayName?.trim() || current.display_name, now, request.params.id);
+    database.transaction(() => {
+      database.connection.prepare('INSERT INTO persona_versions VALUES (?,?,?,?,?,?,?,?)')
+        .run(request.params.id, version, request.body.displayName?.trim() || current.display_name, personaPrompt, request.body.appearancePrompt?.trim() || null, null, JSON.stringify(request.body.metadata ?? {}), now);
+      database.connection.prepare('UPDATE personas SET latest_version=?,display_name=?,updated_at=? WHERE id=?')
+        .run(version, request.body.displayName?.trim() || current.display_name, now, request.params.id);
+    });
     return reply.code(201).send({ id: request.params.id, version });
   });
 
@@ -173,11 +323,13 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (!local) return reply.code(404).send({ error: 'not_found' });
     const snapshot = JSON.parse(local.snapshot_json) as Record<string, unknown>;
     const id = request.body.personaId?.trim() || randomUUID(); const now = nowIso();
-    database.connection.prepare('INSERT INTO personas VALUES (?,?,?,?,?,?,?)')
-      .run(id, String(snapshot.display_name ?? '未命名角色'), '[]', `app:${appId}`, 1, now, now);
-    database.connection.prepare('INSERT INTO persona_versions VALUES (?,?,?,?,?,?,?,?)')
-      .run(id, 1, String(snapshot.display_name ?? '未命名角色'), String(snapshot.persona_prompt ?? ''), snapshot.appearance_prompt == null ? null : String(snapshot.appearance_prompt), snapshot.avatar_artifact_id == null ? null : String(snapshot.avatar_artifact_id), String(snapshot.metadata_json ?? '{}'), now);
-    database.connection.prepare('UPDATE app_personas SET published_persona_id=? WHERE app_id=? AND local_id=?').run(id, appId, localId);
+    database.transaction(() => {
+      database.connection.prepare('INSERT INTO personas VALUES (?,?,?,?,?,?,?)')
+        .run(id, String(snapshot.display_name ?? '未命名角色'), '[]', `app:${appId}`, 1, now, now);
+      database.connection.prepare('INSERT INTO persona_versions VALUES (?,?,?,?,?,?,?,?)')
+        .run(id, 1, String(snapshot.display_name ?? '未命名角色'), String(snapshot.persona_prompt ?? ''), snapshot.appearance_prompt == null ? null : String(snapshot.appearance_prompt), snapshot.avatar_artifact_id == null ? null : String(snapshot.avatar_artifact_id), String(snapshot.metadata_json ?? '{}'), now);
+      database.connection.prepare('UPDATE app_personas SET published_persona_id=? WHERE app_id=? AND local_id=?').run(id, appId, localId);
+    });
     return reply.code(201).send({ id, version: 1 });
   });
 }

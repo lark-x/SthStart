@@ -93,8 +93,13 @@ export function registerNotebookRoutes(app: FastifyInstance, config: ServiceConf
     const id = randomUUID(); const extension = extname(request.body.filename ?? '') || `.${match[1].split('/')[1].replace('jpeg', 'jpg')}`;
     const directory = resolve(config.artifactDirectory, 'notebook'); const path = resolve(directory, `${id}${extension}`);
     await mkdir(directory, { recursive: true }); await writeFile(path, bytes, { flag: 'wx' });
-    database.connection.prepare('INSERT INTO note_assets VALUES (?,?,?,?,?,?,?)')
-      .run(id, request.body.noteId || null, path, match[1], bytes.length, request.body.filename?.slice(0, 255) || null, nowIso());
+    try {
+      database.connection.prepare('INSERT INTO note_assets VALUES (?,?,?,?,?,?,?)')
+        .run(id, request.body.noteId || null, path, match[1], bytes.length, request.body.filename?.slice(0, 255) || null, nowIso());
+    } catch (error) {
+      await unlink(path).catch(() => undefined);
+      throw error;
+    }
     return reply.code(201).send({ id, url: `/api/admin/notebook/assets/${id}` });
   });
 

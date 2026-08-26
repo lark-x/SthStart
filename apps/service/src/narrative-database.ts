@@ -1,8 +1,9 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { migrateDatabase, type DatabaseMigration } from './database.js';
 
-const schema = [
+const initialSchema = [
   `CREATE TABLE IF NOT EXISTS narrative_sources (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, version TEXT,
     capabilities_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'ready', updated_at TEXT NOT NULL
@@ -72,6 +73,10 @@ const schema = [
   'CREATE INDEX IF NOT EXISTS idx_narrative_claims_work_status ON narrative_claims(work_id, status)',
 ];
 
+export const NARRATIVE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
+  { version: 1, name: 'initial', statements: initialSchema },
+];
+
 export class NarrativeDatabase {
   readonly connection: DatabaseSync;
   constructor(path = ':memory:') {
@@ -79,16 +84,12 @@ export class NarrativeDatabase {
     this.connection = new DatabaseSync(path);
     this.connection.exec('PRAGMA foreign_keys = ON');
     this.connection.exec('PRAGMA journal_mode = WAL');
-    for (const statement of schema) this.connection.exec(statement);
-    const fts = this.connection.prepare("SELECT sql FROM sqlite_master WHERE name='narrative_fts'").get() as { sql: string } | undefined;
-    if (fts?.sql.includes('unicode61')) {
-      this.connection.exec('DROP TABLE narrative_fts');
-      this.connection.exec("CREATE VIRTUAL TABLE narrative_fts USING fts5(work_id UNINDEXED, kind UNINDEXED, ref_id UNINDEXED, title, body, tokenize='trigram')");
-      this.connection.exec(`INSERT INTO narrative_fts(work_id,kind,ref_id,title,body)
-        SELECT n.work_id,'utterance',u.id,COALESCE(u.speaker,''),u.body FROM narrative_utterances u JOIN narrative_scenes s ON s.id=u.scene_id JOIN narrative_nodes n ON n.id=s.node_id`);
-      this.connection.exec("INSERT INTO narrative_fts(work_id,kind,ref_id,title,body) SELECT work_id,'entity',id,name,description FROM narrative_entities");
-      this.connection.exec("INSERT INTO narrative_fts(work_id,kind,ref_id,title,body) SELECT work_id,'node',id,title,summary FROM narrative_nodes");
-    }
+    migrateDatabase(this.connection, NARRATIVE_DATABASE_MIGRATIONS, 'narrative');
+  }
+  transaction<T>(operation: () => T): T {
+    this.connection.exec('BEGIN IMMEDIATE');
+    try { const result = operation(); this.connection.exec('COMMIT'); return result; }
+    catch (error) { this.connection.exec('ROLLBACK'); throw error; }
   }
   close() { this.connection.close(); }
 }

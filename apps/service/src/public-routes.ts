@@ -6,7 +6,8 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { persistArtifact, readArtifact, removeArtifact } from './artifacts.js';
-import { resolveProfile, safeJson, upstreamHeaders } from './providers.js';
+import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } from './providers.js';
+import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
 
 function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'persona', request: FastifyRequest, reply: FastifyReply) {
@@ -19,6 +20,18 @@ function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'i
 function requestedProfile(request: FastifyRequest) {
   const value = request.headers['x-sthstart-profile'];
   return typeof value === 'string' ? value : undefined;
+}
+
+function requestedLlmRole(request: FastifyRequest, body: Record<string, unknown>): LlmModelRole | null {
+  const explicit = request.headers['x-sthstart-model-role'];
+  if (explicit !== undefined) return explicit === 'text' || explicit === 'multimodal' ? explicit : null;
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const multimodal = messages.some((message) => {
+    if (!message || typeof message !== 'object') return false;
+    const content = (message as { content?: unknown }).content;
+    return Array.isArray(content) && content.some((part) => part && typeof part === 'object' && ['image_url', 'input_image', 'image'].includes(String((part as { type?: unknown }).type ?? '')));
+  });
+  return multimodal ? 'multimodal' : 'text';
 }
 
 async function proxyJson(fetcher: typeof fetch, url: string, body: unknown, secret: string | null, timeoutMs = 60_000, customHeaders: Record<string, string> = {}) {
@@ -58,9 +71,17 @@ function namespacedVectorBody(database: ServiceDatabase, identity: AppIdentity, 
   return { body: next, namespace };
 }
 
-function stripNamespace(value: unknown, namespace: string) {
-  const json = JSON.stringify(value);
-  return JSON.parse(json.replaceAll(`${namespace}:`, '')) as unknown;
+function stripNamespace(value: unknown, namespace: string): unknown {
+  const prefix = `${namespace}:`;
+  if (typeof value === 'string') return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+  if (Array.isArray(value)) return value.map((item) => stripNamespace(item, namespace));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stripNamespace(item, namespace)]));
+  return value;
+}
+
+function queueIds(raw: unknown) {
+  const queue = Array.isArray(raw) ? raw : [];
+  return new Set(queue.map((item) => Array.isArray(item) ? String(item[1] ?? '') : '').filter(Boolean));
 }
 
 function signArtifact(secret: string, artifactId: string, expires: number) {
@@ -70,16 +91,20 @@ function signArtifact(secret: string, artifactId: string, expires: number) {
 export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
   app.get('/v1/models', async (request, reply) => {
     const identity = requireApp(database, 'llm', request, reply); if (!identity) return;
-    const rows = database.connection.prepare("SELECT id, model FROM provider_profiles WHERE kind='llm' AND enabled=1").all() as { id: string; model: string | null }[];
-    return { object: 'list', data: rows.filter((row) => row.model).map((row) => ({ id: row.model, object: 'model', owned_by: row.id })) };
+    const rows = database.connection.prepare(`SELECT p.id,p.model,o.capabilities_json FROM app_llm_assignments a
+      JOIN provider_profiles p ON p.id=a.profile_id AND p.kind='llm' AND p.enabled=1
+      LEFT JOIN provider_profile_options o ON o.profile_id=p.id WHERE a.app_id=? GROUP BY p.id,p.model,o.capabilities_json ORDER BY p.name`).all(identity.id) as { id: string; model: string | null; capabilities_json: string | null }[];
+    return { object: 'list', data: rows.filter((row) => row.model).map((row) => ({ id: row.model, object: 'model', owned_by: row.id, sthstart_capabilities: JSON.parse(row.capabilities_json ?? '["text"]') })) };
   });
 
   app.post('/v1/chat/completions', async (request, reply) => {
     const identity = requireApp(database, 'llm', request, reply); if (!identity) return;
-    const profile = await resolveProfile(database, secrets, 'llm', requestedProfile(request));
-    if (!profile) return reply.code(503).send({ error: 'llm_unavailable' });
     const body = safeJson(request.body);
-    if (!body.model && profile.model) body.model = profile.model;
+    const role = requestedLlmRole(request, body);
+    if (!role) return reply.code(400).send({ error: 'invalid_model_role', message: 'X-SthStart-Model-Role 只支持 text 或 multimodal。' });
+    const profile = await resolveAssignedLlmProfile(database, secrets, identity.id, role);
+    if (!profile?.model) return reply.code(503).send({ error: 'llm_profile_not_assigned', role, message: `请先为应用 ${identity.name} 配置${role === 'text' ? '文本' : '多模态'}模型。` });
+    body.model = profile.model;
     const upstreamBody = { ...profile.extraBody, ...body };
     if (profile.thinkingMode === 'enabled' && upstreamBody.thinking === undefined) upstreamBody.thinking = { type: 'enabled' };
     if (profile.thinkingMode === 'disabled' && upstreamBody.thinking === undefined) upstreamBody.thinking = { type: 'disabled' };
@@ -152,7 +177,9 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       const result = safeJson(await upstream.json());
       const providerTaskId = String(result.prompt_id ?? result.task_id ?? '');
       if (!providerTaskId) return reply.code(502).send({ error: 'image_missing_task_id' });
-      database.connection.prepare('INSERT INTO image_tasks VALUES (?,?,?,?,?,?,?,?,?,?)')
+      database.connection.prepare(`INSERT INTO image_tasks
+        (id,app_id,profile_id,provider_task_id,idempotency_key,status,request_json,error,upstream_may_continue,cancellation_scope,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,0,'none',?,?)`)
         .run(taskId, identity.id, profile.id, providerTaskId, idempotency, 'accepted', JSON.stringify(payload), null, now, now);
       return reply.code(202).send({ id: taskId, status: 'accepted', providerTaskId });
     } catch (error) {
@@ -164,7 +191,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
     const task = database.connection.prepare('SELECT * FROM image_tasks WHERE id=? AND app_id=?').get(request.params.id, identity.id) as Record<string, unknown> | undefined;
     if (!task) return reply.code(404).send({ error: 'not_found' });
-    if (task.status === 'accepted' && task.profile_id && task.provider_task_id) {
+    if (['accepted', 'running'].includes(String(task.status)) && task.profile_id && task.provider_task_id) {
       const profile = await resolveProfile(database, secrets, 'image', String(task.profile_id));
       if (profile) {
         try {
@@ -180,30 +207,65 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
             const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
             await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png' });
           }
-          if (images.length) database.connection.prepare("UPDATE image_tasks SET status='complete',updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+          if (images.length) database.connection.prepare("UPDATE image_tasks SET status='complete',upstream_may_continue=0,updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+          else {
+            const queueResponse = await fetcher(`${profile.baseUrl}/queue`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(5_000) });
+            if (queueResponse.ok) {
+              const queue = safeJson(await queueResponse.json());
+              if (queueIds(queue.queue_running).has(String(task.provider_task_id))) database.connection.prepare("UPDATE image_tasks SET status='running',updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+            }
+          }
         } catch {
           // A task can remain accepted while ComfyUI is still running or briefly unavailable.
         }
       }
     }
-    const refreshed = database.connection.prepare('SELECT * FROM image_tasks WHERE id=?').get(request.params.id);
+    const refreshed = safeJson(database.connection.prepare('SELECT * FROM image_tasks WHERE id=?').get(request.params.id));
+    const upstreamMayContinue = Boolean(refreshed.upstream_may_continue);
+    const cancellationScope = String(refreshed.cancellation_scope ?? 'none');
+    delete refreshed.upstream_may_continue; delete refreshed.cancellation_scope;
     const artifacts = database.connection.prepare('SELECT id,content_type,byte_size,pinned,created_at FROM artifacts WHERE task_id=? ORDER BY created_at').all(request.params.id) as { id: string }[];
     const expires = Date.now() + 5 * 60_000;
-    return { ...safeJson(refreshed), artifacts: artifacts.map((artifact) => ({ ...artifact, url: `/api/v1/images/artifacts/${artifact.id}?expires=${expires}&signature=${signArtifact(config.imageSigningSecret, artifact.id, expires)}` })) };
+    return { ...refreshed, upstreamMayContinue, cancellationScope, artifacts: artifacts.map((artifact) => ({ ...artifact, url: `/api/v1/images/artifacts/${artifact.id}?expires=${expires}&signature=${signArtifact(config.imageSigningSecret, artifact.id, expires)}` })) };
   });
 
   app.post<{ Params: { id: string } }>('/api/v1/images/tasks/:id/cancel', async (request, reply) => {
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
-    const result = database.connection.prepare("UPDATE image_tasks SET status='cancelled',updated_at=? WHERE id=? AND app_id=? AND status='accepted'")
-      .run(nowIso(), request.params.id, identity.id);
-    return result.changes ? { ok: true } : reply.code(409).send({ error: 'not_cancellable' });
+    const task = database.connection.prepare('SELECT id,status,profile_id,provider_task_id FROM image_tasks WHERE id=? AND app_id=?')
+      .get(request.params.id, identity.id) as { id: string; status: string; profile_id: string | null; provider_task_id: string | null } | undefined;
+    if (!task) return reply.code(404).send({ error: 'not_found' });
+    if (!['accepted', 'running'].includes(task.status)) return reply.code(409).send({ error: 'not_cancellable' });
+    const profile = task.profile_id ? await resolveProfile(database, secrets, 'image', task.profile_id) : null;
+    if (profile && task.provider_task_id) {
+      try {
+        const queueResponse = await fetcher(`${profile.baseUrl}/queue`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(5_000) });
+        if (queueResponse.ok) {
+          const queue = safeJson(await queueResponse.json());
+          if (queueIds(queue.queue_pending).has(task.provider_task_id)) {
+            const deleted = await proxyJson(fetcher, `${profile.baseUrl}/queue`, { delete: [task.provider_task_id] }, profile.secret, 10_000, profile.headers);
+            if (!deleted.ok) throw new Error(`queue_delete_failed_${deleted.status}`);
+            database.connection.prepare("UPDATE image_tasks SET status='cancelled',upstream_may_continue=0,cancellation_scope='queued',updated_at=? WHERE id=?").run(nowIso(), task.id);
+            return { ok: true, status: 'cancelled', upstreamMayContinue: false, cancellationScope: 'queued' };
+          }
+          if (queueIds(queue.queue_running).has(task.provider_task_id)) {
+            database.connection.prepare("UPDATE image_tasks SET status='abandoned',upstream_may_continue=1,cancellation_scope='local-tracking',updated_at=? WHERE id=?").run(nowIso(), task.id);
+            return { ok: true, status: 'abandoned', upstreamMayContinue: true, cancellationScope: 'local-tracking' };
+          }
+        }
+      } catch {
+        database.connection.prepare("UPDATE image_tasks SET status='cancel_failed',upstream_may_continue=1,cancellation_scope='none',updated_at=? WHERE id=?").run(nowIso(), task.id);
+        return reply.code(502).send({ error: 'cancel_failed', upstreamMayContinue: true, cancellationScope: 'none' });
+      }
+    }
+    database.connection.prepare("UPDATE image_tasks SET status='abandoned',upstream_may_continue=1,cancellation_scope='local-tracking',updated_at=? WHERE id=?").run(nowIso(), task.id);
+    return { ok: true, status: 'abandoned', upstreamMayContinue: true, cancellationScope: 'local-tracking' };
   });
 
   app.delete<{ Params: { id: string } }>('/api/v1/images/tasks/:id', async (request, reply) => {
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
     const task = database.connection.prepare('SELECT status FROM image_tasks WHERE id=? AND app_id=?').get(request.params.id, identity.id) as { status: string } | undefined;
     if (!task) return reply.code(404).send({ error: 'not_found' });
-    if (task.status === 'accepted') return reply.code(409).send({ error: 'cancel_before_delete' });
+    if (['accepted', 'running'].includes(task.status)) return reply.code(409).send({ error: 'cancel_before_delete' });
     const artifacts = database.connection.prepare('SELECT id FROM artifacts WHERE task_id=? AND app_id=?').all(request.params.id, identity.id) as { id: string }[];
     for (const artifact of artifacts) await removeArtifact(database, artifact.id, identity.id);
     database.connection.prepare('DELETE FROM image_tasks WHERE id=? AND app_id=?').run(request.params.id, identity.id);

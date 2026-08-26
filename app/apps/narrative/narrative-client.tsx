@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { adminFetch } from '@/app/lib/admin-fetch';
 
 interface Work { id: string; title: string; description: string; locale: string; sourceName: string; nodeCount: number }
 interface StoryNode { id: string; parentId: string | null; kind: string; title: string; sortOrder: number; summary: string }
@@ -13,7 +14,7 @@ interface RemoteDocument { fileName: string; pathHash: string; totalLines: numbe
 interface SearchResult { workId: string; kind: string; refId: string; nodeId: string | null; title: string; excerpt: string }
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/admin/narrative${url}`, { cache: 'no-store', ...init, headers: init?.body ? { 'content-type': 'application/json', ...init.headers } : init?.headers });
+  const response = await adminFetch(`narrative${url}`, { cache: 'no-store', ...init, headers: init?.body ? { 'content-type': 'application/json', ...init.headers } : init?.headers });
   const body = await response.json() as T & { message?: string; error?: string; details?: string[] };
   if (!response.ok) throw new Error(body.details?.join('；') ?? body.message ?? body.error ?? '请求失败');
   return body;

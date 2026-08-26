@@ -64,7 +64,7 @@ function stageBundle(database: NarrativeDatabase, bundle: NarrativeImportBundle)
   return { id, status: 'preview' as const, report };
 }
 
-function commitBundle(database: NarrativeDatabase, bundle: NarrativeImportBundle) {
+function commitBundle(database: NarrativeDatabase, bundle: NarrativeImportBundle, batchId: string) {
   const db = database.connection; const now = nowIso();
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -122,6 +122,7 @@ function commitBundle(database: NarrativeDatabase, bundle: NarrativeImportBundle
       SELECT n.work_id,'utterance',u.id,COALESCE(u.speaker,''),u.body FROM narrative_utterances u JOIN narrative_scenes s ON s.id=u.scene_id JOIN narrative_nodes n ON n.id=s.node_id WHERE n.work_id=?`).run(workId);
     db.prepare(`INSERT INTO narrative_fts(work_id,kind,ref_id,title,body) SELECT work_id,'entity',id,name,description FROM narrative_entities WHERE work_id=?`).run(workId);
     db.prepare(`INSERT INTO narrative_fts(work_id,kind,ref_id,title,body) SELECT work_id,'node',id,title,summary FROM narrative_nodes WHERE work_id=?`).run(workId);
+    db.prepare("UPDATE narrative_import_batches SET status='committed',committed_at=? WHERE id=?").run(now, batchId);
     db.exec('COMMIT'); return { workId, releaseId };
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
@@ -167,8 +168,7 @@ export function registerNarrativeRoutes(app: FastifyInstance, database: Narrativ
     if (!row) return reply.code(404).send({ error: 'not_found' });
     if (row.status !== 'preview') return reply.code(409).send({ error: 'batch_not_pending' });
     try {
-      const result = commitBundle(database, JSON.parse(row.bundle_json) as NarrativeImportBundle);
-      database.connection.prepare("UPDATE narrative_import_batches SET status='committed',committed_at=? WHERE id=?").run(nowIso(), request.params.id);
+      const result = commitBundle(database, JSON.parse(row.bundle_json) as NarrativeImportBundle, request.params.id);
       return { id: request.params.id, status: 'committed', ...result };
     } catch (error) {
       database.connection.prepare("UPDATE narrative_import_batches SET status='failed',report_json=? WHERE id=?").run(JSON.stringify({ error: String(error) }), request.params.id);

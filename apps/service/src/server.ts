@@ -10,11 +10,12 @@ import type { ServiceConfig } from './config.js';
 import { readConfig } from './config.js';
 import { inspectLinshe } from './registry.js';
 import { ServiceDatabase } from './database.js';
-import { SecretStore } from './security.js';
+import { hashToken, issueToken, SecretStore } from './security.js';
 import { registerManagementRoutes } from './management.js';
 import { registerPublicRoutes } from './public-routes.js';
 import { enforceAllRetention } from './artifacts.js';
 import { registerNotebookRoutes } from './notebook.js';
+import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
 import { registerNarrativeRoutes } from './narrative.js';
 import { createNarrativeConnectors } from './narrative-connectors.js';
@@ -38,12 +39,26 @@ export async function createService(options: ServiceOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 12 * 1024 * 1024 });
   const inspectApp = options.inspectApp ?? (() => inspectLinshe(config));
   const database = options.database ?? new ServiceDatabase(config.databasePath);
+  const linsheAppToken = issueToken('sth_app');
+  const identityUpdatedAt = new Date().toISOString();
+  database.connection.prepare(`INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at)
+    VALUES ('linshe','邻舍',?,?,1,?,?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name,token_hash=excluded.token_hash,capabilities_json=excluded.capabilities_json,enabled=1,updated_at=excluded.updated_at`)
+    .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
+  database.connection.prepare("INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES ('linshe','keep')").run();
+  if (!options.database && process.env.STHSTART_APP_TOKEN?.trim() && process.env.STHSTART_LLM_PROFILE?.trim()) {
+    const legacy = database.connection.prepare(`SELECT a.id app_id,p.id profile_id FROM managed_apps a
+      JOIN provider_profiles p ON p.id=? AND p.kind='llm' AND p.enabled=1
+      LEFT JOIN provider_profile_options o ON o.profile_id=p.id
+      WHERE a.token_hash=? AND COALESCE(o.capabilities_json,'["text"]') LIKE '%"text"%'`).get(process.env.STHSTART_LLM_PROFILE.trim(), hashToken(process.env.STHSTART_APP_TOKEN.trim())) as { app_id: string; profile_id: string } | undefined;
+    if (legacy) database.connection.prepare(`INSERT OR IGNORE INTO app_llm_assignments(app_id,role,profile_id,updated_at) VALUES (?,'text',?,?)`).run(legacy.app_id, legacy.profile_id, new Date().toISOString());
+  }
   const narrativeDatabase = options.narrativeDatabase ?? new NarrativeDatabase(options.database ? ':memory:' : config.narrativeDatabasePath);
   const narrativeConnectors = createNarrativeConnectors(config, options.fetcher);
   const secrets = options.secrets ?? new SecretStore();
   const runtimeSettings = new RuntimeSettingsStore(database);
   const runtimeLogs = new RuntimeLogService(database, config.logDirectory, !options.database);
-  const runtimeManager = new RuntimeManager(config, runtimeSettings, runtimeLogs);
+  const runtimeManager = new RuntimeManager(config, runtimeSettings, runtimeLogs, { appToken: linsheAppToken, fetcher: options.fetcher });
   const inspectNotebook = (): AppDescriptor => ({
     id: 'notebook', name: '创作笔记', description: '记录日记、灵感、角色与世界故事。',
     launchUrl: `${config.portalOrigins[0]}/apps/notebook`, status: 'online', version: SERVICE_VERSION,
@@ -60,6 +75,31 @@ export async function createService(options: ServiceOptions = {}) {
       if (origin === undefined || config.portalOrigins.includes(origin)) callback(null, true);
       else callback(new Error('Origin is not allowed'), false);
     },
+  });
+
+  app.addHook('onRequest', async (request, reply) => {
+    const supplied = request.headers['x-request-id'];
+    const requestId = typeof supplied === 'string' && /^[A-Za-z0-9._:-]{8,128}$/.test(supplied) ? supplied : request.id;
+    request.headers['x-request-id'] = requestId;
+    reply.header('x-request-id', requestId);
+  });
+  app.addHook('onSend', async (request, reply, payload) => {
+    if (reply.statusCode < 400 || typeof payload !== 'string' || !String(reply.getHeader('content-type') ?? '').includes('application/json')) return payload;
+    try {
+      const body = JSON.parse(payload) as Record<string, unknown>;
+      if (!body.requestId) body.requestId = request.headers['x-request-id'] ?? request.id;
+      return JSON.stringify(body);
+    } catch { return payload; }
+  });
+  app.setErrorHandler((error, request, reply) => {
+    const failure = error as { message?: string; statusCode?: number };
+    const statusCode = failure.statusCode && failure.statusCode < 500 ? failure.statusCode : 500;
+    runtimeLogs.append({ appId: 'sthstart', serviceId: 'api', stream: 'system', level: 'error', message: `${request.method} ${request.url}: ${failure.message ?? String(error)}`, force: true });
+    return reply.code(statusCode).send({
+      error: statusCode < 500 ? 'request_failed' : 'internal_error',
+      message: statusCode < 500 ? failure.message : '服务处理请求时发生错误。',
+      requestId: request.headers['x-request-id'] ?? request.id,
+    });
   });
 
   app.get<{ Reply: HealthResponse }>('/api/v1/health', async () => ({
@@ -93,14 +133,16 @@ export async function createService(options: ServiceOptions = {}) {
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/notebook', async () => inspectNotebook());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/narrative', async () => inspectNarrative());
 
-  registerManagementRoutes(app, config, database, secrets);
+  registerManagementRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
+  registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors);
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 
-  void enforceAllRetention(database).catch(() => undefined);
-  const retentionTimer = setInterval(() => void enforceAllRetention(database).catch(() => undefined), 60 * 60_000);
+  const retentionFailure = (error: unknown) => runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-retention', stream: 'system', level: 'warn', message: `保留策略执行失败：${String(error)}`, force: true });
+  void enforceAllRetention(database).catch(retentionFailure);
+  const retentionTimer = setInterval(() => void enforceAllRetention(database).catch(retentionFailure), 60 * 60_000);
   retentionTimer.unref();
 
   app.addHook('onClose', async () => {

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { CreativeNote, NoteKind } from './types';
 import { kindLabels, stageLabels } from './types';
+import { adminFetch } from '@/app/lib/admin-fetch';
 
 const filters: Array<{ value: 'all' | NoteKind; label: string }> = [
   { value: 'all', label: '全部' }, { value: 'diary', label: '日记' }, { value: 'idea', label: '灵感' },
@@ -24,7 +25,7 @@ export function NotebookClient() {
 
   useEffect(() => {
     let active = true;
-    fetch('/api/admin/notebook/notes', { cache: 'no-store' }).then(async (response) => {
+    adminFetch('notebook/notes', { cache: 'no-store' }).then(async (response) => {
       const body = await response.json() as { items: CreativeNote[]; message?: string; error?: string }; if (!response.ok) throw new Error(body.message ?? body.error);
       if (active) { setItems(body.items); setLoading(false); }
     }).catch((cause: unknown) => { if (active) { setError(cause instanceof Error ? cause.message : String(cause)); setLoading(false); } });

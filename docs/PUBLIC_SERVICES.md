@@ -19,8 +19,12 @@
 
 - `GET /v1/models`
 - `POST /v1/chat/completions`
-- 可选请求头：`X-SthStart-Profile: <profile-id>`
-- 同时支持 JSON 与 SSE streaming。邻舍仅能在收到首个响应字节之前回退到原供应商。
+- 可选请求头：`X-SthStart-Model-Role: text|multimodal`
+- 每个接入应用必须在公共服务设置中分别选择文本模型和多模态模型。标准 OpenAI 图片内容会自动走多模态模型；请求头可用于无法自动识别的请求。
+- 网关会覆盖客户端请求体中的 `model`，确保使用该应用当前选择的配置。没有分配对应模型时返回 `llm_profile_not_assigned`，不会随机选择其他模型。
+- 同时支持 JSON 与 SSE streaming。公共服务返回的配置或上游错误会直接展示；只有公共服务本身发生传输层故障时，邻舍才会回退到原供应商。
+
+管理页面可以从兼容接口的 `/models` 获取模型列表，也允许手动输入。每个模型由用户标记 `text`、`multimodal` 或两者；复制配置会创建独立的地址、请求参数和系统凭据副本。
 
 ### 向量
 
@@ -61,7 +65,6 @@
 
 ```dotenv
 STHSTART_APP_TOKEN=sth_app_...
-STHSTART_LLM_PROFILE=deepseek-main
 STHSTART_VECTOR_PROFILE=linshe-vector
 STHSTART_IMAGE_PROFILE=local-comfy
 STHSTART_PUBLIC_LLM=true
@@ -69,7 +72,9 @@ STHSTART_PUBLIC_VECTOR=false
 STHSTART_PUBLIC_IMAGE=false
 ```
 
-建议按 LLM → 向量 → 图片依次开启。关闭开关即可恢复邻舍原路径；公共服务不可用时也按各模块的防重复规则自动降级。
+LLM 生效模型不再通过 `STHSTART_LLM_PROFILE` 选择，而是在“公共服务设置 → 应用生效模型”中按应用配置。升级时若旧环境变量与应用令牌能够明确对应，公共服务会只迁移一次原文本模型选择。
+
+建议按 LLM → 向量 → 图片依次开启。关闭 LLM 公共服务开关即可恢复邻舍原路径。ComfyUI 不再是邻舍启动的前置条件；它离线时仅图片能力不可用。
 
 ## Fork 同步
 

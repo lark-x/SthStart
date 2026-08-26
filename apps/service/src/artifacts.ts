@@ -21,8 +21,13 @@ export async function persistArtifact(
   const path = resolve(directory, `${id}${suffix}`);
   await mkdir(directory, { recursive: true });
   await writeFile(path, bytes, { flag: 'wx' });
-  database.connection.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(id, input.appId, input.taskId, input.sourceUrl, path, input.contentType ?? response.headers.get('content-type'), bytes.length, 0, nowIso());
+  try {
+    database.connection.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(id, input.appId, input.taskId, input.sourceUrl, path, input.contentType ?? response.headers.get('content-type'), bytes.length, 0, nowIso());
+  } catch (error) {
+    await unlink(path).catch(() => undefined);
+    throw error;
+  }
   await enforceRetention(database, input.appId);
   return id;
 }

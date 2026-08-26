@@ -5,6 +5,7 @@ export type NoteBlock =
   | { id: string; type: 'text'; text: string }
   | { id: string; type: 'image'; src: string; caption: string }
   | { id: string; type: 'link'; url: string; label: string; note: string }
+  | { id: string; type: 'character-reference'; characterId: string; note: string }
   | { id: string; type: 'archive-reference'; workId: string; targetType: 'utterance'; targetId: string; quote: string; locator: string };
 
 export interface CreativeNote {
@@ -32,6 +33,7 @@ export function newBlock(type: NoteBlock['type']): NoteBlock {
   const id = crypto.randomUUID();
   if (type === 'image') return { id, type, src: '', caption: '' };
   if (type === 'link') return { id, type, url: '', label: '', note: '' };
+  if (type === 'character-reference') return { id, type, characterId: '', note: '' };
   if (type === 'archive-reference') return { id, type, workId: '', targetType: 'utterance', targetId: '', quote: '', locator: '' };
   return { id, type, text: '' };
 }

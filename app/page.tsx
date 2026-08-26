@@ -3,6 +3,7 @@ import { LinsheCard } from './components/linshe-card';
 import { NotebookCard } from './components/notebook-card';
 import { NarrativeCard } from './components/narrative-card';
 import { RuntimeStrip } from './components/runtime-strip';
+import { CharacterLibraryCard } from './components/character-library-card';
 
 export default function Home() {
   return (
@@ -34,10 +35,10 @@ export default function Home() {
             <p className="eyebrow">APPLICATIONS</p>
             <h2 id="apps-title">已接入应用</h2>
           </div>
-          <span className="app-count">03</span>
+          <span className="app-count">04</span>
         </div>
 
-        <div className="app-list"><LinsheCard /><NotebookCard /><NarrativeCard /></div>
+        <div className="app-list"><LinsheCard /><CharacterLibraryCard /><NotebookCard /><NarrativeCard /></div>
       </section>
 
       <footer className="portal-footer">

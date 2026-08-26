@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Type } from '@sinclair/typebox';
 import type { LogLevel, RuntimeOverview, RuntimeSettings } from '@sthstart/contracts';
 import { authenticateApp } from './access.js';
 import type { ServiceConfig } from './config.js';
@@ -7,6 +8,24 @@ import { nowIso } from './database.js';
 import { readLauncherImport, RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 
 type Fetcher = typeof fetch;
+
+const runtimeSettingsBody = Type.Partial(Type.Object({
+  autoStart: Type.Boolean(), autoOpenBrowser: Type.Boolean(), useMirror: Type.Boolean(),
+  publicLlmEnabled: Type.Boolean(),
+  comfyuiExecutable: Type.String({ maxLength: 4_096 }), extraLoraFolders: Type.Array(Type.String({ maxLength: 4_096 }), { maxItems: 128 }),
+  maibotAutostart: Type.Boolean(), maibotBrowserMaibot: Type.Boolean(), maibotBrowserSnowluma: Type.Boolean(),
+  creative: Type.Record(Type.String(), Type.Unknown()),
+}));
+
+const logLevelSchema = Type.Union([
+  Type.Literal('off'), Type.Literal('error'), Type.Literal('warn'), Type.Literal('info'), Type.Literal('debug'), Type.Literal('trace'),
+]);
+const logPolicyBody = Type.Partial(Type.Object({
+  globalLevel: logLevelSchema,
+  serviceLevels: Type.Record(Type.String(), Type.Union([logLevelSchema, Type.Null()])),
+  retentionDays: Type.Integer({ minimum: 1, maximum: 90 }), maxBytes: Type.Integer({ minimum: 10 * 1024 * 1024, maximum: 2 * 1024 * 1024 * 1024 }),
+  sensitiveUntil: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]), diagnosticUntil: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+}));
 
 async function linsheJson(config: ServiceConfig, fetcher: Fetcher, path: string, init?: RequestInit) {
   const response = await fetcher(`http://127.0.0.1:3099${path}`, { ...init, signal: AbortSignal.timeout(5_000), headers: { 'content-type': 'application/json', ...init?.headers } });
@@ -55,13 +74,35 @@ export function registerRuntimeRoutes(
   runtime: RuntimeManager,
   fetcher: Fetcher = fetch,
 ) {
+  const runtimeErrorMessage = (error: unknown) => {
+    const code = error instanceof Error ? error.message : String(error);
+    return ({
+      unknown_service: '未知的运行服务。', service_not_installed: '该服务尚未安装完整。',
+      service_already_managed: '该服务已由控制中心管理。', port_owned_by_other_process: '端口正被其他程序占用，控制中心不会强制结束它。',
+      project_process_takeover_failed: '发现邻舍遗留进程，但安全接管失败，请先在日志中确认进程状态。',
+    } as Record<string, string>)[code] ?? code;
+  };
   async function overview(): Promise<RuntimeOverview> {
-    return { services: await runtime.snapshot(), settings: settings.get(), logPolicy: logs.getPolicy(), recentErrors: logs.recentErrorCount(), droppedLogs: logs.droppedLogs };
+    const runtimeSettings = settings.get();
+    const rows = database.connection.prepare(`SELECT a.role,a.profile_id,p.model FROM app_llm_assignments a
+      LEFT JOIN provider_profiles p ON p.id=a.profile_id WHERE a.app_id='linshe'`).all() as Array<{ role: 'text' | 'multimodal'; profile_id: string; model: string | null }>;
+    const text = rows.find((row) => row.role === 'text');
+    const multimodal = rows.find((row) => row.role === 'multimodal');
+    return {
+      services: await runtime.snapshot(), settings: runtimeSettings,
+      linsheLlm: {
+        enabled: runtimeSettings.publicLlmEnabled,
+        textProfileId: text?.profile_id ?? null, textModel: text?.model ?? null,
+        multimodalProfileId: multimodal?.profile_id ?? null, multimodalModel: multimodal?.model ?? null,
+        ready: !runtimeSettings.publicLlmEnabled || Boolean(text?.model),
+      },
+      logPolicy: logs.getPolicy(), recentErrors: logs.recentErrorCount(), droppedLogs: logs.droppedLogs,
+    };
   }
 
   app.get('/api/v1/admin/runtime/overview', overview);
   app.get('/api/v1/admin/runtime/settings', async () => settings.get());
-  app.put<{ Body: Partial<RuntimeSettings> }>('/api/v1/admin/runtime/settings', async (request) => settings.update(request.body ?? {}));
+  app.put<{ Body: Partial<RuntimeSettings> }>('/api/v1/admin/runtime/settings', { schema: { body: runtimeSettingsBody } }, async (request) => settings.update(request.body ?? {}));
 
   app.get('/api/v1/admin/runtime/services', async () => ({ items: await runtime.snapshot() }));
   app.post<{ Params: { id: string } }>('/api/v1/admin/runtime/services/:id/start', async (request, reply) => {
@@ -71,12 +112,12 @@ export function registerRuntimeRoutes(
         void applyCreativeWhenReady(config, settings, fetcher, logs).catch((error) => logs.append({ appId: 'sthstart', serviceId: 'runtime-manager', stream: 'system', level: 'warn', message: `配置自动应用失败：${String(error)}`, force: true }));
       }
       return reply.code(202).send(result);
-    } catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : String(error) }); }
+    } catch (error) { const code = error instanceof Error ? error.message : String(error); return reply.code(409).send({ error: code, message: runtimeErrorMessage(error) }); }
   });
   app.post<{ Params: { id: string } }>('/api/v1/admin/runtime/services/:id/stop', async (request) => runtime.stop(request.params.id));
   app.post('/api/v1/admin/runtime/comfyui/start', async (_request, reply) => {
     try { return reply.code(202).send(runtime.launchComfyui()); }
-    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : String(error) }); }
+    catch (error) { const code = error instanceof Error ? error.message : String(error); return reply.code(409).send({ error: code, message: runtimeErrorMessage(error) }); }
   });
   app.post<{ Params: { id: string } }>('/api/v1/admin/runtime/services/:id/restart', async (request, reply) => {
     await runtime.stop(request.params.id);
@@ -85,7 +126,7 @@ export function registerRuntimeRoutes(
       if (!(await runtime.snapshot()).find((item) => item.id === request.params.id)?.managed) break;
     }
     try { return reply.code(202).send(await runtime.start(request.params.id)); }
-    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : String(error) }); }
+    catch (error) { const code = error instanceof Error ? error.message : String(error); return reply.code(409).send({ error: code, message: runtimeErrorMessage(error) }); }
   });
 
   app.get('/api/v1/admin/runtime/imports/linshe/preview', async () => {
@@ -101,7 +142,8 @@ export function registerRuntimeRoutes(
   });
 
   app.post<{ Body: { launcher?: boolean; business?: Record<string, unknown> | null } }>('/api/v1/admin/runtime/imports/linshe/commit', async (request) => {
-    const imported: Record<string, unknown> = {};
+    return database.transaction(() => {
+      const imported: Record<string, unknown> = {};
     if (request.body?.launcher) {
       const preview = readLauncherImport(config);
       if (preview.settings) { settings.update(preview.settings); imported.launcher = preview.settings; }
@@ -124,7 +166,8 @@ export function registerRuntimeRoutes(
     }
     database.connection.prepare(`INSERT INTO runtime_imports(source,imported_at,snapshot_json) VALUES ('linshe',?,?)
       ON CONFLICT(source) DO UPDATE SET imported_at=excluded.imported_at,snapshot_json=excluded.snapshot_json`).run(nowIso(), JSON.stringify(imported));
-    return { ok: true, settings: settings.get() };
+      return { ok: true, settings: settings.get() };
+    });
   });
   app.post('/api/v1/admin/runtime/settings/apply', async (_request, reply) => {
     try { return await applyCreativeSettings(config, settings, fetcher, logs); }
@@ -132,7 +175,7 @@ export function registerRuntimeRoutes(
   });
 
   app.get('/api/v1/admin/logging/policy', async () => logs.getPolicy());
-  app.put<{ Body: Partial<ReturnType<RuntimeLogService['getPolicy']>> }>('/api/v1/admin/logging/policy', async (request) => logs.setPolicy(request.body ?? {}));
+  app.put<{ Body: Partial<ReturnType<RuntimeLogService['getPolicy']>> }>('/api/v1/admin/logging/policy', { schema: { body: logPolicyBody } }, async (request) => logs.setPolicy(request.body ?? {}));
   app.get<{ Querystring: { serviceId?: string; level?: LogLevel; query?: string; after?: string; limit?: string } }>('/api/v1/admin/logs', async (request) => ({ items: logs.list({ serviceId: request.query.serviceId, level: request.query.level, query: request.query.query, after: Number(request.query.after || 0), limit: Number(request.query.limit || 500) }), dropped: logs.droppedLogs }));
   app.get('/api/v1/admin/logs/stream', async (request, reply) => {
     reply.hijack();

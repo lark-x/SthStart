@@ -1,8 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { appendFile, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { basename, isAbsolute, relative, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
 import type {
   LogEvent,
@@ -18,12 +19,13 @@ import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 
 const LEVEL_WEIGHT: Record<LogLevel, number> = { off: -1, error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
   autoStart: false,
   autoOpenBrowser: false,
-  checkComfyuiBeforeStart: true,
   useMirror: true,
+  publicLlmEnabled: true,
   comfyuiExecutable: '',
   extraLoraFolders: [],
   maibotAutostart: false,
@@ -85,8 +87,8 @@ export class RuntimeSettingsStore {
       ...current,
       autoStart: typeof patch.autoStart === 'boolean' ? patch.autoStart : current.autoStart,
       autoOpenBrowser: typeof patch.autoOpenBrowser === 'boolean' ? patch.autoOpenBrowser : current.autoOpenBrowser,
-      checkComfyuiBeforeStart: typeof patch.checkComfyuiBeforeStart === 'boolean' ? patch.checkComfyuiBeforeStart : current.checkComfyuiBeforeStart,
       useMirror: typeof patch.useMirror === 'boolean' ? patch.useMirror : current.useMirror,
+      publicLlmEnabled: typeof patch.publicLlmEnabled === 'boolean' ? patch.publicLlmEnabled : current.publicLlmEnabled,
       comfyuiExecutable: typeof patch.comfyuiExecutable === 'string' ? patch.comfyuiExecutable.trim() : current.comfyuiExecutable,
       maibotAutostart: typeof patch.maibotAutostart === 'boolean' ? patch.maibotAutostart : current.maibotAutostart,
       maibotBrowserMaibot: typeof patch.maibotBrowserMaibot === 'boolean' ? patch.maibotBrowserMaibot : current.maibotBrowserMaibot,
@@ -222,7 +224,8 @@ export class RuntimeLogService {
       const current = await stat(this.file).catch(() => null);
       if (current && current.size > 10 * 1024 * 1024) await rename(this.file, resolve(this.directory, `events-${Date.now()}.jsonl`));
     } catch {
-      // Log maintenance must never interrupt the managed applications.
+      // Maintenance failures are observable without recursively writing a log.
+      this.dropped++;
     }
   }
 }
@@ -238,10 +241,25 @@ interface Managed {
   message: string | null;
 }
 
+interface PortOwner {
+  pid: number;
+  processGroup: number | null;
+  cwd: string | null;
+  belongsToProject: boolean;
+}
+
+interface RuntimeManagerOptions {
+  appToken?: string;
+  fetcher?: typeof fetch;
+}
+
 export class RuntimeManager {
   private managed = new Map<string, Managed>();
+  private readonly fetcher: typeof fetch;
 
-  constructor(private readonly config: ServiceConfig, private readonly settings: RuntimeSettingsStore, private readonly logs: RuntimeLogService) {}
+  constructor(private readonly config: ServiceConfig, private readonly settings: RuntimeSettingsStore, private readonly logs: RuntimeLogService, private readonly options: RuntimeManagerOptions = {}) {
+    this.fetcher = options.fetcher ?? fetch;
+  }
 
   private definitions(): Definition[] {
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -261,7 +279,7 @@ export class RuntimeManager {
       // management must always probe the local Vite listener. A remote URL
       // can require an Access cookie and would otherwise make a healthy local
       // process look stopped to the Mac-side runtime manager.
-      { id: 'linshe-web', name: '邻舍 Web', port: 5173, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm, args: ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173'], health: 'http://127.0.0.1:5173', installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
+      { id: 'linshe-web', name: '邻舍 Web', port: 5173, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm, args: ['run', 'dev', '--', '--host', this.config.lanAccess ? '0.0.0.0' : '127.0.0.1', '--port', '5173'], health: 'http://127.0.0.1:5173', installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
       { id: 'maibot', name: 'MaiBot', port: 8001, optional: true, cwd: resolve(maibotRoot, 'MaiBot'), command: maibotPython, args: ['bot.py'], health: 'http://127.0.0.1:8001', installed: existsSync(resolve(maibotRoot, 'MaiBot/bot.py')) && Boolean(maibotPython) },
       { id: 'snowluma', name: 'SnowLuma', port: 5099, optional: true, cwd: resolve(maibotRoot, 'Snowluma'), command: snowNode, args: ['index.mjs'], health: 'http://127.0.0.1:5099', installed: existsSync(resolve(maibotRoot, 'Snowluma/index.mjs')) },
     ];
@@ -271,7 +289,7 @@ export class RuntimeManager {
     return Promise.all(this.definitions().map(async (definition) => {
       const item = this.managed.get(definition.id);
       let healthy = false;
-      try { healthy = (await fetch(definition.health, { signal: AbortSignal.timeout(this.config.probeTimeoutMs) })).ok; } catch { /* offline */ }
+      try { healthy = (await this.fetcher(definition.health, { signal: AbortSignal.timeout(this.config.probeTimeoutMs) })).ok; } catch { /* offline */ }
       const timedOut = item?.state === 'starting' && Date.now() - Date.parse(item.startedAt) > 60_000;
       const state: RuntimeServiceState = item ? (healthy && item.state === 'starting' ? 'running' : timedOut ? 'degraded' : item.state) : (healthy ? 'external' : 'stopped');
       if (item && state === 'running') item.state = 'running';
@@ -281,19 +299,21 @@ export class RuntimeManager {
 
   async start(id: string): Promise<unknown> {
     if (id === 'linshe') {
-      if (this.settings.get().checkComfyuiBeforeStart) {
-        try {
-          const response = await fetch('http://127.0.0.1:8188', { signal: AbortSignal.timeout(900) });
-          if (!response.ok) throw new Error('comfyui_not_running');
-        } catch { throw new Error('comfyui_not_running'); }
-      }
-      const results = []; const started: string[] = [];
-      const ids = ['linshe-vector', 'linshe-agent', 'linshe-web', ...(this.settings.get().maibotAutostart ? ['maibot', 'snowluma'] : [])];
+      const results: unknown[] = []; const started: string[] = [];
+      const ids = ['linshe-agent', 'linshe-web', 'linshe-vector', ...(this.settings.get().maibotAutostart ? ['maibot', 'snowluma'] : [])];
       try {
         for (const serviceId of ids) {
           const definition = this.definitions().find((item) => item.id === serviceId)!;
           if (definition.optional && !definition.installed) continue;
-          results.push(await this.start(serviceId)); started.push(serviceId);
+          if (this.managed.has(serviceId)) { results.push({ id: serviceId, started: false, reason: 'already_managed' }); continue; }
+          try {
+            results.push(await this.start(serviceId)); started.push(serviceId);
+          } catch (error) {
+            if (!definition.optional) throw error;
+            const message = error instanceof Error ? error.message : String(error);
+            results.push({ id: serviceId, started: false, optional: true, error: message });
+            this.logs.append({ appId: 'linshe', serviceId, stream: 'system', level: 'warn', message: `${definition.name} 启动失败，邻舍将以降级模式继续：${message}`, force: true });
+          }
         }
         return results;
       } catch (error) {
@@ -305,19 +325,31 @@ export class RuntimeManager {
     if (!definition) throw new Error('unknown_service');
     if (!definition.installed || !definition.command) throw new Error('service_not_installed');
     if (this.managed.has(id)) throw new Error('service_already_managed');
-    try {
-      const external = await fetch(definition.health, { signal: AbortSignal.timeout(700) });
-      if (external.ok) throw new Error('service_started_externally');
-    } catch (error) {
-      if (error instanceof Error && error.message === 'service_started_externally') throw error;
+    const owner = await this.portOwner(definition);
+    if (owner) {
+      if (!owner.belongsToProject) throw new Error('port_owned_by_other_process');
+      this.logs.append({ appId: 'linshe', serviceId: id, stream: 'system', level: 'info', message: `检测到项目遗留进程 PID ${owner.pid}，正在安全接管`, force: true });
+      await this.terminateOwner(owner);
+      for (let attempt = 0; attempt < 20 && await this.portOwner(definition); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+      if (await this.portOwner(definition)) throw new Error('project_process_takeover_failed');
     }
     const runtime = this.settings.get();
     const child = spawn(definition.command, definition.args, {
       cwd: definition.cwd, windowsHide: true, detached: process.platform !== 'win32',
       env: {
         ...process.env, NODE_ENV: 'production', PYTHONUNBUFFERED: '1',
+        // The bundled ONNX Runtime exposes CoreML on macOS, but compiling the
+        // Jina transformer with it can exhaust a 16 GB machine. Keep CPU as
+        // the safe default while still allowing an explicit user override.
+        ...(id === 'linshe-vector' && process.platform === 'darwin' && !process.env.EMBED_EXECUTION_PROVIDER
+          ? { EMBED_EXECUTION_PROVIDER: 'cpu' }
+          : {}),
         STHSTART_LOG_LEVEL: this.logs.effectiveLevel(id),
-        STHSTART_SERVICE_URL: `http://${this.config.host}:${this.config.port}`,
+        STHSTART_SERVICE_URL: `http://127.0.0.1:${this.config.port}`,
+        ...(id === 'linshe-agent' ? {
+          STHSTART_APP_TOKEN: this.options.appToken ?? '',
+          STHSTART_PUBLIC_LLM: runtime.publicLlmEnabled ? 'true' : 'false',
+        } : {}),
         EXTRA_LORA_FOLDERS: runtime.extraLoraFolders.join(';'),
       },
     });
@@ -341,19 +373,41 @@ export class RuntimeManager {
       return results;
     }
     const item = this.managed.get(id);
-    if (!item) return { id, stopped: false, reason: 'not_managed' };
+    if (!item) {
+      const definition = this.definitions().find((candidate) => candidate.id === id);
+      if (!definition) return { id, stopped: false, reason: 'unknown_service' };
+      const owner = await this.portOwner(definition);
+      if (!owner) return { id, stopped: false, reason: 'not_running' };
+      if (!owner.belongsToProject) return { id, stopped: false, reason: 'foreign_process' };
+      await this.terminateOwner(owner);
+      return { id, stopped: true, external: true };
+    }
     item.state = 'stopping';
+    const exited = new Promise<boolean>((resolveExit) => {
+      if (item.process.exitCode !== null || item.process.signalCode !== null) resolveExit(true);
+      else item.process.once('exit', () => resolveExit(true));
+    });
     try {
       if (process.platform === 'win32' && item.process.pid) spawn('taskkill', ['/PID', String(item.process.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
       else if (item.process.pid) process.kill(-item.process.pid, 'SIGTERM');
       else item.process.kill('SIGTERM');
     } catch { item.process.kill('SIGTERM'); }
-    const timer = setTimeout(() => { if (item.process.exitCode === null) item.process.kill('SIGKILL'); }, 5_000);
-    timer.unref();
-    return { id, stopped: true };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const graceful = await Promise.race([exited, new Promise<false>((resolveTimeout) => { timer = setTimeout(() => resolveTimeout(false), 5_000); timer.unref(); })]);
+    if (timer) clearTimeout(timer);
+    if (!graceful && item.process.exitCode === null && item.process.signalCode === null) {
+      try { if (process.platform !== 'win32' && item.process.pid) process.kill(-item.process.pid, 'SIGKILL'); else item.process.kill('SIGKILL'); } catch { /* process already exited */ }
+      await Promise.race([exited, new Promise((resolveTimeout) => setTimeout(resolveTimeout, 2_000))]);
+    }
+    return { id, stopped: item.process.exitCode !== null || item.process.signalCode !== null, forced: !graceful };
   }
 
-  async close() { await this.stop('linshe'); }
+  async close() {
+    // Service shutdown only owns children spawned by this manager. Explicit
+    // stop actions may take over verified project processes, but a test run or
+    // service restart must never terminate an unrelated existing session.
+    for (const id of [...this.managed.keys()].reverse()) await this.stop(id);
+  }
 
   launchComfyui() {
     const executable = this.settings.get().comfyuiExecutable;
@@ -374,6 +428,52 @@ export class RuntimeManager {
     });
     stream.on('end', () => { if (pending.trim()) this.logs.append({ appId: 'linshe', serviceId: definition.id, stream: kind, message: pending.trim() }); });
   }
+
+  private isProjectPath(candidate: string | null, root: string) {
+    if (!candidate) return false;
+    const difference = relative(resolve(root), resolve(candidate));
+    return difference === '' || (!difference.startsWith('..') && !isAbsolute(difference));
+  }
+
+  private async portOwner(definition: Definition): Promise<PortOwner | null> {
+    if (process.platform === 'win32') {
+      try {
+        const script = `$p=(Get-NetTCPConnection -State Listen -LocalPort ${definition.port} -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if($p){$w=Get-CimInstance Win32_Process -Filter \"ProcessId=$p\"; Write-Output $p; Write-Output $w.CommandLine}`;
+        const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-Command', script], { timeout: 2_000 });
+        const [pidText, ...commandParts] = stdout.trim().split(/\r?\n/); const pid = Number(pidText);
+        if (!Number.isInteger(pid)) return null;
+        const command = commandParts.join(' ');
+        return { pid, processGroup: null, cwd: null, belongsToProject: command.includes(this.config.linsheRoot) || command.includes(definition.cwd) };
+      } catch { return null; }
+    }
+    try {
+      const { stdout } = await execFileAsync('lsof', ['-nP', `-iTCP:${definition.port}`, '-sTCP:LISTEN', '-t'], { timeout: 2_000 });
+      const pid = Number(stdout.trim().split(/\s+/)[0]);
+      if (!Number.isInteger(pid)) return null;
+      const [{ stdout: cwdOutput }, { stdout: groupOutput }] = await Promise.all([
+        execFileAsync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { timeout: 2_000 }).catch(() => ({ stdout: '', stderr: '' })),
+        execFileAsync('ps', ['-o', 'pgid=', '-p', String(pid)], { timeout: 2_000 }).catch(() => ({ stdout: '', stderr: '' })),
+      ]);
+      const cwd = cwdOutput.split(/\r?\n/).find((line) => line.startsWith('n'))?.slice(1) || null;
+      const processGroup = Number(groupOutput.trim());
+      return { pid, processGroup: Number.isInteger(processGroup) && processGroup > 1 ? processGroup : null, cwd, belongsToProject: this.isProjectPath(cwd, definition.cwd) };
+    } catch { return null; }
+  }
+
+  private async terminateOwner(owner: PortOwner) {
+    if (process.platform === 'win32') {
+      await new Promise<void>((resolvePromise) => {
+        const killer = spawn('taskkill', ['/PID', String(owner.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        killer.once('exit', () => resolvePromise()); killer.once('error', () => resolvePromise());
+      });
+      return;
+    }
+    // External listeners are not children of this manager. Terminate only the
+    // verified listener PID: its process group may also contain the shell or
+    // the currently running SthStart service.
+    try { process.kill(owner.pid, 'SIGTERM'); }
+    catch { try { process.kill(owner.pid, 'SIGTERM'); } catch { /* already exited */ } }
+  }
 }
 
 export function readLauncherImport(config: ServiceConfig) {
@@ -385,7 +485,7 @@ export function readLauncherImport(config: ServiceConfig) {
     return {
       available: true, path: basename(path),
       settings: {
-        autoOpenBrowser: Boolean(raw.auto_open_browser ?? true), checkComfyuiBeforeStart: Boolean(raw.check_comfyui_before_start ?? true),
+        autoOpenBrowser: Boolean(raw.auto_open_browser ?? true),
         useMirror: Boolean(raw.use_mirror ?? true), comfyuiExecutable: String(raw.comfyui_exe ?? ''),
         extraLoraFolders: String(raw.extra_lora_folders ?? '').split(';').map((item) => item.trim()).filter(Boolean),
         maibotAutostart: Boolean(raw.maibot_autostart), maibotBrowserMaibot: Boolean(raw.maibot_browser_maibot ?? true), maibotBrowserSnowluma: Boolean(raw.maibot_browser_snowluma ?? true),

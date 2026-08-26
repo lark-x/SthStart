@@ -6,6 +6,8 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CreativeNote, NoteBlock, NoteKind, NoteStage } from './types';
 import { kindLabels, newBlock, stageLabels } from './types';
+import { adminFetch } from '@/app/lib/admin-fetch';
+import type { CharacterProfile } from '@sthstart/contracts';
 
 const initialNote: CreativeNote = {
   title: '', kind: 'note', summary: '', content: [newBlock('text')], tags: [], stage: 'draft', favorite: false,
@@ -24,11 +26,18 @@ export function NoteEditor({ noteId, initialKind = 'note' }: { noteId?: string; 
   const [error, setError] = useState('');
   const currentId = useRef(noteId);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [characters, setCharacters] = useState<CharacterProfile[]>([]);
+
+  useEffect(() => {
+    void adminFetch('characters', { cache: 'no-store' }).then(async (response) => {
+      if (response.ok) setCharacters(((await response.json()) as { items: CharacterProfile[] }).items);
+    }).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!noteId) return;
     let active = true;
-    fetch(`/api/admin/notebook/notes/${noteId}`, { cache: 'no-store' }).then(async (response) => {
+    adminFetch(`notebook/notes/${noteId}`, { cache: 'no-store' }).then(async (response) => {
       const body = await response.json() as CreativeNote & { message?: string; error?: string }; if (!response.ok) throw new Error(body.message ?? body.error);
       if (active) { setNote(body); setLoading(false); setStatus('clean'); }
     }).catch((cause: unknown) => { if (active) { setError(cause instanceof Error ? cause.message : String(cause)); setLoading(false); } });
@@ -51,7 +60,7 @@ export function NoteEditor({ noteId, initialKind = 'note' }: { noteId?: string; 
     const payload = { ...value, title: value.title.trim() || '未命名笔记', summary: summaryFrom(value.content) };
     const id = currentId.current;
     try {
-      const response = await fetch(id ? `/api/admin/notebook/notes/${id}` : '/api/admin/notebook/notes', {
+      const response = await adminFetch(id ? `notebook/notes/${id}` : 'notebook/notes', {
         method: id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
       });
       const body = await response.json() as CreativeNote & { id: string; message?: string; error?: string }; if (!response.ok) throw new Error(body.message ?? body.error);
@@ -91,7 +100,7 @@ export function NoteEditor({ noteId, initialKind = 'note' }: { noteId?: string; 
       const reader = new FileReader(); reader.onload = () => resolvePromise(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
     });
     try {
-      const response = await fetch('/api/admin/notebook/assets', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: savedId, dataUrl, filename: file.name }) });
+      const response = await adminFetch('notebook/assets', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: savedId, dataUrl, filename: file.name }) });
       const body = await response.json() as { url: string; message?: string; error?: string }; if (!response.ok) throw new Error(body.message ?? body.error);
       change((current) => ({ ...current, content: [...current.content, { id: crypto.randomUUID(), type: 'image', src: body.url, caption: '' }] }));
     } catch (cause) { setStatus('error'); setError(cause instanceof Error ? cause.message : String(cause)); }
@@ -99,7 +108,7 @@ export function NoteEditor({ noteId, initialKind = 'note' }: { noteId?: string; 
 
   async function removeNote() {
     if (!currentId.current || !window.confirm('确定删除这条记录和它的本地图片吗？')) return;
-    const response = await fetch(`/api/admin/notebook/notes/${currentId.current}`, { method: 'DELETE' });
+    const response = await adminFetch(`notebook/notes/${currentId.current}`, { method: 'DELETE' });
     if (response.ok) router.push('/apps/notebook'); else setError('删除失败，请稍后重试。');
   }
 
@@ -121,16 +130,22 @@ export function NoteEditor({ noteId, initialKind = 'note' }: { noteId?: string; 
       <input className="editor-tags" aria-label="标签" value={note.tags.join('，')} onChange={(event) => change((current) => ({ ...current, tags: event.target.value.split(/[，,]/).map((tag) => tag.trim()).filter(Boolean) }))} placeholder="添加标签，用逗号分隔" />
 
       <div className="editor-blocks">{note.content.map((block, index) => <section className={`editor-block block-${block.type}`} key={block.id}>
-        <div className="block-actions"><span>{block.type === 'text' ? '文本' : block.type === 'image' ? '图片' : block.type === 'link' ? '链接' : '叙事档案引用'}</span><div><button onClick={() => moveBlock(index, -1)} disabled={index === 0}>↑</button><button onClick={() => moveBlock(index, 1)} disabled={index === note.content.length - 1}>↓</button><button onClick={() => change((current) => ({ ...current, content: current.content.filter((item) => item.id !== block.id) }))}>删除</button></div></div>
+        <div className="block-actions"><span>{block.type === 'text' ? '文本' : block.type === 'image' ? '图片' : block.type === 'link' ? '链接' : block.type === 'character-reference' ? '角色引用' : '叙事档案引用'}</span><div><button onClick={() => moveBlock(index, -1)} disabled={index === 0}>↑</button><button onClick={() => moveBlock(index, 1)} disabled={index === note.content.length - 1}>↓</button><button onClick={() => change((current) => ({ ...current, content: current.content.filter((item) => item.id !== block.id) }))}>删除</button></div></div>
         {block.type === 'text' && <textarea value={block.text} onChange={(event) => updateBlock(block.id, { text: event.target.value })} placeholder="写下一段文字…" rows={Math.max(5, block.text.split('\n').length + 2)} />}
         {block.type === 'image' && <><div className="image-preview">{block.src ? <Image src={block.src} alt={block.caption || '笔记图片'} fill sizes="(max-width: 640px) 100vw, 760px" unoptimized /> : <span>等待选择图片</span>}</div><input value={block.caption} onChange={(event) => updateBlock(block.id, { caption: event.target.value })} placeholder="图片说明（可选）" /></>}
         {block.type === 'link' && <div className="link-editor"><input type="url" value={block.url} onChange={(event) => updateBlock(block.id, { url: event.target.value })} placeholder="https://…"/><input value={block.label} onChange={(event) => updateBlock(block.id, { label: event.target.value })} placeholder="链接标题"/><textarea value={block.note} onChange={(event) => updateBlock(block.id, { note: event.target.value })} placeholder="为什么保存这个链接？" rows={2}/>{/^https?:\/\//.test(block.url) && <a href={block.url} target="_blank" rel="noreferrer">打开链接 ↗</a>}</div>}
+        {block.type === 'character-reference' && <CharacterReferenceEditor block={block} characters={characters} onChange={(values) => updateBlock(block.id, values)}/>}
         {block.type === 'archive-reference' && <blockquote className="archive-reference"><p>{block.quote}</p><Link href={`/apps/narrative?utterance=${encodeURIComponent(block.targetId)}`}>{block.locator} →</Link></blockquote>}
       </section>)}</div>
 
-      <div className="insert-bar"><button onClick={() => addBlock('text')}>＋ 文本</button><button onClick={() => fileInput.current?.click()}>＋ 图片</button><button onClick={() => addBlock('link')}>＋ 链接</button><input ref={fileInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void uploadImage(event)}/></div>
+      <div className="insert-bar"><button onClick={() => addBlock('text')}>＋ 文本</button><button onClick={() => fileInput.current?.click()}>＋ 图片</button><button onClick={() => addBlock('link')}>＋ 链接</button><button onClick={() => addBlock('character-reference')}>＋ 角色</button><input ref={fileInput} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void uploadImage(event)}/></div>
       {error && <p className="editor-error">{error}</p>}
       {currentId.current && <button className="delete-note" onClick={() => void removeNote()}>删除这条记录</button>}
     </article>
   </main>;
+}
+
+function CharacterReferenceEditor({ block, characters, onChange }: { block: Extract<NoteBlock, { type: 'character-reference' }>; characters: CharacterProfile[]; onChange: (values: Partial<NoteBlock>) => void }) {
+  const character = characters.find((item) => item.id === block.characterId);
+  return <div className="note-character-reference"><select aria-label="引用角色" value={block.characterId} onChange={(event) => onChange({ characterId: event.target.value })}><option value="">选择资料库角色</option>{characters.map((item) => <option value={item.id} key={item.id}>{item.displayName}{item.draft.work ? ` · ${item.draft.work}` : ''}</option>)}</select>{character ? <Link href={`/apps/characters/${character.id}`}><strong>{character.displayName}</strong><span>{character.draft.summary || character.draft.identity || '尚未填写摘要'}</span><small>{character.draft.personality.slice(0, 3).join(' · ') || '查看角色资料'} →</small></Link> : block.characterId ? <p>原角色已归档或不可用。</p> : <p>选择后，这里会实时显示角色资料库中的最新信息。</p>}<textarea rows={2} value={block.note} onChange={(event) => onChange({ note: event.target.value })} placeholder="这条笔记与角色的关系（可选）"/></div>;
 }

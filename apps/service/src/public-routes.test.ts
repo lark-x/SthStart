@@ -59,6 +59,40 @@ test('vector gateway isolates app namespaces and rejects shared memory', async (
   await app.close(); database.close();
 });
 
+test('vector gateway strips only namespace prefixes, preserving ordinary story text', async () => {
+  const fetcher: typeof fetch = async () => Response.json({
+    chroma_id: 'app:first:notes:item-1',
+    text: 'The literal app:first:notes: token inside this sentence must remain.',
+  });
+  const database = new ServiceDatabase(); const token = seedApp(database, 'first'); const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('vec', 'Vector', 'vector', 'http://vector.test', null, null, now, now);
+  const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+  const response = await app.inject({ method: 'POST', url: '/api/v1/vector/search', headers: { authorization: `Bearer ${token}` }, payload: { namespace: 'notes', text: 'x' } });
+  assert.equal(response.json().chroma_id, 'item-1');
+  assert.match(response.json().text, /app:first:notes:/);
+  await app.close(); database.close();
+});
+
+test('image cancellation deletes queued prompts but never interrupts a running workflow', async () => {
+  const calls: string[] = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input); calls.push(`${init?.method ?? 'GET'} ${url}`);
+    if (url.endsWith('/prompt')) return Response.json({ prompt_id: 'queued-prompt' });
+    if (url.endsWith('/queue') && init?.method === 'POST') return Response.json({});
+    if (url.endsWith('/queue')) return Response.json({ queue_pending: [[1, 'queued-prompt']], queue_running: [] });
+    return Response.json({});
+  };
+  const database = new ServiceDatabase(); const token = seedApp(database, 'cancel-app'); const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img', 'Image', 'image', 'http://image.test', null, null, now, now);
+  const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+  const created = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'cancel-request-1' }, payload: { workflow: { one: {} } } });
+  const cancelled = await app.inject({ method: 'POST', url: `/api/v1/images/tasks/${created.json().id}/cancel`, headers: { authorization: `Bearer ${token}` } });
+  assert.equal(cancelled.json().status, 'cancelled');
+  assert.equal(cancelled.json().upstreamMayContinue, false);
+  assert.equal(calls.some((call) => call.includes('/interrupt')), false);
+  await app.close(); database.close();
+});
+
 test('image task idempotency returns one accepted upstream task', async () => {
   let submissions = 0;
   const fetcher: typeof fetch = async () => { submissions += 1; return Response.json({ prompt_id: 'provider-task' }); };
@@ -81,12 +115,40 @@ test('LLM gateway supports OpenAI-compatible JSON and streaming responses', asyn
   };
   const database = new ServiceDatabase(); const token = seedApp(database, 'llm-app'); const now = nowIso();
   database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('llm', 'LLM', 'llm', 'http://llm.test/v1', 'test-model', null, now, now);
+  database.connection.prepare("INSERT INTO provider_profile_options(profile_id,capabilities_json) VALUES ('llm','[\"text\"]')").run();
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('llm-app','text','llm',?)").run(now);
   const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
   const headers = { authorization: `Bearer ${token}` };
   const regular = await app.inject({ method: 'POST', url: '/v1/chat/completions', headers, payload: { messages: [{ role: 'user', content: 'hello' }] } });
   assert.equal(regular.statusCode, 200); assert.equal(regular.json().choices[0].message.content, 'Hi'); assert.equal(seen[0].model, 'test-model');
   const stream = await app.inject({ method: 'POST', url: '/v1/chat/completions', headers, payload: { stream: true, messages: [{ role: 'user', content: 'hello' }] } });
   assert.equal(stream.statusCode, 200); assert.match(stream.body, /data:.*Hi/);
+  await app.close(); database.close();
+});
+
+test('LLM gateway routes text and image messages to per-app models and rejects missing assignments', async () => {
+  const seen: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    seen.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+    return Response.json({ choices: [{ message: { role: 'assistant', content: 'ok' } }] });
+  };
+  const database = new ServiceDatabase(); const token = seedApp(database, 'role-app'); const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('text-model', 'Text', 'llm', 'http://text.test/v1', 'text-upstream', null, now, now);
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('vision-model', 'Vision', 'llm', 'http://vision.test/v1', 'vision-upstream', null, now, now);
+  database.connection.prepare("INSERT INTO provider_profile_options(profile_id,capabilities_json) VALUES ('text-model','[\"text\"]')").run();
+  database.connection.prepare("INSERT INTO provider_profile_options(profile_id,capabilities_json) VALUES ('vision-model','[\"text\",\"multimodal\"]')").run();
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('role-app','text','text-model',?)").run(now);
+  const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+  const headers = { authorization: `Bearer ${token}` };
+  const textResponse = await app.inject({ method: 'POST', url: '/v1/chat/completions', headers, payload: { model: 'client-model', messages: [{ role: 'user', content: 'hello' }] } });
+  assert.equal(textResponse.statusCode, 200); assert.equal(seen[0].body.model, 'text-upstream'); assert.match(seen[0].url, /text\.test/);
+  const missingVision = await app.inject({ method: 'POST', url: '/v1/chat/completions', headers, payload: { messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,x' } }] }] } });
+  assert.equal(missingVision.statusCode, 503); assert.equal(missingVision.json().error, 'llm_profile_not_assigned'); assert.equal(missingVision.json().role, 'multimodal');
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('role-app','multimodal','vision-model',?)").run(now);
+  const visionResponse = await app.inject({ method: 'POST', url: '/v1/chat/completions', headers: { ...headers, 'x-sthstart-model-role': 'multimodal' }, payload: { model: 'wrong', messages: [{ role: 'user', content: 'inspect' }] } });
+  assert.equal(visionResponse.statusCode, 200); assert.equal(seen[1].body.model, 'vision-upstream'); assert.match(seen[1].url, /vision\.test/);
+  const models = await app.inject({ method: 'GET', url: '/v1/models', headers });
+  assert.deepEqual(models.json().data.map((item: { id: string }) => item.id).sort(), ['text-upstream', 'vision-upstream']);
   await app.close(); database.close();
 });
 
