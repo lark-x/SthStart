@@ -13,10 +13,11 @@ export async function persistArtifact(
   const existing = database.connection.prepare('SELECT id FROM artifacts WHERE task_id=? AND provider_url=?').get(input.taskId, input.sourceUrl) as { id: string } | undefined;
   if (existing) return existing.id;
   const response = await fetch(input.sourceUrl, { signal: AbortSignal.timeout(120_000) });
-  if (!response.ok) throw new Error(`artifact download returned ${response.status}`);
+  if (!response.ok) throw new Error(`产物下载失败 (HTTP ${response.status})`);
   const bytes = Buffer.from(await response.arrayBuffer());
   const id = randomUUID();
-  const suffix = extname(new URL(input.sourceUrl).searchParams.get('filename') ?? '') || '.bin';
+  const filenameParam = (() => { try { return new URL(input.sourceUrl).searchParams.get('filename') ?? ''; } catch { return ''; } })();
+  const suffix = extname(filenameParam) || '.png';
   const directory = resolve(config.artifactDirectory, input.appId);
   const path = resolve(directory, `${id}${suffix}`);
   await mkdir(directory, { recursive: true });

@@ -139,6 +139,94 @@ test('image task idempotency returns one accepted upstream task', async () => {
   await app.close(); database.close();
 });
 
+test('image gateway handles submission errors, missing task ID, and upstream timeouts with safe messages', async () => {
+  const database = new ServiceDatabase(); const token = seedApp(database, 'error-app'); const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-err', 'Image', 'image', 'http://image-err.test', null, null, now, now);
+
+  // 1. Upstream returns 400 node error
+  let fetcher: typeof fetch = async () => new Response(JSON.stringify({ error: 'value_not_in_list', message: 'UNet model missing' }), { status: 400 });
+  let { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+  let res = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'err-request-1' }, payload: { workflow: { 1: {} } } });
+  assert.equal(res.statusCode, 502);
+  assert.equal(res.json().error, 'image_rejected');
+  assert.match(res.json().message, /UNet model missing/);
+  await app.close();
+
+  // 2. Upstream returns non-JSON or missing prompt_id
+  fetcher = async () => new Response('Invalid HTML page', { status: 200 });
+  ({ app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher }));
+  res = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'err-request-2' }, payload: { workflow: { 1: {} } } });
+  assert.equal(res.statusCode, 502);
+  assert.equal(res.json().error, 'image_missing_task_id');
+  await app.close();
+
+  // 3. Upstream network failure / timeout
+  fetcher = async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8188 with Bearer sk-secret-token-1234567890'); };
+  ({ app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher }));
+  res = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'err-request-3' }, payload: { workflow: { 1: {} } } });
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.json().error, 'image_unavailable');
+  assert.doesNotMatch(res.json().message, /sk-secret-token/);
+  assert.match(res.json().message, /[REDACTED_TOKEN]/);
+  await app.close();
+
+  database.close();
+});
+
+test('image task lookup handles execution error and artifact download failure without false completion', async () => {
+  const database = new ServiceDatabase(); const token = seedApp(database, 'lookup-app'); const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-lookup', 'Image', 'image', 'http://image-lookup.test', null, null, now, now);
+
+  // 1. History reports execution error -> task marked failed
+  let fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes('/history/task-err')) {
+      return Response.json({
+        'task-err': {
+          status: { status_str: 'error', messages: [['execution_error', { exception_message: 'CUDA out of memory' }]] },
+          outputs: {},
+        },
+      });
+    }
+    return Response.json({ prompt_id: 'task-err' });
+  };
+  let { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+  let created = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'task-err-key-1' }, payload: { workflow: { 1: {} } } });
+  let taskId = created.json().id;
+  let lookup = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  assert.equal(lookup.statusCode, 200);
+  assert.equal(lookup.json().status, 'failed');
+  assert.match(lookup.json().error, /CUDA out of memory|error/);
+  await app.close();
+
+  // 2. History returns image but /view download returns 404/500 -> task marked failed with artifact_download_failed
+  fetcher = async (input) => {
+    const url = String(input);
+    if (url.includes('/history/task-dl-fail')) {
+      return Response.json({
+        'task-dl-fail': {
+          outputs: { 9: { images: [{ filename: 'gen-1.png', type: 'output' }] } },
+        },
+      });
+    }
+    if (url.includes('/view')) {
+      return new Response('File not ready', { status: 404 });
+    }
+    return Response.json({ prompt_id: 'task-dl-fail' });
+  };
+  ({ app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher }));
+  created = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'task-dl-key-1' }, payload: { workflow: { 1: {} } } });
+  taskId = created.json().id;
+  lookup = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  assert.equal(lookup.statusCode, 200);
+  assert.equal(lookup.json().status, 'failed');
+  assert.match(lookup.json().error, /产物下载失败/);
+  assert.equal(lookup.json().artifacts.length, 0);
+  await app.close();
+
+  database.close();
+});
+
 test('LLM gateway supports OpenAI-compatible JSON and streaming responses', async () => {
   const seen: Record<string, unknown>[] = [];
   const fetcher: typeof fetch = async (_input, init) => {

@@ -88,6 +88,14 @@ function signArtifact(secret: string, artifactId: string, expires: number) {
   return createHmac('sha256', secret).update(`${artifactId}.${expires}`).digest('base64url');
 }
 
+function sanitizeMessage(input: string) {
+  return input
+    .replace(/(authorization|api[-_ ]?key|token|secret|password)(["'\s:=]+)([^\s,"'}]+)/gi, '$1$2[REDACTED]')
+    .replace(/\b(?:sk|sth|Bearer)[-_][A-Za-z0-9._-]{12,}\b/g, '[REDACTED_TOKEN]')
+    .replace(/([?&](?:key|token|secret|signature)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/\/\/[^:]+:[^@]+@/g, '//[REDACTED_AUTH]@');
+}
+
 export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
   app.get('/api/v1/app/config', async (request, reply) => {
     const identity = requireApp(database, 'llm', request, reply); if (!identity) return;
@@ -209,7 +217,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       .get(identity.id, idempotency);
     if (existing) return reply.send(existing);
     const profile = await resolveProfile(database, secrets, 'image', requestedProfile(request));
-    if (!profile) return reply.code(503).send({ error: 'image_unavailable' });
+    if (!profile) return reply.code(503).send({ error: 'image_unavailable', message: '未配置可用的图片服务模板。' });
     const taskId = randomUUID();
     const now = nowIso();
     try {
@@ -217,22 +225,28 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       let workflow = payload.workflow ?? payload.prompt;
       if (!workflow && typeof payload.workflowId === 'string') {
         const stored = database.connection.prepare('SELECT definition_json FROM image_workflows WHERE id=?').get(payload.workflowId) as { definition_json: string } | undefined;
-        if (!stored) return reply.code(404).send({ error: 'workflow_not_found' });
+        if (!stored) return reply.code(404).send({ error: 'workflow_not_found', message: '未找到指定的工作流模板。' });
         workflow = JSON.parse(stored.definition_json);
       }
-      if (!workflow) return reply.code(400).send({ error: 'workflow_required' });
+      if (!workflow) return reply.code(400).send({ error: 'workflow_required', message: '必须提供工作流定义或提示词。' });
       const upstream = await proxyJson(fetcher, `${profile.baseUrl}/prompt`, { prompt: workflow, client_id: taskId }, profile.secret, 30_000);
-      if (!upstream.ok) return reply.code(502).send({ error: 'image_rejected', upstreamStatus: upstream.status });
-      const result = safeJson(await upstream.json());
+      if (!upstream.ok) {
+        const errPayload = await upstream.json().catch(() => null) as { error?: unknown; message?: string } | null;
+        const msg = errPayload ? String(errPayload.message ?? errPayload.error ?? `HTTP ${upstream.status}`) : `HTTP ${upstream.status}`;
+        return reply.code(502).send({ error: 'image_rejected', upstreamStatus: upstream.status, message: `ComfyUI 拒绝了任务：${sanitizeMessage(msg).slice(0, 300)}` });
+      }
+      const result = safeJson(await upstream.json().catch(() => ({})));
       const providerTaskId = String(result.prompt_id ?? result.task_id ?? '');
-      if (!providerTaskId) return reply.code(502).send({ error: 'image_missing_task_id' });
+      if (!providerTaskId) return reply.code(502).send({ error: 'image_missing_task_id', message: 'ComfyUI 接口未返回任务 ID。' });
       database.connection.prepare(`INSERT INTO image_tasks
         (id,app_id,profile_id,provider_task_id,idempotency_key,status,request_json,error,upstream_may_continue,cancellation_scope,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,0,'none',?,?)`)
         .run(taskId, identity.id, profile.id, providerTaskId, idempotency, 'accepted', JSON.stringify(payload), null, now, now);
       return reply.code(202).send({ id: taskId, status: 'accepted', providerTaskId });
     } catch (error) {
-      return reply.code(503).send({ error: 'image_unavailable', message: String(error) });
+      const isTimeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      const safeMsg = isTimeout ? '提交生图任务到 ComfyUI 超时。' : `无法连接 ComfyUI 图片服务：${sanitizeMessage(error instanceof Error ? error.message : String(error))}`;
+      return reply.code(503).send({ error: 'image_unavailable', message: safeMsg });
     }
   });
 
@@ -245,23 +259,50 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       if (profile) {
         try {
           const historyResponse = await fetcher(`${profile.baseUrl}/history/${task.provider_task_id}`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(15_000) });
-          const history = safeJson(await historyResponse.json());
-          const result = safeJson(history[String(task.provider_task_id)]);
-          const outputs = safeJson(result.outputs);
-          const images = Object.values(outputs).flatMap((output) => {
-            const value = safeJson(output).images;
-            return Array.isArray(value) ? value.map(safeJson) : [];
-          });
-          for (const image of images) {
-            const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
-            await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png' });
-          }
-          if (images.length) database.connection.prepare("UPDATE image_tasks SET status='complete',upstream_may_continue=0,updated_at=? WHERE id=?").run(nowIso(), request.params.id);
-          else {
-            const queueResponse = await fetcher(`${profile.baseUrl}/queue`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(5_000) });
-            if (queueResponse.ok) {
-              const queue = safeJson(await queueResponse.json());
-              if (queueIds(queue.queue_running).has(String(task.provider_task_id))) database.connection.prepare("UPDATE image_tasks SET status='running',updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+          if (historyResponse.ok) {
+            const history = safeJson(await historyResponse.json().catch(() => ({})));
+            const result = safeJson(history[String(task.provider_task_id)]);
+            if (result.status && typeof result.status === 'object') {
+              const statusObj = result.status as Record<string, unknown>;
+              if (statusObj.status_str === 'error' || (Array.isArray(statusObj.messages) && statusObj.messages.some((m) => Array.isArray(m) && m[0] === 'execution_error'))) {
+                const errMsg = String(statusObj.status_str || 'execution_error');
+                database.connection.prepare("UPDATE image_tasks SET status='failed',error=?,upstream_may_continue=0,updated_at=? WHERE id=?")
+                  .run(`ComfyUI 执行失败：${errMsg}`, nowIso(), request.params.id);
+              }
+            }
+            const outputs = safeJson(result.outputs);
+            const images = Object.values(outputs).flatMap((output) => {
+              const value = safeJson(output).images;
+              return Array.isArray(value) ? value.map(safeJson) : [];
+            });
+            if (images.length) {
+              let persistFailed = false;
+              let persistError = '';
+              for (const image of images) {
+                const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
+                try {
+                  await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png' });
+                } catch (pErr) {
+                  persistFailed = true;
+                  persistError = pErr instanceof Error ? pErr.message : String(pErr);
+                  break;
+                }
+              }
+              if (persistFailed) {
+                database.connection.prepare("UPDATE image_tasks SET status='failed',error=?,upstream_may_continue=0,updated_at=? WHERE id=?")
+                  .run(`产物下载失败：${persistError}`, nowIso(), request.params.id);
+              } else {
+                database.connection.prepare("UPDATE image_tasks SET status='complete',upstream_may_continue=0,error=NULL,updated_at=? WHERE id=?")
+                  .run(nowIso(), request.params.id);
+              }
+            } else {
+              const queueResponse = await fetcher(`${profile.baseUrl}/queue`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(5_000) }).catch(() => null);
+              if (queueResponse && queueResponse.ok) {
+                const queue = safeJson(await queueResponse.json().catch(() => ({})));
+                if (queueIds(queue.queue_running).has(String(task.provider_task_id))) {
+                  database.connection.prepare("UPDATE image_tasks SET status='running',updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+                }
+              }
             }
           }
         } catch {
@@ -303,7 +344,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
         }
       } catch {
         database.connection.prepare("UPDATE image_tasks SET status='cancel_failed',upstream_may_continue=1,cancellation_scope='none',updated_at=? WHERE id=?").run(nowIso(), task.id);
-        return reply.code(502).send({ error: 'cancel_failed', upstreamMayContinue: true, cancellationScope: 'none' });
+        return reply.code(502).send({ error: 'cancel_failed', message: '取消请求失败，上游队列无法访问。', upstreamMayContinue: true, cancellationScope: 'none' });
       }
     }
     database.connection.prepare("UPDATE image_tasks SET status='abandoned',upstream_may_continue=1,cancellation_scope='local-tracking',updated_at=? WHERE id=?").run(nowIso(), task.id);
