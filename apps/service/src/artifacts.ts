@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
-import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
+import { mkdir, readdir, rename, stat, statfs, unlink } from 'node:fs/promises';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -108,6 +108,38 @@ export interface StreamUploadInput {
   refType?: string | null;
   refId?: string | null;
   metadata?: Record<string, unknown>;
+  customStatfs?: StatfsChecker;
+}
+
+export type StatfsChecker = (path: string) => Promise<{ bavail: number | bigint; bsize: number | bigint } | number | bigint>;
+
+export async function checkDiskHeadroom(
+  targetDir: string,
+  requiredBytes?: number | null,
+  safetyMarginBytes = 50 * 1024 * 1024,
+  customStatfs?: StatfsChecker,
+): Promise<void> {
+  const minRequired = requiredBytes != null && requiredBytes > 0
+    ? requiredBytes + safetyMarginBytes
+    : safetyMarginBytes;
+
+  try {
+    const checker = customStatfs ?? (statfs as StatfsChecker);
+    const stats = await checker(targetDir);
+    let available: number;
+    if (typeof stats === 'object' && stats !== null && 'bavail' in stats && 'bsize' in stats) {
+      available = Number(stats.bavail) * Number(stats.bsize);
+    } else {
+      available = Number(stats);
+    }
+    if (Number.isFinite(available) && available < minRequired) {
+      throw new Error('artifact_disk_space_insufficient');
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message === 'artifact_disk_space_insufficient') {
+      throw error;
+    }
+  }
 }
 
 export function inferMediaType(contentType: string | null | undefined): string {
@@ -174,8 +206,11 @@ async function streamToTempFile(
   tempPath: string,
   expectedLength?: number | null,
   maxBytes?: number,
+  customStatfs?: StatfsChecker,
 ): Promise<{ byteSize: number; sha256: string }> {
-  await mkdir(dirname(tempPath), { recursive: true });
+  const targetDir = dirname(tempPath);
+  await mkdir(targetDir, { recursive: true });
+  await checkDiskHeadroom(targetDir, expectedLength, 50 * 1024 * 1024, customStatfs);
   const writeStream = createWriteStream(tempPath, { flags: 'wx' });
   const hash = createHash('sha256');
   let byteSize = 0;
@@ -234,6 +269,7 @@ export async function streamUploadArtifact(
     tempPath,
     input.contentLength,
     config.artifactMaxBytes,
+    input.customStatfs,
   );
 
   const extFromOriginal = input.originalName ? extname(input.originalName) : '';
@@ -306,7 +342,7 @@ export async function streamUploadArtifact(
 export async function persistArtifact(
   config: ServiceConfig,
   database: ServiceDatabase,
-  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string },
+  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string; customStatfs?: StatfsChecker },
   fetcher: typeof fetch = fetch,
 ) {
   validateRemoteSourceUrl(input.sourceUrl, input.trustedBaseUrl);
@@ -337,6 +373,7 @@ export async function persistArtifact(
     tempPath,
     Number.isFinite(expectedLength) ? expectedLength : null,
     config.artifactMaxBytes,
+    input.customStatfs,
   );
 
   const parsedUrl = new URL(input.sourceUrl);

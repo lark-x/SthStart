@@ -552,6 +552,111 @@ test('Artifact 2.0: streaming upload computes SHA-256 and rejects whole-buffer r
   database.close();
 });
 
+test('Artifact 2.0: disk space headroom check detects insufficient space and cleans up temp files', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-space-'));
+  seedApp(database, 'space-app');
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+
+  // Mock statfs that reports only 1 MiB available disk space (less than 50 MiB safety margin)
+  const mockInsufficientStatfs = async () => ({ bavail: 256, bsize: 4096 }); // 1 MiB available
+
+  // 1. streamUploadArtifact fails with artifact_disk_space_insufficient
+  await assert.rejects(
+    async () => {
+      await streamUploadArtifact(config, database, {
+        appId: 'space-app',
+        stream: Readable.from([Buffer.from('data')]),
+        contentType: 'text/plain',
+        contentLength: 4,
+        customStatfs: mockInsufficientStatfs,
+      });
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'artifact_disk_space_insufficient');
+      return true;
+    },
+  );
+  // Verify no temp files remain
+  const appFiles = await readdir(resolve(artifactDir, 'space-app')).catch(() => []);
+  assert.equal(appFiles.some((f) => f.includes('.tmp')), false);
+
+  // 2. persistArtifact fails with artifact_disk_space_insufficient
+  await assert.rejects(
+    async () => {
+      await persistArtifact(
+        config,
+        database,
+        {
+          appId: 'space-app',
+          sourceUrl: 'http://engine.test:8188/view?filename=test.png',
+          trustedBaseUrl: 'http://engine.test:8188',
+          customStatfs: mockInsufficientStatfs,
+        },
+        async () => new Response(Buffer.from('bytes'), { status: 200, headers: { 'content-type': 'image/png' } }),
+      );
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'artifact_disk_space_insufficient');
+      return true;
+    },
+  );
+
+  database.close();
+});
+
+test('Artifact 2.0: upload route sanitizes error responses and handles malformed headers', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-err-'));
+  const token = seedApp(database, 'err-app');
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  // 1. Malformed URI encoding in X-Artifact-Original-Name
+  const malformedHeaderRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/artifacts/uploads',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'text/plain',
+      'x-artifact-original-name': '%E0%A4%A', // incomplete UTF-8 sequence
+    },
+    body: Buffer.from('test data'),
+  });
+  assert.equal(malformedHeaderRes.statusCode, 400);
+  assert.equal(malformedHeaderRes.json().error, 'invalid_filename');
+  assert.match(malformedHeaderRes.json().message, /文件名编码格式不正确/);
+
+  // 2. Public delete on pinned/referenced artifact cannot be bypassed with ?force=true
+  const up = await app.inject({
+    method: 'POST',
+    url: '/api/v1/artifacts/uploads',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'image/png',
+    },
+    body: Buffer.from([1, 2, 3]),
+  });
+  const artId = up.json().id;
+  await app.inject({
+    method: 'PUT',
+    url: `/api/v1/artifacts/${artId}/pin`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { pinned: true },
+  });
+
+  const deleteAttempt = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/artifacts/${artId}?force=true`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(deleteAttempt.statusCode, 409);
+  assert.equal(deleteAttempt.json().error, 'artifact_is_pinned');
+
+  await app.close();
+  database.close();
+});
+
 test('Artifact 2.0: generateMediaManifest computes streaming SHA-256 and handles missing files', async () => {
   const database = new ServiceDatabase();
   seedApp(database, 'manifest-app');
@@ -983,7 +1088,7 @@ test('Artifact 2.0: persistArtifact enforces trusted origin and blocks unauthori
 test('Artifact 2.0: large upload (>12 MiB) succeeds and post-insert quota failure triggers rollback', async () => {
   const database = new ServiceDatabase();
   const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-large-'));
-  const token = seedApp(database, 'large-app');
+  seedApp(database, 'large-app');
   const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
   const { app } = await createService({ config, database, secrets: new SecretStore({}) });
 

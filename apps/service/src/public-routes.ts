@@ -480,33 +480,38 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     return { ok: true };
   });
 
-  app.post('/api/v1/artifacts/uploads', { bodyLimit: 10 * 1024 * 1024 * 1024 }, async (request, reply) => {
+  app.post('/api/v1/artifacts/uploads', { bodyLimit: config.artifactMaxBytes }, async (request, reply) => {
     const identity = requireApp(database, 'artifact', request, reply);
     if (!identity) return;
 
-    const rawLength = request.headers['content-length'];
-    const parsedLength = rawLength ? Number.parseInt(rawLength, 10) : null;
-    const contentLength = Number.isFinite(parsedLength) ? parsedLength : null;
-
-    const rawOriginalName = request.headers['x-artifact-original-name'] ?? request.headers['x-original-filename'];
-    const originalName = typeof rawOriginalName === 'string'
-      ? decodeURIComponent(rawOriginalName).trim()
-      : null;
-
-    const rawRefType = request.headers['x-artifact-ref-type'];
-    const rawRefId = request.headers['x-artifact-ref-id'];
-    const refType = typeof rawRefType === 'string' ? rawRefType.trim() : null;
-    const refId = typeof rawRefId === 'string' ? rawRefId.trim() : null;
-
-    const contentType = request.headers['content-type'] || 'application/octet-stream';
-
-    const inputStream = (Buffer.isBuffer(request.body)
-      ? Readable.from(request.body as unknown as Uint8Array)
-      : (request.body && typeof (request.body as NodeJS.ReadableStream).pipe === 'function')
-        ? request.body as NodeJS.ReadableStream
-        : request.raw) as NodeJS.ReadableStream;
-
     try {
+      const rawLength = request.headers['content-length'];
+      const parsedLength = rawLength ? Number.parseInt(rawLength, 10) : null;
+      const contentLength = Number.isFinite(parsedLength) ? parsedLength : null;
+
+      let originalName: string | null = null;
+      const rawOriginalName = request.headers['x-artifact-original-name'] ?? request.headers['x-original-filename'];
+      if (typeof rawOriginalName === 'string') {
+        try {
+          originalName = decodeURIComponent(rawOriginalName).trim() || null;
+        } catch {
+          return reply.code(400).send({ error: 'invalid_filename', message: '文件名编码格式不正确。' });
+        }
+      }
+
+      const rawRefType = request.headers['x-artifact-ref-type'];
+      const rawRefId = request.headers['x-artifact-ref-id'];
+      const refType = typeof rawRefType === 'string' ? rawRefType.trim() : null;
+      const refId = typeof rawRefId === 'string' ? rawRefId.trim() : null;
+
+      const contentType = request.headers['content-type'] || 'application/octet-stream';
+
+      const inputStream = (Buffer.isBuffer(request.body)
+        ? Readable.from(request.body as unknown as Uint8Array)
+        : (request.body && typeof (request.body as NodeJS.ReadableStream).pipe === 'function')
+          ? request.body as NodeJS.ReadableStream
+          : request.raw) as NodeJS.ReadableStream;
+
       const artifact = await streamUploadArtifact(config, database, {
         appId: identity.id,
         stream: inputStream,
@@ -522,10 +527,13 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       if (msg === 'artifact_quota_exceeded' || msg === 'content_length_exceeded') {
         return reply.code(413).send({ error: 'artifact_quota_exceeded', message: '媒体存储已超过配额限制。' });
       }
+      if (msg === 'artifact_disk_space_insufficient') {
+        return reply.code(507).send({ error: 'artifact_disk_space_insufficient', message: '存储磁盘空间不足。' });
+      }
       if (msg === 'invalid_content_length') {
         return reply.code(400).send({ error: 'invalid_content_length', message: '实际上传字节数与 Content-Length 头不匹配。' });
       }
-      return reply.code(500).send({ error: 'upload_failed', message: msg });
+      return reply.code(500).send({ error: 'upload_failed', message: '文件上传处理失败。' });
     }
   });
 
@@ -652,14 +660,13 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     },
   );
 
-  app.delete<{ Params: { id: string }; Querystring: { force?: string } }>(
+  app.delete<{ Params: { id: string } }>(
     '/api/v1/artifacts/:id',
     async (request, reply) => {
       const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
-      const force = request.query.force === 'true' || request.query.force === '1';
       try {
-        const removed = await removeArtifact(database, request.params.id, identity.id, force);
+        const removed = await removeArtifact(database, request.params.id, identity.id, false);
         return removed ? { ok: true } : reply.code(404).send({ error: 'not_found' });
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
