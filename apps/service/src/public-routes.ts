@@ -18,16 +18,27 @@ import {
   revokeArtifactGrant,
   streamUploadArtifact,
 } from './artifacts.js';
+import {
+  cancelGenerationTask,
+  createGenerationTask,
+  getGenerationTask,
+  retryGenerationTask,
+  sanitizeErrorMessage,
+  subscribeGenerationEvents,
+} from './generation.js';
 import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } from './providers.js';
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
 
-function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifact' | 'persona', request: FastifyRequest, reply: FastifyReply) {
+function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifact' | 'generation' | 'persona', request: FastifyRequest, reply: FastifyReply) {
   const identity = authenticateApp(database, request);
   if (!identity) { void reply.code(401).send({ error: 'invalid_app_token' }); return null; }
-  const allowed = capability === 'artifact'
-    ? hasCapability(identity, 'artifact') || hasCapability(identity, 'image')
-    : hasCapability(identity, capability);
+  let allowed = hasCapability(identity, capability);
+  if (capability === 'artifact') {
+    allowed = hasCapability(identity, 'artifact') || hasCapability(identity, 'image');
+  } else if (capability === 'generation') {
+    allowed = hasCapability(identity, 'generation') || hasCapability(identity, 'image');
+  }
   if (!allowed) { void reply.code(403).send({ error: 'capability_denied' }); return null; }
   return identity;
 }
@@ -758,5 +769,142 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     database.connection.prepare('UPDATE app_personas SET source_version=?,snapshot_json=? WHERE app_id=? AND local_id=?')
       .run(version, JSON.stringify(snapshot), identity.id, request.params.localId);
     return { localId: request.params.localId, sourceVersion: version, snapshot };
+  });
+
+  // ── Universal Generation Tasks Public Endpoints ──
+
+  app.post<{
+    Body: {
+      purpose?: string;
+      workflowId?: string;
+      workflowVersion?: number;
+      inputs?: Record<string, unknown>;
+      seed?: number;
+    };
+  }>('/api/v1/generation/tasks', async (request, reply) => {
+    const identity = requireApp(database, 'generation', request, reply);
+    if (!identity) return;
+
+    const idempotencyKey = request.headers['idempotency-key'];
+    if (typeof idempotencyKey !== 'string' || idempotencyKey.length < 8) {
+      return reply.code(400).send({ error: 'idempotency_key_required', message: '必须提供长度至少 8 位的 Idempotency-Key 请求头。' });
+    }
+
+    try {
+      const body = safeJson(request.body);
+      const task = await createGenerationTask(
+        config,
+        database,
+        secrets,
+        {
+          appId: identity.id,
+          idempotencyKey,
+          purpose: typeof body.purpose === 'string' ? body.purpose : null,
+          workflowId: typeof body.workflowId === 'string' ? body.workflowId : null,
+          workflowVersion: typeof body.workflowVersion === 'number' ? body.workflowVersion : null,
+          inputs: safeJson(body.inputs),
+          seed: typeof body.seed === 'number' ? body.seed : null,
+        },
+        fetcher,
+      );
+      return reply.code(202).send(task);
+    } catch (error) {
+      const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'task_creation_failed');
+      const safeMsg = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+      if (code === 'idempotency_conflict') {
+        return reply.code(409).send({ error: 'idempotency_conflict', message: safeMsg });
+      }
+      if (code === 'generation_assignment_not_found' || code === 'workflow_not_found' || code === 'workflow_version_not_found') {
+        return reply.code(404).send({ error: code, message: safeMsg });
+      }
+      if (code === 'generation_engine_unavailable') {
+        return reply.code(503).send({ error: code, message: safeMsg });
+      }
+      return reply.code(400).send({ error: code, message: safeMsg });
+    }
+  });
+
+  app.get<{ Params: { id: string } }>('/api/v1/generation/tasks/:id', async (request, reply) => {
+    const identity = requireApp(database, 'generation', request, reply);
+    if (!identity) return;
+
+    const task = getGenerationTask(database, request.params.id, identity.id);
+    if (!task) return reply.code(404).send({ error: 'not_found' });
+    return task;
+  });
+
+  app.post<{ Params: { id: string } }>('/api/v1/generation/tasks/:id/cancel', async (request, reply) => {
+    const identity = requireApp(database, 'generation', request, reply);
+    if (!identity) return;
+
+    try {
+      const task = await cancelGenerationTask(config, database, secrets, request.params.id, identity.id, fetcher);
+      return task;
+    } catch (error) {
+      const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'cancel_failed');
+      if (code === 'not_found') return reply.code(404).send({ error: 'not_found' });
+      if (code === 'not_cancellable') return reply.code(409).send({ error: 'not_cancellable', message: '任务已处于终态，无法取消。' });
+      return reply.code(502).send({ error: 'cancel_failed', message: sanitizeErrorMessage(String(error)) });
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/api/v1/generation/tasks/:id/retry', async (request, reply) => {
+    const identity = requireApp(database, 'generation', request, reply);
+    if (!identity) return;
+
+    const newIdempotencyKey = typeof request.headers['idempotency-key'] === 'string'
+      ? request.headers['idempotency-key']
+      : null;
+
+    try {
+      const newTask = await retryGenerationTask(config, database, secrets, request.params.id, identity.id, newIdempotencyKey, fetcher);
+      return reply.code(202).send(newTask);
+    } catch (error) {
+      const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'retry_failed');
+      if (code === 'not_found') return reply.code(404).send({ error: 'not_found' });
+      return reply.code(400).send({ error: code, message: sanitizeErrorMessage(String(error)) });
+    }
+  });
+
+  app.get<{ Querystring: { after?: string; once?: string } }>('/api/v1/generation/events', async (request, reply) => {
+    const identity = requireApp(database, 'generation', request, reply);
+    if (!identity) return;
+
+    const lastEventIdHeader = request.headers['last-event-id'];
+    const afterParam = request.query.after;
+    const afterIdRaw = lastEventIdHeader ?? afterParam;
+    const afterId = afterIdRaw ? Number.parseInt(String(afterIdRaw), 10) : null;
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    });
+    reply.raw.write(': connected\n\n');
+
+    const unsubscribe = subscribeGenerationEvents(
+      database,
+      identity.id,
+      (event) => {
+        reply.raw.write(`id: ${event.id}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event.payload)}\n\n`);
+      },
+      afterId,
+    );
+
+    if (request.query.once === 'true') {
+      unsubscribe();
+      reply.raw.end();
+      return;
+    }
+
+    const heartbeat = setInterval(() => {
+      reply.raw.write(': heartbeat\n\n');
+    }, 15_000);
+
+    request.raw.once('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   });
 }

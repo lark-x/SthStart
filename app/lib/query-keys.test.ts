@@ -9,6 +9,11 @@ import {
   ArtifactDescriptorSchema,
   ArtifactGrantSchema,
   ArtifactReferenceSchema,
+  GenerationEngineSchema,
+  GenerationWorkflowSchema,
+  GenerationWorkflowVersionSchema,
+  GenerationTaskDescriptorSchema,
+  GenerationEventSchema,
 } from '@sthstart/contracts';
 
 test('query key factories generate structured immutable key tuples', () => {
@@ -128,4 +133,81 @@ test('shared typebox contracts validate structure correctly', () => {
     createdAt: '2026-08-27T00:00:00.000Z',
   };
   assert.equal(Value.Check(ArtifactReferenceSchema, validRef), true);
+
+  const validEngine = {
+    id: 'comfy-1',
+    name: 'Local ComfyUI',
+    kind: 'comfyui' as const,
+    baseUrl: 'http://127.0.0.1:8188',
+    enabled: true,
+    concurrencyLimit: 2,
+    createdAt: '2026-08-27T00:00:00.000Z',
+    updatedAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(GenerationEngineSchema, validEngine), true);
+
+  const validWorkflow = {
+    id: 'txt2img-flux',
+    name: 'Flux Txt2Img',
+    description: 'Flux model pipeline',
+    engineKind: 'comfyui' as const,
+    latestVersion: 1,
+    createdAt: '2026-08-27T00:00:00.000Z',
+    updatedAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(GenerationWorkflowSchema, validWorkflow), true);
+
+  const validWfVersion = {
+    workflowId: 'txt2img-flux',
+    version: 1,
+    engineId: 'comfy-1',
+    inputSchema: { prompt: { type: 'string' } },
+    nodeBindings: { prompt: ['6', 'inputs', 'text'] },
+    outputDeclarations: ['9'],
+    definition: { '6': { class_type: 'CLIPTextEncode', inputs: { text: '' } } },
+    isPublished: true,
+    createdAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(GenerationWorkflowVersionSchema, validWfVersion), true);
+
+  const validTask = {
+    id: 'gt-1',
+    appId: 'linshe',
+    engineId: 'comfy-1',
+    workflowId: 'txt2img-flux',
+    workflowVersion: 1,
+    purpose: 'image',
+    idempotencyKey: 'idemp-12345',
+    status: 'succeeded' as const,
+    actualSeed: 42,
+    providerTaskId: 'prompt-999',
+    errorCode: null,
+    errorMessage: null,
+    upstreamMayContinue: false,
+    cancellationScope: 'none' as const,
+    retryOf: null,
+    createdAt: '2026-08-27T00:00:00.000Z',
+    updatedAt: '2026-08-27T00:00:00.000Z',
+    finishedAt: '2026-08-27T00:00:05.000Z',
+    artifacts: [{
+      artifactId: 'art-1',
+      outputName: '9',
+      sortOrder: 0,
+      url: '/api/v1/artifacts/art-1',
+      byteSize: 1024,
+      contentType: 'image/png',
+      sha256: 'abc',
+    }],
+  };
+  assert.equal(Value.Check(GenerationTaskDescriptorSchema, validTask), true);
+
+  const validEvent = {
+    id: 1,
+    taskId: 'gt-1',
+    appId: 'linshe',
+    eventType: 'accepted',
+    payload: { status: 'accepted', providerTaskId: 'p-1' },
+    createdAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(GenerationEventSchema, validEvent), true);
 });

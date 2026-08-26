@@ -179,6 +179,62 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX IF NOT EXISTS idx_artifact_refs_app ON artifact_references(app_id, ref_type, ref_id)',
     'CREATE INDEX IF NOT EXISTS idx_artifact_grants_grantee ON artifact_grants(grantee_app_id, artifact_id)',
   ] },
+  { version: 6, name: 'generation-core-and-scheduler', statements: [
+    `CREATE TABLE IF NOT EXISTS generation_engines (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('comfyui','worker','cloud')),
+      base_url TEXT NOT NULL, credential_account TEXT, enabled INTEGER NOT NULL DEFAULT 1,
+      concurrency_limit INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS generation_workflows (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+      engine_kind TEXT NOT NULL CHECK(engine_kind IN ('comfyui','worker','cloud')),
+      latest_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS generation_workflow_versions (
+      workflow_id TEXT NOT NULL REFERENCES generation_workflows(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL, engine_id TEXT REFERENCES generation_engines(id) ON DELETE SET NULL,
+      input_schema_json TEXT NOT NULL DEFAULT '{}', node_bindings_json TEXT NOT NULL DEFAULT '{}',
+      output_declarations_json TEXT NOT NULL DEFAULT '[]', definition_json TEXT NOT NULL,
+      is_published INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+      PRIMARY KEY(workflow_id, version)
+    )`,
+    `CREATE TABLE IF NOT EXISTS app_generation_assignments (
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      purpose TEXT NOT NULL, workflow_id TEXT NOT NULL REFERENCES generation_workflows(id) ON DELETE CASCADE,
+      workflow_version INTEGER NOT NULL, engine_id TEXT NOT NULL REFERENCES generation_engines(id) ON DELETE CASCADE,
+      updated_at TEXT NOT NULL, PRIMARY KEY(app_id, purpose)
+    )`,
+    `CREATE TABLE IF NOT EXISTS generation_tasks (
+      id TEXT PRIMARY KEY, app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      engine_id TEXT NOT NULL REFERENCES generation_engines(id),
+      workflow_id TEXT NOT NULL REFERENCES generation_workflows(id),
+      workflow_version INTEGER NOT NULL, purpose TEXT NOT NULL DEFAULT 'default',
+      idempotency_key TEXT, request_hash TEXT NOT NULL, request_params_json TEXT NOT NULL,
+      workflow_snapshot_json TEXT NOT NULL, actual_seed INTEGER,
+      status TEXT NOT NULL CHECK(status IN ('queued','submitting','accepted','running','succeeded','failed','cancelled','abandoned')) DEFAULT 'queued',
+      provider_task_id TEXT, error_code TEXT, error_message TEXT,
+      upstream_may_continue INTEGER NOT NULL DEFAULT 0,
+      cancellation_scope TEXT NOT NULL DEFAULT 'none' CHECK(cancellation_scope IN ('none','queued','local-tracking')),
+      retry_of TEXT REFERENCES generation_tasks(id) ON DELETE SET NULL,
+      lease_owner TEXT, lease_expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT,
+      UNIQUE(app_id, idempotency_key)
+    )`,
+    `CREATE TABLE IF NOT EXISTS generation_task_artifacts (
+      task_id TEXT NOT NULL REFERENCES generation_tasks(id) ON DELETE CASCADE,
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+      output_name TEXT NOT NULL DEFAULT 'default', sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL, PRIMARY KEY(task_id, artifact_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS generation_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL REFERENCES generation_tasks(id) ON DELETE CASCADE,
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_gen_tasks_status ON generation_tasks(status, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_gen_tasks_app_created ON generation_tasks(app_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_gen_events_app_id ON generation_events(app_id, id)',
+    'CREATE INDEX IF NOT EXISTS idx_gen_events_task_id ON generation_events(task_id, id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

@@ -51,6 +51,7 @@ export const PublicCapabilitySchema = Type.Union([
   Type.Literal('vector'),
   Type.Literal('image'),
   Type.Literal('artifact'),
+  Type.Literal('generation'),
   Type.Literal('persona'),
   Type.Literal('logs'),
 ]);
@@ -215,6 +216,115 @@ export const ArtifactListResponseSchema = Type.Object({
   total: Type.Number(),
 });
 export type ArtifactListResponse = Static<typeof ArtifactListResponseSchema>;
+
+export const GenerationEngineKindSchema = Type.Union([
+  Type.Literal('comfyui'),
+  Type.Literal('worker'),
+  Type.Literal('cloud'),
+]);
+export type GenerationEngineKind = Static<typeof GenerationEngineKindSchema>;
+
+export const GenerationEngineSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  kind: GenerationEngineKindSchema,
+  baseUrl: Type.String(),
+  enabled: Type.Boolean(),
+  concurrencyLimit: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type GenerationEngine = Static<typeof GenerationEngineSchema>;
+
+export const GenerationWorkflowSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  description: Type.String(),
+  engineKind: GenerationEngineKindSchema,
+  latestVersion: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type GenerationWorkflow = Static<typeof GenerationWorkflowSchema>;
+
+export const GenerationWorkflowVersionSchema = Type.Object({
+  workflowId: Type.String(),
+  version: Type.Number(),
+  engineId: Type.Union([Type.String(), Type.Null()]),
+  inputSchema: Type.Record(Type.String(), Type.Unknown()),
+  nodeBindings: Type.Record(Type.String(), Type.Array(Type.String())),
+  outputDeclarations: Type.Array(Type.String()),
+  definition: Type.Record(Type.String(), Type.Unknown()),
+  isPublished: Type.Boolean(),
+  createdAt: Type.String(),
+});
+export type GenerationWorkflowVersion = Static<typeof GenerationWorkflowVersionSchema>;
+
+export const AppGenerationAssignmentSchema = Type.Object({
+  appId: Type.String(),
+  purpose: Type.String(),
+  workflowId: Type.String(),
+  workflowVersion: Type.Number(),
+  engineId: Type.String(),
+  updatedAt: Type.String(),
+});
+export type AppGenerationAssignment = Static<typeof AppGenerationAssignmentSchema>;
+
+export const GenerationTaskStatusSchema = Type.Union([
+  Type.Literal('queued'),
+  Type.Literal('submitting'),
+  Type.Literal('accepted'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled'),
+  Type.Literal('abandoned'),
+]);
+export type GenerationTaskStatus = Static<typeof GenerationTaskStatusSchema>;
+
+export const GenerationTaskArtifactSchema = Type.Object({
+  artifactId: Type.String(),
+  outputName: Type.String(),
+  sortOrder: Type.Number(),
+  url: Type.String(),
+  byteSize: Type.Number(),
+  contentType: Type.Union([Type.String(), Type.Null()]),
+  sha256: Type.Union([Type.String(), Type.Null()]),
+});
+export type GenerationTaskArtifact = Static<typeof GenerationTaskArtifactSchema>;
+
+export const GenerationTaskDescriptorSchema = Type.Object({
+  id: Type.String(),
+  appId: Type.String(),
+  engineId: Type.String(),
+  workflowId: Type.String(),
+  workflowVersion: Type.Number(),
+  purpose: Type.String(),
+  idempotencyKey: Type.Union([Type.String(), Type.Null()]),
+  status: GenerationTaskStatusSchema,
+  actualSeed: Type.Union([Type.Number(), Type.Null()]),
+  providerTaskId: Type.Union([Type.String(), Type.Null()]),
+  errorCode: Type.Union([Type.String(), Type.Null()]),
+  errorMessage: Type.Union([Type.String(), Type.Null()]),
+  upstreamMayContinue: Type.Boolean(),
+  cancellationScope: Type.Union([Type.Literal('none'), Type.Literal('queued'), Type.Literal('local-tracking')]),
+  retryOf: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  finishedAt: Type.Union([Type.String(), Type.Null()]),
+  artifacts: Type.Array(GenerationTaskArtifactSchema),
+});
+export type GenerationTaskDescriptor = Static<typeof GenerationTaskDescriptorSchema>;
+
+export const GenerationEventSchema = Type.Object({
+  id: Type.Number(),
+  taskId: Type.String(),
+  appId: Type.String(),
+  eventType: Type.String(),
+  payload: Type.Record(Type.String(), Type.Unknown()),
+  createdAt: Type.String(),
+});
+export type GenerationEvent = Static<typeof GenerationEventSchema>;
 
 export const StoragePolicySchema = Type.Object({
   appId: Type.String(),

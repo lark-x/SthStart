@@ -9,7 +9,7 @@ import { ServiceDatabase } from './database.js';
 test('fresh databases record an explicit migration baseline', () => {
   const database = new ServiceDatabase();
   const migrations = database.connection.prepare('SELECT version,name FROM schema_migrations').all() as Array<{ version: number; name: string }>;
-  assert.equal(migrations.length, 5);
+  assert.equal(migrations.length, 6);
   assert.equal(migrations[0].version, 1);
   assert.equal(migrations[0].name, 'initial');
   assert.equal(migrations[1].version, 2);
@@ -17,6 +17,7 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(migrations[2].name, 'shared-character-library');
   assert.equal(migrations[3].name, 'version-character-relationships');
   assert.equal(migrations[4].name, 'artifact-2.0-central-media');
+  assert.equal(migrations[5].name, 'generation-core-and-scheduler');
   const columns = database.connection.prepare('PRAGMA table_info(provider_profile_options)').all() as Array<{ name: string }>;
   assert.equal(columns.some((column) => column.name === 'capabilities_json'), true);
   database.close();
@@ -43,7 +44,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
   const migrated = new ServiceDatabase(path);
   const row = migrated.connection.prepare("SELECT capabilities_json FROM provider_profile_options WHERE profile_id='old'").get() as { capabilities_json: string };
   assert.deepEqual(JSON.parse(row.capabilities_json), ['text']);
-  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 5);
+  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 6);
   migrated.close();
 });
 

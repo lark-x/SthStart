@@ -97,6 +97,20 @@
 
 模板版本不可变。导入会复制固定版本快照，后续更新必须由应用显式调用 upgrade。应用手工角色只留在应用命名空间；发布为平台模板需要显式管理操作。模板只包含名称、人格提示词、外观提示词、头像引用、标签、来源和通用 metadata，不包含邻舍领域数据。
 
+### 通用生成任务核心 (Generation Core & Task Lifecycle)
+
+- `POST /api/v1/generation/tasks`：创建生成任务（要求 `generation` capability 与 `Idempotency-Key` 请求头）。支持按应用绑定的用途 (`purpose`) 或显式指定工作流版本，客户端只提供业务参数输入，不传递任意外部 URL 或本地路径。
+- `GET /api/v1/generation/tasks/:id`：查询任务状态与产出 artifacts（应用数据完全隔离）。
+- `POST /api/v1/generation/tasks/:id/cancel`：安全取消任务（排队中删除对应队列项，运行中标记 `abandoned` 且不调用全局中断）。
+- `POST /api/v1/generation/tasks/:id/retry`：基于历史任务输入重试生成，创建新任务并保留 `retryOf` 追溯关联。
+- `GET /api/v1/generation/events`：隔离的 SSE 事件流，支持 `Last-Event-ID` 断线续传、持久化事件回放与心跳维持。
+
+#### 任务状态流转与安全保障
+1. 状态生命周期：`queued -> submitting -> accepted -> running -> succeeded | failed | cancelled | abandoned`。
+2. **提交不确定性保护**：当向上游提交任务发生网络超时等未决错误时，任务状态置为 `abandoned`，错误码标记为 `submission_outcome_unknown`，严格禁止自动重复提交以避免重复扣费/渲染。
+3. **幂等与冲突判定**：同一应用的同一幂等键，完全相同的输入参数返回已有任务；不同参数明确返回 409 `idempotency_conflict`。
+4. **工作流安全要求**：仅接受 ComfyUI API 格式 JSON；直接拒绝 UI 导出的含 nodes 数组的 GUI 格式。发布版本不可变，被任务引用后不可被覆盖。
+
 ## 邻舍渐进迁移
 
 根目录 `.env` 是 SthStart 集成配置的单一来源：

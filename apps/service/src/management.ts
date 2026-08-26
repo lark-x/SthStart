@@ -6,6 +6,7 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
+import { validateComfyApiJson } from './generation.js';
 
 function appRows(database: ServiceDatabase): ManagedApp[] {
   const rows = database.connection.prepare('SELECT * FROM managed_apps ORDER BY created_at').all() as Record<string, unknown>[];
@@ -331,6 +332,185 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       database.connection.prepare('UPDATE app_personas SET published_persona_id=? WHERE app_id=? AND local_id=?').run(id, appId, localId);
     });
     return reply.code(201).send({ id, version: 1 });
+  });
+
+  // ── Generation Engines Admin ──
+  app.get('/api/v1/admin/generation/engines', async () => ({
+    items: database.connection.prepare('SELECT id, name, kind, base_url, enabled, concurrency_limit, created_at, updated_at FROM generation_engines ORDER BY name').all(),
+  }));
+
+  app.post<{
+    Body: {
+      id?: string;
+      name?: string;
+      kind?: 'comfyui' | 'worker' | 'cloud';
+      baseUrl?: string;
+      secret?: string;
+      enabled?: boolean;
+      concurrencyLimit?: number;
+    };
+  }>('/api/v1/admin/generation/engines', async (request, reply) => {
+    const { id, name, kind = 'comfyui', baseUrl, secret, enabled = true, concurrencyLimit = 1 } = request.body ?? {};
+    if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(kind)) {
+      return reply.code(400).send({ error: 'invalid_engine' });
+    }
+    let normalizedUrl: string;
+    try { normalizedUrl = new URL(baseUrl ?? '').toString().replace(/\/+$/, ''); }
+    catch { return reply.code(400).send({ error: 'invalid_url', message: '请提供有效的 HTTP(S) 地址。' }); }
+
+    const account = `engine:${id}`;
+    if (secret) {
+      try { await secrets.set(account, secret); }
+      catch (err) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(err) }); }
+    }
+
+    const now = nowIso();
+    database.connection.prepare(`
+      INSERT INTO generation_engines (id, name, kind, base_url, credential_account, enabled, concurrency_limit, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
+      credential_account=excluded.credential_account, enabled=excluded.enabled, concurrency_limit=excluded.concurrency_limit, updated_at=excluded.updated_at
+    `).run(id, name.trim(), kind, normalizedUrl, secret ? account : null, enabled ? 1 : 0, Math.max(1, concurrencyLimit), now, now);
+
+    return reply.code(201).send({ id });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/admin/generation/engines/:id', async (request, reply) => {
+    const inUse = database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE engine_id = ?').get(request.params.id);
+    if (inUse) return reply.code(409).send({ error: 'engine_in_use', message: '该生成引擎正被应用绑定使用，请先更换绑定。' });
+    database.connection.prepare('DELETE FROM generation_engines WHERE id = ?').run(request.params.id);
+    return { ok: true };
+  });
+
+  // ── Generation Workflows & Versions Admin ──
+  app.get('/api/v1/admin/generation/workflows', async () => {
+    const workflows = database.connection.prepare('SELECT * FROM generation_workflows ORDER BY name').all() as Array<Record<string, unknown>>;
+    const versions = database.connection.prepare('SELECT * FROM generation_workflow_versions ORDER BY version DESC').all() as Array<Record<string, unknown>>;
+    return {
+      items: workflows.map((wf) => ({
+        ...wf,
+        versions: versions.filter((v) => v.workflow_id === wf.id).map((v) => ({
+          version: v.version,
+          engineId: v.engine_id,
+          inputSchema: JSON.parse(String(v.input_schema_json ?? '{}')),
+          nodeBindings: JSON.parse(String(v.node_bindings_json ?? '{}')),
+          outputDeclarations: JSON.parse(String(v.output_declarations_json ?? '[]')),
+          isPublished: Boolean(v.is_published),
+          createdAt: v.created_at,
+        })),
+      })),
+    };
+  });
+
+  app.post<{
+    Body: {
+      id?: string;
+      name?: string;
+      description?: string;
+      engineKind?: 'comfyui' | 'worker' | 'cloud';
+    };
+  }>('/api/v1/admin/generation/workflows', async (request, reply) => {
+    const { id, name, description = '', engineKind = 'comfyui' } = request.body ?? {};
+    if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(engineKind)) {
+      return reply.code(400).send({ error: 'invalid_workflow' });
+    }
+    const now = nowIso();
+    database.connection.prepare(`
+      INSERT INTO generation_workflows (id, name, description, engine_kind, latest_version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at
+    `).run(id, name.trim(), description.trim(), engineKind, now, now);
+    return reply.code(201).send({ id });
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      engineId?: string;
+      inputSchema?: Record<string, unknown>;
+      nodeBindings?: Record<string, string[]>;
+      outputDeclarations?: string[];
+      definition?: unknown;
+    };
+  }>('/api/v1/admin/generation/workflows/:id/versions', async (request, reply) => {
+    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number } | undefined;
+    if (!wf) return reply.code(404).send({ error: 'workflow_not_found' });
+
+    let validatedDefinition: Record<string, unknown>;
+    try {
+      validatedDefinition = validateComfyApiJson(request.body?.definition);
+    } catch (err) {
+      return reply.code(400).send({ error: 'invalid_workflow_format', message: err instanceof Error ? err.message : String(err) });
+    }
+
+    const version = Number(wf.latest_version) + 1;
+    const now = nowIso();
+    const inputSchema = request.body?.inputSchema ?? {};
+    const nodeBindings = request.body?.nodeBindings ?? {};
+    const outputDeclarations = request.body?.outputDeclarations ?? [];
+
+    database.transaction(() => {
+      database.connection.prepare(`
+        INSERT INTO generation_workflow_versions (
+          workflow_id, version, engine_id, input_schema_json, node_bindings_json,
+          output_declarations_json, definition_json, is_published, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(
+        request.params.id,
+        version,
+        request.body?.engineId?.trim() || null,
+        JSON.stringify(inputSchema),
+        JSON.stringify(nodeBindings),
+        JSON.stringify(outputDeclarations),
+        JSON.stringify(validatedDefinition),
+        now,
+      );
+      database.connection.prepare('UPDATE generation_workflows SET latest_version = ?, updated_at = ? WHERE id = ?')
+        .run(version, now, request.params.id);
+    });
+
+    return reply.code(201).send({ workflowId: request.params.id, version });
+  });
+
+  // ── Generation Assignments Admin ──
+  app.get('/api/v1/admin/generation/assignments', async () => ({
+    items: database.connection.prepare('SELECT * FROM app_generation_assignments').all(),
+  }));
+
+  app.put<{
+    Params: { appId: string };
+    Body: {
+      assignments: Array<{
+        purpose: string;
+        workflowId: string;
+        workflowVersion?: number;
+        engineId: string;
+      }>;
+    };
+  }>('/api/v1/admin/apps/:appId/generation-assignments', async (request, reply) => {
+    const appRow = database.connection.prepare('SELECT 1 FROM managed_apps WHERE id = ?').get(request.params.appId);
+    if (!appRow) return reply.code(404).send({ error: 'app_not_found' });
+
+    const list = Array.isArray(request.body?.assignments) ? request.body.assignments : [];
+    const now = nowIso();
+
+    database.transaction(() => {
+      database.connection.prepare('DELETE FROM app_generation_assignments WHERE app_id = ?').run(request.params.appId);
+      for (const item of list) {
+        const wf = database.connection.prepare('SELECT latest_version FROM generation_workflows WHERE id = ?').get(item.workflowId) as { latest_version: number } | undefined;
+        if (!wf) continue;
+        const ver = item.workflowVersion ?? wf.latest_version;
+        database.connection.prepare(`
+          INSERT INTO app_generation_assignments (app_id, purpose, workflow_id, workflow_version, engine_id, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(request.params.appId, item.purpose || 'default', item.workflowId, ver, item.engineId, now);
+      }
+    });
+
+    return {
+      appId: request.params.appId,
+      assignments: database.connection.prepare('SELECT * FROM app_generation_assignments WHERE app_id = ?').all(request.params.appId),
+    };
   });
 }
 

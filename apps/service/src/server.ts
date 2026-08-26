@@ -14,6 +14,7 @@ import { hashToken, issueToken, SecretStore } from './security.js';
 import { registerManagementRoutes } from './management.js';
 import { registerPublicRoutes } from './public-routes.js';
 import { enforceAllRetention, reconcileArtifacts } from './artifacts.js';
+import { activeGenerationExecutions, reconcileGenerationTasks } from './generation.js';
 import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
@@ -151,6 +152,7 @@ export async function createService(options: ServiceOptions = {}) {
       { id: 'narrative-archive', version: '1.0.0', description: '多作品剧情导入、回顾、检索与证据化知识。' },
       { id: 'runtime-manager', version: '1.0.0', description: '托管本地应用进程、运行配置与有界日志。' },
       { id: 'artifact-service', version: '2.0.0', description: '基于流式处理、分层授权与 50 GiB 配额保护的中央媒体库。' },
+      { id: 'generation-core', version: '1.0.0', description: '通用生成任务核心、版本化工作流引擎与隔离事件流。' },
     ],
   }));
 
@@ -176,10 +178,18 @@ export async function createService(options: ServiceOptions = {}) {
       runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-reconcile', stream: 'system', level: 'warn', message: `媒体库巡检异常：${msg}`, force: true });
     }
   });
+  const genReconcilePromise = reconcileGenerationTasks(config, database, secrets, options.fetcher).catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes('database is not open')) {
+      runtimeLogs.append({ appId: 'sthstart', serviceId: 'generation-reconcile', stream: 'system', level: 'warn', message: `生成任务巡检异常：${msg}`, force: true });
+    }
+  });
 
   app.addHook('onClose', async () => {
     clearInterval(retentionTimer);
     await reconcilePromise.catch(() => {});
+    await genReconcilePromise.catch(() => {});
+    await Promise.allSettled(Array.from(activeGenerationExecutions));
     await runtimeManager.close();
     if (!options.database) database.close();
     if (!options.narrativeDatabase) narrativeDatabase.close();
