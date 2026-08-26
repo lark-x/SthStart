@@ -177,14 +177,19 @@ test('image task lookup handles execution error and artifact download failure wi
   const database = new ServiceDatabase(); const token = seedApp(database, 'lookup-app'); const now = nowIso();
   database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-lookup', 'Image', 'image', 'http://image-lookup.test', null, null, now, now);
 
-  // 1. History reports execution error -> task marked failed
+  // 1. History reports execution error EVEN WITH outputs present -> must skip downloads and mark task failed
+  let viewCalled = false;
   let fetcher: typeof fetch = async (input) => {
     const url = String(input);
+    if (url.includes('/view')) {
+      viewCalled = true;
+      return new Response('fake-image-bytes', { status: 200, headers: { 'content-type': 'image/png' } });
+    }
     if (url.includes('/history/task-err')) {
       return Response.json({
         'task-err': {
           status: { status_str: 'error', messages: [['execution_error', { exception_message: 'CUDA out of memory' }]] },
-          outputs: {},
+          outputs: { 9: { images: [{ filename: 'partial-output.png', type: 'output' }] } },
         },
       });
     }
@@ -197,9 +202,12 @@ test('image task lookup handles execution error and artifact download failure wi
   assert.equal(lookup.statusCode, 200);
   assert.equal(lookup.json().status, 'failed');
   assert.match(lookup.json().error, /CUDA out of memory|error/);
+  assert.equal(lookup.json().artifacts.length, 0);
+  assert.equal(viewCalled, false, 'Should not attempt to download images when execution error occurred');
   await app.close();
 
   // 2. History returns image but /view download returns 404/500 -> task marked failed with artifact_download_failed
+  let dlAttempted = false;
   fetcher = async (input) => {
     const url = String(input);
     if (url.includes('/history/task-dl-fail')) {
@@ -210,6 +218,7 @@ test('image task lookup handles execution error and artifact download failure wi
       });
     }
     if (url.includes('/view')) {
+      dlAttempted = true;
       return new Response('File not ready', { status: 404 });
     }
     return Response.json({ prompt_id: 'task-dl-fail' });
@@ -220,6 +229,7 @@ test('image task lookup handles execution error and artifact download failure wi
   lookup = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
   assert.equal(lookup.statusCode, 200);
   assert.equal(lookup.json().status, 'failed');
+  assert.equal(dlAttempted, true, 'Should have attempted /view download using injected fetcher');
   assert.match(lookup.json().error, /产物下载失败/);
   assert.equal(lookup.json().artifacts.length, 0);
   await app.close();

@@ -9,10 +9,11 @@ export async function persistArtifact(
   config: ServiceConfig,
   database: ServiceDatabase,
   input: { appId: string; taskId: string; sourceUrl: string; contentType?: string | null },
+  fetcher: typeof fetch = fetch,
 ) {
   const existing = database.connection.prepare('SELECT id FROM artifacts WHERE task_id=? AND provider_url=?').get(input.taskId, input.sourceUrl) as { id: string } | undefined;
   if (existing) return existing.id;
-  const response = await fetch(input.sourceUrl, { signal: AbortSignal.timeout(120_000) });
+  const response = await fetcher(input.sourceUrl, { signal: AbortSignal.timeout(120_000) });
   if (!response.ok) throw new Error(`产物下载失败 (HTTP ${response.status})`);
   const bytes = Buffer.from(await response.arrayBuffer());
   const id = randomUUID();

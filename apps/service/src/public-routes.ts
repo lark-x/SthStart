@@ -262,45 +262,60 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
           if (historyResponse.ok) {
             const history = safeJson(await historyResponse.json().catch(() => ({})));
             const result = safeJson(history[String(task.provider_task_id)]);
+            let hasExecutionError = false;
+            let executionErrorMessage = '';
             if (result.status && typeof result.status === 'object') {
               const statusObj = result.status as Record<string, unknown>;
-              if (statusObj.status_str === 'error' || (Array.isArray(statusObj.messages) && statusObj.messages.some((m) => Array.isArray(m) && m[0] === 'execution_error'))) {
-                const errMsg = String(statusObj.status_str || 'execution_error');
-                database.connection.prepare("UPDATE image_tasks SET status='failed',error=?,upstream_may_continue=0,updated_at=? WHERE id=?")
-                  .run(`ComfyUI 执行失败：${errMsg}`, nowIso(), request.params.id);
+              const isErr = statusObj.status_str === 'error' || (Array.isArray(statusObj.messages) && statusObj.messages.some((m) => Array.isArray(m) && m[0] === 'execution_error'));
+              if (isErr) {
+                hasExecutionError = true;
+                let detail = '';
+                if (Array.isArray(statusObj.messages)) {
+                  const errItem = statusObj.messages.find((m) => Array.isArray(m) && m[0] === 'execution_error');
+                  if (errItem && Array.isArray(errItem) && errItem[1] && typeof errItem[1] === 'object') {
+                    const payload = errItem[1] as Record<string, unknown>;
+                    detail = String(payload.exception_message ?? payload.message ?? '');
+                  }
+                }
+                executionErrorMessage = detail || String(statusObj.status_str || 'execution_error');
               }
             }
-            const outputs = safeJson(result.outputs);
-            const images = Object.values(outputs).flatMap((output) => {
-              const value = safeJson(output).images;
-              return Array.isArray(value) ? value.map(safeJson) : [];
-            });
-            if (images.length) {
-              let persistFailed = false;
-              let persistError = '';
-              for (const image of images) {
-                const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
-                try {
-                  await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png' });
-                } catch (pErr) {
-                  persistFailed = true;
-                  persistError = pErr instanceof Error ? pErr.message : String(pErr);
-                  break;
-                }
-              }
-              if (persistFailed) {
-                database.connection.prepare("UPDATE image_tasks SET status='failed',error=?,upstream_may_continue=0,updated_at=? WHERE id=?")
-                  .run(`产物下载失败：${persistError}`, nowIso(), request.params.id);
-              } else {
-                database.connection.prepare("UPDATE image_tasks SET status='complete',upstream_may_continue=0,error=NULL,updated_at=? WHERE id=?")
-                  .run(nowIso(), request.params.id);
-              }
+            if (hasExecutionError) {
+              database.connection.prepare("UPDATE image_tasks SET status='failed',error=?,upstream_may_continue=0,updated_at=? WHERE id=?")
+                .run(`ComfyUI 执行失败：${sanitizeMessage(executionErrorMessage).slice(0, 300)}`, nowIso(), request.params.id);
             } else {
-              const queueResponse = await fetcher(`${profile.baseUrl}/queue`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(5_000) }).catch(() => null);
-              if (queueResponse && queueResponse.ok) {
-                const queue = safeJson(await queueResponse.json().catch(() => ({})));
-                if (queueIds(queue.queue_running).has(String(task.provider_task_id))) {
-                  database.connection.prepare("UPDATE image_tasks SET status='running',updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+              const outputs = safeJson(result.outputs);
+              const images = Object.values(outputs).flatMap((output) => {
+                const value = safeJson(output).images;
+                return Array.isArray(value) ? value.map(safeJson) : [];
+              });
+              if (images.length) {
+                let persistFailed = false;
+                let persistError = '';
+                for (const image of images) {
+                  const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
+                  try {
+                    await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png' }, fetcher);
+                  } catch (pErr) {
+                    persistFailed = true;
+                    persistError = pErr instanceof Error ? pErr.message : String(pErr);
+                    break;
+                  }
+                }
+                if (persistFailed) {
+                  database.connection.prepare("UPDATE image_tasks SET status='failed',error=?,upstream_may_continue=0,updated_at=? WHERE id=?")
+                    .run(`产物下载失败：${sanitizeMessage(persistError)}`, nowIso(), request.params.id);
+                } else {
+                  database.connection.prepare("UPDATE image_tasks SET status='complete',upstream_may_continue=0,error=NULL,updated_at=? WHERE id=?")
+                    .run(nowIso(), request.params.id);
+                }
+              } else {
+                const queueResponse = await fetcher(`${profile.baseUrl}/queue`, { headers: upstreamHeaders(profile.secret, false), signal: AbortSignal.timeout(5_000) }).catch(() => null);
+                if (queueResponse && queueResponse.ok) {
+                  const queue = safeJson(await queueResponse.json().catch(() => ({})));
+                  if (queueIds(queue.queue_running).has(String(task.provider_task_id))) {
+                    database.connection.prepare("UPDATE image_tasks SET status='running',updated_at=? WHERE id=?").run(nowIso(), request.params.id);
+                  }
                 }
               }
             }
