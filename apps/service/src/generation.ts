@@ -52,6 +52,84 @@ export function validateComfyApiJson(definition: unknown): Record<string, unknow
   return raw;
 }
 
+export function validateWorkflowVersionStructure(
+  definition: unknown,
+  inputSchema: unknown,
+  nodeBindings: unknown,
+  outputDeclarations: unknown,
+): {
+  validatedDefinition: Record<string, unknown>;
+  validatedInputSchema: Record<string, unknown>;
+  validatedNodeBindings: Record<string, string[]>;
+  validatedOutputDeclarations: string[];
+} {
+  const validatedDefinition = validateComfyApiJson(definition);
+
+  if (!inputSchema || typeof inputSchema !== 'object' || Array.isArray(inputSchema)) {
+    const err = new Error('输入结构 inputSchema 必须为合法的 JSON 对象。');
+    (err as { code?: string }).code = 'invalid_input_schema';
+    throw err;
+  }
+
+  if (!nodeBindings || typeof nodeBindings !== 'object' || Array.isArray(nodeBindings)) {
+    const err = new Error('节点绑定 nodeBindings 必须为合法的 JSON 对象。');
+    (err as { code?: string }).code = 'invalid_node_bindings';
+    throw err;
+  }
+
+  const validatedNodeBindings: Record<string, string[]> = {};
+  for (const [key, pathSegments] of Object.entries(nodeBindings)) {
+    if (!Array.isArray(pathSegments) || pathSegments.length !== 3 || pathSegments[1] !== 'inputs' || typeof pathSegments[0] !== 'string' || typeof pathSegments[2] !== 'string') {
+      const err = new Error(`节点绑定 "${key}" 的目标路径必须为 [nodeId, "inputs", paramName] 格式。`);
+      (err as { code?: string }).code = 'invalid_node_binding_path';
+      throw err;
+    }
+    const [nodeId, , paramName] = pathSegments;
+    const targetNode = validatedDefinition[nodeId];
+    if (!targetNode || typeof targetNode !== 'object' || Array.isArray(targetNode)) {
+      const err = new Error(`节点绑定 "${key}" 引用的节点 ID "${nodeId}" 在工作流定义中不存在。`);
+      (err as { code?: string }).code = 'binding_node_not_found';
+      throw err;
+    }
+    const inputsObj = (targetNode as Record<string, unknown>).inputs;
+    if (!inputsObj || typeof inputsObj !== 'object' || Array.isArray(inputsObj)) {
+      const err = new Error(`节点绑定 "${key}" 引用的节点 "${nodeId}" 缺少有效的 inputs 属性。`);
+      (err as { code?: string }).code = 'binding_node_inputs_invalid';
+      throw err;
+    }
+    validatedNodeBindings[key] = [nodeId, 'inputs', paramName];
+  }
+
+  if (!Array.isArray(outputDeclarations) || outputDeclarations.length === 0) {
+    const err = new Error('输出声明 outputDeclarations 必须为非空数组。');
+    (err as { code?: string }).code = 'output_declarations_required';
+    throw err;
+  }
+
+  const validatedOutputDeclarations: string[] = [];
+  for (const outId of outputDeclarations) {
+    if (typeof outId !== 'string' || !outId.trim()) {
+      const err = new Error('输出声明中的节点 ID 必须为有效字符串。');
+      (err as { code?: string }).code = 'invalid_output_declaration';
+      throw err;
+    }
+    const trimmed = outId.trim();
+    if (!validatedDefinition[trimmed]) {
+      const err = new Error(`输出声明引用的节点 ID "${trimmed}" 在工作流定义中不存在。`);
+      (err as { code?: string }).code = 'output_node_not_found';
+      throw err;
+    }
+    validatedOutputDeclarations.push(trimmed);
+  }
+
+  return {
+    validatedDefinition,
+    validatedInputSchema: inputSchema as Record<string, unknown>,
+    validatedNodeBindings,
+    validatedOutputDeclarations,
+  };
+}
+
 export function renderWorkflowSnapshot(
   definition: Record<string, unknown>,
   nodeBindings: Record<string, string[]>,
@@ -118,24 +196,34 @@ export function subscribeGenerationEvents(
   listener: (event: GenerationEvent) => void,
   afterId?: number | null,
 ): () => void {
+  const seenIds = new Set<number>();
+  const handler = (event: GenerationEvent) => {
+    if (!seenIds.has(event.id)) {
+      seenIds.add(event.id);
+      listener(event);
+    }
+  };
+  generationEventBus.on(`event:${appId}`, handler);
+
   if (afterId != null && Number.isFinite(afterId)) {
     const rows = database.connection.prepare(
       'SELECT * FROM generation_events WHERE app_id = ? AND id > ? ORDER BY id ASC',
     ).all(appId, afterId) as Array<{ id: number; task_id: string; app_id: string; event_type: string; payload_json: string; created_at: string }>;
     for (const row of rows) {
-      listener({
-        id: row.id,
-        taskId: row.task_id,
-        appId: row.app_id,
-        eventType: row.event_type,
-        payload: JSON.parse(row.payload_json),
-        createdAt: row.created_at,
-      });
+      if (!seenIds.has(row.id)) {
+        seenIds.add(row.id);
+        listener({
+          id: row.id,
+          taskId: row.task_id,
+          appId: row.app_id,
+          eventType: row.event_type,
+          payload: JSON.parse(row.payload_json),
+          createdAt: row.created_at,
+        });
+      }
     }
   }
 
-  const handler = (event: GenerationEvent) => listener(event);
-  generationEventBus.on(`event:${appId}`, handler);
   return () => {
     generationEventBus.off(`event:${appId}`, handler);
   };
@@ -150,27 +238,49 @@ export interface CreateTaskOptions {
   inputs?: Record<string, unknown>;
   seed?: number | null;
   retryOf?: string | null;
+  isInternal?: boolean;
 }
 
 export function resolveWorkflowAndEngine(
   database: ServiceDatabase,
   appId: string,
-  options: { purpose?: string | null; workflowId?: string | null; workflowVersion?: number | null },
+  options: { purpose?: string | null; workflowId?: string | null; workflowVersion?: number | null; isInternal?: boolean },
 ) {
-  const purpose = options.purpose?.trim() || 'default';
-  let workflowId = options.workflowId?.trim();
-  let version = options.workflowVersion;
-  let engineId: string | null = null;
+  if (!options.isInternal) {
+    if (options.workflowId || options.workflowVersion != null) {
+      const err = new Error('工作流由管理控制台统一分配，客户端不可直接指定 workflowId 或 workflowVersion。');
+      (err as { code?: string }).code = 'workflow_assignment_managed';
+      throw err;
+    }
+  }
 
-  if (!workflowId) {
-    let assignment = database.connection.prepare(
+  const purpose = options.purpose?.trim() || 'default';
+  let workflowId: string;
+  let version: number;
+  let engineId: string;
+
+  if (options.isInternal && options.workflowId) {
+    workflowId = options.workflowId;
+    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(workflowId) as { id: string; name: string; engine_kind: string; latest_version: number } | undefined;
+    if (!wf) {
+      const err = new Error(`未找到指定的工作流 ${workflowId}。`);
+      (err as { code?: string }).code = 'workflow_not_found';
+      throw err;
+    }
+    version = options.workflowVersion ?? wf.latest_version;
+    const ver = database.connection.prepare(
+      'SELECT engine_id FROM generation_workflow_versions WHERE workflow_id = ? AND version = ? AND is_published = 1',
+    ).get(workflowId, version) as { engine_id: string | null } | undefined;
+    if (!ver) {
+      const err = new Error(`未找到工作流 ${workflowId} 的已发布版本 v${version}。`);
+      (err as { code?: string }).code = 'workflow_version_not_found';
+      throw err;
+    }
+    engineId = ver.engine_id || (database.connection.prepare("SELECT id FROM generation_engines WHERE enabled = 1 ORDER BY created_at ASC LIMIT 1").get() as { id: string } | undefined)?.id || '';
+  } else {
+    const assignment = database.connection.prepare(
       'SELECT * FROM app_generation_assignments WHERE app_id = ? AND purpose = ?',
     ).get(appId, purpose) as { workflow_id: string; workflow_version: number; engine_id: string } | undefined;
-    if (!assignment && purpose !== 'default') {
-      assignment = database.connection.prepare(
-        'SELECT * FROM app_generation_assignments WHERE app_id = ? AND purpose = ?',
-      ).get(appId, 'default') as { workflow_id: string; workflow_version: number; engine_id: string } | undefined;
-    }
     if (!assignment) {
       const err = new Error(`未为应用 ${appId} 配置用途 ${purpose} 的生成工作流绑定。`);
       (err as { code?: string }).code = 'generation_assignment_not_found';
@@ -188,21 +298,15 @@ export function resolveWorkflowAndEngine(
     throw err;
   }
 
-  const verNum = version ?? wf.latest_version;
   const ver = database.connection.prepare(
     'SELECT * FROM generation_workflow_versions WHERE workflow_id = ? AND version = ? AND is_published = 1',
-  ).get(workflowId, verNum) as Record<string, unknown> | undefined;
+  ).get(workflowId, version) as Record<string, unknown> | undefined;
   if (!ver) {
-    const err = new Error(`未找到工作流 ${workflowId} 的已发布版本 v${verNum}。`);
+    const err = new Error(`未找到工作流 ${workflowId} 的已发布版本 v${version}。`);
     (err as { code?: string }).code = 'workflow_version_not_found';
     throw err;
   }
 
-  if (!engineId) engineId = ver.engine_id ? String(ver.engine_id) : null;
-  if (!engineId) {
-    const defaultEngine = database.connection.prepare("SELECT id FROM generation_engines WHERE enabled = 1 ORDER BY created_at ASC LIMIT 1").get() as { id: string } | undefined;
-    if (defaultEngine) engineId = defaultEngine.id;
-  }
   if (!engineId) {
     const err = new Error('未配置可用的生成引擎。');
     (err as { code?: string }).code = 'generation_engine_unavailable';
@@ -221,7 +325,7 @@ export function resolveWorkflowAndEngine(
       id: wf.id,
       name: wf.name,
       engineKind: wf.engine_kind,
-      version: verNum,
+      version,
       inputSchema: JSON.parse(String(ver.input_schema_json ?? '{}')) as Record<string, unknown>,
       nodeBindings: JSON.parse(String(ver.node_bindings_json ?? '{}')) as Record<string, string[]>,
       outputDeclarations: JSON.parse(String(ver.output_declarations_json ?? '[]')) as string[],
@@ -364,58 +468,79 @@ export async function createGenerationTask(
   });
 
   // Asynchronously trigger scheduling
-  setImmediate(() => {
-    const p = processTaskExecution(config, database, secrets, id, fetcher)
-      .catch((err) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes('database is not open')) {
-          console.error(`[generation] task ${id} background error:`, err);
-        }
-      })
-      .finally(() => activeGenerationExecutions.delete(p));
-    activeGenerationExecutions.add(p);
-  });
+  const p = (async () => {
+    await new Promise((r) => setImmediate(r));
+    await processTaskExecution(config, database, secrets, id, fetcher);
+  })()
+    .catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("database is not open")) {
+        console.error(`[generation] task ${id} background error:`, err);
+      }
+    })
+    .finally(() => activeGenerationExecutions.delete(p));
+  activeGenerationExecutions.add(p);
 
   return getGenerationTask(database, id, options.appId)!;
 }
 
-export async function processTaskExecution(
+export async function executeQueuedTask(
   config: ServiceConfig,
   database: ServiceDatabase,
   secrets: SecretStore,
   taskId: string,
   fetcher: typeof fetch = fetch,
 ): Promise<void> {
-  try {
-  const taskRow = database.connection.prepare('SELECT * FROM generation_tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
-  if (!taskRow || taskRow.status !== 'queued') return;
+  const leaseOwner = randomUUID();
+  const leaseExpiresAt = new Date(Date.now() + 60_000).toISOString();
+  const now = nowIso();
 
-  const engineId = String(taskRow.engine_id);
-  const engineRow = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ?').get(engineId) as Record<string, unknown> | undefined;
-  if (!engineRow || !engineRow.enabled) {
-    database.connection.prepare("UPDATE generation_tasks SET status = 'failed', error_code = 'generation_engine_unavailable', error_message = '生成引擎不可用', updated_at = ? WHERE id = ?").run(nowIso(), taskId);
-    recordGenerationEvent(database, { taskId, appId: String(taskRow.app_id), eventType: 'failed', payload: { errorCode: 'generation_engine_unavailable', errorMessage: '生成引擎不可用' } });
+  // Atomic claim: only succeed if task is currently queued
+  const claimResult = database.connection.prepare(`
+    UPDATE generation_tasks
+    SET status = 'submitting', lease_owner = ?, lease_expires_at = ?, updated_at = ?
+    WHERE id = ? AND status = 'queued'
+  `).run(leaseOwner, leaseExpiresAt, now, taskId);
+
+  if (claimResult.changes === 0) {
     return;
   }
 
-  const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, '');
+  const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
+  if (!taskRow) return;
+
+  const appId = String(taskRow.app_id);
+  recordGenerationEvent(database, { taskId, appId, eventType: "submitting", payload: { status: "submitting" } });
+
+  const engineId = String(taskRow.engine_id);
+  const engineRow = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(engineId) as Record<string, unknown> | undefined;
+  if (!engineRow || !engineRow.enabled) {
+    const nowErr = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'failed', error_code = 'generation_engine_unavailable', error_message = '生成引擎不可用', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowErr, nowErr, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: "failed",
+      payload: { errorCode: "generation_engine_unavailable", errorMessage: "生成引擎不可用" },
+    });
+    return;
+  }
+
+  const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, "");
   const credentialAccount = engineRow.credential_account ? String(engineRow.credential_account) : null;
   const credential = credentialAccount ? await secrets.get(credentialAccount) : { value: null };
   const secret = credential.value;
 
-  // Enter submitting state
-  const nowSubmitting = nowIso();
-  database.connection.prepare("UPDATE generation_tasks SET status = 'submitting', updated_at = ? WHERE id = ?").run(nowSubmitting, taskId);
-  recordGenerationEvent(database, { taskId, appId: String(taskRow.app_id), eventType: 'submitting', payload: { status: 'submitting' } });
-
   const workflowSnapshot = JSON.parse(String(taskRow.workflow_snapshot_json));
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  const headers: Record<string, string> = { "content-type": "application/json" };
   if (secret) headers.authorization = `Bearer ${secret}`;
 
   let promptRes: Response;
   try {
     promptRes = await fetcher(`${engineBaseUrl}/prompt`, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify({ prompt: workflowSnapshot, client_id: taskId }),
       signal: AbortSignal.timeout(30_000),
@@ -424,13 +549,13 @@ export async function processTaskExecution(
     // Submission outcome unknown: do NOT re-submit!
     const nowErr = nowIso();
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '提交状态不确定，禁止自动重复提交', updated_at = ? WHERE id = ?",
-    ).run(nowErr, taskId);
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '提交状态不确定，禁止自动重复提交', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowErr, nowErr, taskId);
     recordGenerationEvent(database, {
       taskId,
-      appId: String(taskRow.app_id),
-      eventType: 'abandoned',
-      payload: { errorCode: 'submission_outcome_unknown', errorMessage: '提交状态不确定，禁止自动重复提交' },
+      appId,
+      eventType: "abandoned",
+      payload: { errorCode: "submission_outcome_unknown", errorMessage: "提交状态不确定，禁止自动重复提交" },
     });
     return;
   }
@@ -441,29 +566,29 @@ export async function processTaskExecution(
     const safeMsg = sanitizeErrorMessage(rawMsg).slice(0, 300);
     const nowErr = nowIso();
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'failed', error_code = 'upstream_rejected', error_message = ?, updated_at = ? WHERE id = ?",
-    ).run(safeMsg, nowErr, taskId);
+      "UPDATE generation_tasks SET status = 'failed', error_code = 'upstream_rejected', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(safeMsg, nowErr, nowErr, taskId);
     recordGenerationEvent(database, {
       taskId,
-      appId: String(taskRow.app_id),
-      eventType: 'failed',
-      payload: { errorCode: 'upstream_rejected', errorMessage: safeMsg },
+      appId,
+      eventType: "failed",
+      payload: { errorCode: "upstream_rejected", errorMessage: safeMsg },
     });
     return;
   }
 
   const promptData = await promptRes.json().catch(() => ({})) as { prompt_id?: string; task_id?: string };
-  const providerTaskId = promptData.prompt_id || promptData.task_id || '';
+  const providerTaskId = promptData.prompt_id || promptData.task_id || "";
   if (!providerTaskId) {
     const nowErr = nowIso();
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'failed', error_code = 'image_missing_task_id', error_message = '引擎未返回任务 ID', updated_at = ? WHERE id = ?",
-    ).run(nowErr, taskId);
+      "UPDATE generation_tasks SET status = 'failed', error_code = 'image_missing_task_id', error_message = '引擎未返回任务 ID', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowErr, nowErr, taskId);
     recordGenerationEvent(database, {
       taskId,
-      appId: String(taskRow.app_id),
-      eventType: 'failed',
-      payload: { errorCode: 'image_missing_task_id', errorMessage: '引擎未返回任务 ID' },
+      appId,
+      eventType: "failed",
+      payload: { errorCode: "image_missing_task_id", errorMessage: "引擎未返回任务 ID" },
     });
     return;
   }
@@ -474,49 +599,76 @@ export async function processTaskExecution(
   ).run(providerTaskId, nowAccepted, taskId);
   recordGenerationEvent(database, {
     taskId,
-    appId: String(taskRow.app_id),
-    eventType: 'accepted',
-    payload: { status: 'accepted', providerTaskId },
+    appId,
+    eventType: "accepted",
+    payload: { status: "accepted", providerTaskId },
   });
 
-  // Poll until task reaches terminal state
+  await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
+}
+
+export async function pollAndCompleteTask(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  taskId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
+  if (!taskRow) return;
+  const appId = String(taskRow.app_id);
+  const providerTaskId = taskRow.provider_task_id ? String(taskRow.provider_task_id) : null;
+  if (!providerTaskId) return;
+
+  const engineId = String(taskRow.engine_id);
+  const engineRow = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(engineId) as Record<string, unknown> | undefined;
+  if (!engineRow) return;
+
+  const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, "");
+  const credentialAccount = engineRow.credential_account ? String(engineRow.credential_account) : null;
+  const credential = credentialAccount ? await secrets.get(credentialAccount) : { value: null };
+  const secret = credential.value;
+
   const pollDeadline = Date.now() + 600_000;
   while (Date.now() < pollDeadline) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const currentTask = database.connection.prepare('SELECT status FROM generation_tasks WHERE id = ?').get(taskId) as { status: string } | undefined;
-    if (!currentTask || ['succeeded', 'failed', 'cancelled', 'abandoned'].includes(currentTask.status)) break;
+    const currentTask = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+    if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)) return;
 
     try {
       const historyRes = await fetcher(`${engineBaseUrl}/history/${providerTaskId}`, {
         headers: secret ? { authorization: `Bearer ${secret}` } : {},
         signal: AbortSignal.timeout(15_000),
       });
+
       if (historyRes.ok) {
         const historyData = await historyRes.json().catch(() => ({})) as Record<string, unknown>;
-        const taskHistory = historyData[providerTaskId] as { status?: { status_str?: string; messages?: unknown[] }; outputs?: Record<string, { images?: Array<{ filename?: string; subfolder?: string; type?: string }> }> } | undefined;
+        const taskHistory = historyData[providerTaskId] as {
+          status?: { status_str?: string; messages?: unknown[] };
+          outputs?: Record<string, { images?: Array<{ filename?: string; subfolder?: string; type?: string }> }>;
+        } | undefined;
 
         if (taskHistory) {
           const statusObj = taskHistory.status;
-          const isError = statusObj?.status_str === 'error' || (Array.isArray(statusObj?.messages) && statusObj.messages.some((m) => Array.isArray(m) && m[0] === 'execution_error'));
+          const isError = statusObj?.status_str === "error" || (Array.isArray(statusObj?.messages) && statusObj.messages.some((m) => Array.isArray(m) && m[0] === "execution_error"));
 
           if (isError) {
             const nowFailed = nowIso();
-            let detail = '';
+            let detail = "";
             if (Array.isArray(statusObj?.messages)) {
-              const errItem = statusObj.messages.find((m) => Array.isArray(m) && m[0] === 'execution_error');
-              if (errItem && Array.isArray(errItem) && errItem[1] && typeof errItem[1] === 'object') {
-                detail = String((errItem[1] as Record<string, unknown>).exception_message ?? '');
+              const errItem = statusObj.messages.find((m) => Array.isArray(m) && m[0] === "execution_error");
+              if (errItem && Array.isArray(errItem) && errItem[1] && typeof errItem[1] === "object") {
+                detail = String((errItem[1] as Record<string, unknown>).exception_message ?? "");
               }
             }
-            const safeErrMsg = sanitizeErrorMessage(detail || statusObj?.status_str || '执行错误').slice(0, 300);
+            const safeErrMsg = sanitizeErrorMessage(detail || statusObj?.status_str || "执行错误").slice(0, 300);
             database.connection.prepare(
               "UPDATE generation_tasks SET status = 'failed', error_code = 'execution_error', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
             ).run(safeErrMsg, nowFailed, nowFailed, taskId);
             recordGenerationEvent(database, {
               taskId,
-              appId: String(taskRow.app_id),
-              eventType: 'failed',
-              payload: { errorCode: 'execution_error', errorMessage: safeErrMsg },
+              appId,
+              eventType: "failed",
+              payload: { errorCode: "execution_error", errorMessage: safeErrMsg },
             });
             break;
           }
@@ -529,8 +681,8 @@ export async function processTaskExecution(
                 if (img.filename) {
                   allImages.push({
                     filename: img.filename,
-                    subfolder: img.subfolder || '',
-                    type: img.type || 'output',
+                    subfolder: img.subfolder || "",
+                    type: img.type || "output",
                     outputName,
                   });
                 }
@@ -539,24 +691,24 @@ export async function processTaskExecution(
           }
 
           if (allImages.length > 0) {
-            // Download artifacts
             let downloadFailed = false;
-            let downloadErrMsg = '';
+            let downloadErrMsg = "";
             const persistedArtifactIds: Array<{ artifactId: string; outputName: string; sortOrder: number }> = [];
 
             for (let i = 0; i < allImages.length; i++) {
               const img = allImages[i];
-              const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder, type: img.type });
-              const srcUrl = `${engineBaseUrl}/view?${q}`;
+              const qParam = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder, type: img.type });
+              const srcUrl = `${engineBaseUrl}/view?${qParam}`;
               try {
                 const artId = await persistArtifact(
                   config,
                   database,
                   {
-                    appId: String(taskRow.app_id),
+                    appId,
+                    taskId,
                     sourceUrl: srcUrl,
                     trustedBaseUrl: engineBaseUrl,
-                    contentType: 'image/png',
+                    contentType: "image/png",
                   },
                   fetcher,
                 );
@@ -570,14 +722,15 @@ export async function processTaskExecution(
 
             const nowDone = nowIso();
             if (downloadFailed) {
+              const safeMsg = sanitizeErrorMessage(downloadErrMsg).slice(0, 300);
               database.connection.prepare(
                 "UPDATE generation_tasks SET status = 'failed', error_code = 'artifact_download_failed', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
-              ).run(`产物下载失败：${sanitizeErrorMessage(downloadErrMsg)}`, nowDone, nowDone, taskId);
+              ).run(`产物下载失败：${safeMsg}`, nowDone, nowDone, taskId);
               recordGenerationEvent(database, {
                 taskId,
-                appId: String(taskRow.app_id),
-                eventType: 'failed',
-                payload: { errorCode: 'artifact_download_failed', errorMessage: downloadErrMsg },
+                appId,
+                eventType: "failed",
+                payload: { errorCode: "artifact_download_failed", errorMessage: `产物下载失败：${safeMsg}` },
               });
             } else {
               database.transaction(() => {
@@ -595,9 +748,9 @@ export async function processTaskExecution(
 
               recordGenerationEvent(database, {
                 taskId,
-                appId: String(taskRow.app_id),
-                eventType: 'succeeded',
-                payload: { status: 'succeeded', count: persistedArtifactIds.length },
+                appId,
+                eventType: "succeeded",
+                payload: { status: "succeeded", count: persistedArtifactIds.length },
               });
             }
             break;
@@ -612,25 +765,45 @@ export async function processTaskExecution(
       }).catch(() => null);
       if (queueRes && queueRes.ok) {
         const qData = await queueRes.json().catch(() => ({})) as { queue_running?: unknown[] };
-        const runningSet = new Set(Array.isArray(qData.queue_running) ? qData.queue_running.map((item) => Array.isArray(item) ? String(item[1] ?? '') : '').filter(Boolean) : []);
-        if (runningSet.has(providerTaskId) && currentTask.status !== 'running') {
+        const runningSet = new Set(Array.isArray(qData.queue_running) ? qData.queue_running.map((item) => Array.isArray(item) ? String(item[1] ?? "") : "").filter(Boolean) : []);
+        if (runningSet.has(providerTaskId) && currentTask.status !== "running") {
           const nowRunning = nowIso();
           database.connection.prepare("UPDATE generation_tasks SET status = 'running', updated_at = ? WHERE id = ?").run(nowRunning, taskId);
           recordGenerationEvent(database, {
             taskId,
-            appId: String(taskRow.app_id),
-            eventType: 'running',
-            payload: { status: 'running' },
+            appId,
+            eventType: "running",
+            payload: { status: "running" },
           });
         }
       }
     } catch {
       // transient poll failure
     }
+
+    await new Promise((r) => setTimeout(r, 500));
   }
+}
+
+export async function processTaskExecution(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  taskId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  try {
+    const taskRow = database.connection.prepare("SELECT status, provider_task_id FROM generation_tasks WHERE id = ?").get(taskId) as { status: string; provider_task_id: string | null } | undefined;
+    if (!taskRow) return;
+
+    if (taskRow.status === "queued") {
+      await executeQueuedTask(config, database, secrets, taskId, fetcher);
+    } else if (["accepted", "running"].includes(taskRow.status) || (taskRow.status === "submitting" && taskRow.provider_task_id)) {
+      await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('database is not open')) return;
+    if (msg.includes("database is not open")) return;
     throw err;
   }
 }
@@ -643,34 +816,34 @@ export async function cancelGenerationTask(
   appId: string,
   fetcher: typeof fetch = fetch,
 ): Promise<GenerationTaskDescriptor> {
-  const task = database.connection.prepare('SELECT * FROM generation_tasks WHERE id = ? AND app_id = ?').get(taskId, appId) as Record<string, unknown> | undefined;
+  const task = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ? AND app_id = ?").get(taskId, appId) as Record<string, unknown> | undefined;
   if (!task) {
-    const err = new Error('not_found');
-    (err as { code?: string }).code = 'not_found';
+    const err = new Error("not_found");
+    (err as { code?: string }).code = "not_found";
     throw err;
   }
 
   const status = String(task.status);
-  if (['succeeded', 'failed', 'cancelled', 'abandoned'].includes(status)) {
-    const err = new Error('not_cancellable');
-    (err as { code?: string }).code = 'not_cancellable';
+  if (["succeeded", "failed", "cancelled", "abandoned"].includes(status)) {
+    const err = new Error("not_cancellable");
+    (err as { code?: string }).code = "not_cancellable";
     throw err;
   }
 
   const now = nowIso();
-  if (status === 'queued') {
+  if (status === "queued") {
     database.connection.prepare(
       "UPDATE generation_tasks SET status = 'cancelled', updated_at = ?, finished_at = ? WHERE id = ?",
     ).run(now, now, taskId);
-    recordGenerationEvent(database, { taskId, appId, eventType: 'cancelled', payload: { status: 'cancelled' } });
+    recordGenerationEvent(database, { taskId, appId, eventType: "cancelled", payload: { status: "cancelled" } });
     return getGenerationTask(database, taskId, appId)!;
   }
 
-  const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ?').get(String(task.engine_id)) as Record<string, unknown> | undefined;
+  const engine = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(String(task.engine_id)) as Record<string, unknown> | undefined;
   const providerTaskId = task.provider_task_id ? String(task.provider_task_id) : null;
 
   if (engine && providerTaskId) {
-    const engineBaseUrl = String(engine.base_url).replace(/\/+$/, '');
+    const engineBaseUrl = String(engine.base_url).replace(/\/+$/, "");
     const credentialAccount = engine.credential_account ? String(engine.credential_account) : null;
     const credential = credentialAccount ? await secrets.get(credentialAccount) : { value: null };
     const secret = credential.value;
@@ -682,20 +855,20 @@ export async function cancelGenerationTask(
       });
       if (qRes.ok) {
         const qData = await qRes.json().catch(() => ({})) as { queue_pending?: unknown[]; queue_running?: unknown[] };
-        const pendingSet = new Set(Array.isArray(qData.queue_pending) ? qData.queue_pending.map((item) => Array.isArray(item) ? String(item[1] ?? '') : '').filter(Boolean) : []);
-        const runningSet = new Set(Array.isArray(qData.queue_running) ? qData.queue_running.map((item) => Array.isArray(item) ? String(item[1] ?? '') : '').filter(Boolean) : []);
+        const pendingSet = new Set(Array.isArray(qData.queue_pending) ? qData.queue_pending.map((item) => Array.isArray(item) ? String(item[1] ?? "") : "").filter(Boolean) : []);
+        const runningSet = new Set(Array.isArray(qData.queue_running) ? qData.queue_running.map((item) => Array.isArray(item) ? String(item[1] ?? "") : "").filter(Boolean) : []);
 
         if (pendingSet.has(providerTaskId)) {
           await fetcher(`${engineBaseUrl}/queue`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
+            method: "POST",
+            headers: { "content-type": "application/json", ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
             body: JSON.stringify({ delete: [providerTaskId] }),
             signal: AbortSignal.timeout(10_000),
           });
           database.connection.prepare(
             "UPDATE generation_tasks SET status = 'cancelled', upstream_may_continue = 0, cancellation_scope = 'queued', updated_at = ?, finished_at = ? WHERE id = ?",
           ).run(now, now, taskId);
-          recordGenerationEvent(database, { taskId, appId, eventType: 'cancelled', payload: { status: 'cancelled', scope: 'queued' } });
+          recordGenerationEvent(database, { taskId, appId, eventType: "cancelled", payload: { status: "cancelled", scope: "queued" } });
           return getGenerationTask(database, taskId, appId)!;
         }
 
@@ -703,7 +876,7 @@ export async function cancelGenerationTask(
           database.connection.prepare(
             "UPDATE generation_tasks SET status = 'abandoned', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
           ).run(now, now, taskId);
-          recordGenerationEvent(database, { taskId, appId, eventType: 'abandoned', payload: { status: 'abandoned', scope: 'local-tracking' } });
+          recordGenerationEvent(database, { taskId, appId, eventType: "abandoned", payload: { status: "abandoned", scope: "local-tracking" } });
           return getGenerationTask(database, taskId, appId)!;
         }
       }
@@ -715,7 +888,7 @@ export async function cancelGenerationTask(
   database.connection.prepare(
     "UPDATE generation_tasks SET status = 'abandoned', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
   ).run(now, now, taskId);
-  recordGenerationEvent(database, { taskId, appId, eventType: 'abandoned', payload: { status: 'abandoned', scope: 'local-tracking' } });
+  recordGenerationEvent(database, { taskId, appId, eventType: "abandoned", payload: { status: "abandoned", scope: "local-tracking" } });
   return getGenerationTask(database, taskId, appId)!;
 }
 
@@ -728,14 +901,21 @@ export async function retryGenerationTask(
   newIdempotencyKey?: string | null,
   fetcher: typeof fetch = fetch,
 ): Promise<GenerationTaskDescriptor> {
-  const original = database.connection.prepare('SELECT * FROM generation_tasks WHERE id = ? AND app_id = ?').get(taskId, appId) as Record<string, unknown> | undefined;
+  const original = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ? AND app_id = ?").get(taskId, appId) as Record<string, unknown> | undefined;
   if (!original) {
-    const err = new Error('not_found');
-    (err as { code?: string }).code = 'not_found';
+    const err = new Error("not_found");
+    (err as { code?: string }).code = "not_found";
     throw err;
   }
 
-  const inputs = JSON.parse(String(original.request_params_json ?? '{}'));
+  const originalStatus = String(original.status);
+  if (!["failed", "abandoned", "cancelled"].includes(originalStatus)) {
+    const err = new Error("只有处于失败、已放弃或已取消终态的任务才可重试。");
+    (err as { code?: string }).code = "not_retryable";
+    throw err;
+  }
+
+  const inputs = JSON.parse(String(original.request_params_json ?? "{}"));
   return createGenerationTask(
     config,
     database,
@@ -749,6 +929,7 @@ export async function retryGenerationTask(
       inputs,
       seed: original.actual_seed != null ? Number(original.actual_seed) : null,
       retryOf: taskId,
+      isInternal: true,
     },
     fetcher,
   );
@@ -761,7 +942,7 @@ export async function reconcileGenerationTasks(
   fetcher: typeof fetch = fetch,
 ): Promise<{ recoveredCount: number }> {
   const openTasks = database.connection.prepare(
-    "SELECT * FROM generation_tasks WHERE status IN ('submitting', 'accepted', 'running')",
+    "SELECT * FROM generation_tasks WHERE status IN ('queued', 'submitting', 'accepted', 'running')",
   ).all() as Array<Record<string, unknown>>;
 
   let recoveredCount = 0;
@@ -770,15 +951,43 @@ export async function reconcileGenerationTasks(
     const appId = String(task.app_id);
     const status = String(task.status);
 
-    if (status === 'submitting' && !task.provider_task_id) {
+    if (status === "queued") {
+      const p = (async () => {
+        await processTaskExecution(config, database, secrets, taskId, fetcher);
+      })()
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("database is not open")) {
+            console.error(`[generation] reconcile queued task ${taskId} error:`, err);
+          }
+        })
+        .finally(() => activeGenerationExecutions.delete(p));
+      activeGenerationExecutions.add(p);
+      recoveredCount++;
+    } else if (status === "submitting" && !task.provider_task_id) {
       const now = nowIso();
       database.connection.prepare(
         "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '服务重启导致提交中断，状态未知，禁止自动重试', updated_at = ?, finished_at = ? WHERE id = ?",
       ).run(now, now, taskId);
-      recordGenerationEvent(database, { taskId, appId, eventType: 'abandoned', payload: { errorCode: 'submission_outcome_unknown' } });
+      recordGenerationEvent(database, {
+        taskId,
+        appId,
+        eventType: "abandoned",
+        payload: { errorCode: "submission_outcome_unknown", errorMessage: "服务重启导致提交中断，状态未知，禁止自动重试" },
+      });
       recoveredCount++;
     } else if (task.provider_task_id) {
-      processTaskExecution(config, database, secrets, taskId, fetcher).catch(() => {});
+      const p = (async () => {
+        await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
+      })()
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("database is not open")) {
+            console.error(`[generation] reconcile poll task ${taskId} error:`, err);
+          }
+        })
+        .finally(() => activeGenerationExecutions.delete(p));
+      activeGenerationExecutions.add(p);
       recoveredCount++;
     }
   }

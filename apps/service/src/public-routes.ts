@@ -814,6 +814,9 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       if (code === 'idempotency_conflict') {
         return reply.code(409).send({ error: 'idempotency_conflict', message: safeMsg });
       }
+      if (code === 'workflow_assignment_managed') {
+        return reply.code(400).send({ error: 'workflow_assignment_managed', message: safeMsg });
+      }
       if (code === 'generation_assignment_not_found' || code === 'workflow_not_found' || code === 'workflow_version_not_found') {
         return reply.code(404).send({ error: code, message: safeMsg });
       }
@@ -861,8 +864,12 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       return reply.code(202).send(newTask);
     } catch (error) {
       const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'retry_failed');
-      if (code === 'not_found') return reply.code(404).send({ error: 'not_found' });
-      return reply.code(400).send({ error: code, message: sanitizeErrorMessage(String(error)) });
+      const safeMsg = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+      if (code === 'not_found') return reply.code(404).send({ error: 'not_found', message: safeMsg });
+      if (code === 'not_retryable') return reply.code(409).send({ error: 'not_retryable', message: safeMsg });
+      if (code === 'idempotency_conflict') return reply.code(409).send({ error: 'idempotency_conflict', message: safeMsg });
+      if (code === 'generation_engine_unavailable') return reply.code(503).send({ error: code, message: safeMsg });
+      return reply.code(400).send({ error: code, message: safeMsg });
     }
   });
 

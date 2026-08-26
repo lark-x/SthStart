@@ -99,7 +99,7 @@
 
 ### 通用生成任务核心 (Generation Core & Task Lifecycle)
 
-- `POST /api/v1/generation/tasks`：创建生成任务（要求 `generation` capability 与 `Idempotency-Key` 请求头）。支持按应用绑定的用途 (`purpose`) 或显式指定工作流版本，客户端只提供业务参数输入，不传递任意外部 URL 或本地路径。
+ - `POST /api/v1/generation/tasks`：创建生成任务（要求 `generation` capability 与 `Idempotency-Key` 请求头）。由服务端按应用绑定的用途 (`purpose`，默认 `default`) 统一解析已授权的工作流版本与引擎；普通客户端禁止指定未授权的 workflowId/workflowVersion（若指定将返回 `workflow_assignment_managed`），客户端只提供业务参数输入，不传递任意外部 URL 或本地路径。
 - `GET /api/v1/generation/tasks/:id`：查询任务状态与产出 artifacts（应用数据完全隔离）。
 - `POST /api/v1/generation/tasks/:id/cancel`：安全取消任务（排队中删除对应队列项，运行中标记 `abandoned` 且不调用全局中断）。
 - `POST /api/v1/generation/tasks/:id/retry`：基于历史任务输入重试生成，创建新任务并保留 `retryOf` 追溯关联。

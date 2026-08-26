@@ -6,7 +6,7 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
-import { validateComfyApiJson } from './generation.js';
+import { validateWorkflowVersionStructure } from './generation.js';
 
 function appRows(database: ServiceDatabase): ManagedApp[] {
   const rows = database.connection.prepare('SELECT * FROM managed_apps ORDER BY created_at').all() as Record<string, unknown>[];
@@ -354,9 +354,20 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(kind)) {
       return reply.code(400).send({ error: 'invalid_engine' });
     }
-    let normalizedUrl: string;
-    try { normalizedUrl = new URL(baseUrl ?? '').toString().replace(/\/+$/, ''); }
-    catch { return reply.code(400).send({ error: 'invalid_url', message: '请提供有效的 HTTP(S) 地址。' }); }
+    let urlObj: URL;
+    try {
+      urlObj = new URL(baseUrl ?? '');
+    } catch {
+      return reply.code(400).send({ error: 'invalid_url', message: '请提供有效的 HTTP(S) 地址。' });
+    }
+    if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+      return reply.code(400).send({ error: 'invalid_url', message: '生成引擎地址必须使用 HTTP 或 HTTPS 协议。' });
+    }
+    const normalizedUrl = urlObj.toString().replace(/\/+$/, '');
+
+    if (typeof concurrencyLimit !== 'number' || !Number.isInteger(concurrencyLimit) || concurrencyLimit < 1) {
+      return reply.code(400).send({ error: 'invalid_concurrency_limit', message: '并发限制 concurrencyLimit 必须为大于等于 1 的正整数。' });
+    }
 
     const account = `engine:${id}`;
     if (secret) {
@@ -370,7 +381,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
       credential_account=excluded.credential_account, enabled=excluded.enabled, concurrency_limit=excluded.concurrency_limit, updated_at=excluded.updated_at
-    `).run(id, name.trim(), kind, normalizedUrl, secret ? account : null, enabled ? 1 : 0, Math.max(1, concurrencyLimit), now, now);
+    `).run(id, name.trim(), kind, normalizedUrl, secret ? account : null, enabled ? 1 : 0, concurrencyLimit, now, now);
 
     return reply.code(201).send({ id });
   });
@@ -433,21 +444,35 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       definition?: unknown;
     };
   }>('/api/v1/admin/generation/workflows/:id/versions', async (request, reply) => {
-    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number } | undefined;
-    if (!wf) return reply.code(404).send({ error: 'workflow_not_found' });
+    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number; engine_kind: string } | undefined;
+    if (!wf) return reply.code(404).send({ error: 'workflow_not_found', message: '指定的工作流不存在。' });
 
-    let validatedDefinition: Record<string, unknown>;
+    const targetEngineId = request.body?.engineId?.trim() || null;
+    if (targetEngineId) {
+      const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ?').get(targetEngineId) as { id: string; kind: string } | undefined;
+      if (!engine) {
+        return reply.code(404).send({ error: 'engine_not_found', message: `指定的生成引擎 ${targetEngineId} 不存在。` });
+      }
+      if (engine.kind !== wf.engine_kind) {
+        return reply.code(400).send({ error: 'engine_kind_mismatch', message: `生成引擎类型 (${engine.kind}) 与工作流类型 (${wf.engine_kind}) 不匹配。` });
+      }
+    }
+
+    let validated: ReturnType<typeof validateWorkflowVersionStructure>;
     try {
-      validatedDefinition = validateComfyApiJson(request.body?.definition);
+      validated = validateWorkflowVersionStructure(
+        request.body?.definition,
+        request.body?.inputSchema ?? {},
+        request.body?.nodeBindings ?? {},
+        request.body?.outputDeclarations ?? [],
+      );
     } catch (err) {
-      return reply.code(400).send({ error: 'invalid_workflow_format', message: err instanceof Error ? err.message : String(err) });
+      const code = (err as { code?: string })?.code || 'invalid_workflow_format';
+      return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
     }
 
     const version = Number(wf.latest_version) + 1;
     const now = nowIso();
-    const inputSchema = request.body?.inputSchema ?? {};
-    const nodeBindings = request.body?.nodeBindings ?? {};
-    const outputDeclarations = request.body?.outputDeclarations ?? [];
 
     database.transaction(() => {
       database.connection.prepare(`
@@ -458,11 +483,11 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       `).run(
         request.params.id,
         version,
-        request.body?.engineId?.trim() || null,
-        JSON.stringify(inputSchema),
-        JSON.stringify(nodeBindings),
-        JSON.stringify(outputDeclarations),
-        JSON.stringify(validatedDefinition),
+        targetEngineId,
+        JSON.stringify(validated.validatedInputSchema),
+        JSON.stringify(validated.validatedNodeBindings),
+        JSON.stringify(validated.validatedOutputDeclarations),
+        JSON.stringify(validated.validatedDefinition),
         now,
       );
       database.connection.prepare('UPDATE generation_workflows SET latest_version = ?, updated_at = ? WHERE id = ?')
@@ -489,21 +514,60 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     };
   }>('/api/v1/admin/apps/:appId/generation-assignments', async (request, reply) => {
     const appRow = database.connection.prepare('SELECT 1 FROM managed_apps WHERE id = ?').get(request.params.appId);
-    if (!appRow) return reply.code(404).send({ error: 'app_not_found' });
+    if (!appRow) return reply.code(404).send({ error: 'app_not_found', message: '目标应用不存在。' });
 
     const list = Array.isArray(request.body?.assignments) ? request.body.assignments : [];
-    const now = nowIso();
+    const validatedItems: Array<{ purpose: string; workflowId: string; workflowVersion: number; engineId: string }> = [];
 
+    for (const item of list) {
+      if (!item.purpose || typeof item.purpose !== 'string' || !item.purpose.trim()) {
+        return reply.code(400).send({ error: 'invalid_assignment', message: '用途 purpose 必须为非空字符串。' });
+      }
+      if (!item.workflowId || typeof item.workflowId !== 'string' || !item.workflowId.trim()) {
+        return reply.code(400).send({ error: 'invalid_assignment', message: '工作流 ID 必须为非空字符串。' });
+      }
+      if (!item.engineId || typeof item.engineId !== 'string' || !item.engineId.trim()) {
+        return reply.code(400).send({ error: 'invalid_assignment', message: '生成引擎 ID 必须为非空字符串。' });
+      }
+
+      const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(item.workflowId.trim()) as { id: string; engine_kind: string; latest_version: number } | undefined;
+      if (!wf) {
+        return reply.code(404).send({ error: 'workflow_not_found', message: `未找到工作流 ${item.workflowId}。` });
+      }
+
+      const verNum = item.workflowVersion ?? wf.latest_version;
+      const ver = database.connection.prepare(
+        'SELECT * FROM generation_workflow_versions WHERE workflow_id = ? AND version = ? AND is_published = 1',
+      ).get(item.workflowId.trim(), verNum);
+      if (!ver) {
+        return reply.code(404).send({ error: 'workflow_version_not_found', message: `未找到工作流 ${item.workflowId} 的已发布版本 v${verNum}。` });
+      }
+
+      const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ? AND enabled = 1').get(item.engineId.trim()) as { id: string; kind: string } | undefined;
+      if (!engine) {
+        return reply.code(404).send({ error: 'generation_engine_unavailable', message: `生成引擎 ${item.engineId} 不存在或处于禁用状态。` });
+      }
+
+      if (engine.kind !== wf.engine_kind) {
+        return reply.code(400).send({ error: 'engine_kind_mismatch', message: `生成引擎类型 (${engine.kind}) 与工作流类型 (${wf.engine_kind}) 不匹配。` });
+      }
+
+      validatedItems.push({
+        purpose: item.purpose.trim(),
+        workflowId: item.workflowId.trim(),
+        workflowVersion: verNum,
+        engineId: item.engineId.trim(),
+      });
+    }
+
+    const now = nowIso();
     database.transaction(() => {
       database.connection.prepare('DELETE FROM app_generation_assignments WHERE app_id = ?').run(request.params.appId);
-      for (const item of list) {
-        const wf = database.connection.prepare('SELECT latest_version FROM generation_workflows WHERE id = ?').get(item.workflowId) as { latest_version: number } | undefined;
-        if (!wf) continue;
-        const ver = item.workflowVersion ?? wf.latest_version;
+      for (const item of validatedItems) {
         database.connection.prepare(`
           INSERT INTO app_generation_assignments (app_id, purpose, workflow_id, workflow_version, engine_id, updated_at)
           VALUES (?, ?, ?, ?, ?, ?)
-        `).run(request.params.appId, item.purpose || 'default', item.workflowId, ver, item.engineId, now);
+        `).run(request.params.appId, item.purpose, item.workflowId, item.workflowVersion, item.engineId, now);
       }
     });
 
