@@ -50,7 +50,7 @@ export const PublicCapabilitySchema = Type.Union([
   Type.Literal('llm'),
   Type.Literal('vector'),
   Type.Literal('image'),
-  Type.Literal('artifacts'),
+  Type.Literal('artifact'),
   Type.Literal('persona'),
   Type.Literal('logs'),
 ]);

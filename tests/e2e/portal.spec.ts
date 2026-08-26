@@ -125,7 +125,7 @@ test('public services creates, discovers, clones, and assigns application models
   await assignment.getByLabel('文本模型').selectOption('');
   await assignment.getByLabel('多模态模型').selectOption('');
   await assignment.getByRole('button', { name: '保存应用选择' }).click();
-  await expect(page.getByText('应用的生效模型已更新。')).toBeVisible();
+  await expect(page.getByText('应用的生效模型已更新。').first()).toBeVisible();
 });
 
 test('character library opens, creates a character and edits fields', async ({ page }) => {

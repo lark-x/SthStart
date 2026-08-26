@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -7,8 +8,13 @@ import test from 'node:test';
 import { ServiceDatabase, nowIso } from './database.js';
 import { createService } from './server.js';
 import { readConfig } from './config.js';
-import { enforceGlobalQuota, enforceRetention, readArtifact, reconcileArtifacts, streamUploadArtifact } from './artifacts.js';
+import { enforceGlobalQuota, enforceRetention, generateMediaManifest, persistArtifact, readArtifact, reconcileArtifacts, streamUploadArtifact } from './artifacts.js';
 import { SecretStore, hashToken, issueToken } from './security.js';
+
+function signArtifact(secret: string, artifactId: string, expires: number, appId?: string) {
+  const payload = appId ? `${artifactId}.${appId}.${expires}` : `${artifactId}.${expires}`;
+  return createHmac('sha256', secret).update(payload).digest('base64url');
+}
 
 class MemorySecrets extends SecretStore {
   readonly values = new Map<string, string>();
@@ -546,6 +552,45 @@ test('Artifact 2.0: streaming upload computes SHA-256 and rejects whole-buffer r
   database.close();
 });
 
+test('Artifact 2.0: generateMediaManifest computes streaming SHA-256 and handles missing files', async () => {
+  const database = new ServiceDatabase();
+  seedApp(database, 'manifest-app');
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-manifest-'));
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+
+  // Upload one file
+  const f1 = await streamUploadArtifact(config, database, {
+    appId: 'manifest-app',
+    stream: Readable.from([Buffer.from('manifest-content-1')]),
+    contentType: 'text/plain',
+    originalName: 'file1.txt',
+  });
+
+  // Upload second file
+  const f2 = await streamUploadArtifact(config, database, {
+    appId: 'manifest-app',
+    stream: Readable.from([Buffer.from('manifest-content-2')]),
+    contentType: 'text/plain',
+    originalName: 'file2.txt',
+  });
+
+  // Delete f2 to simulate missing file
+  const f2Record = await readArtifact(database, f2.id);
+  if (f2Record?.localPath) {
+    const { unlink } = await import('node:fs/promises');
+    await unlink(f2Record.localPath).catch(() => undefined);
+  }
+
+  const manifest = await generateMediaManifest(database, artifactDir);
+  assert.equal(manifest.totalArtifacts, 2);
+  assert.match(manifest.notice, /Database backup contains metadata and references only/);
+  assert.equal(manifest.items.find((i) => i.id === f1.id)?.fileStatus, 'ready');
+  assert.equal(manifest.items.find((i) => i.id === f1.id)?.sha256, f1.sha256);
+  assert.equal(manifest.items.find((i) => i.id === f2.id)?.fileStatus, 'missing');
+
+  database.close();
+});
+
 test('Artifact 2.0: streaming download supports HEAD, Range (206), 416, ETag (304), and signed URLs', async () => {
   const database = new ServiceDatabase();
   const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-download-'));
@@ -681,6 +726,66 @@ test('Artifact 2.0: streaming download supports HEAD, Range (206), 416, ETag (30
   });
   assert.equal(revokedGet.statusCode, 403);
 
+  // 10. Signed URL with audience/appId binding
+  const expires = Date.now() + 3600_000;
+  const sigAppA = signArtifact(config.imageSigningSecret, artId, expires, 'app-a');
+
+  // Missing appId in signed URL -> 403
+  const signedNoApp = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}?expires=${expires}&signature=${sigAppA}`,
+  });
+  assert.equal(signedNoApp.statusCode, 403);
+  assert.equal(signedNoApp.json().error, 'invalid_signature');
+
+  // Valid signed URL with appId of owner -> 200
+  const signedOwner = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}?expires=${expires}&signature=${sigAppA}&appId=app-a`,
+  });
+  assert.equal(signedOwner.statusCode, 200);
+  assert.equal(signedOwner.body, '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+
+  // Expired signed URL -> 403 signature_expired
+  const pastExpires = Date.now() - 1000;
+  const sigExpired = signArtifact(config.imageSigningSecret, artId, pastExpires, 'app-a');
+  const signedExp = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}?expires=${pastExpires}&signature=${sigExpired}&appId=app-a`,
+  });
+  assert.equal(signedExp.statusCode, 403);
+  assert.equal(signedExp.json().error, 'signature_expired');
+
+  // Signed URL for App B (without grant) -> 403 forbidden
+  const sigAppB = signArtifact(config.imageSigningSecret, artId, expires, 'app-b');
+  const signedAppBUnauth = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}?expires=${expires}&signature=${sigAppB}&appId=app-b`,
+  });
+  assert.equal(signedAppBUnauth.statusCode, 403);
+  assert.equal(signedAppBUnauth.json().error, 'forbidden');
+
+  // Grant App B access and test signed URL with appId=app-b
+  await app.inject({
+    method: 'POST',
+    url: `/api/v1/artifacts/${artId}/grants`,
+    headers: { authorization: `Bearer ${tokenA}` },
+    payload: { granteeAppId: 'app-b', access: 'read', expiresInSeconds: 3600 },
+  });
+  const signedAppBGranted = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}?expires=${expires}&signature=${sigAppB}&appId=app-b`,
+  });
+  assert.equal(signedAppBGranted.statusCode, 200);
+
+  // Legacy route /api/v1/images/artifacts/:id continues to work with legacy signature
+  const legacySig = signArtifact(config.imageSigningSecret, artId, expires);
+  const legacyRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/images/artifacts/${artId}?expires=${expires}&signature=${legacySig}`,
+  });
+  assert.equal(legacyRes.statusCode, 200);
+
   await app.close();
   database.close();
 });
@@ -762,6 +867,160 @@ test('Artifact 2.0: quota management protects pinned and referenced files and tr
   const reconcileResult = await reconcileArtifacts(config, database);
   assert.equal(reconcileResult.tempFilesCleaned, 1);
   assert.equal(reconcileResult.orphansRemoved, 1);
+
+  await app.close();
+  database.close();
+});
+
+test('Artifact 2.0: persistArtifact enforces trusted origin and blocks unauthorized redirects', async () => {
+  const database = new ServiceDatabase();
+  seedApp(database, 'test-app');
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-trusted-'));
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const trustedBase = 'http://trusted-engine.test:8188';
+
+  // 1. Direct origin mismatch (trying to fetch from evil.com)
+  await assert.rejects(
+    async () => {
+      await persistArtifact(config, database, {
+        appId: 'test-app',
+        taskId: 't-1',
+        sourceUrl: 'http://evil.com/view?filename=hack.png',
+        trustedBaseUrl: trustedBase,
+      });
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'untrusted_remote_origin');
+      return true;
+    },
+  );
+
+  // 2. URL with embedded credentials
+  await assert.rejects(
+    async () => {
+      await persistArtifact(config, database, {
+        appId: 'test-app',
+        taskId: 't-1',
+        sourceUrl: 'http://user:pass@trusted-engine.test:8188/view?filename=img.png',
+        trustedBaseUrl: trustedBase,
+      });
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'url_credentials_not_allowed');
+      return true;
+    },
+  );
+
+  // 3. Redirect to foreign host
+  const fetcherRedirectForeign: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes('/redirect-out')) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: 'http://foreign-evil.com/leak.png' },
+      });
+    }
+    return new Response(null, { status: 404 });
+  };
+
+  await assert.rejects(
+    async () => {
+      await persistArtifact(
+        config,
+        database,
+        {
+          appId: 'test-app',
+          taskId: 't-2',
+          sourceUrl: `${trustedBase}/redirect-out`,
+          trustedBaseUrl: trustedBase,
+        },
+        fetcherRedirectForeign,
+      );
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'untrusted_remote_origin');
+      return true;
+    },
+  );
+
+  // 4. Safe redirect within trusted base URL
+  const fetcherSafeRedirect: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes('/redirect-safe')) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: `${trustedBase}/view?filename=actual.png` },
+      });
+    }
+    if (url.includes('/view?filename=actual.png')) {
+      return new Response(Buffer.from('safe-image-bytes'), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      });
+    }
+    return new Response(null, { status: 404 });
+  };
+
+  const artId = await persistArtifact(
+    config,
+    database,
+    {
+      appId: 'test-app',
+      taskId: null,
+      sourceUrl: `${trustedBase}/redirect-safe`,
+      trustedBaseUrl: trustedBase,
+    },
+    fetcherSafeRedirect,
+  );
+  assert.ok(artId);
+  const record = await readArtifact(database, artId);
+  assert.equal(record?.fileStatus, 'ready');
+  assert.equal(record?.byteSize, 16);
+
+  database.close();
+});
+
+test('Artifact 2.0: large upload (>12 MiB) succeeds and post-insert quota failure triggers rollback', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-large-'));
+  const token = seedApp(database, 'large-app');
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  // 14 MiB stream upload (larger than standard 12 MiB bodyLimit)
+  const chunkSize = 1024 * 1024; // 1 MiB chunks
+  const numChunks = 14;
+  async function* generateLargeData() {
+    for (let i = 0; i < numChunks; i++) {
+      yield Buffer.alloc(chunkSize, i + 65);
+    }
+  }
+
+  const uploaded = await streamUploadArtifact(config, database, {
+    appId: 'large-app',
+    stream: Readable.from(generateLargeData()),
+    contentType: 'application/octet-stream',
+    contentLength: numChunks * chunkSize,
+    originalName: 'bigfile.bin',
+  });
+  assert.equal(uploaded.byteSize, 14 * 1024 * 1024);
+  assert.equal(uploaded.fileStatus, 'ready');
+
+  // Early rejection when contentLength exceeds quota
+  const tinyConfig = { ...config, artifactMaxBytes: 1000 };
+  await assert.rejects(
+    async () => {
+      await streamUploadArtifact(tinyConfig, database, {
+        appId: 'large-app',
+        stream: Readable.from([Buffer.alloc(5000)]),
+        contentLength: 5000,
+      });
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'artifact_quota_exceeded');
+      return true;
+    },
+  );
 
   await app.close();
   database.close();

@@ -22,11 +22,11 @@ import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } 
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
 
-function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifacts' | 'persona', request: FastifyRequest, reply: FastifyReply) {
+function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifact' | 'persona', request: FastifyRequest, reply: FastifyReply) {
   const identity = authenticateApp(database, request);
   if (!identity) { void reply.code(401).send({ error: 'invalid_app_token' }); return null; }
-  const allowed = capability === 'artifacts'
-    ? hasCapability(identity, 'artifacts') || hasCapability(identity, 'image')
+  const allowed = capability === 'artifact'
+    ? hasCapability(identity, 'artifact') || hasCapability(identity, 'image')
     : hasCapability(identity, capability);
   if (!allowed) { void reply.code(403).send({ error: 'capability_denied' }); return null; }
   return identity;
@@ -398,7 +398,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
                 for (const image of images) {
                   const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
                   try {
-                    await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png' }, fetcher);
+                    await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png', trustedBaseUrl: profile.baseUrl }, fetcher);
                   } catch (pErr) {
                     persistFailed = true;
                     persistError = pErr instanceof Error ? pErr.message : String(pErr);
@@ -480,8 +480,8 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     return { ok: true };
   });
 
-  app.post('/api/v1/artifacts/uploads', async (request, reply) => {
-    const identity = requireApp(database, 'artifacts', request, reply);
+  app.post('/api/v1/artifacts/uploads', { bodyLimit: 10 * 1024 * 1024 * 1024 }, async (request, reply) => {
+    const identity = requireApp(database, 'artifact', request, reply);
     if (!identity) return;
 
     const rawLength = request.headers['content-length'];
@@ -538,11 +538,17 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
 
       const expires = Number(request.query.expires);
       const supplied = request.query.signature;
+      const appId = request.query.appId?.trim();
       const isSigned = typeof supplied === 'string' && Number.isFinite(expires);
 
       if (isSigned) {
-        const valid = verifyArtifactSignature(config.imageSigningSecret, request.params.id, expires, supplied, request.query.appId || artifact.appId);
+        if (!appId) return reply.code(403).send({ error: 'invalid_signature', message: '签名 URL 必须绑定目标应用 appId。' });
+        if (expires <= Date.now()) return reply.code(403).send({ error: 'signature_expired', message: '签名已过期。' });
+        const expected = signArtifact(config.imageSigningSecret, request.params.id, expires, appId);
+        const valid = supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
         if (!valid) return reply.code(403).send({ error: 'invalid_signature' });
+        const allowed = hasArtifactAccess(database, request.params.id, appId, 'read');
+        if (!allowed) return reply.code(403).send({ error: 'forbidden', message: '签名目标应用无权访问该产物。' });
       } else {
         const identity = authenticateApp(database, request);
         if (!identity) return reply.code(401).send({ error: 'unauthorized' });
@@ -557,7 +563,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   app.post<{ Params: { id: string }; Body: { granteeAppId?: string; access?: 'read' | 'reference'; expiresInSeconds?: number } }>(
     '/api/v1/artifacts/:id/grants',
     async (request, reply) => {
-      const identity = requireApp(database, 'artifacts', request, reply);
+      const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
       const { granteeAppId, access, expiresInSeconds } = request.body ?? {};
       if (!granteeAppId?.trim()) return reply.code(400).send({ error: 'grantee_app_id_required' });
@@ -581,7 +587,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   app.delete<{ Params: { id: string; granteeAppId: string } }>(
     '/api/v1/artifacts/:id/grants/:granteeAppId',
     async (request, reply) => {
-      const identity = requireApp(database, 'artifacts', request, reply);
+      const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
       try {
         revokeArtifactGrant(database, {
@@ -601,7 +607,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   app.post<{ Params: { id: string }; Body: { refType?: string; refId?: string } }>(
     '/api/v1/artifacts/:id/references',
     async (request, reply) => {
-      const identity = requireApp(database, 'artifacts', request, reply);
+      const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
       const { refType, refId } = request.body ?? {};
       if (!refType?.trim() || !refId?.trim()) return reply.code(400).send({ error: 'invalid_reference' });
@@ -624,7 +630,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   app.delete<{ Params: { id: string; refId: string } }>(
     '/api/v1/artifacts/:id/references/:refId',
     async (request, reply) => {
-      const identity = requireApp(database, 'artifacts', request, reply);
+      const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
       removeArtifactReference(database, {
         artifactId: request.params.id,
@@ -638,7 +644,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   app.put<{ Params: { id: string }; Body: { pinned?: boolean } }>(
     '/api/v1/artifacts/:id/pin',
     async (request, reply) => {
-      const identity = requireApp(database, 'artifacts', request, reply);
+      const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
       const result = database.connection.prepare('UPDATE artifacts SET pinned=? WHERE id=? AND app_id=?')
         .run(request.body?.pinned ? 1 : 0, request.params.id, identity.id);
@@ -649,7 +655,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   app.delete<{ Params: { id: string }; Querystring: { force?: string } }>(
     '/api/v1/artifacts/:id',
     async (request, reply) => {
-      const identity = requireApp(database, 'artifacts', request, reply);
+      const identity = requireApp(database, 'artifact', request, reply);
       if (!identity) return;
       const force = request.query.force === 'true' || request.query.force === '1';
       try {

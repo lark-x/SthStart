@@ -90,7 +90,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   app.post<{ Body: { id?: string; name?: string; capabilities?: PublicCapability[] } }>('/api/v1/admin/apps', async (request, reply) => {
     const id = request.body?.id?.trim();
     const name = request.body?.name?.trim();
-    const capabilities = request.body?.capabilities ?? ['llm', 'vector', 'image', 'persona', 'logs'];
+    const capabilities = request.body?.capabilities ?? ['llm', 'vector', 'image', 'artifact', 'persona', 'logs'];
     if (id === 'linshe') return reply.code(409).send({ error: 'system_app_reserved', message: 'linshe 是系统内置应用，不能重复创建。' });
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name) return reply.code(400).send({ error: 'invalid_app' });
     const token = issueToken('sth_app');

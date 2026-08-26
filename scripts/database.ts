@@ -1,10 +1,114 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { basename, dirname, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readConfig } from '../apps/service/src/config.js';
 import { ServiceDatabase, SERVICE_DATABASE_MIGRATIONS } from '../apps/service/src/database.js';
 import { NarrativeDatabase, NARRATIVE_DATABASE_MIGRATIONS } from '../apps/service/src/narrative-database.js';
 
+export async function computeFileSha256(filePath: string): Promise<string> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const hash = createHash('sha256');
+    const stream = createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolvePromise(hash.digest('hex')));
+    stream.on('error', (err) => rejectPromise(err));
+  });
+}
+
+export interface ManifestItem {
+  id: string;
+  appId: string;
+  relativePath: string | null;
+  byteSize: number;
+  sha256: string | null;
+  contentType: string | null;
+  fileStatus: string;
+  hashMatch?: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface MediaManifest {
+  version: number;
+  generatedAt: string;
+  notice: string;
+  totalArtifacts: number;
+  totalBytes: number;
+  items: ManifestItem[];
+}
+
+export async function generateMediaManifest(
+  databasePath: string,
+  artifactDirectory: string,
+): Promise<MediaManifest> {
+  if (!existsSync(databasePath)) {
+    return {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      notice: 'Database backup contains metadata and references only. Media binary files are stored in the artifact storage directory and must be backed up separately.',
+      totalArtifacts: 0,
+      totalBytes: 0,
+      items: [],
+    };
+  }
+
+  const db = new DatabaseSync(databasePath, { readOnly: true });
+  const artifacts = db.prepare(
+    'SELECT id, app_id, local_path, byte_size, sha256, content_type, file_status, created_at, updated_at FROM artifacts ORDER BY created_at'
+  ).all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number; sha256: string | null; content_type: string | null; file_status: string; created_at: string; updated_at: string | null }>;
+  db.close();
+
+  const manifestItems: ManifestItem[] = await Promise.all(artifacts.map(async (row) => {
+    let exists = false;
+    let relPath: string | null = null;
+    let actualSha: string | null = null;
+    let status = row.file_status || 'ready';
+    let hashMatch: boolean | undefined = undefined;
+
+    if (row.local_path) {
+      exists = existsSync(row.local_path);
+      relPath = relative(artifactDirectory, row.local_path);
+      if (exists) {
+        try {
+          actualSha = await computeFileSha256(row.local_path);
+          if (row.sha256) {
+            hashMatch = actualSha === row.sha256;
+          }
+        } catch {
+          status = 'read_error';
+        }
+      } else {
+        status = 'missing';
+      }
+    } else {
+      status = 'missing';
+    }
+
+    return {
+      id: row.id,
+      appId: row.app_id,
+      relativePath: relPath,
+      byteSize: row.byte_size,
+      sha256: actualSha || row.sha256,
+      contentType: row.content_type,
+      fileStatus: status,
+      ...(hashMatch !== undefined ? { hashMatch } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }));
+
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    notice: 'Database backup contains metadata and references only. Media binary files are stored in the artifact storage directory and must be backed up separately.',
+    totalArtifacts: manifestItems.length,
+    totalBytes: manifestItems.reduce((sum, item) => sum + item.byteSize, 0),
+    items: manifestItems,
+  };
+}
 const command = process.argv[2] ?? 'check';
 const config = readConfig();
 const paths = [config.databasePath, config.narrativeDatabasePath];
@@ -54,39 +158,7 @@ if (command === 'reset') {
     finally { database.close(); }
   }
   if (existsSync(config.databasePath)) {
-    const db = new DatabaseSync(config.databasePath, { readOnly: true });
-    const artifacts = db.prepare('SELECT id, app_id, local_path, byte_size, sha256, content_type, file_status, created_at, updated_at FROM artifacts ORDER BY created_at').all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number; sha256: string | null; content_type: string | null; file_status: string; created_at: string; updated_at: string | null }>;
-    db.close();
-
-    const manifestItems = artifacts.map((row) => {
-      let exists = false;
-      let relPath: string | null = null;
-      if (row.local_path) {
-        exists = existsSync(row.local_path);
-        relPath = relative(config.artifactDirectory, row.local_path);
-      }
-      return {
-        id: row.id,
-        appId: row.app_id,
-        relativePath: relPath,
-        byteSize: row.byte_size,
-        sha256: row.sha256,
-        contentType: row.content_type,
-        fileStatus: exists ? (row.file_status || 'ready') : 'missing',
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      };
-    });
-
-    const manifest = {
-      version: 1,
-      generatedAt: new Date().toISOString(),
-      notice: 'Database backup contains metadata and references only. Media binary files are stored in the artifact storage directory and must be backed up separately.',
-      totalArtifacts: manifestItems.length,
-      totalBytes: manifestItems.reduce((sum, item) => sum + item.byteSize, 0),
-      items: manifestItems,
-    };
-
+    const manifest = await generateMediaManifest(config.databasePath, config.artifactDirectory);
     writeFileSync(resolve(destination, 'media-manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
   }
   console.log(JSON.stringify({ backup: destination }, null, 2));

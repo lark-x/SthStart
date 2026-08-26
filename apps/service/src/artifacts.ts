@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
-import { dirname, extname, resolve } from 'node:path';
+import { dirname, extname, relative, resolve } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ArtifactDescriptor, ArtifactFileStatus } from '@sthstart/contracts';
@@ -9,6 +9,95 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 
+export async function computeFileSha256(filePath: string): Promise<string> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const hash = createHash('sha256');
+    const stream = createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolvePromise(hash.digest('hex')));
+    stream.on('error', (err) => rejectPromise(err));
+  });
+}
+
+export interface ManifestItem {
+  id: string;
+  appId: string;
+  relativePath: string | null;
+  byteSize: number;
+  sha256: string | null;
+  contentType: string | null;
+  fileStatus: string;
+  hashMatch?: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface MediaManifest {
+  version: number;
+  generatedAt: string;
+  notice: string;
+  totalArtifacts: number;
+  totalBytes: number;
+  items: ManifestItem[];
+}
+
+export async function generateMediaManifest(
+  database: ServiceDatabase,
+  artifactDirectory: string,
+): Promise<MediaManifest> {
+  const artifacts = database.connection.prepare(
+    'SELECT id, app_id, local_path, byte_size, sha256, content_type, file_status, created_at, updated_at FROM artifacts ORDER BY created_at'
+  ).all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number; sha256: string | null; content_type: string | null; file_status: string; created_at: string; updated_at: string | null }>;
+
+  const manifestItems: ManifestItem[] = await Promise.all(artifacts.map(async (row) => {
+    let exists = false;
+    let relPath: string | null = null;
+    let actualSha: string | null = null;
+    let status = row.file_status || 'ready';
+    let hashMatch: boolean | undefined = undefined;
+
+    if (row.local_path) {
+      exists = existsSync(row.local_path);
+      relPath = relative(artifactDirectory, row.local_path);
+      if (exists) {
+        try {
+          actualSha = await computeFileSha256(row.local_path);
+          if (row.sha256) {
+            hashMatch = actualSha === row.sha256;
+          }
+        } catch {
+          status = 'read_error';
+        }
+      } else {
+        status = 'missing';
+      }
+    } else {
+      status = 'missing';
+    }
+
+    return {
+      id: row.id,
+      appId: row.app_id,
+      relativePath: relPath,
+      byteSize: row.byte_size,
+      sha256: actualSha || row.sha256,
+      contentType: row.content_type,
+      fileStatus: status,
+      ...(hashMatch !== undefined ? { hashMatch } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }));
+
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    notice: 'Database backup contains metadata and references only. Media binary files are stored in the artifact storage directory and must be backed up separately.',
+    totalArtifacts: manifestItems.length,
+    totalBytes: manifestItems.reduce((sum, item) => sum + item.byteSize, 0),
+    items: manifestItems,
+  };
+}
 export interface StreamUploadInput {
   appId: string;
   stream: NodeJS.ReadableStream | ReadableStream;
@@ -53,7 +142,7 @@ export function mimeToExt(contentType: string | null | undefined): string {
   return map[lower] ?? '.bin';
 }
 
-export function validateRemoteSourceUrl(urlStr: string): URL {
+export function validateRemoteSourceUrl(urlStr: string, trustedBaseUrl?: string): URL {
   let parsed: URL;
   try {
     parsed = new URL(urlStr);
@@ -65,6 +154,17 @@ export function validateRemoteSourceUrl(urlStr: string): URL {
   }
   if (parsed.username || parsed.password) {
     throw new Error('url_credentials_not_allowed');
+  }
+  if (trustedBaseUrl) {
+    let trustedParsed: URL;
+    try {
+      trustedParsed = new URL(trustedBaseUrl);
+    } catch {
+      throw new Error('invalid_trusted_base_url');
+    }
+    if (parsed.origin !== trustedParsed.origin) {
+      throw new Error('untrusted_remote_origin');
+    }
   }
   return parsed;
 }
@@ -121,6 +221,9 @@ export async function streamUploadArtifact(
   database: ServiceDatabase,
   input: StreamUploadInput,
 ): Promise<ArtifactDescriptor> {
+  if (input.contentLength !== undefined && input.contentLength !== null && input.contentLength > config.artifactMaxBytes) {
+    throw new Error('artifact_quota_exceeded');
+  }
   await enforceGlobalQuota(config, database);
   const id = randomUUID();
   const directory = resolve(config.artifactDirectory, input.appId);
@@ -169,13 +272,14 @@ export async function streamUploadArtifact(
           .run(randomUUID(), id, input.appId, input.refType, input.refId, now);
       }
     });
+    await enforceGlobalQuota(config, database);
   } catch (error) {
     await unlink(finalPath).catch(() => undefined);
     await unlink(tempPath).catch(() => undefined);
+    database.connection.prepare('DELETE FROM artifact_references WHERE artifact_id=?').run(id);
+    database.connection.prepare('DELETE FROM artifacts WHERE id=?').run(id);
     throw error;
   }
-
-  await enforceGlobalQuota(config, database);
 
   return {
     id,
@@ -202,15 +306,22 @@ export async function streamUploadArtifact(
 export async function persistArtifact(
   config: ServiceConfig,
   database: ServiceDatabase,
-  input: { appId: string; taskId: string; sourceUrl: string; contentType?: string | null },
+  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string },
   fetcher: typeof fetch = fetch,
 ) {
-  validateRemoteSourceUrl(input.sourceUrl);
-  const existing = database.connection.prepare('SELECT id, file_status FROM artifacts WHERE task_id=? AND provider_url=?').get(input.taskId, input.sourceUrl) as { id: string; file_status: string } | undefined;
+  validateRemoteSourceUrl(input.sourceUrl, input.trustedBaseUrl);
+  const existing = database.connection.prepare('SELECT id, file_status FROM artifacts WHERE task_id=? AND provider_url=?').get(input.taskId ?? null, input.sourceUrl) as { id: string; file_status: string } | undefined;
   if (existing && existing.file_status === 'ready') return existing.id;
 
   await enforceGlobalQuota(config, database);
-  const response = await fetcher(input.sourceUrl, { signal: AbortSignal.timeout(120_000) });
+  let response = await fetcher(input.sourceUrl, { signal: AbortSignal.timeout(120_000), redirect: 'manual' });
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get('location');
+    if (!location) throw new Error('redirect_missing_location');
+    const redirectUrl = new URL(location, input.sourceUrl).toString();
+    validateRemoteSourceUrl(redirectUrl, input.trustedBaseUrl);
+    response = await fetcher(redirectUrl, { signal: AbortSignal.timeout(120_000), redirect: 'error' });
+  }
   if (!response.ok) throw new Error(`产物下载失败 (HTTP ${response.status})`);
   if (!response.body) throw new Error('产物响应体为空');
 
@@ -244,7 +355,7 @@ export async function persistArtifact(
       .run(
         id,
         input.appId,
-        input.taskId,
+        input.taskId ?? null,
         input.sourceUrl,
         finalPath,
         contentType,
@@ -255,12 +366,13 @@ export async function persistArtifact(
         now,
         now,
       );
+    await enforceGlobalQuota(config, database);
   } catch (error) {
     await unlink(finalPath).catch(() => undefined);
     await unlink(tempPath).catch(() => undefined);
+    database.connection.prepare('DELETE FROM artifacts WHERE id=?').run(id);
     throw error;
   }
-  await enforceGlobalQuota(config, database);
   return id;
 }
 

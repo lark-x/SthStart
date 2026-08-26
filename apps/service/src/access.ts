@@ -25,6 +25,9 @@ export function authenticateApp(database: ServiceDatabase, request: FastifyReque
 }
 
 export function hasCapability(identity: AppIdentity, capability: PublicCapability) {
+  if (capability === 'artifact') {
+    return identity.capabilities.includes('artifact') || identity.capabilities.includes('image');
+  }
   return identity.capabilities.includes(capability);
 }
 

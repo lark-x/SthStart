@@ -48,7 +48,7 @@ export async function createService(options: ServiceOptions = {}) {
   database.connection.prepare(`INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at)
     VALUES ('linshe','邻舍',?,?,1,?,?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name,token_hash=excluded.token_hash,capabilities_json=excluded.capabilities_json,enabled=1,updated_at=excluded.updated_at`)
-    .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
+    .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'artifact', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
   database.connection.prepare("INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES ('linshe','keep')").run();
   if (!options.database && process.env.STHSTART_APP_TOKEN?.trim() && process.env.STHSTART_LLM_PROFILE?.trim()) {
     const legacy = database.connection.prepare(`SELECT a.id app_id,p.id profile_id FROM managed_apps a
