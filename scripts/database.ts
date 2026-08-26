@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readConfig } from '../apps/service/src/config.js';
 import { ServiceDatabase, SERVICE_DATABASE_MIGRATIONS } from '../apps/service/src/database.js';
@@ -52,6 +52,42 @@ if (command === 'reset') {
     const database = new DatabaseSync(path, { readOnly: false });
     try { database.exec(`VACUUM INTO ${sqlString(resolve(destination, basename(path)))}`); }
     finally { database.close(); }
+  }
+  if (existsSync(config.databasePath)) {
+    const db = new DatabaseSync(config.databasePath, { readOnly: true });
+    const artifacts = db.prepare('SELECT id, app_id, local_path, byte_size, sha256, content_type, file_status, created_at, updated_at FROM artifacts ORDER BY created_at').all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number; sha256: string | null; content_type: string | null; file_status: string; created_at: string; updated_at: string | null }>;
+    db.close();
+
+    const manifestItems = artifacts.map((row) => {
+      let exists = false;
+      let relPath: string | null = null;
+      if (row.local_path) {
+        exists = existsSync(row.local_path);
+        relPath = relative(config.artifactDirectory, row.local_path);
+      }
+      return {
+        id: row.id,
+        appId: row.app_id,
+        relativePath: relPath,
+        byteSize: row.byte_size,
+        sha256: row.sha256,
+        contentType: row.content_type,
+        fileStatus: exists ? (row.file_status || 'ready') : 'missing',
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    });
+
+    const manifest = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      notice: 'Database backup contains metadata and references only. Media binary files are stored in the artifact storage directory and must be backed up separately.',
+      totalArtifacts: manifestItems.length,
+      totalBytes: manifestItems.reduce((sum, item) => sum + item.byteSize, 0),
+      items: manifestItems,
+    };
+
+    writeFileSync(resolve(destination, 'media-manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
   }
   console.log(JSON.stringify({ backup: destination }, null, 2));
 } else if (command === 'restore') {

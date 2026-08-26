@@ -63,17 +63,29 @@
 
 普通 `namespace` 会映射为 `app:<app-id>:<namespace>`；客户端无法伪造其他应用前缀。`shared:*` 只有管理员创建读/写授权后可访问，并且 `purpose: "memory"` 永远不能使用共享空间。
 
-### 图片
+### 中央媒体库 (Artifact 2.0)
+
+- `POST /api/v1/artifacts/uploads`：原始二进制流式上传协议（通过 `Content-Type`、`Content-Length`、`X-Artifact-Original-Name`、`X-Artifact-Ref-Type`、`X-Artifact-Ref-Id` 请求头驱动，边传边计算真实字节与 SHA-256，不使用全量内存缓存）。
+- `GET|HEAD /api/v1/artifacts/:id`：流式分发入口，支持 Bearer 令牌鉴权或绑定 app 的短时签名 URL，支持 `HEAD`、`Accept-Ranges`、单区间 `Range` (206)、`ETag`、`If-None-Match` (304) 与 `416 Range Not Satisfiable`。
+- `POST|DELETE /api/v1/artifacts/:id/grants`：跨应用显式授权（支持 `read` / `reference` 权限与过期时间），防止跨应用越权。
+- `POST|DELETE /api/v1/artifacts/:id/references`：建立/解除引用关系（笔记、角色等），受引用的产物受系统级保护，不会被配额清理淘汰。
+- `PUT /api/v1/artifacts/:id/pin` & `DELETE /api/v1/artifacts/:id`：产物固定与删除管理。
+
+#### 存储配额与巡检策略
+- **全局 50 GiB 媒体配额**：默认总配额为 50 GiB，支持通过环境变量 `STHSTART_ARTIFACT_MAX_BYTES`（1 GiB ~ 10 TiB）自定义。超限时按最旧优先策略淘汰未固定、无引用且非进行中任务的文件；无法腾出空间时返回 `artifact_quota_exceeded`。
+- **启动巡检 (Reconciliation)**：服务启动时在后台自动执行，清理历史残留临时文件，标记数据库缺失文件，安全隔离/清理无主孤儿文件。
+- **备份清单 (Manifest)**：`npm run db:backup` 在备份数据库的同时输出 `media-manifest.json`，记录全部产物 SHA-256、相对路径与就绪状态，明确媒体原件独立存储。
+
+### 图片任务与工作流 (兼容接口)
 
 - `GET|POST /api/v1/admin/workflows` 管理命名工作流
 - `POST /api/v1/images/tasks`，必须带 `Idempotency-Key`
 - `GET /api/v1/images/tasks/:id`
 - `POST /api/v1/images/tasks/:id/cancel`
 - `DELETE /api/v1/images/tasks/:id`
-- `PUT /api/v1/images/artifacts/:id/pin`
-- `DELETE /api/v1/images/artifacts/:id`
+- `GET|HEAD /api/v1/images/artifacts/:id`（兼容旧版签名，内部全面流式化）
 
-任务可以直接携带 `workflow`，也可以引用中央管理的 `workflowId`。服务在 ComfyUI 接受任务后保存任务 ID。完成时将产物下载到 SthStart，再返回五分钟有效的签名 URL。保留策略支持永久保留、TTL 和按应用配额；置顶产物不会自动清理。邻舍只有在尚未取得公共任务 ID 时才会回退到直连 ComfyUI。
+任务可以直接携带 `workflow`，也可以引用中央管理的 `workflowId`。服务在 ComfyUI 接受任务后保存任务 ID。完成时将产物以流式安全写入 SthStart 中央媒体库，再返回五分钟有效的签名 URL。保留策略支持永久保留、TTL 和按应用配额；置顶与受引用产物不会自动清理。
 
 ### 角色模板
 

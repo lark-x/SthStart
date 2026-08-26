@@ -1,19 +1,34 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authenticateApp, hasCapability, type AppIdentity } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
-import { persistArtifact, readArtifact, removeArtifact } from './artifacts.js';
+import {
+  createArtifactGrant,
+  createArtifactReadStream,
+  createArtifactReference,
+  hasArtifactAccess,
+  persistArtifact,
+  readArtifact,
+  removeArtifact,
+  removeArtifactReference,
+  revokeArtifactGrant,
+  streamUploadArtifact,
+} from './artifacts.js';
 import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } from './providers.js';
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
 
-function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'persona', request: FastifyRequest, reply: FastifyReply) {
+function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifacts' | 'persona', request: FastifyRequest, reply: FastifyReply) {
   const identity = authenticateApp(database, request);
   if (!identity) { void reply.code(401).send({ error: 'invalid_app_token' }); return null; }
-  if (!hasCapability(identity, capability)) { void reply.code(403).send({ error: 'capability_denied' }); return null; }
+  const allowed = capability === 'artifacts'
+    ? hasCapability(identity, 'artifacts') || hasCapability(identity, 'image')
+    : hasCapability(identity, capability);
+  if (!allowed) { void reply.code(403).send({ error: 'capability_denied' }); return null; }
   return identity;
 }
 
@@ -84,8 +99,96 @@ function queueIds(raw: unknown) {
   return new Set(queue.map((item) => Array.isArray(item) ? String(item[1] ?? '') : '').filter(Boolean));
 }
 
-function signArtifact(secret: string, artifactId: string, expires: number) {
-  return createHmac('sha256', secret).update(`${artifactId}.${expires}`).digest('base64url');
+function signArtifact(secret: string, artifactId: string, expires: number, appId?: string) {
+  const payload = appId ? `${artifactId}.${appId}.${expires}` : `${artifactId}.${expires}`;
+  return createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+function verifyArtifactSignature(secret: string, artifactId: string, expires: number, supplied: string, appId?: string) {
+  if (!Number.isFinite(expires) || expires <= Date.now() || !supplied) return false;
+  const expectedWithApp = appId ? signArtifact(secret, artifactId, expires, appId) : null;
+  const expectedLegacy = signArtifact(secret, artifactId, expires);
+  const check = (expected: string) =>
+    supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  return Boolean((expectedWithApp && check(expectedWithApp)) || check(expectedLegacy));
+}
+
+function parseRangeHeader(rangeHeader: string, totalSize: number): { start: number; end: number } | 'invalid' {
+  const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/);
+  if (!match) return 'invalid';
+  const [, startStr, endStr] = match;
+  if (!startStr && !endStr) return 'invalid';
+
+  let start: number;
+  let end: number;
+
+  if (!startStr && endStr) {
+    const suffix = Number.parseInt(endStr, 10);
+    if (suffix <= 0) return 'invalid';
+    start = Math.max(0, totalSize - suffix);
+    end = totalSize - 1;
+  } else if (startStr && !endStr) {
+    start = Number.parseInt(startStr, 10);
+    end = totalSize - 1;
+  } else {
+    start = Number.parseInt(startStr, 10);
+    end = Number.parseInt(endStr, 10);
+  }
+
+  if (Number.isNaN(start) || Number.isNaN(end) || start < 0 || start >= totalSize || end < start || end >= totalSize) {
+    return 'invalid';
+  }
+
+  return { start, end };
+}
+
+async function streamArtifactResponse(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  artifact: { localPath: string | null; contentType: string | null; sha256: string | null; id: string },
+) {
+  if (!artifact.localPath) return reply.code(404).send({ error: 'not_found' });
+  const fileStat = await stat(artifact.localPath).catch(() => null);
+  if (!fileStat) return reply.code(404).send({ error: 'not_found' });
+
+  const totalSize = fileStat.size;
+  const etag = `"${artifact.sha256 || artifact.id}"`;
+
+  reply.header('accept-ranges', 'bytes');
+  reply.header('etag', etag);
+  reply.header('last-modified', fileStat.mtime.toUTCString());
+
+  if (request.headers['if-none-match'] === etag) {
+    return reply.code(304).send();
+  }
+
+  if (request.method === 'HEAD') {
+    if (artifact.contentType) reply.header('content-type', artifact.contentType);
+    reply.header('content-length', totalSize);
+    return reply.code(200).send();
+  }
+
+  const rangeHeader = request.headers.range;
+  if (rangeHeader) {
+    const range = parseRangeHeader(rangeHeader, totalSize);
+    if (range === 'invalid') {
+      reply.header('content-range', `bytes */${totalSize}`);
+      reply.header('content-type', 'application/json');
+      return reply.code(416).send({ error: 'range_not_satisfiable' });
+    }
+    const { start, end } = range;
+    const chunkSize = end - start + 1;
+    if (artifact.contentType) reply.header('content-type', artifact.contentType);
+    reply.header('content-range', `bytes ${start}-${end}/${totalSize}`);
+    reply.header('content-length', chunkSize);
+    reply.code(206);
+    return reply.send(createArtifactReadStream(artifact.localPath, { start, end }));
+  }
+
+  if (artifact.contentType) reply.header('content-type', artifact.contentType);
+  reply.header('content-length', totalSize);
+  reply.code(200);
+  return reply.send(createArtifactReadStream(artifact.localPath));
 }
 
 function sanitizeMessage(input: string) {
@@ -372,20 +475,210 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     if (!task) return reply.code(404).send({ error: 'not_found' });
     if (['accepted', 'running'].includes(task.status)) return reply.code(409).send({ error: 'cancel_before_delete' });
     const artifacts = database.connection.prepare('SELECT id FROM artifacts WHERE task_id=? AND app_id=?').all(request.params.id, identity.id) as { id: string }[];
-    for (const artifact of artifacts) await removeArtifact(database, artifact.id, identity.id);
+    for (const artifact of artifacts) await removeArtifact(database, artifact.id, identity.id, true);
     database.connection.prepare('DELETE FROM image_tasks WHERE id=? AND app_id=?').run(request.params.id, identity.id);
     return { ok: true };
   });
 
-  app.get<{ Params: { id: string }; Querystring: { expires?: string; signature?: string } }>('/api/v1/images/artifacts/:id', async (request, reply) => {
-    const expires = Number(request.query.expires); const supplied = request.query.signature ?? '';
-    const expected = signArtifact(config.imageSigningSecret, request.params.id, expires);
-    const valid = Number.isFinite(expires) && expires > Date.now() && supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
-    if (!valid) return reply.code(403).send({ error: 'invalid_signature' });
-    const artifact = await readArtifact(database, request.params.id).catch(() => null);
-    if (!artifact) return reply.code(404).send({ error: 'not_found' });
-    if (artifact.contentType) reply.header('content-type', artifact.contentType);
-    return reply.send(artifact.bytes);
+  app.post('/api/v1/artifacts/uploads', async (request, reply) => {
+    const identity = requireApp(database, 'artifacts', request, reply);
+    if (!identity) return;
+
+    const rawLength = request.headers['content-length'];
+    const parsedLength = rawLength ? Number.parseInt(rawLength, 10) : null;
+    const contentLength = Number.isFinite(parsedLength) ? parsedLength : null;
+
+    const rawOriginalName = request.headers['x-artifact-original-name'] ?? request.headers['x-original-filename'];
+    const originalName = typeof rawOriginalName === 'string'
+      ? decodeURIComponent(rawOriginalName).trim()
+      : null;
+
+    const rawRefType = request.headers['x-artifact-ref-type'];
+    const rawRefId = request.headers['x-artifact-ref-id'];
+    const refType = typeof rawRefType === 'string' ? rawRefType.trim() : null;
+    const refId = typeof rawRefId === 'string' ? rawRefId.trim() : null;
+
+    const contentType = request.headers['content-type'] || 'application/octet-stream';
+
+    const inputStream = (Buffer.isBuffer(request.body)
+      ? Readable.from(request.body as unknown as Uint8Array)
+      : (request.body && typeof (request.body as NodeJS.ReadableStream).pipe === 'function')
+        ? request.body as NodeJS.ReadableStream
+        : request.raw) as NodeJS.ReadableStream;
+
+    try {
+      const artifact = await streamUploadArtifact(config, database, {
+        appId: identity.id,
+        stream: inputStream,
+        contentType,
+        contentLength,
+        originalName,
+        refType,
+        refId,
+      });
+      return reply.code(201).send(artifact);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg === 'artifact_quota_exceeded' || msg === 'content_length_exceeded') {
+        return reply.code(413).send({ error: 'artifact_quota_exceeded', message: '媒体存储已超过配额限制。' });
+      }
+      if (msg === 'invalid_content_length') {
+        return reply.code(400).send({ error: 'invalid_content_length', message: '实际上传字节数与 Content-Length 头不匹配。' });
+      }
+      return reply.code(500).send({ error: 'upload_failed', message: msg });
+    }
+  });
+
+  app.route<{ Params: { id: string }; Querystring: { expires?: string; signature?: string; appId?: string } }>({
+    method: ['GET', 'HEAD'],
+    url: '/api/v1/artifacts/:id',
+    handler: async (request, reply) => {
+      const artifact = await readArtifact(database, request.params.id);
+      if (!artifact || artifact.fileStatus === 'missing') return reply.code(404).send({ error: 'not_found' });
+
+      const expires = Number(request.query.expires);
+      const supplied = request.query.signature;
+      const isSigned = typeof supplied === 'string' && Number.isFinite(expires);
+
+      if (isSigned) {
+        const valid = verifyArtifactSignature(config.imageSigningSecret, request.params.id, expires, supplied, request.query.appId || artifact.appId);
+        if (!valid) return reply.code(403).send({ error: 'invalid_signature' });
+      } else {
+        const identity = authenticateApp(database, request);
+        if (!identity) return reply.code(401).send({ error: 'unauthorized' });
+        const allowed = hasArtifactAccess(database, request.params.id, identity.id, 'read');
+        if (!allowed) return reply.code(403).send({ error: 'forbidden' });
+      }
+
+      return streamArtifactResponse(request, reply, artifact);
+    },
+  });
+
+  app.post<{ Params: { id: string }; Body: { granteeAppId?: string; access?: 'read' | 'reference'; expiresInSeconds?: number } }>(
+    '/api/v1/artifacts/:id/grants',
+    async (request, reply) => {
+      const identity = requireApp(database, 'artifacts', request, reply);
+      if (!identity) return;
+      const { granteeAppId, access, expiresInSeconds } = request.body ?? {};
+      if (!granteeAppId?.trim()) return reply.code(400).send({ error: 'grantee_app_id_required' });
+      try {
+        const grant = createArtifactGrant(database, {
+          artifactId: request.params.id,
+          ownerAppId: identity.id,
+          granteeAppId: granteeAppId.trim(),
+          access,
+          expiresInSeconds,
+        });
+        return reply.code(201).send(grant);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg === 'not_owner') return reply.code(403).send({ error: 'forbidden' });
+        return reply.code(400).send({ error: msg });
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string; granteeAppId: string } }>(
+    '/api/v1/artifacts/:id/grants/:granteeAppId',
+    async (request, reply) => {
+      const identity = requireApp(database, 'artifacts', request, reply);
+      if (!identity) return;
+      try {
+        revokeArtifactGrant(database, {
+          artifactId: request.params.id,
+          ownerAppId: identity.id,
+          granteeAppId: request.params.granteeAppId,
+        });
+        return { ok: true };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg === 'not_owner') return reply.code(403).send({ error: 'forbidden' });
+        return reply.code(400).send({ error: msg });
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { refType?: string; refId?: string } }>(
+    '/api/v1/artifacts/:id/references',
+    async (request, reply) => {
+      const identity = requireApp(database, 'artifacts', request, reply);
+      if (!identity) return;
+      const { refType, refId } = request.body ?? {};
+      if (!refType?.trim() || !refId?.trim()) return reply.code(400).send({ error: 'invalid_reference' });
+      try {
+        const ref = createArtifactReference(database, {
+          artifactId: request.params.id,
+          appId: identity.id,
+          refType: refType.trim(),
+          refId: refId.trim(),
+        });
+        return reply.code(201).send(ref);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg === 'access_denied') return reply.code(403).send({ error: 'forbidden' });
+        return reply.code(400).send({ error: msg });
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string; refId: string } }>(
+    '/api/v1/artifacts/:id/references/:refId',
+    async (request, reply) => {
+      const identity = requireApp(database, 'artifacts', request, reply);
+      if (!identity) return;
+      removeArtifactReference(database, {
+        artifactId: request.params.id,
+        appId: identity.id,
+        refId: request.params.refId,
+      });
+      return { ok: true };
+    },
+  );
+
+  app.put<{ Params: { id: string }; Body: { pinned?: boolean } }>(
+    '/api/v1/artifacts/:id/pin',
+    async (request, reply) => {
+      const identity = requireApp(database, 'artifacts', request, reply);
+      if (!identity) return;
+      const result = database.connection.prepare('UPDATE artifacts SET pinned=? WHERE id=? AND app_id=?')
+        .run(request.body?.pinned ? 1 : 0, request.params.id, identity.id);
+      return result.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
+    },
+  );
+
+  app.delete<{ Params: { id: string }; Querystring: { force?: string } }>(
+    '/api/v1/artifacts/:id',
+    async (request, reply) => {
+      const identity = requireApp(database, 'artifacts', request, reply);
+      if (!identity) return;
+      const force = request.query.force === 'true' || request.query.force === '1';
+      try {
+        const removed = await removeArtifact(database, request.params.id, identity.id, force);
+        return removed ? { ok: true } : reply.code(404).send({ error: 'not_found' });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg === 'artifact_is_pinned' || msg === 'artifact_is_referenced') {
+          return reply.code(409).send({ error: msg, message: '该产物正处于固定或被引用状态，无法删除。' });
+        }
+        return reply.code(400).send({ error: msg });
+      }
+    },
+  );
+
+  app.route<{ Params: { id: string }; Querystring: { expires?: string; signature?: string; appId?: string } }>({
+    method: ['GET', 'HEAD'],
+    url: '/api/v1/images/artifacts/:id',
+    handler: async (request, reply) => {
+      const artifact = await readArtifact(database, request.params.id);
+      if (!artifact || artifact.fileStatus === 'missing') return reply.code(404).send({ error: 'not_found' });
+
+      const expires = Number(request.query.expires);
+      const supplied = request.query.signature ?? '';
+      const valid = verifyArtifactSignature(config.imageSigningSecret, request.params.id, expires, supplied, request.query.appId);
+      if (!valid) return reply.code(403).send({ error: 'invalid_signature' });
+
+      return streamArtifactResponse(request, reply, artifact);
+    },
   });
 
   app.put<{ Params: { id: string }; Body: { pinned?: boolean } }>('/api/v1/images/artifacts/:id/pin', async (request, reply) => {
@@ -396,7 +689,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
 
   app.delete<{ Params: { id: string } }>('/api/v1/images/artifacts/:id', async (request, reply) => {
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
-    return await removeArtifact(database, request.params.id, identity.id) ? { ok: true } : reply.code(404).send({ error: 'not_found' });
+    return await removeArtifact(database, request.params.id, identity.id, true) ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
   app.get('/api/v1/personas', async (request, reply) => {

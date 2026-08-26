@@ -6,6 +6,9 @@ import { Value } from '@sinclair/typebox/value';
 import {
   CharacterDraftSchema,
   AppConfigResponseSchema,
+  ArtifactDescriptorSchema,
+  ArtifactGrantSchema,
+  ArtifactReferenceSchema,
 } from '@sthstart/contracts';
 
 test('query key factories generate structured immutable key tuples', () => {
@@ -82,4 +85,47 @@ test('shared typebox contracts validate structure correctly', () => {
     llm: { text: null, ready: 'not-a-bool' },
   };
   assert.equal(Value.Check(AppConfigResponseSchema, invalidAppConfig), false);
+
+  const validArtifact = {
+    id: 'art-1',
+    appId: 'linshe',
+    taskId: null,
+    providerUrl: null,
+    contentType: 'image/png',
+    byteSize: 1024,
+    sha256: 'abc',
+    fileStatus: 'ready' as const,
+    originalName: 'photo.png',
+    mediaType: 'image',
+    width: 1024,
+    height: 1024,
+    durationMs: null,
+    paramsSummary: {},
+    pinned: false,
+    url: '/api/v1/artifacts/art-1',
+    createdAt: '2026-08-27T00:00:00.000Z',
+    updatedAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(ArtifactDescriptorSchema, validArtifact), true);
+
+  const validGrant = {
+    id: 'g-1',
+    artifactId: 'art-1',
+    ownerAppId: 'linshe',
+    granteeAppId: 'notebook',
+    access: 'read' as const,
+    expiresAt: null,
+    createdAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(ArtifactGrantSchema, validGrant), true);
+
+  const validRef = {
+    id: 'r-1',
+    artifactId: 'art-1',
+    appId: 'notebook',
+    refType: 'note',
+    refId: 'n-123',
+    createdAt: '2026-08-27T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(ArtifactReferenceSchema, validRef), true);
 });

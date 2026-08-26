@@ -150,6 +150,35 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
   { version: 4, name: 'version-character-relationships', statements: [
     "ALTER TABLE character_versions ADD COLUMN relationships_json TEXT NOT NULL DEFAULT '[]'",
   ] },
+  { version: 5, name: 'artifact-2.0-central-media', statements: [
+    "ALTER TABLE artifacts ADD COLUMN sha256 TEXT",
+    "ALTER TABLE artifacts ADD COLUMN file_status TEXT NOT NULL DEFAULT 'ready'",
+    "ALTER TABLE artifacts ADD COLUMN original_name TEXT",
+    "ALTER TABLE artifacts ADD COLUMN media_type TEXT",
+    "ALTER TABLE artifacts ADD COLUMN width INTEGER",
+    "ALTER TABLE artifacts ADD COLUMN height INTEGER",
+    "ALTER TABLE artifacts ADD COLUMN duration_ms INTEGER",
+    "ALTER TABLE artifacts ADD COLUMN params_summary_json TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE artifacts ADD COLUMN updated_at TEXT",
+    `CREATE TABLE IF NOT EXISTS artifact_references (
+      id TEXT PRIMARY KEY, artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      ref_type TEXT NOT NULL, ref_id TEXT NOT NULL, created_at TEXT NOT NULL,
+      UNIQUE(artifact_id, app_id, ref_type, ref_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS artifact_grants (
+      id TEXT PRIMARY KEY, artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+      owner_app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      grantee_app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      access TEXT NOT NULL CHECK(access IN ('read','reference')) DEFAULT 'read',
+      expires_at TEXT, created_at TEXT NOT NULL,
+      UNIQUE(artifact_id, grantee_app_id, access)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_artifacts_sha ON artifacts(sha256)',
+    'CREATE INDEX IF NOT EXISTS idx_artifact_refs_artifact ON artifact_references(artifact_id)',
+    'CREATE INDEX IF NOT EXISTS idx_artifact_refs_app ON artifact_references(app_id, ref_type, ref_id)',
+    'CREATE INDEX IF NOT EXISTS idx_artifact_grants_grantee ON artifact_grants(grantee_app_id, artifact_id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

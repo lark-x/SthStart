@@ -50,6 +50,7 @@ export const PublicCapabilitySchema = Type.Union([
   Type.Literal('llm'),
   Type.Literal('vector'),
   Type.Literal('image'),
+  Type.Literal('artifacts'),
   Type.Literal('persona'),
   Type.Literal('logs'),
 ]);
@@ -158,6 +159,62 @@ export const AppConfigResponseSchema = Type.Object({
   }),
 });
 export type AppConfigResponse = Static<typeof AppConfigResponseSchema>;
+
+export const ArtifactFileStatusSchema = Type.Union([
+  Type.Literal('ready'),
+  Type.Literal('missing'),
+  Type.Literal('quarantined'),
+]);
+export type ArtifactFileStatus = Static<typeof ArtifactFileStatusSchema>;
+
+export const ArtifactDescriptorSchema = Type.Object({
+  id: Type.String(),
+  appId: Type.String(),
+  taskId: Type.Union([Type.String(), Type.Null()]),
+  providerUrl: Type.Union([Type.String(), Type.Null()]),
+  contentType: Type.Union([Type.String(), Type.Null()]),
+  byteSize: Type.Number(),
+  sha256: Type.Union([Type.String(), Type.Null()]),
+  fileStatus: ArtifactFileStatusSchema,
+  originalName: Type.Union([Type.String(), Type.Null()]),
+  mediaType: Type.Union([Type.String(), Type.Null()]),
+  width: Type.Union([Type.Number(), Type.Null()]),
+  height: Type.Union([Type.Number(), Type.Null()]),
+  durationMs: Type.Union([Type.Number(), Type.Null()]),
+  paramsSummary: Type.Record(Type.String(), Type.Unknown()),
+  pinned: Type.Boolean(),
+  url: Type.String(),
+  createdAt: Type.String(),
+  updatedAt: Type.Union([Type.String(), Type.Null()]),
+});
+export type ArtifactDescriptor = Static<typeof ArtifactDescriptorSchema>;
+
+export const ArtifactGrantSchema = Type.Object({
+  id: Type.String(),
+  artifactId: Type.String(),
+  ownerAppId: Type.String(),
+  granteeAppId: Type.String(),
+  access: Type.Union([Type.Literal('read'), Type.Literal('reference')]),
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+export type ArtifactGrant = Static<typeof ArtifactGrantSchema>;
+
+export const ArtifactReferenceSchema = Type.Object({
+  id: Type.String(),
+  artifactId: Type.String(),
+  appId: Type.String(),
+  refType: Type.String(),
+  refId: Type.String(),
+  createdAt: Type.String(),
+});
+export type ArtifactReference = Static<typeof ArtifactReferenceSchema>;
+
+export const ArtifactListResponseSchema = Type.Object({
+  items: Type.Array(ArtifactDescriptorSchema),
+  total: Type.Number(),
+});
+export type ArtifactListResponse = Static<typeof ArtifactListResponseSchema>;
 
 export const StoragePolicySchema = Type.Object({
   appId: Type.String(),

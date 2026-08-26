@@ -13,7 +13,7 @@ import { ServiceDatabase } from './database.js';
 import { hashToken, issueToken, SecretStore } from './security.js';
 import { registerManagementRoutes } from './management.js';
 import { registerPublicRoutes } from './public-routes.js';
-import { enforceAllRetention } from './artifacts.js';
+import { enforceAllRetention, reconcileArtifacts } from './artifacts.js';
 import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
@@ -81,6 +81,27 @@ export async function createService(options: ServiceOptions = {}) {
     },
   });
 
+  app.addContentTypeParser(
+    [
+      'application/octet-stream',
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif',
+      'image/avif',
+      'video/mp4',
+      'video/webm',
+      'audio/mpeg',
+      'audio/wav',
+      'application/pdf',
+      'text/plain',
+      'text/markdown',
+    ],
+    (_request, payload, done) => {
+      done(null, payload);
+    },
+  );
+
   app.addHook('onRequest', async (request, reply) => {
     const supplied = request.headers['x-request-id'];
     const requestId = typeof supplied === 'string' && /^[A-Za-z0-9._:-]{8,128}$/.test(supplied) ? supplied : request.id;
@@ -129,6 +150,7 @@ export async function createService(options: ServiceOptions = {}) {
       { id: 'creative-notebook', version: '1.0.0', description: '记录文本、图片、链接与创作资料。' },
       { id: 'narrative-archive', version: '1.0.0', description: '多作品剧情导入、回顾、检索与证据化知识。' },
       { id: 'runtime-manager', version: '1.0.0', description: '托管本地应用进程、运行配置与有界日志。' },
+      { id: 'artifact-service', version: '2.0.0', description: '基于流式处理、分层授权与 50 GiB 配额保护的中央媒体库。' },
     ],
   }));
 
@@ -148,9 +170,16 @@ export async function createService(options: ServiceOptions = {}) {
   void enforceAllRetention(database).catch(retentionFailure);
   const retentionTimer = setInterval(() => void enforceAllRetention(database).catch(retentionFailure), 60 * 60_000);
   retentionTimer.unref();
+  const reconcilePromise = reconcileArtifacts(config, database).catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes('database is not open')) {
+      runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-reconcile', stream: 'system', level: 'warn', message: `媒体库巡检异常：${msg}`, force: true });
+    }
+  });
 
   app.addHook('onClose', async () => {
     clearInterval(retentionTimer);
+    await reconcilePromise.catch(() => {});
     await runtimeManager.close();
     if (!options.database) database.close();
     if (!options.narrativeDatabase) narrativeDatabase.close();

@@ -28,7 +28,7 @@ test('health and capabilities expose stable v1 contracts', async () => {
   const capabilities = await app.inject({ method: 'GET', url: '/api/v1/capabilities' });
   assert.equal(capabilities.statusCode, 200);
   assert.deepEqual(capabilities.json().modules.map((item: { id: string }) => item.id), [
-    'app-registry', 'llm-gateway', 'vector-service', 'image-service', 'persona-catalog', 'creative-notebook', 'narrative-archive', 'runtime-manager',
+    'app-registry', 'llm-gateway', 'vector-service', 'image-service', 'persona-catalog', 'creative-notebook', 'narrative-archive', 'runtime-manager', 'artifact-service',
   ]);
   await app.close(); database.close();
 });

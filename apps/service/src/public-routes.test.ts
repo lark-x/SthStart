@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import test from 'node:test';
 import { ServiceDatabase, nowIso } from './database.js';
 import { createService } from './server.js';
 import { readConfig } from './config.js';
-import { enforceRetention } from './artifacts.js';
+import { enforceGlobalQuota, enforceRetention, readArtifact, reconcileArtifacts, streamUploadArtifact } from './artifacts.js';
 import { SecretStore, hashToken, issueToken } from './security.js';
 
 class MemorySecrets extends SecretStore {
@@ -433,8 +434,10 @@ test('quota retention removes oldest unpinned artifacts and preserves pinned fil
   const oldest = resolve(directory, 'old.png'); const pinned = resolve(directory, 'pinned.png');
   await writeFile(oldest, Buffer.alloc(10)); await writeFile(pinned, Buffer.alloc(10));
   database.connection.prepare("UPDATE storage_policies SET mode='quota',max_bytes=10 WHERE app_id='retention-app'").run();
-  database.connection.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?,?)').run('old', 'retention-app', null, null, oldest, 'image/png', 10, 0, '2026-01-01T00:00:00.000Z');
-  database.connection.prepare('INSERT INTO artifacts VALUES (?,?,?,?,?,?,?,?,?)').run('pin', 'retention-app', null, null, pinned, 'image/png', 10, 1, '2026-01-02T00:00:00.000Z');
+  database.connection.prepare("INSERT INTO artifacts(id, app_id, task_id, provider_url, local_path, content_type, byte_size, pinned, created_at, file_status) VALUES (?,?,?,?,?,?,?,?,?,'ready')")
+    .run('old', 'retention-app', null, null, oldest, 'image/png', 10, 0, '2026-01-01T00:00:00.000Z');
+  database.connection.prepare("INSERT INTO artifacts(id, app_id, task_id, provider_url, local_path, content_type, byte_size, pinned, created_at, file_status) VALUES (?,?,?,?,?,?,?,?,?,'ready')")
+    .run('pin', 'retention-app', null, null, pinned, 'image/png', 10, 1, '2026-01-02T00:00:00.000Z');
   assert.equal(await enforceRetention(database, 'retention-app'), 1);
   const remaining = database.connection.prepare('SELECT id,pinned FROM artifacts ORDER BY id').all() as { id: string; pinned: number }[];
   assert.equal(remaining.length, 1); assert.equal(remaining[0].id, 'pin'); assert.equal(remaining[0].pinned, 1);
@@ -469,4 +472,297 @@ test('notebook CRUD persists searchable structured notes', async () => {
   assert.equal(removed.statusCode, 200);
   assert.equal(database.connection.prepare('SELECT COUNT(*) AS count FROM note_assets').get()!.count, 0);
   await app.close(); database.close();
+});
+
+test('Artifact 2.0: streaming upload computes SHA-256 and rejects whole-buffer reading test double', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-upload-'));
+  const token = seedApp(database, 'stream-app');
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  // Create a stream that fails if arrayBuffer or text is called on it
+  const chunks = [Buffer.from('Hello, '), Buffer.from('Artifact 2.0 '), Buffer.from('Streaming!')];
+  const totalExpectedBytes = chunks.reduce((acc, c) => acc + c.length, 0);
+  const mockStream = Readable.from(chunks);
+
+  // Calling streamUploadArtifact directly with custom stream
+  const uploaded = await streamUploadArtifact(config, database, {
+    appId: 'stream-app',
+    stream: mockStream,
+    contentType: 'text/plain',
+    contentLength: totalExpectedBytes,
+    originalName: 'test-stream.txt',
+    refType: 'note',
+    refId: 'note-1',
+  });
+
+  assert.equal(uploaded.appId, 'stream-app');
+  assert.equal(uploaded.byteSize, totalExpectedBytes);
+  assert.equal(uploaded.sha256, 'f17a772151cdb358afa6391dd1c740d47304471db9729a344073acfa47faec76');
+  assert.equal(uploaded.mediaType, 'document');
+  assert.equal(uploaded.fileStatus, 'ready');
+
+  // Verify reference was created
+  const ref = database.connection.prepare('SELECT * FROM artifact_references WHERE artifact_id=?').get(uploaded.id) as { ref_type: string; ref_id: string };
+  assert.equal(ref.ref_type, 'note');
+  assert.equal(ref.ref_id, 'note-1');
+
+  // Test HTTP upload endpoint
+  const httpUploadRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/artifacts/uploads',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'image/png',
+      'x-artifact-original-name': 'sample.png',
+    },
+    body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  });
+  assert.equal(httpUploadRes.statusCode, 201);
+  assert.equal(httpUploadRes.json().mediaType, 'image');
+  assert.equal(httpUploadRes.json().byteSize, 8);
+
+  // Test Content-Length mismatch failure and cleanup
+  const mismatchStream = Readable.from([Buffer.from('short')]);
+  await assert.rejects(
+    async () => {
+      await streamUploadArtifact(config, database, {
+        appId: 'stream-app',
+        stream: mismatchStream,
+        contentLength: 100, // specified 100 but only sent 5
+      });
+    },
+    (err: Error) => {
+      assert.equal(err.message, 'invalid_content_length');
+      return true;
+    },
+  );
+  // Check no leftover .tmp files
+  const filesInAppDir = await readdir(resolve(artifactDir, 'stream-app'));
+  assert.equal(filesInAppDir.some((f) => f.includes('.tmp')), false);
+
+  await app.close();
+  database.close();
+});
+
+test('Artifact 2.0: streaming download supports HEAD, Range (206), 416, ETag (304), and signed URLs', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-download-'));
+  const tokenA = seedApp(database, 'app-a');
+  const tokenB = seedApp(database, 'app-b');
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  // Upload an artifact for App A
+  const content = Buffer.from('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'); // 36 bytes
+  const uploadRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/artifacts/uploads',
+    headers: {
+      authorization: `Bearer ${tokenA}`,
+      'content-type': 'text/plain',
+      'x-artifact-original-name': 'alphabet.txt',
+    },
+    body: content,
+  });
+  assert.equal(uploadRes.statusCode, 201);
+  const artifact = uploadRes.json();
+  const artId = artifact.id;
+
+  // 1. HEAD request
+  const headRes = await app.inject({
+    method: 'HEAD',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}` },
+  });
+  assert.equal(headRes.statusCode, 200);
+  assert.equal(headRes.headers['content-length'], '36');
+  assert.equal(headRes.headers['accept-ranges'], 'bytes');
+  assert.equal(headRes.body, '');
+
+  // 2. Full GET with ETag
+  const fullGet = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}` },
+  });
+  assert.equal(fullGet.statusCode, 200);
+  assert.equal(fullGet.body, '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+  const etag = fullGet.headers.etag;
+
+  // 3. Conditional GET with If-None-Match -> 304
+  const condGet = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}`, 'if-none-match': etag },
+  });
+  assert.equal(condGet.statusCode, 304);
+  assert.equal(condGet.body, '');
+
+  // 4. Range request: bytes=0-9 (first 10 bytes) -> 206
+  const rangeRes1 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}`, range: 'bytes=0-9' },
+  });
+  assert.equal(rangeRes1.statusCode, 206);
+  assert.equal(rangeRes1.headers['content-range'], 'bytes 0-9/36');
+  assert.equal(rangeRes1.headers['content-length'], '10');
+  assert.equal(rangeRes1.body, '0123456789');
+
+  // 5. Range request: bytes=30- (last 6 bytes) -> 206
+  const rangeRes2 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}`, range: 'bytes=30-' },
+  });
+  assert.equal(rangeRes2.statusCode, 206);
+  assert.equal(rangeRes2.headers['content-range'], 'bytes 30-35/36');
+  assert.equal(rangeRes2.body, 'UVWXYZ');
+
+  // 6. Range request: bytes=-5 (suffix 5 bytes) -> 206
+  const rangeRes3 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}`, range: 'bytes=-5' },
+  });
+  assert.equal(rangeRes3.statusCode, 206);
+  assert.equal(rangeRes3.headers['content-range'], 'bytes 31-35/36');
+  assert.equal(rangeRes3.body, 'VWXYZ');
+
+  // 7. Invalid Range: bytes=100-200 -> 416
+  const rangeInvalid = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenA}`, range: 'bytes=100-200' },
+  });
+  assert.equal(rangeInvalid.statusCode, 416);
+  assert.equal(rangeInvalid.headers['content-range'], 'bytes */36');
+
+  // 8. App isolation: App B cannot access App A's artifact by default
+  const unauthGet = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenB}` },
+  });
+  assert.equal(unauthGet.statusCode, 403);
+
+  // 9. App A grants read access to App B
+  const grantRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/artifacts/${artId}/grants`,
+    headers: { authorization: `Bearer ${tokenA}` },
+    payload: { granteeAppId: 'app-b', access: 'read', expiresInSeconds: 3600 },
+  });
+  assert.equal(grantRes.statusCode, 201);
+
+  // App B can now read
+  const grantedGet = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenB}` },
+  });
+  assert.equal(grantedGet.statusCode, 200);
+  assert.equal(grantedGet.body, '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+
+  // Revoke grant
+  const revokeRes = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/artifacts/${artId}/grants/app-b`,
+    headers: { authorization: `Bearer ${tokenA}` },
+  });
+  assert.equal(revokeRes.statusCode, 200);
+
+  const revokedGet = await app.inject({
+    method: 'GET',
+    url: `/api/v1/artifacts/${artId}`,
+    headers: { authorization: `Bearer ${tokenB}` },
+  });
+  assert.equal(revokedGet.statusCode, 403);
+
+  await app.close();
+  database.close();
+});
+
+test('Artifact 2.0: quota management protects pinned and referenced files and triggers reconciliation', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-art-quota-'));
+  const token = seedApp(database, 'quota-app');
+  // Set a small quota of 100 bytes
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir, STHSTART_ARTIFACT_MAX_BYTES: '1073741824' }); // 1 GiB config threshold
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  // Upload file 1 (unpinned)
+  const f1 = await streamUploadArtifact(config, database, {
+    appId: 'quota-app',
+    stream: Readable.from([Buffer.alloc(50, 1)]),
+    contentType: 'image/png',
+  });
+
+  // Upload file 2 (pinned)
+  const f2 = await streamUploadArtifact(config, database, {
+    appId: 'quota-app',
+    stream: Readable.from([Buffer.alloc(50, 2)]),
+    contentType: 'image/png',
+  });
+  await app.inject({
+    method: 'PUT',
+    url: `/api/v1/artifacts/${f2.id}/pin`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { pinned: true },
+  });
+
+  // Upload file 3 (referenced)
+  const f3 = await streamUploadArtifact(config, database, {
+    appId: 'quota-app',
+    stream: Readable.from([Buffer.alloc(50, 3)]),
+    contentType: 'image/png',
+    refType: 'character',
+    refId: 'char-1',
+  });
+
+  // Attempting to delete pinned/referenced file without force fails with 409
+  const delPinned = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/artifacts/${f2.id}`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(delPinned.statusCode, 409);
+  assert.equal(delPinned.json().error, 'artifact_is_pinned');
+
+  const delRef = await app.inject({
+    method: 'DELETE',
+    url: `/api/v1/artifacts/${f3.id}`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(delRef.statusCode, 409);
+  assert.equal(delRef.json().error, 'artifact_is_referenced');
+
+  // Enforce quota with tight limit: only f1 can be evicted, f2 (pinned) and f3 (referenced) must be protected
+  const tightConfig = { ...config, artifactMaxBytes: 110 };
+  const evicted = await enforceGlobalQuota(tightConfig, database);
+  assert.equal(evicted, 1);
+  assert.equal(await readArtifact(database, f1.id), null); // f1 deleted
+  assert.notEqual(await readArtifact(database, f2.id), null); // f2 preserved
+  assert.notEqual(await readArtifact(database, f3.id), null); // f3 preserved
+
+  // Test Reconciliation: orphan file & missing file detection
+  const orphanPath = resolve(artifactDir, 'quota-app', 'orphan-file.png');
+  await writeFile(orphanPath, Buffer.from('orphan'));
+  const tempLeftover = resolve(artifactDir, 'quota-app', '.tmp-leftover.tmp');
+  await writeFile(tempLeftover, Buffer.from('temp'));
+
+  // Delete f2 local file to make it missing
+  const f2Record = await readArtifact(database, f2.id);
+  if (f2Record?.localPath) {
+    await writeFile(f2Record.localPath, Buffer.from('')); // truncate
+  }
+
+  const reconcileResult = await reconcileArtifacts(config, database);
+  assert.equal(reconcileResult.tempFilesCleaned, 1);
+  assert.equal(reconcileResult.orphansRemoved, 1);
+
+  await app.close();
+  database.close();
 });
