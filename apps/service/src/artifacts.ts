@@ -342,12 +342,17 @@ export async function streamUploadArtifact(
 export async function persistArtifact(
   config: ServiceConfig,
   database: ServiceDatabase,
-  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string; customStatfs?: StatfsChecker },
+  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string; customStatfs?: StatfsChecker; refType?: string; refId?: string },
   fetcher: typeof fetch = fetch,
 ) {
   validateRemoteSourceUrl(input.sourceUrl, input.trustedBaseUrl);
   const existing = database.connection.prepare('SELECT id, file_status FROM artifacts WHERE task_id=? AND provider_url=?').get(input.taskId ?? null, input.sourceUrl) as { id: string; file_status: string } | undefined;
-  if (existing && existing.file_status === 'ready') return existing.id;
+  if (existing && existing.file_status === 'ready') {
+    if (input.refType && input.refId) {
+      createArtifactReference(database, { artifactId: existing.id, appId: input.appId, refType: input.refType, refId: input.refId });
+    }
+    return existing.id;
+  }
 
   await enforceGlobalQuota(config, database);
   let response = await fetcher(input.sourceUrl, { signal: AbortSignal.timeout(120_000), redirect: 'manual' });
@@ -386,23 +391,28 @@ export async function persistArtifact(
 
   try {
     await rename(tempPath, finalPath);
-    database.connection.prepare(`INSERT INTO artifacts
-      (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, params_summary_json, pinned, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,'ready',?,?,NULL,NULL,NULL,'{}',0,?,?)`)
-      .run(
-        id,
-        input.appId,
-        input.taskId ?? null,
-        input.sourceUrl,
-        finalPath,
-        contentType,
-        byteSize,
-        sha256,
-        filenameParam || null,
-        mediaType,
-        now,
-        now,
-      );
+    database.transaction(() => {
+      database.connection.prepare(`INSERT INTO artifacts
+        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, params_summary_json, pinned, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,NULL,NULL,NULL,'{}',0,?,?)`)
+        .run(
+          id,
+          input.appId,
+          input.taskId ?? null,
+          input.sourceUrl,
+          finalPath,
+          contentType,
+          byteSize,
+          sha256,
+          filenameParam || null,
+          mediaType,
+          now,
+          now,
+        );
+      if (input.refType && input.refId) {
+        createArtifactReference(database, { artifactId: id, appId: input.appId, refType: input.refType, refId: input.refId });
+      }
+    });
     await enforceGlobalQuota(config, database);
   } catch (error) {
     await unlink(finalPath).catch(() => undefined);

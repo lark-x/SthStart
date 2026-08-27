@@ -87,6 +87,35 @@
 
 任务可以直接携带 `workflow`，也可以引用中央管理的 `workflowId`。服务在 ComfyUI 接受任务后保存任务 ID。完成时将产物以流式安全写入 SthStart 中央媒体库，再返回五分钟有效的签名 URL。保留策略支持永久保留、TTL 和按应用配额；置顶与受引用产物不会自动清理。
 
+#### Windows Worker（阶段七）
+
+Windows Worker 是一层无状态的 Windows/RTX 桥接服务，SthStart 只保存 Worker 的地址、非敏感设置和凭据库账户；Worker token 只在创建或轮换时通过一次性的管理员响应显示，随后不出现在列表、健康检查或任务响应中，也不进入数据库。Worker 固定单任务并发，底层 ComfyUI 仍只接收经过 SthStart 校验的 API 工作流。
+
+- `GET /health`：返回就绪状态、模型/温度、队列、运行任务和磁盘阈值，不返回 token 或 ComfyUI 凭据。
+- `POST /v1/worker/tasks`：按 SthStart 的 `taskId` 幂等接收工作流和输出声明。
+- `PUT /v1/worker/tasks/:taskId/input/:uploadId`：接收原始图片字节，校验 `Content-Length` 与 `X-Artifact-SHA256`，文件名由 Worker 按 upload ID 生成。
+- `GET /v1/worker/tasks/:taskId/status`：查询任务状态；`GET /v1/worker/tasks/:taskId/output/:outputId`：读取已完成产物。
+- `POST /v1/worker/tasks/:taskId/confirm`：SthStart 将产物流式保存并校验后调用，Worker 才删除输入和输出文件。
+
+在 Worker 机器上复制 `workers/windows-worker/windows-worker.env.example` 的配置，至少设置一个长度不低于 32 位的 `WORKER_TOKEN`。`WORKER_MODEL_DIR` 用于挂载 ComfyUI 模型目录，`WORKER_DATA_DIR` 只用于任务清单、输入和输出临时文件；`WORKER_MAX_TEMP_BYTES` 限制后者的累计占用，`WORKER_DISK_WARNING_BYTES` / `WORKER_DISK_STOP_BYTES` 分别定义磁盘告警与停止阈值。并发固定为 1，Worker 不会自动下载模型或替你启动 ComfyUI，因此 ComfyUI 及模型目录必须在 Windows/RTX 机器上单独准备好。跨机器使用时将 `WORKER_HOST` 设为可访问地址、在 `WORKER_ALLOWED_IPS` 填入 SthStart 主机 IP/CIDR，并同时配置 Windows 防火墙；不要把 Worker 端口直接暴露到公网。启动命令为：
+
+```bash
+cd workers/windows-worker
+npm start
+```
+
+Worker 会把任务清单放在 `WORKER_DATA_DIR/tasks`，重启时自动恢复排队任务和已有上游任务的轮询；提交状态不确定的任务标记为 `abandoned`，绝不自动重复提交。未确认的成功产物会保留，便于 SthStart 恢复或人工处理。Worker 健康响应还会报告模型目录是否可用、临时目录占用与上限。达到临时空间上限或最低剩余磁盘阈值时，新的输入会被拒绝，排队任务会明确失败。Worker 与底层 ComfyUI 不可达时，错误会返回给 SthStart，公共生成链不会静默切换到其他引擎。
+
+#### 实验性视频能力
+
+H3 FL2VA 当前只提供真实 Worker 就绪探测，默认关闭且没有公共生成入口。启用方式、硬限制和延期的 Ref2VA、云端 H3、2K 评估项见 [`docs/EXPERIMENTAL_MEDIA.md`](EXPERIMENTAL_MEDIA.md)。RTX 3080 12 GB 不视为已经验证的运行保证。
+
+#### 媒体诊断
+
+- `GET /api/v1/admin/media/diagnostics`：管理员诊断 `ffmpeg`、`ffprobe` 和 H3 FL2VA 的实际就绪状态。
+- `ffmpeg/ffprobe` 缺失时，设置页只显示人工安装提示；SthStart 不会自动安装软件，也不会因此停止图片服务。
+- 视频元数据、缩略图和播放预处理只有在两个工具都可用时才允许开启。
+
 ### 角色模板
 
 - `GET /api/v1/personas`
@@ -123,6 +152,8 @@ STHSTART_PUBLIC_LLM=true
 STHSTART_PUBLIC_VECTOR=false
 STHSTART_PUBLIC_IMAGE=false
 ```
+
+图片公共服务开关为独立设置。只有在已经配置图片 Profile 且明确希望邻舍走 SthStart 图片网关时才设为 `true`；如果此前已启用临时直连降级，可额外设置 `STHSTART_PUBLIC_IMAGE_FALLBACK=true`，该开关只允许公共图片服务在“请求尚未被接受且网络不可达”时尝试一次本地 ComfyUI，公共服务已经返回拒绝或已接受任务后不会直连重提。
 
 独立使用 `dev:all` 时，`STHSTART_APP_TOKEN` 应保持为稳定的高熵令牌；通过 SthStart 控制中心托管邻舍时，公共服务会把当前令牌自动注入邻舍进程。
 

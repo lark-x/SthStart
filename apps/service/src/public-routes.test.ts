@@ -146,6 +146,45 @@ test('image task idempotency returns one accepted upstream task', async () => {
   await app.close(); database.close();
 });
 
+test('completed legacy image outputs keep central artifacts referenced until the task is deleted', async () => {
+  const database = new ServiceDatabase(); const token = seedApp(database, 'image-reference-app'); const now = nowIso();
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-ref', 'Image', 'image', 'http://image-reference.test', null, null, now, now);
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/prompt')) return Response.json({ prompt_id: 'provider-image-reference' });
+    if (url.includes('/history/provider-image-reference')) {
+      return Response.json({
+        'provider-image-reference': {
+          outputs: { 1: { images: [{ filename: 'generated.png', type: 'output' }] } },
+        },
+      });
+    }
+    if (url.includes('/view')) return new Response('central-image-bytes', { status: 200, headers: { 'content-type': 'image/png' } });
+    return Response.json({});
+  };
+  const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/images/tasks',
+    headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'image-reference-request-1' },
+    payload: { workflow: { 1: {} } },
+  });
+  const taskId = created.json().id as string;
+  const completed = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  assert.equal(completed.json().status, 'complete');
+  assert.equal(completed.json().artifacts.length, 1);
+  const artifactId = completed.json().artifacts[0].id as string;
+  const reference = database.connection.prepare('SELECT ref_type, ref_id FROM artifact_references WHERE artifact_id=?').get(artifactId) as { ref_type: string; ref_id: string };
+  assert.equal(reference.ref_type, 'image-task-output');
+  assert.equal(reference.ref_id, taskId);
+
+  const deleted = await app.inject({ method: 'DELETE', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  assert.equal(deleted.statusCode, 200);
+  assert.equal(database.connection.prepare('SELECT 1 FROM artifacts WHERE id=?').get(artifactId), undefined);
+  assert.equal(database.connection.prepare('SELECT 1 FROM artifact_references WHERE artifact_id=?').get(artifactId), undefined);
+  await app.close(); database.close();
+});
+
 test('image gateway handles submission errors, missing task ID, and upstream timeouts with safe messages', async () => {
   const database = new ServiceDatabase(); const token = seedApp(database, 'error-app'); const now = nowIso();
   database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-err', 'Image', 'image', 'http://image-err.test', null, null, now, now);

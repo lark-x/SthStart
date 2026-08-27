@@ -235,6 +235,17 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX IF NOT EXISTS idx_gen_events_app_id ON generation_events(app_id, id)',
     'CREATE INDEX IF NOT EXISTS idx_gen_events_task_id ON generation_events(task_id, id)',
   ] },
+  { version: 7, name: 'windows-worker-bridge', statements: [
+    `CREATE TABLE IF NOT EXISTS generation_workers (
+      engine_id TEXT PRIMARY KEY REFERENCES generation_engines(id) ON DELETE CASCADE,
+      model TEXT NOT NULL DEFAULT '', temperature REAL NOT NULL DEFAULT 0.7,
+      ip_allowlist_json TEXT NOT NULL DEFAULT '[]',
+      disk_warning_bytes INTEGER NOT NULL DEFAULT 10737418240,
+      disk_stop_bytes INTEGER NOT NULL DEFAULT 2147483648,
+      last_seen_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_generation_workers_seen ON generation_workers(last_seen_at)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

@@ -161,8 +161,9 @@ test('Creative center exposes safe setup state and completes text/image generati
   assert.equal(blockedDelete.statusCode, 409);
   const unpin = await app.inject({ method: 'PUT', url: `/api/v1/admin/creative/artifacts/${outputId}/pin`, headers: adminHeaders, payload: { pinned: false } });
   assert.equal(unpin.statusCode, 200);
-  const deleted = await app.inject({ method: 'DELETE', url: `/api/v1/admin/creative/artifacts/${outputId}`, headers: adminHeaders });
-  assert.equal(deleted.statusCode, 200);
+  const stillReferenced = await app.inject({ method: 'DELETE', url: `/api/v1/admin/creative/artifacts/${outputId}`, headers: adminHeaders });
+  assert.equal(stillReferenced.statusCode, 409);
+  assert.equal(stillReferenced.json().error, 'artifact_is_referenced');
 
   await app.close();
   database.close();

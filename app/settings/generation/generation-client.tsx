@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Database, ExternalLink, Plus, RefreshCw, Save, Server, Workflow } from 'lucide-react';
+import { ChevronRight, Database, ExternalLink, Film, Plus, RefreshCw, Save, Server, Workflow } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -13,6 +13,9 @@ import { getJson, postJson, putJson } from '@/app/lib/api-client';
 import { useToast } from '@/app/providers/ui-provider';
 
 type Engine = { id: string; name: string; kind: 'comfyui' | 'worker' | 'cloud'; base_url: string; enabled: number | boolean; concurrency_limit: number };
+type Worker = { engineId: string; name: string; baseUrl: string; enabled: boolean; model: string; temperature: number; concurrencyLimit: 1; ipAllowlist: string[]; diskWarningBytes: number; diskStopBytes: number; state: 'online' | 'offline' | 'unknown'; lastSeenAt: string | null };
+type MediaTool = { available: boolean; version: string | null; error: 'not_found' | 'unavailable' | null };
+type MediaDiagnostics = { checkedAt: string; video: { ffmpeg: MediaTool; ffprobe: MediaTool; preprocessingReady: boolean; installHint: string | null }; h3: { enabled: boolean; available: boolean; ready: boolean; reason: string; constraints: { maxWidth: 854; maxHeight: 480; maxDurationSeconds: 4; concurrencyLimit: 1 } } };
 type WorkflowVersion = { version: number; engineId: string | null; inputSchema: Record<string, unknown>; nodeBindings: Record<string, string[]>; outputDeclarations: string[]; isPublished: boolean };
 type Workflow = { id: string; name: string; description: string; engine_kind: Engine['kind']; latest_version: number; versions: WorkflowVersion[] };
 type Assignment = { app_id: string; purpose: string; workflow_id: string; workflow_version: number; engine_id: string };
@@ -30,11 +33,15 @@ function versionKey(workflowId: string, version: number) {
 export function GenerationSettings() {
   const toast = useToast();
   const [engines, setEngines] = useState<Engine[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [diagnostics, setDiagnostics] = useState<MediaDiagnostics | null>(null);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [workerToken, setWorkerToken] = useState('');
   const [engineForm, setEngineForm] = useState({ id: '', name: '', baseUrl: 'http://127.0.0.1:8188', secret: '', concurrencyLimit: '1' });
+  const [workerForm, setWorkerForm] = useState({ id: '', name: '', baseUrl: 'http://127.0.0.1:9200', token: '', model: '', temperature: '0.7', allowedIps: '127.0.0.1', diskWarningBytes: '10737418240', diskStopBytes: '2147483648' });
   const [workflowForm, setWorkflowForm] = useState({ id: '', name: '', description: '' });
   const [versionWorkflowId, setVersionWorkflowId] = useState('');
   const [versionForm, setVersionForm] = useState({ engineId: '', inputSchema: '{\n  "prompt": { "type": "string" }\n}', nodeBindings: '{\n  "prompt": ["1", "inputs", "text"]\n}', outputDeclarations: '9', definition: SAMPLE_DEFINITION });
@@ -44,12 +51,16 @@ export function GenerationSettings() {
     setLoading(true);
     setError('');
     try {
-      const [engineResponse, workflowResponse, assignmentResponse] = await Promise.all([
+      const [engineResponse, workerResponse, workflowResponse, assignmentResponse, diagnosticsResponse] = await Promise.all([
         getJson<{ items: Engine[] }>('generation/engines'),
+        getJson<{ items: Worker[] }>('workers'),
         getJson<{ items: Workflow[] }>('generation/workflows'),
         getJson<{ items: Assignment[] }>('generation/assignments'),
+        getJson<MediaDiagnostics>('media/diagnostics'),
       ]);
       setEngines(engineResponse.items);
+      setWorkers(workerResponse.items);
+      setDiagnostics(diagnosticsResponse);
       setWorkflows(workflowResponse.items);
       setVersionWorkflowId((current) => current || workflowResponse.items[0]?.id || '');
       setVersionForm((current) => ({ ...current, engineId: current.engineId || engineResponse.items[0]?.id || '' }));
@@ -63,6 +74,27 @@ export function GenerationSettings() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveWorker = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy('worker');
+    setError('');
+    try {
+      const response = await postJson<{ workerId: string; token?: string }>('workers', {
+        id: workerForm.id.trim(), name: workerForm.name.trim(), baseUrl: workerForm.baseUrl.trim(),
+        token: workerForm.token.trim() || undefined, model: workerForm.model.trim(), temperature: Number(workerForm.temperature),
+        ipAllowlist: workerForm.allowedIps.split(',').map((item) => item.trim()).filter(Boolean),
+        diskWarningBytes: Number(workerForm.diskWarningBytes), diskStopBytes: Number(workerForm.diskStopBytes),
+      });
+      if (response.token) setWorkerToken(response.token);
+      setWorkerForm((current) => ({ ...current, id: '', name: '', token: '' }));
+      await load();
+      toast.success('Windows Worker 已保存');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      toast.error('保存 Windows Worker 失败', err instanceof Error ? err.message : String(err));
+    } finally { setBusy(''); }
   };
 
   // This effect is the initial read for a small management surface; its async callback owns the loading state.
@@ -154,6 +186,18 @@ export function GenerationSettings() {
               <CardContent className="space-y-3"><form onSubmit={createWorkflow} className="grid grid-cols-1 gap-2 sm:grid-cols-3"><Input aria-label="工作流 ID" placeholder="工作流 ID" value={workflowForm.id} onChange={(event) => setWorkflowForm((current) => ({ ...current, id: event.target.value }))} required /><Input aria-label="工作流名称" placeholder="工作流名称" value={workflowForm.name} onChange={(event) => setWorkflowForm((current) => ({ ...current, name: event.target.value }))} required /><Button type="submit" variant="primary" loading={busy === 'workflow'}><Plus className="h-3.5 w-3.5" aria-hidden="true" />创建工作流</Button></form><Input aria-label="工作流说明" placeholder="工作流说明（可选）" value={workflowForm.description} onChange={(event) => setWorkflowForm((current) => ({ ...current, description: event.target.value }))} />{workflows.length ? <div className="space-y-2">{workflows.map((workflow) => <button type="button" key={workflow.id} onClick={() => setVersionWorkflowId(workflow.id)} className={`flex w-full items-center justify-between rounded border p-3 text-left ${versionWorkflowId === workflow.id ? 'border-[#e45d35] bg-[#e45d35]/6' : 'border-[rgb(24_32_29/12%)] bg-[#fffdf8]'}`}><span><strong className="text-xs">{workflow.name}</strong><code className="mt-0.5 block text-[10px] text-[#68716d]">{workflow.id} · {workflow.versions.length} 个版本</code></span><ChevronRight className="h-4 w-4 text-[#89908a]" aria-hidden="true" /></button>)}</div> : <p className="text-xs text-[#89908a]">创建第一个工作流后，它会出现在这里。</p>}</CardContent>
             </Card>
           </div>
+
+          {workerToken && <Alert variant="warning" title="请立即保存 Worker token" onDismiss={() => setWorkerToken('')}>这是本次创建或轮换后唯一一次显示的 token：<code className="mt-1 block break-all rounded bg-black/5 p-2 text-[11px]">{workerToken}</code>请将它写入 Windows Worker 的安全环境变量，之后不会在列表中再次显示。</Alert>}
+
+          <Card>
+            <CardHeader><div className="flex items-center gap-2 text-[#b83b1b]"><Server className="h-4 w-4" aria-hidden="true" /><span className="text-[10px] font-bold tracking-[0.16em] uppercase">WINDOWS WORKERS</span></div><CardTitle>Windows Worker</CardTitle><CardDescription>Worker 只允许单任务并发；token 仅在创建或轮换时显示一次，任务文件会在 SthStart 确认产物后清理。</CardDescription></CardHeader>
+            <CardContent className="space-y-3"><div className="space-y-2">{workers.length ? workers.map((worker) => <div key={worker.engineId} className="flex flex-col gap-2 rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8] p-3 sm:flex-row sm:items-center sm:justify-between"><div><strong className="text-xs">{worker.name}</strong><code className="mt-0.5 block text-[10px] text-[#68716d]">{worker.engineId} · {worker.baseUrl}</code><span className="mt-1 block text-[10px] text-[#68716d]">模型 {worker.model || '未指定'} · 温度 {worker.temperature} · 并发 1</span><span className="mt-1 block text-[10px] text-[#89908a]">磁盘警告 {worker.diskWarningBytes} · 停止 {worker.diskStopBytes}</span></div><span className={`text-[10px] ${worker.state === 'online' ? 'text-[#39794f]' : 'text-[#89908a]'}`}>{worker.state === 'online' ? '在线' : worker.state === 'offline' ? '离线' : '未探测'}</span></div>) : <p className="text-xs text-[#89908a]">还没有配置 Windows Worker。</p>}</div><form onSubmit={saveWorker} className="space-y-2 border-t border-[rgb(24_32_29/10%)] pt-3"><div className="grid grid-cols-2 gap-2"><Input aria-label="Worker ID" placeholder="Worker ID" value={workerForm.id} onChange={(event) => setWorkerForm((current) => ({ ...current, id: event.target.value }))} required /><Input aria-label="Worker 名称" placeholder="Worker 名称" value={workerForm.name} onChange={(event) => setWorkerForm((current) => ({ ...current, name: event.target.value }))} required /></div><Input aria-label="Worker 地址" placeholder="Worker 地址，例如 http://192.168.1.20:9200" value={workerForm.baseUrl} onChange={(event) => setWorkerForm((current) => ({ ...current, baseUrl: event.target.value }))} required /><div className="grid grid-cols-1 gap-2 sm:grid-cols-3"><Input aria-label="Worker token" placeholder="Worker token（新建可留空自动生成）" type="password" value={workerForm.token} onChange={(event) => setWorkerForm((current) => ({ ...current, token: event.target.value }))} /><Input aria-label="Worker 模型" placeholder="模型标识（可选）" value={workerForm.model} onChange={(event) => setWorkerForm((current) => ({ ...current, model: event.target.value }))} /><Input aria-label="Worker 温度" placeholder="温度" type="number" min={0} max={2} step={0.1} value={workerForm.temperature} onChange={(event) => setWorkerForm((current) => ({ ...current, temperature: event.target.value }))} required /></div><Input aria-label="Worker IP 白名单" placeholder="IP 白名单，逗号分隔；例如 127.0.0.1, 192.168.1.0/24" value={workerForm.allowedIps} onChange={(event) => setWorkerForm((current) => ({ ...current, allowedIps: event.target.value }))} /><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Input aria-label="Worker 磁盘警告阈值" placeholder="磁盘警告阈值（字节）" type="number" min={1} value={workerForm.diskWarningBytes} onChange={(event) => setWorkerForm((current) => ({ ...current, diskWarningBytes: event.target.value }))} required /><Input aria-label="Worker 磁盘停止阈值" placeholder="磁盘停止阈值（字节）" type="number" min={1} value={workerForm.diskStopBytes} onChange={(event) => setWorkerForm((current) => ({ ...current, diskStopBytes: event.target.value }))} required /></div><Button type="submit" variant="primary" loading={busy === 'worker'}><Plus className="h-3.5 w-3.5" aria-hidden="true" />保存 Worker</Button></form></CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><div className="flex items-center gap-2 text-[#b83b1b]"><Film className="h-4 w-4" aria-hidden="true" /><span className="text-[10px] font-bold tracking-[0.16em] uppercase">MEDIA DIAGNOSTICS</span></div><CardTitle>媒体诊断</CardTitle><CardDescription>视频预处理只在系统实际检测到 ffmpeg 和 ffprobe 时启用；这里不会自动安装或修改系统。</CardDescription></CardHeader>
+            <CardContent className="space-y-3">{diagnostics ? <><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><div className="rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8] p-3"><strong className="text-xs">ffmpeg</strong><span className={`mt-1 block text-[11px] ${diagnostics.video.ffmpeg.available ? 'text-[#39794f]' : 'text-[#b83b1b]'}`}>{diagnostics.video.ffmpeg.available ? `可用${diagnostics.video.ffmpeg.version ? ` · ${diagnostics.video.ffmpeg.version}` : ''}` : diagnostics.video.ffmpeg.error === 'not_found' ? '未安装' : '不可用'}</span></div><div className="rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8] p-3"><strong className="text-xs">ffprobe</strong><span className={`mt-1 block text-[11px] ${diagnostics.video.ffprobe.available ? 'text-[#39794f]' : 'text-[#b83b1b]'}`}>{diagnostics.video.ffprobe.available ? `可用${diagnostics.video.ffprobe.version ? ` · ${diagnostics.video.ffprobe.version}` : ''}` : diagnostics.video.ffprobe.error === 'not_found' ? '未安装' : '不可用'}</span></div></div>{diagnostics.video.installHint && <p className="rounded bg-[#b83b1b]/8 p-3 text-xs leading-5 text-[#8f2d17]">{diagnostics.video.installHint}</p>}<div className="rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8] p-3 text-xs"><strong>H3 FL2VA</strong><span className={`ml-2 ${diagnostics.h3.ready ? 'text-[#39794f]' : 'text-[#89908a]'}`}>{diagnostics.h3.ready ? '真实 Worker 已就绪' : diagnostics.h3.enabled ? `实验状态：${diagnostics.h3.reason}` : '默认关闭'}</span><p className="mt-1 text-[11px] text-[#68716d]">固定上限 {diagnostics.h3.constraints.maxWidth}×{diagnostics.h3.constraints.maxHeight}、{diagnostics.h3.constraints.maxDurationSeconds} 秒、并发 {diagnostics.h3.constraints.concurrencyLimit}；当前没有公共生成入口。 <a href="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE" target="_blank" rel="noreferrer" className="underline underline-offset-2">启用前阅读 H3 Community License</a>，确认所在地区、用途和再分发符合许可要求。</p></div></> : <p className="text-xs text-[#89908a]">正在读取诊断状态…</p>}</CardContent>
+          </Card>
 
           <Card>
             <CardHeader><div className="flex items-center gap-2 text-[#b83b1b]"><Database className="h-4 w-4" aria-hidden="true" /><span className="text-[10px] font-bold tracking-[0.16em] uppercase">PUBLISH A VERSION</span></div><CardTitle>发布工作流版本</CardTitle><CardDescription>{selectedWorkflow ? `当前选择：${selectedWorkflow.name}。发布后版本不可变，应用绑定始终指向明确的版本。` : '请先创建并选择一个工作流。'}</CardDescription></CardHeader>

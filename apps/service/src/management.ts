@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import type { AppLlmAssignment, LlmModelCapability, ManagedApp, PersonaTemplate, ProviderProfile, PublicCapability } from '@sthstart/contracts';
+import type { AppLlmAssignment, GenerationWorker, LlmModelCapability, ManagedApp, PersonaTemplate, ProviderProfile, PublicCapability } from '@sthstart/contracts';
 import { authenticateAdmin } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
 import { validateWorkflowVersionStructure } from './generation.js';
+import { defaultWorkerSettings, workerHealth } from './worker.js';
+import { getH3Status } from './h3.js';
+import { getMediaDiagnostics } from './media-diagnostics.js';
 
 function appRows(database: ServiceDatabase): ManagedApp[] {
   const rows = database.connection.prepare('SELECT * FROM managed_apps ORDER BY created_at').all() as Record<string, unknown>[];
@@ -73,6 +77,82 @@ function personaRows(database: ServiceDatabase): PersonaTemplate[] {
     source: row.source ? String(row.source) : null, latestVersion: Number(row.latest_version),
     createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }));
+}
+
+function parseWorkerAllowlist(raw: unknown): string[] | null {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > 64) return null;
+  const values: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') return null;
+    const value = item.trim();
+    const [address, prefix, ...extra] = value.split('/');
+    const addressType = isIP(address);
+    if (!address || !addressType || extra.length || (prefix !== undefined && (!/^\d+$/.test(prefix) || Number(prefix) > (addressType === 4 ? 32 : 128)))) return null;
+    values.push(value);
+  }
+  return [...new Set(values)];
+}
+
+function workerRows(database: ServiceDatabase): GenerationWorker[] {
+  const rows = database.connection.prepare(`
+    SELECT e.id,e.name,e.base_url,e.enabled,e.concurrency_limit,e.created_at,e.updated_at,
+           w.model,w.temperature,w.ip_allowlist_json,w.disk_warning_bytes,w.disk_stop_bytes,w.last_seen_at
+    FROM generation_engines e
+    LEFT JOIN generation_workers w ON w.engine_id=e.id
+    WHERE e.kind='worker'
+    ORDER BY e.name
+  `).all() as Array<Record<string, unknown>>;
+  const defaults = defaultWorkerSettings();
+  return rows.map((row) => {
+    let ipAllowlist: string[] = [];
+    try {
+      const parsed = JSON.parse(String(row.ip_allowlist_json ?? '[]'));
+      if (Array.isArray(parsed)) ipAllowlist = parsed.filter((item): item is string => typeof item === 'string');
+    } catch {}
+    const lastSeenAt = row.last_seen_at ? String(row.last_seen_at) : null;
+    const lastSeenMs = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+    const state = Number.isFinite(lastSeenMs) && Date.now() - lastSeenMs < 60_000 ? 'online' : lastSeenAt ? 'offline' : 'unknown';
+    return {
+      engineId: String(row.id),
+      name: String(row.name),
+      baseUrl: String(row.base_url),
+      enabled: Boolean(row.enabled),
+      model: String(row.model ?? defaults.model),
+      temperature: Number.isFinite(Number(row.temperature)) ? Number(row.temperature) : defaults.temperature,
+      concurrencyLimit: 1,
+      ipAllowlist,
+      diskWarningBytes: Number(row.disk_warning_bytes) || defaults.diskWarningBytes,
+      diskStopBytes: Number(row.disk_stop_bytes) || defaults.diskStopBytes,
+      state,
+      lastSeenAt,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    };
+  });
+}
+
+function safeWorkerHealth(workerId: string, raw: Record<string, unknown>, settings: ReturnType<typeof defaultWorkerSettings>) {
+  const disk = raw.disk && typeof raw.disk === 'object' && !Array.isArray(raw.disk) ? raw.disk as Record<string, unknown> : {};
+  const numberOr = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return {
+    ok: Boolean(raw.ok ?? true),
+    workerId: String(raw.workerId ?? workerId),
+    ready: Boolean(raw.ready),
+    model: String(raw.model ?? settings.model),
+    temperature: numberOr(raw.temperature, settings.temperature),
+    concurrency: 1 as const,
+    queueDepth: Math.max(0, numberOr(raw.queueDepth, 0)),
+    runningTaskId: typeof raw.runningTaskId === 'string' ? raw.runningTaskId : null,
+    modelDirectoryReady: Boolean(raw.modelDirectoryReady ?? true),
+    disk: {
+      freeBytes: Math.max(0, numberOr(disk.freeBytes, 0)),
+      tempBytes: Math.max(0, numberOr(disk.tempBytes, 0)),
+      maxTempBytes: Math.max(0, numberOr(disk.maxTempBytes, settings.maxTempBytes)),
+      warningBytes: settings.diskWarningBytes,
+      stopBytes: settings.diskStopBytes,
+    },
+  };
 }
 
 export function registerManagementRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
@@ -370,6 +450,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     }
 
     const account = `engine:${id}`;
+    const existingEngine = database.connection.prepare('SELECT credential_account FROM generation_engines WHERE id=?').get(id) as { credential_account: string | null } | undefined;
     if (secret) {
       try { await secrets.set(account, secret); }
       catch (err) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(err) }); }
@@ -381,15 +462,135 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
       credential_account=excluded.credential_account, enabled=excluded.enabled, concurrency_limit=excluded.concurrency_limit, updated_at=excluded.updated_at
-    `).run(id, name.trim(), kind, normalizedUrl, secret ? account : null, enabled ? 1 : 0, concurrencyLimit, now, now);
+    `).run(id, name.trim(), kind, normalizedUrl, kind === 'worker' ? (secret ? account : existingEngine?.credential_account ?? account) : (secret ? account : null), enabled ? 1 : 0, kind === 'worker' ? 1 : concurrencyLimit, now, now);
+
+    if (kind === 'worker') {
+      database.connection.prepare(`INSERT OR IGNORE INTO generation_workers
+        (engine_id,model,temperature,ip_allowlist_json,disk_warning_bytes,disk_stop_bytes,created_at,updated_at)
+        VALUES (?,?,?,? ,?,?,?,?)`).run(id, '', 0.7, '[]', 10 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024, now, now);
+    }
 
     return reply.code(201).send({ id });
   });
 
+  // ── Windows Worker Admin ──
+  app.get('/api/v1/admin/workers', async () => ({ items: workerRows(database) }));
+
+  app.post<{
+    Body: {
+      id?: string;
+      name?: string;
+      baseUrl?: string;
+      token?: string;
+      enabled?: boolean;
+      model?: string;
+      temperature?: number;
+      ipAllowlist?: string[];
+      diskWarningBytes?: number;
+      diskStopBytes?: number;
+    };
+  }>('/api/v1/admin/workers', async (request, reply) => {
+    const body = request.body ?? {};
+    const id = body.id?.trim();
+    const name = body.name?.trim();
+    if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name) return reply.code(400).send({ error: 'invalid_worker', message: 'Worker ID 和名称格式无效。' });
+
+    let urlObj: URL;
+    try { urlObj = new URL(body.baseUrl ?? ''); } catch { return reply.code(400).send({ error: 'invalid_url', message: '请提供有效的 Worker HTTP(S) 地址。' }); }
+    if (!['http:', 'https:'].includes(urlObj.protocol) || urlObj.username || urlObj.password) return reply.code(400).send({ error: 'invalid_url', message: 'Worker 地址必须使用不带凭据的 HTTP 或 HTTPS 地址。' });
+    const normalizedUrl = urlObj.toString().replace(/\/+$/, '');
+
+    const allowlist = parseWorkerAllowlist(body.ipAllowlist);
+    if (!allowlist) return reply.code(400).send({ error: 'invalid_ip_allowlist', message: 'IP 白名单必须是合法 IP 或 CIDR 数组。' });
+    const temperature = body.temperature ?? 0.7;
+    if (typeof temperature !== 'number' || !Number.isFinite(temperature) || temperature < 0 || temperature > 2) return reply.code(400).send({ error: 'invalid_temperature', message: 'temperature 必须在 0 到 2 之间。' });
+    const warningBytes = body.diskWarningBytes ?? defaultWorkerSettings().diskWarningBytes;
+    const stopBytes = body.diskStopBytes ?? defaultWorkerSettings().diskStopBytes;
+    if (![warningBytes, stopBytes].every((value) => typeof value === 'number' && Number.isInteger(value) && value > 0) || warningBytes < stopBytes) {
+      return reply.code(400).send({ error: 'invalid_disk_thresholds', message: '磁盘警告阈值必须不小于停止阈值，且都必须为正整数。' });
+    }
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') return reply.code(400).send({ error: 'invalid_worker_enabled' });
+
+    const account = `engine:${id}`;
+    const existing = database.connection.prepare('SELECT credential_account FROM generation_engines WHERE id=? AND kind=\'worker\'').get(id) as { credential_account: string | null } | undefined;
+    let returnedToken: string | null = null;
+    const requestedToken = body.token?.trim();
+    if (requestedToken && requestedToken.length < 32) return reply.code(400).send({ error: 'invalid_worker_token', message: 'Worker token 至少需要 32 个字符。' });
+    const currentCredential = existing?.credential_account ? await secrets.get(existing.credential_account) : { value: null };
+    const token = requestedToken || currentCredential.value || issueToken('sth_worker');
+    if (requestedToken || !currentCredential.value) {
+      try { await secrets.set(account, token); }
+      catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(error) }); }
+      returnedToken = token;
+    }
+
+    const now = nowIso();
+    try {
+      database.transaction(() => {
+        database.connection.prepare(`
+          INSERT INTO generation_engines (id,name,kind,base_url,credential_account,enabled,concurrency_limit,created_at,updated_at)
+          VALUES (?,?,?,?,?, ?,1,?,?)
+          ON CONFLICT(id) DO UPDATE SET name=excluded.name,kind='worker',base_url=excluded.base_url,
+            credential_account=excluded.credential_account,enabled=excluded.enabled,concurrency_limit=1,updated_at=excluded.updated_at
+        `).run(id, name, 'worker', normalizedUrl, account, body.enabled === false ? 0 : 1, now, now);
+        database.connection.prepare(`
+          INSERT INTO generation_workers (engine_id,model,temperature,ip_allowlist_json,disk_warning_bytes,disk_stop_bytes,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?,?)
+          ON CONFLICT(engine_id) DO UPDATE SET model=excluded.model,temperature=excluded.temperature,
+            ip_allowlist_json=excluded.ip_allowlist_json,disk_warning_bytes=excluded.disk_warning_bytes,
+            disk_stop_bytes=excluded.disk_stop_bytes,updated_at=excluded.updated_at
+        `).run(id, body.model?.trim() ?? '', temperature, JSON.stringify(allowlist), warningBytes, stopBytes, now, now);
+      });
+    } catch (error) {
+      if (returnedToken && !existing) await secrets.delete(account).catch(() => undefined);
+      return reply.code(409).send({ error: 'worker_save_failed', message: error instanceof Error ? error.message : String(error) });
+    }
+    return reply.code(201).send({ workerId: id, ...(returnedToken ? { token: returnedToken } : {}), item: workerRows(database).find((item) => item.engineId === id) });
+  });
+
+  app.post<{ Params: { id: string } }>('/api/v1/admin/workers/:id/rotate-token', async (request, reply) => {
+    const row = database.connection.prepare('SELECT id FROM generation_engines WHERE id=? AND kind=\'worker\'').get(request.params.id) as { id: string } | undefined;
+    if (!row) return reply.code(404).send({ error: 'worker_not_found' });
+    const token = issueToken('sth_worker');
+    try { await secrets.set(`engine:${request.params.id}`, token); }
+    catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(error) }); }
+    database.connection.prepare('UPDATE generation_engines SET credential_account=?,updated_at=? WHERE id=?').run(`engine:${request.params.id}`, nowIso(), request.params.id);
+    return { workerId: request.params.id, token };
+  });
+
+  app.get<{ Params: { id: string } }>('/api/v1/admin/workers/:id/health', async (request, reply) => {
+    const row = database.connection.prepare('SELECT id,base_url,credential_account FROM generation_engines WHERE id=? AND kind=\'worker\'').get(request.params.id) as { id: string; base_url: string; credential_account: string | null } | undefined;
+    if (!row) return reply.code(404).send({ error: 'worker_not_found' });
+    const settings = defaultWorkerSettings();
+    const workerSettingsRow = database.connection.prepare('SELECT model,temperature,disk_warning_bytes,disk_stop_bytes FROM generation_workers WHERE engine_id=?').get(request.params.id) as { model: string; temperature: number; disk_warning_bytes: number; disk_stop_bytes: number } | undefined;
+    if (workerSettingsRow) {
+      settings.model = String(workerSettingsRow.model ?? '');
+      if (Number.isFinite(Number(workerSettingsRow.temperature))) settings.temperature = Number(workerSettingsRow.temperature);
+      if (Number.isFinite(Number(workerSettingsRow.disk_warning_bytes)) && Number(workerSettingsRow.disk_warning_bytes) > 0) settings.diskWarningBytes = Number(workerSettingsRow.disk_warning_bytes);
+      if (Number.isFinite(Number(workerSettingsRow.disk_stop_bytes)) && Number(workerSettingsRow.disk_stop_bytes) > 0) settings.diskStopBytes = Number(workerSettingsRow.disk_stop_bytes);
+    }
+    const credential = row.credential_account ? await secrets.get(row.credential_account) : { value: null };
+    if (!credential.value) return reply.code(503).send({ error: 'worker_token_missing', message: 'Windows Worker token 未配置。' });
+    try {
+      const raw = await workerHealth(String(row.base_url), credential.value, fetcher);
+      const health = safeWorkerHealth(request.params.id, raw, settings);
+      database.connection.prepare('UPDATE generation_workers SET last_seen_at=?,updated_at=? WHERE engine_id=?').run(nowIso(), nowIso(), request.params.id);
+      return health;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return reply.code(503).send({ error: 'worker_unavailable', message: message.slice(0, 300) });
+    }
+  });
+
+  app.get('/api/v1/admin/experiments/h3/status', async () => getH3Status(fetcher));
+  app.get('/api/v1/admin/media/diagnostics', async () => getMediaDiagnostics(fetcher));
+
   app.delete<{ Params: { id: string } }>('/api/v1/admin/generation/engines/:id', async (request, reply) => {
     const inUse = database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE engine_id = ?').get(request.params.id);
     if (inUse) return reply.code(409).send({ error: 'engine_in_use', message: '该生成引擎正被应用绑定使用，请先更换绑定。' });
+    const engine = database.connection.prepare('SELECT kind,credential_account FROM generation_engines WHERE id=?').get(request.params.id) as { kind: string; credential_account: string | null } | undefined;
     database.connection.prepare('DELETE FROM generation_engines WHERE id = ?').run(request.params.id);
+    if (engine?.credential_account) await secrets.delete(engine.credential_account).catch(() => undefined);
     return { ok: true };
   });
 

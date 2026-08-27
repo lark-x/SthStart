@@ -316,6 +316,72 @@ export const GenerationTaskDescriptorSchema = Type.Object({
 });
 export type GenerationTaskDescriptor = Static<typeof GenerationTaskDescriptorSchema>;
 
+export const GenerationWorkerStateSchema = Type.Union([
+  Type.Literal('online'), Type.Literal('offline'), Type.Literal('unknown'),
+]);
+export type GenerationWorkerState = Static<typeof GenerationWorkerStateSchema>;
+
+export const GenerationWorkerSchema = Type.Object({
+  engineId: Type.String(),
+  name: Type.String(),
+  baseUrl: Type.String(),
+  enabled: Type.Boolean(),
+  model: Type.String(),
+  temperature: Type.Number(),
+  concurrencyLimit: Type.Literal(1),
+  ipAllowlist: Type.Array(Type.String()),
+  diskWarningBytes: Type.Number(),
+  diskStopBytes: Type.Number(),
+  state: GenerationWorkerStateSchema,
+  lastSeenAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type GenerationWorker = Static<typeof GenerationWorkerSchema>;
+
+export const GenerationWorkerHealthSchema = Type.Object({
+  ok: Type.Boolean(), workerId: Type.String(), ready: Type.Boolean(),
+  model: Type.String(), temperature: Type.Number(), concurrency: Type.Literal(1),
+  queueDepth: Type.Number(), runningTaskId: Type.Union([Type.String(), Type.Null()]),
+  modelDirectoryReady: Type.Boolean(),
+  disk: Type.Object({ freeBytes: Type.Number(), tempBytes: Type.Number(), maxTempBytes: Type.Number(), warningBytes: Type.Number(), stopBytes: Type.Number() }),
+});
+export type GenerationWorkerHealth = Static<typeof GenerationWorkerHealthSchema>;
+
+export const H3ExperimentStatusSchema = Type.Object({
+  id: Type.Literal('h3-fl2va'),
+  enabled: Type.Boolean(),
+  available: Type.Boolean(),
+  ready: Type.Boolean(),
+  constraints: Type.Object({
+    maxWidth: Type.Literal(854), maxHeight: Type.Literal(480), maxDurationSeconds: Type.Literal(4), concurrencyLimit: Type.Literal(1),
+  }),
+  reason: Type.Union([
+    Type.Literal('disabled'), Type.Literal('worker_not_configured'), Type.Literal('model_missing'),
+    Type.Literal('worker_unreachable'), Type.Literal('worker_http_error'), Type.Literal('worker_not_ready'), Type.Literal('ready'),
+  ]),
+});
+export type H3ExperimentStatus = Static<typeof H3ExperimentStatusSchema>;
+
+export const MediaToolStatusSchema = Type.Object({
+  available: Type.Boolean(),
+  version: Type.Union([Type.String(), Type.Null()]),
+  error: Type.Union([Type.Literal('not_found'), Type.Literal('unavailable'), Type.Null()]),
+});
+export type MediaToolStatus = Static<typeof MediaToolStatusSchema>;
+
+export const MediaDiagnosticsSchema = Type.Object({
+  checkedAt: Type.String(),
+  video: Type.Object({
+    ffmpeg: MediaToolStatusSchema,
+    ffprobe: MediaToolStatusSchema,
+    preprocessingReady: Type.Boolean(),
+    installHint: Type.Union([Type.String(), Type.Null()]),
+  }),
+  h3: H3ExperimentStatusSchema,
+});
+export type MediaDiagnostics = Static<typeof MediaDiagnosticsSchema>;
+
 export const CreativeWorkflowBindingSchema = Type.Object({
   purpose: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image')]),
   ready: Type.Boolean(),

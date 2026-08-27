@@ -76,3 +76,50 @@ test('model clone validation reports the exact invalid field', async () => {
   assert.equal(missingModel.json().error, 'clone_model_required');
   await app.close(); database.close();
 });
+
+test('Windows Worker management stores token separately, exposes safe settings, and probes health', async () => {
+  const database = new ServiceDatabase();
+  const secrets = new MemorySecrets();
+  const seenAuth: string[] = [];
+  const fetcher: typeof fetch = async (_input, init) => {
+    seenAuth.push(new Headers(init?.headers).get('authorization') || '');
+    return Response.json({ ok: true, ready: true, workerId: 'worker-a', model: 'sdxl', temperature: 0.5, queueDepth: 0, runningTaskId: null, disk: { freeBytes: 12345 } });
+  };
+  const { app } = await createService({ config: readConfig({ STHSTART_ADMIN_TOKEN: adminToken }), database, secrets, fetcher });
+  const token = 'worker-management-secret-that-is-long-enough-123456';
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/workers',
+    headers: adminHeaders,
+    payload: {
+      id: 'worker-a', name: 'Windows Worker A', baseUrl: 'http://192.168.1.20:9200/', token,
+      model: 'sdxl', temperature: 0.5, ipAllowlist: ['192.168.1.0/24'], diskWarningBytes: 10_000, diskStopBytes: 2_000,
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().token, token);
+  assert.equal(secrets.values.get('engine:worker-a'), token);
+
+  const list = await app.inject({ method: 'GET', url: '/api/v1/admin/workers', headers: adminHeaders });
+  assert.equal(list.statusCode, 200);
+  assert.equal(list.json().items[0].baseUrl, 'http://192.168.1.20:9200');
+  assert.equal('token' in list.json().items[0], false);
+  assert.equal('secret' in list.json().items[0], false);
+  assert.equal(list.json().items[0].concurrencyLimit, 1);
+
+  const health = await app.inject({ method: 'GET', url: '/api/v1/admin/workers/worker-a/health', headers: adminHeaders });
+  assert.equal(health.statusCode, 200);
+  assert.equal(health.json().ready, true);
+  assert.equal(health.json().disk.warningBytes, 10_000);
+  assert.deepEqual(seenAuth, [`Bearer ${token}`]);
+
+  const rotated = await app.inject({ method: 'POST', url: '/api/v1/admin/workers/worker-a/rotate-token', headers: adminHeaders });
+  assert.equal(rotated.statusCode, 200);
+  assert.notEqual(rotated.json().token, token);
+  assert.equal(secrets.values.get('engine:worker-a'), rotated.json().token);
+
+  const invalid = await app.inject({ method: 'POST', url: '/api/v1/admin/workers', headers: adminHeaders, payload: { id: 'worker-b', name: 'Bad', baseUrl: 'http://worker.test:9200', token: 'short', ipAllowlist: ['not-an-ip'] } });
+  assert.equal(invalid.statusCode, 400);
+
+  await app.close(); database.close();
+});

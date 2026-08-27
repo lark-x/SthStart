@@ -409,7 +409,15 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
                 for (const image of images) {
                   const query = new URLSearchParams({ filename: String(image.filename ?? ''), subfolder: String(image.subfolder ?? ''), type: String(image.type ?? 'output') });
                   try {
-                    await persistArtifact(config, database, { appId: identity.id, taskId: request.params.id, sourceUrl: `${profile.baseUrl}/view?${query}`, contentType: 'image/png', trustedBaseUrl: profile.baseUrl }, fetcher);
+                    await persistArtifact(config, database, {
+                      appId: identity.id,
+                      taskId: request.params.id,
+                      sourceUrl: `${profile.baseUrl}/view?${query}`,
+                      contentType: 'image/png',
+                      trustedBaseUrl: profile.baseUrl,
+                      refType: 'image-task-output',
+                      refId: request.params.id,
+                    }, fetcher);
                   } catch (pErr) {
                     persistFailed = true;
                     persistError = pErr instanceof Error ? pErr.message : String(pErr);
@@ -779,6 +787,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       workflowId?: string;
       workflowVersion?: number;
       inputs?: Record<string, unknown>;
+      inputArtifacts?: Array<{ artifactId: string; inputKey: string }>;
       seed?: number;
     };
   }>('/api/v1/generation/tasks', async (request, reply) => {
@@ -803,6 +812,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
           workflowId: typeof body.workflowId === 'string' ? body.workflowId : null,
           workflowVersion: typeof body.workflowVersion === 'number' ? body.workflowVersion : null,
           inputs: safeJson(body.inputs),
+          inputArtifacts: Array.isArray(body.inputArtifacts) ? body.inputArtifacts : [],
           seed: typeof body.seed === 'number' ? body.seed : null,
         },
         fetcher,
@@ -828,6 +838,15 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
         output_node_not_found: 400,
         binding_node_not_found: 400,
         binding_node_inputs_invalid: 400,
+        invalid_input_artifacts: 400,
+        too_many_input_artifacts: 400,
+        invalid_input_artifact: 400,
+        duplicate_input_artifact_key: 400,
+        input_artifact_not_found: 404,
+        input_artifact_access_denied: 403,
+        input_artifact_unavailable: 409,
+        input_artifact_invalid_type: 400,
+        input_artifact_too_large: 413,
       };
 
       if (rawCode && KNOWN_CODES[rawCode]) {

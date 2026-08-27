@@ -29,6 +29,17 @@ function seedApp(database: ServiceDatabase, id: string, capabilities = ['llm', '
   return token;
 }
 
+class MemorySecrets extends SecretStore {
+  readonly values = new Map<string, string>();
+  override async status() { return { available: true, backend: 'memory', envFallback: false }; }
+  override async get(account: string) {
+    const value = this.values.get(account);
+    return value === undefined ? { value: null, source: 'none' as const } : { value, source: 'keyring' as const };
+  }
+  override async set(account: string, value: string) { this.values.set(account, value); }
+  override async delete(account: string) { this.values.delete(account); }
+}
+
 test('Generation core: validates ComfyUI API JSON and rejects GUI format', () => {
   // Valid API format
   const validApi = {
@@ -206,6 +217,9 @@ test("Generation deduplication: duplicate output persistArtifact calls reuse exi
   // Check that artifacts table has task_id recorded
   const artRow = database.connection.prepare("SELECT * FROM artifacts WHERE id = ?").get(artId) as { task_id: string };
   assert.equal(artRow.task_id, taskId);
+  const artifactReference = database.connection.prepare("SELECT ref_type, ref_id FROM artifact_references WHERE artifact_id = ?").get(artId) as { ref_type: string; ref_id: string };
+  assert.equal(artifactReference.ref_type, "generation-output");
+  assert.equal(artifactReference.ref_id, taskId);
 
   await app.close();
   database.close();
@@ -1158,30 +1172,103 @@ test("Generation events cleanup: cleanupGenerationEvents purges old events of fi
   database.close();
 });
 
-test("Generation unsupported engine: worker/cloud engine task execution fails with unsupported_engine", async () => {
+test("Generation worker: submits once, polls, persists output, and confirms remote files", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-worker-"));
+  const token = seedApp(database, "worker-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-worker", "Worker", "worker", "http://worker.test:9000", "engine:eng-worker", 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workers(engine_id,model,temperature,ip_allowlist_json,disk_warning_bytes,disk_stop_bytes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("eng-worker", "sdxl", 0.4, "[]", 10_000, 2_000, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-worker", "Worker WF", "", "worker", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-worker", 1, "eng-worker", "{}", "{}", JSON.stringify(["9"]), JSON.stringify({ "6": { class_type: "Test", inputs: {} }, "9": { class_type: "SaveImage", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("worker-app", "default", "wf-worker", 1, "eng-worker", now);
+
+  const secrets = new MemorySecrets();
+  await secrets.set("engine:eng-worker", "worker-secret-that-is-long-enough-123456");
+  const calls: string[] = [];
+  let statusCalls = 0;
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    calls.push(`${init?.method ?? 'GET'} ${url}`);
+    assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer worker-secret-that-is-long-enough-123456');
+    assert.doesNotMatch(url, /comfy\.test|\/prompt$|\/history\//);
+    if (url.endsWith('/v1/worker/tasks')) return Response.json({ taskId: 'worker-task-1', status: 'queued' }, { status: 202 });
+    if (url.endsWith('/status')) {
+      statusCalls++;
+      return Response.json({
+        taskId: 'worker-task-1',
+        status: statusCalls === 1 ? 'running' : 'succeeded',
+        outputs: statusCalls === 1 ? [] : [{ outputId: 'output-1', outputName: '9', filename: 'worker.png', contentType: 'image/png', byteSize: 18, sha256: '9e5f6b4d4f5b9f5bba7c17b1f7f3bead2642f4f5e22a0f8d2af8dc1d4b1f3ab1' }],
+      });
+    }
+    if (url.endsWith('/output/output-1')) return new Response(Buffer.from('worker-output-data'), { status: 200, headers: { 'content-type': 'image/png', 'content-length': '18' } });
+    if (url.endsWith('/confirm')) return Response.json({ taskId: 'worker-task-1', status: 'confirmed' });
+    return new Response(null, { status: 404 });
+  };
+
+  // The expected SHA-256 is intentionally computed from the exact mocked bytes above.
+  const outputBytes = Buffer.from('worker-output-data');
+  const expectedHash = (await import('node:crypto')).createHash('sha256').update(outputBytes).digest('hex');
+  const originalFetcher = fetcher;
+  const checkedFetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/status') && statusCalls >= 1) {
+      const response = await originalFetcher(input, init);
+      if (response.ok) {
+        const payload = await response.json() as Record<string, unknown>;
+        if (Array.isArray(payload.outputs) && payload.outputs.length) (payload.outputs[0] as Record<string, unknown>).sha256 = expectedHash;
+        return Response.json(payload);
+      }
+    }
+    return originalFetcher(input, init);
+  };
+
+  const { app } = await createService({ config, database, secrets, fetcher: checkedFetcher });
+
+  const createRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/generation/tasks",
+    headers: { authorization: `Bearer ${token}`, "idempotency-key": "worker-key-1" },
+    payload: {},
+  });
+  assert.equal(createRes.statusCode, 202);
+  const taskId = createRes.json().id as string;
+  await Promise.allSettled(Array.from(activeGenerationExecutions));
+  const lookup = await app.inject({ method: 'GET', url: `/api/v1/generation/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  assert.equal(lookup.json().status, 'succeeded');
+  assert.equal(lookup.json().artifacts.length, 1);
+  assert.equal(lookup.json().artifacts[0].outputName, '9');
+  assert.ok(calls.some((call) => call.startsWith('POST http://worker.test:9000/v1/worker/tasks')));
+  assert.ok(calls.some((call) => call.endsWith('/output/output-1')));
+  assert.ok(calls.some((call) => call.endsWith('/confirm')));
+
+  await app.close();
+  database.close();
+});
+
+test("Generation unsupported engine: cloud engine task creation fails with unsupported_engine", async () => {
   const database = new ServiceDatabase();
   const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-unsupported-"));
   const token = seedApp(database, "unsupp-app");
   const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
   const now = nowIso();
 
-  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-worker", "Worker", "worker", "http://worker.test:9000", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-worker", "Worker WF", "", "worker", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-worker", 1, "eng-worker", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
-  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("unsupp-app", "default", "wf-worker", 1, "eng-worker", now);
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-cloud", "Cloud", "cloud", "http://cloud.test:9000", null, 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-cloud", "Cloud WF", "", "cloud", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-cloud", 1, "eng-cloud", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("unsupp-app", "default", "wf-cloud", 1, "eng-cloud", now);
 
   const { app } = await createService({ config, database, secrets: new SecretStore({}) });
-
   const createRes = await app.inject({
     method: "POST",
     url: "/api/v1/generation/tasks",
-    headers: { authorization: `Bearer ${token}`, "idempotency-key": "unsupp-key-1" },
+    headers: { authorization: `Bearer ${token}`, "idempotency-key": "cloud-key-1" },
     payload: {},
   });
-
   assert.equal(createRes.statusCode, 400);
   assert.equal(createRes.json().error, "unsupported_engine");
-
   await app.close();
   database.close();
 });

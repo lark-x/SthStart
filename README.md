@@ -82,10 +82,13 @@ Fork 的 `main` 只跟随原作者上游，定制修改放在 `lark`。SthStart 
 - `GET /v1/models`、`POST /v1/chat/completions`
 - `POST /api/v1/vector/{embed,search,upsert,upsert-batch,delete}`
 - `/api/v1/images/tasks` 与短期签名产物 URL
+- 通用生成任务与可选 `workers/windows-worker` Windows/ComfyUI 桥接
 - `/api/v1/personas` 与应用内固定版本快照
 - `/api/v1/logs`（带 `logs` 能力的应用写入自身结构化日志）
 - `/api/v1/admin/runtime/*`、`/api/v1/admin/logs*` 与脱敏诊断导出
 - `/api/v1/admin/*`（仅由门户服务端 BFF 注入管理令牌）
 
 服务强制只绑定回环地址。公共能力使用独立应用 Bearer Token，管理接口使用单独的服务端令牌；浏览器不会取得管理令牌。完整协议、数据边界与迁移说明见 [`docs/PUBLIC_SERVICES.md`](docs/PUBLIC_SERVICES.md)。
+Windows Worker 的安装、令牌、IP 白名单、重启恢复和确认清理协议见 [`docs/PUBLIC_SERVICES.md`](docs/PUBLIC_SERVICES.md)；Worker 本身可在 `workers/windows-worker` 目录用 `npm start` 启动。
+H3 FL2VA、Ref2VA、云端 H3 和 2K 输出的实验边界见 [`docs/EXPERIMENTAL_MEDIA.md`](docs/EXPERIMENTAL_MEDIA.md)；未验证能力不会出现在公共生成入口中。
 内置应用包括邻舍入口、创作笔记与叙事档案。叙事档案的多作品数据模型、JSON 导入契约和 MCP 连接器边界见 [docs/NARRATIVE_ARCHIVE.md](docs/NARRATIVE_ARCHIVE.md)。

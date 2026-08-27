@@ -10,8 +10,17 @@ import type {
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
-import { createArtifactReference, mimeToExt, persistArtifact } from './artifacts.js';
+import { createArtifactReference, mimeToExt, persistArtifact, removeArtifact, streamUploadArtifact } from './artifacts.js';
 import type { SecretStore } from './security.js';
+import {
+  confirmWorkerTask,
+  downloadWorkerOutput,
+  getWorkerTaskStatus,
+  readWorkerSettings,
+  submitWorkerTask,
+  uploadWorkerInput,
+  WORKER_OUTPUT_ID_PATTERN,
+} from './worker.js';
 
 export const generationEventBus = new EventEmitter();
 export const activeGenerationExecutions = new Set<Promise<void>>();
@@ -346,6 +355,7 @@ async function prepareInputArtifacts(
   taskRow: Record<string, unknown>,
   workflowSnapshot: Record<string, unknown>,
   secret: string | null,
+  engineKind: string,
   fetcher: typeof fetch,
 ): Promise<Record<string, unknown>> {
   const parsedRequest = parseGenerationRequestParams(taskRow.request_params_json);
@@ -369,8 +379,8 @@ async function prepareInputArtifacts(
 
   for (const input of parsedRequest.inputArtifacts) {
     const artifact = database.connection.prepare(
-      'SELECT id, local_path, content_type, original_name, file_status FROM artifacts WHERE id = ? AND app_id = ?',
-    ).get(input.artifactId, String(taskRow.app_id)) as { id: string; local_path: string | null; content_type: string | null; original_name: string | null; file_status: string } | undefined;
+      'SELECT id, local_path, content_type, original_name, sha256, file_status FROM artifacts WHERE id = ? AND app_id = ?',
+    ).get(input.artifactId, String(taskRow.app_id)) as { id: string; local_path: string | null; content_type: string | null; original_name: string | null; sha256: string | null; file_status: string } | undefined;
     if (!artifact || artifact.file_status !== 'ready' || !artifact.local_path) {
       throw generationError('input_artifact_unavailable', '输入媒体当前不可用。');
     }
@@ -389,6 +399,35 @@ async function prepareInputArtifacts(
     const extension = /^\.(png|jpe?g|webp|gif|avif)$/.test(originalExtension) ? originalExtension : mimeToExt(contentType);
     const controlledFilename = `${artifact.id}${extension}`;
     const blob = await openAsBlob(artifact.local_path, { type: contentType });
+
+    if (engineKind === 'worker') {
+      if (!secret) throw generationError('worker_token_missing', 'Windows Worker 凭据未配置。');
+      let uploadResponse: { fileName?: string };
+      try {
+        uploadResponse = await uploadWorkerInput({
+          baseUrl: engineBaseUrl,
+          token: secret,
+          taskId: String(taskRow.id),
+          uploadId: artifact.id,
+          body: blob,
+          filename: controlledFilename,
+          contentType,
+          contentLength: fileStats.size,
+          sha256: artifact.sha256 || '',
+          fetcher,
+        });
+      } catch (error) {
+        const detail = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 240);
+        throw generationError('worker_input_upload_failed', `输入图片上传到 Windows Worker 失败：${detail}`);
+      }
+      const uploadedName = typeof uploadResponse.fileName === 'string' ? uploadResponse.fileName : '';
+      if (!uploadedName || uploadedName.includes('/') || uploadedName.includes('\\')) {
+        throw generationError('worker_input_upload_failed', 'Windows Worker 未返回可用的受控文件名。');
+      }
+      applyWorkflowInput(prepared, nodeBindings, input.inputKey, uploadedName);
+      continue;
+    }
+
     const form = new FormData();
     form.set('image', new File([blob], controlledFilename, { type: contentType }));
     form.set('overwrite', 'false');
@@ -500,7 +539,7 @@ export function resolveWorkflowAndEngine(
     throw err;
   }
 
-  if (engine.kind !== 'comfyui') {
+  if (engine.kind !== 'comfyui' && engine.kind !== 'worker') {
     const err = new Error(`暂不支持引擎类型 "${engine.kind}"。`);
     (err as { code?: string }).code = 'unsupported_engine';
     throw err;
@@ -716,7 +755,7 @@ export async function executeQueuedTask(
     return;
   }
 
-  if (engineRow.kind !== "comfyui") {
+  if (engineRow.kind !== "comfyui" && engineRow.kind !== "worker") {
     const nowErr = nowIso();
     database.connection.prepare(
       "UPDATE generation_tasks SET status = 'failed', error_code = 'unsupported_engine', error_message = '暂不支持该类型的生成引擎', updated_at = ?, finished_at = ? WHERE id = ?",
@@ -731,7 +770,7 @@ export async function executeQueuedTask(
     return;
   }
 
-  const concurrencyLimit = Math.max(1, Number(engineRow.concurrency_limit || 1));
+  const concurrencyLimit = engineRow.kind === 'worker' ? 1 : Math.max(1, Number(engineRow.concurrency_limit || 1));
   const leaseOwner = randomUUID();
   const leaseExpiresAt = new Date(Date.now() + 60_000).toISOString();
   const now = nowIso();
@@ -795,6 +834,7 @@ export async function executeQueuedTask(
       taskRow,
       JSON.parse(String(taskRow.workflow_snapshot_json)) as Record<string, unknown>,
       secret,
+      String(engineRow.kind),
       fetcher,
     );
   } catch (error) {
@@ -814,6 +854,112 @@ export async function executeQueuedTask(
     setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
+  if (engineRow.kind === 'worker') {
+    let outputDeclarations: string[] = [];
+    try {
+      const version = database.connection.prepare(
+        'SELECT output_declarations_json FROM generation_workflow_versions WHERE workflow_id = ? AND version = ?',
+      ).get(String(taskRow.workflow_id), Number(taskRow.workflow_version)) as { output_declarations_json: string } | undefined;
+      const parsed = version ? JSON.parse(version.output_declarations_json) as unknown : [];
+      if (Array.isArray(parsed)) outputDeclarations = parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    } catch {
+      outputDeclarations = [];
+    }
+
+    const settings = readWorkerSettings(database, engineId);
+    let workerSubmission;
+    try {
+      workerSubmission = await submitWorkerTask({
+        baseUrl: engineBaseUrl,
+        token: secret ?? '',
+        taskId,
+        workflow: workflowSnapshot,
+        outputDeclarations,
+        settings,
+        fetcher,
+      });
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      const safeMessage = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300);
+      const nowErr = nowIso();
+      if (code === 'worker_unavailable') {
+        database.connection.prepare(
+          "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = ?, upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+        ).run(`Windows Worker 提交状态不确定：${safeMessage}`, nowErr, nowErr, taskId);
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: 'abandoned',
+          payload: { errorCode: 'submission_outcome_unknown', errorMessage: `Windows Worker 提交状态不确定：${safeMessage}` },
+        });
+      } else {
+        database.connection.prepare(
+          "UPDATE generation_tasks SET status = 'failed', error_code = 'worker_request_failed', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+        ).run(safeMessage, nowErr, nowErr, taskId);
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: 'failed',
+          payload: { errorCode: 'worker_request_failed', errorMessage: safeMessage },
+        });
+      }
+      setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+      return;
+    }
+
+    const workerStatus = String(workerSubmission.status || 'accepted');
+    if (workerStatus === 'failed' || workerStatus === 'abandoned' || workerStatus === 'cancelled') {
+      const nowErr = nowIso();
+      const errorCode = String(workerSubmission.errorCode || `worker_${workerStatus}`);
+      const safeMessage = sanitizeErrorMessage(String(workerSubmission.errorMessage || `Windows Worker 任务${workerStatus}。`)).slice(0, 300);
+      const terminalStatus = workerStatus === 'abandoned' ? 'abandoned' : workerStatus;
+      database.connection.prepare(
+        `UPDATE generation_tasks SET status = ?, error_code = ?, error_message = ?, upstream_may_continue = ?, cancellation_scope = ?, updated_at = ?, finished_at = ? WHERE id = ?`,
+      ).run(terminalStatus, errorCode, safeMessage, terminalStatus === 'abandoned' ? 1 : 0, terminalStatus === 'abandoned' ? 'local-tracking' : 'none', nowErr, nowErr, taskId);
+      recordGenerationEvent(database, {
+        taskId,
+        appId,
+        eventType: terminalStatus,
+        payload: { errorCode, errorMessage: safeMessage },
+      });
+      setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+      return;
+    }
+
+    const workerTaskId = typeof workerSubmission.taskId === 'string' && workerSubmission.taskId
+      ? workerSubmission.taskId
+      : typeof workerSubmission.providerTaskId === 'string' && workerSubmission.providerTaskId
+        ? workerSubmission.providerTaskId
+        : taskId;
+    if (!/^[A-Za-z0-9_-]{8,160}$/.test(workerTaskId)) {
+      const nowErr = nowIso();
+      database.connection.prepare(
+        "UPDATE generation_tasks SET status = 'failed', error_code = 'worker_protocol_error', error_message = 'Windows Worker 未返回有效任务 ID', updated_at = ?, finished_at = ? WHERE id = ?",
+      ).run(nowErr, nowErr, taskId);
+      recordGenerationEvent(database, {
+        taskId,
+        appId,
+        eventType: 'failed',
+        payload: { errorCode: 'worker_protocol_error', errorMessage: 'Windows Worker 未返回有效任务 ID' },
+      });
+      setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+      return;
+    }
+
+    const nowAccepted = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'accepted', provider_task_id = ?, updated_at = ? WHERE id = ?",
+    ).run(workerTaskId, nowAccepted, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: 'accepted',
+      payload: { status: 'accepted', providerTaskId: workerTaskId, source: 'windows-worker' },
+    });
+    await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
+    return;
+  }
+
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (secret) headers.authorization = `Bearer ${secret}`;
 
@@ -890,6 +1036,236 @@ export async function executeQueuedTask(
   await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
 }
 
+async function pollAndCompleteWorkerTask(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  taskId: string,
+  fetcher: typeof fetch,
+  options?: { pollTimeoutMs?: number; pollIntervalMs?: number },
+): Promise<void> {
+  const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
+  if (!taskRow) return;
+  const appId = String(taskRow.app_id);
+  const workerTaskId = taskRow.provider_task_id ? String(taskRow.provider_task_id) : taskId;
+  const engineRow = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(String(taskRow.engine_id)) as Record<string, unknown> | undefined;
+  if (!engineRow || String(engineRow.kind) !== 'worker') return;
+
+  const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, '');
+  const credentialAccount = engineRow.credential_account ? String(engineRow.credential_account) : null;
+  let secret: string | null = null;
+  if (credentialAccount) {
+    try {
+      const credential = await secrets.get(credentialAccount);
+      secret = credential.value;
+    } catch {}
+  }
+  if (!secret) {
+    const nowErr = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'failed', error_code = 'worker_token_missing', error_message = 'Windows Worker 凭据未配置', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowErr, nowErr, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: 'failed',
+      payload: { errorCode: 'worker_token_missing', errorMessage: 'Windows Worker 凭据未配置' },
+    });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+    return;
+  }
+
+  const pollTimeoutMs = options?.pollTimeoutMs ?? 600_000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 500;
+  const pollDeadline = Date.now() + pollTimeoutMs;
+
+  while (Date.now() < pollDeadline) {
+    const currentTask = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+    if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)) return;
+
+    try {
+      const workerStatus = await getWorkerTaskStatus(engineBaseUrl, secret, workerTaskId, fetcher);
+      const status = workerStatus.status;
+
+      if (status === 'failed' || status === 'abandoned' || status === 'cancelled') {
+        const nowDone = nowIso();
+        const errorCode = String(workerStatus.errorCode || `worker_${status}`);
+        const safeMessage = sanitizeErrorMessage(String(workerStatus.errorMessage || `Windows Worker 任务${status}。`)).slice(0, 300);
+        const terminalStatus = status;
+        database.connection.prepare(
+          "UPDATE generation_tasks SET status = ?, error_code = ?, error_message = ?, upstream_may_continue = ?, cancellation_scope = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+        ).run(terminalStatus, errorCode, safeMessage, status === 'abandoned' ? 1 : 0, status === 'abandoned' ? 'local-tracking' : 'none', nowDone, nowDone, taskId);
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: terminalStatus,
+          payload: { errorCode, errorMessage: safeMessage },
+        });
+        break;
+      }
+
+      if (status === 'running' && currentTask.status !== 'running') {
+        const nowRunning = nowIso();
+        database.connection.prepare("UPDATE generation_tasks SET status = 'running', updated_at = ? WHERE id = ?").run(nowRunning, taskId);
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: 'running',
+          payload: { status: 'running', source: 'windows-worker' },
+        });
+      }
+
+      if (status === 'succeeded' || status === 'confirmed') {
+        if (status === 'confirmed') {
+          const linked = database.connection.prepare('SELECT COUNT(*) as count FROM generation_task_artifacts WHERE task_id=?').get(taskId) as { count: number };
+          if (Number(linked.count) > 0) {
+            const nowDone = nowIso();
+            database.connection.prepare(
+              "UPDATE generation_tasks SET status = 'succeeded', error_code = NULL, error_message = NULL, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
+            ).run(nowDone, nowDone, taskId);
+            break;
+          }
+        }
+        const outputs = Array.isArray(workerStatus.outputs) ? workerStatus.outputs : [];
+        if (!outputs.length) {
+          const nowDone = nowIso();
+          database.connection.prepare(
+            "UPDATE generation_tasks SET status = 'failed', error_code = 'worker_outputs_missing', error_message = 'Windows Worker 未返回产物', updated_at = ?, finished_at = ? WHERE id = ?",
+          ).run(nowDone, nowDone, taskId);
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'failed',
+            payload: { errorCode: 'worker_outputs_missing', errorMessage: 'Windows Worker 未返回产物' },
+          });
+          break;
+        }
+
+        const persisted: Array<{ artifactId: string; outputName: string; sortOrder: number }> = [];
+        let persistError: string | null = null;
+        for (let index = 0; index < outputs.length; index++) {
+          const output = outputs[index];
+          if (!output || !WORKER_OUTPUT_ID_PATTERN.test(String(output.outputId || '')) || !String(output.outputName || '').trim() || !String(output.filename || '').trim()) {
+            persistError = 'Windows Worker 返回了无效的产物描述。';
+            break;
+          }
+          try {
+            const response = await downloadWorkerOutput(engineBaseUrl, secret, workerTaskId, String(output.outputId), fetcher);
+            const outputStream = response.body;
+            if (!outputStream) throw new Error('Windows Worker 未返回产物内容。');
+            const headerLength = Number.parseInt(response.headers.get('content-length') || '', 10);
+            const expectedLength = Number.isFinite(headerLength) && headerLength >= 0 ? headerLength : null;
+            const descriptor = await streamUploadArtifact(config, database, {
+              appId,
+              taskId,
+              stream: outputStream,
+              contentType: String(output.contentType || response.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim() || 'application/octet-stream',
+              contentLength: expectedLength,
+              originalName: String(output.filename),
+              refType: 'generation-output',
+              refId: taskId,
+              metadata: {
+                source: 'windows-worker',
+                workerTaskId,
+                outputId: String(output.outputId),
+                outputName: String(output.outputName),
+                declaredSha256: output.sha256 || null,
+              },
+            });
+            if (output.sha256 && descriptor.sha256 !== output.sha256) {
+              await removeArtifact(database, descriptor.id, appId, true).catch(() => undefined);
+              throw new Error('Windows Worker 产物校验失败：SHA-256 不匹配。');
+            }
+            if (Number.isFinite(Number(output.byteSize)) && Number(output.byteSize) !== descriptor.byteSize) {
+              await removeArtifact(database, descriptor.id, appId, true).catch(() => undefined);
+              throw new Error('Windows Worker 产物校验失败：文件大小不匹配。');
+            }
+            persisted.push({ artifactId: descriptor.id, outputName: String(output.outputName), sortOrder: index });
+          } catch (error) {
+            persistError = error instanceof Error ? error.message : String(error);
+            break;
+          }
+        }
+
+        if (persistError || persisted.length !== outputs.length) {
+          for (const item of persisted) await removeArtifact(database, item.artifactId, appId, true).catch(() => undefined);
+          const nowDone = nowIso();
+          const safeMessage = sanitizeErrorMessage(persistError || 'Windows Worker 产物保存失败。').slice(0, 300);
+          database.connection.prepare(
+            "UPDATE generation_tasks SET status = 'abandoned', error_code = 'worker_output_failed', error_message = ?, upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+          ).run(safeMessage, nowDone, nowDone, taskId);
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'abandoned',
+            payload: { errorCode: 'worker_output_failed', errorMessage: safeMessage },
+          });
+          break;
+        }
+
+        const nowDone = nowIso();
+        database.transaction(() => {
+          for (const item of persisted) {
+            database.connection.prepare(`
+              INSERT INTO generation_task_artifacts (task_id, artifact_id, output_name, sort_order, created_at)
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(task_id, artifact_id) DO NOTHING
+            `).run(taskId, item.artifactId, item.outputName, item.sortOrder, nowDone);
+          }
+          database.connection.prepare(
+            "UPDATE generation_tasks SET status = 'succeeded', error_code = NULL, error_message = NULL, updated_at = ?, finished_at = ? WHERE id = ?",
+          ).run(nowDone, nowDone, taskId);
+        });
+        recordGenerationEvent(database, {
+          taskId,
+          appId,
+          eventType: 'succeeded',
+          payload: { status: 'succeeded', count: persisted.length, source: 'windows-worker', confirmed: false },
+        });
+
+        try {
+          await confirmWorkerTask(engineBaseUrl, secret, workerTaskId, outputs.map((output) => String(output.outputId)), fetcher);
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'worker_confirmed',
+            payload: { status: 'confirmed', source: 'windows-worker' },
+          });
+        } catch (error) {
+          const safeMessage = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300);
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'worker_confirm_failed',
+            payload: { errorCode: 'worker_confirm_failed', errorMessage: safeMessage },
+          });
+        }
+        break;
+      }
+    } catch {
+      // The Worker may be restarting or briefly unavailable. Keep the task single-submission and continue polling.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  const finalCheck = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+  if (finalCheck && ["submitting", "accepted", "running"].includes(finalCheck.status)) {
+    const nowDone = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'worker_poll_timeout', error_message = 'Windows Worker 轮询超时，上游可能仍在运行', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(nowDone, nowDone, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: 'abandoned',
+      payload: { errorCode: 'worker_poll_timeout', errorMessage: 'Windows Worker 轮询超时，上游可能仍在运行' },
+    });
+  }
+
+  setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+}
+
 export async function pollAndCompleteTask(
   config: ServiceConfig,
   database: ServiceDatabase,
@@ -907,6 +1283,12 @@ export async function pollAndCompleteTask(
   const engineId = String(taskRow.engine_id);
   const engineRow = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(engineId) as Record<string, unknown> | undefined;
   if (!engineRow) return;
+
+  if (engineRow.kind === 'worker') {
+    await pollAndCompleteWorkerTask(config, database, secrets, taskId, fetcher, options);
+    return;
+  }
+  if (engineRow.kind !== 'comfyui') return;
 
   const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, "");
   const credentialAccount = engineRow.credential_account ? String(engineRow.credential_account) : null;
@@ -1042,6 +1424,8 @@ export async function pollAndCompleteTask(
                     sourceUrl: srcUrl,
                     trustedBaseUrl: engineBaseUrl,
                     contentType: "image/png",
+                    refType: "generation-output",
+                    refId: taskId,
                   },
                   fetcher,
                 );
@@ -1191,6 +1575,20 @@ export async function cancelGenerationTask(
 
   const engine = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(String(task.engine_id)) as Record<string, unknown> | undefined;
   const providerTaskId = task.provider_task_id ? String(task.provider_task_id) : null;
+
+  if (engine?.kind === 'worker') {
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'worker_cancel_not_supported', error_message = 'Windows Worker 任务已停止本地跟踪；远端任务可能仍在运行', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(now, now, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: 'abandoned',
+      payload: { errorCode: 'worker_cancel_not_supported', errorMessage: 'Windows Worker 任务已停止本地跟踪；远端任务可能仍在运行', scope: 'local-tracking' },
+    });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+    return getGenerationTask(database, taskId, appId)!;
+  }
 
   if (engine && providerTaskId) {
     const engineBaseUrl = String(engine.base_url).replace(/\/+$/, "");
