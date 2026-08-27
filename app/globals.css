@@ -232,6 +232,15 @@ a {
 .character-portal-card .card-art { background: #6c6b5b; }
 .character-orbit { position: absolute; border: 1px solid rgb(255 253 248 / 30%); border-radius: 50%; }
 
+.creative-card-art { background: #3f3b48; }
+.creative-glow { position: absolute; border-radius: 50%; filter: blur(1px); }
+.creative-glow-one { width: 180px; height: 180px; background: rgb(228 93 53 / 48%); transform: translate(-52px, -34px); }
+.creative-glow-two { width: 132px; height: 132px; background: rgb(102 169 154 / 42%); transform: translate(70px, 64px); }
+.creative-spark { position: absolute; color: rgb(255 253 248 / 76%); }
+.creative-spark-one { width: 22px; height: 22px; transform: translate(-104px, -86px); }
+.creative-spark-two { width: 14px; height: 14px; transform: translate(112px, 92px); color: #e9c27b; }
+.creative-portal-card .primary-action { background: #59506a; }
+
 .orbit { position: absolute; border: 1px solid rgb(228 93 53 / 55%); border-radius: 50%; }
 .orbit-one { width: 230px; height: 120px; transform: rotate(-28deg); }
 .orbit-two { width: 120px; height: 240px; border-color: rgb(141 163 153 / 65%); transform: rotate(37deg); }

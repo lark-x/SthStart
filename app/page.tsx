@@ -4,6 +4,7 @@ import { NotebookCard } from './components/notebook-card';
 import { NarrativeCard } from './components/narrative-card';
 import { RuntimeStrip } from './components/runtime-strip';
 import { CharacterLibraryCard } from './components/character-library-card';
+import { CreativeCard } from './components/creative-card';
 
 export default function Home() {
   return (
@@ -13,7 +14,7 @@ export default function Home() {
           <span className="brand-mark">S</span>
           <span>SthStart</span>
         </Link>
-        <nav className="header-nav"><Link href="/settings/control-center">控制中心</Link><Link href="/settings/public-services">公共服务</Link><span className="header-note">LOCAL EXPERIENCE HUB</span></nav>
+        <nav className="header-nav"><Link href="/apps/creative">创作中心</Link><Link href="/settings/control-center">控制中心</Link><Link href="/settings/public-services">公共服务</Link><span className="header-note">LOCAL EXPERIENCE HUB</span></nav>
       </header>
 
       <section className="hero" aria-labelledby="portal-title">
@@ -35,10 +36,10 @@ export default function Home() {
             <p className="eyebrow">APPLICATIONS</p>
             <h2 id="apps-title">已接入应用</h2>
           </div>
-          <span className="app-count">04</span>
+          <span className="app-count">05</span>
         </div>
 
-        <div className="app-list"><LinsheCard /><CharacterLibraryCard /><NotebookCard /><NarrativeCard /></div>
+        <div className="app-list"><LinsheCard /><CreativeCard /><CharacterLibraryCard /><NotebookCard /><NarrativeCard /></div>
       </section>
 
       <footer className="portal-footer">

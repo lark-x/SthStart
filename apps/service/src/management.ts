@@ -92,7 +92,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const id = request.body?.id?.trim();
     const name = request.body?.name?.trim();
     const capabilities = request.body?.capabilities ?? ['llm', 'vector', 'image', 'artifact', 'persona', 'logs'];
-    if (id === 'linshe') return reply.code(409).send({ error: 'system_app_reserved', message: 'linshe 是系统内置应用，不能重复创建。' });
+    if (id === 'linshe' || id === 'creative-center') return reply.code(409).send({ error: 'system_app_reserved', message: '系统内置应用不能重复创建。' });
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name) return reply.code(400).send({ error: 'invalid_app' });
     const token = issueToken('sth_app');
     const now = nowIso();
@@ -109,7 +109,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   });
 
   app.post<{ Params: { id: string } }>('/api/v1/admin/apps/:id/rotate-token', async (request, reply) => {
-    if (request.params.id === 'linshe') return reply.code(409).send({ error: 'system_app_managed', message: '邻舍令牌由主服务自动管理。' });
+    if (request.params.id === 'linshe' || request.params.id === 'creative-center') return reply.code(409).send({ error: 'system_app_managed', message: '系统内置应用令牌由主服务自动管理。' });
     const token = issueToken('sth_app');
     const result = database.connection.prepare('UPDATE managed_apps SET token_hash = ?, updated_at = ? WHERE id = ?')
       .run(hashToken(token), nowIso(), request.params.id);

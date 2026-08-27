@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { openAsBlob } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { extname } from 'node:path';
 import type {
   GenerationEvent,
   GenerationTaskDescriptor,
@@ -7,7 +10,7 @@ import type {
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
-import { persistArtifact } from './artifacts.js';
+import { createArtifactReference, mimeToExt, persistArtifact } from './artifacts.js';
 import type { SecretStore } from './security.js';
 
 export const generationEventBus = new EventEmitter();
@@ -236,9 +239,186 @@ export interface CreateTaskOptions {
   workflowId?: string | null;
   workflowVersion?: number | null;
   inputs?: Record<string, unknown>;
+  inputArtifacts?: GenerationInputArtifact[];
   seed?: number | null;
   retryOf?: string | null;
   isInternal?: boolean;
+}
+
+export interface GenerationInputArtifact {
+  artifactId: string;
+  inputKey: string;
+}
+
+export interface ParsedGenerationRequestParams {
+  inputs: Record<string, unknown>;
+  inputArtifacts: GenerationInputArtifact[];
+}
+
+function generationError(code: string, message: string): Error & { code: string } {
+  const error = new Error(message) as Error & { code: string };
+  error.code = code;
+  return error;
+}
+
+export function normalizeInputArtifacts(raw: unknown): GenerationInputArtifact[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw generationError('invalid_input_artifacts', '输入媒体引用必须为数组。');
+  if (raw.length > 4) throw generationError('too_many_input_artifacts', '单个生成任务最多引用 4 个输入媒体。');
+
+  const seen = new Set<string>();
+  return raw.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw generationError('invalid_input_artifact', '输入媒体引用格式无效。');
+    }
+    const value = item as Record<string, unknown>;
+    const artifactId = typeof value.artifactId === 'string' ? value.artifactId.trim() : '';
+    const inputKey = typeof value.inputKey === 'string' ? value.inputKey.trim() : '';
+    if (!artifactId || !inputKey || !/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(inputKey)) {
+      throw generationError('invalid_input_artifact', '输入媒体引用必须包含合法的 artifactId 和 inputKey。');
+    }
+    if (seen.has(inputKey)) throw generationError('duplicate_input_artifact_key', `输入媒体绑定键 ${inputKey} 重复。`);
+    seen.add(inputKey);
+    return { artifactId, inputKey };
+  });
+}
+
+export function parseGenerationRequestParams(raw: unknown): ParsedGenerationRequestParams {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { inputs: {}, inputArtifacts: [] };
+  const value = parsed as Record<string, unknown>;
+  if (value.inputs && typeof value.inputs === 'object' && !Array.isArray(value.inputs)) {
+    return {
+      inputs: value.inputs as Record<string, unknown>,
+      inputArtifacts: normalizeInputArtifacts(value.inputArtifacts),
+    };
+  }
+  return { inputs: value, inputArtifacts: [] };
+}
+
+function validateInputArtifacts(
+  database: ServiceDatabase,
+  appId: string,
+  inputArtifacts: GenerationInputArtifact[],
+) {
+  for (const input of inputArtifacts) {
+    const row = database.connection.prepare(
+      'SELECT id, app_id, local_path, content_type, byte_size, file_status FROM artifacts WHERE id = ?',
+    ).get(input.artifactId) as { id: string; app_id: string; local_path: string | null; content_type: string | null; byte_size: number; file_status: string } | undefined;
+    if (!row) throw generationError('input_artifact_not_found', `输入媒体 ${input.artifactId} 不存在。`);
+    if (row.app_id !== appId) throw generationError('input_artifact_access_denied', '输入媒体不属于当前应用。');
+    if (row.file_status !== 'ready' || !row.local_path) throw generationError('input_artifact_unavailable', '输入媒体当前不可用。');
+    if (!row.content_type?.toLowerCase().startsWith('image/')) throw generationError('input_artifact_invalid_type', '输入媒体必须是图片文件。');
+    if (!Number.isFinite(Number(row.byte_size)) || Number(row.byte_size) > 12 * 1024 * 1024) {
+      throw generationError('input_artifact_too_large', '输入图片不能超过 12 MiB。');
+    }
+  }
+}
+
+function applyWorkflowInput(
+  workflowSnapshot: Record<string, unknown>,
+  nodeBindings: Record<string, string[]>,
+  inputKey: string,
+  value: string,
+) {
+  const pathSegments = nodeBindings[inputKey];
+  if (!pathSegments || pathSegments.length !== 3 || pathSegments[1] !== 'inputs') {
+    throw generationError('input_binding_not_found', `工作流没有为输入 ${inputKey} 配置节点绑定。`);
+  }
+  const [nodeId, , parameter] = pathSegments;
+  const node = workflowSnapshot[nodeId];
+  if (!node || typeof node !== 'object' || Array.isArray(node)) {
+    throw generationError('input_binding_not_found', `输入 ${inputKey} 的目标节点不存在。`);
+  }
+  const nodeInputs = (node as Record<string, unknown>).inputs;
+  if (!nodeInputs || typeof nodeInputs !== 'object' || Array.isArray(nodeInputs)) {
+    throw generationError('input_binding_not_found', `输入 ${inputKey} 的目标节点缺少 inputs。`);
+  }
+  (nodeInputs as Record<string, unknown>)[parameter] = value;
+}
+
+async function prepareInputArtifacts(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  taskRow: Record<string, unknown>,
+  workflowSnapshot: Record<string, unknown>,
+  secret: string | null,
+  fetcher: typeof fetch,
+): Promise<Record<string, unknown>> {
+  const parsedRequest = parseGenerationRequestParams(taskRow.request_params_json);
+  if (!parsedRequest.inputArtifacts.length) return workflowSnapshot;
+
+  const version = database.connection.prepare(
+    'SELECT node_bindings_json FROM generation_workflow_versions WHERE workflow_id = ? AND version = ?',
+  ).get(String(taskRow.workflow_id), Number(taskRow.workflow_version)) as { node_bindings_json: string } | undefined;
+  if (!version) throw generationError('workflow_version_not_found', '生成工作流版本不存在。');
+  let nodeBindings: Record<string, string[]>;
+  try {
+    nodeBindings = JSON.parse(version.node_bindings_json) as Record<string, string[]>;
+  } catch {
+    throw generationError('invalid_node_bindings', '生成工作流节点绑定不可用。');
+  }
+
+  const prepared = JSON.parse(JSON.stringify(workflowSnapshot)) as Record<string, unknown>;
+  const engineRow = database.connection.prepare('SELECT base_url FROM generation_engines WHERE id = ?').get(String(taskRow.engine_id)) as { base_url: string } | undefined;
+  if (!engineRow) throw generationError('generation_engine_unavailable', '生成引擎不可用。');
+  const engineBaseUrl = String(engineRow.base_url).replace(/\/+$/, '');
+
+  for (const input of parsedRequest.inputArtifacts) {
+    const artifact = database.connection.prepare(
+      'SELECT id, local_path, content_type, original_name, file_status FROM artifacts WHERE id = ? AND app_id = ?',
+    ).get(input.artifactId, String(taskRow.app_id)) as { id: string; local_path: string | null; content_type: string | null; original_name: string | null; file_status: string } | undefined;
+    if (!artifact || artifact.file_status !== 'ready' || !artifact.local_path) {
+      throw generationError('input_artifact_unavailable', '输入媒体当前不可用。');
+    }
+    let fileStats;
+    try {
+      fileStats = await stat(artifact.local_path);
+    } catch {
+      throw generationError('input_artifact_missing_file', '输入媒体文件已不存在。');
+    }
+    if (!fileStats.isFile()) throw generationError('input_artifact_missing_file', '输入媒体文件不是普通文件。');
+    if (fileStats.size > 12 * 1024 * 1024) throw generationError('input_artifact_too_large', '输入图片不能超过 12 MiB。');
+
+    const contentType = artifact.content_type?.split(';')[0].trim().toLowerCase() || 'image/png';
+    if (!contentType.startsWith('image/')) throw generationError('input_artifact_invalid_type', '输入媒体必须是图片文件。');
+    const originalExtension = artifact.original_name ? extname(artifact.original_name).toLowerCase() : '';
+    const extension = /^\.(png|jpe?g|webp|gif|avif)$/.test(originalExtension) ? originalExtension : mimeToExt(contentType);
+    const controlledFilename = `${artifact.id}${extension}`;
+    const blob = await openAsBlob(artifact.local_path, { type: contentType });
+    const form = new FormData();
+    form.set('image', new File([blob], controlledFilename, { type: contentType }));
+    form.set('overwrite', 'false');
+    form.set('type', 'input');
+
+    let uploadResponse: Response;
+    try {
+      uploadResponse = await fetcher(`${engineBaseUrl}/upload/image`, {
+        method: 'POST',
+        headers: secret ? { authorization: `Bearer ${secret}` } : {},
+        body: form,
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (error) {
+      const detail = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 240);
+      throw generationError('input_upload_failed', `输入图片上传到生成引擎失败：${detail}`);
+    }
+    const payload = await uploadResponse.json().catch(() => null) as { name?: unknown; filename?: unknown } | null;
+    if (!uploadResponse.ok) {
+      const detail = payload && typeof payload === 'object' ? String(payload.name ?? payload.filename ?? `HTTP ${uploadResponse.status}`) : `HTTP ${uploadResponse.status}`;
+      throw generationError('input_upload_failed', `输入图片上传到生成引擎失败：${sanitizeErrorMessage(detail).slice(0, 240)}`);
+    }
+    const uploadedName = typeof payload?.name === 'string' ? payload.name : typeof payload?.filename === 'string' ? payload.filename : '';
+    if (!uploadedName || uploadedName.includes('/') || uploadedName.includes('\\')) {
+      throw generationError('input_upload_failed', '生成引擎未返回可用的受控文件名。');
+    }
+    applyWorkflowInput(prepared, nodeBindings, input.inputKey, uploadedName);
+  }
+
+  return prepared;
 }
 
 export function resolveWorkflowAndEngine(
@@ -404,11 +584,13 @@ export async function createGenerationTask(
   fetcher: typeof fetch = fetch,
 ): Promise<GenerationTaskDescriptor> {
   const inputs = options.inputs ?? {};
+  const inputArtifacts = normalizeInputArtifacts(options.inputArtifacts);
   const canonicalPayload = {
     purpose: options.purpose?.trim() || 'default',
     workflowId: options.workflowId?.trim() || null,
     workflowVersion: options.workflowVersion ?? null,
     inputs,
+    inputArtifacts,
     seed: options.seed ?? null,
   };
   const requestHash = computeRequestHash(canonicalPayload);
@@ -429,11 +611,19 @@ export async function createGenerationTask(
   }
 
   const resolved = resolveWorkflowAndEngine(database, options.appId, options);
+  validateInputArtifacts(database, options.appId, inputArtifacts);
+  for (const input of inputArtifacts) {
+    if (!resolved.workflow.nodeBindings[input.inputKey]) {
+      throw generationError('input_binding_not_found', `工作流没有为输入 ${input.inputKey} 配置节点绑定。`);
+    }
+  }
   const actualSeed = options.seed ?? Math.floor(Math.random() * 1_000_000_000);
+  const renderInputs = { ...inputs };
+  for (const input of inputArtifacts) delete renderInputs[input.inputKey];
   const workflowSnapshot = renderWorkflowSnapshot(
     resolved.workflow.definition,
     resolved.workflow.nodeBindings,
-    inputs,
+    renderInputs,
     actualSeed,
   );
 
@@ -457,13 +647,21 @@ export async function createGenerationTask(
       options.purpose?.trim() || 'default',
       options.idempotencyKey ?? null,
       requestHash,
-      JSON.stringify(inputs),
+      JSON.stringify({ inputs, inputArtifacts }),
       JSON.stringify(workflowSnapshot),
       actualSeed,
       options.retryOf ?? null,
       now,
       now,
     );
+    for (const input of inputArtifacts) {
+      createArtifactReference(database, {
+        artifactId: input.artifactId,
+        appId: options.appId,
+        refType: 'generation-input',
+        refId: id,
+      });
+    }
   });
 
   recordGenerationEvent(database, {
@@ -589,7 +787,33 @@ export async function executeQueuedTask(
     }
   }
 
-  const workflowSnapshot = JSON.parse(String(taskRow.workflow_snapshot_json));
+  let workflowSnapshot: Record<string, unknown>;
+  try {
+    workflowSnapshot = await prepareInputArtifacts(
+      config,
+      database,
+      taskRow,
+      JSON.parse(String(taskRow.workflow_snapshot_json)) as Record<string, unknown>,
+      secret,
+      fetcher,
+    );
+  } catch (error) {
+    const rawCode = (error as { code?: string })?.code;
+    const errorCode = rawCode || 'input_artifact_failed';
+    const safeMessage = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300);
+    const nowErr = nowIso();
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'failed', error_code = ?, error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(errorCode, safeMessage, nowErr, nowErr, taskId);
+    recordGenerationEvent(database, {
+      taskId,
+      appId,
+      eventType: 'failed',
+      payload: { errorCode, errorMessage: safeMessage },
+    });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+    return;
+  }
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (secret) headers.authorization = `Bearer ${secret}`;
 
@@ -770,8 +994,21 @@ export async function pollAndCompleteTask(
           }
 
           const outputs = taskHistory.outputs || {};
+          const outputDeclarationRow = database.connection.prepare(
+            'SELECT output_declarations_json FROM generation_workflow_versions WHERE workflow_id = ? AND version = ?',
+          ).get(String(taskRow.workflow_id), Number(taskRow.workflow_version)) as { output_declarations_json: string } | undefined;
+          let declaredOutputs: Set<string> | null = null;
+          if (outputDeclarationRow) {
+            try {
+              const declarations = JSON.parse(outputDeclarationRow.output_declarations_json) as unknown;
+              if (Array.isArray(declarations) && declarations.length > 0) declaredOutputs = new Set(declarations.filter((item): item is string => typeof item === 'string'));
+            } catch {
+              declaredOutputs = null;
+            }
+          }
           const allImages: Array<{ filename: string; subfolder: string; type: string; outputName: string }> = [];
           for (const [outputName, output] of Object.entries(outputs)) {
+            if (declaredOutputs && !declaredOutputs.has(outputName)) continue;
             if (Array.isArray(output.images)) {
               for (const img of output.images) {
                 if (img.filename) {
@@ -1052,7 +1289,7 @@ export async function retryGenerationTask(
     throw err;
   }
 
-  const inputs = JSON.parse(String(original.request_params_json ?? "{}"));
+  const parsedRequest = parseGenerationRequestParams(original.request_params_json ?? '{}');
   return createGenerationTask(
     config,
     database,
@@ -1063,7 +1300,8 @@ export async function retryGenerationTask(
       purpose: String(original.purpose),
       workflowId: String(original.workflow_id),
       workflowVersion: Number(original.workflow_version),
-      inputs,
+      inputs: parsedRequest.inputs,
+      inputArtifacts: parsedRequest.inputArtifacts,
       seed: original.actual_seed != null ? Number(original.actual_seed) : null,
       retryOf: taskId,
       isInternal: true,

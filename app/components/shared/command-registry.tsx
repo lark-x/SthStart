@@ -5,6 +5,7 @@ import {
   Plus,
   Server,
   Settings,
+  Sparkles,
   Terminal,
   Users,
 } from 'lucide-react';
@@ -29,6 +30,15 @@ export function createCommandRegistry(push: (href: string) => void): CommandItem
       keywords: ['characters', '角色', '人物', 'dossier'],
       icon: <Users className="h-4 w-4" />,
       action: () => push('/apps/characters'),
+    },
+    {
+      id: 'app-creative',
+      title: '创作中心',
+      description: '文本生图、图生图与中央图片媒体库',
+      category: '应用',
+      keywords: ['creative', '创作', '生图', '图片', 'artifact'],
+      icon: <Sparkles className="h-4 w-4" />,
+      action: () => push('/apps/creative'),
     },
     {
       id: 'app-notebook',

@@ -54,7 +54,7 @@ export function AppTokens({
               <div>
                 <strong className="text-xs font-semibold text-[#18201d]">
                   {item.name}
-                  {item.id === 'linshe' && <span className="system-app-badge ml-1">系统托管</span>}
+                  {(item.id === 'linshe' || item.id === 'creative-center') && <span className="system-app-badge ml-1">系统托管</span>}
                 </strong>
                 <code className="text-[11px] text-[#68716d] block font-mono">{item.id}</code>
               </div>

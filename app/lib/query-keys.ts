@@ -31,10 +31,16 @@ export const narrativeKeys = {
     [...narrativeKeys.all, 'remoteSearch', { world, keyword }] as const,
 };
 
+export const creativeKeys = {
+  all: ['creative'] as const,
+  status: () => [...creativeKeys.all, 'status'] as const,
+  tasks: () => [...creativeKeys.all, 'tasks'] as const,
+  artifacts: () => [...creativeKeys.all, 'artifacts'] as const,
+};
+
 export const providerKeys = {
   all: ['providers'] as const,
   overview: () => [...providerKeys.all, 'overview'] as const,
   discover: (params: Record<string, unknown>) =>
     [...providerKeys.all, 'discover', params] as const,
 };
-

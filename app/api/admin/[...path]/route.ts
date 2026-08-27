@@ -14,17 +14,28 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   if (!adminToken) return Response.json({ error: 'admin_not_configured', message: '请在 .env 中设置 STHSTART_ADMIN_TOKEN。' }, { status: 503 });
   const { path } = await context.params;
   const target = `${serviceUrl}/api/v1/admin/${path.join('/')}${request.nextUrl.search}`;
-  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text();
+  const contentType = request.headers.get('content-type') ?? '';
+  const streamBody = request.method !== 'GET' && request.method !== 'HEAD' && Boolean(request.body) && /^(?:image\/|application\/octet-stream)/i.test(contentType);
+  const body = request.method === 'GET' || request.method === 'HEAD'
+    ? undefined
+    : streamBody
+      ? request.body
+      : await request.text();
   const headers: Record<string, string> = { 'x-sthstart-admin-token': adminToken, 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() };
-  const contentType = request.headers.get('content-type');
   if (body && contentType) headers['content-type'] = contentType;
+  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename']) {
+    const value = request.headers.get(name);
+    if (value) headers[name] = value;
+  }
   try {
-    const response = await fetch(target, {
+    const fetchOptions: RequestInit & { duplex?: 'half' } = {
       method: request.method,
       headers,
       body: body || undefined,
       cache: 'no-store',
-    });
+    };
+    if (streamBody) fetchOptions.duplex = 'half';
+    const response = await fetch(target, fetchOptions);
     const responseHeaders: Record<string, string> = { 'content-type': response.headers.get('content-type') ?? 'application/json' };
     const disposition = response.headers.get('content-disposition');
     if (disposition) responseHeaders['content-disposition'] = disposition;

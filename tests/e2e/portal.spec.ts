@@ -40,6 +40,21 @@ test('portal exposes its primary applications and lucide modern navigation', asy
   await expect(page.getByRole('link', { name: '进入邻舍' })).toBeVisible();
 });
 
+test('creative center exposes a safe unconfigured image workspace', async ({ page }) => {
+  await page.goto('/apps/creative');
+  await expect(page.getByRole('heading', { name: '创作中心' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '文本生图' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '图生图' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '公共生成状态' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '进入生成配置' })).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(page.getByText('媒体文件不会复制到邻舍数据库。')).toBeVisible();
+
+  await page.getByRole('tab', { name: '图生图' }).click();
+  await expect(page.getByLabel('参考图片')).toBeVisible();
+  await expect(page.getByText('浏览器不会发送 Base64。')).toBeVisible();
+});
+
 test('local admin session opens the control center and switches tabs', async ({ page }) => {
   await page.goto('/settings/control-center');
   await expect(page.getByRole('heading', { name: '邻舍运行栈' })).toBeVisible();

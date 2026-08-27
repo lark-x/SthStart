@@ -22,6 +22,7 @@ import { registerNarrativeRoutes } from './narrative.js';
 import { createNarrativeConnectors } from './narrative-connectors.js';
 import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 import { applyCreativeWhenReady, registerRuntimeRoutes } from './runtime-routes.js';
+import { ensureCreativeApp, registerCreativeRoutes } from './creative.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -51,6 +52,7 @@ export async function createService(options: ServiceOptions = {}) {
     ON CONFLICT(id) DO UPDATE SET name=excluded.name,token_hash=excluded.token_hash,capabilities_json=excluded.capabilities_json,enabled=1,updated_at=excluded.updated_at`)
     .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'artifact', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
   database.connection.prepare("INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES ('linshe','keep')").run();
+  ensureCreativeApp(database);
   if (!options.database && process.env.STHSTART_APP_TOKEN?.trim() && process.env.STHSTART_LLM_PROFILE?.trim()) {
     const legacy = database.connection.prepare(`SELECT a.id app_id,p.id profile_id FROM managed_apps a
       JOIN provider_profiles p ON p.id=? AND p.kind='llm' AND p.enabled=1
@@ -73,6 +75,11 @@ export async function createService(options: ServiceOptions = {}) {
     id: 'narrative', name: '叙事档案', description: '回顾剧情、整理实体，并让结论始终可追溯至原文。',
     launchUrl: `${config.portalOrigins[0]}/apps/narrative`, status: 'online', version: SERVICE_VERSION,
     sourceRevision: null, capabilities: ['story-archive', 'search', 'imports', 'evidence'], checkedAt: new Date().toISOString(),
+  });
+  const inspectCreative = (): AppDescriptor => ({
+    id: 'creative', name: '创作中心', description: '通过公共生成工作流创作、管理与复用图片素材。',
+    launchUrl: `${config.portalOrigins[0]}/apps/creative`, status: 'online', version: SERVICE_VERSION,
+    sourceRevision: null, capabilities: ['image-generation', 'image-to-image', 'artifact-library'], checkedAt: new Date().toISOString(),
   });
 
   await app.register(cors, {
@@ -156,12 +163,14 @@ export async function createService(options: ServiceOptions = {}) {
     ],
   }));
 
-  app.get<{ Reply: AppsResponse }>('/api/v1/apps', async () => ({ items: [await inspectApp(), inspectNotebook(), inspectNarrative()] }));
+  app.get<{ Reply: AppsResponse }>('/api/v1/apps', async () => ({ items: [await inspectApp(), inspectCreative(), inspectNotebook(), inspectNarrative()] }));
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/linshe', async () => inspectApp());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/notebook', async () => inspectNotebook());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/narrative', async () => inspectNarrative());
+  app.get<{ Reply: AppDescriptor }>('/api/v1/apps/creative', async () => inspectCreative());
 
   registerManagementRoutes(app, config, database, secrets, options.fetcher);
+  registerCreativeRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors);

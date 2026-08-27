@@ -140,7 +140,7 @@ export function AppModelRouting({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-1 gap-3 assignment-grid">
-          {overview?.apps.map((app) => {
+          {overview?.apps.filter((app) => app.capabilities.includes('llm')).map((app) => {
             const assignment = overview.llmAssignments.find((item) => item.appId === app.id);
 
             return (

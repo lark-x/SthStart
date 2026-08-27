@@ -316,6 +316,49 @@ export const GenerationTaskDescriptorSchema = Type.Object({
 });
 export type GenerationTaskDescriptor = Static<typeof GenerationTaskDescriptorSchema>;
 
+export const CreativeWorkflowBindingSchema = Type.Object({
+  purpose: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image')]),
+  ready: Type.Boolean(),
+  status: Type.String(),
+  workflow: Type.Union([
+    Type.Object({ id: Type.String(), name: Type.String(), version: Type.Number() }),
+    Type.Null(),
+  ]),
+  engine: Type.Union([
+    Type.Object({ id: Type.String(), name: Type.String(), kind: Type.String(), enabled: Type.Boolean() }),
+    Type.Null(),
+  ]),
+});
+export type CreativeWorkflowBinding = Static<typeof CreativeWorkflowBindingSchema>;
+
+export const CreativeStatusResponseSchema = Type.Object({
+  app: Type.Object({ id: Type.String(), name: Type.String() }),
+  modes: Type.Object({
+    textToImage: CreativeWorkflowBindingSchema,
+    imageToImage: CreativeWorkflowBindingSchema,
+  }),
+});
+export type CreativeStatusResponse = Static<typeof CreativeStatusResponseSchema>;
+
+export const CreativeReplaySchema = Type.Object({
+  mode: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image')]),
+  inputs: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number()])),
+  inputArtifactIds: Type.Array(Type.String()),
+});
+export type CreativeReplay = Static<typeof CreativeReplaySchema>;
+
+export const CreativeTaskResponseSchema = Type.Intersect([
+  GenerationTaskDescriptorSchema,
+  Type.Object({ replay: CreativeReplaySchema }),
+]);
+export type CreativeTaskResponse = Static<typeof CreativeTaskResponseSchema>;
+
+export const CreativeArtifactListResponseSchema = Type.Object({
+  items: Type.Array(ArtifactDescriptorSchema),
+  total: Type.Number(),
+});
+export type CreativeArtifactListResponse = Static<typeof CreativeArtifactListResponseSchema>;
+
 export const GenerationEventSchema = Type.Object({
   id: Type.Number(),
   taskId: Type.String(),
