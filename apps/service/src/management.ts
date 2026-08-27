@@ -7,9 +7,9 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
-import { validateWorkflowVersionStructure } from './generation.js';
+import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVersionStructure } from './generation.js';
 import { defaultWorkerSettings, workerHealth } from './worker.js';
-import { getH3Status } from './h3.js';
+import { getH3Status, readH3Settings } from './h3.js';
 import { getMediaDiagnostics } from './media-diagnostics.js';
 
 function appRows(database: ServiceDatabase): ManagedApp[] {
@@ -19,6 +19,18 @@ function appRows(database: ServiceDatabase): ManagedApp[] {
     capabilities: JSON.parse(String(row.capabilities_json)) as PublicCapability[],
     createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }));
+}
+
+async function configuredH3WorkerToken(database: ServiceDatabase, secrets: SecretStore) {
+  const workerUrl = readH3Settings().workerUrl;
+  if (!workerUrl) return null;
+  const row = database.connection.prepare(`
+    SELECT credential_account FROM generation_engines
+    WHERE kind='worker' AND rtrim(base_url, '/')=?
+    LIMIT 1
+  `).get(workerUrl) as { credential_account: string | null } | undefined;
+  if (!row?.credential_account) return null;
+  return (await secrets.get(row.credential_account)).value;
 }
 
 async function profileRows(database: ServiceDatabase, secrets: SecretStore): Promise<ProviderProfile[]> {
@@ -56,6 +68,16 @@ function assignmentRows(database: ServiceDatabase): AppLlmAssignment[] {
 
 function safeHeaders(headers: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(headers).filter(([key, value]) => typeof value === 'string' && !/authorization|api[-_]?key|token|secret|cookie/i.test(key))) as Record<string, string>;
+}
+
+function jsonObject(value: unknown, fallback: Record<string, unknown> = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+  return value as Record<string, unknown>;
+}
+
+function jsonArray(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return fallback;
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim());
 }
 
 function validCapabilities(kind: ProviderProfile['kind'], capabilities: unknown): LlmModelCapability[] | null {
@@ -152,6 +174,9 @@ function safeWorkerHealth(workerId: string, raw: Record<string, unknown>, settin
       warningBytes: settings.diskWarningBytes,
       stopBytes: settings.diskStopBytes,
     },
+    capabilities: Array.isArray(raw.capabilities)
+      ? raw.capabilities.filter((value): value is string => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value)).slice(0, 128)
+      : undefined,
   };
 }
 
@@ -416,7 +441,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
 
   // ── Generation Engines Admin ──
   app.get('/api/v1/admin/generation/engines', async () => ({
-    items: database.connection.prepare('SELECT id, name, kind, base_url, enabled, concurrency_limit, created_at, updated_at FROM generation_engines ORDER BY name').all(),
+    items: (database.connection.prepare(`SELECT e.id,e.name,e.kind,e.base_url,o.headers_json,e.enabled,e.concurrency_limit,e.created_at,e.updated_at
+      FROM generation_engines e LEFT JOIN generation_engine_options o ON o.engine_id=e.id ORDER BY e.name`).all() as Record<string, unknown>[])
+      .map((row) => ({ ...row, headers: JSON.parse(String(row.headers_json ?? '{}')), headers_json: undefined })),
   }));
 
   app.post<{
@@ -426,11 +453,12 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       kind?: 'comfyui' | 'worker' | 'cloud';
       baseUrl?: string;
       secret?: string;
+      headers?: Record<string, string>;
       enabled?: boolean;
       concurrencyLimit?: number;
     };
   }>('/api/v1/admin/generation/engines', async (request, reply) => {
-    const { id, name, kind = 'comfyui', baseUrl, secret, enabled = true, concurrencyLimit = 1 } = request.body ?? {};
+    const { id, name, kind = 'comfyui', baseUrl, secret, headers = {}, enabled = true, concurrencyLimit = 1 } = request.body ?? {};
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(kind)) {
       return reply.code(400).send({ error: 'invalid_engine' });
     }
@@ -448,6 +476,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (typeof concurrencyLimit !== 'number' || !Number.isInteger(concurrencyLimit) || concurrencyLimit < 1) {
       return reply.code(400).send({ error: 'invalid_concurrency_limit', message: '并发限制 concurrencyLimit 必须为大于等于 1 的正整数。' });
     }
+    if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
+      return reply.code(400).send({ error: 'invalid_engine_headers', message: '请求头必须是字符串键值对象。' });
+    }
 
     const account = `engine:${id}`;
     const existingEngine = database.connection.prepare('SELECT credential_account FROM generation_engines WHERE id=?').get(id) as { credential_account: string | null } | undefined;
@@ -457,12 +488,16 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     }
 
     const now = nowIso();
-    database.connection.prepare(`
-      INSERT INTO generation_engines (id, name, kind, base_url, credential_account, enabled, concurrency_limit, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
-      credential_account=excluded.credential_account, enabled=excluded.enabled, concurrency_limit=excluded.concurrency_limit, updated_at=excluded.updated_at
-    `).run(id, name.trim(), kind, normalizedUrl, kind === 'worker' ? (secret ? account : existingEngine?.credential_account ?? account) : (secret ? account : null), enabled ? 1 : 0, kind === 'worker' ? 1 : concurrencyLimit, now, now);
+    database.transaction(() => {
+      database.connection.prepare(`
+        INSERT INTO generation_engines (id, name, kind, base_url, credential_account, enabled, concurrency_limit, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, base_url=excluded.base_url,
+        credential_account=excluded.credential_account, enabled=excluded.enabled, concurrency_limit=excluded.concurrency_limit, updated_at=excluded.updated_at
+      `).run(id, name.trim(), kind, normalizedUrl, secret ? account : existingEngine?.credential_account ?? null, enabled ? 1 : 0, kind === 'worker' ? 1 : concurrencyLimit, now, now);
+      database.connection.prepare(`INSERT INTO generation_engine_options(engine_id,headers_json) VALUES (?,?)
+        ON CONFLICT(engine_id) DO UPDATE SET headers_json=excluded.headers_json`).run(id, JSON.stringify(safeHeaders(headers)));
+    });
 
     if (kind === 'worker') {
       database.connection.prepare(`INSERT OR IGNORE INTO generation_workers
@@ -582,8 +617,8 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     }
   });
 
-  app.get('/api/v1/admin/experiments/h3/status', async () => getH3Status(fetcher));
-  app.get('/api/v1/admin/media/diagnostics', async () => getMediaDiagnostics(fetcher));
+  app.get('/api/v1/admin/experiments/h3/status', async () => getH3Status(fetcher, process.env, await configuredH3WorkerToken(database, secrets)));
+  app.get('/api/v1/admin/media/diagnostics', async () => getMediaDiagnostics(fetcher, process.env, undefined, await configuredH3WorkerToken(database, secrets)));
 
   app.delete<{ Params: { id: string } }>('/api/v1/admin/generation/engines/:id', async (request, reply) => {
     const inUse = database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE engine_id = ?').get(request.params.id);
@@ -598,10 +633,20 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   app.get('/api/v1/admin/generation/workflows', async () => {
     const workflows = database.connection.prepare('SELECT * FROM generation_workflows ORDER BY name').all() as Array<Record<string, unknown>>;
     const versions = database.connection.prepare('SELECT * FROM generation_workflow_versions ORDER BY version DESC').all() as Array<Record<string, unknown>>;
+    const mediaVersions = database.connection.prepare('SELECT * FROM generation_workflow_media_versions').all() as Array<Record<string, unknown>>;
     return {
       items: workflows.map((wf) => ({
         ...wf,
         versions: versions.filter((v) => v.workflow_id === wf.id).map((v) => ({
+          ...(() => {
+            const media = mediaVersions.find((item) => item.workflow_id === v.workflow_id && Number(item.version) === Number(v.version));
+            return {
+              category: String(wf.category ?? media?.category ?? 'image'),
+              inputCapabilities: jsonObject(v.input_capabilities_json ? JSON.parse(String(v.input_capabilities_json)) : media?.input_capabilities_json ? JSON.parse(String(media.input_capabilities_json)) : {}),
+              outputMediaTypes: jsonArray(v.output_media_types_json ? JSON.parse(String(v.output_media_types_json)) : media?.output_media_types_json ? JSON.parse(String(media.output_media_types_json)) : [], []),
+              outputSchema: jsonObject(v.output_schema_json ? JSON.parse(String(v.output_schema_json)) : media?.output_schema_json ? JSON.parse(String(media.output_schema_json)) : {}),
+            };
+          })(),
           version: v.version,
           engineId: v.engine_id,
           inputSchema: JSON.parse(String(v.input_schema_json ?? '{}')),
@@ -620,18 +665,19 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       name?: string;
       description?: string;
       engineKind?: 'comfyui' | 'worker' | 'cloud';
+      category?: 'image' | 'video' | 'audio' | 'transform';
     };
   }>('/api/v1/admin/generation/workflows', async (request, reply) => {
-    const { id, name, description = '', engineKind = 'comfyui' } = request.body ?? {};
-    if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(engineKind)) {
+    const { id, name, description = '', engineKind = 'comfyui', category = 'image' } = request.body ?? {};
+    if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(engineKind) || !['image', 'video', 'audio', 'transform'].includes(category)) {
       return reply.code(400).send({ error: 'invalid_workflow' });
     }
     const now = nowIso();
     database.connection.prepare(`
-      INSERT INTO generation_workflows (id, name, description, engine_kind, latest_version, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 0, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at
-    `).run(id, name.trim(), description.trim(), engineKind, now, now);
+      INSERT INTO generation_workflows (id, name, description, engine_kind, category, latest_version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, engine_kind=excluded.engine_kind, category=excluded.category, updated_at=excluded.updated_at
+    `).run(id, name.trim(), description.trim(), engineKind, category, now, now);
     return reply.code(201).send({ id });
   });
 
@@ -643,9 +689,12 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       nodeBindings?: Record<string, string[]>;
       outputDeclarations?: string[];
       definition?: unknown;
+      inputCapabilities?: Record<string, unknown>;
+      outputMediaTypes?: string[];
+      outputSchema?: Record<string, unknown>;
     };
   }>('/api/v1/admin/generation/workflows/:id/versions', async (request, reply) => {
-    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number; engine_kind: string } | undefined;
+    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number; engine_kind: string; category?: string } | undefined;
     if (!wf) return reply.code(404).send({ error: 'workflow_not_found', message: '指定的工作流不存在。' });
 
     const targetEngineId = request.body?.engineId?.trim() || null;
@@ -674,13 +723,21 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
 
     const version = Number(wf.latest_version) + 1;
     const now = nowIso();
+    const inputCapabilities = jsonObject(request.body?.inputCapabilities);
+    const defaultOutputTypes = wf.category === 'video' ? ['video/mp4'] : wf.category === 'audio' ? ['audio/wav'] : ['image/png'];
+    const outputMediaTypes = jsonArray(request.body?.outputMediaTypes, defaultOutputTypes);
+    if (!outputMediaTypes.length || outputMediaTypes.some((value) => !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(value))) {
+      return reply.code(400).send({ error: 'invalid_output_media_types', message: 'outputMediaTypes 必须是非空 MIME 类型数组。' });
+    }
+    const outputSchema = jsonObject(request.body?.outputSchema);
 
     database.transaction(() => {
       database.connection.prepare(`
         INSERT INTO generation_workflow_versions (
           workflow_id, version, engine_id, input_schema_json, node_bindings_json,
-          output_declarations_json, definition_json, is_published, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+          output_declarations_json, definition_json, input_capabilities_json,
+          output_media_types_json, output_schema_json, is_published, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       `).run(
         request.params.id,
         version,
@@ -689,13 +746,179 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         JSON.stringify(validated.validatedNodeBindings),
         JSON.stringify(validated.validatedOutputDeclarations),
         JSON.stringify(validated.validatedDefinition),
+        JSON.stringify(inputCapabilities),
+        JSON.stringify(outputMediaTypes),
+        JSON.stringify(outputSchema),
         now,
       );
+      database.connection.prepare(`
+        INSERT INTO generation_workflow_media_versions
+          (workflow_id, version, category, input_capabilities_json, output_media_types_json, output_schema_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workflow_id, version) DO UPDATE SET category=excluded.category,
+          input_capabilities_json=excluded.input_capabilities_json,
+          output_media_types_json=excluded.output_media_types_json,
+          output_schema_json=excluded.output_schema_json,
+          updated_at=excluded.updated_at
+      `).run(request.params.id, version, wf.category ?? 'image', JSON.stringify(inputCapabilities), JSON.stringify(outputMediaTypes), JSON.stringify(outputSchema), now);
       database.connection.prepare('UPDATE generation_workflows SET latest_version = ?, updated_at = ? WHERE id = ?')
         .run(version, now, request.params.id);
     });
 
     return reply.code(201).send({ workflowId: request.params.id, version });
+  });
+
+  app.post<{
+    Body: {
+      id?: string;
+      name?: string;
+      description?: string;
+      engineKind?: 'comfyui' | 'worker' | 'cloud';
+      category?: 'image' | 'video' | 'audio' | 'transform';
+      engineId?: string;
+      inputSchema?: Record<string, unknown>;
+      inputCapabilities?: Record<string, unknown>;
+      nodeBindings?: Record<string, string[]>;
+      outputDeclarations?: string[];
+      outputMediaTypes?: string[];
+      outputSchema?: Record<string, unknown>;
+      definition?: unknown;
+      workflow?: {
+        id?: string;
+        name?: string;
+        description?: string;
+        engineKind?: 'comfyui' | 'worker' | 'cloud';
+        category?: 'image' | 'video' | 'audio' | 'transform';
+      };
+      version?: {
+        engineId?: string;
+        inputSchema?: Record<string, unknown>;
+        inputCapabilities?: Record<string, unknown>;
+        nodeBindings?: Record<string, string[]>;
+        outputDeclarations?: string[];
+        outputMediaTypes?: string[];
+        outputSchema?: Record<string, unknown>;
+        definition?: unknown;
+      };
+    };
+  }>('/api/v1/admin/generation/workflows/import', async (request, reply) => {
+    const rawBody = request.body;
+    if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+      return reply.code(400).send({ error: 'invalid_import_payload', message: '导入内容必须为有效的 JSON 对象。' });
+    }
+
+    try {
+      assertNoWorkflowSecrets(rawBody);
+    } catch (err) {
+      const code = (err as { code?: string })?.code || 'secrets_not_permitted';
+      return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
+    }
+
+    const workflowObj = rawBody.workflow && typeof rawBody.workflow === 'object' && !Array.isArray(rawBody.workflow) ? rawBody.workflow as Record<string, unknown> : {};
+    const versionObj = rawBody.version && typeof rawBody.version === 'object' && !Array.isArray(rawBody.version) ? rawBody.version as Record<string, unknown> : {};
+
+    const rawId = typeof rawBody.id === 'string' ? rawBody.id : typeof workflowObj.id === 'string' ? workflowObj.id : '';
+    const id = rawId.trim();
+    if (!id || !/^[a-z][a-z0-9-]{1,62}$/.test(id)) {
+      return reply.code(400).send({ error: 'invalid_workflow_id', message: '工作流 ID 必须由小写字母开头，由小写字母、数字和连字符组成（2-63 字符）。' });
+    }
+
+    const rawName = typeof rawBody.name === 'string' ? rawBody.name : typeof workflowObj.name === 'string' ? workflowObj.name : '';
+    const name = rawName.trim();
+    if (!name) {
+      return reply.code(400).send({ error: 'workflow_name_required', message: '工作流名称必须为非空字符串。' });
+    }
+
+    const rawDescription = typeof rawBody.description === 'string' ? rawBody.description : typeof workflowObj.description === 'string' ? workflowObj.description : '';
+    const description = rawDescription.trim();
+
+    const rawEngineKind = typeof rawBody.engineKind === 'string' ? rawBody.engineKind : typeof workflowObj.engineKind === 'string' ? workflowObj.engineKind : 'comfyui';
+    const engineKind = rawEngineKind as 'comfyui' | 'worker' | 'cloud';
+    if (!['comfyui', 'worker', 'cloud'].includes(engineKind)) {
+      return reply.code(400).send({ error: 'invalid_engine_kind', message: '引擎类型必须为 comfyui、worker 或 cloud。' });
+    }
+
+    const rawCategory = typeof rawBody.category === 'string' ? rawBody.category : typeof workflowObj.category === 'string' ? workflowObj.category : 'image';
+    const category = rawCategory as 'image' | 'video' | 'audio' | 'transform';
+    if (!['image', 'video', 'audio', 'transform'].includes(category)) {
+      return reply.code(400).send({ error: 'invalid_category', message: '媒体类别必须为 image、video、audio 或 transform。' });
+    }
+
+    const targetEngineId = (typeof rawBody.engineId === 'string' ? rawBody.engineId : typeof versionObj.engineId === 'string' ? versionObj.engineId : '')?.trim() || null;
+    if (targetEngineId) {
+      const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ?').get(targetEngineId) as { id: string; kind: string } | undefined;
+      if (!engine) {
+        return reply.code(404).send({ error: 'engine_not_found', message: `指定的生成引擎 ${targetEngineId} 不存在。` });
+      }
+      if (engine.kind !== engineKind) {
+        return reply.code(400).send({ error: 'engine_kind_mismatch', message: `生成引擎类型 (${engine.kind}) 与工作流类型 (${engineKind}) 不匹配。` });
+      }
+    }
+
+    const definition = rawBody.definition ?? versionObj.definition;
+    const inputSchema = rawBody.inputSchema ?? versionObj.inputSchema ?? {};
+    const nodeBindings = rawBody.nodeBindings ?? versionObj.nodeBindings ?? {};
+    const outputDeclarations = rawBody.outputDeclarations ?? versionObj.outputDeclarations ?? [];
+
+    let validated: ReturnType<typeof validateWorkflowVersionStructure>;
+    try {
+      validated = validateWorkflowVersionStructure(definition, inputSchema, nodeBindings, outputDeclarations);
+    } catch (err) {
+      const code = (err as { code?: string })?.code || 'invalid_workflow_format';
+      return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
+    }
+
+    const existingWf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(id) as { id: string; latest_version: number; engine_kind: string; category?: string } | undefined;
+    const version = Number(existingWf?.latest_version ?? 0) + 1;
+    const now = nowIso();
+    const inputCapabilities = jsonObject(rawBody.inputCapabilities ?? versionObj.inputCapabilities);
+    const defaultOutputTypes = category === 'video' ? ['video/mp4'] : category === 'audio' ? ['audio/wav'] : ['image/png'];
+    const outputMediaTypes = jsonArray(rawBody.outputMediaTypes ?? versionObj.outputMediaTypes, defaultOutputTypes);
+    if (!outputMediaTypes.length || outputMediaTypes.some((value) => !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(value))) {
+      return reply.code(400).send({ error: 'invalid_output_media_types', message: 'outputMediaTypes 必须是非空 MIME 类型数组。' });
+    }
+    const outputSchema = jsonObject(rawBody.outputSchema ?? versionObj.outputSchema);
+
+    database.transaction(() => {
+      database.connection.prepare(`
+        INSERT INTO generation_workflows (id, name, description, engine_kind, category, latest_version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, engine_kind=excluded.engine_kind, category=excluded.category, latest_version=excluded.latest_version, updated_at=excluded.updated_at
+      `).run(id, name, description, engineKind, category, version, now, now);
+
+      database.connection.prepare(`
+        INSERT INTO generation_workflow_versions (
+          workflow_id, version, engine_id, input_schema_json, node_bindings_json,
+          output_declarations_json, definition_json, input_capabilities_json,
+          output_media_types_json, output_schema_json, is_published, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(
+        id,
+        version,
+        targetEngineId,
+        JSON.stringify(validated.validatedInputSchema),
+        JSON.stringify(validated.validatedNodeBindings),
+        JSON.stringify(validated.validatedOutputDeclarations),
+        JSON.stringify(validated.validatedDefinition),
+        JSON.stringify(inputCapabilities),
+        JSON.stringify(outputMediaTypes),
+        JSON.stringify(outputSchema),
+        now,
+      );
+
+      database.connection.prepare(`
+        INSERT INTO generation_workflow_media_versions
+          (workflow_id, version, category, input_capabilities_json, output_media_types_json, output_schema_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workflow_id, version) DO UPDATE SET category=excluded.category,
+          input_capabilities_json=excluded.input_capabilities_json,
+          output_media_types_json=excluded.output_media_types_json,
+          output_schema_json=excluded.output_schema_json,
+          updated_at=excluded.updated_at
+      `).run(id, version, category, JSON.stringify(inputCapabilities), JSON.stringify(outputMediaTypes), JSON.stringify(outputSchema), now);
+    });
+
+    return reply.code(201).send({ ok: true, id, workflowId: id, version, category, engineKind });
   });
 
   // ── Generation Assignments Admin ──
@@ -776,6 +999,39 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       appId: request.params.appId,
       assignments: database.connection.prepare('SELECT * FROM app_generation_assignments WHERE app_id = ?').all(request.params.appId),
     };
+  });
+
+  app.get<{ Querystring: { appId?: string; after?: string; once?: string } }>('/api/v1/admin/generation/events', async (request, reply) => {
+    const appId = request.query.appId?.trim() || 'creative-center';
+    if (!/^[a-z][a-z0-9-]{1,62}$/.test(appId)) return reply.code(400).send({ error: 'invalid_app_id' });
+    const afterRaw = request.headers['last-event-id'] ?? request.query.after;
+    const after = afterRaw == null ? null : Number.parseInt(String(afterRaw), 10);
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
+    reply.raw.write(': connected\n\n');
+    const unsubscribe = subscribeGenerationEvents(database, appId, (event) => {
+      reply.raw.write(`id: ${event.id}\nevent: ${event.eventType}\ndata: ${JSON.stringify({
+        ...event.payload,
+        taskId: event.taskId,
+        appId: event.appId,
+        eventType: event.eventType,
+      })}\n\n`);
+    }, Number.isFinite(after) ? after : null);
+    if (request.query.once === 'true') {
+      unsubscribe();
+      reply.raw.end();
+      return;
+    }
+    const heartbeat = setInterval(() => reply.raw.write(': heartbeat\n\n'), 15_000);
+    request.raw.once('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   });
 }
 

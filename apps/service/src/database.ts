@@ -246,6 +246,59 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     )`,
     'CREATE INDEX IF NOT EXISTS idx_generation_workers_seen ON generation_workers(last_seen_at)',
   ] },
+  { version: 8, name: 'generation-engine-request-options', statements: [
+    `CREATE TABLE IF NOT EXISTS generation_engine_options (
+      engine_id TEXT PRIMARY KEY REFERENCES generation_engines(id) ON DELETE CASCADE,
+      headers_json TEXT NOT NULL DEFAULT '{}'
+    )`,
+  ] },
+  { version: 9, name: 'generation-media-capabilities-and-progress', statements: [
+    "ALTER TABLE generation_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE generation_tasks ADD COLUMN progress_json TEXT NOT NULL DEFAULT '{}'",
+    'ALTER TABLE generation_tasks ADD COLUMN started_at TEXT',
+    `CREATE TABLE IF NOT EXISTS generation_workflow_media_versions (
+      workflow_id TEXT NOT NULL REFERENCES generation_workflows(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('image','video','audio','transform')) DEFAULT 'image',
+      input_capabilities_json TEXT NOT NULL DEFAULT '{}',
+      output_media_types_json TEXT NOT NULL DEFAULT '["image/png"]',
+      output_schema_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(workflow_id, version)
+    )`,
+    "ALTER TABLE generation_engine_options ADD COLUMN capabilities_json TEXT NOT NULL DEFAULT '{}'",
+    'CREATE INDEX idx_gen_tasks_priority ON generation_tasks(priority, status, created_at)',
+  ] },
+  { version: 10, name: 'artifact-video-metadata', statements: [
+    // Keep media capabilities on the canonical workflow records. The
+    // compatibility table created in v9 is retained for databases upgraded
+    // from the first implementation and is read only as a fallback.
+    "ALTER TABLE generation_workflows ADD COLUMN category TEXT NOT NULL DEFAULT 'image' CHECK(category IN ('image','video','audio','transform'))",
+    "ALTER TABLE generation_workflow_versions ADD COLUMN input_capabilities_json TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE generation_workflow_versions ADD COLUMN output_media_types_json TEXT NOT NULL DEFAULT '[\"image/png\"]'",
+    "ALTER TABLE generation_workflow_versions ADD COLUMN output_schema_json TEXT NOT NULL DEFAULT '{}'",
+    'ALTER TABLE artifacts ADD COLUMN fps REAL',
+    'ALTER TABLE artifacts ADD COLUMN codec TEXT',
+    'ALTER TABLE artifacts ADD COLUMN has_audio INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE artifacts ADD COLUMN thumbnail_artifact_id TEXT REFERENCES artifacts(id)',
+    "ALTER TABLE artifacts ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'",
+  ] },
+  { version: 11, name: 'generation-consumer-links', statements: [
+    'ALTER TABLE character_assets ADD COLUMN artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL',
+    'CREATE INDEX IF NOT EXISTS idx_character_assets_artifact ON character_assets(artifact_id)',
+    `CREATE TABLE IF NOT EXISTS generation_context_links (
+      task_id TEXT NOT NULL REFERENCES generation_tasks(id) ON DELETE CASCADE,
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      context_type TEXT NOT NULL CHECK(context_type IN ('character','narrative')),
+      context_id TEXT NOT NULL,
+      artifact_id TEXT REFERENCES artifacts(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(task_id, context_type, context_id, role)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_generation_context_links_context ON generation_context_links(app_id, context_type, context_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_generation_context_links_artifact ON generation_context_links(artifact_id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

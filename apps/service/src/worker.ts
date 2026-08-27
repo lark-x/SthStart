@@ -20,6 +20,7 @@ export interface WorkerStatusOutput {
   contentType: string;
   byteSize: number;
   sha256: string;
+  mediaKind?: 'image' | 'video' | 'audio' | 'file';
 }
 
 export interface WorkerTaskStatus {
@@ -28,6 +29,14 @@ export interface WorkerTaskStatus {
   providerTaskId?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  progress?: {
+    value: number | null;
+    stage: string;
+    message?: string;
+    current?: number;
+    total?: number;
+    source?: string;
+  };
   outputs?: WorkerStatusOutput[];
 }
 
@@ -115,7 +124,7 @@ export async function workerHealth(baseUrl: string, token: string, fetcher: type
 
 export async function submitWorkerTask(input: {
   baseUrl: string; token: string; taskId: string; workflow: Record<string, unknown>;
-  outputDeclarations: string[]; settings?: Partial<WorkerSettings>; fetcher?: typeof fetch;
+  outputDeclarations: string[]; outputMediaTypes?: string[]; category?: string; capability?: string; settings?: Partial<WorkerSettings>; fetcher?: typeof fetch;
 }) {
   if (!WORKER_TASK_ID_PATTERN.test(input.taskId)) throw workerError('worker_protocol_error', 'Worker task ID 格式无效。');
   return requestJson<WorkerTaskStatus>(input.baseUrl, input.token, '/v1/worker/tasks', {
@@ -125,6 +134,9 @@ export async function submitWorkerTask(input: {
       taskId: input.taskId,
       workflow: input.workflow,
       outputDeclarations: input.outputDeclarations,
+      outputMediaTypes: input.outputMediaTypes,
+      category: input.category,
+      capability: input.capability,
       model: input.settings?.model || undefined,
       temperature: input.settings?.temperature,
     }),

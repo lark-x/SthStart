@@ -1,6 +1,7 @@
 import { getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
 import {
   CharacterAssetResponseSchema,
+  GenerationTaskDescriptorSchema,
   CharacterDetailSchema,
   CharacterGenerateResponseSchema,
   CharacterListResponseSchema,
@@ -13,6 +14,7 @@ import type {
   CharacterRelationship,
   CharacterSource,
   CharacterVersion,
+  GenerationTaskDescriptor,
 } from '@sthstart/contracts';
 
 export type CharacterDetail = CharacterProfile & {
@@ -76,6 +78,32 @@ export async function uploadCharacterAvatar(
     { dataUrl, filename: file.name, kind: 'avatar' },
     undefined,
     CharacterAssetResponseSchema
+  );
+}
+
+export async function generateCharacterAvatar(id: string, prompt?: string): Promise<GenerationTaskDescriptor> {
+  return postJson<GenerationTaskDescriptor>(
+    `characters/${id}/generate-avatar`,
+    prompt?.trim() ? { prompt: prompt.trim() } : undefined,
+    undefined,
+    GenerationTaskDescriptorSchema,
+  );
+}
+
+export async function fetchCharacterGenerationTask(id: string, taskId: string): Promise<GenerationTaskDescriptor> {
+  return getJson<GenerationTaskDescriptor>(
+    `characters/${id}/generation-tasks/${taskId}`,
+    undefined,
+    GenerationTaskDescriptorSchema,
+  );
+}
+
+export async function applyCharacterAvatar(id: string, taskId: string): Promise<{ id: string; url: string }> {
+  return postJson<{ id: string; url: string }>(
+    `characters/${id}/generation-tasks/${taskId}/apply-avatar`,
+    undefined,
+    undefined,
+    CharacterAssetResponseSchema,
   );
 }
 

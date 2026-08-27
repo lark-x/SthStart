@@ -138,7 +138,7 @@ H3 FL2VA 当前只提供真实 Worker 就绪探测，默认关闭且没有公共
 1. 状态生命周期：`queued -> submitting -> accepted -> running -> succeeded | failed | cancelled | abandoned`。
 2. **提交不确定性保护**：当向上游提交任务发生网络超时等未决错误时，任务状态置为 `abandoned`，错误码标记为 `submission_outcome_unknown`，严格禁止自动重复提交以避免重复扣费/渲染。
 3. **幂等与冲突判定**：同一应用的同一幂等键，完全相同的输入参数返回已有任务；不同参数明确返回 409 `idempotency_conflict`。
-4. **工作流安全要求**：仅接受 ComfyUI API 格式 JSON；直接拒绝 UI 导出的含 nodes 数组的 GUI 格式。发布版本不可变，被任务引用后不可被覆盖。
+4. **工作流安全要求**：仅接受 ComfyUI API 格式 JSON；直接拒绝 UI 导出的含 nodes 数组的 GUI 格式。发布版本不可变，被任务引用后不可被覆盖。导入内容不得包含 API key、token、secret、password、credential 或带账号密码的 URL。
 
 ## 邻舍渐进迁移
 
@@ -147,13 +147,16 @@ H3 FL2VA 当前只提供真实 Worker 就绪探测，默认关闭且没有公共
 ```dotenv
 STHSTART_APP_TOKEN=sth_app_...
 STHSTART_VECTOR_PROFILE=linshe-vector
+# 托管图片调用使用的 Generation 用途，需在公共服务中绑定
+STHSTART_GENERATION_PURPOSE=linshe-chat-image
+# 旧版图片 Profile 仅供兼容接口
 STHSTART_IMAGE_PROFILE=local-comfy
 STHSTART_PUBLIC_LLM=true
 STHSTART_PUBLIC_VECTOR=false
 STHSTART_PUBLIC_IMAGE=false
 ```
 
-图片公共服务开关为独立设置。只有在已经配置图片 Profile 且明确希望邻舍走 SthStart 图片网关时才设为 `true`；如果此前已启用临时直连降级，可额外设置 `STHSTART_PUBLIC_IMAGE_FALLBACK=true`，该开关只允许公共图片服务在“请求尚未被接受且网络不可达”时尝试一次本地 ComfyUI，公共服务已经返回拒绝或已接受任务后不会直连重提。
+图片公共服务开关为独立设置。只有在已经配置图片工作流绑定且明确希望邻舍走 SthStart Generation 网关时才设为 `true`。托管模式下公共图片请求是单一调用链：公共服务不可达、Worker 不可用或上游返回错误时直接向用户报告，不会自动转投邻舍本地 ComfyUI；旧配置中的 `STHSTART_PUBLIC_IMAGE_FALLBACK` 不再改变这一行为。
 
 独立使用 `dev:all` 时，`STHSTART_APP_TOKEN` 应保持为稳定的高熵令牌；通过 SthStart 控制中心托管邻舍时，公共服务会把当前令牌自动注入邻舍进程。
 

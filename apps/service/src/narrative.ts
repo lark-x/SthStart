@@ -1,9 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { AkashaMcpConnector, type AkashaWorld } from './narrative-connectors.js';
 import type { NarrativeDatabase } from './narrative-database.js';
 import type { NarrativeImportBundle, NarrativeSourceConnector } from './narrative-types.js';
 import type { ServiceDatabase } from './database.js';
+import type { FastifyReply } from 'fastify';
+import type { SecretStore } from './security.js';
+import type { ServiceConfig } from './config.js';
+import { createArtifactReadStream, createArtifactReference, readArtifact, removeArtifactReference } from './artifacts.js';
+import { createGenerationTask, getGenerationTask, sanitizeErrorMessage } from './generation.js';
 
 const nowIso = () => new Date().toISOString();
 const json = (value: unknown) => JSON.stringify(value ?? {});
@@ -127,7 +133,46 @@ function commitBundle(database: NarrativeDatabase, bundle: NarrativeImportBundle
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
 
-export function registerNarrativeRoutes(app: FastifyInstance, database: NarrativeDatabase, serviceDatabase: ServiceDatabase, narrativeConnectors: readonly NarrativeSourceConnector[]) {
+function generationError(reply: FastifyReply, error: unknown) {
+  const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'generation_failed');
+  const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+  const status = code === 'generation_assignment_not_found' || code === 'workflow_not_found' || code === 'workflow_version_not_found'
+    ? 409
+    : code === 'generation_engine_unavailable' || code === 'worker_token_missing'
+      ? 503
+      : 400;
+  return reply.code(status).send({ error: code, message });
+}
+
+function narrativeGenerationTask(serviceDatabase: ServiceDatabase, taskId: string, nodeId: string) {
+  const row = serviceDatabase.connection.prepare('SELECT app_id,purpose,request_params_json FROM generation_tasks WHERE id=?').get(taskId) as { app_id: string; purpose: string; request_params_json: string } | undefined;
+  if (!row || row.app_id !== 'narrative' || row.purpose !== 'narrative-concept') return null;
+  try {
+    const request = JSON.parse(row.request_params_json) as { inputs?: { nodeId?: unknown } };
+    return request.inputs?.nodeId === nodeId ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+function conceptPrompt(database: NarrativeDatabase, nodeId: string) {
+  const node = database.connection.prepare(`SELECT n.title,n.summary,w.title work_title
+    FROM narrative_nodes n JOIN narrative_works w ON w.id=n.work_id WHERE n.id=?`).get(nodeId) as { title: string; summary: string; work_title: string } | undefined;
+  if (!node) return '';
+  const lines = database.connection.prepare(`SELECT s.title scene_title,u.speaker,u.body
+    FROM narrative_scenes s JOIN narrative_utterances u ON u.scene_id=s.id WHERE s.node_id=? ORDER BY s.sort_order,u.sort_order LIMIT 40`).all(nodeId) as Array<{ scene_title: string; speaker: string | null; body: string }>;
+  return [`作品：${node.work_title}`, `节点：${node.title}`, node.summary, '请根据以下剧情内容生成一张能概括当前节点氛围与关键人物关系的概念图。', ...lines.map((line) => `${line.scene_title}${line.speaker ? ` / ${line.speaker}` : ''}：${line.body}`)].filter(Boolean).join('\n').slice(0, 6_000);
+}
+
+function conceptArtifacts(serviceDatabase: ServiceDatabase, nodeId: string) {
+  const rows = serviceDatabase.connection.prepare(`SELECT a.id artifact_id,a.content_type,a.created_at
+    FROM generation_context_links l JOIN artifacts a ON a.id=l.artifact_id
+    WHERE l.app_id='narrative' AND l.context_type='narrative' AND l.context_id=? AND l.role='concept' AND a.file_status='ready'
+    ORDER BY l.created_at DESC`).all(nodeId) as Array<{ artifact_id: string; content_type: string | null; created_at: string }>;
+  return rows.map((row) => ({ artifactId: row.artifact_id, url: `/api/admin/narrative/artifacts/${row.artifact_id}`, contentType: row.content_type, createdAt: row.created_at }));
+}
+
+export function registerNarrativeRoutes(app: FastifyInstance, database: NarrativeDatabase, serviceDatabase: ServiceDatabase, narrativeConnectors: readonly NarrativeSourceConnector[], config: ServiceConfig, secrets: SecretStore, fetcher: typeof fetch = fetch) {
   const akasha = narrativeConnectors.find((item): item is AkashaMcpConnector => item instanceof AkashaMcpConnector);
   app.get('/api/v1/admin/narrative/connectors', async () => ({ items: narrativeConnectors.map((connector) => ({ id: connector.id, name: connector.name, kind: connector.kind, ...connector.describe() })) }));
   app.post<{ Params: { id: string } }>('/api/v1/admin/narrative/connectors/:id/probe', async (request, reply) => {
@@ -187,7 +232,60 @@ export function registerNarrativeRoutes(app: FastifyInstance, database: Narrativ
     if (!node) return reply.code(404).send({ error: 'not_found' });
     const scenes = database.connection.prepare('SELECT id,title,summary,sort_order sortOrder FROM narrative_scenes WHERE node_id=? ORDER BY sort_order,id').all(request.params.id) as Array<Record<string, unknown>>;
     const utteranceQuery = database.connection.prepare('SELECT id,kind,speaker,body text,condition_text condition,sort_order sortOrder FROM narrative_utterances WHERE scene_id=? ORDER BY sort_order,id');
-    return { node, scenes: scenes.map((scene) => ({ ...scene, utterances: utteranceQuery.all(scene.id as string) })) };
+    return { node: { ...(node as Record<string, unknown>), conceptArtifacts: conceptArtifacts(serviceDatabase, request.params.id) }, scenes: scenes.map((scene) => ({ ...scene, utterances: utteranceQuery.all(scene.id as string) })) };
+  });
+  app.post<{ Params: { id: string }; Body: { prompt?: string; seed?: number | null } }>('/api/v1/admin/narrative/nodes/:id/generate-concept', async (request, reply) => {
+    const node = database.connection.prepare('SELECT id FROM narrative_nodes WHERE id=?').get(request.params.id);
+    if (!node) return reply.code(404).send({ error: 'not_found' });
+    const prompt = typeof request.body?.prompt === 'string' && request.body.prompt.trim() ? request.body.prompt.trim().slice(0, 6_000) : conceptPrompt(database, request.params.id);
+    if (prompt.length < 2) return reply.code(400).send({ error: 'concept_prompt_required' });
+    const seed = request.body?.seed == null ? null : Number(request.body.seed);
+    if (seed !== null && (!Number.isSafeInteger(seed) || seed < 0)) return reply.code(400).send({ error: 'invalid_seed' });
+    const header = request.headers['idempotency-key'];
+    const work = database.connection.prepare('SELECT work_id FROM narrative_nodes WHERE id=?').get(request.params.id) as { work_id: string };
+    try {
+      const task = await createGenerationTask(config, serviceDatabase, secrets, {
+        appId: 'narrative', purpose: 'narrative-concept',
+        inputs: { prompt, width: 1024, height: 576, steps: 24, nodeId: request.params.id, workId: work.work_id },
+        seed, priority: 'interactive', idempotencyKey: typeof header === 'string' ? header : null,
+      }, fetcher);
+      return reply.code(202).send(task);
+    } catch (error) { return generationError(reply, error); }
+  });
+  app.get<{ Params: { id: string; taskId: string } }>('/api/v1/admin/narrative/nodes/:id/generation-tasks/:taskId', async (request, reply) => {
+    if (!narrativeGenerationTask(serviceDatabase, request.params.taskId, request.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const task = getGenerationTask(serviceDatabase, request.params.taskId, 'narrative');
+    return task ? task : reply.code(404).send({ error: 'not_found' });
+  });
+  app.post<{ Params: { id: string; taskId: string } }>('/api/v1/admin/narrative/nodes/:id/generation-tasks/:taskId/attach', async (request, reply) => {
+    if (!narrativeGenerationTask(serviceDatabase, request.params.taskId, request.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const task = getGenerationTask(serviceDatabase, request.params.taskId, 'narrative');
+    if (!task) return reply.code(404).send({ error: 'not_found' });
+    if (task.status !== 'succeeded') return reply.code(409).send({ error: 'task_not_succeeded', status: task.status });
+    const output = task.artifacts.find((artifact) => artifact.mediaKind === 'image' || artifact.contentType?.startsWith('image/'));
+    if (!output) return reply.code(409).send({ error: 'image_output_missing' });
+    const artifact = await readArtifact(serviceDatabase, output.artifactId);
+    if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'artifact_not_ready' });
+    const old = serviceDatabase.connection.prepare(`SELECT artifact_id FROM generation_context_links
+      WHERE app_id='narrative' AND context_type='narrative' AND context_id=? AND role='concept'
+      ORDER BY created_at DESC LIMIT 1`).get(request.params.id) as { artifact_id: string | null } | undefined;
+    try {
+      serviceDatabase.transaction(() => {
+        createArtifactReference(serviceDatabase, { artifactId: artifact.id, appId: 'narrative', refType: 'narrative-concept', refId: request.params.id });
+        serviceDatabase.connection.prepare(`INSERT INTO generation_context_links(task_id,app_id,context_type,context_id,artifact_id,role,created_at)
+          VALUES (?,?,?,?,?,'concept',?) ON CONFLICT(task_id,context_type,context_id,role) DO UPDATE SET artifact_id=excluded.artifact_id`).run(request.params.taskId, 'narrative', 'narrative', request.params.id, artifact.id, nowIso());
+        if (old?.artifact_id && old.artifact_id !== artifact.id) removeArtifactReference(serviceDatabase, { artifactId: old.artifact_id, appId: 'narrative', refId: request.params.id });
+      });
+    } catch (error) { return generationError(reply, error); }
+    return reply.code(201).send({ artifactId: artifact.id, url: `/api/admin/narrative/artifacts/${artifact.id}`, contentType: artifact.contentType, createdAt: artifact.createdAt });
+  });
+  app.get<{ Params: { id: string } }>('/api/v1/admin/narrative/artifacts/:id', async (request, reply) => {
+    const linked = serviceDatabase.connection.prepare(`SELECT 1 FROM generation_context_links WHERE app_id='narrative' AND context_type='narrative' AND artifact_id=?`).get(request.params.id);
+    if (!linked) return reply.code(404).send({ error: 'not_found' });
+    const artifact = await readArtifact(serviceDatabase, request.params.id);
+    if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'not_found' });
+    reply.type(artifact.contentType || 'application/octet-stream').header('content-length', String(artifact.byteSize));
+    return reply.send(createArtifactReadStream(artifact.localPath));
   });
   app.get<{ Params: { id: string } }>('/api/v1/admin/narrative/works/:id/entities', async (request) => ({ items: database.connection.prepare(`SELECT e.id,e.type,e.name,e.description,group_concat(a.alias,'|') aliases FROM narrative_entities e LEFT JOIN narrative_entity_aliases a ON a.entity_id=e.id WHERE e.work_id=? GROUP BY e.id ORDER BY e.type,e.name`).all(request.params.id) }));
   app.get<{ Querystring: { q?: string; workId?: string } }>('/api/v1/admin/narrative/search', async (request, reply) => {

@@ -19,6 +19,7 @@ upstream/linshe/     邻舍 Git Submodule
 
 叙事档案的数据模型、JSON 导入契约和 MCP 连接器边界见 [`docs/NARRATIVE_ARCHIVE.md`](docs/NARRATIVE_ARCHIVE.md)。
 本地生产启动、常驻运行、数据备份与手机访问边界见 [`docs/LOCAL_DEPLOYMENT.md`](docs/LOCAL_DEPLOYMENT.md)。
+多媒体中央存储、Windows Worker、H3 视频生成、工作流导入与灾难恢复完整指南见 [`docs/OPERATIONS_AND_BACKUP.md`](docs/OPERATIONS_AND_BACKUP.md)。
 
 邻舍仍保持独立数据和前端，门户在 `/apps/linshe` 使用 iframe 加载其原始页面。正式本地运行时可由控制中心托管邻舍进程并通过公开配置接口应用常用设置；SthStart 不直接访问邻舍 SQLite。
 

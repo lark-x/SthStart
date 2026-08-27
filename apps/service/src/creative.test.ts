@@ -62,6 +62,7 @@ test('Creative center exposes safe setup state and completes text/image generati
   assert.equal(JSON.stringify(initialStatus.json()).includes('baseUrl'), false);
 
   const now = nowIso();
+  database.connection.prepare("INSERT OR IGNORE INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run("creative-center", "Creative", "hash", "[]", 1, now, now);
   database.connection.prepare("INSERT INTO generation_engines(id,name,kind,base_url,enabled,concurrency_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)")
     .run('creative-engine', '测试 ComfyUI', 'comfyui', 'http://comfy.test:8188', 1, 2, now, now);
   database.connection.prepare("INSERT INTO generation_workflows(id,name,description,engine_kind,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?)")
@@ -186,6 +187,127 @@ test('Creative center rejects unsafe or incomplete image tasks without a silent 
   assert.equal(unconfigured.statusCode, 409);
   assert.equal(unconfigured.json().error, 'generation_assignment_not_found');
 
+  await app.close();
+  database.close();
+});
+
+test('Creative center: H3 video workflow rejects submissions when H3 is not ready or models missing', async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-creative-rej-'));
+  const config = readConfig({ STHSTART_ADMIN_TOKEN: adminToken, STHSTART_ARTIFACT_DIR: artifactDir });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/creative/tasks',
+    headers: adminHeaders,
+    payload: { mode: 'h3-t2v', prompt: 'test' },
+  });
+  assert.equal(res.statusCode, 400);
+  const json = res.json();
+  assert.equal(json.error, 'h3_not_ready');
+  assert.match(json.message, /H3 视频生成当前不可用/);
+
+  await app.close();
+  database.close();
+});
+
+test('Creative center: H3 T2V generation and video artifact streaming works with mock worker', async () => {
+  const database = new ServiceDatabase();
+  const artifactDirectory = await mkdtemp(resolve(tmpdir(), 'sthstart-creative-h3-'));
+
+  process.env.STHSTART_H3_ENABLED = 'true';
+  process.env.STHSTART_H3_WORKER_URL = 'http://h3-worker.test:9300';
+
+  const config = readConfig({
+    STHSTART_ADMIN_TOKEN: adminToken,
+    STHSTART_IMAGE_SIGNING_SECRET: 'creative-image-signing-secret-1234567890',
+    STHSTART_ARTIFACT_DIR: artifactDirectory,
+  });
+
+  const now = nowIso();
+  database.connection.prepare("INSERT OR IGNORE INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run("creative-center", "Creative", "hash", "[]", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_engines(id, name, kind, base_url, credential_account, enabled, concurrency_limit, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run("h3-eng", "H3", "worker", "http://h3-worker.test:9300", "engine:h3-eng", 1, 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows(id, name, description, engine_kind, category, latest_version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-h3", "WF", "", "worker", "video", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions(workflow_id, version, engine_id, input_schema_json, node_bindings_json, output_declarations_json, definition_json, input_capabilities_json, output_media_types_json, output_schema_json, is_published, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(
+    "wf-h3", 1, "h3-eng",
+    JSON.stringify({ prompt: { type: 'string' }, duration: { type: 'number', maximum: 4 }, aspectRatio: { type: 'string' } }),
+    JSON.stringify({ prompt: ['1', 'inputs', 'text'], duration: ['2', 'inputs', 'duration'], aspectRatio: ['3', 'inputs', 'aspect_ratio'] }),
+    JSON.stringify(["4"]),
+    JSON.stringify({
+      '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+      '2': { class_type: 'DurationNode', inputs: { duration: 4 } },
+      '3': { class_type: 'AspectRatioNode', inputs: { aspect_ratio: '16:9' } },
+      '4': { class_type: 'SaveVideo', inputs: { filename_prefix: 'h3-output' } },
+    }),
+    JSON.stringify({}),
+    JSON.stringify(['video/mp4']),
+    JSON.stringify({}),
+    1, now,
+  );
+  database.connection.prepare('INSERT INTO generation_workflow_media_versions(workflow_id, version, category, input_capabilities_json, output_media_types_json, output_schema_json, updated_at) VALUES (?,?,?,?,?,?,?)')
+    .run('wf-h3', 1, 'video', '{}', JSON.stringify(['video/mp4']), '{}', now);
+  database.connection.prepare("INSERT INTO app_generation_assignments(app_id, purpose, workflow_id, workflow_version, engine_id, updated_at) VALUES (?,?,?,?,?,?)").run("creative-center", "h3-t2v", "wf-h3", 1, "h3-eng", now);
+
+  const secrets = new SecretStore({});
+  secrets.set = async () => {}; secrets.get = async () => ({ value: "worker-secret", source: "keyring" });
+
+  let statusCalls = 0;
+  const fetcher = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    if (url.includes('/health')) return Response.json({ ready: true, capabilities: ['h3-t2v', 'h3-i2v', 'h3-fl2va'] });
+    if (url.endsWith('/v1/worker/tasks')) return Response.json({ taskId: 'worker-task-1', status: 'queued' }, { status: 202 });
+    if (url.endsWith('/status')) {
+      statusCalls++;
+      return Response.json({
+        taskId: 'worker-task-1',
+        status: statusCalls === 1 ? 'running' : 'succeeded',
+        outputs: statusCalls === 1 ? [] : [{ outputId: 'out-1', outputName: 'output', filename: 'video.mp4', contentType: 'video/mp4', byteSize: 4, sha256: 'f65028c10747a7ee043d4c3d0d8dbac08a0e476da9066bbf248bfb224b5c328a' }],
+      });
+    }
+    if (url.endsWith('/output/out-1')) return new Response(Buffer.from('mp4-'), { status: 200, headers: { 'content-type': 'video/mp4', 'content-length': '4' } });
+    if (url.endsWith('/confirm')) return Response.json({ taskId: 'worker-task-1', status: 'confirmed' });
+    return new Response(null, { status: 404 });
+  };
+
+  const { app } = await createService({ config, database, secrets, fetcher });
+
+  const status = await app.inject({ method: 'GET', url: '/api/v1/admin/creative/status', headers: adminHeaders });
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.json().modes.h3T2v.constraints.maxDurationSeconds, 4);
+  assert.equal(status.json().modes.h3T2v.constraints.maxWidth, 854);
+
+  const submitRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/creative/tasks',
+    headers: adminHeaders,
+    payload: { mode: 'h3-t2v', prompt: 'a beautiful video', duration: 4 },
+  });
+  assert.equal(submitRes.statusCode, 202);
+  const taskId = submitRes.json().id;
+
+  await Promise.allSettled(Array.from(activeGenerationExecutions));
+
+  const check = await app.inject({ method: 'GET', url: `/api/v1/admin/creative/tasks/${taskId}`, headers: adminHeaders });
+  assert.equal(check.json().status, 'succeeded', check.json().errorCode + ' ' + check.json().errorMessage);
+  assert.equal(check.json().artifacts.length, 1);
+  const artId = check.json().artifacts[0].artifactId;
+
+  const viewRes = await app.inject({ method: 'GET', url: `/api/v1/admin/creative/artifacts/${artId}`, headers: adminHeaders });
+  assert.equal(viewRes.statusCode, 200);
+  assert.equal(viewRes.headers['content-type'], 'video/mp4');
+  assert.equal(viewRes.body, 'mp4-');
+
+  const thumbRes = await app.inject({ method: 'GET', url: `/api/v1/admin/creative/artifacts/${artId}?thumbnail=true`, headers: adminHeaders });
+  if (thumbRes.statusCode === 200) {
+    assert.equal(thumbRes.headers['content-type'], 'image/jpeg');
+  } else {
+    assert.equal(thumbRes.statusCode, 404);
+    assert.equal(thumbRes.json().error, 'thumbnail_not_found');
+  }
+
+  delete process.env.STHSTART_H3_ENABLED;
+  delete process.env.STHSTART_H3_WORKER_URL;
   await app.close();
   database.close();
 });

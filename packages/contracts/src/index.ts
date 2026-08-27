@@ -161,6 +161,54 @@ export const AppConfigResponseSchema = Type.Object({
 });
 export type AppConfigResponse = Static<typeof AppConfigResponseSchema>;
 
+export const MediaCategorySchema = Type.Union([
+  Type.Literal('image'), Type.Literal('video'), Type.Literal('audio'), Type.Literal('transform'),
+]);
+export type MediaCategory = Static<typeof MediaCategorySchema>;
+
+export const MediaKindSchema = Type.Union([
+  Type.Literal('image'), Type.Literal('video'), Type.Literal('audio'), Type.Literal('file'),
+]);
+export type MediaKind = Static<typeof MediaKindSchema>;
+
+export const EngineCapabilitiesSchema = Type.Object({
+  mediaKinds: Type.Optional(Type.Array(MediaKindSchema)),
+  features: Type.Optional(Type.Array(Type.String())),
+});
+export type EngineCapabilities = Static<typeof EngineCapabilitiesSchema>;
+
+export const WorkflowInputCapabilitySchema = Type.Object({
+  mediaTypes: Type.Optional(Type.Array(Type.String())),
+  maxBytes: Type.Optional(Type.Integer({ minimum: 1 })),
+  required: Type.Optional(Type.Boolean()),
+  maxCount: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+export type WorkflowInputCapability = Static<typeof WorkflowInputCapabilitySchema>;
+
+export const WorkflowInputCapabilitiesSchema = Type.Record(Type.String(), WorkflowInputCapabilitySchema);
+export type WorkflowInputCapabilities = Static<typeof WorkflowInputCapabilitiesSchema>;
+
+export const WorkflowOutputSchema = Type.Object({
+  mediaTypes: Type.Optional(Type.Array(Type.String())),
+  required: Type.Optional(Type.Boolean()),
+});
+export type WorkflowOutputSchema = Static<typeof WorkflowOutputSchema>;
+
+export const GenerationPrioritySchema = Type.Union([
+  Type.Literal('interactive'), Type.Literal('normal'), Type.Literal('background'),
+]);
+export type GenerationPriority = Static<typeof GenerationPrioritySchema>;
+
+export const GenerationProgressSchema = Type.Object({
+  value: Type.Union([Type.Number({ minimum: 0, maximum: 1 }), Type.Null()]),
+  stage: Type.String(),
+  message: Type.Optional(Type.String()),
+  current: Type.Optional(Type.Number({ minimum: 0 })),
+  total: Type.Optional(Type.Number({ minimum: 0 })),
+  source: Type.Optional(Type.String()),
+});
+export type GenerationProgress = Static<typeof GenerationProgressSchema>;
+
 export const ArtifactFileStatusSchema = Type.Union([
   Type.Literal('ready'),
   Type.Literal('missing'),
@@ -182,6 +230,11 @@ export const ArtifactDescriptorSchema = Type.Object({
   width: Type.Union([Type.Number(), Type.Null()]),
   height: Type.Union([Type.Number(), Type.Null()]),
   durationMs: Type.Union([Type.Number(), Type.Null()]),
+  fps: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+  codec: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  hasAudio: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
+  thumbnailArtifactId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   paramsSummary: Type.Record(Type.String(), Type.Unknown()),
   pinned: Type.Boolean(),
   url: Type.String(),
@@ -231,6 +284,7 @@ export const GenerationEngineSchema = Type.Object({
   baseUrl: Type.String(),
   enabled: Type.Boolean(),
   concurrencyLimit: Type.Number(),
+  capabilities: Type.Optional(EngineCapabilitiesSchema),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });
@@ -241,6 +295,7 @@ export const GenerationWorkflowSchema = Type.Object({
   name: Type.String(),
   description: Type.String(),
   engineKind: GenerationEngineKindSchema,
+  category: Type.Optional(MediaCategorySchema),
   latestVersion: Type.Number(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -252,8 +307,12 @@ export const GenerationWorkflowVersionSchema = Type.Object({
   version: Type.Number(),
   engineId: Type.Union([Type.String(), Type.Null()]),
   inputSchema: Type.Record(Type.String(), Type.Unknown()),
+  category: Type.Optional(MediaCategorySchema),
+  inputCapabilities: Type.Optional(WorkflowInputCapabilitiesSchema),
   nodeBindings: Type.Record(Type.String(), Type.Array(Type.String())),
   outputDeclarations: Type.Array(Type.String()),
+  outputMediaTypes: Type.Optional(Type.Array(Type.String())),
+  outputSchema: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   definition: Type.Record(Type.String(), Type.Unknown()),
   isPublished: Type.Boolean(),
   createdAt: Type.String(),
@@ -290,6 +349,8 @@ export const GenerationTaskArtifactSchema = Type.Object({
   byteSize: Type.Number(),
   contentType: Type.Union([Type.String(), Type.Null()]),
   sha256: Type.Union([Type.String(), Type.Null()]),
+  mediaKind: Type.Optional(MediaKindSchema),
+  thumbnailArtifactId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type GenerationTaskArtifact = Static<typeof GenerationTaskArtifactSchema>;
 
@@ -302,6 +363,8 @@ export const GenerationTaskDescriptorSchema = Type.Object({
   purpose: Type.String(),
   idempotencyKey: Type.Union([Type.String(), Type.Null()]),
   status: GenerationTaskStatusSchema,
+  priority: Type.Optional(GenerationPrioritySchema),
+  progress: Type.Optional(GenerationProgressSchema),
   actualSeed: Type.Union([Type.Number(), Type.Null()]),
   providerTaskId: Type.Union([Type.String(), Type.Null()]),
   errorCode: Type.Union([Type.String(), Type.Null()]),
@@ -344,21 +407,24 @@ export const GenerationWorkerHealthSchema = Type.Object({
   model: Type.String(), temperature: Type.Number(), concurrency: Type.Literal(1),
   queueDepth: Type.Number(), runningTaskId: Type.Union([Type.String(), Type.Null()]),
   modelDirectoryReady: Type.Boolean(),
+  capabilities: Type.Optional(Type.Array(Type.String())),
   disk: Type.Object({ freeBytes: Type.Number(), tempBytes: Type.Number(), maxTempBytes: Type.Number(), warningBytes: Type.Number(), stopBytes: Type.Number() }),
 });
 export type GenerationWorkerHealth = Static<typeof GenerationWorkerHealthSchema>;
 
 export const H3ExperimentStatusSchema = Type.Object({
-  id: Type.Literal('h3-fl2va'),
+  id: Type.Union([Type.Literal('h3-t2v'), Type.Literal('h3-i2v'), Type.Literal('h3-fl2va')]),
   enabled: Type.Boolean(),
   available: Type.Boolean(),
   ready: Type.Boolean(),
   constraints: Type.Object({
-    maxWidth: Type.Literal(854), maxHeight: Type.Literal(480), maxDurationSeconds: Type.Literal(4), concurrencyLimit: Type.Literal(1),
+    maxWidth: Type.Integer({ minimum: 1 }), maxHeight: Type.Integer({ minimum: 1 }), maxDurationSeconds: Type.Integer({ minimum: 1 }), concurrencyLimit: Type.Integer({ minimum: 1 }),
   }),
   reason: Type.Union([
     Type.Literal('disabled'), Type.Literal('worker_not_configured'), Type.Literal('model_missing'),
-    Type.Literal('worker_unreachable'), Type.Literal('worker_http_error'), Type.Literal('worker_not_ready'), Type.Literal('ready'),
+    Type.Literal('worker_unreachable'), Type.Literal('worker_http_error'), Type.Literal('worker_not_ready'),
+    Type.Literal('comfyui_unreachable'), Type.Literal('workflow_missing'), Type.Literal('custom_node_missing'),
+    Type.Literal('binding_invalid'), Type.Literal('output_invalid'), Type.Literal('capability_missing'), Type.Literal('ready'),
   ]),
 });
 export type H3ExperimentStatus = Static<typeof H3ExperimentStatusSchema>;
@@ -383,7 +449,7 @@ export const MediaDiagnosticsSchema = Type.Object({
 export type MediaDiagnostics = Static<typeof MediaDiagnosticsSchema>;
 
 export const CreativeWorkflowBindingSchema = Type.Object({
-  purpose: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image')]),
+  purpose: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image'), Type.Literal('h3-t2v'), Type.Literal('h3-i2v'), Type.Literal('h3-fl2va')]),
   ready: Type.Boolean(),
   status: Type.String(),
   workflow: Type.Union([
@@ -394,6 +460,18 @@ export const CreativeWorkflowBindingSchema = Type.Object({
     Type.Object({ id: Type.String(), name: Type.String(), kind: Type.String(), enabled: Type.Boolean() }),
     Type.Null(),
   ]),
+  constraints: Type.Optional(Type.Object({
+    maxWidth: Type.Integer({ minimum: 1 }),
+    maxHeight: Type.Integer({ minimum: 1 }),
+    maxDurationSeconds: Type.Integer({ minimum: 1 }),
+    concurrencyLimit: Type.Integer({ minimum: 1 }),
+  })),
+  inputCapabilities: Type.Optional(Type.Record(Type.String(), Type.Object({
+    mediaTypes: Type.Optional(Type.Array(Type.String())),
+    maxBytes: Type.Optional(Type.Integer({ minimum: 1 })),
+    required: Type.Optional(Type.Boolean()),
+    maxCount: Type.Optional(Type.Integer({ minimum: 1 })),
+  }))),
 });
 export type CreativeWorkflowBinding = Static<typeof CreativeWorkflowBindingSchema>;
 
@@ -401,13 +479,13 @@ export const CreativeStatusResponseSchema = Type.Object({
   app: Type.Object({ id: Type.String(), name: Type.String() }),
   modes: Type.Object({
     textToImage: CreativeWorkflowBindingSchema,
-    imageToImage: CreativeWorkflowBindingSchema,
+    imageToImage: CreativeWorkflowBindingSchema,    h3T2v: CreativeWorkflowBindingSchema,    h3I2v: CreativeWorkflowBindingSchema,    h3Fl2va: CreativeWorkflowBindingSchema,
   }),
 });
 export type CreativeStatusResponse = Static<typeof CreativeStatusResponseSchema>;
 
 export const CreativeReplaySchema = Type.Object({
-  mode: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image')]),
+  mode: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image'), Type.Literal('h3-t2v'), Type.Literal('h3-i2v'), Type.Literal('h3-fl2va')]),
   inputs: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number()])),
   inputArtifactIds: Type.Array(Type.String()),
 });
@@ -576,6 +654,9 @@ export const CharacterAssetResponseSchema = Type.Object({
   url: Type.String(),
 });
 export type CharacterAssetResponse = Static<typeof CharacterAssetResponseSchema>;
+
+export const CharacterGenerationTaskResponseSchema = GenerationTaskDescriptorSchema;
+export type CharacterGenerationTaskResponse = Static<typeof CharacterGenerationTaskResponseSchema>;
 
 export const CharacterDetailSchema = Type.Intersect([
   CharacterProfileSchema,
@@ -819,12 +900,21 @@ export const NarrativeSceneSchema = Type.Object({
 });
 export type NarrativeScene = Static<typeof NarrativeSceneSchema>;
 
+export const NarrativeConceptArtifactSchema = Type.Object({
+  artifactId: Type.String(),
+  url: Type.String(),
+  contentType: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+export type NarrativeConceptArtifact = Static<typeof NarrativeConceptArtifactSchema>;
+
 export const NarrativeReadingSchema = Type.Object({
   node: Type.Object({
     id: Type.String(),
     workId: Type.String(),
     title: Type.String(),
     summary: Type.String(),
+    conceptArtifacts: Type.Array(NarrativeConceptArtifactSchema),
   }),
   scenes: Type.Array(NarrativeSceneSchema),
 });

@@ -16,6 +16,9 @@ export interface ServiceConfig {
   narrativeDatabasePath: string;
   artifactDirectory: string;
   artifactMaxBytes: number;
+  artifactImageMaxBytes: number;
+  artifactVideoMaxBytes: number;
+  artifactAudioMaxBytes: number;
   adminToken: string | null;
   vectorDefaultUrl: string;
   imageSigningSecret: string;
@@ -115,6 +118,9 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
     narrativeDatabasePath: projectPath(environment.STHSTART_NARRATIVE_DATABASE_PATH, 'data/narrative.db'),
     artifactDirectory: projectPath(environment.STHSTART_ARTIFACT_DIR, 'data/artifacts'),
     artifactMaxBytes: integer(environment.STHSTART_ARTIFACT_MAX_BYTES, 50 * 1024 * 1024 * 1024, 'STHSTART_ARTIFACT_MAX_BYTES', 1024 * 1024 * 1024, 10 * 1024 * 1024 * 1024 * 1024),
+    artifactImageMaxBytes: integer(environment.STHSTART_ARTIFACT_IMAGE_MAX_BYTES, 12 * 1024 * 1024, 'STHSTART_ARTIFACT_IMAGE_MAX_BYTES', 65_536, 2 * 1024 * 1024 * 1024),
+    artifactVideoMaxBytes: integer(environment.STHSTART_ARTIFACT_VIDEO_MAX_BYTES, 512 * 1024 * 1024, 'STHSTART_ARTIFACT_VIDEO_MAX_BYTES', 1024 * 1024, 10 * 1024 * 1024 * 1024),
+    artifactAudioMaxBytes: integer(environment.STHSTART_ARTIFACT_AUDIO_MAX_BYTES, 64 * 1024 * 1024, 'STHSTART_ARTIFACT_AUDIO_MAX_BYTES', 65_536, 1024 * 1024 * 1024),
     adminToken,
     vectorDefaultUrl: httpUrl(environment.STHSTART_VECTOR_URL ?? 'http://127.0.0.1:8765', 'STHSTART_VECTOR_URL'),
     imageSigningSecret: signingSecret ?? adminToken ?? Buffer.from(randomBytes(32)).toString('hex'),

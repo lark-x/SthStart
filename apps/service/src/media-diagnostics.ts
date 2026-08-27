@@ -49,11 +49,12 @@ export async function getMediaDiagnostics(
   fetcher: typeof fetch = fetch,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   runner: CommandRunner = execFileAsync as unknown as CommandRunner,
+  h3WorkerToken: string | null = null,
 ): Promise<MediaDiagnostics> {
   const [ffmpeg, ffprobe, h3] = await Promise.all([
     inspectMediaTool('ffmpeg', runner),
     inspectMediaTool('ffprobe', runner),
-    getH3Status(fetcher, environment),
+    getH3Status(fetcher, environment, h3WorkerToken),
   ]);
   const preprocessingReady = ffmpeg.available && ffprobe.available;
   return {

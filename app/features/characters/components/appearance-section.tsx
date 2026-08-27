@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { Upload } from 'lucide-react';
+import { Sparkles, Upload } from 'lucide-react';
 import type { CharacterDraft } from '@sthstart/contracts';
 import type { Control, UseFormRegister } from 'react-hook-form';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -14,6 +14,8 @@ export function AppearanceSection({
   avatarUrl,
   canUpload,
   onUploadClick,
+  onGenerateAvatar,
+  generatingAvatar,
   onChange,
   control,
   register,
@@ -22,6 +24,8 @@ export function AppearanceSection({
   avatarUrl?: string | null;
   canUpload: boolean;
   onUploadClick: () => void;
+  onGenerateAvatar: () => void;
+  generatingAvatar: boolean;
   onChange: (patch: Partial<CharacterDraft>) => void;
   control: Control<CharacterFormValues>;
   register: UseFormRegister<CharacterFormValues>;
@@ -62,6 +66,18 @@ export function AppearanceSection({
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
             <span>上传头像图片</span>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            disabled={!canUpload}
+            loading={generatingAvatar}
+            onClick={onGenerateAvatar}
+            className="mt-2 ml-2"
+          >
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>AI 生成头像</span>
           </Button>
         </div>
       </div>

@@ -170,6 +170,8 @@ npm run db:restore -- ./data/backups/<时间目录> --confirm
 
 制品、日志、`.env` 与邻舍数据仍需按上面的清单单独复制。
 
+完整的媒体制品配额、Windows Worker 算力节点、H3 视频生成与灾难恢复流程详见 [`docs/OPERATIONS_AND_BACKUP.md`](OPERATIONS_AND_BACKUP.md)。
+
 ## 手机远程访问：最小方案
 
 第一阶段只暴露 Portal，不需要 Docker、Nginx、公网 IP 或端口映射。公共服务、数据库和向量服务继续保持本机回环监听。

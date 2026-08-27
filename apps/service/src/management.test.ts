@@ -123,3 +123,149 @@ test('Windows Worker management stores token separately, exposes safe settings, 
 
   await app.close(); database.close();
 });
+
+test('workflow import accepts valid ComfyUI API JSON and rejects GUI formats or secrets', async () => {
+  const database = new ServiceDatabase();
+  const { app } = await createService({ config: readConfig({ STHSTART_ADMIN_TOKEN: adminToken }), database, secrets: new MemorySecrets() });
+
+  const validDefinition = {
+    '106': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+    '122': { class_type: 'PrimitiveInt', inputs: { value: 768 } },
+    '8': { class_type: 'VAEDecode', inputs: {} },
+  };
+
+  // 1. Happy path: import a workflow bundle
+  const imported = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'turbo-anime',
+      name: '极速二次元生图',
+      description: 'Anima Turbo 极速管线',
+      category: 'image',
+      engineKind: 'comfyui',
+      inputSchema: { prompt: { type: 'string' } },
+      nodeBindings: { prompt: ['106', 'inputs', 'text'] },
+      outputDeclarations: ['8'],
+      outputMediaTypes: ['image/png'],
+      definition: validDefinition,
+    },
+  });
+  assert.equal(imported.statusCode, 201);
+  assert.equal(imported.json().id, 'turbo-anime');
+  assert.equal(imported.json().version, 1);
+
+  // Second import increments version to v2
+  const secondImport = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'turbo-anime',
+      name: '极速二次元生图 v2',
+      category: 'image',
+      engineKind: 'comfyui',
+      inputSchema: { prompt: { type: 'string' } },
+      nodeBindings: { prompt: ['106', 'inputs', 'text'] },
+      outputDeclarations: ['8'],
+      definition: validDefinition,
+    },
+  });
+  assert.equal(secondImport.statusCode, 201);
+  assert.equal(secondImport.json().version, 2);
+
+  // 2. Reject GUI format (containing nodes/links array)
+  const guiPayload = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'gui-workflow',
+      name: '画布导出',
+      definition: {
+        nodes: [{ id: 1, type: 'CLIPTextEncode' }],
+        links: [[1, 1, 0, 2, 0, 'CLIP']],
+      },
+      inputSchema: {},
+      nodeBindings: {},
+      outputDeclarations: ['1'],
+    },
+  });
+  assert.equal(guiPayload.statusCode, 400);
+  assert.equal(guiPayload.json().error, 'invalid_workflow_format_gui_rejected');
+  assert.match(guiPayload.json().message, /ComfyUI API 格式/);
+
+  // 3. Reject plaintext secrets in workflow payload
+  const secretPayload = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'secret-workflow',
+      name: '包含密钥的工作流',
+      apiKey: 'sk-plaintext-secret-12345',
+      definition: validDefinition,
+      inputSchema: {},
+      nodeBindings: { prompt: ['106', 'inputs', 'text'] },
+      outputDeclarations: ['8'],
+    },
+  });
+  assert.equal(secretPayload.statusCode, 400);
+  assert.equal(secretPayload.json().error, 'secrets_not_permitted');
+  assert.match(secretPayload.json().message, /不得包含明文密钥/);
+
+  const nestedSecretPayload = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'nested-secret-workflow',
+      name: '嵌套密钥工作流',
+      definition: {
+        '106': { class_type: 'CLIPTextEncode', inputs: { text: 'https://user:password@example.com/model' } },
+      },
+      inputSchema: { headers: { 'x-api-key': 'secret' } },
+      nodeBindings: {},
+      outputDeclarations: ['106'],
+    },
+  });
+  assert.equal(nestedSecretPayload.statusCode, 400);
+  assert.equal(nestedSecretPayload.json().error, 'secrets_not_permitted');
+
+  // 4. Reject invalid workflow ID
+  const invalidId = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'Bad_ID!',
+      name: '非法 ID',
+      definition: validDefinition,
+      inputSchema: {},
+      nodeBindings: {},
+      outputDeclarations: ['8'],
+    },
+  });
+  assert.equal(invalidId.statusCode, 400);
+  assert.equal(invalidId.json().error, 'invalid_workflow_id');
+
+  // 5. Reject missing output declarations
+  const missingOutputs = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/generation/workflows/import',
+    headers: adminHeaders,
+    payload: {
+      id: 'no-output-wf',
+      name: '无输出声明',
+      definition: validDefinition,
+      inputSchema: {},
+      nodeBindings: { prompt: ['106', 'inputs', 'text'] },
+      outputDeclarations: [],
+    },
+  });
+  assert.equal(missingOutputs.statusCode, 400);
+  assert.equal(missingOutputs.json().error, 'output_declarations_required');
+
+  await app.close(); database.close();
+});

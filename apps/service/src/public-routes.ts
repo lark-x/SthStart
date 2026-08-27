@@ -22,10 +22,12 @@ import {
   cancelGenerationTask,
   createGenerationTask,
   getGenerationTask,
+  pollAndCompleteTask,
   retryGenerationTask,
   sanitizeErrorMessage,
   subscribeGenerationEvents,
 } from './generation.js';
+import { createLegacyImageTask, legacyImageTaskDescriptor } from './generation/legacy-image.js';
 import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } from './providers.js';
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
@@ -330,10 +332,15 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     const existing = database.connection.prepare('SELECT id,status,provider_task_id FROM image_tasks WHERE app_id=? AND idempotency_key=?')
       .get(identity.id, idempotency);
     if (existing) return reply.send(existing);
+    const existingGeneration = database.connection.prepare(
+      "SELECT id FROM generation_tasks WHERE app_id=? AND idempotency_key=? AND purpose='legacy-image'",
+    ).get(identity.id, idempotency) as { id: string } | undefined;
+    if (existingGeneration) {
+      const descriptor = getGenerationTask(database, existingGeneration.id, identity.id)!;
+      return reply.send(legacyImageTaskDescriptor(config, descriptor));
+    }
     const profile = await resolveProfile(database, secrets, 'image', requestedProfile(request));
     if (!profile) return reply.code(503).send({ error: 'image_unavailable', message: '未配置可用的图片服务模板。' });
-    const taskId = randomUUID();
-    const now = nowIso();
     try {
       const payload = safeJson(request.body);
       let workflow = payload.workflow ?? payload.prompt;
@@ -343,29 +350,39 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
         workflow = JSON.parse(stored.definition_json);
       }
       if (!workflow) return reply.code(400).send({ error: 'workflow_required', message: '必须提供工作流定义或提示词。' });
-      const upstream = await proxyJson(fetcher, `${profile.baseUrl}/prompt`, { prompt: workflow, client_id: taskId }, profile.secret, 30_000);
-      if (!upstream.ok) {
-        const errPayload = await upstream.json().catch(() => null) as { error?: unknown; message?: string } | null;
-        const msg = errPayload ? String(errPayload.message ?? errPayload.error ?? `HTTP ${upstream.status}`) : `HTTP ${upstream.status}`;
-        return reply.code(502).send({ error: 'image_rejected', upstreamStatus: upstream.status, message: `ComfyUI 拒绝了任务：${sanitizeMessage(msg).slice(0, 300)}` });
+      const task = await createLegacyImageTask(config, database, secrets, {
+        appId: identity.id,
+        idempotencyKey: idempotency,
+        profile,
+        workflow: safeJson(workflow),
+      }, fetcher);
+      if (task.errorCode === 'upstream_rejected') {
+        return reply.code(502).send({ error: 'image_rejected', message: `ComfyUI 拒绝了任务：${task.errorMessage ?? '未知错误'}` });
       }
-      const result = safeJson(await upstream.json().catch(() => ({})));
-      const providerTaskId = String(result.prompt_id ?? result.task_id ?? '');
-      if (!providerTaskId) return reply.code(502).send({ error: 'image_missing_task_id', message: 'ComfyUI 接口未返回任务 ID。' });
-      database.connection.prepare(`INSERT INTO image_tasks
-        (id,app_id,profile_id,provider_task_id,idempotency_key,status,request_json,error,upstream_may_continue,cancellation_scope,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,0,'none',?,?)`)
-        .run(taskId, identity.id, profile.id, providerTaskId, idempotency, 'accepted', JSON.stringify(payload), null, now, now);
-      return reply.code(202).send({ id: taskId, status: 'accepted', providerTaskId });
+      if (task.errorCode === 'image_missing_task_id') {
+        return reply.code(502).send({ error: 'image_missing_task_id', message: 'ComfyUI 接口未返回任务 ID。' });
+      }
+      if (task.errorCode === 'submission_outcome_unknown') {
+        return reply.code(503).send({ error: 'image_unavailable', message: task.errorMessage ?? '提交生图任务到 ComfyUI 超时。' });
+      }
+      return reply.code(202).send(legacyImageTaskDescriptor(config, task));
     } catch (error) {
-      const isTimeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-      const safeMsg = isTimeout ? '提交生图任务到 ComfyUI 超时。' : `无法连接 ComfyUI 图片服务：${sanitizeMessage(error instanceof Error ? error.message : String(error))}`;
-      return reply.code(503).send({ error: 'image_unavailable', message: safeMsg });
+      const code = (error as { code?: string }).code;
+      const safeMsg = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+      return reply.code(code === 'idempotency_conflict' ? 409 : 503).send({ error: code ?? 'image_unavailable', message: safeMsg });
     }
   });
 
   app.get<{ Params: { id: string } }>('/api/v1/images/tasks/:id', async (request, reply) => {
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
+    let generationTask = getGenerationTask(database, request.params.id, identity.id);
+    if (generationTask?.purpose === 'legacy-image') {
+      if (generationTask.status === 'accepted' || generationTask.status === 'running') {
+        await pollAndCompleteTask(config, database, secrets, generationTask.id, fetcher, { pollTimeoutMs: 15_000, pollIntervalMs: 50 });
+        generationTask = getGenerationTask(database, request.params.id, identity.id)!;
+      }
+      return legacyImageTaskDescriptor(config, generationTask);
+    }
     const task = database.connection.prepare('SELECT * FROM image_tasks WHERE id=? AND app_id=?').get(request.params.id, identity.id) as Record<string, unknown> | undefined;
     if (!task) return reply.code(404).send({ error: 'not_found' });
     if (['accepted', 'running'].includes(String(task.status)) && task.profile_id && task.provider_task_id) {
@@ -458,6 +475,16 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
 
   app.post<{ Params: { id: string } }>('/api/v1/images/tasks/:id/cancel', async (request, reply) => {
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
+    const generationTask = getGenerationTask(database, request.params.id, identity.id);
+    if (generationTask?.purpose === 'legacy-image') {
+      try {
+        const cancelled = await cancelGenerationTask(config, database, secrets, generationTask.id, identity.id, fetcher);
+        return legacyImageTaskDescriptor(config, cancelled);
+      } catch (error) {
+        const code = (error as { code?: string }).code ?? 'cancel_failed';
+        return reply.code(code === 'not_cancellable' ? 409 : 502).send({ error: code });
+      }
+    }
     const task = database.connection.prepare('SELECT id,status,profile_id,provider_task_id FROM image_tasks WHERE id=? AND app_id=?')
       .get(request.params.id, identity.id) as { id: string; status: string; profile_id: string | null; provider_task_id: string | null } | undefined;
     if (!task) return reply.code(404).send({ error: 'not_found' });
@@ -490,6 +517,15 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
 
   app.delete<{ Params: { id: string } }>('/api/v1/images/tasks/:id', async (request, reply) => {
     const identity = requireApp(database, 'image', request, reply); if (!identity) return;
+    const generationTask = getGenerationTask(database, request.params.id, identity.id);
+    if (generationTask?.purpose === 'legacy-image') {
+      if (['queued', 'submitting', 'accepted', 'running'].includes(generationTask.status)) {
+        return reply.code(409).send({ error: 'cancel_before_delete' });
+      }
+      for (const artifact of generationTask.artifacts) await removeArtifact(database, artifact.artifactId, identity.id, true);
+      database.connection.prepare('DELETE FROM generation_tasks WHERE id=? AND app_id=?').run(generationTask.id, identity.id);
+      return { ok: true };
+    }
     const task = database.connection.prepare('SELECT status FROM image_tasks WHERE id=? AND app_id=?').get(request.params.id, identity.id) as { status: string } | undefined;
     if (!task) return reply.code(404).send({ error: 'not_found' });
     if (['accepted', 'running'].includes(task.status)) return reply.code(409).send({ error: 'cancel_before_delete' });
@@ -789,6 +825,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       inputs?: Record<string, unknown>;
       inputArtifacts?: Array<{ artifactId: string; inputKey: string }>;
       seed?: number;
+      priority?: 'interactive' | 'normal' | 'background';
     };
   }>('/api/v1/generation/tasks', async (request, reply) => {
     const identity = requireApp(database, 'generation', request, reply);
@@ -814,6 +851,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
           inputs: safeJson(body.inputs),
           inputArtifacts: Array.isArray(body.inputArtifacts) ? body.inputArtifacts : [],
           seed: typeof body.seed === 'number' ? body.seed : null,
+          priority: body.priority === 'interactive' || body.priority === 'background' ? body.priority : 'normal',
         },
         fetcher,
       );
@@ -842,11 +880,18 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
         too_many_input_artifacts: 400,
         invalid_input_artifact: 400,
         duplicate_input_artifact_key: 400,
+        input_artifact_required: 400,
+        input_binding_not_found: 400,
         input_artifact_not_found: 404,
         input_artifact_access_denied: 403,
         input_artifact_unavailable: 409,
+        input_artifact_missing_file: 404,
+        input_artifact_engine_unsupported: 400,
         input_artifact_invalid_type: 400,
         input_artifact_too_large: 413,
+        input_upload_failed: 502,
+        worker_input_upload_failed: 502,
+        worker_token_missing: 503,
       };
 
       if (rawCode && KNOWN_CODES[rawCode]) {

@@ -11,7 +11,7 @@ import type {
 } from '@sthstart/contracts';
 
 export type CreativeTaskInput = {
-  mode: 'text-to-image' | 'image-to-image';
+  mode: 'text-to-image' | 'image-to-image' | 'h3-t2v' | 'h3-i2v' | 'h3-fl2va';
   prompt: string;
   negativePrompt?: string;
   width?: number;
@@ -19,7 +19,22 @@ export type CreativeTaskInput = {
   steps?: number;
   seed?: number | null;
   sourceArtifactId?: string;
+  duration?: number;
+  firstFrameId?: string;
+  aspectRatio?: string;
+  lastFrameId?: string;
 };
+
+function portalArtifactUrl(id: string) {
+  return `/api/admin/creative/artifacts/${encodeURIComponent(id)}`;
+}
+
+function withPortalArtifactUrls(task: CreativeTaskResponse): CreativeTaskResponse {
+  return {
+    ...task,
+    artifacts: task.artifacts.map((artifact) => ({ ...artifact, url: portalArtifactUrl(artifact.artifactId) })),
+  };
+}
 
 export async function fetchCreativeStatus() {
   return getJson<CreativeStatusResponse>('creative/status', undefined, CreativeStatusResponseSchema);
@@ -27,23 +42,27 @@ export async function fetchCreativeStatus() {
 
 export async function fetchCreativeTasks() {
   const response = await getJson<{ items: CreativeTaskResponse[] }>('creative/tasks');
-  return response.items;
+  return response.items.map(withPortalArtifactUrls);
 }
 
 export async function createCreativeTask(input: CreativeTaskInput) {
-  return postJson<CreativeTaskResponse>('creative/tasks', input, undefined, CreativeTaskResponseSchema);
+  const task = await postJson<CreativeTaskResponse>('creative/tasks', input, undefined, CreativeTaskResponseSchema);
+  return withPortalArtifactUrls(task);
 }
 
 export async function cancelCreativeTask(id: string) {
-  return postJson<CreativeTaskResponse>(`creative/tasks/${encodeURIComponent(id)}/cancel`, undefined, undefined, CreativeTaskResponseSchema);
+  const task = await postJson<CreativeTaskResponse>(`creative/tasks/${encodeURIComponent(id)}/cancel`, undefined, undefined, CreativeTaskResponseSchema);
+  return withPortalArtifactUrls(task);
 }
 
 export async function retryCreativeTask(id: string) {
-  return postJson<CreativeTaskResponse>(`creative/tasks/${encodeURIComponent(id)}/retry`, undefined, undefined, CreativeTaskResponseSchema);
+  const task = await postJson<CreativeTaskResponse>(`creative/tasks/${encodeURIComponent(id)}/retry`, undefined, undefined, CreativeTaskResponseSchema);
+  return withPortalArtifactUrls(task);
 }
 
 export async function fetchCreativeArtifacts() {
-  return getJson<{ items: ArtifactDescriptor[]; total: number }>('creative/artifacts', undefined, CreativeArtifactListResponseSchema);
+  const response = await getJson<{ items: ArtifactDescriptor[]; total: number }>('creative/artifacts', undefined, CreativeArtifactListResponseSchema);
+  return { ...response, items: response.items.map((artifact) => ({ ...artifact, url: portalArtifactUrl(artifact.id) })) };
 }
 
 export async function pinCreativeArtifact(id: string, pinned: boolean) {
@@ -70,5 +89,6 @@ export async function uploadCreativeImage(file: File): Promise<ArtifactDescripto
     const message = typeof payload?.message === 'string' ? payload.message : typeof payload?.error === 'string' ? payload.error : `HTTP ${response.status}`;
     throw new Error(message);
   }
-  return payload as unknown as ArtifactDescriptor;
+  const artifact = payload as unknown as ArtifactDescriptor;
+  return { ...artifact, url: portalArtifactUrl(artifact.id) };
 }

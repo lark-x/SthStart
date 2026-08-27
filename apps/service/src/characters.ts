@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -9,6 +10,9 @@ import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { resolveAssignedLlmProfile, upstreamHeaders } from './providers.js';
 import type { SecretStore } from './security.js';
+import { createArtifactReadStream, createArtifactReference, readArtifact, removeArtifactReference } from './artifacts.js';
+import { createGenerationTask, getGenerationTask } from './generation.js';
+import { sanitizeErrorMessage } from './generation.js';
 
 const EMPTY_DRAFT: CharacterDraft = {
   displayName: '', englishName: '', aliases: [], originType: 'original', work: '', world: '', summary: '',
@@ -156,6 +160,57 @@ async function generateDraft(database: ServiceDatabase, secrets: SecretStore, fe
   return normalizeCharacterDraft(JSON.parse(raw));
 }
 
+function generationError(reply: FastifyReply, error: unknown) {
+  const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'generation_failed');
+  const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+  const status = code === 'generation_assignment_not_found' || code === 'workflow_not_found' || code === 'workflow_version_not_found'
+    ? 409
+    : code === 'generation_engine_unavailable' || code === 'worker_token_missing'
+      ? 503
+      : code === 'not_found'
+        ? 404
+        : 400;
+  return reply.code(status).send({ error: code, message });
+}
+
+function characterGenerationTask(database: ServiceDatabase, taskId: string, characterId: string) {
+  const row = database.connection.prepare('SELECT app_id,purpose,request_params_json FROM generation_tasks WHERE id=?').get(taskId) as { app_id: string; purpose: string; request_params_json: string } | undefined;
+  if (!row || row.app_id !== 'characters' || row.purpose !== 'character-avatar') return null;
+  try {
+    const request = JSON.parse(row.request_params_json) as { inputs?: { characterId?: unknown } };
+    return request.inputs?.characterId === characterId ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+function characterAvatarPrompt(draft: CharacterDraft) {
+  return [
+    `角色：${draft.displayName || '未命名角色'}`,
+    draft.identity,
+    draft.summary,
+    draft.appearance.description,
+    draft.appearance.hair && `发型与发色：${draft.appearance.hair}`,
+    draft.appearance.eyes && `眼睛：${draft.appearance.eyes}`,
+    draft.appearance.build && `体态：${draft.appearance.build}`,
+    draft.appearance.outfits.length && `服装：${draft.appearance.outfits.join('；')}`,
+    draft.appearance.accessories.length && `饰品：${draft.appearance.accessories.join('；')}`,
+    '角色头像，半身肖像，清晰面部，正面或略微侧身，干净背景。',
+  ].filter(Boolean).join('\n').slice(0, 4_000);
+}
+
+async function sendCharacterAsset(database: ServiceDatabase, assetId: string, reply: FastifyReply) {
+  const asset = database.connection.prepare('SELECT local_path,content_type,artifact_id FROM character_assets WHERE id=?').get(assetId) as { local_path: string; content_type: string; artifact_id: string | null } | undefined;
+  if (!asset) return reply.code(404).send({ error: 'not_found' });
+  if (asset.artifact_id) {
+    const artifact = await readArtifact(database, asset.artifact_id);
+    if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'file_not_found' });
+    reply.type(artifact.contentType || asset.content_type).header('content-length', String(artifact.byteSize));
+    return reply.send(createArtifactReadStream(artifact.localPath));
+  }
+  try { return reply.type(asset.content_type).send(await readFile(asset.local_path)); } catch { return reply.code(404).send({ error: 'file_not_found' }); }
+}
+
 export function registerCharacterRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
   migrateLegacyPersonas(database);
 
@@ -225,6 +280,59 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     } catch (error) { return reply.code(502).send({ error: 'generation_failed', message: error instanceof Error ? error.message : String(error) }); }
   });
 
+  app.post<{ Params: { id: string }; Body: { prompt?: string; seed?: number | null } }>('/api/v1/admin/characters/:id/generate-avatar', async (request, reply) => {
+    const row = database.connection.prepare('SELECT draft_json FROM character_profiles WHERE id=?').get(request.params.id) as { draft_json: string } | undefined;
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    const draft = normalizeCharacterDraft(JSON.parse(row.draft_json));
+    const prompt = text(request.body?.prompt, 4_000) || characterAvatarPrompt(draft);
+    if (prompt.length < 2) return reply.code(400).send({ error: 'appearance_required', message: '请先补充角色外观描述。' });
+    const seed = request.body?.seed == null ? null : Number(request.body.seed);
+    if (seed !== null && (!Number.isSafeInteger(seed) || seed < 0)) return reply.code(400).send({ error: 'invalid_seed' });
+    const header = request.headers['idempotency-key'];
+    try {
+      const task = await createGenerationTask(config, database, secrets, {
+        appId: 'characters', purpose: 'character-avatar',
+        inputs: { prompt, width: 768, height: 1024, steps: 24, characterId: request.params.id },
+        seed, priority: 'interactive', idempotencyKey: typeof header === 'string' ? header : null,
+      }, fetcher);
+      return reply.code(202).send(task);
+    } catch (error) { return generationError(reply, error); }
+  });
+
+  app.get<{ Params: { id: string; taskId: string } }>('/api/v1/admin/characters/:id/generation-tasks/:taskId', async (request, reply) => {
+    if (!characterGenerationTask(database, request.params.taskId, request.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const task = getGenerationTask(database, request.params.taskId, 'characters');
+    return task ? task : reply.code(404).send({ error: 'not_found' });
+  });
+
+  app.post<{ Params: { id: string; taskId: string } }>('/api/v1/admin/characters/:id/generation-tasks/:taskId/apply-avatar', async (request, reply) => {
+    if (!database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(request.params.id)) return reply.code(404).send({ error: 'not_found' });
+    if (!characterGenerationTask(database, request.params.taskId, request.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const task = getGenerationTask(database, request.params.taskId, 'characters');
+    if (!task) return reply.code(404).send({ error: 'not_found' });
+    if (task.status !== 'succeeded') return reply.code(409).send({ error: 'task_not_succeeded', status: task.status });
+    const output = task.artifacts.find((artifact) => artifact.mediaKind === 'image' || artifact.contentType?.startsWith('image/'));
+    if (!output) return reply.code(409).send({ error: 'image_output_missing' });
+    const artifact = await readArtifact(database, output.artifactId);
+    if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'artifact_not_ready' });
+    const current = database.connection.prepare('SELECT avatar_asset_id FROM character_profiles WHERE id=?').get(request.params.id) as { avatar_asset_id: string | null };
+    const oldAsset = current.avatar_asset_id
+      ? database.connection.prepare('SELECT artifact_id FROM character_assets WHERE id=?').get(current.avatar_asset_id) as { artifact_id: string | null } | undefined
+      : undefined;
+    const assetId = randomUUID(); const now = nowIso();
+    try {
+      database.transaction(() => {
+        database.connection.prepare(`INSERT INTO character_assets
+          (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id)
+          VALUES (?,?,?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', artifact.localPath, artifact.contentType || 'image/png', artifact.byteSize, artifact.originalName || `avatar-${assetId}.png`, now, artifact.id);
+        database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+        createArtifactReference(database, { artifactId: artifact.id, appId: 'characters', refType: 'character-avatar', refId: request.params.id });
+        if (oldAsset?.artifact_id && oldAsset.artifact_id !== artifact.id) removeArtifactReference(database, { artifactId: oldAsset.artifact_id, appId: 'characters', refId: request.params.id });
+      });
+    } catch (error) { return generationError(reply, error); }
+    return reply.code(201).send({ id: assetId, url: `/api/admin/characters/assets/${assetId}` });
+  });
+
   app.post<{ Body: { card?: Record<string, unknown> } }>('/api/v1/admin/characters/import-tavern', async (request, reply) => {
     if (!request.body?.card || typeof request.body.card !== 'object') return reply.code(400).send({ error: 'invalid_tavern_card' });
     const draft = tavernDraft(request.body.card); if (!draft.displayName) return reply.code(400).send({ error: 'card_name_required' });
@@ -260,16 +368,13 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const bytes = Buffer.from(match[2], 'base64'); if (bytes.length > 8 * 1024 * 1024) return reply.code(413).send({ error: 'image_too_large' });
     const id = randomUUID(); const extension = extname(request.body.filename ?? '') || `.${match[1].split('/')[1].replace('jpeg', 'jpg')}`; const directory = resolve(config.artifactDirectory, 'characters'); const path = resolve(directory, `${id}${extension}`);
     await mkdir(directory, { recursive: true }); await writeFile(path, bytes, { flag: 'wx' });
-    try { database.connection.prepare('INSERT INTO character_assets VALUES (?,?,?,?,?,?,?,?)').run(id, request.params.id, request.body.kind === 'reference' ? 'reference' : 'avatar', path, match[1], bytes.length, request.body.filename?.slice(0, 255) || null, nowIso()); }
+    try { database.connection.prepare('INSERT INTO character_assets (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id) VALUES (?,?,?,?,?,?,?,?,NULL)').run(id, request.params.id, request.body.kind === 'reference' ? 'reference' : 'avatar', path, match[1], bytes.length, request.body.filename?.slice(0, 255) || null, nowIso()); }
     catch (error) { await unlink(path).catch(() => undefined); throw error; }
     if (request.body.kind !== 'reference') database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(id, nowIso(), request.params.id);
     return reply.code(201).send({ id, url: `/api/admin/characters/assets/${id}` });
   });
 
-  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/assets/:id', async (request, reply) => {
-    const asset = database.connection.prepare('SELECT local_path,content_type FROM character_assets WHERE id=?').get(request.params.id) as { local_path: string; content_type: string } | undefined; if (!asset) return reply.code(404).send({ error: 'not_found' });
-    try { return reply.type(asset.content_type).send(await readFile(asset.local_path)); } catch { return reply.code(404).send({ error: 'file_not_found' }); }
-  });
+  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/assets/:id', async (request, reply) => sendCharacterAsset(database, request.params.id, reply));
 
   app.get('/api/v1/characters', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
@@ -277,9 +382,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   });
   app.get<{ Params: { id: string } }>('/api/v1/characters/assets/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
-    const asset = database.connection.prepare('SELECT local_path,content_type FROM character_assets WHERE id=?').get(request.params.id) as { local_path: string; content_type: string } | undefined;
-    if (!asset) return reply.code(404).send({ error: 'not_found' });
-    try { return reply.type(asset.content_type).send(await readFile(asset.local_path)); } catch { return reply.code(404).send({ error: 'file_not_found' }); }
+    return sendCharacterAsset(database, request.params.id, reply);
   });
   app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/api/v1/characters/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;

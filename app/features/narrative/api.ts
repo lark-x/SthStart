@@ -5,6 +5,7 @@ import {
   NarrativeImportPreviewSchema,
   NarrativeConnectorsResponseSchema,
   NarrativeReadingSchema,
+  GenerationTaskDescriptorSchema,
   NarrativeSearchResponseSchema,
   NarrativeTreeResponseSchema,
   NarrativeWorksResponseSchema,
@@ -17,6 +18,7 @@ import type {
   NarrativeSearchResult,
   NarrativeStoryNode,
   NarrativeWork,
+  GenerationTaskDescriptor,
 } from '@sthstart/contracts';
 
 export type ImportPreviewReport = {
@@ -43,6 +45,30 @@ export async function fetchWorkTree(workId: string): Promise<{ items: NarrativeS
 
 export async function fetchReadingNode(nodeId: string): Promise<NarrativeReading> {
   return getJson<NarrativeReading>(`narrative/nodes/${nodeId}/read`, undefined, NarrativeReadingSchema);
+}
+
+export async function generateNarrativeConcept(nodeId: string, prompt?: string): Promise<GenerationTaskDescriptor> {
+  return postJson<GenerationTaskDescriptor>(
+    `narrative/nodes/${nodeId}/generate-concept`,
+    prompt?.trim() ? { prompt: prompt.trim() } : undefined,
+    undefined,
+    GenerationTaskDescriptorSchema,
+  );
+}
+
+export async function fetchNarrativeGenerationTask(nodeId: string, taskId: string): Promise<GenerationTaskDescriptor> {
+  return getJson<GenerationTaskDescriptor>(
+    `narrative/nodes/${nodeId}/generation-tasks/${taskId}`,
+    undefined,
+    GenerationTaskDescriptorSchema,
+  );
+}
+
+export async function attachNarrativeConcept(nodeId: string, taskId: string): Promise<{ artifactId: string; url: string }> {
+  return postJson<{ artifactId: string; url: string }>(
+    `narrative/nodes/${nodeId}/generation-tasks/${taskId}/attach`,
+    undefined,
+  );
 }
 
 export async function searchNarrative(

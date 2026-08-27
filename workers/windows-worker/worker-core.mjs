@@ -1,20 +1,28 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
-import { mkdir, readdir, readFile, rename, stat, statfs, unlink, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, readdir, readFile, rename, rm, stat, statfs, unlink, writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
-import { extname, resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 export const TASK_ID_PATTERN = /^[A-Za-z0-9_-]{8,160}$/;
 export const UPLOAD_ID_PATTERN = /^[A-Za-z0-9_-]{8,160}$/;
 export const OUTPUT_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
-const MAX_INPUT_BYTES = 12 * 1024 * 1024;
+const DEFAULT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const DEFAULT_VIDEO_MAX_BYTES = 512 * 1024 * 1024;
+const DEFAULT_AUDIO_MAX_BYTES = 64 * 1024 * 1024;
 const MAX_WORKFLOW_BYTES = 2 * 1024 * 1024;
 const DEFAULT_DISK_WARNING_BYTES = 10 * 1024 * 1024 * 1024;
 const DEFAULT_DISK_STOP_BYTES = 2 * 1024 * 1024 * 1024;
 const DEFAULT_MAX_TEMP_BYTES = 100 * 1024 * 1024 * 1024;
-const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
+const DEFAULT_OUTPUT_MAX_BYTES = 256 * 1024 * 1024;
+
+const MIME_EXTENSIONS = {
+  'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+  'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/ogg': '.ogg', 'audio/flac': '.flac', 'audio/mp4': '.m4a',
+};
 
 export class WorkerError extends Error {
   constructor(code, message, status = 400) {
@@ -29,24 +37,62 @@ function safeJson(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-function cleanFileExtension(name, contentType) {
-  const candidate = extname(String(name || '')).toLowerCase();
-  if (/^\.(png|jpe?g|webp|gif|avif)$/.test(candidate)) return candidate;
-  const map = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif' };
-  return map[String(contentType || '').split(';')[0].trim().toLowerCase()] || '.bin';
+function cleanFileExtension(_name, contentType) {
+  const normalized = String(contentType || '').split(';')[0].trim().toLowerCase();
+  return MIME_EXTENSIONS[normalized] || '.bin';
 }
 
 function contentTypeForExtension(extension) {
-  const map = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif' };
+  const map = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif',
+    '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+    '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.m4a': 'audio/mp4',
+  };
   return map[extension] || 'application/octet-stream';
+}
+
+function outputExtension(filename, contentType) {
+  const byType = cleanFileExtension(filename, contentType);
+  if (byType !== '.bin') return byType;
+  const candidate = String(filename || '').toLowerCase().match(/\.[a-z0-9]{1,12}$/)?.[0] || '.bin';
+  return Object.values(MIME_EXTENSIONS).includes(candidate) ? candidate : '.bin';
+}
+
+function mediaKindForContentType(contentType) {
+  const normalized = String(contentType || '').split(';')[0].trim().toLowerCase();
+  if (normalized.startsWith('image/')) return 'image';
+  if (normalized.startsWith('video/')) return 'video';
+  if (normalized.startsWith('audio/')) return 'audio';
+  return null;
+}
+
+function normalizedContentType(contentType) {
+  return String(contentType || '').split(';')[0].trim().toLowerCase();
+}
+
+function streamFrom(input) {
+  if (Buffer.isBuffer(input) || input instanceof Uint8Array) return Readable.from([input]);
+  if (input && typeof input.getReader === 'function') return Readable.fromWeb(input);
+  if (input && typeof input[Symbol.asyncIterator] === 'function') return Readable.from(input);
+  if (input && typeof input.pipe === 'function') return input;
+  throw new WorkerError('invalid_upload_stream', '输入上传流无效。');
+}
+
+function isWithinRoot(root, candidate) {
+  const rootPath = resolve(root);
+  const candidatePath = resolve(candidate);
+  const suffix = relative(rootPath, candidatePath);
+  return suffix === '' || (suffix !== '..' && !suffix.startsWith(`..${sep}`));
+}
+
+function safeRelativePath(value) {
+  const path = String(value || '').replaceAll('\\', '/');
+  if (!path || path.startsWith('/') || path.includes('\0')) return false;
+  return path.split('/').every((part) => part && part !== '.' && part !== '..');
 }
 
 function now() {
   return new Date().toISOString();
-}
-
-function hashBytes(buffer) {
-  return createHash('sha256').update(buffer).digest('hex');
 }
 
 function normalizeRemoteAddress(address) {
@@ -120,6 +166,12 @@ function readNumber(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function readByteLimit(value, fallback, maximum) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) throw new Error('媒体大小限制必须是合法的正整数。');
+  return parsed;
+}
+
 export function readSettings(environment = process.env) {
   const token = String(environment.WORKER_TOKEN || '').trim();
   if (token.length < 32) throw new Error('WORKER_TOKEN 必须至少包含 32 个字符。');
@@ -131,7 +183,12 @@ export function readSettings(environment = process.env) {
   const stopBytes = Math.max(1, Math.floor(readNumber(environment.WORKER_DISK_STOP_BYTES, DEFAULT_DISK_STOP_BYTES)));
   if (warningBytes < stopBytes) throw new Error('WORKER_DISK_WARNING_BYTES 必须不小于 WORKER_DISK_STOP_BYTES。');
   const maxTempBytes = Math.floor(readNumber(environment.WORKER_MAX_TEMP_BYTES, DEFAULT_MAX_TEMP_BYTES));
-  if (!Number.isSafeInteger(maxTempBytes) || maxTempBytes < MAX_INPUT_BYTES) throw new Error('WORKER_MAX_TEMP_BYTES 必须是不小于 12 MiB 的安全整数。');
+  const imageMaxBytes = readByteLimit(environment.WORKER_IMAGE_MAX_BYTES, DEFAULT_IMAGE_MAX_BYTES, 2 * 1024 * 1024 * 1024);
+  const videoMaxBytes = readByteLimit(environment.WORKER_VIDEO_MAX_BYTES, DEFAULT_VIDEO_MAX_BYTES, 10 * 1024 * 1024 * 1024);
+  const audioMaxBytes = readByteLimit(environment.WORKER_AUDIO_MAX_BYTES, DEFAULT_AUDIO_MAX_BYTES, 2 * 1024 * 1024 * 1024);
+  const outputMaxBytes = readByteLimit(environment.WORKER_OUTPUT_MAX_BYTES, DEFAULT_OUTPUT_MAX_BYTES, 10 * 1024 * 1024 * 1024);
+  const requiredTempBytes = Math.max(imageMaxBytes, videoMaxBytes, audioMaxBytes, outputMaxBytes);
+  if (!Number.isSafeInteger(maxTempBytes) || maxTempBytes < requiredTempBytes) throw new Error('WORKER_MAX_TEMP_BYTES 必须不小于所有媒体输入和输出上限。');
   const allowlist = String(environment.WORKER_ALLOWED_IPS || '').split(',').map((item) => item.trim()).filter(Boolean);
   for (const entry of allowlist) {
     const [address, prefix, ...extra] = entry.split('/');
@@ -141,6 +198,9 @@ export function readSettings(environment = process.env) {
   }
   const port = Number(environment.WORKER_PORT || 9200);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('WORKER_PORT 必须是 1 到 65535 之间的整数。');
+  const capabilities = [...new Set(String(environment.WORKER_CAPABILITIES || 'image').split(',').map((item) => item.trim()).filter(Boolean))];
+  if (capabilities.some((item) => !/^[a-z0-9][a-z0-9-]{0,63}$/.test(item))) throw new Error('WORKER_CAPABILITIES 包含无效能力标识。');
+  const dataDir = resolve(String(environment.WORKER_DATA_DIR || './data/windows-worker'));
   return {
     workerId: String(environment.WORKER_ID || 'windows-worker').trim() || 'windows-worker',
     host: String(environment.WORKER_HOST || '127.0.0.1').trim() || '127.0.0.1',
@@ -149,11 +209,17 @@ export function readSettings(environment = process.env) {
     allowlist,
     comfyUrl: String(environment.COMFYUI_URL || 'http://127.0.0.1:8188').replace(/\/+$/, ''),
     comfyToken: String(environment.COMFYUI_TOKEN || '').trim(),
-    dataDir: resolve(String(environment.WORKER_DATA_DIR || './data/windows-worker')),
+    dataDir,
     modelDir: resolve(String(environment.WORKER_MODEL_DIR || './models')),
+    comfyInputDir: resolve(String(environment.COMFYUI_INPUT_DIR || resolve(dataDir, 'comfyui-input'))),
     model: String(environment.WORKER_MODEL || '').trim(),
     temperature,
     concurrency: 1,
+    capabilities,
+    imageMaxBytes,
+    videoMaxBytes,
+    audioMaxBytes,
+    outputMaxBytes,
     diskWarningBytes: warningBytes,
     diskStopBytes: stopBytes,
     maxTempBytes,
@@ -294,6 +360,7 @@ export class WindowsWorker {
       outputDeclarations: [],
       inputs: [],
       outputs: [],
+      progress: { value: 0, stage: 'staging' },
       providerTaskId: null,
       model: this.settings.model,
       temperature: this.settings.temperature,
@@ -305,38 +372,68 @@ export class WindowsWorker {
     return task;
   }
 
-  async uploadInput(taskId, uploadId, body, metadata) {
+  async uploadInput(taskId, uploadId, body, metadata = {}) {
     if (!TASK_ID_PATTERN.test(taskId) || !UPLOAD_ID_PATTERN.test(uploadId)) throw new WorkerError('invalid_upload_id', '输入上传 ID 格式无效。');
-    if (body.length > MAX_INPUT_BYTES) throw new WorkerError('input_too_large', '输入图片不能超过 12 MiB。', 413);
     const existingTask = this.tasks.get(taskId);
     if (existingTask && ['succeeded', 'failed', 'abandoned', 'cancelled', 'confirmed'].includes(existingTask.status)) throw new WorkerError('task_not_uploadable', '任务已进入终态，不能继续上传输入。', 409);
-    const computedSha = hashBytes(body);
+    const contentType = normalizedContentType(metadata.contentType || 'application/octet-stream');
+    const mediaKind = mediaKindForContentType(contentType);
+    if (!mediaKind) throw new WorkerError('invalid_input_type', 'Worker 输入必须是图片、视频或音频。', 415);
+    const maxBytes = mediaKind === 'image' ? this.settings.imageMaxBytes : mediaKind === 'video' ? this.settings.videoMaxBytes : this.settings.audioMaxBytes;
+    const expectedLength = metadata.contentLength == null ? null : Number(metadata.contentLength);
+    if (expectedLength !== null && (!Number.isSafeInteger(expectedLength) || expectedLength < 0)) throw new WorkerError('invalid_content_length', 'Content-Length 必须是合法的非负整数。', 400);
+    if (expectedLength !== null && expectedLength > maxBytes) throw new WorkerError('input_too_large', '输入媒体超过 Worker 限制。', 413);
     const expectedSha = String(metadata.sha256 || '').trim().toLowerCase();
     if (expectedSha && !/^[a-f0-9]{64}$/.test(expectedSha)) throw new WorkerError('invalid_sha256', '输入 SHA-256 格式无效。');
-    if (expectedSha && expectedSha !== computedSha) throw new WorkerError('sha256_mismatch', '输入文件 SHA-256 校验失败。', 422);
-    const contentType = String(metadata.contentType || 'application/octet-stream').split(';')[0].trim().toLowerCase();
-    if (!contentType.startsWith('image/')) throw new WorkerError('invalid_input_type', 'Worker 输入必须是图片。', 415);
+
     const extension = cleanFileExtension(metadata.filename, contentType);
     const relativePath = `inputs/${taskId}/${uploadId}${extension}`;
-    const existing = existingTask?.inputs.find((input) => input.uploadId === uploadId);
-    if (existing) {
-      if (existing.sha256 === computedSha && existing.byteSize === body.length) return { taskId, uploadId, fileName: existing.fileName, relativePath: existing.relativePath, sha256: existing.sha256 };
-      throw new WorkerError('upload_id_conflict', '相同 uploadId 已绑定了不同文件。', 409);
-    }
+    const filePath = this.inputPath(taskId, uploadId, extension);
+    const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
     const disk = await this.diskStatus();
     if (disk.freeBytes <= this.settings.diskStopBytes) throw new WorkerError('worker_disk_stop', 'Worker 可用磁盘空间低于停止阈值。', 507);
-    if (disk.tempBytes + body.length > this.settings.maxTempBytes) throw new WorkerError('worker_temp_space_exceeded', 'Worker 临时目录已达到空间上限。', 507);
-    const task = existingTask || await this.createStaging(taskId);
-    const filePath = this.inputPath(taskId, uploadId, extension);
+    if (disk.tempBytes + (expectedLength ?? 0) > this.settings.maxTempBytes) throw new WorkerError('worker_temp_space_exceeded', 'Worker 临时目录已达到空间上限。', 507);
     await mkdir(resolve(filePath, '..'), { recursive: true });
-    await writeFile(filePath, body, { flag: 'wx' }).catch((error) => {
-      if (error?.code === 'EEXIST') throw new WorkerError('upload_id_conflict', '相同 uploadId 已存在。', 409);
-      throw error;
+
+    const hash = createHash('sha256');
+    let byteSize = 0;
+    const inputStream = streamFrom(body);
+    const metering = new Transform({
+      transform: (chunk, _encoding, callback) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        byteSize += buffer.length;
+        if (byteSize > maxBytes) return callback(new WorkerError('input_too_large', '输入媒体超过 Worker 限制。', 413));
+        if (expectedLength !== null && byteSize > expectedLength) return callback(new WorkerError('content_length_exceeded', '上传内容超过声明的 Content-Length。', 400));
+        if (disk.tempBytes + byteSize > this.settings.maxTempBytes) return callback(new WorkerError('worker_temp_space_exceeded', 'Worker 临时目录已达到空间上限。', 507));
+        hash.update(buffer);
+        callback(null, buffer);
+      },
     });
-    const input = { uploadId, fileName: `${uploadId}${extension}`, relativePath, sha256: computedSha, byteSize: body.length, contentType };
-    task.inputs.push(input);
-    await this.save(task);
-    return { taskId, uploadId, fileName: input.fileName, relativePath, sha256: computedSha };
+    let renamed = false;
+    try {
+      await pipeline(inputStream, metering, createWriteStream(tempPath, { flags: 'wx' }));
+      if (expectedLength !== null && byteSize !== expectedLength) throw new WorkerError('invalid_content_length', '上传内容长度与 Content-Length 不一致。', 400);
+      const computedSha = hash.digest('hex');
+      if (expectedSha && expectedSha !== computedSha) throw new WorkerError('sha256_mismatch', '输入文件 SHA-256 校验失败。', 422);
+
+      const existing = this.tasks.get(taskId)?.inputs.find((input) => input.uploadId === uploadId);
+      if (existing) {
+        await unlink(tempPath).catch(() => undefined);
+        if (existing.sha256 === computedSha && existing.byteSize === byteSize) return { taskId, uploadId, fileName: existing.fileName, relativePath: existing.relativePath, sha256: existing.sha256, mediaKind: existing.mediaKind || mediaKind };
+        throw new WorkerError('upload_id_conflict', '相同 uploadId 已绑定了不同文件。', 409);
+      }
+      await rename(tempPath, filePath);
+      renamed = true;
+      const task = this.tasks.get(taskId) || await this.createStaging(taskId);
+      const input = { uploadId, fileName: `${uploadId}${extension}`, relativePath, sha256: computedSha, byteSize, contentType, mediaKind };
+      task.inputs.push(input);
+      await this.save(task);
+      return { taskId, uploadId, fileName: input.fileName, relativePath, sha256: computedSha, mediaKind };
+    } catch (error) {
+      await unlink(tempPath).catch(() => undefined);
+      if (renamed) await unlink(filePath).catch(() => undefined);
+      throw error;
+    }
   }
 
   async submitTask(body) {
@@ -346,11 +443,25 @@ export class WindowsWorker {
     if (existing && existing.status !== 'staging') return this.publicStatus(existing);
     const workflow = validateWorkflow(body?.workflow);
     if (!Array.isArray(body?.outputDeclarations) || body.outputDeclarations.some((item) => typeof item !== 'string' || !item.trim())) throw new WorkerError('invalid_output_declarations', '输出声明格式无效。');
+    const requiredCapability = typeof body?.capability === 'string' ? body.capability.trim() : '';
+    if (requiredCapability && !this.settings.capabilities.includes(requiredCapability)) {
+      throw new WorkerError('capability_not_configured', `Worker 未配置能力 ${requiredCapability}。`, 409);
+    }
+    const outputTypes = Array.isArray(body?.outputMediaTypes) ? body.outputMediaTypes.filter((item) => typeof item === 'string') : [];
+    const outputKinds = new Set(outputTypes.map((item) => mediaKindForContentType(item)).filter(Boolean));
+    for (const kind of outputKinds) {
+      if (!this.settings.capabilities.includes(kind) && !(kind === 'video' && this.settings.capabilities.some((item) => item.startsWith('h3-')))) {
+        throw new WorkerError('capability_not_configured', `Worker 未配置 ${kind} 产物能力。`, 409);
+      }
+    }
     const task = existing || await this.createStaging(taskId);
     task.workflow = workflow;
     task.outputDeclarations = [...new Set(body.outputDeclarations.map((item) => item.trim()))];
     task.model = this.settings.model;
     task.temperature = this.settings.temperature;
+    task.capability = requiredCapability || null;
+    task.outputMediaTypes = outputTypes;
+    task.progress = { value: 0, stage: 'queued' };
     task.status = 'queued';
     task.errorCode = null;
     task.errorMessage = null;
@@ -366,7 +477,8 @@ export class WindowsWorker {
       providerTaskId: task.providerTaskId || null,
       errorCode: task.errorCode || null,
       errorMessage: task.errorMessage || null,
-      outputs: Array.isArray(task.outputs) ? task.outputs.map(({ outputId, outputName, filename, contentType, byteSize, sha256 }) => ({ outputId, outputName, filename, contentType, byteSize, sha256 })) : [],
+      progress: task.progress && typeof task.progress === 'object' ? task.progress : { value: null, stage: task.status },
+      outputs: Array.isArray(task.outputs) ? task.outputs.map(({ outputId, outputName, mediaKind, filename, contentType, byteSize, sha256 }) => ({ outputId, outputName, mediaKind: mediaKind || 'file', filename, contentType, byteSize, sha256 })) : [],
     };
   }
 
@@ -386,6 +498,9 @@ export class WindowsWorker {
     const task = this.getTask(taskId);
     const output = (task.outputs || []).find((item) => item.outputId === outputId);
     if (!output || !['succeeded', 'confirmed'].includes(task.status)) throw new WorkerError('output_not_ready', '产物当前不可用。', 404);
+    if (!safeRelativePath(output.relativePath) || !isWithinRoot(this.settings.dataDir, resolve(this.settings.dataDir, output.relativePath))) {
+      throw new WorkerError('invalid_output_path', '产物路径无效。', 500);
+    }
     const filePath = resolve(this.settings.dataDir, output.relativePath);
     const fileStat = await stat(filePath).catch(() => null);
     if (!fileStat?.isFile()) throw new WorkerError('output_missing', '产物文件不存在。', 404);
@@ -401,16 +516,67 @@ export class WindowsWorker {
     }
     for (const input of task.inputs || []) await unlink(resolve(this.settings.dataDir, input.relativePath)).catch(() => undefined);
     for (const output of task.outputs || []) await unlink(resolve(this.settings.dataDir, output.relativePath)).catch(() => undefined);
+    await rm(resolve(this.settings.comfyInputDir, 'sthstart', taskId), { recursive: true, force: true }).catch(() => undefined);
     task.status = 'confirmed';
     task.confirmedAt = now();
     task.inputs = [];
-    task.outputs = (task.outputs || []).map(({ outputId, outputName, filename, contentType, byteSize, sha256 }) => ({ outputId, outputName, filename, contentType, byteSize, sha256 }));
+    task.outputs = (task.outputs || []).map((output) => ({ ...output, mediaKind: output.mediaKind || 'file' }));
     await this.save(task);
     return { taskId, status: 'confirmed' };
   }
 
   authHeaders() {
     return this.settings.comfyToken ? { authorization: `Bearer ${this.settings.comfyToken}` } : {};
+  }
+
+  comfyInputPath(taskId, fileName) {
+    if (!TASK_ID_PATTERN.test(taskId) || !safeRelativePath(fileName)) throw new WorkerError('invalid_input_path', '输入文件路径无效。');
+    const root = resolve(this.settings.comfyInputDir);
+    const target = resolve(root, 'sthstart', taskId, fileName);
+    if (!isWithinRoot(root, target)) throw new WorkerError('invalid_input_path', '输入文件路径超出受控目录。');
+    return { path: target, relativePath: `sthstart/${taskId}/${fileName}` };
+  }
+
+  async copyMediaInput(taskId, input) {
+    const target = this.comfyInputPath(taskId, input.fileName);
+    const existing = await stat(target).catch(() => null);
+    if (existing?.isFile() && existing.size === input.byteSize) return target.relativePath;
+    await mkdir(resolve(target.path, '..'), { recursive: true });
+    const tempPath = `${target.path}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await pipeline(createReadStream(resolve(this.settings.dataDir, input.relativePath)), createWriteStream(tempPath, { flags: 'wx' }));
+      await rename(tempPath, target.path);
+      return target.relativePath;
+    } catch (error) {
+      await unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async uploadImageInput(input) {
+    const filePath = resolve(this.settings.dataDir, input.relativePath);
+    const filename = input.fileName;
+    const boundary = `----sthstart-${randomUUID().replaceAll('-', '')}`;
+    const prefix = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${filename}"\r\nContent-Type: ${input.contentType}\r\n\r\n`,
+    );
+    const suffix = Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\nfalse\r\n--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\ninput\r\n--${boundary}--\r\n`);
+    const body = Readable.from((async function* () {
+      yield prefix;
+      yield* createReadStream(filePath);
+      yield suffix;
+    })());
+    const response = await this.comfyResponse('/upload/image', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, 'content-length': String(prefix.length + input.byteSize + suffix.length) },
+      body,
+      duplex: 'half',
+    }, 60_000);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new WorkerError('comfy_input_rejected', `ComfyUI 拒绝输入 (HTTP ${response.status})。`, 502);
+    const uploadedName = typeof payload.name === 'string' ? payload.name : typeof payload.filename === 'string' ? payload.filename : '';
+    if (!uploadedName || !safeRelativePath(uploadedName) || uploadedName.includes('/') || uploadedName.includes('\\')) throw new WorkerError('comfy_input_invalid_name', 'ComfyUI 未返回受控输入文件名。', 502);
+    return uploadedName;
   }
 
   async comfyResponse(path, init = {}, timeoutMs = 30_000) {
@@ -433,18 +599,13 @@ export class WindowsWorker {
       task.status = 'failed'; task.errorCode = 'worker_temp_space_exceeded'; task.errorMessage = 'Worker 临时目录已达到空间上限。'; await this.save(task); return;
     }
     task.status = 'submitting';
+    task.progress = { value: null, stage: 'submitting' };
     await this.save(task);
     for (const input of task.inputs || []) {
       try {
-        const body = await readFile(resolve(this.settings.dataDir, input.relativePath));
-        const form = new FormData();
-        form.set('image', new File([body], input.fileName, { type: input.contentType }));
-        form.set('overwrite', 'false'); form.set('type', 'input');
-        const response = await this.comfyResponse('/upload/image', { method: 'POST', body: form }, 60_000);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new WorkerError('comfy_input_rejected', `ComfyUI 拒绝输入 (HTTP ${response.status})。`, 502);
-        const uploadedName = typeof payload.name === 'string' ? payload.name : typeof payload.filename === 'string' ? payload.filename : '';
-        if (!uploadedName || uploadedName.includes('/') || uploadedName.includes('\\')) throw new WorkerError('comfy_input_invalid_name', 'ComfyUI 未返回受控输入文件名。', 502);
+        const uploadedName = (input.mediaKind || mediaKindForContentType(input.contentType)) === 'image'
+          ? await this.uploadImageInput(input)
+          : await this.copyMediaInput(task.taskId, input);
         for (const node of Object.values(task.workflow)) {
           if (node?.inputs && typeof node.inputs === 'object') {
             for (const [key, value] of Object.entries(node.inputs)) if (value === input.fileName) node.inputs[key] = uploadedName;
@@ -471,14 +632,67 @@ export class WindowsWorker {
     }
     task.providerTaskId = providerTaskId;
     task.status = 'accepted';
+    task.progress = { value: 0, stage: 'accepted' };
     await this.save(task);
     await this.pollComfy(task);
   }
 
+  watchComfyProgress(task) {
+    if (typeof WebSocket !== 'function' || !task.providerTaskId) return () => {};
+    const wsBase = this.settings.comfyUrl.replace(/^http/i, (value) => value.toLowerCase() === 'https' ? 'wss' : 'ws');
+    let socket;
+    let saveChain = Promise.resolve();
+    const saveProgress = (progress) => {
+      task.progress = progress;
+      saveChain = saveChain.then(() => this.save(task)).catch(() => undefined);
+    };
+    const stop = () => {
+      if (!socket) return;
+      try { socket.close(); } catch {}
+      socket = undefined;
+    };
+    try {
+      socket = new WebSocket(`${wsBase}/ws?clientId=${encodeURIComponent(task.taskId)}`);
+      socket.addEventListener('message', (event) => {
+        try {
+          const message = JSON.parse(String(event.data));
+          const data = safeJson(message?.data);
+          if (data.prompt_id && String(data.prompt_id) !== String(task.providerTaskId)) return;
+          if (message.type === 'execution_start') {
+            saveProgress({ value: null, stage: 'running', source: 'comfyui-ws' });
+          } else if (message.type === 'progress') {
+            const current = Number(data.value);
+            const total = Number(data.max);
+            saveProgress({
+              value: Number.isFinite(current) && Number.isFinite(total) && total > 0 ? Math.min(1, Math.max(0, current / total)) : null,
+              stage: 'sampling',
+              ...(Number.isFinite(current) ? { current } : {}),
+              ...(Number.isFinite(total) ? { total } : {}),
+              source: 'comfyui-ws',
+            });
+          } else if (message.type === 'executing' && data.node != null) {
+            saveProgress({ value: null, stage: `node:${String(data.node).slice(0, 80)}`, source: 'comfyui-ws' });
+          } else if (message.type === 'executed') {
+            saveProgress({ value: null, stage: 'collecting', source: 'comfyui-ws' });
+          } else if (message.type === 'execution_error') {
+            saveProgress({ value: null, stage: 'error', message: 'ComfyUI 执行失败。', source: 'comfyui-ws' });
+          }
+        } catch {
+          // A malformed progress frame must never interrupt the task poller.
+        }
+      });
+      socket.addEventListener('error', () => {});
+    } catch {
+      socket = undefined;
+    }
+    return stop;
+  }
+
   async pollComfy(task) {
+    const stopProgress = this.watchComfyProgress(task);
     const deadline = Date.now() + this.settings.pollTimeoutMs;
     while (Date.now() < deadline) {
-      if (['succeeded', 'failed', 'abandoned', 'cancelled', 'confirmed'].includes(task.status)) return;
+      if (['succeeded', 'failed', 'abandoned', 'cancelled', 'confirmed'].includes(task.status)) { stopProgress(); return; }
       try {
         const historyResponse = await this.comfyResponse(`/history/${encodeURIComponent(task.providerTaskId)}`, {}, 15_000);
         if (historyResponse.ok) {
@@ -488,14 +702,16 @@ export class WindowsWorker {
             const status = entry.status || {};
             const failed = status.status_str === 'error' || (Array.isArray(status.messages) && status.messages.some((message) => Array.isArray(message) && message[0] === 'execution_error'));
             if (failed) {
-              task.status = 'failed'; task.errorCode = 'comfy_execution_error'; task.errorMessage = 'ComfyUI 执行失败。'; await this.save(task); return;
+              task.status = 'failed'; task.errorCode = 'comfy_execution_error'; task.errorMessage = 'ComfyUI 执行失败。'; task.progress = { value: null, stage: 'error', message: task.errorMessage }; stopProgress(); await this.save(task); return;
             }
             const outputs = await this.collectOutputs(task, entry.outputs || {});
             if (!outputs.length) {
-              task.status = 'failed'; task.errorCode = 'worker_outputs_missing'; task.errorMessage = 'ComfyUI 未返回声明的产物。'; await this.save(task); return;
+              task.status = 'failed'; task.errorCode = 'worker_outputs_missing'; task.errorMessage = 'ComfyUI 未返回声明的产物。'; task.progress = { value: null, stage: 'error', message: task.errorMessage }; stopProgress(); await this.save(task); return;
             }
             task.outputs = outputs;
             task.status = 'succeeded';
+            task.progress = { value: 1, stage: 'completed', current: 1, total: 1 };
+            stopProgress();
             await this.save(task);
             return;
           }
@@ -504,14 +720,14 @@ export class WindowsWorker {
         if (queueResponse?.ok) {
           const queue = safeJson(await queueResponse.json().catch(() => ({})));
           const running = [...(Array.isArray(queue.queue_running) ? queue.queue_running : []), ...(Array.isArray(queue.queue_pending) ? queue.queue_pending : [])].some((item) => Array.isArray(item) && String(item[1] || '') === task.providerTaskId);
-          if (running && task.status !== 'running') { task.status = 'running'; await this.save(task); }
+          if (running && task.status !== 'running') { task.status = 'running'; task.progress = { value: null, stage: 'running' }; await this.save(task); }
         }
       } catch {
         // Keep the accepted task single-submission while ComfyUI restarts.
       }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, this.settings.pollIntervalMs));
     }
-    task.status = 'abandoned'; task.errorCode = 'worker_poll_timeout'; task.errorMessage = 'ComfyUI 轮询超时，上游可能仍在运行。'; await this.save(task);
+    task.status = 'abandoned'; task.errorCode = 'worker_poll_timeout'; task.errorMessage = 'ComfyUI 轮询超时，上游可能仍在运行。'; stopProgress(); await this.save(task);
   }
 
   async collectOutputs(task, rawOutputs) {
@@ -519,13 +735,23 @@ export class WindowsWorker {
     const declarations = new Set(task.outputDeclarations || []);
     for (const [outputName, output] of Object.entries(rawOutputs || {})) {
       if (declarations.size && !declarations.has(outputName)) continue;
-      for (const image of Array.isArray(output?.images) ? output.images : []) {
-        if (typeof image.filename !== 'string' || !image.filename || image.filename.includes('..')) continue;
-        const query = new URLSearchParams({ filename: image.filename, subfolder: String(image.subfolder || ''), type: String(image.type || 'output') });
+      const outputEntries = [
+        ['images', 'image'], ['videos', 'video'], ['audio', 'audio'], ['files', 'file'],
+      ];
+      for (const [field, mediaKind] of outputEntries) {
+        const values = Array.isArray(output?.[field]) ? output[field] : [];
+        for (const rawItem of values) {
+          const item = typeof rawItem === 'string' ? { filename: rawItem } : rawItem;
+          if (!item || typeof item.filename !== 'string' || !safeRelativePath(item.filename) || item.filename.includes('\\')) continue;
+          const subfolder = String(item.subfolder || '').replaceAll('\\', '/');
+          if (subfolder && !safeRelativePath(subfolder)) continue;
+          const query = new URLSearchParams({ filename: item.filename, subfolder, type: String(item.type || 'output') });
+          if (!['output', 'input', 'temp'].includes(String(item.type || 'output'))) continue;
         const response = await this.comfyResponse(`/view?${query.toString()}`, {}, 120_000);
         if (!response.ok) throw new WorkerError('comfy_output_failed', `ComfyUI 产物请求失败 (HTTP ${response.status})。`, 502);
         const outputId = `out-${randomUUID().replaceAll('-', '')}`;
-        const extension = cleanFileExtension(image.filename, response.headers.get('content-type'));
+        const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() || contentTypeForExtension(outputExtension(item.filename, ''));
+        const extension = outputExtension(item.filename, contentType);
         const relativePath = `outputs/${task.taskId}/${outputId}${extension}`;
         const target = this.outputPath(task.taskId, outputId, extension);
         const disk = await this.diskStatus();
@@ -533,8 +759,9 @@ export class WindowsWorker {
         if (available <= 0) throw new WorkerError('worker_temp_space_exceeded', 'Worker 临时目录已达到空间上限。', 507);
         const declaredLength = Number.parseInt(response.headers.get('content-length') || '', 10);
         if (Number.isFinite(declaredLength) && declaredLength > available) throw new WorkerError('worker_temp_space_exceeded', 'Worker 临时目录剩余空间不足以保存产物。', 507);
-        const saved = await streamResponseToFile(response, target, Math.min(MAX_OUTPUT_BYTES, available));
-        selected.push({ outputId, outputName, filename: image.filename.split(/[\\/]/).pop(), contentType: response.headers.get('content-type')?.split(';')[0] || contentTypeForExtension(extension), byteSize: saved.byteSize, sha256: saved.sha256, relativePath });
+        const saved = await streamResponseToFile(response, target, Math.min(this.settings.outputMaxBytes, available));
+        selected.push({ outputId, outputName, mediaKind, filename: item.filename.split(/[\\/]/).pop(), contentType, byteSize: saved.byteSize, sha256: saved.sha256, relativePath });
+        }
       }
     }
     return selected;
@@ -571,6 +798,7 @@ export class WindowsWorker {
       model: this.settings.model,
       temperature: this.settings.temperature,
       concurrency: 1,
+      capabilities: this.settings.capabilities,
       queueDepth: this.queue.length,
       runningTaskId: this.runningTaskId,
       modelDirectoryReady: disk.modelDirectoryReady,

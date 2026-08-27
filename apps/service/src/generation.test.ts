@@ -169,8 +169,8 @@ test("Generation deduplication: duplicate output persistArtifact calls reuse exi
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("dedup-app", "default", "wf-1", 1, "eng-1", now);
 
   let viewFetchCount = 0;
@@ -233,8 +233,8 @@ test("Generation security: error messages and event payloads sanitize sensitive 
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("sec-app", "default", "wf-1", 1, "eng-1", now);
 
   const fetcher: typeof fetch = async (input) => {
@@ -946,8 +946,8 @@ test("Generation concurrency: limits active tasks to concurrency_limit and sched
 
   // Concurrency limit = 1
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("conc-app", "default", "wf-1", 1, "eng-1", now);
 
   let task1CanFinish = false;
@@ -1029,8 +1029,8 @@ test("Generation poll timeout and 404: poll deadline marks abandoned with poll_t
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("poll-to-app", "default", "wf-1", 1, "eng-1", now);
 
   // 1. Task timeout test with short pollTimeoutMs = 50ms
@@ -1068,8 +1068,8 @@ test("Generation cancellation upstream error: failsafe marks task as abandoned i
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("cancel-err-app", "default", "wf-1", 1, "eng-1", now);
   database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, provider_task_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
     .run("t-cancel-fail", "cancel-err-app", "eng-1", "wf-1", 1, "h1", "{}", "{}", "accepted", "prompt-p1", now, now);
@@ -1108,8 +1108,8 @@ test("Generation security: keyring failure marks task as failed with keyring_una
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-secret", "Engine", "comfyui", "http://comfy.test:8188", "engine:eng-secret", 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-secret", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-secret", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("keyring-app", "default", "wf-1", 1, "eng-secret", now);
 
   const throwingSecrets = {
@@ -1148,7 +1148,7 @@ test("Generation events cleanup: cleanupGenerationEvents purges old events of fi
   seedApp(database, "clean-app");
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
   database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
     .run("t-done", "clean-app", "eng-1", "wf-1", 1, "h1", "{}", "{}", "succeeded", now, now);
   database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
@@ -1181,8 +1181,8 @@ test("Generation worker: submits once, polls, persists output, and confirms remo
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-worker", "Worker", "worker", "http://worker.test:9000", "engine:eng-worker", 1, 2, now, now);
   database.connection.prepare("INSERT INTO generation_workers(engine_id,model,temperature,ip_allowlist_json,disk_warning_bytes,disk_stop_bytes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("eng-worker", "sdxl", 0.4, "[]", 10_000, 2_000, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-worker", "Worker WF", "", "worker", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-worker", 1, "eng-worker", "{}", "{}", JSON.stringify(["9"]), JSON.stringify({ "6": { class_type: "Test", inputs: {} }, "9": { class_type: "SaveImage", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-worker", "Worker WF", "", "worker", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-worker", 1, "eng-worker", "{}", "{}", JSON.stringify(["9"]), JSON.stringify({ "6": { class_type: "Test", inputs: {} }, "9": { class_type: "SaveImage", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("worker-app", "default", "wf-worker", 1, "eng-worker", now);
 
   const secrets = new MemorySecrets();
@@ -1256,8 +1256,8 @@ test("Generation unsupported engine: cloud engine task creation fails with unsup
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-cloud", "Cloud", "cloud", "http://cloud.test:9000", null, 1, 2, now, now);
-  database.connection.prepare("INSERT INTO generation_workflows VALUES (?,?,?,?,?,?,?)").run("wf-cloud", "Cloud WF", "", "cloud", 1, now, now);
-  database.connection.prepare("INSERT INTO generation_workflow_versions VALUES (?,?,?,?,?,?,?,?,?)").run("wf-cloud", 1, "eng-cloud", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-cloud", "Cloud WF", "", "cloud", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-cloud", 1, "eng-cloud", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
   database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("unsupp-app", "default", "wf-cloud", 1, "eng-cloud", now);
 
   const { app } = await createService({ config, database, secrets: new SecretStore({}) });

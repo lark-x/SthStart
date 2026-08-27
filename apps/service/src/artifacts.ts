@@ -1,3 +1,4 @@
+import { generateVideoThumbnail, inspectImageMetadata, inspectVideoMetadata } from './video-utils.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, rename, stat, statfs, unlink } from 'node:fs/promises';
@@ -26,6 +27,14 @@ export interface ManifestItem {
   byteSize: number;
   sha256: string | null;
   contentType: string | null;
+  mediaType?: string | null;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  fps?: number | null;
+  codec?: string | null;
+  hasAudio?: boolean | null;
+  thumbnailArtifactId?: string | null;
   fileStatus: string;
   hashMatch?: boolean;
   createdAt: string;
@@ -46,8 +55,8 @@ export async function generateMediaManifest(
   artifactDirectory: string,
 ): Promise<MediaManifest> {
   const artifacts = database.connection.prepare(
-    'SELECT id, app_id, local_path, byte_size, sha256, content_type, file_status, created_at, updated_at FROM artifacts ORDER BY created_at'
-  ).all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number; sha256: string | null; content_type: string | null; file_status: string; created_at: string; updated_at: string | null }>;
+    'SELECT id, app_id, local_path, byte_size, sha256, content_type, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, file_status, created_at, updated_at FROM artifacts ORDER BY created_at'
+  ).all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number; sha256: string | null; content_type: string | null; media_type: string | null; width: number | null; height: number | null; duration_ms: number | null; fps: number | null; codec: string | null; has_audio: number | null; thumbnail_artifact_id: string | null; file_status: string; created_at: string; updated_at: string | null }>;
 
   const manifestItems: ManifestItem[] = await Promise.all(artifacts.map(async (row) => {
     let exists = false;
@@ -82,6 +91,14 @@ export async function generateMediaManifest(
       byteSize: row.byte_size,
       sha256: actualSha || row.sha256,
       contentType: row.content_type,
+      mediaType: row.media_type,
+      width: row.width,
+      height: row.height,
+      durationMs: row.duration_ms,
+      fps: row.fps,
+      codec: row.codec,
+      hasAudio: row.has_audio == null ? null : Boolean(row.has_audio),
+      thumbnailArtifactId: row.thumbnail_artifact_id,
       fileStatus: status,
       ...(hashMatch !== undefined ? { hashMatch } : {}),
       createdAt: row.created_at,
@@ -111,7 +128,28 @@ export interface StreamUploadInput {
   customStatfs?: StatfsChecker;
 }
 
+function mergeArtifactMetadata(database: ServiceDatabase, artifactId: string, patch: Record<string, unknown>) {
+  const row = database.connection.prepare('SELECT metadata_json FROM artifacts WHERE id=?').get(artifactId) as { metadata_json?: string } | undefined;
+  let current: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(row?.metadata_json ?? '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) current = parsed as Record<string, unknown>;
+  } catch {
+    // Replace malformed legacy metadata with a safe object.
+  }
+  database.connection.prepare('UPDATE artifacts SET metadata_json=?, updated_at=? WHERE id=?')
+    .run(JSON.stringify({ ...current, ...patch }), nowIso(), artifactId);
+}
+
 export type StatfsChecker = (path: string) => Promise<{ bavail: number | bigint; bsize: number | bigint } | number | bigint>;
+
+function mediaSpecificLimit(config: ServiceConfig, contentType?: string | null): number {
+  const kind = inferMediaType(contentType);
+  if (kind === 'video') return Number.isFinite(config.artifactVideoMaxBytes) ? config.artifactVideoMaxBytes : config.artifactMaxBytes;
+  if (kind === 'audio') return Number.isFinite(config.artifactAudioMaxBytes) ? config.artifactAudioMaxBytes : config.artifactMaxBytes;
+  if (kind === 'image') return Number.isFinite(config.artifactImageMaxBytes) ? config.artifactImageMaxBytes : config.artifactMaxBytes;
+  return config.artifactMaxBytes;
+}
 
 export async function checkDiskHeadroom(
   targetDir: string,
@@ -256,7 +294,8 @@ export async function streamUploadArtifact(
   database: ServiceDatabase,
   input: StreamUploadInput,
 ): Promise<ArtifactDescriptor> {
-  if (input.contentLength !== undefined && input.contentLength !== null && input.contentLength > config.artifactMaxBytes) {
+  const initialLimit = mediaSpecificLimit(config, input.contentType);
+  if (input.contentLength !== undefined && input.contentLength !== null && input.contentLength > initialLimit) {
     throw new Error('artifact_quota_exceeded');
   }
   await enforceGlobalQuota(config, database);
@@ -264,13 +303,15 @@ export async function streamUploadArtifact(
   const directory = resolve(config.artifactDirectory, input.appId);
   const tempPath = resolve(directory, `.tmp-${id}.tmp`);
 
-  const { byteSize, sha256 } = await streamToTempFile(
+  const computed = await streamToTempFile(
     input.stream,
     tempPath,
     input.contentLength,
-    config.artifactMaxBytes,
+    initialLimit,
     input.customStatfs,
   );
+  const byteSize = computed.byteSize;
+  const sha256 = computed.sha256;
 
   const extFromOriginal = input.originalName ? extname(input.originalName) : '';
   const ext = extFromOriginal || mimeToExt(input.contentType);
@@ -278,13 +319,20 @@ export async function streamUploadArtifact(
   const contentType = input.contentType || 'application/octet-stream';
   const mediaType = inferMediaType(contentType);
   const now = nowIso();
+  let videoMeta: Awaited<ReturnType<typeof inspectVideoMetadata>> | null = null;
+  let imageMeta: Awaited<ReturnType<typeof inspectImageMetadata>> | null = null;
 
   try {
     await rename(tempPath, finalPath);
+    if (mediaType === 'video' || mediaType === 'audio') {
+      videoMeta = await inspectVideoMetadata(finalPath);
+    } else if (mediaType === 'image') {
+      imageMeta = await inspectImageMetadata(finalPath);
+    }
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO artifacts
-        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, params_summary_json, pinned, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,NULL,NULL,NULL,?,0,?,?)`)
+        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, metadata_json, pinned, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,?,?,?,?,?,?,?,?,0,?,?)`)
         .run(
           id,
           input.appId,
@@ -296,6 +344,13 @@ export async function streamUploadArtifact(
           sha256,
           input.originalName ?? null,
           mediaType,
+          videoMeta?.width ?? imageMeta?.width ?? null,
+          videoMeta?.height ?? imageMeta?.height ?? null,
+          videoMeta?.durationMs ?? null,
+          videoMeta?.fps ?? null,
+          videoMeta?.codec ?? null,
+          videoMeta?.hasAudio ? 1 : 0,
+          null,
           JSON.stringify(input.metadata ?? {}),
           now,
           now,
@@ -317,6 +372,15 @@ export async function streamUploadArtifact(
     throw error;
   }
 
+  let thumbnailArtifactId: string | null = null;
+  if (mediaType === 'video') {
+    thumbnailArtifactId = await attachVideoThumbnail(config, database, {
+      appId: input.appId,
+      parentArtifactId: id,
+      videoPath: finalPath,
+    });
+  }
+
   return {
     id,
     appId: input.appId,
@@ -328,9 +392,14 @@ export async function streamUploadArtifact(
     fileStatus: 'ready',
     originalName: input.originalName ?? null,
     mediaType,
-    width: null,
-    height: null,
-    durationMs: null,
+    width: videoMeta?.width ?? imageMeta?.width ?? null,
+    height: videoMeta?.height ?? imageMeta?.height ?? null,
+    durationMs: videoMeta?.durationMs ?? null,
+    fps: videoMeta?.fps ?? undefined,
+    codec: videoMeta?.codec ?? undefined,
+    hasAudio: videoMeta?.hasAudio ?? undefined,
+    thumbnailArtifactId,
+    metadata: input.metadata ?? {},
     paramsSummary: input.metadata ?? {},
     pinned: false,
     url: `/api/v1/artifacts/${id}`,
@@ -339,10 +408,41 @@ export async function streamUploadArtifact(
   };
 }
 
+async function attachVideoThumbnail(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  input: { appId: string; parentArtifactId: string; videoPath: string },
+): Promise<string | null> {
+  const thumbnailPath = `${input.videoPath}.${randomUUID()}.thumbnail.webp`;
+  try {
+    if (!await generateVideoThumbnail(input.videoPath, thumbnailPath)) {
+      mergeArtifactMetadata(database, input.parentArtifactId, { thumbnailStatus: 'pending' });
+      return null;
+    }
+    const thumbnail = await streamUploadArtifact(config, database, {
+      appId: input.appId,
+      taskId: null,
+      stream: createReadStream(thumbnailPath),
+      contentType: 'image/webp',
+      originalName: `${input.parentArtifactId}.webp`,
+      metadata: { source: 'video-thumbnail', parentArtifactId: input.parentArtifactId },
+    });
+    database.connection.prepare('UPDATE artifacts SET thumbnail_artifact_id=?, updated_at=? WHERE id=?')
+      .run(thumbnail.id, nowIso(), input.parentArtifactId);
+    mergeArtifactMetadata(database, input.parentArtifactId, { thumbnailStatus: 'ready' });
+    return thumbnail.id;
+  } catch {
+    mergeArtifactMetadata(database, input.parentArtifactId, { thumbnailStatus: 'pending' });
+    return null;
+  } finally {
+    await unlink(thumbnailPath).catch(() => undefined);
+  }
+}
+
 export async function persistArtifact(
   config: ServiceConfig,
   database: ServiceDatabase,
-  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string; customStatfs?: StatfsChecker; refType?: string; refId?: string },
+  input: { appId: string; taskId?: string | null; sourceUrl: string; contentType?: string | null; trustedBaseUrl?: string; requestHeaders?: Record<string, string>; customStatfs?: StatfsChecker; refType?: string; refId?: string; metadata?: Record<string, unknown> },
   fetcher: typeof fetch = fetch,
 ) {
   validateRemoteSourceUrl(input.sourceUrl, input.trustedBaseUrl);
@@ -355,13 +455,13 @@ export async function persistArtifact(
   }
 
   await enforceGlobalQuota(config, database);
-  let response = await fetcher(input.sourceUrl, { signal: AbortSignal.timeout(120_000), redirect: 'manual' });
+  let response = await fetcher(input.sourceUrl, { headers: input.requestHeaders, signal: AbortSignal.timeout(120_000), redirect: 'manual' });
   if ([301, 302, 303, 307, 308].includes(response.status)) {
     const location = response.headers.get('location');
     if (!location) throw new Error('redirect_missing_location');
     const redirectUrl = new URL(location, input.sourceUrl).toString();
     validateRemoteSourceUrl(redirectUrl, input.trustedBaseUrl);
-    response = await fetcher(redirectUrl, { signal: AbortSignal.timeout(120_000), redirect: 'error' });
+    response = await fetcher(redirectUrl, { headers: input.requestHeaders, signal: AbortSignal.timeout(120_000), redirect: 'error' });
   }
   if (!response.ok) throw new Error(`产物下载失败 (HTTP ${response.status})`);
   if (!response.body) throw new Error('产物响应体为空');
@@ -377,7 +477,7 @@ export async function persistArtifact(
     response.body,
     tempPath,
     Number.isFinite(expectedLength) ? expectedLength : null,
-    config.artifactMaxBytes,
+    mediaSpecificLimit(config, input.contentType ?? response.headers.get('content-type')),
     input.customStatfs,
   );
 
@@ -388,13 +488,20 @@ export async function persistArtifact(
   const contentType = input.contentType ?? response.headers.get('content-type') ?? 'image/png';
   const mediaType = inferMediaType(contentType);
   const now = nowIso();
+  let videoMeta: Awaited<ReturnType<typeof inspectVideoMetadata>> | null = null;
+  let imageMeta: Awaited<ReturnType<typeof inspectImageMetadata>> | null = null;
 
   try {
     await rename(tempPath, finalPath);
+    if (mediaType === 'video' || mediaType === 'audio') {
+      videoMeta = await inspectVideoMetadata(finalPath);
+    } else if (mediaType === 'image') {
+      imageMeta = await inspectImageMetadata(finalPath);
+    }
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO artifacts
-        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, params_summary_json, pinned, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,NULL,NULL,NULL,'{}',0,?,?)`)
+        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, metadata_json, pinned, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,?,?,?,?,?,?,?,?,0,?,?)`)
         .run(
           id,
           input.appId,
@@ -406,6 +513,14 @@ export async function persistArtifact(
           sha256,
           filenameParam || null,
           mediaType,
+          videoMeta?.width ?? imageMeta?.width ?? null,
+          videoMeta?.height ?? imageMeta?.height ?? null,
+          videoMeta?.durationMs ?? null,
+          videoMeta?.fps ?? null,
+          videoMeta?.codec ?? null,
+          videoMeta?.hasAudio ? 1 : 0,
+          null,
+          JSON.stringify({ source: 'remote-artifact', ...(input.metadata ?? {}) }),
           now,
           now,
         );
@@ -419,6 +534,13 @@ export async function persistArtifact(
     await unlink(tempPath).catch(() => undefined);
     database.connection.prepare('DELETE FROM artifacts WHERE id=?').run(id);
     throw error;
+  }
+  if (mediaType === 'video') {
+    await attachVideoThumbnail(config, database, {
+      appId: input.appId,
+      parentArtifactId: id,
+      videoPath: finalPath,
+    });
   }
   return id;
 }
@@ -449,6 +571,11 @@ export async function readArtifact(database: ServiceDatabase, artifactId: string
     width: record.width != null ? Number(record.width) : null,
     height: record.height != null ? Number(record.height) : null,
     durationMs: record.duration_ms != null ? Number(record.duration_ms) : null,
+    fps: record.fps != null ? Number(record.fps) : null,
+    codec: record.codec ? String(record.codec) : null,
+    hasAudio: record.has_audio == null ? null : Boolean(record.has_audio),
+    thumbnailArtifactId: record.thumbnail_artifact_id ? String(record.thumbnail_artifact_id) : null,
+    metadata: JSON.parse(String(record.metadata_json ?? '{}')) as Record<string, unknown>,
     paramsSummary: JSON.parse(String(record.params_summary_json ?? '{}')) as Record<string, unknown>,
     pinned: Boolean(record.pinned),
     createdAt: String(record.created_at),
@@ -457,7 +584,7 @@ export async function readArtifact(database: ServiceDatabase, artifactId: string
 }
 
 export async function removeArtifact(database: ServiceDatabase, artifactId: string, appId: string, force = false): Promise<boolean> {
-  const row = database.connection.prepare('SELECT local_path FROM artifacts WHERE id=? AND app_id=?').get(artifactId, appId) as { local_path: string | null } | undefined;
+  const row = database.connection.prepare('SELECT local_path,thumbnail_artifact_id FROM artifacts WHERE id=? AND app_id=?').get(artifactId, appId) as { local_path: string | null; thumbnail_artifact_id: string | null } | undefined;
   if (!row) return false;
   const fullRow = database.connection.prepare('SELECT pinned FROM artifacts WHERE id=?').get(artifactId) as { pinned: number };
   if (!force) {
@@ -466,6 +593,13 @@ export async function removeArtifact(database: ServiceDatabase, artifactId: stri
     if (refCount.cnt > 0) throw new Error('artifact_is_referenced');
   }
   if (row.local_path) await unlink(row.local_path).catch(() => undefined);
+  if (row.thumbnail_artifact_id) {
+    const thumbnail = database.connection.prepare('SELECT local_path FROM artifacts WHERE id=?').get(row.thumbnail_artifact_id) as { local_path: string | null } | undefined;
+    if (thumbnail?.local_path) await unlink(thumbnail.local_path).catch(() => undefined);
+    database.connection.prepare('DELETE FROM artifacts WHERE id=?').run(row.thumbnail_artifact_id);
+  }
+  database.connection.prepare('UPDATE artifacts SET thumbnail_artifact_id=NULL, updated_at=? WHERE thumbnail_artifact_id=?')
+    .run(nowIso(), artifactId);
   database.connection.prepare('DELETE FROM artifacts WHERE id=? AND app_id=?').run(artifactId, appId);
   return true;
 }
@@ -566,6 +700,7 @@ export async function enforceGlobalQuota(
     WHERE a.pinned = 0
       AND a.file_status = 'ready'
       AND NOT EXISTS (SELECT 1 FROM artifact_references r WHERE r.artifact_id = a.id)
+      AND NOT EXISTS (SELECT 1 FROM artifacts parent WHERE parent.thumbnail_artifact_id = a.id)
       AND NOT EXISTS (SELECT 1 FROM image_tasks t WHERE t.id = a.task_id AND t.status IN ('accepted','running'))
     ORDER BY a.created_at ASC
   `).all() as Array<{ id: string; app_id: string; local_path: string | null; byte_size: number }>;
@@ -573,8 +708,7 @@ export async function enforceGlobalQuota(
   let removedCount = 0;
   for (const candidate of candidates) {
     if (currentTotal <= config.artifactMaxBytes) break;
-    if (candidate.local_path) await unlink(candidate.local_path).catch(() => undefined);
-    database.connection.prepare('DELETE FROM artifacts WHERE id=?').run(candidate.id);
+    await removeArtifact(database, candidate.id, candidate.app_id, true);
     currentTotal -= candidate.byte_size;
     removedCount++;
   }
@@ -600,6 +734,7 @@ export async function enforceRetention(
     WHERE a.app_id = ? AND a.file_status = 'ready'
       AND a.pinned = 0
       AND NOT EXISTS (SELECT 1 FROM artifact_references r WHERE r.artifact_id = a.id)
+      AND NOT EXISTS (SELECT 1 FROM artifacts parent WHERE parent.thumbnail_artifact_id = a.id)
       AND NOT EXISTS (SELECT 1 FROM image_tasks t WHERE t.id = a.task_id AND t.status IN ('accepted','running'))
     ORDER BY a.created_at ASC
   `).all(appId) as Array<{ id: string; local_path: string | null; byte_size: number; created_at: string; pinned: number }>;
@@ -622,8 +757,7 @@ export async function enforceRetention(
   }
   for (const row of candidates) {
     if (!remove.has(row.id)) continue;
-    if (row.local_path) await unlink(row.local_path).catch(() => undefined);
-    database.connection.prepare('DELETE FROM artifacts WHERE id=?').run(row.id);
+    await removeArtifact(database, row.id, appId, true);
   }
   return remove.size;
 }
@@ -710,14 +844,47 @@ export async function reconcileArtifacts(
             tempFilesCleaned++;
           }
         } else if (!knownPaths.has(fullPath)) {
-          await unlink(fullPath).catch(() => undefined);
-          orphansRemoved++;
+          // Uploads outside Artifact 2.0 (legacy notebook/character assets) may
+          // finish after the initial path snapshot. Re-check immediately before
+          // deletion so a concurrently registered file is never treated as an
+          // orphan.
+          const registered = database.connection.prepare(`
+            SELECT 1 FROM artifacts WHERE local_path=?
+            UNION ALL SELECT 1 FROM character_assets WHERE local_path=?
+            UNION ALL SELECT 1 FROM note_assets WHERE local_path=?
+            LIMIT 1
+          `).get(fullPath, fullPath, fullPath);
+          if (!registered) {
+            await unlink(fullPath).catch(() => undefined);
+            orphansRemoved++;
+          }
         }
       }
     }
   }
 
   await scanDir(config.artifactDirectory);
+
+  // Thumbnail generation is deliberately recoverable: a missing ffmpeg binary,
+  // a transient disk error, or a partially written source must not make the
+  // parent video look like a failed generation. Retry only ready videos whose
+  // central thumbnail is still absent, after the orphan scan so a newly
+  // created thumbnail cannot be mistaken for an orphan in the same pass.
+  const pendingThumbnails = database.connection.prepare(`
+    SELECT id, app_id, local_path
+    FROM artifacts
+    WHERE media_type='video' AND file_status='ready'
+      AND local_path IS NOT NULL
+      AND (thumbnail_artifact_id IS NULL OR metadata_json LIKE '%"thumbnailStatus":"pending"%')
+  `).all() as Array<{ id: string; app_id: string; local_path: string | null }>;
+  for (const row of pendingThumbnails) {
+    if (!row.local_path || !await stat(row.local_path).then(() => true).catch(() => false)) continue;
+    await attachVideoThumbnail(config, database, {
+      appId: row.app_id,
+      parentArtifactId: row.id,
+      videoPath: row.local_path,
+    });
+  }
 
   return {
     scannedFiles,

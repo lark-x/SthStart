@@ -100,13 +100,17 @@ export function registerNotebookRoutes(app: FastifyInstance, config: ServiceConf
       await unlink(path).catch(() => undefined);
       throw error;
     }
-    return reply.code(201).send({ id, url: `/api/admin/notebook/assets/${id}` });
+    return reply.code(201).send({ id, url: `/api/v1/admin/notebook/assets/${id}` });
   });
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/notebook/assets/:id', async (request, reply) => {
     const asset = database.connection.prepare('SELECT local_path,content_type FROM note_assets WHERE id=?').get(request.params.id) as { local_path: string; content_type: string } | undefined;
     if (!asset) return reply.code(404).send({ error: 'not_found' });
-    try { return reply.type(asset.content_type).send(await readFile(asset.local_path)); }
-    catch { return reply.code(404).send({ error: 'file_not_found' }); }
+    try {
+      const bytes = await readFile(asset.local_path);
+      return reply.type(asset.content_type).send(bytes);
+    } catch {
+      return reply.code(404).type('application/json').send({ error: 'file_not_found' });
+    }
   });
 }

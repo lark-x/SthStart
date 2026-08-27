@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Bookmark } from 'lucide-react';
+import { Bookmark, Sparkles } from 'lucide-react';
 import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 
@@ -9,10 +9,14 @@ export function NarrativeReader({
   reading,
   onSaveUtteranceToNotebook,
   onOpenImport,
+  onGenerateConcept,
+  generatingConcept,
 }: {
   reading: NarrativeReading | null;
   onSaveUtteranceToNotebook: (utteranceId: string) => Promise<void>;
   onOpenImport: () => void;
+  onGenerateConcept: () => void;
+  generatingConcept: boolean;
 }) {
   if (!reading) {
     return (
@@ -40,11 +44,31 @@ export function NarrativeReader({
           {reading.node.title}
         </h1>
         {reading.node.summary && (
-          <p className="text-sm text-[#70747a] leading-relaxed max-w-3xl pt-1">
-            {reading.node.summary}
-          </p>
+        <p className="text-sm text-[#70747a] leading-relaxed max-w-3xl pt-1">
+          {reading.node.summary}
+        </p>
         )}
+        <Button type="button" size="sm" variant="accent" onClick={onGenerateConcept} loading={generatingConcept}>
+          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>生成概念图</span>
+        </Button>
       </header>
+
+      {reading.node.conceptArtifacts.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-[#8e9194]">CONCEPT ART</span>
+            <span className="text-xs text-[#8e9194]">已附加 {reading.node.conceptArtifacts.length} 张</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {reading.node.conceptArtifacts.map((artifact) => (
+              <a key={artifact.artifactId} href={artifact.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-[rgb(32_38_49/12%)] bg-[#fffdf7]">
+                <img src={artifact.url} alt="剧情概念图" loading="lazy" className="aspect-video w-full object-cover" />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Scenes */}
       <div className="space-y-12">

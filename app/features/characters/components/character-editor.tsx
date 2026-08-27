@@ -26,11 +26,13 @@ import {
   useGenerateCharacterDraft,
   usePublishCharacter,
   useUploadCharacterAvatar,
+  useGenerateCharacterAvatar,
+  useApplyCharacterAvatar,
   useImportTavernCard,
   useSaveRelationship,
   useDeleteRelationship,
 } from '../mutations';
-import { exportTavernCard } from '../api';
+import { exportTavernCard, fetchCharacterGenerationTask } from '../api';
 import { EMPTY_DRAFT } from '../schemas';
 import {
   characterDraftToFormValues,
@@ -88,9 +90,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const generateMutation = useGenerateCharacterDraft();
   const publishMutation = usePublishCharacter();
   const uploadAvatarMutation = useUploadCharacterAvatar();
+  const generateAvatarMutation = useGenerateCharacterAvatar();
+  const applyAvatarMutation = useApplyCharacterAvatar();
   const importMutation = useImportTavernCard();
   const saveRelMutation = useSaveRelationship();
   const deleteRelMutation = useDeleteRelationship();
+  const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
 
   const handleSave = useCallback(async (quiet = false) => {
     const currentDraft = characterFormValuesToDraft(getValues());
@@ -269,6 +274,58 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       toast.error('头像上传失败', err instanceof Error ? err.message : String(err));
     }
   };
+
+  const handleGenerateAvatar = async () => {
+    if (!characterId) {
+      toast.warning('请先保存角色草稿');
+      return;
+    }
+    try {
+      if (isDirty || status === 'dirty') await handleSave(true);
+      const task = await generateAvatarMutation.mutateAsync({ id: characterId });
+      setAvatarTaskId(task.id);
+      toast.success('头像生成任务已提交');
+    } catch (err) {
+      toast.error('提交头像生成失败', err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => {
+    if (!avatarTaskId || !characterId) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const task = await fetchCharacterGenerationTask(characterId, avatarTaskId);
+        if (stopped) return;
+        if (task.status === 'succeeded') {
+          await applyAvatarMutation.mutateAsync({ id: characterId, taskId: avatarTaskId });
+          if (!stopped) {
+            setAvatarTaskId(null);
+            await refetchDetail();
+            toast.success('AI 头像已应用到角色');
+          }
+          return;
+        }
+        if (['failed', 'cancelled', 'abandoned'].includes(task.status)) {
+          setAvatarTaskId(null);
+          toast.error('头像生成失败', task.errorMessage || '生成任务未完成');
+          return;
+        }
+        timer = window.setTimeout(() => void poll(), 1_500);
+      } catch (err) {
+        if (!stopped) {
+          setAvatarTaskId(null);
+          toast.error('查询头像生成状态失败', err instanceof Error ? err.message : String(err));
+        }
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [applyAvatarMutation, avatarTaskId, characterId, refetchDetail, toast]);
 
   const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -492,6 +549,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 avatarUrl={detailData?.avatarUrl}
                 canUpload={Boolean(characterId)}
                 onUploadClick={() => avatarInputRef.current?.click()}
+                onGenerateAvatar={() => void handleGenerateAvatar()}
+                generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending}
                 onChange={handleDraftChange}
                 control={control}
                 register={register}

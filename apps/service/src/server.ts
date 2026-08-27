@@ -14,7 +14,7 @@ import { hashToken, issueToken, SecretStore } from './security.js';
 import { registerManagementRoutes } from './management.js';
 import { registerPublicRoutes } from './public-routes.js';
 import { enforceAllRetention, reconcileArtifacts } from './artifacts.js';
-import { activeGenerationExecutions, reconcileGenerationTasks, startGenerationScheduler } from './generation.js';
+import { activeGenerationExecutions, reconcileGenerationTasks, resumeGenerationExecutions, startGenerationScheduler, stopGenerationExecutions } from './generation.js';
 import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
@@ -23,6 +23,7 @@ import { createNarrativeConnectors } from './narrative-connectors.js';
 import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 import { applyCreativeWhenReady, registerRuntimeRoutes } from './runtime-routes.js';
 import { ensureCreativeApp, registerCreativeRoutes } from './creative.js';
+import { ensureGenerationConsumerApps } from './generation/consumers.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -50,9 +51,10 @@ export async function createService(options: ServiceOptions = {}) {
   database.connection.prepare(`INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at)
     VALUES ('linshe','邻舍',?,?,1,?,?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name,token_hash=excluded.token_hash,capabilities_json=excluded.capabilities_json,enabled=1,updated_at=excluded.updated_at`)
-    .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'artifact', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
+    .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'generation', 'artifact', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
   database.connection.prepare("INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES ('linshe','keep')").run();
   ensureCreativeApp(database);
+  ensureGenerationConsumerApps(database);
   if (!options.database && process.env.STHSTART_APP_TOKEN?.trim() && process.env.STHSTART_LLM_PROFILE?.trim()) {
     const legacy = database.connection.prepare(`SELECT a.id app_id,p.id profile_id FROM managed_apps a
       JOIN provider_profiles p ON p.id=? AND p.kind='llm' AND p.enabled=1
@@ -77,9 +79,9 @@ export async function createService(options: ServiceOptions = {}) {
     sourceRevision: null, capabilities: ['story-archive', 'search', 'imports', 'evidence'], checkedAt: new Date().toISOString(),
   });
   const inspectCreative = (): AppDescriptor => ({
-    id: 'creative', name: '创作中心', description: '通过公共生成工作流创作、管理与复用图片素材。',
+    id: 'creative', name: '创作中心', description: '通过公共生成工作流创作、管理与复用图片、视频和音频素材。',
     launchUrl: `${config.portalOrigins[0]}/apps/creative`, status: 'online', version: SERVICE_VERSION,
-    sourceRevision: null, capabilities: ['image-generation', 'image-to-image', 'artifact-library'], checkedAt: new Date().toISOString(),
+    sourceRevision: null, capabilities: ['image-generation', 'image-to-image', 'video-generation', 'h3-t2v', 'h3-i2v', 'h3-fl2va', 'artifact-library'], checkedAt: new Date().toISOString(),
   });
 
   await app.register(cors, {
@@ -173,7 +175,7 @@ export async function createService(options: ServiceOptions = {}) {
   registerCreativeRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
-  registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors);
+  registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 
@@ -181,13 +183,17 @@ export async function createService(options: ServiceOptions = {}) {
   void enforceAllRetention(database).catch(retentionFailure);
   const retentionTimer = setInterval(() => void enforceAllRetention(database).catch(retentionFailure), 60 * 60_000);
   retentionTimer.unref();
-  const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);
-  const reconcilePromise = reconcileArtifacts(config, database).catch((err) => {
+  // Finish the initial media reconciliation before exposing routes. Legacy
+  // notebook/character uploads share this directory and must not race with the
+  // startup orphan scan.
+  await reconcileArtifacts(config, database).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (!msg.includes('database is not open')) {
       runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-reconcile', stream: 'system', level: 'warn', message: `媒体库巡检异常：${msg}`, force: true });
     }
   });
+  resumeGenerationExecutions(database);
+  const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);
   const genReconcilePromise = reconcileGenerationTasks(config, database, secrets, options.fetcher).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (!msg.includes('database is not open')) {
@@ -198,7 +204,7 @@ export async function createService(options: ServiceOptions = {}) {
   app.addHook('onClose', async () => {
     clearInterval(retentionTimer);
     genScheduler.stop();
-    await reconcilePromise.catch(() => {});
+    stopGenerationExecutions(database);
     await genReconcilePromise.catch(() => {});
     await Promise.allSettled(Array.from(activeGenerationExecutions));
     await runtimeManager.close();

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
@@ -135,7 +135,11 @@ test('image cancellation deletes queued prompts but never interrupts a running w
 
 test('image task idempotency returns one accepted upstream task', async () => {
   let submissions = 0;
-  const fetcher: typeof fetch = async () => { submissions += 1; return Response.json({ prompt_id: 'provider-task' }); };
+  const fetcher: typeof fetch = async (input) => {
+    if (String(input).endsWith('/prompt')) { submissions += 1; return Response.json({ prompt_id: 'provider-task' }); }
+    if (String(input).endsWith('/queue')) return Response.json({ queue_pending: [], queue_running: [] });
+    return Response.json({});
+  };
   const database = new ServiceDatabase(); const token = seedApp(database, 'image-app'); const now = nowIso();
   database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img', 'Image', 'image', 'http://image.test', null, null, now, now);
   const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher });
@@ -143,6 +147,8 @@ test('image task idempotency returns one accepted upstream task', async () => {
   const first = await app.inject(request); const repeated = await app.inject(request);
   assert.equal(first.statusCode, 202); assert.equal(repeated.statusCode, 200);
   assert.equal(first.json().id, repeated.json().id); assert.equal(submissions, 1);
+  assert.equal(database.connection.prepare("SELECT COUNT(*) count FROM generation_tasks WHERE purpose='legacy-image'").get()!.count, 1);
+  assert.equal(database.connection.prepare('SELECT COUNT(*) count FROM image_tasks').get()!.count, 0);
   await app.close(); database.close();
 });
 
@@ -213,7 +219,7 @@ test('image gateway handles submission errors, missing task ID, and upstream tim
   assert.equal(res.statusCode, 503);
   assert.equal(res.json().error, 'image_unavailable');
   assert.doesNotMatch(res.json().message, /sk-secret-token/);
-  assert.match(res.json().message, /[REDACTED_TOKEN]/);
+  assert.match(res.json().message, /提交状态不确定/);
   await app.close();
 
   database.close();
@@ -510,9 +516,17 @@ test('notebook CRUD persists searchable structured notes', async () => {
   const uploaded = await app.inject({ method: 'POST', url: '/api/v1/admin/notebook/assets', headers, payload: {
     noteId: note.id, filename: 'station.png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
   } });
-  assert.equal(uploaded.statusCode, 201); const assetId = uploaded.json().id;
+  assert.equal(uploaded.statusCode, 201);
+  assert.match(uploaded.json().url, /^\/api\/v1\/admin\/notebook\/assets\//);
+  const assetId = uploaded.json().id;
   const image = await app.inject({ method: 'GET', url: `/api/v1/admin/notebook/assets/${assetId}`, headers });
   assert.equal(image.statusCode, 200); assert.equal(image.headers['content-type'], 'image/png');
+  const assetPath = database.connection.prepare('SELECT local_path FROM note_assets WHERE id=?').get(assetId) as { local_path: string };
+  await unlink(assetPath.local_path);
+  const missingImage = await app.inject({ method: 'GET', url: `/api/v1/admin/notebook/assets/${assetId}`, headers });
+  assert.equal(missingImage.statusCode, 404);
+  assert.match(String(missingImage.headers['content-type']), /^application\/json/);
+  assert.equal(missingImage.json().error, 'file_not_found');
   const removed = await app.inject({ method: 'DELETE', url: `/api/v1/admin/notebook/notes/${note.id}`, headers });
   assert.equal(removed.statusCode, 200);
   assert.equal(database.connection.prepare('SELECT COUNT(*) AS count FROM note_assets').get()!.count, 0);

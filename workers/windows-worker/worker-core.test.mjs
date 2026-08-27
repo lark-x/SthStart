@@ -7,6 +7,8 @@ import { ipAllowed, readSettings, validateWorkflow, WindowsWorker } from './work
 
 test('Windows Worker validates token, IP policy, and API workflow format', () => {
   assert.throws(() => readSettings({ WORKER_TOKEN: 'short' }), /WORKER_TOKEN/);
+  assert.deepEqual(readSettings({ WORKER_TOKEN: 'worker-token-that-is-longer-than-32-characters', WORKER_CAPABILITIES: 'image,h3-fl2va,image' }).capabilities, ['image', 'h3-fl2va']);
+  assert.throws(() => readSettings({ WORKER_TOKEN: 'worker-token-that-is-longer-than-32-characters', WORKER_CAPABILITIES: 'invalid capability' }), /WORKER_CAPABILITIES/);
   assert.equal(ipAllowed('192.168.1.42', ['192.168.1.0/24']), true);
   assert.equal(ipAllowed('192.168.2.42', ['192.168.1.0/24']), false);
   assert.equal(ipAllowed('127.0.0.1', []), true);
@@ -24,6 +26,10 @@ test('Windows Worker keeps model files separate and enforces the aggregate tempo
     WORKER_DATA_DIR: dataDir,
     WORKER_MODEL_DIR: modelDir,
     WORKER_MAX_TEMP_BYTES: String(maxTempBytes),
+    WORKER_IMAGE_MAX_BYTES: String(maxTempBytes),
+    WORKER_VIDEO_MAX_BYTES: String(maxTempBytes),
+    WORKER_AUDIO_MAX_BYTES: String(maxTempBytes),
+    WORKER_OUTPUT_MAX_BYTES: String(maxTempBytes),
     WORKER_DISK_WARNING_BYTES: '2',
     WORKER_DISK_STOP_BYTES: '1',
   });

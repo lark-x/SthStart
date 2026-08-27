@@ -9,6 +9,8 @@ import {
   importTavernCard,
   saveCharacterRelationship,
   deleteCharacterRelationship,
+  generateCharacterAvatar,
+  applyCharacterAvatar,
 } from './api';
 import type { CharacterDraft } from '@sthstart/contracts';
 
@@ -67,6 +69,21 @@ export function useUploadCharacterAvatar() {
   });
 }
 
+export function useGenerateCharacterAvatar() {
+  return useMutation({ mutationFn: ({ id, prompt }: { id: string; prompt?: string }) => generateCharacterAvatar(id, prompt) });
+}
+
+export function useApplyCharacterAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, taskId }: { id: string; taskId: string }) => applyCharacterAvatar(id, taskId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
+    },
+  });
+}
+
 export function useImportTavernCard() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -108,4 +125,3 @@ export function useDeleteRelationship() {
     },
   });
 }
-

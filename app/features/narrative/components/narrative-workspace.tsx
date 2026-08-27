@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import {
@@ -10,7 +10,7 @@ import {
   useNarrativeSearch,
   useNarrativeConnectors,
 } from '../queries';
-import { saveUtteranceToNotebook } from '../api';
+import { attachNarrativeConcept, fetchNarrativeGenerationTask, generateNarrativeConcept, saveUtteranceToNotebook } from '../api';
 import { NarrativeTree } from './narrative-tree';
 import { NarrativeReader } from './narrative-reader';
 import { NarrativeInspector } from './narrative-inspector';
@@ -23,6 +23,7 @@ export function NarrativeWorkspace() {
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [conceptTaskId, setConceptTaskId] = useState<string | null>(null);
 
   const { data: worksData, refetch: refetchWorks } = useNarrativeWorks();
   const works = worksData?.items ?? [];
@@ -39,10 +40,58 @@ export function NarrativeWorkspace() {
     ? selectedNodeId
     : firstReadableNode?.id ?? '';
 
-  const { data: readingData } = useNarrativeReading(activeNodeId);
+  const { data: readingData, refetch: refetchReading } = useNarrativeReading(activeNodeId);
   const { data: searchData } = useNarrativeSearch(searchQuery, activeWorkId);
   const { data: connectorsData } = useNarrativeConnectors();
   const connectors = connectorsData?.items ?? [];
+
+  const handleGenerateConcept = async () => {
+    if (!activeNodeId) return;
+    try {
+      const task = await generateNarrativeConcept(activeNodeId);
+      setConceptTaskId(task.id);
+      toast.success('概念图生成任务已提交');
+    } catch (error) {
+      toast.error('提交概念图生成失败', error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  useEffect(() => {
+    if (!conceptTaskId || !activeNodeId) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const task = await fetchNarrativeGenerationTask(activeNodeId, conceptTaskId);
+        if (stopped) return;
+        if (task.status === 'succeeded') {
+          await attachNarrativeConcept(activeNodeId, conceptTaskId);
+          if (!stopped) {
+            setConceptTaskId(null);
+            await refetchReading();
+            toast.success('概念图已附加到当前剧情节点');
+          }
+          return;
+        }
+        if (['failed', 'cancelled', 'abandoned'].includes(task.status)) {
+          setConceptTaskId(null);
+          toast.error('概念图生成失败', task.errorMessage || '生成任务未完成');
+          return;
+        }
+        timer = window.setTimeout(() => void poll(), 1_500);
+      } catch (error) {
+        if (!stopped) {
+          setConceptTaskId(null);
+          toast.error('查询概念图状态失败', error instanceof Error ? error.message : String(error));
+        }
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeNodeId, conceptTaskId, refetchReading, toast]);
 
   const handleSaveToNotebook = async (utteranceId: string) => {
     try {
@@ -57,8 +106,10 @@ export function NarrativeWorkspace() {
   const handleSelectSearchResult = (res: NarrativeSearchResult) => {
     setMode('read');
     if (res.nodeId) {
+      setConceptTaskId(null);
       setSelectedNodeId(res.nodeId);
     } else if (res.workId !== activeWorkId) {
+      setConceptTaskId(null);
       setSelectedWorkId(res.workId);
       setSelectedNodeId('');
     }
@@ -121,12 +172,16 @@ export function NarrativeWorkspace() {
               works={works}
               selectedWorkId={activeWorkId}
               onSelectWork={(workId) => {
+                setConceptTaskId(null);
                 setSelectedWorkId(workId);
                 setSelectedNodeId('');
               }}
               nodes={nodes}
               selectedNodeId={activeNodeId}
-              onSelectNode={setSelectedNodeId}
+              onSelectNode={(nodeId) => {
+                setConceptTaskId(null);
+                setSelectedNodeId(nodeId);
+              }}
               onOpenImport={() => setMode('import')}
             />
 
@@ -134,6 +189,8 @@ export function NarrativeWorkspace() {
               reading={readingData ?? null}
               onSaveUtteranceToNotebook={handleSaveToNotebook}
               onOpenImport={() => setMode('import')}
+              onGenerateConcept={() => void handleGenerateConcept()}
+              generatingConcept={Boolean(conceptTaskId)}
             />
 
             <NarrativeInspector

@@ -23,7 +23,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       : await request.text();
   const headers: Record<string, string> = { 'x-sthstart-admin-token': adminToken, 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() };
   if (body && contentType) headers['content-type'] = contentType;
-  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename']) {
+  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename', 'range', 'if-none-match', 'last-event-id', 'accept']) {
     const value = request.headers.get(name);
     if (value) headers[name] = value;
   }
@@ -41,6 +41,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     if (disposition) responseHeaders['content-disposition'] = disposition;
     const cacheControl = response.headers.get('cache-control');
     if (cacheControl) responseHeaders['cache-control'] = cacheControl;
+    for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'x-request-id', 'x-accel-buffering']) {
+      const value = response.headers.get(name);
+      if (value) responseHeaders[name] = value;
+    }
     return new Response(response.body, { status: response.status, headers: responseHeaders });
   } catch {
     return Response.json({ error: 'service_unavailable', message: '公共服务当前不可用。' }, { status: 503 });
