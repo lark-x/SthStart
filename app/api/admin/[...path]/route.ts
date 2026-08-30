@@ -4,7 +4,9 @@ import { allowedOrigin, readSession, safeFetchContext } from '@/app/lib/admin-se
 const serviceUrl = (process.env.STHSTART_SERVICE_URL ?? process.env.NEXT_PUBLIC_STHSTART_SERVICE_URL ?? 'http://127.0.0.1:4100').replace(/\/$/, '');
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  const startedAt = performance.now();
   const session = await readSession(request);
+  const sessionFinishedAt = performance.now();
   if (!session) return Response.json({ error: 'admin_session_required' }, { status: 401 });
   if (!safeFetchContext(request)) return Response.json({ error: 'untrusted_request' }, { status: 403 });
   const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
@@ -23,7 +25,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       : await request.text();
   const headers: Record<string, string> = { 'x-sthstart-admin-token': adminToken, 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() };
   if (body && contentType) headers['content-type'] = contentType;
-  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename', 'range', 'if-none-match', 'last-event-id', 'accept']) {
+  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename', 'x-note-id', 'range', 'if-none-match', 'last-event-id', 'accept']) {
     const value = request.headers.get(name);
     if (value) headers[name] = value;
   }
@@ -35,7 +37,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       cache: 'no-store',
     };
     if (streamBody) fetchOptions.duplex = 'half';
+    const originStartedAt = performance.now();
     const response = await fetch(target, fetchOptions);
+    const originFinishedAt = performance.now();
     const responseHeaders: Record<string, string> = { 'content-type': response.headers.get('content-type') ?? 'application/json' };
     const disposition = response.headers.get('content-disposition');
     if (disposition) responseHeaders['content-disposition'] = disposition;
@@ -45,6 +49,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       const value = response.headers.get(name);
       if (value) responseHeaders[name] = value;
     }
+    responseHeaders['server-timing'] = [
+      `session;dur=${(sessionFinishedAt - startedAt).toFixed(1)}`,
+      `origin;dur=${(originFinishedAt - originStartedAt).toFixed(1)}`,
+      `portal;dur=${(performance.now() - startedAt).toFixed(1)}`,
+    ].join(', ');
     return new Response(response.body, { status: response.status, headers: responseHeaders });
   } catch {
     return Response.json({ error: 'service_unavailable', message: '公共服务当前不可用。' }, { status: 503 });

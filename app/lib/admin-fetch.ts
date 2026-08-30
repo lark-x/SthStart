@@ -9,9 +9,8 @@ export async function ensureAdminSession() {
     let response = await fetch('/api/auth/admin-session', { cache: 'no-store', credentials: 'same-origin' });
     if (!response.ok) response = await fetch('/api/auth/admin-session', { method: 'POST', credentials: 'same-origin' });
     if (!response.ok) throw new Error('管理会话不可用');
-    const verified = await fetch('/api/auth/admin-session', { cache: 'no-store', credentials: 'same-origin' });
-    const payload = await verified.json() as { csrfToken?: string };
-    if (!verified.ok || !payload.csrfToken) throw new Error('管理会话验证失败');
+    const payload = await response.json() as { csrfToken?: string };
+    if (!payload.csrfToken) throw new Error('管理会话验证失败');
     csrfToken = payload.csrfToken;
   })().finally(() => { sessionPromise = null; });
   await sessionPromise;

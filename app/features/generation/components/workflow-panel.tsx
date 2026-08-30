@@ -47,7 +47,7 @@ export function WorkflowPanel({
           <div className="flex items-center gap-2 text-[#b83b1b]"><span className="text-[10px] font-bold tracking-[0.16em] uppercase">WORKFLOW VERSIONS</span></div>
           {onImport && (
             <div>
-              <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" aria-label="导入工作流 JSON 文件" onChange={handleFileChange} />
               <Button type="button" size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} loading={busy === 'workflow-import'}>
                 <Upload className="h-3.5 w-3.5" aria-hidden="true" />导入工作流 JSON
               </Button>

@@ -315,7 +315,9 @@ export function registerNarrativeRoutes(app: FastifyInstance, database: Narrativ
     if (!row) return reply.code(404).send({ error: 'not_found' });
     const id = randomUUID(); const now = nowIso(); const locator = `${row.work_title} / ${row.node}${row.scene ? ` / ${row.scene}` : ''}`;
     const content = [{ id: randomUUID(), type: 'archive-reference', workId: row.work_id, targetType: 'utterance', targetId: row.id, quote: `${row.speaker ? `${row.speaker}：` : ''}${row.body}`, locator }];
-    serviceDatabase.connection.prepare('INSERT INTO creative_notes VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, `摘录：${row.node}`, 'story', row.body.slice(0, 180), JSON.stringify(content), JSON.stringify(['叙事档案', row.work_title]), 'story-candidate', 0, now, now);
+    serviceDatabase.connection.prepare(`INSERT INTO creative_notes
+      (id,title,kind,summary,content_json,tags_json,stage,favorite,created_at,updated_at,revision)
+      VALUES (?,?,?,?,?,?,?,?,?,?,1)`).run(id, `摘录：${row.node}`, 'story', row.body.slice(0, 180), JSON.stringify(content), JSON.stringify(['叙事档案', row.work_title]), 'story-candidate', 0, now, now);
     return reply.code(201).send({ id, href: `/apps/notebook/${id}` });
   });
   app.put<{ Params: { id: string }; Body: { status?: string; body?: string } }>('/api/v1/admin/narrative/claims/:id', async (request, reply) => {

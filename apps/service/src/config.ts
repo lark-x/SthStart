@@ -7,6 +7,8 @@ export interface ServiceConfig {
   host: string;
   port: number;
   portalOrigins: readonly string[];
+  linsheAgentPort: number;
+  linsheWebPort: number;
   linsheAppUrl: string;
   linsheHealthUrl: string;
   linsheVersion: string | null;
@@ -104,13 +106,17 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
   const portalOrigins = (environment.PORTAL_ORIGINS ?? 'http://127.0.0.1:4173,http://localhost:4173')
     .split(',')
     .map((origin) => httpUrl(origin.trim(), 'PORTAL_ORIGINS'));
+  const linsheAgentPort = integer(environment.LINSHE_AGENT_PORT, 3099, 'LINSHE_AGENT_PORT', 1, 65_535);
+  const linsheWebPort = integer(environment.LINSHE_WEB_PORT, 5173, 'LINSHE_WEB_PORT', 1, 65_535);
 
   return {
     host: loopbackHost(environment.SERVICE_HOST ?? '127.0.0.1'),
     port: integer(environment.SERVICE_PORT, 4100, 'SERVICE_PORT', 1, 65_535),
     portalOrigins,
-    linsheAppUrl: httpUrl(environment.LINSHE_APP_URL ?? 'http://127.0.0.1:5173', 'LINSHE_APP_URL'),
-    linsheHealthUrl: httpUrl(environment.LINSHE_HEALTH_URL ?? 'http://127.0.0.1:3099/api/health', 'LINSHE_HEALTH_URL'),
+    linsheAgentPort,
+    linsheWebPort,
+    linsheAppUrl: httpUrl(environment.LINSHE_APP_URL ?? `http://127.0.0.1:${linsheWebPort}`, 'LINSHE_APP_URL'),
+    linsheHealthUrl: httpUrl(environment.LINSHE_HEALTH_URL ?? `http://127.0.0.1:${linsheAgentPort}/api/health`, 'LINSHE_HEALTH_URL'),
     linsheVersion: environment.LINSHE_VERSION?.trim() || metadata.version,
     linsheSourceRevision: environment.LINSHE_SOURCE_REVISION?.trim() || metadata.sourceRevision,
     probeTimeoutMs: integer(environment.PROBE_TIMEOUT_MS, 2_000, 'PROBE_TIMEOUT_MS', 100, 30_000),

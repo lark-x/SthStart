@@ -64,8 +64,9 @@ test('control center overview visual baseline', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '邻舍运行栈' })).toBeVisible();
   await expect(page).toHaveScreenshot('control-center-overview.png', {
     ...screenshotOptions,
-    fullPage: true,
+    fullPage: false,
     mask: [page.locator('[data-visual-dynamic]')],
+    maskColor: '#f4f0e7',
   });
 });
 

@@ -50,6 +50,36 @@
   --shadow-dialog: 0 24px 64px rgb(24 32 29 / 18%);
 }
 
+/* Warm Parchment Eye-Care Mode */
+html[data-eye-care="true"]:not([data-app="linshe"]) {
+  --ink: #27302c;
+  --muted: #6b736e;
+  --paper: #ebe3d3;
+  --accent: #d35832;
+  --accent-dark: #a8391b;
+
+  --bg-app: #ebe3d3;
+  --surface: #f5efe1;
+  --surface-raised: #faf5ea;
+  --surface-muted: rgb(235 227 211 / 65%);
+  --surface-hover: rgb(235 227 211 / 90%);
+  --surface-dark: #1e2522;
+
+  --fg-default: #27302c;
+  --fg-muted: #6b736e;
+  --fg-subtle: #878f8a;
+  --fg-inverse: #ebe3d3;
+
+  --border-subtle: rgb(39 48 44 / 8%);
+  --border-default: rgb(39 48 44 / 14%);
+  --border-strong: rgb(39 48 44 / 22%);
+
+  --color-success: #448f60;
+  --color-warning: #c2992b;
+  --color-danger: #be593e;
+  --color-info: #465f7c;
+}
+
 @theme {
   --color-ink: var(--ink);
   --color-muted: var(--muted);
@@ -75,4 +105,3 @@
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
-

@@ -16,6 +16,7 @@ import { NarrativeReader } from './narrative-reader';
 import { NarrativeInspector } from './narrative-inspector';
 import { NarrativeImport } from './narrative-import';
 import { useToast } from '@/app/providers/ui-provider';
+import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
 export function NarrativeWorkspace() {
   const toast = useToast();
@@ -123,7 +124,7 @@ export function NarrativeWorkspace() {
   };
 
   return (
-    <main className="min-h-screen bg-[#ece8df] text-[#202631] flex flex-col">
+    <main className="min-h-screen w-full bg-[#ece8df] text-[#202631] flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-6 py-3 bg-[#f5f1e8] border-b border-[rgb(32_38_49/15%)]">
         <div className="flex items-center gap-3">
@@ -134,11 +135,12 @@ export function NarrativeWorkspace() {
             <span className="h-8 w-8 rounded-full bg-[#283548] text-[#f6ebd2] font-serif flex items-center justify-center text-sm">
               叙
             </span>
-            <span>叙事档案</span>
+            <h1 className="text-lg font-medium">叙事档案</h1>
           </Link>
         </div>
 
         <div className="flex items-center gap-1 bg-[rgb(32_38_49/6%)] p-1 rounded-full">
+          <EyeCareToggle />
           <button
             type="button"
             onClick={() => setMode('read')}

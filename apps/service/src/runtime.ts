@@ -274,12 +274,12 @@ export class RuntimeManager {
     const snowNode = process.platform === 'win32' && existsSync(resolve(maibotRoot, 'Snowluma/node.exe')) ? resolve(maibotRoot, 'Snowluma/node.exe') : process.execPath;
     return [
       { id: 'linshe-vector', name: '向量服务', port: 8765, optional: true, cwd: resolve(this.config.linsheRoot, 'vector-service'), command: existsSync(python) ? python : 'python3', args: ['-m', 'uvicorn', 'server:app', '--host', '127.0.0.1', '--port', '8765', '--no-access-log'], health: 'http://127.0.0.1:8765/health', installed: existsSync(resolve(this.config.linsheRoot, 'vector-service/server.py')) },
-      { id: 'linshe-agent', name: '邻舍主控后端', port: 3099, optional: false, cwd: resolve(this.config.linsheRoot, 'agent-core'), command: process.execPath, args: ['app.js'], health: this.config.linsheHealthUrl, installed: existsSync(resolve(this.config.linsheRoot, 'agent-core/app.js')) },
+      { id: 'linshe-agent', name: '邻舍主控后端', port: this.config.linsheAgentPort, optional: false, cwd: resolve(this.config.linsheRoot, 'agent-core'), command: process.execPath, args: ['app.js'], health: this.config.linsheHealthUrl, installed: existsSync(resolve(this.config.linsheRoot, 'agent-core/app.js')) },
       // The public launch URL may point at Cloudflare Tunnel, but service
       // management must always probe the local Vite listener. A remote URL
       // can require an Access cookie and would otherwise make a healthy local
       // process look stopped to the Mac-side runtime manager.
-      { id: 'linshe-web', name: '邻舍 Web', port: 5173, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm, args: ['run', 'dev', '--', '--host', this.config.lanAccess ? '0.0.0.0' : '127.0.0.1', '--port', '5173'], health: 'http://127.0.0.1:5173', installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
+      { id: 'linshe-web', name: '邻舍 Web', port: this.config.linsheWebPort, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm, args: ['run', 'dev', '--', '--host', this.config.lanAccess ? '0.0.0.0' : '127.0.0.1', '--port', String(this.config.linsheWebPort)], health: `http://127.0.0.1:${this.config.linsheWebPort}`, installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
       { id: 'maibot', name: 'MaiBot', port: 8001, optional: true, cwd: resolve(maibotRoot, 'MaiBot'), command: maibotPython, args: ['bot.py'], health: 'http://127.0.0.1:8001', installed: existsSync(resolve(maibotRoot, 'MaiBot/bot.py')) && Boolean(maibotPython) },
       { id: 'snowluma', name: 'SnowLuma', port: 5099, optional: true, cwd: resolve(maibotRoot, 'Snowluma'), command: snowNode, args: ['index.mjs'], health: 'http://127.0.0.1:5099', installed: existsSync(resolve(maibotRoot, 'Snowluma/index.mjs')) },
     ];
@@ -347,6 +347,7 @@ export class RuntimeManager {
         STHSTART_LOG_LEVEL: this.logs.effectiveLevel(id),
         STHSTART_SERVICE_URL: `http://127.0.0.1:${this.config.port}`,
         ...(id === 'linshe-agent' ? {
+          PORT: String(this.config.linsheAgentPort),
           STHSTART_APP_TOKEN: this.options.appToken ?? '',
           STHSTART_PUBLIC_LLM: runtime.publicLlmEnabled ? 'true' : 'false',
           STHSTART_PORTAL_URL: this.config.portalOrigins[0] ?? 'http://127.0.0.1:4173',

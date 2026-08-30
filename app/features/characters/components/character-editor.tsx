@@ -47,6 +47,7 @@ import { PublishSection } from './publish-section';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { useToast } from '@/app/providers/ui-provider';
+import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
 type Section = 'identity' | 'personality' | 'appearance' | 'relations' | 'publish';
 
@@ -395,6 +396,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <EyeCareToggle />
           <Button
             size="sm"
             variant="outline"
@@ -457,16 +459,20 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               )}
             </button>
             <div className="min-w-0">
-              <h2 className="font-serif text-lg font-medium text-[#18201d] truncate">
+              <h1 className="font-serif text-lg font-medium text-[#18201d] truncate">
                 {draft.displayName || '新角色草稿'}
-              </h2>
+              </h1>
               <p className="text-xs text-[#68716d] truncate">
                 {draft.work || draft.world || '尚未设置作品'}
               </p>
             </div>
           </div>
 
-          <nav className="flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
+          <nav
+            className="character-editor-tabs flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0"
+            role="tablist"
+            aria-label="角色编辑分区"
+          >
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
@@ -474,6 +480,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 <button
                   key={item.id}
                   type="button"
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => setActiveSection(item.id)}
                   className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
                     isActive
@@ -654,6 +662,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         hidden
         type="file"
         accept="image/png,image/jpeg,image/webp,image/gif"
+        aria-label="上传角色头像图片"
         onChange={handleUploadAvatar}
       />
       <input
@@ -661,6 +670,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         hidden
         type="file"
         accept="application/json,.json"
+        aria-label="导入角色 JSON 文件"
         onChange={handleImportJson}
       />
     </main>

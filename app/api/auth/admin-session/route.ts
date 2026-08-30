@@ -1,5 +1,5 @@
-import type { NextRequest } from 'next/server';
-import { createSession, expiredSessionCookie, isLoopback, isSessionConfigured, isTrustedLan, readSession, safeFetchContext, sessionCookie, verifyCloudflareAccess } from '@/app/lib/admin-session';
+import { NextRequest } from 'next/server';
+import { adminSessionCookieName, createSession, expiredSessionCookie, isLoopback, isSessionConfigured, isTrustedLan, readSession, safeFetchContext, sessionCookie, verifyCloudflareAccess } from '@/app/lib/admin-session';
 
 export async function GET(request: NextRequest) {
   const session = await readSession(request);
@@ -16,8 +16,12 @@ export async function POST(request: NextRequest) {
       : await verifyCloudflareAccess(request).then((value) => value && ({ ...value, source: 'cloudflare-access' as const }));
   if (!identity) return Response.json({ error: 'cloudflare_access_required' }, { status: 401 });
   const token = await createSession(identity);
+  const session = await readSession(new NextRequest(request.url, {
+    headers: { cookie: `${adminSessionCookieName}=${token}` },
+  }));
+  if (!session) return Response.json({ error: 'session_creation_failed' }, { status: 500 });
   const cookie = sessionCookie(token, request);
-  const response = Response.json({ authenticated: true });
+  const response = Response.json({ authenticated: true, csrfToken: session.csrf, source: session.source });
   response.headers.append('set-cookie', `${cookie.name}=${token}; Path=/; Max-Age=${8 * 60 * 60}; HttpOnly; SameSite=Strict${cookie.secure ? '; Secure' : ''}`);
   return response;
 }

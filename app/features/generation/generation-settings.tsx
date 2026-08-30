@@ -91,16 +91,17 @@ export function GenerationSettingsFeature() {
 
   const saveEngine = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     setBusy('engine');
     setError('');
     try {
-      const data = new FormData(event.currentTarget);
+      const data = new FormData(form);
       const value = (name: string) => String(data.get(name) ?? '').trim();
       await saveGenerationEngine({
         id: value('engine-id'), name: value('engine-name'), baseUrl: value('engine-url'),
         secret: value('engine-secret') || undefined, concurrencyLimit: Number(value('engine-concurrency')),
       });
-      event.currentTarget.reset();
+      form.reset();
       await load();
       toast.success('生成引擎已保存');
     } catch (err) {
@@ -112,16 +113,17 @@ export function GenerationSettingsFeature() {
 
   const createWorkflow = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     setBusy('workflow');
     setError('');
     try {
-      const data = new FormData(event.currentTarget);
+      const data = new FormData(form);
       const value = (name: string) => String(data.get(name) ?? '').trim();
       await createWorkflowConfig({
         id: value('workflow-id'), name: value('workflow-name'), description: value('workflow-description'),
         engineKind: 'comfyui', category: (value('workflow-category') || 'image') as 'image' | 'video' | 'audio' | 'transform',
       });
-      event.currentTarget.reset();
+      form.reset();
       await load();
       toast.success('工作流已创建');
     } catch (err) {
@@ -148,10 +150,11 @@ export function GenerationSettingsFeature() {
 
   const saveWorker = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     setBusy('worker');
     setError('');
     try {
-      const data = new FormData(event.currentTarget);
+      const data = new FormData(form);
       const value = (name: string) => String(data.get(name) ?? '').trim();
       const response = await saveWorkerConfig({
         id: value('worker-id'), name: value('worker-name'), baseUrl: value('worker-url'),
@@ -160,7 +163,7 @@ export function GenerationSettingsFeature() {
         diskWarningBytes: Number(value('worker-disk-warning')), diskStopBytes: Number(value('worker-disk-stop')),
       });
       if (response.token) setWorkerToken(response.token);
-      event.currentTarget.reset();
+      form.reset();
       await load();
       toast.success('Windows Worker 已保存');
     } catch (err) {
@@ -233,8 +236,8 @@ export function GenerationSettingsFeature() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f0e7] px-4 py-8 text-[#18201d] sm:px-8 md:px-12">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen w-full bg-[#f4f0e7] px-4 py-6 text-[#18201d] sm:px-8 md:px-12">
+      <div className="mx-auto max-w-7xl space-y-5">
         <PageHeader
           backHref="/apps/creative"
           backLabel="返回创作中心"

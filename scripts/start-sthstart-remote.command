@@ -2,7 +2,7 @@
 
 set -u
 
-ROOT="/Volumes/Lark/lark/SthStart"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 echo "SthStart Portal + 公共服务"

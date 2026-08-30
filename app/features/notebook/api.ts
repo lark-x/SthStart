@@ -1,4 +1,4 @@
-import { getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
+import { adminFetch, ApiClientError, getJson, postJson, putJson, deleteJson, validateResponse } from '@/app/lib/api-client';
 import {
   CreativeNoteSchema,
   CreativeNotesResponseSchema,
@@ -36,24 +36,34 @@ export async function updateNote(id: string, payload: Partial<CreativeNote>): Pr
   return putJson<CreativeNote>(`notebook/notes/${id}`, payload, undefined, CreativeNoteSchema);
 }
 
+export const upsertNote = updateNote;
+
 export async function deleteNote(id: string): Promise<{ ok: boolean }> {
   return deleteJson<{ ok: boolean }>(`notebook/notes/${id}`, undefined, NoteDeleteResponseSchema);
 }
 
 export async function uploadNoteAsset(
   noteId: string | undefined,
-  file: File
+  file: Blob,
+  filename = file instanceof File ? file.name : 'notebook-image'
 ): Promise<{ id: string; url: string }> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
+  const response = await adminFetch('notebook/assets', {
+    method: 'POST',
+    headers: {
+      'content-type': file.type,
+      'x-original-filename': filename,
+      ...(noteId ? { 'x-note-id': noteId } : {}),
+    },
+    body: file,
+    cache: 'no-store',
   });
-  return postJson<{ id: string; url: string }>(
-    'notebook/assets',
-    { noteId, dataUrl, filename: file.name },
-    undefined,
-    NoteAssetResponseSchema
-  );
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!response.ok) {
+    throw new ApiClientError(String(payload?.message ?? payload?.error ?? `HTTP ${response.status}`), {
+      status: response.status,
+      code: typeof payload?.error === 'string' ? payload.error : undefined,
+      requestId: response.headers.get('x-request-id'),
+    });
+  }
+  return validateResponse<{ id: string; url: string }>(payload, NoteAssetResponseSchema, response.url);
 }

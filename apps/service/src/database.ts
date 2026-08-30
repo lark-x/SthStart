@@ -299,6 +299,9 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX IF NOT EXISTS idx_generation_context_links_context ON generation_context_links(app_id, context_type, context_id, created_at DESC)',
     'CREATE INDEX IF NOT EXISTS idx_generation_context_links_artifact ON generation_context_links(artifact_id)',
   ] },
+  { version: 12, name: 'notebook-local-first-sync', statements: [
+    'ALTER TABLE creative_notes ADD COLUMN revision INTEGER NOT NULL DEFAULT 1',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

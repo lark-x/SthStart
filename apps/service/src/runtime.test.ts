@@ -1,12 +1,25 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { ServiceDatabase } from './database.js';
 import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 import { readConfig } from './config.js';
 import { createService } from './server.js';
+
+async function availablePort() {
+  const server = createServer();
+  await new Promise<void>((resolvePromise, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolvePromise);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  await new Promise<void>((resolvePromise, reject) => server.close((error) => error ? reject(error) : resolvePromise()));
+  return port;
+}
 
 test('runtime settings persist with bounded normalization', () => {
   const database = new ServiceDatabase(':memory:');
@@ -19,6 +32,7 @@ test('runtime settings persist with bounded normalization', () => {
 });
 
 test('managed Linshe agent receives its public service identity and switch', async () => {
+  const agentPort = await availablePort();
   const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-env-'));
   mkdirSync(resolve(root, 'agent-core'), { recursive: true });
   const output = resolve(root, 'agent-core/runtime-env.json');
@@ -26,7 +40,7 @@ test('managed Linshe agent receives its public service identity and switch', asy
   const database = new ServiceDatabase(':memory:');
   const settings = new RuntimeSettingsStore(database);
   const logs = new RuntimeLogService(database, root, false);
-  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', PROBE_TIMEOUT_MS: '100', PORTAL_ORIGINS: 'http://portal.test:4173' });
+  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', LINSHE_AGENT_PORT: String(agentPort), PROBE_TIMEOUT_MS: '100', PORTAL_ORIGINS: 'http://portal.test:4173' });
   const runtime = new RuntimeManager(config, settings, logs, { appToken: 'sth_app_runtime-test-token' });
   await runtime.start('linshe-agent');
   for (let attempt = 0; attempt < 30 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
@@ -37,6 +51,8 @@ test('managed Linshe agent receives its public service identity and switch', asy
 });
 
 test('Linshe startup does not require ComfyUI to be reachable', async () => {
+  const agentPort = await availablePort();
+  const webPort = await availablePort();
   const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-'));
   mkdirSync(resolve(root, 'agent-core'), { recursive: true });
   mkdirSync(resolve(root, 'web-ui'), { recursive: true });
@@ -45,7 +61,7 @@ test('Linshe startup does not require ComfyUI to be reachable', async () => {
   const database = new ServiceDatabase(':memory:');
   const settings = new RuntimeSettingsStore(database);
   const logs = new RuntimeLogService(database, root, false);
-  const runtime = new RuntimeManager(readConfig({ STHSTART_LINSHE_ROOT: root, PROBE_TIMEOUT_MS: '100' }), settings, logs);
+  const runtime = new RuntimeManager(readConfig({ STHSTART_LINSHE_ROOT: root, LINSHE_AGENT_PORT: String(agentPort), LINSHE_WEB_PORT: String(webPort), PROBE_TIMEOUT_MS: '100' }), settings, logs);
   const started = await runtime.start('linshe') as unknown[];
   assert.equal(started.length, 2);
   await runtime.stop('linshe');

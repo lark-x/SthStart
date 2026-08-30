@@ -1,9 +1,11 @@
-import { NoteEditor } from '../note-editor';
-import type { NoteKind } from '../types';
+import type { Metadata } from 'next';
+import { NotebookWorkspace } from '@/app/features/notebook/components/notebook-workspace';
 
-const allowed = new Set<NoteKind>(['diary', 'idea', 'note', 'story', 'character', 'world']);
+export const metadata: Metadata = {
+  title: '新建创作笔记 — SthStart',
+  description: '写下一段随想、灵感、日记或设定。',
+};
 
-export default async function NewNotePage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
-  const { kind } = await searchParams;
-  return <NoteEditor initialKind={allowed.has(kind as NoteKind) ? kind as NoteKind : 'note'} />;
+export default function NewNotePage() {
+  return <NotebookWorkspace isNew={true} />;
 }

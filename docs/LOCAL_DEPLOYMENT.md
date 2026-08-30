@@ -231,10 +231,10 @@ CF_ACCESS_AUD=<Access Application Audience Tag>
 
 ### 邻舍远程访问
 
-SthStart、创作笔记和叙事档案只需要 4173。邻舍暂时使用第二个域名：
+SthStart、创作笔记和叙事档案只需要 4173。邻舍暂时使用第二个域名。生产远程访问应让 Tunnel 直接连接由邻舍核心提供的已构建页面，避免把 Vite 开发服务器和代理链路放在公网请求路径中：
 
 ```text
-linshe.example.com → http://127.0.0.1:5173
+linshe.example.com → http://127.0.0.1:3099
 ```
 
 开发运行邻舍：
@@ -259,15 +259,72 @@ NEXT_PUBLIC_LINSHE_APP_URL=https://linshe.example.com
 
 ```yaml
   - hostname: linshe.example.com
-    service: http://127.0.0.1:5173
+    service: http://127.0.0.1:3099
 ```
 
 并为两个 hostname 都配置同样的 Cloudflare Access 规则。`LINSHE_APP_URL` 用于让远程手机点击邻舍入口时跳转到第二个域名；健康检查仍然走 Mac 本机的 3099，邻舍 Web 进程状态则探测 Mac 本机的 5173。
 
-邻舍 Web 的 `/api`、`/images` 和 `/avatars` 请求由 5173 代理到本机 3099，所以手机不需要直接访问 3099。8765、8188 也不需要暴露。
+3099 同源提供邻舍页面、`/api`、`/images` 和 `/avatars`。它只监听回环地址，并由 Cloudflare Tunnel 主动连接，不要再做路由器端口映射；8765、8188 也不需要暴露。5173 继续作为本机开发入口，不建议用于长期远程访问。
 
 ### 注意
 
 - `npm run deploy:local` 只启动 SthStart Portal 和公共服务；邻舍需要另运行 `npm run dev:linshe`，或从控制中心按需启动。
 - 不要把 4100、3099、8765 或 8188 直接暴露到公网。
 - 先验证 4173 单域名方案，再接入邻舍第二个域名；开机自启可以最后使用 `launchd` 或 PM2 配置。
+
+### Cloudflare 访问较慢时
+
+先比较本机与远程入口，不要用数据库或应用日志猜测网络问题：
+
+```bash
+npm run doctor:remote
+```
+
+也可以指定地址和采样次数：
+
+```bash
+npm run doctor:remote -- --url https://sth.example.com --samples 10
+```
+
+邻舍使用独立目标，默认比较 `127.0.0.1:3099` 和 `.env` 中的 `LINSHE_APP_URL`：
+
+```bash
+npm run doctor:remote -- --target linshe --samples 10
+```
+
+如果远程端点显示 `198.18.x.x`，通常表示域名被 Clash、Surge、VPN 或其他 TUN 代理映射。为以下目标添加直连规则后重新测试：
+
+```text
+DOMAIN,sth.example.com,DIRECT
+DOMAIN,linshe.example.com,DIRECT
+DOMAIN,<你的团队名>.cloudflareaccess.com,DIRECT
+PROCESS-NAME,cloudflared,DIRECT
+```
+
+在 iPhone 上不要仅以“关闭代理后变快/变慢”下结论。保留同一 Wi-Fi、同一 Cloudflare 登录状态，分别测试 `DIRECT`、香港节点和日本节点，每组完成至少 10 次页面切换与保存；记录邻舍设置页“远程访问诊断”的接口 P50/P95。只有 P95 稳定改善超过 20% 才固定线路。
+
+Cloudflare Cache Rules 只对带内容哈希的静态资源启用缓存：
+
+```text
+主机名等于 sth.example.com
+并且 URI Path 以 /_next/static/ 开头
+→ Cache eligibility: Eligible for cache
+→ Edge TTL: 1 year
+→ Browser TTL: Respect origin / 1 year
+```
+
+不要对 `/api/`、HTML、RSC、笔记图片或其他身份相关响应使用 `Cache Everything`。这些内容必须继续经过 Access 与 Portal 会话校验。
+
+邻舍域名使用单独规则，不能复用 Portal 的路径：
+
+```text
+主机名等于 linshe.example.com
+并且 URI Path 以 /assets/ 开头
+→ Cache eligibility: Eligible for cache
+→ Edge TTL: 1 year
+→ Browser TTL: Respect origin / 1 year
+```
+
+邻舍的 `/api/`、`/images/`、`/avatars/` 和 `/` HTML 必须绕过 Cloudflare 缓存。邻舍核心会为哈希资源发送一年不可变缓存头、为 HTML 发送 `no-cache`；Cloudflare 规则应保持这一边界，不要对整个域名开启 Cache Everything。
+
+Tunnel 默认保持自动协议。需要比较时，分别使用 `protocol: quic` 和 `protocol: http2` 启动一段时间，并在同一网络、同一设备上各采样至少 10 次；只有 P95 改善超过 20% 才固定协议，否则恢复自动选择。中国大陆到 Cloudflare 边缘节点的冷启动延迟无法由 SthStart 完全消除，创作笔记因此采用本机即时保存和后台同步。

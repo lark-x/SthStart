@@ -27,7 +27,8 @@ export function CharacterLibrary() {
   }, [data, query]);
 
   return (
-    <main className="min-h-screen bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-8 max-w-7xl mx-auto space-y-6">
+    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6">
+      <div className="max-w-7xl mx-auto space-y-5">
       <PageHeader
         backHref="/"
         backLabel="返回门户首页"
@@ -38,7 +39,7 @@ export function CharacterLibrary() {
           <div className="flex items-center gap-3">
             <Link
               href="/apps/characters/new"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-[3px_14px_3px_3px] bg-[#18201d] text-[#f4f0e7] hover:bg-black font-semibold text-sm transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-[#e45d35] text-white hover:bg-[#b83b1b] font-semibold text-xs tracking-wide transition-colors cursor-pointer shadow-xs"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               <span>新建角色</span>
@@ -54,14 +55,14 @@ export function CharacterLibrary() {
       )}
 
       {/* Search & Filter Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 rounded-[4px_16px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2.5 px-4 rounded-[4px_14px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] shadow-xs">
         <div className="relative w-full sm:max-w-md">
-          <Search className="h-4 w-4 absolute left-3 top-3 text-[#68716d]" aria-hidden="true" />
+          <Search className="h-4 w-4 absolute left-3 top-2.5 text-[#68716d]" aria-hidden="true" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索角色姓名、作品、世界观或标签…"
-            className="pl-9 bg-transparent border-[rgb(24_32_29/12%)]"
+            className="pl-9 h-9 bg-transparent border-[rgb(24_32_29/12%)] text-xs"
           />
         </div>
         <span className="text-xs text-[#68716d] flex-shrink-0 font-medium">
@@ -71,13 +72,13 @@ export function CharacterLibrary() {
 
       {/* Content Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
           {[1, 2, 3, 4, 5, 6].map((n) => (
             <div
               key={n}
-              className="flex gap-4 p-4 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/12%)] bg-[#fffdf8]"
+              className="flex gap-3.5 p-3.5 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/12%)] bg-[#fffdf8]"
             >
-              <Skeleton className="h-28 w-24 rounded-lg flex-shrink-0" />
+              <Skeleton className="h-24 w-20 rounded-lg flex-shrink-0" />
               <div className="flex-1 space-y-2 py-1">
                 <Skeleton className="h-4 w-1/3" />
                 <Skeleton className="h-6 w-2/3" />
@@ -88,14 +89,14 @@ export function CharacterLibrary() {
           ))}
         </div>
       ) : filtered.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
           {filtered.map((character) => (
             <Link
               key={character.id}
               href={`/apps/characters/${character.id}`}
-              className="group flex gap-4 p-4 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] hover:border-[#e45d35]/50 hover:shadow-md transition-all duration-200"
+              className="group flex gap-3.5 p-3.5 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] hover:border-[#e45d35]/50 hover:shadow-md transition-all duration-200"
             >
-              <div className="relative h-28 w-24 rounded-[3px_14px_3px_3px] overflow-hidden bg-[#777865] flex items-center justify-center text-[#f4f0e7] font-serif text-3xl flex-shrink-0 shadow-inner">
+              <div className="relative h-24 w-20 rounded-[3px_12px_3px_3px] overflow-hidden bg-[#777865] flex items-center justify-center text-[#f4f0e7] font-serif text-2xl flex-shrink-0 shadow-inner">
                 {character.avatarUrl ? (
                   <Image
                     src={character.avatarUrl}
@@ -107,7 +108,7 @@ export function CharacterLibrary() {
                 ) : (
                   <span>{character.displayName.slice(0, 1) || '角'}</span>
                 )}
-                <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[9px] font-mono font-bold text-white">
+                <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[9px] font-mono font-bold text-white">
                   {character.latestVersion ? `v${character.latestVersion}` : '草稿'}
                 </span>
               </div>
@@ -117,7 +118,7 @@ export function CharacterLibrary() {
                   <span className="text-[10px] uppercase font-bold tracking-wider text-[#68716d] block truncate">
                     {character.draft.work || character.draft.world || (character.draft.originType === 'ip' ? '已有作品' : '原创角色')}
                   </span>
-                  <h3 className="font-serif text-xl font-medium text-[#18201d] truncate group-hover:text-[#e45d35] transition-colors mt-0.5">
+                  <h3 className="font-serif text-lg font-medium text-[#18201d] truncate group-hover:text-[#e45d35] transition-colors mt-0.5">
                     {character.displayName}
                   </h3>
                   <p className="text-xs text-[#68716d] line-clamp-2 mt-1 leading-relaxed">
@@ -151,7 +152,7 @@ export function CharacterLibrary() {
           actions={
             <Link
               href="/apps/characters/new"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[3px_14px_3px_3px] bg-[#18201d] text-[#f4f0e7] font-medium text-sm hover:bg-black transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[3px_14px_3px_3px] bg-[#e45d35] text-white font-semibold text-sm hover:bg-[#b83b1b] transition-colors shadow-xs"
             >
               <Plus className="h-4 w-4" />
               <span>新建第一个角色</span>
@@ -159,6 +160,7 @@ export function CharacterLibrary() {
           }
         />
       )}
+      </div>
     </main>
   );
 }

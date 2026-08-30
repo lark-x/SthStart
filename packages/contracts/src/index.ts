@@ -840,6 +840,7 @@ export const CreativeNoteSchema = Type.Object({
   tags: Type.Array(Type.String()),
   stage: NoteStageSchema,
   favorite: Type.Boolean(),
+  revision: Type.Optional(Type.Integer({ minimum: 1 })),
   createdAt: Type.Optional(Type.String()),
   updatedAt: Type.Optional(Type.String()),
 });

@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { EyeCareToggle } from './eye-care-toggle';
 
 export interface PageHeaderProps {
   eyebrow?: string;
@@ -23,12 +24,12 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-4 pb-6 pt-2', className)}>
+    <div className={cn('flex flex-col gap-2.5 pb-4 pt-1', className)}>
       {backHref && (
         <div>
           <Link
             href={backHref}
-            className="inline-flex items-center gap-1.5 text-xs text-[#68716d] hover:text-[#e45d35] transition-colors font-medium"
+            className="inline-flex min-h-7 items-center gap-1.5 text-xs text-[#68716d] hover:text-[#e45d35] transition-colors font-medium"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{backLabel}</span>
@@ -36,26 +37,28 @@ export function PageHeader({
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="page-header-main flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           {eyebrow && (
-            <p className="text-[11px] font-bold tracking-[0.16em] uppercase text-[#b83b1b] mb-1.5">
+            <p className="page-header-eyebrow text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b] mb-0.5">
               {eyebrow}
             </p>
           )}
-          <h1 className="font-serif text-3xl sm:text-4xl font-medium tracking-tight text-[#18201d]">
+          <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-[#18201d]">
             {title}
           </h1>
           {description && (
-            <p className="mt-2 max-w-2xl text-sm text-[#68716d] leading-relaxed">
+            <p className="page-header-description mt-1 max-w-2xl text-xs sm:text-sm text-[#68716d] leading-relaxed">
               {description}
             </p>
           )}
         </div>
 
-        {actions && <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">{actions}</div>}
+        <div className="page-header-actions flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <EyeCareToggle />
+          {actions}
+        </div>
       </div>
     </div>
   );
 }
-

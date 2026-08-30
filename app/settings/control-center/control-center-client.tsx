@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Activity, Server, Sliders, Cpu, Terminal, RefreshCw } from 'lucide-react';
 import type { RuntimeSettings } from '@sthstart/contracts';
@@ -18,6 +19,7 @@ import {
 import { useLogStream } from '@/app/features/runtime/hooks/use-log-stream';
 import { fetchLinsheLaunchUrl, previewLauncherImport, type ImportPreview } from '@/app/features/runtime/api';
 import { RuntimeOverviewPanel } from '@/app/features/runtime/components/runtime-overview-panel';
+import { RemotePerformancePanel } from '@/app/features/runtime/components/remote-performance-panel';
 import { RuntimeServiceList } from '@/app/features/runtime/components/runtime-service-list';
 import { RuntimeSettingsForm } from '@/app/features/runtime/components/runtime-settings-form';
 import { CreativeSettingsForm } from '@/app/features/runtime/components/creative-settings-form';
@@ -26,6 +28,7 @@ import { LogViewer } from '@/app/features/runtime/components/log-viewer';
 import { ImportConfigDialog } from '@/app/features/runtime/components/import-config-dialog';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Button } from '@/app/components/ui/button';
+import { buttonVariants } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
@@ -186,7 +189,8 @@ export function ControlCenter() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-8 max-w-7xl mx-auto space-y-6">
+    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6">
+      <div className="max-w-7xl mx-auto space-y-5">
       <PageHeader
         backHref="/"
         backLabel="返回门户首页"
@@ -195,6 +199,12 @@ export function ControlCenter() {
         description="统一管理邻舍主服务、ComfyUI、向量数据库与生图依赖，掌控实时日志与自启状态。"
         actions={
           <div className="flex items-center gap-2">
+            <Link
+              href="/settings/public-services"
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            >
+              公共服务
+            </Link>
             <Button size="sm" variant="outline" onClick={() => void refetch()}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>刷新</span>
@@ -217,7 +227,11 @@ export function ControlCenter() {
       )}
 
       {/* Tabs */}
-      <div className="sticky top-0 z-20 flex gap-1.5 overflow-x-auto pb-2 pt-2 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
+      <div
+        className="control-center-tabs sticky top-0 z-20 flex gap-1.5 overflow-x-auto pb-2 pt-2 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]"
+        role="tablist"
+        aria-label="控制中心分区"
+      >
         {[
           { id: 'overview', label: '运行总览', icon: Activity },
           { id: 'runtime', label: '自启与服务', icon: Server },
@@ -231,6 +245,8 @@ export function ControlCenter() {
             <button
               key={item.id}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => setTab(item.id as Tab)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                 isActive
@@ -257,7 +273,7 @@ export function ControlCenter() {
 
       {/* Tab Panels */}
       {tab === 'overview' && (
-        <div className="space-y-6 animate-in fade-in">
+        <div className="space-y-6 animate-in fade-in" data-visual-dynamic="true">
           <RuntimeOverviewPanel
             overview={overview}
             launchUrl={launchUrl}
@@ -265,6 +281,7 @@ export function ControlCenter() {
             onStopAll={handleStopAll}
             busy={busyAction}
           />
+          <RemotePerformancePanel />
           <div>
             <h3 className="font-serif text-xl font-medium text-[#18201d] mb-3">
               已注册服务组件
@@ -346,6 +363,7 @@ export function ControlCenter() {
         onCommit={handleCommitImport}
         loading={importMutation.isPending}
       />
+      </div>
     </main>
   );
 }

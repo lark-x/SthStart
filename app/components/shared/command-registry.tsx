@@ -8,11 +8,21 @@ import {
   Sparkles,
   Terminal,
   Users,
+  Eye,
 } from 'lucide-react';
 import type { CommandItem } from '../ui/command';
 
-export function createCommandRegistry(push: (href: string) => void): CommandItem[] {
+export function createCommandRegistry(push: (href: string) => void, toggleEyeCare?: () => void): CommandItem[] {
   return [
+    {
+      id: 'action-toggle-eyecare',
+      title: '切换暖杏护眼模式',
+      description: '开启或关闭全局低蓝光温润羊皮纸色调',
+      category: '偏好',
+      keywords: ['eyecare', '护眼', '暖杏', '羊皮纸', 'theme', '模式'],
+      icon: <Eye className="h-4 w-4 text-[#d35832]" />,
+      action: () => toggleEyeCare?.(),
+    },
     {
       id: 'app-linshe',
       title: '邻舍.EXE',

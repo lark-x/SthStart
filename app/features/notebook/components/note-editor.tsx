@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowRight,
@@ -20,12 +20,18 @@ import {
 } from 'lucide-react';
 import type { CreativeNote, NoteBlock, NoteKind, NoteStage } from '@sthstart/contracts';
 import { useNoteDetail } from '../queries';
-import { useCreateNote, useUpdateNote, useDeleteNote, useUploadNoteAsset } from '../mutations';
 import { useCharacters } from '@/app/features/characters/queries';
 import { kindLabels, stageLabels, newBlock, summaryFromBlocks } from '../schemas';
+import { notebookKeys } from '@/app/lib/query-keys';
+import { addLocalAsset, localAssetId, markLocalNoteDeleted, removeLocalAsset, saveLocalNote } from '../local-store';
+import { useLocalNotebookNote } from '../hooks';
+import { syncPendingNotebookData } from '../sync';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
+import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
+import { generateId } from '@/app/lib/uuid';
+import { LocalNoteImage } from './local-note-image';
 
 const initialNote: CreativeNote = {
   title: '',
@@ -40,70 +46,122 @@ const initialNote: CreativeNote = {
 export function NoteEditor({
   noteId,
   initialKind = 'note',
+  standalone = true,
 }: {
   noteId?: string;
   initialKind?: NoteKind;
+  standalone?: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hydratedRef = useRef(!noteId);
+  const editVersionRef = useRef(0);
+  const saveRequestRef = useRef(0);
+
+  const queryKind = searchParams?.get('kind') as NoteKind | null;
+  const allowedKinds = new Set<NoteKind>(['diary', 'idea', 'note', 'story', 'character', 'world']);
+  const resolvedInitialKind = queryKind && allowedKinds.has(queryKind) ? queryKind : initialKind;
 
   const [note, setNote] = useState<CreativeNote>({
     ...initialNote,
-    kind: initialKind,
+    kind: resolvedInitialKind,
   });
-  const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
+  const [effectiveNoteId] = useState(() => noteId ?? generateId());
+  const [dirty, setDirty] = useState(false);
+  const [savingLocal, setSavingLocal] = useState(false);
+  const [online, setOnline] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const { data: detailData } = useNoteDetail(noteId);
+  const { data: detailData, isLoading: detailLoading } = useNoteDetail(noteId);
+  const { record: localRecord, loaded: localNoteLoaded } = useLocalNotebookNote(effectiveNoteId);
   const { data: charData } = useCharacters();
   const characters = charData?.items ?? [];
+  const editorReady = !noteId || (localNoteLoaded && (Boolean(localRecord) || !detailLoading));
 
-  const createMutation = useCreateNote();
-  const updateMutation = useUpdateNote();
-  const deleteMutation = useDeleteNote();
-  const uploadMutation = useUploadNoteAsset();
+  useEffect(() => {
+    const refresh = () => setOnline(navigator.onLine);
+    refresh();
+    window.addEventListener('online', refresh);
+    window.addEventListener('offline', refresh);
+    return () => {
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('offline', refresh);
+    };
+  }, []);
 
-  const handleSave = useCallback(async (quiet = false) => {
-    setStatus('saving');
+  const updateNoteCaches = useCallback((saved: CreativeNote) => {
+    if (!saved.id) return;
+    queryClient.setQueryData(notebookKeys.detail(saved.id), saved);
+    queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) => {
+      if (!current) return current;
+      const exists = current.items.some((item) => item.id === saved.id);
+      return { items: exists ? current.items.map((item) => item.id === saved.id ? saved : item) : [saved, ...current.items] };
+    });
+  }, [queryClient]);
+
+  const persistLocal = useCallback(async (quiet = false) => {
+    if (!effectiveNoteId) return null;
+    const editVersion = editVersionRef.current;
+    const requestId = saveRequestRef.current + 1;
+    saveRequestRef.current = requestId;
+    setSavingLocal(true);
     setErrorMessage('');
-
-    const payload: Partial<CreativeNote> = {
+    const payload: CreativeNote = {
       ...note,
+      id: effectiveNoteId,
       title: note.title.trim() || '未命名笔记',
       summary: summaryFromBlocks(note.content),
     };
-
     try {
-      if (!noteId) {
-        const created = await createMutation.mutateAsync(payload);
-        toast.success('笔记已保存');
-        router.replace(`/apps/notebook/${created.id}`);
-        return created.id;
+      const record = await saveLocalNote(payload);
+      if (editVersionRef.current === editVersion) {
+        updateNoteCaches(record.note);
+        setDirty(false);
       }
-
-      await updateMutation.mutateAsync({ id: noteId, payload });
-      setStatus('saved');
-      setTimeout(() => setStatus('clean'), 1000);
-      if (!quiet) toast.success('笔记已保存');
-      return noteId;
-    } catch (err) {
-      setStatus('error');
-      const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(msg);
-      if (!quiet) toast.error('保存失败', msg);
+      if (!noteId && standalone) router.replace("/apps/notebook/" + effectiveNoteId);
+      if (!quiet && editVersionRef.current === editVersion) {
+        toast.success('已保存到本机', online ? '正在后台同步。' : '联网后会自动同步。');
+      }
+      return record;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (editVersionRef.current === editVersion) {
+        setErrorMessage(message);
+        if (!quiet) toast.error('本机保存失败', message);
+      }
       return null;
+    } finally {
+      if (saveRequestRef.current === requestId) setSavingLocal(false);
     }
-  }, [createMutation, note, noteId, router, toast, updateMutation]);
+  }, [effectiveNoteId, note, noteId, online, router, standalone, toast, updateNoteCaches]);
+
+  const handleSave = useCallback(async (quiet = false) => {
+    const record = await persistLocal(quiet);
+    if (record) void syncPendingNotebookData(queryClient, { force: true, noteId: record.noteId });
+    return record?.noteId ?? null;
+  }, [persistLocal, queryClient]);
 
   useEffect(() => {
-    if (detailData && status === 'clean') {
-      // Query refreshes may hydrate a clean editor, but never overwrite dirty input.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setNote(detailData);
-      setStatus('clean');
+    if (!localNoteLoaded) return;
+    if (hydratedRef.current) return;
+    if (editVersionRef.current > 0) {
+      hydratedRef.current = true;
+      return;
     }
-  }, [detailData, status]);
+    if (localRecord) {
+      hydratedRef.current = true;
+      setNote(localRecord.note);
+      return;
+    }
+    if (detailData && !hydratedRef.current) {
+      hydratedRef.current = true;
+      setNote(detailData);
+      void saveLocalNote(detailData, 'synced');
+    }
+  }, [detailData, localNoteLoaded, localRecord]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -116,25 +174,29 @@ export function NoteEditor({
     return () => document.removeEventListener('keydown', handleShortcut);
   }, [handleSave]);
 
-  // Debounced auto-save
   useEffect(() => {
-    if (!noteId || status !== 'dirty') return;
+    if (!dirty || !effectiveNoteId) return;
     const timer = setTimeout(() => {
-      void handleSave(true);
-    }, 900);
+      void persistLocal(true);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [handleSave, noteId, status]);
+  }, [dirty, effectiveNoteId, persistLocal]);
 
   const updateNoteState = (updater: (prev: CreativeNote) => CreativeNote) => {
+    editVersionRef.current += 1;
     setNote((prev) => updater(prev));
-    setStatus('dirty');
+    setDirty(true);
   };
 
   const handleDelete = async () => {
-    if (!noteId || !window.confirm('确定删除此条笔记及其本地图片素材吗？')) return;
+    if (!effectiveNoteId || !window.confirm('确定删除此条笔记及其本地图片素材吗？')) return;
     try {
-      await deleteMutation.mutateAsync(noteId);
-      toast.success('笔记已删除');
+      await markLocalNoteDeleted(effectiveNoteId, { ...note, id: effectiveNoteId });
+      queryClient.removeQueries({ queryKey: notebookKeys.detail(effectiveNoteId) });
+      queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) =>
+        current ? { items: current.items.filter((item) => item.id !== effectiveNoteId) } : current);
+      void syncPendingNotebookData(queryClient, { force: true, noteId: effectiveNoteId });
+      toast.success('已从本机移除', online ? '正在后台同步删除。' : '联网后会自动同步删除。');
       router.push('/apps/notebook');
     } catch (err) {
       toast.error('删除失败', err instanceof Error ? err.message : String(err));
@@ -166,6 +228,11 @@ export function NoteEditor({
   };
 
   const handleDeleteBlock = (id: string) => {
+    const block = note.content.find((item) => item.id === id);
+    if (block?.type === 'image') {
+      const assetId = localAssetId(block.src);
+      if (assetId) void removeLocalAsset(assetId);
+    }
     updateNoteState((prev) => ({
       ...prev,
       content: prev.content.filter((b) => b.id !== id),
@@ -182,66 +249,131 @@ export function NoteEditor({
       return;
     }
 
-    const targetId = noteId ?? (await handleSave());
-    if (!targetId) return;
+    if (!effectiveNoteId) return;
 
     try {
-      const result = await uploadMutation.mutateAsync({ noteId: targetId, file });
+      const localUrl = await addLocalAsset(effectiveNoteId, file, file.name);
       updateNoteState((prev) => ({
         ...prev,
         content: [
           ...prev.content,
           {
-            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+            id: generateId(),
             type: 'image',
-            src: result.url,
+            src: localUrl,
             caption: '',
           },
         ],
       }));
-      toast.success('图片已上传');
+      toast.success('图片已保存到本机', online ? '将由后台上传。' : '联网后会自动上传。');
     } catch (err) {
-      toast.error('上传失败', err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error && err.message === 'local_asset_quota_exceeded'
+        ? '待同步图片已达到 100MB，请先联网完成同步。'
+        : err instanceof Error ? err.message : String(err);
+      toast.error('图片保存失败', message);
     }
   };
 
+  const MainTag = standalone ? 'main' : 'div';
+
+  if (!editorReady) {
+    return (
+      <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-[#fffdf8] text-[#18201d]">
+        <h1 className="sr-only">创作笔记编辑器</h1>
+        <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-[#fffdf8]/95 backdrop-blur-md border-b border-[rgb(24_32_29/8%)]">
+          {standalone ? (
+            <Link
+              href="/apps/notebook"
+              className="notebook-back-link inline-flex min-h-[34px] items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>返回笔记列表</span>
+            </Link>
+          ) : (
+            <span className="notebook-save-status text-xs text-[#68716d]" aria-live="polite">
+              正在打开笔记…
+            </span>
+          )}
+          <span className="h-8 w-16" aria-hidden="true" />
+        </header>
+        <div className="notebook-editor-frame max-w-4xl mx-auto px-5 sm:px-8 py-6 space-y-4">
+          <Skeleton className="h-7 w-1/3" />
+          <Skeleton className="h-9 w-2/3" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </MainTag>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-[#f4f0e7] text-[#18201d] pb-16">
-      {/* Top sticky bar */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-8 py-3 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
-        <Link
-          href="/apps/notebook"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>返回笔记列表</span>
-        </Link>
+    <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-[#fffdf8] text-[#18201d]">
+      <h1 className="sr-only">创作笔记编辑器</h1>
+      {/* Top sticky action bar */}
+      <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-[#fffdf8]/95 backdrop-blur-md border-b border-[rgb(24_32_29/8%)]">
+        {standalone ? (
+          <Link
+            href="/apps/notebook"
+            className="notebook-back-link inline-flex min-h-[34px] items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>返回笔记列表</span>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="notebook-save-status text-xs text-[#68716d] font-medium" aria-live="polite">
+              {savingLocal
+                ? '🟢 正在保存到本机…'
+                : dirty
+                ? '🟡 等待本机保存…'
+                : localRecord?.status === 'syncing'
+                ? '🔵 正在同步…'
+                : localRecord?.status === 'pending'
+                ? online ? '🟢 本机已保存 · 等待同步' : '⚪ 离线 · 待同步'
+                : localRecord?.status === 'error'
+                ? '🔴 本机已保存 · 同步失败'
+                : localRecord?.status === 'synced'
+                ? '🟢 已同步'
+                : '🟢 本地笔记'}
+            </span>
+          </div>
+        )}
 
-        <span className="text-xs text-[#68716d]">
-          {status === 'saving'
-            ? '正在保存…'
-            : status === 'dirty'
-            ? '等待自动保存…'
-            : status === 'saved'
-            ? '已保存'
-            : '本地笔记'}
-        </span>
+        {standalone && (
+          <span className="notebook-save-status text-xs text-[#68716d]" aria-live="polite">
+            {savingLocal
+              ? '正在保存到本机…'
+              : dirty
+              ? '等待本机保存…'
+              : localRecord?.status === 'syncing'
+              ? '正在同步…'
+              : localRecord?.status === 'pending'
+              ? online ? '本机已保存 · 等待同步' : '离线 · 待同步'
+              : localRecord?.status === 'error'
+              ? '本机已保存 · 同步失败'
+              : localRecord?.status === 'synced'
+              ? '已同步'
+              : '本地笔记'}
+          </span>
+        )}
 
-        <div className="flex items-center gap-2">
+        <div className="notebook-editor-actions flex items-center gap-2">
           <button
             type="button"
             onClick={() =>
               updateNoteState((prev) => ({ ...prev, favorite: !prev.favorite }))
             }
-            className={`p-2 rounded-full hover:bg-[rgb(24_32_29/6%)] transition-colors cursor-pointer ${
-              note.favorite ? 'text-[#d0a731]' : 'text-[#68716d]'
-            }`}
+            className={"notebook-icon-button rounded-md hover:bg-[rgb(24_32_29/6%)] transition-colors cursor-pointer " + (note.favorite ? "text-[#d0a731]" : "text-[#68716d]")}
             aria-label={note.favorite ? '取消收藏' : '收藏笔记'}
           >
-            <Star className={`h-4 w-4 ${note.favorite ? 'fill-current' : ''}`} />
+            <Star className={"h-4 w-4 " + (note.favorite ? "fill-current" : "")} />
           </button>
 
-          <Button size="sm" variant="primary" onClick={() => void handleSave()}>
+          <Button
+            size="sm"
+            variant="primary"
+            className="notebook-save-button min-h-[30px] px-3 font-bold shadow-xs text-xs"
+            onClick={() => void handleSave()}
+          >
             <Save className="h-3.5 w-3.5" />
             <span>保存</span>
           </Button>
@@ -249,321 +381,383 @@ export function NoteEditor({
       </header>
 
       {errorMessage && (
-        <div className="max-w-3xl mx-auto px-4 sm:px-12 pt-6">
+        <div className="notebook-editor-message max-w-4xl mx-auto px-5 sm:px-8 pt-2">
           <Alert variant="danger" onDismiss={() => setErrorMessage('')}>
             {errorMessage}
           </Alert>
         </div>
       )}
 
-      {/* Editor Paper */}
-      <article className="max-w-3xl mx-auto mt-6 px-4 sm:px-12 py-8 bg-[#fffdf8] rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/14%)] shadow-sm space-y-6">
-        {/* Meta controls */}
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={note.kind}
-            onChange={(e) =>
-              updateNoteState((prev) => ({ ...prev, kind: e.target.value as NoteKind }))
-            }
-            className="h-8 rounded-full border border-[rgb(24_32_29/16%)] bg-transparent px-3 text-xs text-[#68716d] font-semibold outline-none focus:border-[#e45d35]"
-          >
-            {Object.entries(kindLabels).map(([val, label]) => (
-              <option value={val} key={val}>
-                {label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={note.stage}
-            onChange={(e) =>
-              updateNoteState((prev) => ({ ...prev, stage: e.target.value as NoteStage }))
-            }
-            className="h-8 rounded-full border border-[rgb(24_32_29/16%)] bg-transparent px-3 text-xs text-[#68716d] font-semibold outline-none focus:border-[#e45d35]"
-          >
-            {Object.entries(stageLabels).map(([val, label]) => (
-              <option value={val} key={val}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Title Input */}
-        <input
-          value={note.title}
-          onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
-          placeholder="给这一页一个标题…"
-          className="w-full bg-transparent font-serif text-3xl sm:text-4xl font-medium text-[#18201d] placeholder:text-[#68716d]/40 outline-none border-b border-transparent focus:border-[rgb(24_32_29/12%)] pb-2"
-        />
-
-        {/* Tags */}
-        <input
-          value={note.tags.join('，')}
-          onChange={(e) =>
-            updateNoteState((prev) => ({
-              ...prev,
-              tags: e.target.value
-                .split(/[,，]/)
-                .map((t) => t.trim())
-                .filter(Boolean),
-            }))
-          }
-          placeholder="添加标签，以逗号分隔（如：灵感，第 2 章）"
-          className="w-full bg-transparent text-xs text-[#68716d] placeholder:text-[#68716d]/50 outline-none pb-2 border-b border-[rgb(24_32_29/10%)]"
-        />
-
-        {/* Blocks List */}
-        <div className="space-y-6 pt-2">
-          {note.content.map((block, index) => (
-            <div
-              key={block.id}
-              className="group relative pb-4 border-b border-dashed border-[rgb(24_32_29/12%)] space-y-2"
+      {localRecord?.status === 'error' && (
+        <div className="notebook-editor-message max-w-4xl mx-auto px-5 sm:px-8 pt-2">
+          <Alert variant="warning" title="内容已保存在本机，但后台同步失败">
+            <span>{localRecord.error || '网络恢复后会自动重试。'}</span>
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => void syncPendingNotebookData(queryClient, { force: true, noteId: effectiveNoteId })}
             >
-              <div className="flex items-center justify-between opacity-50 group-hover:opacity-100 transition-opacity">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#68716d]">
-                  {block.type === 'text'
-                    ? '段落文本'
-                    : block.type === 'image'
-                    ? '图片素材'
-                    : block.type === 'link'
-                    ? '参考链接'
-                    : block.type === 'character-reference'
-                    ? '角色资料引用'
-                    : '叙事档案引用'}
-                </span>
+              立即重试
+            </button>
+          </Alert>
+        </div>
+      )}
 
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    disabled={index === 0}
-                    onClick={() => handleMoveBlock(index, -1)}
-                    className="p-1 text-[#68716d] hover:text-[#18201d] disabled:opacity-20"
-                    title="上移"
-                    aria-label={`上移第 ${index + 1} 个内容块`}
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={index === note.content.length - 1}
-                    onClick={() => handleMoveBlock(index, 1)}
-                    className="p-1 text-[#68716d] hover:text-[#18201d] disabled:opacity-20"
-                    title="下移"
-                    aria-label={`下移第 ${index + 1} 个内容块`}
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBlock(block.id)}
-                    className="p-1 text-[#c9674a] hover:opacity-80"
-                    title="删除此块"
-                    aria-label={`删除第 ${index + 1} 个内容块`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
+      {/* Editor Structured Document Canvas */}
+      <div className="notebook-editor-frame max-w-4xl mx-auto px-5 sm:px-8 py-4 space-y-3.5">
+        {/* Layer 1: Compact Meta Bar (元数据属性栏 - 紧凑行内高度) */}
+        <section className="notebook-meta-bar flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#f7f4ee]/80 border border-[rgb(24_32_29/8%)]" aria-label="页面属性">
+          <div className="flex items-center gap-3">
+            <div className="notebook-select-group flex items-center gap-1.5">
+              <span className="notebook-field-label text-[11px] font-bold text-[#68716d]">类型</span>
+              <select
+                value={note.kind}
+                aria-label="笔记类型"
+                onChange={(e) =>
+                  updateNoteState((prev) => ({ ...prev, kind: e.target.value as NoteKind }))
+                }
+                className="notebook-select h-6 px-2 bg-white border border-[rgb(24_32_29/14%)] rounded text-[11px] font-semibold text-[#18201d] outline-none"
+              >
+                {Object.entries(kindLabels).map(([val, label]) => (
+                  <option value={val} key={val}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="notebook-select-group flex items-center gap-1.5">
+              <span className="notebook-field-label text-[11px] font-bold text-[#68716d]">阶段</span>
+              <select
+                value={note.stage}
+                aria-label="笔记阶段"
+                onChange={(e) =>
+                  updateNoteState((prev) => ({ ...prev, stage: e.target.value as NoteStage }))
+                }
+                className="notebook-select h-6 px-2 bg-white border border-[rgb(24_32_29/14%)] rounded text-[11px] font-semibold text-[#18201d] outline-none"
+              >
+                {Object.entries(stageLabels).map(([val, label]) => (
+                  <option value={val} key={val}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <span className="notebook-local-hint text-[10.5px] text-[#68716d]/70 font-mono">
+            自动保存在本机
+          </span>
+        </section>
+
+        {/* Layer 2: Compact Title & Tags Section */}
+        <section className="notebook-heading space-y-1.5" aria-label="笔记标题">
+          <div className="flex items-center justify-between">
+            <span className="notebook-heading-kicker text-[9.5px] font-bold uppercase tracking-wider text-[#b83b1b]">
+              CREATIVE NOTE
+            </span>
+          </div>
+          <label htmlFor="note-title" className="sr-only">笔记标题</label>
+          <input
+            id="note-title"
+            value={note.title}
+            onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
+            placeholder="输入笔记标题…"
+            className="notebook-title-input w-full bg-transparent font-serif text-xl sm:text-2xl font-medium text-[#18201d] placeholder:text-[#68716d]/30 outline-none pb-1.5 border-b border-[rgb(24_32_29/10%)] focus:border-[#e45d35]"
+          />
+
+          <label className="notebook-tags-field flex items-center gap-1.5 pt-0.5">
+            <span className="notebook-field-label text-[#e45d35] font-bold text-xs">#</span>
+            <input
+              value={note.tags.join('，')}
+              onChange={(e) =>
+                updateNoteState((prev) => ({
+                  ...prev,
+                  tags: e.target.value
+                    .split(/[,，]/)
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                }))
+              }
+              placeholder="添加标签（用逗号分隔，如：灵感，第 2 章）…"
+              className="notebook-tags-input w-full bg-transparent text-xs text-[#68716d] placeholder:text-[#68716d]/40 outline-none h-6"
+            />
+          </label>
+        </section>
+
+        {/* Layer 3: Main Text Content Focus Area (定高、舒适书写主舞台) */}
+        <section className="notebook-content-section space-y-2.5" aria-label="笔记正文">
+          <div className="notebook-content-heading flex items-center justify-between pb-1 border-b border-[rgb(24_32_29/8%)]">
+            <span className="notebook-section-kicker text-xs font-bold uppercase tracking-wider text-[#18201d]">
+              正文内容
+            </span>
+            <span className="notebook-block-count text-[10px] text-[#68716d] bg-[rgb(24_32_29/5%)] px-2 py-0.5 rounded-full font-medium">
+              {note.content.length} 个内容块
+            </span>
+          </div>
+
+          <div className="notebook-blocks space-y-3">
+            {note.content.map((block, index) => (
+              <div
+                key={block.id}
+                className="notebook-block group relative p-3 rounded-xl border border-[rgb(24_32_29/8%)] bg-[#fffdf8] hover:border-[rgb(24_32_29/18%)] shadow-2xs space-y-2 transition-all"
+              >
+                <div className="notebook-block-header flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#68716d]/70">
+                    {block.type === 'text'
+                      ? '段落文本'
+                      : block.type === 'image'
+                      ? '图片素材'
+                      : block.type === 'link'
+                      ? '参考链接'
+                      : block.type === 'character-reference'
+                      ? '角色资料引用'
+                      : '叙事档案引用'}
+                  </span>
+
+                  <div className="notebook-block-controls flex items-center gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      onClick={() => handleMoveBlock(index, -1)}
+                      className="notebook-icon-button text-[#68716d] hover:text-[#18201d] hover:bg-[rgb(24_32_29/6%)] disabled:opacity-20"
+                      title="上移"
+                      aria-label={"上移第 " + (index + 1) + " 个内容块"}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === note.content.length - 1}
+                      onClick={() => handleMoveBlock(index, 1)}
+                      className="notebook-icon-button text-[#68716d] hover:text-[#18201d] hover:bg-[rgb(24_32_29/6%)] disabled:opacity-20"
+                      title="下移"
+                      aria-label={"下移第 " + (index + 1) + " 个内容块"}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBlock(block.id)}
+                      className="notebook-icon-button text-[#c9674a] hover:bg-[#c9674a]/10"
+                      title="删除此块"
+                      aria-label={"删除第 " + (index + 1) + " 个内容块"}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Block Types */}
-              {block.type === 'text' && (
-                <textarea
-                  rows={Math.max(4, block.text.split('\n').length + 1)}
-                  value={block.text}
-                  onChange={(e) => handleUpdateBlock(block.id, { text: e.target.value })}
-                  placeholder="写下一段文字记录…"
-                  className="w-full bg-transparent font-serif text-base leading-relaxed text-[#18201d] placeholder:text-[#68716d]/40 outline-none resize-y"
-                />
-              )}
+                {/* Block Types */}
+                {block.type === 'text' && (
+                  <textarea
+                    value={block.text}
+                    onChange={(e) => handleUpdateBlock(block.id, { text: e.target.value })}
+                    placeholder="写下一段文字记录…"
+                    className="notebook-textarea w-full bg-transparent font-serif text-[15.5px] sm:text-[16.5px] leading-[1.8] text-[#18201d] placeholder:text-[#68716d]/40 outline-none p-1"
+                  />
+                )}
 
-              {block.type === 'image' && (
-                <div className="space-y-2">
-                  <div className="relative aspect-video w-full rounded-lg overflow-hidden bg-[#e6e4dc] flex items-center justify-center text-[#68716d]">
-                    {block.src ? (
-                      <Image
-                        src={block.src}
-                        alt={block.caption || '笔记图片'}
-                        fill
-                        unoptimized
-                        className="object-contain"
+                {block.type === 'image' && (
+                  <div className="notebook-image-block space-y-2 pt-1">
+                    <div className="notebook-image-preview relative aspect-video w-full max-w-2xl overflow-hidden rounded-[12px] bg-[#e6e4dc] flex items-center justify-center text-[#68716d]">
+                      {block.src ? (
+                        <LocalNoteImage
+                          src={block.src}
+                          alt={block.caption || '笔记图片'}
+                          priority={index < 2}
+                        />
+                      ) : (
+                        <span className="text-xs">等待选择图片</span>
+                      )}
+                    </div>
+                    <label className="notebook-caption-field flex items-center gap-2">
+                      <span className="notebook-field-label text-[11px] text-[#68716d]">说明</span>
+                      <input
+                        value={block.caption}
+                        onChange={(e) => handleUpdateBlock(block.id, { caption: e.target.value })}
+                        placeholder="为这张图片写一句说明（可选）"
+                        className="notebook-caption-input w-full bg-transparent text-xs text-[#68716d] outline-none"
                       />
-                    ) : (
-                      <span className="text-xs">等待选择图片</span>
+                    </label>
+                  </div>
+                )}
+
+                {block.type === 'link' && (
+                  <div className="p-3 rounded-lg bg-[rgb(24_32_29/3%)] border border-[rgb(24_32_29/8%)] space-y-2 mt-1">
+                    <input
+                      type="url"
+                      value={block.url}
+                      onChange={(e) => handleUpdateBlock(block.id, { url: e.target.value })}
+                      placeholder="https://..."
+                      className="w-full bg-transparent text-xs font-mono text-[#18201d] outline-none"
+                    />
+                    <input
+                      value={block.label}
+                      onChange={(e) => handleUpdateBlock(block.id, { label: e.target.value })}
+                      placeholder="链接标题"
+                      className="w-full bg-transparent text-xs font-semibold text-[#18201d] outline-none"
+                    />
+                    <textarea
+                      rows={2}
+                      value={block.note}
+                      onChange={(e) => handleUpdateBlock(block.id, { note: e.target.value })}
+                      placeholder="为什么收藏此链接？"
+                      className="w-full bg-transparent text-xs text-[#68716d] outline-none"
+                    />
+                    {block.url.startsWith('http') && (
+                      <a
+                        href={block.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-[#b83b1b] font-medium hover:underline"
+                      >
+                        <span>打开链接</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
                     )}
                   </div>
-                  <input
-                    value={block.caption}
-                    onChange={(e) => handleUpdateBlock(block.id, { caption: e.target.value })}
-                    placeholder="图片附注说明（可选）"
-                    className="w-full bg-transparent text-xs text-[#68716d] outline-none"
-                  />
-                </div>
-              )}
+                )}
 
-              {block.type === 'link' && (
-                <div className="p-3 rounded bg-[rgb(24_32_29/4%)] border border-[rgb(24_32_29/10%)] space-y-2">
-                  <input
-                    type="url"
-                    value={block.url}
-                    onChange={(e) => handleUpdateBlock(block.id, { url: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full bg-transparent text-xs font-mono text-[#18201d] outline-none"
-                  />
-                  <input
-                    value={block.label}
-                    onChange={(e) => handleUpdateBlock(block.id, { label: e.target.value })}
-                    placeholder="链接标题"
-                    className="w-full bg-transparent text-xs font-semibold text-[#18201d] outline-none"
-                  />
-                  <textarea
-                    rows={2}
-                    value={block.note}
-                    onChange={(e) => handleUpdateBlock(block.id, { note: e.target.value })}
-                    placeholder="为什么收藏此链接？"
-                    className="w-full bg-transparent text-xs text-[#68716d] outline-none"
-                  />
-                  {block.url.startsWith('http') && (
-                    <a
-                      href={block.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-[#b83b1b] font-medium hover:underline"
+                {block.type === 'character-reference' && (
+                  <div className="p-3.5 rounded-lg bg-[#f3f1e8]/70 border-l-4 border-l-[#b83b1b] border border-[rgb(24_32_29/8%)] space-y-2 mt-1">
+                    <select
+                      value={block.characterId}
+                      onChange={(e) =>
+                        handleUpdateBlock(block.id, { characterId: e.target.value })
+                      }
+                      className="w-full h-8 rounded border border-[rgb(24_32_29/14%)] bg-white px-2.5 text-xs text-[#18201d] outline-none"
                     >
-                      <span>打开链接</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-              )}
+                      <option value="">选择资料库中的角色</option>
+                      {characters.map((c) => (
+                        <option value={c.id} key={c.id}>
+                          {c.displayName}
+                          {c.draft.work ? (" · " + c.draft.work) : ''}
+                        </option>
+                      ))}
+                    </select>
 
-              {block.type === 'character-reference' && (
-                <div className="p-4 rounded bg-[#f3f1e8] border border-[rgb(108_107_91/20%)] space-y-3">
-                  <select
-                    value={block.characterId}
-                    onChange={(e) =>
-                      handleUpdateBlock(block.id, { characterId: e.target.value })
-                    }
-                    className="w-full h-9 rounded border border-[rgb(24_32_29/14%)] bg-[#fffdf8] px-3 text-xs text-[#18201d] outline-none"
-                  >
-                    <option value="">选择资料库中的角色</option>
-                    {characters.map((c) => (
-                      <option value={c.id} key={c.id}>
-                        {c.displayName}
-                        {c.draft.work ? ` · ${c.draft.work}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    {block.characterId && (
+                      <div className="p-2.5 rounded bg-white/80 border border-[rgb(24_32_29/8%)] text-xs space-y-1">
+                        <strong className="font-serif text-xs font-semibold text-[#18201d] block">
+                          {characters.find((c) => c.id === block.characterId)?.displayName}
+                        </strong>
+                        <p className="text-[#68716d] line-clamp-2 text-[11px]">
+                          {characters.find((c) => c.id === block.characterId)?.draft.summary ||
+                            '尚未填写摘要'}
+                        </p>
+                        <Link
+                          href={"/apps/characters/" + block.characterId}
+                          className="inline-block text-[#b83b1b] font-medium hover:underline pt-0.5 text-[11px]"
+                        >
+                          前往角色资料库 →
+                        </Link>
+                      </div>
+                    )}
 
-                  {block.characterId && (
-                    <div className="p-3 rounded bg-white/70 border-l-4 border-[#777865] text-xs space-y-1">
-                      <strong className="font-serif text-sm text-[#18201d] block">
-                        {characters.find((c) => c.id === block.characterId)?.displayName}
-                      </strong>
-                      <p className="text-[#68716d] line-clamp-2">
-                        {characters.find((c) => c.id === block.characterId)?.draft.summary ||
-                          '尚未填写摘要'}
-                      </p>
-                      <Link
-                        href={`/apps/characters/${block.characterId}`}
-                        className="inline-block text-[#b83b1b] font-medium hover:underline pt-1"
-                      >
-                        前往角色资料库 →
-                      </Link>
-                    </div>
-                  )}
+                    <textarea
+                      rows={2}
+                      value={block.note}
+                      onChange={(e) => handleUpdateBlock(block.id, { note: e.target.value })}
+                      placeholder="这条笔记与该角色的关系（可选）"
+                      className="w-full bg-transparent text-xs text-[#68716d] outline-none"
+                    />
+                  </div>
+                )}
 
-                  <textarea
-                    rows={2}
-                    value={block.note}
-                    onChange={(e) => handleUpdateBlock(block.id, { note: e.target.value })}
-                    placeholder="这条笔记与该角色的关系（可选）"
-                    className="w-full bg-transparent text-xs text-[#68716d] outline-none"
-                  />
-                </div>
-              )}
+                {block.type === 'archive-reference' && (
+                  <blockquote className="p-3.5 rounded-lg bg-[#eef0f2]/70 border-l-4 border-l-[#4d6684] border border-[rgb(24_32_29/8%)] text-xs space-y-2 mt-1">
+                    <p className="font-serif text-xs sm:text-sm text-[#18201d] leading-relaxed italic">
+                      “{block.quote}”
+                    </p>
+                    <Link
+                      href={"/apps/narrative?utterance=" + encodeURIComponent(block.targetId)}
+                      className="text-[#4d6684] font-semibold inline-flex items-center gap-1 hover:underline text-[11px]"
+                    >
+                      <span>{block.locator || '查看叙事档案'}</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </blockquote>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
 
-              {block.type === 'archive-reference' && (
-                <blockquote className="p-4 rounded bg-[#eef0f2] border-l-4 border-[#4d6684] text-xs space-y-2">
-                  <p className="font-serif text-sm text-[#18201d] leading-relaxed">
-                    “{block.quote}”
-                  </p>
-                  <Link
-                    href={`/apps/narrative?utterance=${encodeURIComponent(block.targetId)}`}
-                    className="text-[#4d6684] font-semibold inline-flex items-center gap-1 hover:underline"
-                  >
-                    <span>{block.locator || '查看叙事档案'}</span>
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                </blockquote>
-              )}
-            </div>
-          ))}
-        </div>
+        {/* Layer 4: Compact Action Dock (添加内容工具坞 - 紧凑小药丸) */}
+        <section className="notebook-add-panel p-2.5 rounded-lg border border-[rgb(24_32_29/8%)] bg-[#f7f4ee]/70 flex flex-wrap items-center justify-between gap-2" aria-label="添加内容块">
+          <span className="notebook-section-kicker text-[10.5px] font-bold text-[#68716d]">
+            ＋ 添加内容块
+          </span>
+          <div className="notebook-add-grid flex flex-wrap gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="notebook-add-button h-7 px-2.5 text-[11px] bg-white"
+              onClick={() => handleAddBlock('text')}
+            >
+              <Plus className="h-3 w-3" />
+              <span>段落文本</span>
+            </Button>
 
-        {/* Insert Bar */}
-        <div className="flex flex-wrap items-center justify-center gap-2 pt-6">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => handleAddBlock('text')}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>段落文本</span>
-          </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="notebook-add-button h-7 px-2.5 text-[11px] bg-white"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <ImageIcon className="h-3 w-3" />
+              <span>图片素材</span>
+            </Button>
 
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <ImageIcon className="h-3.5 w-3.5" />
-            <span>图片素材</span>
-          </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="notebook-add-button h-7 px-2.5 text-[11px] bg-white"
+              onClick={() => handleAddBlock('link')}
+            >
+              <LinkIcon className="h-3 w-3" />
+              <span>参考链接</span>
+            </Button>
 
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => handleAddBlock('link')}
-          >
-            <LinkIcon className="h-3.5 w-3.5" />
-            <span>参考链接</span>
-          </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="notebook-add-button h-7 px-2.5 text-[11px] bg-white"
+              onClick={() => handleAddBlock('character-reference')}
+            >
+              <User className="h-3 w-3" />
+              <span>角色引用</span>
+            </Button>
+          </div>
+        </section>
 
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => handleAddBlock('character-reference')}
-          >
-            <User className="h-3.5 w-3.5" />
-            <span>角色引用</span>
-          </Button>
-        </div>
-
-        {noteId && (
-          <div className="pt-6 border-t border-[rgb(24_32_29/10%)] text-center">
+        {/* Layer 5: Danger Zone */}
+        {effectiveNoteId && (
+          <div className="notebook-delete-row pt-3 pb-8 text-center">
             <button
               type="button"
               onClick={handleDelete}
-              className="text-xs text-[#c9674a] hover:underline cursor-pointer"
+              className="text-[11px] text-[#c9674a] hover:underline cursor-pointer"
             >
               删除这条笔记
             </button>
           </div>
         )}
-      </article>
+      </div>
 
       <input
         ref={fileInputRef}
         hidden
         type="file"
         accept="image/png,image/jpeg,image/webp,image/gif"
+        aria-label="上传笔记图片"
         onChange={handleUploadImage}
       />
-    </main>
+    </MainTag>
   );
 }

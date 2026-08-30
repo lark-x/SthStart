@@ -52,6 +52,7 @@ export default function LinshePage() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.setAttribute('data-app', 'linshe');
     let active = true;
     void getLinshe()
       .then((result) => {
@@ -63,13 +64,16 @@ export default function LinshePage() {
       .catch(() => {
         if (active) { markRemoteBrowser(); setState('unknown'); }
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      document.documentElement.removeAttribute('data-app');
+    };
   }, []);
 
   const showFrame = shouldRenderLinshe(state, forceOpen) && !localOnlyLaunch;
 
   return (
-    <main className="embed-shell">
+    <main className="embed-shell" data-app="linshe">
       <header className="embed-toolbar">
         <div className="embed-toolbar-main">
           <Link className="back-link" href="/" aria-label="返回 SthStart 首页">←</Link>
@@ -103,7 +107,7 @@ export default function LinshePage() {
             <h2>{localOnlyLaunch ? '邻舍需要单独的远程入口' : state === 'loading' ? '正在寻找邻舍…' : '邻舍还没有启动'}</h2>
             <p>
               {localOnlyLaunch
-                ? '当前 Quick Tunnel 只暴露了 SthStart Portal（4173）。邻舍仍监听本机 5173，手机无法直接访问；需要为 5173 配置第二个 Tunnel 或反向代理。'
+                ? '当前 Named Tunnel 只暴露了 SthStart Portal（4173）。邻舍生产入口仍在本机 3099；请为邻舍域名增加指向 3099 的受 Access 保护的 ingress。'
                 : state === 'unknown'
                 ? '公共服务暂时不可用。你仍可以尝试直接加载默认的本地地址。'
                 : '请在项目根目录启动邻舍，服务就绪后再重新连接。'}

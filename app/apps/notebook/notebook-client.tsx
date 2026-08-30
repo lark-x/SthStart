@@ -1,1 +1,1 @@
-export { NotebookList as NotebookClient } from '@/app/features/notebook/components/notebook-list';
+export { NotebookWorkspace as NotebookClient } from '@/app/features/notebook/components/notebook-workspace';

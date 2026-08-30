@@ -1,4 +1,5 @@
 import type { NoteBlock, NoteKind, NoteStage } from '@sthstart/contracts';
+import { generateId } from '@/app/lib/uuid';
 
 export const kindLabels: Record<NoteKind, string> = {
   diary: '日记',
@@ -16,7 +17,7 @@ export const stageLabels: Record<NoteStage, string> = {
 };
 
 export function newBlock(type: NoteBlock['type']): NoteBlock {
-  const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  const id = generateId();
   if (type === 'image') return { id, type, src: '', caption: '' };
   if (type === 'link') return { id, type, url: '', label: '', note: '' };
   if (type === 'character-reference') return { id, type, characterId: '', note: '' };

@@ -252,8 +252,8 @@ export function CreativeClient() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f0e7] px-4 py-8 text-[#18201d] sm:px-8 md:px-12">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen w-full bg-[#f4f0e7] px-4 py-6 text-[#18201d] sm:px-8 md:px-12">
+      <div className="mx-auto max-w-7xl space-y-5">
         <PageHeader
           backHref="/"
           backLabel="返回门户首页"

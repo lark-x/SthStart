@@ -87,6 +87,7 @@ export function AppearanceSection({
           整体外貌综合描述
         </label>
         <Textarea
+          aria-label="整体外貌综合描述"
           rows={5}
           value={draft.appearance.description}
           onChange={(e) => updateAppearance({ description: e.target.value })}
@@ -98,6 +99,7 @@ export function AppearanceSection({
         <div>
           <label className="block text-xs font-semibold text-[#18201d] mb-1.5">发型与发色</label>
           <Textarea
+            aria-label="发型与发色"
             rows={3}
             value={draft.appearance.hair}
             onChange={(e) => updateAppearance({ hair: e.target.value })}
@@ -108,6 +110,7 @@ export function AppearanceSection({
         <div>
           <label className="block text-xs font-semibold text-[#18201d] mb-1.5">眼睛特征</label>
           <Textarea
+            aria-label="眼睛特征"
             rows={3}
             value={draft.appearance.eyes}
             onChange={(e) => updateAppearance({ eyes: e.target.value })}
@@ -118,6 +121,7 @@ export function AppearanceSection({
         <div>
           <label className="block text-xs font-semibold text-[#18201d] mb-1.5">体态与身材</label>
           <Textarea
+            aria-label="体态与身材"
             rows={3}
             value={draft.appearance.build}
             onChange={(e) => updateAppearance({ build: e.target.value })}
@@ -148,6 +152,7 @@ export function AppearanceSection({
           额外系统运行规则 / 负面提示词约束
         </label>
         <Textarea
+          aria-label="额外系统运行规则 / 负面提示词约束"
           rows={4}
           value={draft.extraRules}
           onChange={(e) => onChange({ extraRules: e.target.value })}

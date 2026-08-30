@@ -37,7 +37,7 @@ export function LinsheCard() {
         <span className="art-core">邻</span>
       </div>
       <div className="card-content">
-        <div className="card-meta">
+        <div className="card-meta" data-visual-dynamic="true">
           <span className={`status-dot status-${status}`} />
           <span>{homeStatusLabel(status)}</span>
         </div>
@@ -48,7 +48,7 @@ export function LinsheCard() {
             <span>进入邻舍</span>
             <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </Link>
-          <span className="service-hint">{homeStatusHint(status)}</span>
+          <span className="service-hint" data-visual-dynamic="true">{homeStatusHint(status)}</span>
         </div>
       </div>
     </article>

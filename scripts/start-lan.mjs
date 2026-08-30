@@ -1,9 +1,21 @@
 import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+function readEnvironment() {
+  const path = resolve(root, '.env');
+  if (!existsSync(path)) return {};
+  return Object.fromEntries(readFileSync(path, 'utf8').split(/\r?\n/)
+    .map((line) => line.match(/^([A-Z0-9_]+)=(.*)$/))
+    .filter(Boolean)
+    .map((match) => [match[1], match[2].trim()]));
+}
+
+const environment = { ...readEnvironment(), ...process.env };
 
 function privateIpv4(address) {
   const parts = address.split('.').map(Number);
@@ -11,7 +23,7 @@ function privateIpv4(address) {
 }
 
 function discoverAddress() {
-  const configured = process.env.STHSTART_LAN_HOST?.trim();
+  const configured = environment.STHSTART_LAN_HOST?.trim();
   if (configured) {
     if (!privateIpv4(configured)) throw new Error('STHSTART_LAN_HOST 必须是私有 IPv4 地址。');
     return configured;
@@ -31,9 +43,9 @@ function discoverAddress() {
 }
 
 const address = discoverAddress();
-const portalPort = Number(process.env.PORTAL_PORT || 4173);
+const portalPort = Number(environment.PORTAL_PORT || 4173);
 const portalOrigin = `http://${address}:${portalPort}`;
-const configuredOrigins = (process.env.STHSTART_PUBLIC_ORIGINS ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+const configuredOrigins = (environment.STHSTART_PUBLIC_ORIGINS ?? '').split(',').map((item) => item.trim()).filter(Boolean);
 const publicOrigins = [...new Set([portalOrigin, ...configuredOrigins])].join(',');
 const portalOrigins = [...new Set([portalOrigin, 'http://127.0.0.1:4173', 'http://localhost:4173'])].join(',');
 
@@ -45,7 +57,7 @@ const child = spawn(npmCommand, ['run', 'start:lan:processes'], {
   stdio: 'inherit',
   windowsHide: true,
   env: {
-    ...process.env,
+    ...environment,
     STHSTART_LAN_ACCESS: 'true',
     STHSTART_PUBLIC_ORIGINS: publicOrigins,
     PORTAL_ORIGINS: portalOrigins,

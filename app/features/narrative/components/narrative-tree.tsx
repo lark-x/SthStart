@@ -41,10 +41,14 @@ export function NarrativeTree({
   return (
     <aside className="w-full md:w-64 flex flex-col bg-[#e3ded4] border-r border-[rgb(32_38_49/13%)] min-h-[calc(100dvh-68px)]">
       <div className="p-4 border-b border-[rgb(32_38_49/11%)] space-y-1.5">
-        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#777b7f]">
+        <label
+          htmlFor="narrative-work-select"
+          className="block text-[10px] font-bold uppercase tracking-wider text-[#777b7f]"
+        >
           当前作品
         </label>
         <Select
+          id="narrative-work-select"
           value={selectedWorkId}
           onChange={(e) => onSelectWork(e.target.value)}
           className="bg-[#f5f1e8] text-xs h-9"

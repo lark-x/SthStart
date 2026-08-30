@@ -98,7 +98,13 @@ export function OtherProviders({
               placeholder="显示名称"
               required
             />
-            <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+            <label htmlFor="other-provider-kind" className="sr-only">能力类型</label>
+            <Select
+              id="other-provider-kind"
+              aria-label="能力类型"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as typeof kind)}
+            >
               <option value="vector">向量</option>
               <option value="image">图片 / ComfyUI</option>
             </Select>
@@ -136,4 +142,3 @@ export function OtherProviders({
     </Card>
   );
 }
-

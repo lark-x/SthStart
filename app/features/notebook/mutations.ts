@@ -7,8 +7,10 @@ export function useCreateNote() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createNote,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: notebookKeys.all });
+    onSuccess: (note) => {
+      if (note.id) queryClient.setQueryData(notebookKeys.detail(note.id), note);
+      queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) =>
+        current ? { items: [note, ...current.items.filter((item) => item.id !== note.id)] } : current);
     },
   });
 }
@@ -19,9 +21,10 @@ export function useUpdateNote() {
     mutationFn: ({ id, payload }: { id: string; payload: Partial<CreativeNote> }) =>
       updateNote(id, payload),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: notebookKeys.all });
       if (data.id) {
-        queryClient.invalidateQueries({ queryKey: notebookKeys.detail(data.id) });
+        queryClient.setQueryData(notebookKeys.detail(data.id), data);
+        queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) =>
+          current ? { items: current.items.map((item) => item.id === data.id ? data : item) } : current);
       }
     },
   });
@@ -31,8 +34,10 @@ export function useDeleteNote() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteNote,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: notebookKeys.all });
+    onSuccess: (_result, id) => {
+      queryClient.removeQueries({ queryKey: notebookKeys.detail(id) });
+      queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) =>
+        current ? { items: current.items.filter((item) => item.id !== id) } : current);
     },
   });
 }
@@ -43,4 +48,3 @@ export function useUploadNoteAsset() {
       uploadNoteAsset(noteId, file),
   });
 }
-

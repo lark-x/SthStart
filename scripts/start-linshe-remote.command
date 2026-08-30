@@ -2,12 +2,13 @@
 
 set -u
 
-ROOT="/Volumes/Lark/lark/SthStart"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AGENT_ROOT="$ROOT/upstream/linshe/agent-core"
 WEB_ROOT="$ROOT/upstream/linshe/web-ui"
 VECTOR_ROOT="$ROOT/upstream/linshe/vector-service"
 VECTOR_PYTHON="$VECTOR_ROOT/venv/bin/python"
-TUNNEL_LOG="/private/tmp/sthstart-linshe-quick-tunnel.log"
+TUNNEL_NAME="${STHSTART_TUNNEL_NAME:-sthstart}"
+TUNNEL_LOG="/private/tmp/sthstart-linshe-tunnel.log"
 AGENT_LOG="/private/tmp/sthstart-linshe-agent.log"
 WEB_LOG="/private/tmp/sthstart-linshe-web.log"
 VECTOR_LOG="/private/tmp/sthstart-linshe-vector.log"
@@ -42,7 +43,7 @@ run_vector() {
 
 run_tunnel() {
   while true; do
-    cloudflared tunnel --url http://127.0.0.1:5173 2>&1 | tee -a "$TUNNEL_LOG"
+    cloudflared tunnel run "$TUNNEL_NAME" 2>&1 | tee -a "$TUNNEL_LOG"
     printf '[supervisor] tunnel exited (%s), retrying in 2s\n' "$?" >>"$TUNNEL_LOG"
     sleep 2
   done
@@ -51,7 +52,8 @@ run_tunnel() {
 echo "SthStart 邻舍远程服务"
 echo "Web: http://127.0.0.1:5173"
 echo "后端: http://127.0.0.1:3099"
-echo "本窗口保持打开即可维持邻舍和 Quick Tunnel。"
+echo "Named Tunnel: $TUNNEL_NAME（按 ~/.cloudflared/config.yml 路由）"
+echo "本窗口保持打开即可维持邻舍和受 Access 保护的 Named Tunnel。"
 echo
 
 run_agent &

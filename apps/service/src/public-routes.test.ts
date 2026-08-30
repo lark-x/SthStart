@@ -509,18 +509,31 @@ test('notebook CRUD persists searchable structured notes', async () => {
     content: [{ id: 'block-1', type: 'text', text: '角色在末班车到站前收到一封信。' }],
   } });
   assert.equal(created.statusCode, 201); const note = created.json();
+  assert.equal(note.revision, 1);
   const searched = await app.inject({ method: 'GET', url: '/api/v1/admin/notebook/notes?q=末班车', headers });
   assert.equal(searched.statusCode, 200); assert.equal(searched.json().items[0].id, note.id);
   const updated = await app.inject({ method: 'PUT', url: `/api/v1/admin/notebook/notes/${note.id}`, headers, payload: { ...note, title: '雨夜的末班车' } });
   assert.equal(updated.json().title, '雨夜的末班车');
-  const uploaded = await app.inject({ method: 'POST', url: '/api/v1/admin/notebook/assets', headers, payload: {
-    noteId: note.id, filename: 'station.png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+  assert.equal(updated.json().revision, 2);
+  const clientNoteId = 'client-note-12345678';
+  const upserted = await app.inject({ method: 'PUT', url: `/api/v1/admin/notebook/notes/${clientNoteId}`, headers, payload: {
+    title: '离线创建', kind: 'note', stage: 'draft', tags: [], content: [],
   } });
+  assert.equal(upserted.statusCode, 201);
+  assert.equal(upserted.json().id, clientNoteId);
+  const uploaded = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/notebook/assets',
+    headers: { ...headers, 'content-type': 'image/png', 'x-note-id': note.id, 'x-original-filename': 'station.png' },
+    payload: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'),
+  });
   assert.equal(uploaded.statusCode, 201);
-  assert.match(uploaded.json().url, /^\/api\/v1\/admin\/notebook\/assets\//);
+  assert.match(uploaded.json().url, /^\/api\/admin\/notebook\/assets\//);
   const assetId = uploaded.json().id;
   const image = await app.inject({ method: 'GET', url: `/api/v1/admin/notebook/assets/${assetId}`, headers });
   assert.equal(image.statusCode, 200); assert.equal(image.headers['content-type'], 'image/png');
+  assert.equal(image.headers['cache-control'], 'private, max-age=31536000, immutable');
+  assert.equal(image.headers['content-length'], String(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB').length));
   const assetPath = database.connection.prepare('SELECT local_path FROM note_assets WHERE id=?').get(assetId) as { local_path: string };
   await unlink(assetPath.local_path);
   const missingImage = await app.inject({ method: 'GET', url: `/api/v1/admin/notebook/assets/${assetId}`, headers });

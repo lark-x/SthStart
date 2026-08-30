@@ -9,7 +9,7 @@ import { ServiceDatabase } from './database.js';
 test('fresh databases record an explicit migration baseline', () => {
   const database = new ServiceDatabase();
   const migrations = database.connection.prepare('SELECT version,name FROM schema_migrations').all() as Array<{ version: number; name: string }>;
-  assert.equal(migrations.length, 11);
+  assert.equal(migrations.length, 12);
   assert.equal(migrations[0].version, 1);
   assert.equal(migrations[0].name, 'initial');
   assert.equal(migrations[1].version, 2);
@@ -26,6 +26,8 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(migrations[9].name, 'artifact-video-metadata');
   assert.equal(migrations[10].version, 11);
   assert.equal(migrations[10].name, 'generation-consumer-links');
+  assert.equal(migrations[11].version, 12);
+  assert.equal(migrations[11].name, 'notebook-local-first-sync');
   const columns = database.connection.prepare('PRAGMA table_info(provider_profile_options)').all() as Array<{ name: string }>;
   assert.equal(columns.some((column) => column.name === 'capabilities_json'), true);
   const taskColumns = database.connection.prepare('PRAGMA table_info(generation_tasks)').all() as Array<{ name: string }>;
@@ -40,6 +42,8 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(artifactColumns.some((column) => column.name === 'thumbnail_artifact_id'), true);
   const characterAssetColumns = database.connection.prepare('PRAGMA table_info(character_assets)').all() as Array<{ name: string }>;
   assert.equal(characterAssetColumns.some((column) => column.name === 'artifact_id'), true);
+  const noteColumns = database.connection.prepare('PRAGMA table_info(creative_notes)').all() as Array<{ name: string }>;
+  assert.equal(noteColumns.some((column) => column.name === 'revision'), true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='generation_context_links'").get() !== undefined, true);
   database.close();
 });
@@ -58,6 +62,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
     CREATE TABLE managed_apps(id TEXT PRIMARY KEY,name TEXT,token_hash TEXT,capabilities_json TEXT,enabled INTEGER,created_at TEXT,updated_at TEXT);
     CREATE TABLE provider_profiles(id TEXT PRIMARY KEY,name TEXT,kind TEXT,base_url TEXT,model TEXT,credential_account TEXT,enabled INTEGER,created_at TEXT,updated_at TEXT);
     CREATE TABLE provider_profile_options(profile_id TEXT PRIMARY KEY,thinking_mode TEXT,headers_json TEXT,extra_body_json TEXT);
+    CREATE TABLE creative_notes(id TEXT PRIMARY KEY,title TEXT,kind TEXT,summary TEXT,content_json TEXT,tags_json TEXT,stage TEXT,favorite INTEGER,created_at TEXT,updated_at TEXT);
     CREATE TABLE artifacts(id TEXT PRIMARY KEY, app_id TEXT, task_id TEXT, provider_url TEXT, local_path TEXT, content_type TEXT, byte_size INTEGER, pinned INTEGER, created_at TEXT);
     INSERT INTO provider_profiles VALUES ('old','Old','llm','https://example.test/v1','old-model',NULL,1,'now','now');
     INSERT INTO provider_profile_options VALUES ('old','omit','{}','{}');`);
@@ -65,7 +70,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
   const migrated = new ServiceDatabase(path);
   const row = migrated.connection.prepare("SELECT capabilities_json FROM provider_profile_options WHERE profile_id='old'").get() as { capabilities_json: string };
   assert.deepEqual(JSON.parse(row.capabilities_json), ['text']);
-  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 11);
+  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 12);
   migrated.close();
 });
 

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { X, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { generateId } from '../lib/uuid';
 
 export type ToastVariant = 'default' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -16,6 +17,8 @@ export interface ToastItem {
 
 interface UIContextType {
   toasts: ToastItem[];
+  eyeCare: boolean;
+  toggleEyeCare: (enabled?: boolean) => void;
   showToast: (toast: Omit<ToastItem, 'id'>) => string;
   dismissToast: (id: string) => void;
   toast: {
@@ -31,6 +34,35 @@ const UIContext = createContext<UIContextType | null>(null);
 
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [eyeCare, setEyeCare] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sthstart_eye_care_mode') === 'true';
+    }
+    return false;
+  });
+
+  const toggleEyeCare = useCallback((enabled?: boolean) => {
+    setEyeCare((prev) => {
+      const next = typeof enabled === 'boolean' ? enabled : !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sthstart_eye_care_mode', String(next));
+        if (next) {
+          document.documentElement.setAttribute('data-eye-care', 'true');
+        } else {
+          document.documentElement.removeAttribute('data-eye-care');
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (eyeCare) {
+      document.documentElement.setAttribute('data-eye-care', 'true');
+    } else {
+      document.documentElement.removeAttribute('data-eye-care');
+    }
+  }, [eyeCare]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));
@@ -38,7 +70,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback(
     ({ title, description, variant = 'default', duration = 4000 }: Omit<ToastItem, 'id'>) => {
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+      const id = generateId();
       const newToast: ToastItem = { id, title, description, variant, duration };
 
       setToasts((current) => [...current, newToast]);
@@ -72,11 +104,13 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       toasts,
+      eyeCare,
+      toggleEyeCare,
       showToast,
       dismissToast,
       toast,
     }),
-    [toasts, showToast, dismissToast, toast]
+    [toasts, eyeCare, toggleEyeCare, showToast, dismissToast, toast]
   );
 
   return (
@@ -98,6 +132,11 @@ export function useUI() {
 export function useToast() {
   const { toast } = useUI();
   return toast;
+}
+
+export function useEyeCare() {
+  const { eyeCare, toggleEyeCare } = useUI();
+  return { eyeCare, toggleEyeCare };
 }
 
 function ToastContainer({
@@ -171,4 +210,3 @@ function ToastContainer({
     </div>
   );
 }
-

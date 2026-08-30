@@ -20,6 +20,7 @@ import { AppTokens } from './app-tokens';
 import { OtherProviders } from './other-providers';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Button } from '@/app/components/ui/button';
+import { buttonVariants } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
@@ -172,7 +173,8 @@ export function PublicServicesSettings() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-8 max-w-7xl mx-auto space-y-6 public-services-layout">
+    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6 public-services-layout">
+      <div className="max-w-7xl mx-auto space-y-5">
       <PageHeader
         backHref="/"
         backLabel="返回门户首页"
@@ -181,6 +183,12 @@ export function PublicServicesSettings() {
         description="管理全局大语言模型模板库、应用角色绑定与系统凭据。遵循「LLM 模板 → 应用角色绑定 → 应用调用」模型：修改模板配置即时对所有绑定应用生效，密钥由系统安全凭据库管理。"
         actions={
           <div className="flex items-center gap-2">
+            <Link
+              href="/settings/control-center"
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            >
+              控制中心
+            </Link>
             <Button size="sm" variant="outline" onClick={() => void refetch()}>
               <RefreshCw className="h-3.5 w-3.5" />
               <span>刷新数据</span>
@@ -253,7 +261,7 @@ export function PublicServicesSettings() {
           </div>
           <button
             type="button"
-            className="secondary-button min-h-[34px] px-3 border border-[rgb(24_32_29/17%)] rounded-lg text-xs font-semibold hover:bg-[rgb(24_32_29/6%)] transition-colors cursor-pointer"
+            className="min-h-[34px] px-3.5 bg-[#e45d35] text-white hover:bg-[#b83b1b] rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             onClick={handleBeginNew}
           >
             新建模板
@@ -313,13 +321,14 @@ export function PublicServicesSettings() {
         </div>
         <div className="flex justify-end">
           <Link
-            className="character-service-link inline-flex items-center gap-1.5 px-4 py-2.5 rounded-[3px_14px_3px_3px] bg-[#18201d] text-[#f4f0e7] font-semibold text-xs hover:bg-black transition-colors"
+            className="character-service-link inline-flex items-center gap-1.5 px-4 py-2.5 rounded-[3px_14px_3px_3px] bg-[#e45d35] text-white font-semibold text-xs hover:bg-[#b83b1b] transition-colors shadow-xs"
             href="/apps/characters"
           >
             <span>打开角色资料库 →</span>
           </Link>
         </div>
       </section>
+      </div>
     </main>
   );
 }

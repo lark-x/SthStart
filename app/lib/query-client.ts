@@ -4,9 +4,10 @@ export function createQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 15_000,
-        gcTime: 5 * 60_000,
+        staleTime: 60_000,
+        gcTime: 30 * 60_000,
         refetchOnWindowFocus: false,
+        networkMode: 'offlineFirst',
         retry: (failureCount, error) => {
           // Do not retry 4xx errors
           if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') {
@@ -17,6 +18,7 @@ export function createQueryClient() {
       },
       mutations: {
         retry: false,
+        networkMode: 'offlineFirst',
       },
     },
   });
@@ -35,4 +37,3 @@ export function getQueryClient() {
   }
   return browserQueryClient;
 }
-
