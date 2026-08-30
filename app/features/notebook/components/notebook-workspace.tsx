@@ -303,9 +303,11 @@ export function NotebookWorkspace({
               visibleNotes.map((item) => {
                 const isSelected = !isCreating && activeId === item.id;
                 return (
-                  <div
+                  <button
                     key={item.id}
+                    type="button"
                     onClick={() => handleSelectNote(item.id!)}
+                    aria-current={isSelected ? 'page' : undefined}
                     className={"notebook-list-item group relative p-3 rounded-[3px_10px_3px_3px] border transition-all duration-150 cursor-pointer " + (
                       isSelected
                         ? 'bg-[#fffdf8] border-[#e45d35] shadow-xs ring-1 ring-[#e45d35]/30'
@@ -354,7 +356,7 @@ export function NotebookWorkspace({
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             ) : (

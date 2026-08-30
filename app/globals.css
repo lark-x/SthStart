@@ -777,17 +777,12 @@ button.primary-action:hover,
 }
 
 .notebook-master-list {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(24 32 29 / 16%) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .notebook-master-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.notebook-master-list::-webkit-scrollbar-thumb {
-  background: rgb(24 32 29 / 16%);
-  border-radius: 4px;
+  display: none;
 }
 
 .notebook-detail-pane {
@@ -795,17 +790,30 @@ button.primary-action:hover,
   height: calc(100vh - 48px);
   height: calc(100dvh - 48px);
   background: #fffdf8;
-  scrollbar-width: thin;
-  scrollbar-color: rgb(24 32 29 / 16%) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .notebook-detail-pane::-webkit-scrollbar {
-  width: 5px;
+  display: none;
 }
 
-.notebook-detail-pane::-webkit-scrollbar-thumb {
-  background: rgb(24 32 29 / 16%);
-  border-radius: 4px;
+/* The workspace keeps scrolling available while replacing browser scrollbars
+   with the card stream itself as the visual navigation cue. */
+.notebook-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.notebook-filter-options {
+  overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notebook-filter-options::-webkit-scrollbar {
+  display: none;
 }
 
 /* Notebook editor (Seamless Structured Document Canvas) */
