@@ -260,7 +260,7 @@ export function NotebookWorkspace({
 
             {/* Filter Category Pills */}
             <div
-              className="notebook-filter-options flex items-center gap-1 overflow-x-auto pb-0.5"
+              className="notebook-filter-options flex flex-wrap items-center gap-1 pb-0.5"
               role="group"
               aria-label="笔记分类筛选"
             >
