@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback, useSyncExternalStore } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -125,13 +125,27 @@ export function NotebookWorkspace({
     for (const listener of collapsedListeners) listener();
   }, []);
 
+  // 路由 props（initialNoteId/isNew）只在真实导航时更新；桌面端选中/新建
+  // 走 history.replaceState 原地切换，组件不重挂载，props 停留在进入页面时
+  // 的旧路由上。若不用 routeKey 门禁，每次内部选中都会被旧路由分支立刻撤销：
+  // /new 页选中笔记弹回空白编辑器、[id] 页选中弹回 URL 里的旧笔记——
+  // 表现为“列表无法选中”。桌面端“未选中时自动打开第一条”不依赖路由，
+  // 保持每次依赖变化都评估。
+  const appliedRouteRef = useRef<string | null>(null);
   useEffect(() => {
+    const routeKey = `${initialNoteId ?? ''}|${isNew ? 'new' : ''}`;
+    const routeChanged = appliedRouteRef.current !== routeKey;
+    if (routeChanged) appliedRouteRef.current = routeKey;
     if (initialNoteId && !exitedToMobileList) {
-      setActiveId(initialNoteId);
-      setIsCreating(false);
+      if (routeChanged) {
+        setActiveId(initialNoteId);
+        setIsCreating(false);
+      }
     } else if (isNew) {
-      setIsCreating(true);
-      setActiveId(null);
+      if (routeChanged) {
+        setIsCreating(true);
+        setActiveId(null);
+      }
     } else if (notes.length > 0 && !activeId && !isCreating) {
       if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
         setActiveId(notes[0].id ?? null);
