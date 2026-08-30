@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { RefreshCw, Sparkles, ImagePlus } from 'lucide-react';
 import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
@@ -38,6 +38,12 @@ const IMAGE_TABS = [
   { value: 'text-to-image' as const, label: '文本生图', Icon: Sparkles },
   { value: 'image-to-image' as const, label: '图生图', Icon: ImagePlus },
 ];
+
+type CreativeArtifactsPage = {
+  items: ArtifactDescriptor[];
+  total: number;
+  nextOffset: number;
+};
 
 export function CreativeClient() {
   const queryClient = useQueryClient();
@@ -264,10 +270,14 @@ export function CreativeClient() {
     });
     const sourceId = task.replay.inputArtifactIds[0];
     const lastId = task.replay.inputArtifactIds[1];
-    setSourceArtifact(sourceId ? artifacts.find((item) => item.id === sourceId) ?? null : null);
-    setSourcePreview(sourceId ? artifacts.find((item) => item.id === sourceId)?.url ?? null : null);
-    setLastFrameArtifact(lastId ? artifacts.find((item) => item.id === lastId) ?? null : null);
-    setLastFramePreview(lastId ? artifacts.find((item) => item.id === lastId)?.url ?? null : null);
+    // 素材可能不在当前已加载分页中：找不到时用 sourceId 直接构造
+    // portal 代理 URL 兜底预览，并保留 id 供提交时传递，避免静默丢失。
+    const sourceArtifactItem = sourceId ? artifacts.find((item) => item.id === sourceId) : undefined;
+    setSourceArtifact(sourceArtifactItem ?? (sourceId ? { id: sourceId } as unknown as ArtifactDescriptor : null));
+    setSourcePreview(sourceArtifactItem?.url ?? (sourceId ? `/api/admin/creative/artifacts/${encodeURIComponent(sourceId)}` : null));
+    const lastFrameItem = lastId ? artifacts.find((item) => item.id === lastId) : undefined;
+    setLastFrameArtifact(lastFrameItem ?? (lastId ? { id: lastId } as unknown as ArtifactDescriptor : null));
+    setLastFramePreview(lastFrameItem?.url ?? (lastId ? `/api/admin/creative/artifacts/${encodeURIComponent(lastId)}` : null));
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast.info('已载入任务参数', '你可以修改提示词后再次生成。');
   };
@@ -286,9 +296,19 @@ export function CreativeClient() {
     if (!window.confirm(`确定删除“${artifact.originalName ?? '这个作品'}”吗？`)) return;
     try {
       await deleteCreativeArtifact(artifact.id);
-      await queryClient.invalidateQueries({ queryKey: creativeKeys.artifacts() });
+      // 无限查询的已加载分页不会因失效而立刻重取，先乐观移除避免
+      // 删除后作品仍停留在媒体库里；随后的失效会与服务端真值对齐。
+      queryClient.setQueryData<InfiniteData<CreativeArtifactsPage>>(creativeKeys.artifacts(), (current) => current ? {
+        ...current,
+        pages: current.pages.map((page, index) => ({
+          ...page,
+          total: index === 0 ? Math.max(0, page.total - 1) : page.total,
+          items: page.items.filter((item) => item.id !== artifact.id),
+        })),
+      } : current);
       // 任务卡的缩略图直接引用产物 URL，删除后同步失效任务缓存，
       // 否则最多 10s 内任务卡仍渲染已 404 的图片。
+      void queryClient.invalidateQueries({ queryKey: creativeKeys.artifacts() });
       void queryClient.invalidateQueries({ queryKey: creativeKeys.tasks() });
       toast.success('作品已删除');
     } catch (error) {
@@ -368,7 +388,7 @@ export function CreativeClient() {
           </div>
           <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
         </div>
-        <TaskList tasks={sortedTasks} artifacts={artifacts} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />
+        <TaskList tasks={sortedTasks} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />
         <MediaGallery
           artifacts={artifacts}
           total={artifactsTotal}

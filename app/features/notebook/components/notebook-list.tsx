@@ -25,9 +25,11 @@ const filterOptions: Array<{ value: 'all' | NoteKind; label: string }> = [
 
 function formatDate(iso?: string) {
   if (!iso) return '';
-  return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(
-    new Date(iso)
-  );
+  // 本地离线记录可能带有无效时间戳，Intl.format(Invalid Date) 会抛
+  // RangeError 打白整个列表；无效值直接不显示。
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(date);
 }
 
 export function NotebookList() {

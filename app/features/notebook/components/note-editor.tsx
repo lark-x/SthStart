@@ -48,10 +48,12 @@ export function NoteEditor({
   noteId,
   initialKind = 'note',
   standalone = true,
+  onDeleted,
 }: {
   noteId?: string;
   initialKind?: NoteKind;
   standalone?: boolean;
+  onDeleted?: () => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -245,7 +247,10 @@ export function NoteEditor({
         current ? { items: current.items.filter((item) => item.id !== effectiveNoteId) } : current);
       void syncPendingNotebookData(queryClient, { force: true, noteId: effectiveNoteId });
       toast.success('已从本机移除', online ? '正在后台同步删除。' : '联网后会自动同步删除。');
-      router.push('/apps/notebook');
+      // 嵌入工作台时删除后交回父组件清除选中态；router.push 会整页跳走，
+      // 工作台的筛选与列表状态全部丢失。
+      if (!standalone && onDeleted) onDeleted();
+      else router.push('/apps/notebook');
     } catch (err) {
       toast.error('删除失败', err instanceof Error ? err.message : String(err));
     }

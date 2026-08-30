@@ -497,6 +497,11 @@ export const CreativeTaskResponseSchema = Type.Intersect([
 ]);
 export type CreativeTaskResponse = Static<typeof CreativeTaskResponseSchema>;
 
+export const CreativeTaskListResponseSchema = Type.Object({
+  items: Type.Array(CreativeTaskResponseSchema),
+});
+export type CreativeTaskListResponse = Static<typeof CreativeTaskListResponseSchema>;
+
 export const CreativeArtifactListResponseSchema = Type.Object({
   items: Type.Array(ArtifactDescriptorSchema),
   total: Type.Number(),
@@ -587,6 +592,25 @@ export const CharacterDraftSchema = Type.Object({
   legacyPrompt: Type.Optional(Type.String()),
 });
 export type CharacterDraft = Static<typeof CharacterDraftSchema>;
+
+function bullets(values: string[]) { return values.map((value) => `- ${value}`).join('\n'); }
+
+// 邻舍人格提示词编译：发布（characters publish）与 Tavern 导出共用同一实现，
+// 前端预览也引用此函数，保证预览与实际发布的提示词一致。
+export function compileLinshePrompt(draft: CharacterDraft) {
+  if (draft.legacyPrompt && !draft.identity && draft.personality.length === 0) return draft.legacyPrompt;
+  const heading = `你是${draft.displayName}${draft.englishName ? `(${draft.englishName})` : ''}${draft.originType === 'ip' && draft.work ? `，来自《${draft.work}》` : ''}。`;
+  const identity = [draft.identity, draft.background, draft.currentSituation].filter(Boolean).join('\n\n') || draft.summary;
+  const personality = [
+    ...draft.personality,
+    draft.speech.tone ? `说话语气：${draft.speech.tone}` : '', draft.speech.habits ? `表达习惯：${draft.speech.habits}` : '',
+    draft.speech.catchphrases.length ? `常用表达：${draft.speech.catchphrases.join('；')}` : '',
+    draft.motivations.length ? `核心动机：${draft.motivations.join('；')}` : '', draft.beliefs.length ? `信念：${draft.beliefs.join('；')}` : '',
+  ].filter(Boolean);
+  const preferences = [draft.likes.length ? `- 你喜欢：${draft.likes.join('；')}` : '', draft.dislikes.length ? `- 你不喜欢：${draft.dislikes.join('；')}` : '', draft.fears.length ? `- 你害怕：${draft.fears.join('；')}` : ''].filter(Boolean).join('\n');
+  const visual = [draft.appearance.description, draft.appearance.hair && `发型与发色：${draft.appearance.hair}`, draft.appearance.eyes && `眼睛：${draft.appearance.eyes}`, draft.appearance.build && `体态：${draft.appearance.build}`, draft.appearance.outfits.length && `服装：${draft.appearance.outfits.join('；')}`, draft.appearance.accessories.length && `饰品：${draft.appearance.accessories.join('；')}`].filter(Boolean).join('\n');
+  return [heading, `## 你的身份\n${identity || '尚未补充。'}`, `## 你的性格\n${bullets(personality) || '- 尚未补充。'}`, preferences && `## 你的好恶\n${preferences}`, `## 你的外观\n${visual || '尚未补充。'}`, draft.boundaries.length && `## 你的边界\n${bullets(draft.boundaries)}`, draft.secrets.length && `## 你不会轻易说出的事\n${bullets(draft.secrets)}`, draft.speech.examples.length && `## 对话示例\n${bullets(draft.speech.examples)}`, draft.extraRules && `## 额外规则\n${draft.extraRules}`].filter(Boolean).join('\n\n');
+}
 
 export const CharacterRelationshipSchema = Type.Object({
   id: Type.String(),

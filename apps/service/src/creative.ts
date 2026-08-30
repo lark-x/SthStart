@@ -479,20 +479,23 @@ export function registerCreativeRoutes(
       const body = request.body ?? {};
       const mode = normalizeMode(body.mode);
       if (!mode) throw errorWithCode('invalid_mode', '请选择有效的生成模式。');
+      const isVideo = mode.startsWith('h3-');
       const prompt = parsePrompt(body.prompt, '提示词', true);
       const negativePrompt = parsePrompt(body.negativePrompt, '反向提示词');
-      const width = parseInteger(body.width, 1024, 64, 4096, 'invalid_dimensions', '宽度');
-      const height = parseInteger(body.height, 1024, 64, 4096, 'invalid_dimensions', '高度');
-      if (width * height > 16_777_216) throw errorWithCode('invalid_dimensions', '图片像素总数不能超过 16 megapixels。');
-      const steps = parseInteger(body.steps, 20, 1, 150, 'invalid_steps', '步数');
       const seed = body.seed === undefined || body.seed === null || body.seed === ''
         ? null
         : parseInteger(body.seed, 0, 0, 2_147_483_647, 'invalid_seed', '种子');
       const sourceArtifactId = typeof body.sourceArtifactId === 'string' ? body.sourceArtifactId.trim() : '';
       const firstFrameId = typeof body.firstFrameId === 'string' ? body.firstFrameId.trim() : '';
       const lastFrameId = typeof body.lastFrameId === 'string' ? body.lastFrameId.trim() : '';
-      const duration = parseInteger(body.duration, 4, 1, 10, 'invalid_duration', '时长');
       const aspectRatio = typeof body.aspectRatio === 'string' ? body.aspectRatio.trim() : '16:9';
+      // 宽高/步数只属于图片模式，时长只属于视频模式：解析彼此无关的字段
+      // 会让另一模式因携带冗余参数而被误拒。
+      const width = isVideo ? 0 : parseInteger(body.width, 1024, 64, 4096, 'invalid_dimensions', '宽度');
+      const height = isVideo ? 0 : parseInteger(body.height, 1024, 64, 4096, 'invalid_dimensions', '高度');
+      const steps = isVideo ? 0 : parseInteger(body.steps, 20, 1, 150, 'invalid_steps', '步数');
+      if (!isVideo && width * height > 16_777_216) throw errorWithCode('invalid_dimensions', '图片像素总数不能超过 16 megapixels。');
+      const duration = isVideo ? parseInteger(body.duration, 4, 1, 10, 'invalid_duration', '时长') : 0;
 
       if (mode === 'image-to-image' && !sourceArtifactId) throw errorWithCode('source_artifact_required', '图生图需要先上传一张参考图片。');
       if (mode === 'text-to-image' && sourceArtifactId) throw errorWithCode('source_artifact_not_allowed', '文本生图不应附带参考图片。');
@@ -511,7 +514,6 @@ export function registerCreativeRoutes(
         if (lastFrameId) inputArtifacts.push({ artifactId: lastFrameId, inputKey: 'lastFrame' });
       }
 
-      const isVideo = mode.startsWith('h3-');
       if (isVideo) {
         const h3Status = await resolveH3Status(database, secrets, fetcher, mode as H3Purpose);
         if (!h3Status || !h3Status.ready) throw errorWithCode('h3_not_ready', 'H3 视频生成当前不可用：' + (h3Status?.reason ?? 'workflow_missing'));

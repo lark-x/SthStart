@@ -1,21 +1,19 @@
 'use client';
 
 import { Clock3 } from 'lucide-react';
-import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contracts';
+import type { CreativeTaskResponse } from '@sthstart/contracts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { TaskCard } from './task-card';
 
 export function TaskList({
   tasks,
-  artifacts,
   isLoading,
   onCancel,
   onRetry,
   onReplay,
 }: {
   tasks: CreativeTaskResponse[];
-  artifacts: ArtifactDescriptor[];
   isLoading: boolean;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
@@ -37,7 +35,7 @@ export function TaskList({
         {isLoading && !tasks.length ? (
           <div className="flex justify-center py-10 text-sm text-[#68716d]">正在读取任务…</div>
         ) : tasks.length ? (
-          <div className="space-y-3">{tasks.map((task) => <TaskCard key={task.id} task={task} artifacts={artifacts} onCancel={onCancel} onRetry={onRetry} onReplay={onReplay} />)}</div>
+          <div className="space-y-3">{tasks.map((task) => <TaskCard key={task.id} task={task} onCancel={onCancel} onRetry={onRetry} onReplay={onReplay} />)}</div>
         ) : (
           <EmptyState className="min-h-[220px]" icon={Clock3} title="还没有生成任务" description="完成上方参数后，第一张图片会出现在这里。" />
         )}

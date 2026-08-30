@@ -56,9 +56,11 @@ const filterOptions: Array<{ value: 'all' | NoteKind; label: string }> = [
 
 function formatDate(iso?: string) {
   if (!iso) return '';
-  return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(
-    new Date(iso)
-  );
+  // 本地离线记录可能带有无效时间戳，Intl.format(Invalid Date) 会抛
+  // RangeError 打白整个列表；无效值直接不显示。
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(date);
 }
 
 export function NotebookWorkspace({
@@ -158,7 +160,9 @@ export function NotebookWorkspace({
     }
   };
 
-  const handleMobileBack = () => {
+  // 退出编辑态回到列表：移动端“返回列表”按钮与删除笔记共用。
+  // exitedToMobileList 同时防止 initialNoteId 自动把刚删除/刚退出的笔记拉回编辑器。
+  const handleExitEditor = () => {
     setExitedToMobileList(true);
     setActiveId(null);
     setIsCreating(false);
@@ -386,7 +390,7 @@ export function NotebookWorkspace({
             <div className="lg:hidden flex items-center justify-between px-4 py-2 bg-[#f4f0e7] border-b border-[rgb(24_32_29/10%)]">
               <button
                 type="button"
-                onClick={handleMobileBack}
+                onClick={handleExitEditor}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -401,12 +405,14 @@ export function NotebookWorkspace({
               key={"new-" + createKind}
               initialKind={createKind}
               standalone={false}
+              onDeleted={handleExitEditor}
             />
           ) : activeId ? (
             <NoteEditor
               key={activeId}
               noteId={activeId}
               standalone={false}
+              onDeleted={handleExitEditor}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center p-8">

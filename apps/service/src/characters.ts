@@ -4,6 +4,7 @@ import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { CharacterDraft, CharacterProfile, CharacterRelationship, CharacterSource, CharacterVersion } from '@sthstart/contracts';
+import { compileLinshePrompt } from '@sthstart/contracts';
 import { authenticateApp, hasCapability } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
@@ -47,34 +48,17 @@ export function normalizeCharacterDraft(raw: unknown): CharacterDraft {
   };
 }
 
-function bullets(values: string[]) { return values.map((value) => `- ${value}`).join('\n'); }
-
-export function compileLinshePrompt(draft: CharacterDraft) {
-  if (draft.legacyPrompt && !draft.identity && draft.personality.length === 0) return draft.legacyPrompt;
-  const heading = `你是${draft.displayName}${draft.englishName ? `(${draft.englishName})` : ''}${draft.originType === 'ip' && draft.work ? `，来自《${draft.work}》` : ''}。`;
-  const identity = [draft.identity, draft.background, draft.currentSituation].filter(Boolean).join('\n\n') || draft.summary;
-  const personality = [
-    ...draft.personality,
-    draft.speech.tone ? `说话语气：${draft.speech.tone}` : '', draft.speech.habits ? `表达习惯：${draft.speech.habits}` : '',
-    draft.speech.catchphrases.length ? `常用表达：${draft.speech.catchphrases.join('；')}` : '',
-    draft.motivations.length ? `核心动机：${draft.motivations.join('；')}` : '', draft.beliefs.length ? `信念：${draft.beliefs.join('；')}` : '',
-  ].filter(Boolean);
-  const preferences = [draft.likes.length ? `- 你喜欢：${draft.likes.join('；')}` : '', draft.dislikes.length ? `- 你不喜欢：${draft.dislikes.join('；')}` : '', draft.fears.length ? `- 你害怕：${draft.fears.join('；')}` : ''].filter(Boolean).join('\n');
-  const visual = [draft.appearance.description, draft.appearance.hair && `发型与发色：${draft.appearance.hair}`, draft.appearance.eyes && `眼睛：${draft.appearance.eyes}`, draft.appearance.build && `体态：${draft.appearance.build}`, draft.appearance.outfits.length && `服装：${draft.appearance.outfits.join('；')}`, draft.appearance.accessories.length && `饰品：${draft.appearance.accessories.join('；')}`].filter(Boolean).join('\n');
-  return [heading, `## 你的身份\n${identity || '尚未补充。'}`, `## 你的性格\n${bullets(personality) || '- 尚未补充。'}`, preferences && `## 你的好恶\n${preferences}`, `## 你的外观\n${visual || '尚未补充。'}`, draft.boundaries.length && `## 你的边界\n${bullets(draft.boundaries)}`, draft.secrets.length && `## 你不会轻易说出的事\n${bullets(draft.secrets)}`, draft.speech.examples.length && `## 对话示例\n${bullets(draft.speech.examples)}`, draft.extraRules && `## 额外规则\n${draft.extraRules}`].filter(Boolean).join('\n\n');
-}
-
 function hash(value: string) { return createHash('sha256').update(value).digest('hex'); }
 
-function avatarUrl(database: ServiceDatabase, assetId: unknown) {
-  return assetId && database.connection.prepare('SELECT 1 FROM character_assets WHERE id=?').get(String(assetId)) ? `/api/admin/characters/assets/${assetId}` : null;
+function avatarUrl(database: ServiceDatabase, assetId: unknown, assetPath: string) {
+  return assetId && database.connection.prepare('SELECT 1 FROM character_assets WHERE id=?').get(String(assetId)) ? `${assetPath}/${assetId}` : null;
 }
 
-function mapProfile(database: ServiceDatabase, row: Record<string, unknown>): CharacterProfile {
+function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, assetPath = '/api/admin/characters/assets'): CharacterProfile {
   return {
     id: String(row.id), slug: String(row.slug), displayName: String(row.display_name),
     draft: normalizeCharacterDraft(JSON.parse(String(row.draft_json))), tags: JSON.parse(String(row.tags_json)) as string[],
-    avatarUrl: avatarUrl(database, row.avatar_asset_id), latestVersion: row.latest_version == null ? null : Number(row.latest_version),
+    avatarUrl: avatarUrl(database, row.avatar_asset_id, assetPath), latestVersion: row.latest_version == null ? null : Number(row.latest_version),
     archived: Boolean(row.archived), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   };
 }
@@ -378,7 +362,8 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
   app.get('/api/v1/characters', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
-    const rows = database.connection.prepare('SELECT id,slug,display_name,tags_json,latest_version,updated_at FROM character_profiles WHERE archived=0 AND latest_version IS NOT NULL ORDER BY display_name').all(); return { items: rows };
+    const rows = database.connection.prepare('SELECT * FROM character_profiles WHERE archived=0 AND latest_version IS NOT NULL ORDER BY display_name').all();
+    return { items: rows.map((row) => mapProfile(database, row as Record<string, unknown>, '/api/v1/characters/assets')) };
   });
   app.get<{ Params: { id: string } }>('/api/v1/characters/assets/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;

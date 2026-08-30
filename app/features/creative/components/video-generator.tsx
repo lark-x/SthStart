@@ -1,6 +1,6 @@
 'use client';
 
-import type { ArtifactDescriptor, CreativeStatusResponse } from '@sthstart/contracts';
+import type { ArtifactDescriptor, CreativeWorkflowBinding } from '@sthstart/contracts';
 import { ImagePlus, Sparkles } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -29,7 +29,7 @@ export function VideoGenerator({
 }: {
   form: CreativeFormState;
   mode: 'h3-t2v' | 'h3-i2v' | 'h3-fl2va';
-  binding?: CreativeStatusResponse['modes']['textToImage'];
+  binding?: CreativeWorkflowBinding;
   firstFrameArtifact: ArtifactDescriptor | null;
   firstFramePreview: string | null;
   lastFrameArtifact: ArtifactDescriptor | null;

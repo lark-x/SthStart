@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Send } from 'lucide-react';
-import type { CharacterDraft } from '@sthstart/contracts';
+import { compileLinshePrompt, type CharacterDraft } from '@sthstart/contracts';
 import type { CharacterDetail } from '../api';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -18,16 +18,8 @@ export function PublishSection({
   onPublish: () => Promise<void>;
   publishing?: boolean;
 }) {
-  const previewPrompt = [
-    draft.displayName || '未命名角色',
-    draft.identity,
-    draft.background,
-    draft.personality.length ? `性格：${draft.personality.join('；')}` : '',
-    draft.speech.tone ? `口吻：${draft.speech.tone}` : '',
-    draft.appearance.description ? `外貌：${draft.appearance.description}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  // 直接复用后端发布时使用的编译函数，预览与实际发布的人格提示词一致。
+  const previewPrompt = compileLinshePrompt(draft);
 
   return (
     <div className="space-y-6">
@@ -73,7 +65,7 @@ export function PublishSection({
           邻舍人格提示词预览 (Compiled Linshe Prompt)
         </h4>
         <pre className="p-4 rounded-[3px_14px_3px_3px] bg-[#1b211f] text-[#dae2de] font-mono text-xs leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap">
-          {previewPrompt || '填写角色名称与资料后，此处将自动编译展示适配邻舍的人格提示词。'}
+          {previewPrompt}
         </pre>
       </div>
 

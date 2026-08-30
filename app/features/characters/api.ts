@@ -54,9 +54,10 @@ export async function updateCharacter(
 
 export async function generateCharacterDraft(
   id: string,
-  description: string
+  description: string,
+  useWeb = true,
 ): Promise<{ draft: CharacterDraft; sources: CharacterSource[] }> {
-  return postJson(`characters/${id}/generate`, { description, useWeb: true }, undefined, CharacterGenerateResponseSchema);
+  return postJson(`characters/${id}/generate`, { description, useWeb }, undefined, CharacterGenerateResponseSchema);
 }
 
 export async function publishCharacter(id: string): Promise<CharacterVersion> {

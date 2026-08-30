@@ -39,8 +39,8 @@ export function useUpdateCharacter() {
 export function useGenerateCharacterDraft() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, description }: { id: string; description: string }) =>
-      generateCharacterDraft(id, description),
+    mutationFn: ({ id, description, useWeb }: { id: string; description: string; useWeb?: boolean }) =>
+      generateCharacterDraft(id, description, useWeb),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
     },

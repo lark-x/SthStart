@@ -27,6 +27,12 @@ export function NarrativeInspector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
+  // 父组件可能绕过输入框直接修改 query（如程序化重置）；此时把内部
+  // draft 同步回外部值。防抖上抛后 query 会追平 draft，这里不会成环。
+  useEffect(() => {
+    setDraft((current) => (current === query ? current : query));
+  }, [query]);
+
   return (
     <aside className="w-full md:w-72 bg-[#e3ded4] border-l border-[rgb(32_38_49/13%)] p-5 space-y-6">
       <div className="relative">

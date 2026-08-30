@@ -30,6 +30,9 @@ export function NarrativeWorkspace() {
   const [conceptTaskId, setConceptTaskId] = useState<string | null>(null);
   const [submittingConcept, setSubmittingConcept] = useState(false);
   const activeNodeIdRef = useRef('');
+  // 概念图任务绑定提交时的节点；轮询与 attach 始终使用该节点，
+  // 避免用户切换节点后轮询用新节点查询旧任务导致 404 和任务孤儿。
+  const submittedNodeIdRef = useRef('');
 
   const { data: worksData, refetch: refetchWorks } = useNarrativeWorks();
   const works = worksData?.items ?? [];
@@ -57,17 +60,17 @@ export function NarrativeWorkspace() {
   const handleGenerateConcept = async () => {
     if (!activeNodeId || conceptTaskId || submittingConcept) return;
     setSubmittingConcept(true);
-    // 记住提交时的节点；等待期间用户可能已切到其他节点，
-    // 此时新节点的查询会 404，任务也会变成孤儿。
+    // 记住提交时的节点；等待期间用户可能已切到其他节点。
     const submittedNodeId = activeNodeId;
     try {
       const task = await generateNarrativeConcept(submittedNodeId);
-      if (activeNodeIdRef.current !== submittedNodeId) {
-        toast.info('概念图生成任务已提交', '但你已切换到其他剧情节点，完成后请在原节点查看。');
-        return;
-      }
+      submittedNodeIdRef.current = submittedNodeId;
       setConceptTaskId(task.id);
-      toast.success('概念图生成任务已提交');
+      if (activeNodeIdRef.current !== submittedNodeId) {
+        toast.info('概念图生成任务已提交', '你已切换到其他剧情节点，完成后会自动附加到原节点。');
+      } else {
+        toast.success('概念图生成任务已提交');
+      }
     } catch (error) {
       toast.error('提交概念图生成失败', error instanceof Error ? error.message : String(error));
     } finally {
@@ -76,19 +79,23 @@ export function NarrativeWorkspace() {
   };
 
   useEffect(() => {
-    if (!conceptTaskId || !activeNodeId) return;
+    if (!conceptTaskId) return;
+    // 使用提交时的节点而不是当前 activeNodeId：切换节点不应中断轮询，
+    // 任务完成后 attach 到原节点，避免生成结果变成孤儿。
+    const targetNodeId = submittedNodeIdRef.current || activeNodeIdRef.current;
+    if (!targetNodeId) return;
     let stopped = false;
     let timer: number | undefined;
     const poll = async () => {
       try {
-        const task = await fetchNarrativeGenerationTask(activeNodeId, conceptTaskId);
+        const task = await fetchNarrativeGenerationTask(targetNodeId, conceptTaskId);
         if (stopped) return;
         if (task.status === 'succeeded') {
-          await attachNarrativeConcept(activeNodeId, conceptTaskId);
+          await attachNarrativeConcept(targetNodeId, conceptTaskId);
           if (!stopped) {
             setConceptTaskId(null);
             await refetchReading();
-            toast.success('概念图已附加到当前剧情节点');
+            toast.success('概念图已附加到原剧情节点');
           }
           return;
         }
@@ -110,7 +117,7 @@ export function NarrativeWorkspace() {
       stopped = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [activeNodeId, conceptTaskId, refetchReading, toast]);
+  }, [conceptTaskId, refetchReading, toast]);
 
   const handleSaveToNotebook = async (utteranceId: string) => {
     try {

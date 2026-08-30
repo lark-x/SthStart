@@ -64,6 +64,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const [tags, setTags] = useState<string[]>([]);
   const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
   const [aiPrompt, setAiPrompt] = useState('');
+  const [useWeb, setUseWeb] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
   const {
@@ -245,6 +246,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       const result = await generateMutation.mutateAsync({
         id: targetId,
         description: aiPrompt.trim(),
+        useWeb,
       });
       reset(characterDraftToFormValues(result.draft));
       setStatus('clean');
@@ -612,6 +614,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 <span>生成草稿</span>
               </Button>
             </div>
+            <label className="flex items-center gap-2 text-xs text-[#68716d] cursor-pointer select-none">
+              <input type="checkbox" checked={useWeb} onChange={(e) => setUseWeb(e.target.checked)} className="accent-[#e45d35]" />
+              联网检索公开资料（关闭时仅根据描述生成草稿，不产生外部请求）
+            </label>
           </div>
 
           {/* Section Panels */}

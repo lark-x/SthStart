@@ -1,26 +1,23 @@
 'use client';
 
 import { Copy, FileAudio, RotateCcw, X } from 'lucide-react';
-import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contracts';
+import type { CreativeTaskResponse } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { isActiveTask, taskModeLabel, formatDate, CREATIVE_STATUS_LABELS, CREATIVE_STATUS_VARIANTS } from '../types';
 
 export function TaskCard({
   task,
-  artifacts,
   onCancel,
   onRetry,
   onReplay,
 }: {
   task: CreativeTaskResponse;
-  artifacts: ArtifactDescriptor[];
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
   onReplay: (task: CreativeTaskResponse) => void;
 }) {
   const canRetry = ['failed', 'abandoned', 'cancelled'].includes(task.status);
-  const sourceAvailable = task.replay.inputArtifactIds.length === 0 || task.replay.inputArtifactIds.every((id) => artifacts.some((item) => item.id === id));
   return (
     <article className="rounded-[3px_16px_3px_3px] border border-[rgb(24_32_29/12%)] bg-[#fffdf8] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -44,7 +41,9 @@ export function TaskCard({
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />重试
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={() => onReplay(task)} disabled={!sourceAvailable} title={!sourceAvailable ? '参考图片已不在媒体库中' : undefined}>
+          {/* 复用参数不再检查素材是否在已加载分页中：handleReplay 对缺失素材
+              会按 id 构造预览兜底，按已加载分页判断会误报并错误禁用按钮。 */}
+          <Button size="sm" variant="ghost" onClick={() => onReplay(task)}>
             <Copy className="h-3.5 w-3.5" aria-hidden="true" />复用参数
           </Button>
         </div>

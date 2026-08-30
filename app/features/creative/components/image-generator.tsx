@@ -1,6 +1,6 @@
 'use client';
 
-import type { ArtifactDescriptor, CreativeStatusResponse } from '@sthstart/contracts';
+import type { ArtifactDescriptor, CreativeWorkflowBinding } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -26,7 +26,7 @@ export function ImageGenerator({
   form: CreativeFormState;
   // 组件只在图片模式挂载（视频模式渲染 VideoGenerator）。
   mode: 'text-to-image' | 'image-to-image';
-  binding?: CreativeStatusResponse['modes']['textToImage'];
+  binding?: CreativeWorkflowBinding;
   sourceArtifact: ArtifactDescriptor | null;
   sourcePreview: string | null;
   uploading: boolean;

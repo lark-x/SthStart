@@ -2,11 +2,13 @@ import { getJson, postJson, putJson, deleteJson, adminFetch } from '@/app/lib/ap
 import {
   CreativeArtifactListResponseSchema,
   CreativeStatusResponseSchema,
+  CreativeTaskListResponseSchema,
   CreativeTaskResponseSchema,
 } from '@sthstart/contracts';
 import type {
   ArtifactDescriptor,
   CreativeStatusResponse,
+  CreativeTaskListResponse,
   CreativeTaskResponse,
 } from '@sthstart/contracts';
 
@@ -42,7 +44,7 @@ export async function fetchCreativeStatus() {
 
 export async function fetchCreativeTasks() {
   // 服务端默认只返回 30 条，不显式传 limit 会让旧任务在 UI 上静默消失。
-  const response = await getJson<{ items: CreativeTaskResponse[] }>('creative/tasks?limit=100');
+  const response = await getJson<CreativeTaskListResponse>('creative/tasks?limit=100', undefined, CreativeTaskListResponseSchema);
   return response.items.map(withPortalArtifactUrls);
 }
 
