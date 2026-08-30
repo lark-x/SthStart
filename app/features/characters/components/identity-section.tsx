@@ -6,6 +6,7 @@ import type { Control, UseFormRegister } from 'react-hook-form';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Select } from '@/app/components/ui/select';
+import { TagsInput } from '@/app/components/shared/tags-input';
 import {
   StringListField,
   type CharacterFormValues,
@@ -159,16 +160,9 @@ export function IdentitySection({
         <span>
           标签分类（逗号分隔）
         </span>
-        <Input
-          value={tags.join('，')}
-          onChange={(e) =>
-            onTagsChange(
-              e.target.value
-                .split(/[,，]/)
-                .map((item) => item.trim())
-                .filter(Boolean)
-            )
-          }
+        <TagsInput
+          value={tags}
+          onChange={onTagsChange}
           placeholder="原神，枫丹，水神，戏剧"
           className="mt-1.5"
         />

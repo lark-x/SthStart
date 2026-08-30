@@ -1,24 +1,51 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Bookmark, Sparkles } from 'lucide-react';
 import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { Skeleton } from '@/app/components/ui/skeleton';
 
 export function NarrativeReader({
   reading,
+  loading,
   onSaveUtteranceToNotebook,
   onOpenImport,
   onGenerateConcept,
   generatingConcept,
 }: {
   reading: NarrativeReading | null;
+  loading?: boolean;
   onSaveUtteranceToNotebook: (utteranceId: string) => Promise<void>;
   onOpenImport: () => void;
   onGenerateConcept: () => void;
   generatingConcept: boolean;
 }) {
+  const articleRef = useRef<HTMLElement>(null);
+  const nodeId = reading?.node.id;
+
+  // 阅读容器高度有界（桌面端内部滚动），切换剧情节点后回到顶部，
+  // 否则会停留在上一个节点的滚动位置。
+  useEffect(() => {
+    articleRef.current?.scrollTo({ top: 0 });
+  }, [nodeId]);
+
+  // 加载中与“档案为空”是两种状态：请求未返回时显示骨架，而不是
+  // 误导用户去导入工作台。
   if (!reading) {
+    if (loading) {
+      return (
+        <article ref={articleRef} className="flex-1 min-w-0 bg-[#f5f1e8] px-6 sm:px-12 md:px-16 py-10 space-y-6 overflow-y-auto">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-12 w-2/3" />
+          <div className="space-y-3 pt-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        </article>
+      );
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[#f5f1e8] min-h-[60vh]">
         <span className="font-serif text-5xl text-[#b08a4b] mb-4">⌁</span>
@@ -34,7 +61,7 @@ export function NarrativeReader({
   }
 
   return (
-    <article className="flex-1 min-w-0 bg-[#f5f1e8] px-6 sm:px-12 md:px-16 py-10 space-y-10 overflow-y-auto">
+    <article ref={articleRef} className="flex-1 min-w-0 bg-[#f5f1e8] px-6 sm:px-12 md:px-16 py-10 space-y-10 overflow-y-auto">
       {/* Node Header */}
       <header className="pb-8 border-b border-[rgb(32_38_49/13%)] space-y-2">
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8a6a35]">
@@ -130,7 +157,7 @@ export function NarrativeReader({
                     <button
                       type="button"
                       onClick={() => onSaveUtteranceToNotebook(line.id)}
-                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity mt-2 text-[11px] text-[#8a6a35] font-semibold flex items-center gap-1 cursor-pointer hover:underline"
+                      className="opacity-60 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity mt-2 text-[11px] text-[#8a6a35] font-semibold flex items-center gap-1 cursor-pointer hover:underline"
                     >
                       <Bookmark className="h-3 w-3" />
                       <span>存入创作笔记</span>

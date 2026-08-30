@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -22,6 +22,27 @@ import { Skeleton } from '@/app/components/ui/skeleton';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Button } from '@/app/components/ui/button';
 import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
+
+const COLLAPSED_KEY = 'sthstart_notebook_sidebar_collapsed';
+
+// 折叠状态以 localStorage 为唯一事实来源：useSyncExternalStore 在服务端
+// 渲染固定返回 true，客户端挂载后读取真实值，避免水合不匹配。
+const collapsedListeners = new Set<() => void>();
+
+function subscribeCollapsed(onStoreChange: () => void) {
+  collapsedListeners.add(onStoreChange);
+  return () => {
+    collapsedListeners.delete(onStoreChange);
+  };
+}
+
+function readCollapsed() {
+  return localStorage.getItem(COLLAPSED_KEY) !== 'false';
+}
+
+function getServerCollapsed() {
+  return true;
+}
 
 const filterOptions: Array<{ value: 'all' | NoteKind; label: string }> = [
   { value: 'all', label: '全部' },
@@ -53,13 +74,7 @@ export function NotebookWorkspace({
   const searchParams = useSearchParams();
 
   // Sidebar collapsed state: default true (collapsed to 0px)
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('sthstart_notebook_sidebar_collapsed');
-      if (stored !== null) return stored === 'true';
-    }
-    return true;
-  });
+  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, getServerCollapsed);
 
   const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>('all');
   const [query, setQuery] = useState('');
@@ -99,13 +114,9 @@ export function NotebookWorkspace({
   }, [notes, selectedFilter, query]);
 
   const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('sthstart_notebook_sidebar_collapsed', String(next));
-      }
-      return next;
-    });
+    const next = !readCollapsed();
+    localStorage.setItem(COLLAPSED_KEY, String(next));
+    for (const listener of collapsedListeners) listener();
   }, []);
 
   useEffect(() => {
@@ -152,6 +163,17 @@ export function NotebookWorkspace({
   };
 
   const isEditingOnMobile = Boolean(activeId || isCreating);
+
+  // 移动端（<1024px）：非编辑态始终整宽显示列表，编辑态只显示编辑器；
+  // 桌面端：折叠即隐藏列表。避免把无前缀 hidden 与 flex 同时挂在一个元素上，
+  // hidden 会在所有断点压过 flex，导致手机上列表整个消失。
+  const masterPaneClass = isEditingOnMobile
+    ? collapsed
+      ? 'hidden'
+      : 'hidden lg:flex lg:w-[300px] lg:min-w-[300px]'
+    : collapsed
+    ? 'flex w-full lg:hidden'
+    : 'flex w-full lg:w-[300px] lg:min-w-[300px]';
 
   return (
     <main className="notebook-workspace-shell notebook-list-page min-h-screen w-full bg-[#f4f0e7] text-[#18201d] flex flex-col">
@@ -212,16 +234,15 @@ export function NotebookWorkspace({
         {/* Left Column: Master List Pane (Collapsible Drawer) */}
         <aside
           className={
-            "notebook-master-pane flex flex-col border-r border-[rgb(24_32_29/10%)] bg-[#f7f4ee] transition-[width,padding] duration-200 ease-in-out " +
-            (isEditingOnMobile ? 'hidden lg:flex ' : 'flex ') +
-            (collapsed ? 'hidden lg:w-0 lg:min-w-0 lg:overflow-hidden lg:border-none lg:p-0' : 'w-full lg:w-[300px] lg:min-w-[300px]')
+            "notebook-master-pane flex-col border-r border-[rgb(24_32_29/10%)] bg-[#f7f4ee] transition-[width,padding] duration-200 ease-in-out " +
+            masterPaneClass
           }
         >
           {/* List Search & Filter Toolbar */}
           <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-[rgb(24_32_29/8%)] bg-[#fffdf8]/70">
             <div className="relative w-full">
               <Search
-                className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-[#68716d]"
+                className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#68716d]"
                 aria-hidden="true"
               />
               <Input

@@ -23,12 +23,13 @@ import { useNoteDetail } from '../queries';
 import { useCharacters } from '@/app/features/characters/queries';
 import { kindLabels, stageLabels, newBlock, summaryFromBlocks } from '../schemas';
 import { notebookKeys } from '@/app/lib/query-keys';
-import { addLocalAsset, localAssetId, markLocalNoteDeleted, removeLocalAsset, saveLocalNote } from '../local-store';
+import { addLocalAsset, getLocalNote, localAssetId, markLocalNoteDeleted, saveLocalNote, subscribeNotebookLocalChanges } from '../local-store';
 import { useLocalNotebookNote } from '../hooks';
 import { syncPendingNotebookData } from '../sync';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { TagsInput } from '@/app/components/shared/tags-input';
 import { useToast } from '@/app/providers/ui-provider';
 import { generateId } from '@/app/lib/uuid';
 import { LocalNoteImage } from './local-note-image';
@@ -75,11 +76,12 @@ export function NoteEditor({
   const [online, setOnline] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const { data: detailData, isLoading: detailLoading } = useNoteDetail(noteId);
+  const { data: detailData, isLoading: detailLoading, error: detailError, refetch: refetchDetail } = useNoteDetail(noteId);
   const { record: localRecord, loaded: localNoteLoaded } = useLocalNotebookNote(effectiveNoteId);
   const { data: charData } = useCharacters();
   const characters = charData?.items ?? [];
-  const editorReady = !noteId || (localNoteLoaded && (Boolean(localRecord) || !detailLoading));
+  const detailFailed = Boolean(noteId && detailError);
+  const editorReady = !noteId || (localNoteLoaded && (Boolean(localRecord) || (!detailLoading && !detailFailed)));
 
   useEffect(() => {
     const refresh = () => setOnline(navigator.onLine);
@@ -182,6 +184,52 @@ export function NoteEditor({
     return () => clearTimeout(timer);
   }, [dirty, effectiveNoteId, persistLocal]);
 
+  // 编辑器随笔记切换/返回列表而重挂载，防抖定时器在卸载时被取消，
+  // 因此卸载和页面隐藏时必须把未落盘的修改立即写入 IndexedDB。
+  const persistRef = useRef(persistLocal);
+  const dirtyRef = useRef(dirty);
+  useEffect(() => {
+    persistRef.current = persistLocal;
+    dirtyRef.current = dirty;
+  }, [persistLocal, dirty]);
+  useEffect(() => {
+    const flushPending = () => {
+      if (dirtyRef.current && effectiveNoteId) void persistRef.current(true);
+    };
+    const handlePageHide = () => flushPending();
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      flushPending();
+    };
+  }, [effectiveNoteId]);
+
+  // 后台同步会把图片块的 notebook-local:// 引用替换为远端 URL，但不会
+  // 触碰编辑器的内存态；监听本地变更，仅按块 ID 回填图片 src，避免用户
+  // 的下一次自动保存把已失效的本地引用写回 IndexedDB。
+  useEffect(() => {
+    if (!effectiveNoteId) return;
+    return subscribeNotebookLocalChanges(async (changedNoteId) => {
+      if (changedNoteId !== effectiveNoteId) return;
+      const record = await getLocalNote(effectiveNoteId);
+      if (!record) return;
+      setNote((prev) => {
+        let changed = false;
+        const content = prev.content.map((block) => {
+          if (block.type !== 'image') return block;
+          const remote = record.note.content.find((item) => item.id === block.id);
+          if (remote?.type !== 'image' || !remote.src || remote.src === block.src) return block;
+          if (localAssetId(block.src) && !localAssetId(remote.src)) {
+            changed = true;
+            return { ...block, src: remote.src };
+          }
+          return block;
+        });
+        return changed ? { ...prev, content } : prev;
+      });
+    });
+  }, [effectiveNoteId]);
+
   const updateNoteState = (updater: (prev: CreativeNote) => CreativeNote) => {
     editVersionRef.current += 1;
     setNote((prev) => updater(prev));
@@ -228,11 +276,8 @@ export function NoteEditor({
   };
 
   const handleDeleteBlock = (id: string) => {
-    const block = note.content.find((item) => item.id === id);
-    if (block?.type === 'image') {
-      const assetId = localAssetId(block.src);
-      if (assetId) void removeLocalAsset(assetId);
-    }
+    // 不在这里删除本地资产：笔记内容要等防抖落盘，若保存丢失会留下悬空
+    // 引用导致同步永久失败；未引用的上传资产由同步结束后的 prune 统一回收。
     updateNoteState((prev) => ({
       ...prev,
       content: prev.content.filter((b) => b.id !== id),
@@ -276,10 +321,38 @@ export function NoteEditor({
 
   const MainTag = standalone ? 'main' : 'div';
 
+  // 服务端笔记加载失败且本机没有副本时，绝不渲染空白编辑器——否则用户
+  // 一输入就会以空内容整体覆盖服务端的原始笔记。
+  if (detailFailed && localNoteLoaded && !localRecord) {
+    return (
+      <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-[#fffdf8] text-[#18201d]">
+        {standalone && <h1 className="sr-only">创作笔记编辑器</h1>}
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
+          <p className="font-serif text-lg font-semibold text-[#18201d]">笔记打开失败</p>
+          <p className="max-w-sm text-xs text-[#68716d]">
+            无法从服务端加载这篇笔记，本机也没有离线副本。为避免覆盖原内容，编辑器已停用。
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={() => void refetchDetail()}>
+              重试
+            </Button>
+            <Link
+              href="/apps/notebook"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>返回笔记列表</span>
+            </Link>
+          </div>
+        </div>
+      </MainTag>
+    );
+  }
+
   if (!editorReady) {
     return (
       <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-[#fffdf8] text-[#18201d]">
-        <h1 className="sr-only">创作笔记编辑器</h1>
+        {standalone && <h1 className="sr-only">创作笔记编辑器</h1>}
         <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-[#fffdf8]/95 backdrop-blur-md border-b border-[rgb(24_32_29/8%)]">
           {standalone ? (
             <Link
@@ -307,7 +380,7 @@ export function NoteEditor({
 
   return (
     <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-[#fffdf8] text-[#18201d]">
-      <h1 className="sr-only">创作笔记编辑器</h1>
+      {standalone && <h1 className="sr-only">创作笔记编辑器</h1>}
       {/* Top sticky action bar */}
       <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-[#fffdf8]/95 backdrop-blur-md border-b border-[rgb(24_32_29/8%)]">
         {standalone ? (
@@ -468,16 +541,10 @@ export function NoteEditor({
 
           <label className="notebook-tags-field flex items-center gap-1.5 pt-0.5">
             <span className="notebook-field-label text-[#e45d35] font-bold text-xs">#</span>
-            <input
-              value={note.tags.join('，')}
-              onChange={(e) =>
-                updateNoteState((prev) => ({
-                  ...prev,
-                  tags: e.target.value
-                    .split(/[,，]/)
-                    .map((t) => t.trim())
-                    .filter(Boolean),
-                }))
+            <TagsInput
+              value={note.tags}
+              onChange={(tags) =>
+                updateNoteState((prev) => ({ ...prev, tags }))
               }
               placeholder="添加标签（用逗号分隔，如：灵感，第 2 章）…"
               className="notebook-tags-input w-full bg-transparent text-xs text-[#68716d] placeholder:text-[#68716d]/40 outline-none h-6"
@@ -515,7 +582,7 @@ export function NoteEditor({
                       : '叙事档案引用'}
                   </span>
 
-                  <div className="notebook-block-controls flex items-center gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                  <div className="notebook-block-controls flex items-center gap-0.5 opacity-40 group-hover:opacity-100 max-lg:opacity-100 transition-opacity">
                     <button
                       type="button"
                       disabled={index === 0}

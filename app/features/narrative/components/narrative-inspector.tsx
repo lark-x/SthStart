@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
@@ -16,13 +16,24 @@ export function NarrativeInspector({
   results: NarrativeSearchResult[];
   onSelectResult: (res: NarrativeSearchResult) => void;
 }) {
+  // 搜索直接驱动网络请求，逐键请求会打爆 FTS 查询（中文 IME 组合期间
+  // 尤甚）；本地持有输入文本，300ms 防抖后才上抛。
+  const [draft, setDraft] = useState(query);
+
+  useEffect(() => {
+    if (draft === query) return;
+    const timer = setTimeout(() => onQueryChange(draft), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+
   return (
     <aside className="w-full md:w-72 bg-[#e3ded4] border-l border-[rgb(32_38_49/13%)] p-5 space-y-6">
       <div className="relative">
         <Search className="h-4 w-4 absolute left-3 top-3 text-[#777b7f]" aria-hidden="true" />
         <Input
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder="搜索当前作品原文…"
           className="pl-9 bg-[#f5f1e8] text-xs h-9 border-[rgb(32_38_49/15%)]"
         />

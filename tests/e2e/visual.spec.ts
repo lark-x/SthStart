@@ -93,7 +93,7 @@ test('character editor visual baseline', async ({ page }) => {
 
 test('notebook visual baseline', async ({ page }) => {
   await page.goto('/apps/notebook/new');
-  await expect(page.getByPlaceholder('给这一页一个标题…')).toBeVisible();
+  await expect(page.getByPlaceholder('输入笔记标题…')).toBeVisible();
   await expect(page).toHaveScreenshot('notebook.png', {
     ...screenshotOptions,
     fullPage: true,

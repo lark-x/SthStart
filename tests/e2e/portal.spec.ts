@@ -245,11 +245,11 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   });
 
   await page.goto('/apps/notebook');
-  await expect(page.getByRole('heading', { name: '创作笔记' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '拾 创作笔记' })).toBeVisible();
 
   await page.goto('/apps/notebook/new');
-  await page.getByPlaceholder('给这一页一个标题…').fill(noteTitle);
-  await page.getByPlaceholder('用逗号分隔：灵感，第 2 章').fill('灵感, 测试');
+  await page.getByPlaceholder('输入笔记标题…').fill(noteTitle);
+  await page.getByPlaceholder('添加标签（用逗号分隔，如：灵感，第 2 章）…').fill('灵感, 测试');
   await page.getByPlaceholder('写下一段文字记录…').fill('这是一段通过现代化编辑器记录的灵感正文。');
 
   const firstSync = page.waitForResponse((response) => response.request().method() === 'PUT'
@@ -262,20 +262,25 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   expect(noteWrites).toBe(1);
 
   const editedTitle = `${noteTitle}（已编辑）`;
-  await page.getByPlaceholder('给这一页一个标题…').fill(editedTitle);
+  await page.getByPlaceholder('输入笔记标题…').fill(editedTitle);
   const secondSync = page.waitForResponse((response) => response.request().method() === 'PUT'
     && /\/api\/admin\/notebook\/notes\/[^/]+$/.test(new URL(response.url()).pathname));
   await page.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('已保存到本机').first()).toBeVisible();
   await secondSync;
   expect(noteWrites).toBe(2);
+  // 内嵌新建模式下保存不会把 URL 替换为笔记 id，刷新 /new 会得到空白
+  // 编辑器；恢复入口是笔记列表（IndexedDB 中已有该记录）。
   await page.reload();
-  await expect(page.getByPlaceholder('给这一页一个标题…')).toHaveValue(editedTitle);
+  await page.goto('/apps/notebook');
+  await page.getByRole('button', { name: '展开笔记列表' }).click();
+  await page.getByText(editedTitle).first().click();
+  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue(editedTitle);
 
   expectedOfflineDisconnects = true;
   await page.context().setOffline(true);
   const offlineTitle = `${editedTitle}（离线）`;
-  await page.getByPlaceholder('给这一页一个标题…').fill(offlineTitle);
+  await page.getByPlaceholder('输入笔记标题…').fill(offlineTitle);
   await expect(page.getByText('离线 · 待同步')).toBeVisible();
   expect(noteWrites).toBe(2);
   const resumedSync = page.waitForResponse((response) => response.request().method() === 'PUT'
@@ -306,7 +311,7 @@ test('notebook mobile layout stays compact and within the viewport', async ({ pa
   }
 
   await page.goto('/apps/notebook/new');
-  await expect(page.getByPlaceholder('给这一页一个标题…')).toBeVisible();
+  await expect(page.getByPlaceholder('输入笔记标题…')).toBeVisible();
   await expect(page.getByPlaceholder('写下一段文字记录…')).toBeVisible();
   await expect(page.getByRole('button', { name: '保存' })).toBeVisible();
   await expect(page.getByRole('button', { name: '段落文本' })).toBeVisible();
@@ -317,9 +322,9 @@ test('notebook mobile layout stays compact and within the viewport', async ({ pa
   }));
   expect(editorGeometry.documentWidth).toBeLessThanOrEqual(editorGeometry.viewportWidth + 1);
 
-  await page.getByPlaceholder('给这一页一个标题…').fill('移动端布局验收');
+  await page.getByPlaceholder('输入笔记标题…').fill('移动端布局验收');
   await page.getByPlaceholder('写下一段文字记录…').fill('手机端输入保持稳定，不应触发页面缩放。');
-  await expect(page.getByPlaceholder('给这一页一个标题…')).toHaveValue('移动端布局验收');
+  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue('移动端布局验收');
   await expect(page.getByPlaceholder('写下一段文字记录…')).toHaveValue('手机端输入保持稳定，不应触发页面缩放。');
 });
 

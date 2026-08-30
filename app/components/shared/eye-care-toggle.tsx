@@ -20,7 +20,7 @@ export function EyeCareToggle({ className }: { className?: string }) {
       aria-label={eyeCare ? '关闭暖杏护眼模式' : '开启暖杏护眼模式'}
     >
       <Eye className={`h-3.5 w-3.5 ${eyeCare ? 'text-[#d35832]' : 'text-[#68716d]'}`} />
-      <span>{eyeCare ? '暖杏护眼' : '护眼'}</span>
+      <span className="hidden sm:inline">{eyeCare ? '暖杏护眼' : '护眼'}</span>
     </button>
   );
 }

@@ -28,10 +28,10 @@ export function GalleryCard({ artifact, onPin, onDelete }: { artifact: ArtifactD
           <p className="mt-0.5 text-[10px] text-[#89908a]">{formatDate(artifact.createdAt)}</p>
         </div>
         <div className="flex flex-none items-center gap-0.5">
-          <button type="button" onClick={() => void onPin(artifact)} className="rounded p-1.5 text-[#68716d] hover:bg-[#18201d]/6 hover:text-[#18201d] active:bg-[#18201d]/12" aria-label={artifact.pinned ? '取消固定' : isVideo ? '固定视频' : '固定图片'}>
+          <button type="button" onClick={() => void onPin(artifact)} className="flex h-8 w-8 items-center justify-center rounded text-[#68716d] hover:bg-[#18201d]/6 hover:text-[#18201d] active:bg-[#18201d]/12" aria-label={artifact.pinned ? '取消固定' : isVideo ? '固定视频' : '固定图片'}>
             <Pin className={`h-3.5 w-3.5 ${artifact.pinned ? 'fill-current text-[#e45d35]' : ''}`} aria-hidden="true" />
           </button>
-          <button type="button" onClick={() => void onDelete(artifact)} className="rounded p-1.5 text-[#68716d] hover:bg-[#c9674a]/10 hover:text-[#b83b1b] active:bg-[#c9674a]/14" aria-label={isVideo ? '删除视频' : '删除图片'}>
+          <button type="button" onClick={() => void onDelete(artifact)} className="flex h-8 w-8 items-center justify-center rounded text-[#68716d] hover:bg-[#c9674a]/10 hover:text-[#b83b1b] active:bg-[#c9674a]/14" aria-label={isVideo ? '删除视频' : '删除图片'}>
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import {
   useNarrativeWorks,
@@ -15,16 +16,20 @@ import { NarrativeTree } from './narrative-tree';
 import { NarrativeReader } from './narrative-reader';
 import { NarrativeInspector } from './narrative-inspector';
 import { NarrativeImport } from './narrative-import';
+import { narrativeKeys } from '@/app/lib/query-keys';
 import { useToast } from '@/app/providers/ui-provider';
 import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
 export function NarrativeWorkspace() {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState<'read' | 'import'>('read');
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [conceptTaskId, setConceptTaskId] = useState<string | null>(null);
+  const [submittingConcept, setSubmittingConcept] = useState(false);
+  const activeNodeIdRef = useRef('');
 
   const { data: worksData, refetch: refetchWorks } = useNarrativeWorks();
   const works = worksData?.items ?? [];
@@ -41,19 +46,32 @@ export function NarrativeWorkspace() {
     ? selectedNodeId
     : firstReadableNode?.id ?? '';
 
-  const { data: readingData, refetch: refetchReading } = useNarrativeReading(activeNodeId);
+  const { data: readingData, isLoading: readingLoading, refetch: refetchReading } = useNarrativeReading(activeNodeId);
+  useEffect(() => {
+    activeNodeIdRef.current = activeNodeId;
+  }, [activeNodeId]);
   const { data: searchData } = useNarrativeSearch(searchQuery, activeWorkId);
   const { data: connectorsData } = useNarrativeConnectors();
   const connectors = connectorsData?.items ?? [];
 
   const handleGenerateConcept = async () => {
-    if (!activeNodeId) return;
+    if (!activeNodeId || conceptTaskId || submittingConcept) return;
+    setSubmittingConcept(true);
+    // 记住提交时的节点；等待期间用户可能已切到其他节点，
+    // 此时新节点的查询会 404，任务也会变成孤儿。
+    const submittedNodeId = activeNodeId;
     try {
-      const task = await generateNarrativeConcept(activeNodeId);
+      const task = await generateNarrativeConcept(submittedNodeId);
+      if (activeNodeIdRef.current !== submittedNodeId) {
+        toast.info('概念图生成任务已提交', '但你已切换到其他剧情节点，完成后请在原节点查看。');
+        return;
+      }
       setConceptTaskId(task.id);
       toast.success('概念图生成任务已提交');
     } catch (error) {
       toast.error('提交概念图生成失败', error instanceof Error ? error.message : String(error));
+    } finally {
+      setSubmittingConcept(false);
     }
   };
 
@@ -120,13 +138,16 @@ export function NarrativeWorkspace() {
     setSelectedWorkId(workId);
     setSelectedNodeId('');
     setMode('read');
+    // 增量导入后 tree/reading 有 20-30s 的 staleTime 且不随焦点刷新，
+    // 不显式失效的话新导入的内容会“看起来没生效”。
+    await queryClient.invalidateQueries({ queryKey: narrativeKeys.all });
     await refetchWorks();
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#ece8df] text-[#202631] flex flex-col">
+    <main className="min-h-screen md:h-dvh md:overflow-hidden w-full bg-[#ece8df] text-[#202631] flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-6 py-3 bg-[#f5f1e8] border-b border-[rgb(32_38_49/15%)]">
+      <header className="sticky md:static top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-3 bg-[#f5f1e8] border-b border-[rgb(32_38_49/15%)]">
         <div className="flex items-center gap-3">
           <Link
             href="/"
@@ -144,7 +165,7 @@ export function NarrativeWorkspace() {
           <button
             type="button"
             onClick={() => setMode('read')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
               mode === 'read'
                 ? 'bg-[#283548] text-white'
                 : 'text-[#6a7078] hover:text-[#202631]'
@@ -155,7 +176,7 @@ export function NarrativeWorkspace() {
           <button
             type="button"
             onClick={() => setMode('import')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
               mode === 'import'
                 ? 'bg-[#283548] text-white'
                 : 'text-[#6a7078] hover:text-[#202631]'
@@ -189,10 +210,11 @@ export function NarrativeWorkspace() {
 
             <NarrativeReader
               reading={readingData ?? null}
+              loading={readingLoading}
               onSaveUtteranceToNotebook={handleSaveToNotebook}
               onOpenImport={() => setMode('import')}
               onGenerateConcept={() => void handleGenerateConcept()}
-              generatingConcept={Boolean(conceptTaskId)}
+              generatingConcept={Boolean(conceptTaskId) || submittingConcept}
             />
 
             <NarrativeInspector

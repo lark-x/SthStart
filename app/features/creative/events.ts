@@ -52,6 +52,15 @@ export function useGenerationEvents(onEvent: (event: CreativeGenerationEvent) =>
     const controller = new AbortController();
     let active = true;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let consecutiveFailures = 0;
+
+    // 干净的流结束（服务重启、代理断开）不抛异常，也必须重连，否则
+    // 实时更新会静默死亡直到整页刷新；反复失败时按指数退避重试。
+    const scheduleReconnect = () => {
+      if (!active || controller.signal.aborted) return;
+      const delay = Math.min(30_000, 3_000 * 2 ** consecutiveFailures);
+      reconnectTimer = setTimeout(() => { void connect(); }, delay);
+    };
 
     const connect = async () => {
       try {
@@ -62,12 +71,14 @@ export function useGenerationEvents(onEvent: (event: CreativeGenerationEvent) =>
           cache: 'no-store',
         });
         if (!response.ok || !response.body) throw new Error('generation_event_stream_unavailable');
+        consecutiveFailures = 0;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        while (active) {
+        for (;;) {
           const chunk = await reader.read();
           if (chunk.done) break;
+          if (!active) break;
           buffer += decoder.decode(chunk.value, { stream: true });
           const blocks = buffer.split(/\r?\n\r?\n/);
           buffer = blocks.pop() ?? '';
@@ -78,10 +89,10 @@ export function useGenerationEvents(onEvent: (event: CreativeGenerationEvent) =>
             callbackRef.current(event);
           }
         }
+        scheduleReconnect();
       } catch {
-        if (active && !controller.signal.aborted) {
-          reconnectTimer = setTimeout(() => { void connect(); }, 3000);
-        }
+        if (!controller.signal.aborted) consecutiveFailures += 1;
+        scheduleReconnect();
       }
     };
 

@@ -77,7 +77,8 @@ html[data-eye-care="true"]:not([data-app="linshe"]) :is(
   [class*="bg-[#f8f4ec]"],
   [class*="bg-[#eee0c9]"],
   [class*="bg-[#f3f1e8]"],
-  [class*="bg-[#e6e4dc]"]
+  [class*="bg-[#e6e4dc]"],
+  [class*="bg-[#e3ded4]"]
 ) {
   background-color: #ebe3d3 !important;
 }
@@ -946,6 +947,16 @@ button.primary-action:hover,
     min-height: calc(100vh - 48px);
     min-height: calc(100dvh - 48px);
   }
+
+  /* iOS Safari（含 iPad）在焦点控件字号 < 16px 时会缩放页面；单栏移动布局的
+     JS 断点是 1024px，因此 16px 兜底必须覆盖到 1023px，769–1023px 才不会留下空窗。 */
+  :where(
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+    textarea,
+    select
+  ) {
+    font-size: 16px !important;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1145,7 +1156,7 @@ button.primary-action:hover,
 
   .notebook-filter-options button {
     width: 100%;
-    min-height: 36px;
+    min-height: 42px;
     padding: 6px 6px;
   }
 

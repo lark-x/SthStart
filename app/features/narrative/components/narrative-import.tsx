@@ -88,6 +88,7 @@ export function NarrativeImport({
   };
 
   const handleSearchRemote = async () => {
+    if (busy) return;
     if (!mcpQuery.trim()) return;
     setBusy(true);
     try {
@@ -97,6 +98,7 @@ export function NarrativeImport({
         maxResults: 10,
       });
       setRemoteResults(res.items);
+      setRemoteDoc(null);
       toast.info(`检索到 ${res.items.length} 个结果`);
     } catch (e) {
       toast.error('检索失败', e instanceof Error ? e.message : String(e));
@@ -192,7 +194,13 @@ export function NarrativeImport({
         <div className="flex flex-col sm:flex-row gap-3">
           <Select
             value={world}
-            onChange={(e) => setWorld(e.target.value as typeof world)}
+            onChange={(e) => {
+              // pathHash 按世界隔离；切换世界必须清空旧结果，否则会用
+              // 旧世界的 pathHash 配新世界的 world 读取或导入错误数据。
+              setWorld(e.target.value as typeof world);
+              setRemoteResults([]);
+              setRemoteDoc(null);
+            }}
             className="sm:w-44 bg-[#fffdf7] text-xs h-10"
           >
             <option value="gi">原神 (Genshin)</option>

@@ -23,23 +23,43 @@ export function NarrativeTree({
   onSelectNode: (nodeId: string) => void;
   onOpenImport: () => void;
 }) {
-  const depthMap = React.useMemo(() => {
-    const map = new Map<string, number>();
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  // 服务端按全局 sort_order,title 返回平铺列表，而导入数据的 order 是
+  // “同一父节点内”的序号；直接渲染会把子节点插到别的章节下面。这里按
+  // 父子关系重建 DFS 先序，保证缩进与层级一致。
+  const orderedNodes = React.useMemo(() => {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const childrenMap = new Map<string | null, NarrativeStoryNode[]>();
     for (const node of nodes) {
-      let d = 0;
-      let curr = node.parentId;
-      while (curr && d < 8) {
-        d += 1;
-        curr = nodeMap.get(curr)?.parentId ?? null;
-      }
-      map.set(node.id, d);
+      const parentKey = node.parentId && nodeMap.has(node.parentId) ? node.parentId : null;
+      const bucket = childrenMap.get(parentKey);
+      if (bucket) bucket.push(node);
+      else childrenMap.set(parentKey, [node]);
     }
-    return map;
+    const byOrder = (a: NarrativeStoryNode, b: NarrativeStoryNode) =>
+      a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, 'zh-Hans-CN');
+    for (const bucket of childrenMap.values()) bucket.sort(byOrder);
+    const result: Array<{ node: NarrativeStoryNode; depth: number }> = [];
+    const visit = (parentKey: string | null, depth: number) => {
+      for (const node of childrenMap.get(parentKey) ?? []) {
+        result.push({ node, depth });
+        visit(node.id, depth + 1);
+      }
+    };
+    visit(null, 0);
+    // 深度上限 8 层，超出按 8 层缩进；出现环导致漏掉的节点兜底追加。
+    const seen = new Set<string>();
+    for (const entry of result) {
+      entry.depth = Math.min(entry.depth, 8);
+      seen.add(entry.node.id);
+    }
+    for (const node of nodes) {
+      if (!seen.has(node.id)) result.push({ node, depth: 0 });
+    }
+    return result;
   }, [nodes]);
 
   return (
-    <aside className="w-full md:w-64 flex flex-col bg-[#e3ded4] border-r border-[rgb(32_38_49/13%)] min-h-[calc(100dvh-68px)]">
+    <aside className="w-full md:w-64 flex flex-col bg-[#e3ded4] border-r border-[rgb(32_38_49/13%)] max-h-[45dvh] md:max-h-none md:min-h-[calc(100dvh-68px)]">
       <div className="p-4 border-b border-[rgb(32_38_49/11%)] space-y-1.5">
         <label
           htmlFor="narrative-work-select"
@@ -63,8 +83,7 @@ export function NarrativeTree({
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 space-y-0.5">
-        {nodes.map((node) => {
-          const depth = depthMap.get(node.id) ?? 0;
+        {orderedNodes.map(({ node, depth }) => {
           const isActive = node.id === selectedNodeId;
 
           return (

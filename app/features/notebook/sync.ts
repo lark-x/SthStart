@@ -13,6 +13,7 @@ import {
   localAssetId,
   markLocalAssetUploaded,
   pendingLocalNotes,
+  pruneLocalAssets,
   removeLocalNote,
   replaceLocalAssetReference,
   setLocalNoteSyncing,
@@ -102,6 +103,7 @@ async function runSync(queryClient?: QueryClient, options?: { force?: boolean; n
       );
     }
   }
+  await pruneLocalAssets();
 }
 
 export function syncPendingNotebookData(queryClient?: QueryClient, options?: { force?: boolean; noteId?: string }) {

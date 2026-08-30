@@ -46,6 +46,7 @@ import { RelationsSection } from './relations-section';
 import { PublishSection } from './publish-section';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
+import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
 import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
@@ -81,7 +82,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   );
 
   // Queries
-  const { data: detailData, refetch: refetchDetail } = useCharacterDetail(characterId);
+  const { data: detailData, error: detailError, refetch: refetchDetail } = useCharacterDetail(characterId);
   const { data: libraryData } = useCharacters();
   const library = libraryData?.items ?? [];
 
@@ -226,8 +227,16 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     let targetId = characterId;
     if (!targetId) {
       targetId = (await handleSave()) ?? undefined;
+      if (!targetId) return;
+    } else if (isDirty || status === 'dirty') {
+      // 生成结果会整体重置表单；先把未保存的修改落库，避免并发编辑被覆盖。
+      const saved = await handleSave(true);
+      if (saved === null) {
+        toast.error('生成草稿失败', '草稿保存失败，请先解决保存问题');
+        return;
+      }
     }
-    if (!targetId || !aiPrompt.trim()) {
+    if (!aiPrompt.trim()) {
       toast.warning('请填写角色描述用于 AI 提取');
       return;
     }
@@ -240,7 +249,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       reset(characterDraftToFormValues(result.draft));
       setStatus('clean');
       toast.success(`已生成可编辑草稿，并收录 ${result.sources.length} 条参考来源`);
-      await refetchDetail();
+      if (characterId) await refetchDetail();
     } catch (err) {
       toast.error('生成草稿失败', err instanceof Error ? err.message : String(err));
     }
@@ -250,13 +259,21 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     let targetId = characterId;
     if (!targetId) {
       targetId = (await handleSave()) ?? undefined;
+      if (!targetId) return;
+    } else if (isDirty || status === 'dirty') {
+      // 发布快照的是服务端已保存的草稿，必须先落库未保存的修改，
+      // 否则发布出去的版本不是用户屏幕上看到的版本。
+      const saved = await handleSave(true);
+      if (saved === null) {
+        toast.error('发布失败', '草稿保存失败，请检查网络后重试');
+        return;
+      }
     }
-    if (!targetId) return;
 
     try {
       const ver = await publishMutation.mutateAsync(targetId);
       toast.success(`已成功发布版本 v${ver.version}`);
-      await refetchDetail();
+      if (characterId) await refetchDetail();
     } catch (err) {
       toast.error('发布失败', err instanceof Error ? err.message : String(err));
     }
@@ -291,6 +308,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }
   };
 
+  // useMutation 返回的对象每次渲染都是新引用，绝不能进 effect 依赖；
+  // 成功时先同步清空 avatarTaskId 再 await 应用结果，否则渲染触发的
+  // effect 重启会让 stopped 守卫拦下 setAvatarTaskId(null)，形成
+  // 「查询成功 → 应用 → 重启 → 再应用」的死循环并不断插入资产记录。
+  const applyAvatarRef = useRef(applyAvatarMutation);
+  useEffect(() => {
+    applyAvatarRef.current = applyAvatarMutation;
+  }, [applyAvatarMutation]);
+
   useEffect(() => {
     if (!avatarTaskId || !characterId) return;
     let stopped = false;
@@ -300,11 +326,17 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         const task = await fetchCharacterGenerationTask(characterId, avatarTaskId);
         if (stopped) return;
         if (task.status === 'succeeded') {
-          await applyAvatarMutation.mutateAsync({ id: characterId, taskId: avatarTaskId });
-          if (!stopped) {
-            setAvatarTaskId(null);
-            await refetchDetail();
-            toast.success('AI 头像已应用到角色');
+          setAvatarTaskId(null);
+          try {
+            await applyAvatarRef.current.mutateAsync({ id: characterId, taskId: avatarTaskId });
+            if (!stopped) {
+              await refetchDetail();
+              toast.success('AI 头像已应用到角色');
+            }
+          } catch (applyErr) {
+            if (!stopped) {
+              toast.error('应用 AI 头像失败', applyErr instanceof Error ? applyErr.message : String(applyErr));
+            }
           }
           return;
         }
@@ -326,7 +358,21 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       stopped = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [applyAvatarMutation, avatarTaskId, characterId, refetchDetail, toast]);
+  }, [avatarTaskId, characterId, refetchDetail, toast]);
+
+  // App Router 的客户端导航（返回链接、移动端滑动手势返回）不触发
+  // beforeunload；已有角色的未保存修改在卸载时静默补存，避免丢失。
+  const saveRef = useRef(handleSave);
+  const characterIdRef = useRef(characterId);
+  const pendingEditsRef = useRef(false);
+  useEffect(() => {
+    saveRef.current = handleSave;
+    characterIdRef.current = characterId;
+    pendingEditsRef.current = isDirty || status === 'dirty';
+  }, [handleSave, characterId, isDirty, status]);
+  useEffect(() => () => {
+    if (characterIdRef.current && pendingEditsRef.current) void saveRef.current(true);
+  }, []);
 
   const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -354,7 +400,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       a.href = url;
       a.download = `${detailData?.slug || 'character'}.json`;
       a.click();
-      URL.revokeObjectURL(url);
+      // iOS Safari 上同步 revoke 可能取消尚未开始的下载，延迟释放。
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
       toast.success('已导出 Tavern Card V2 JSON');
     } catch (err) {
       toast.error('导出失败', err instanceof Error ? err.message : String(err));
@@ -369,11 +416,49 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     { id: 'publish', label: '应用与版本', icon: Layers },
   ];
 
+  // 编辑既有角色前必须等详情加载完成：空表单若允许交互，用户先打的字会
+  // 阻断数据水合，随后自动保存用近乎空白的草稿整体覆盖服务端数据。
+  if (characterId && !detailData) {
+    if (detailError) {
+      return (
+        <main className="min-h-screen bg-[#f4f0e7] text-[#18201d]">
+          <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
+            <p className="font-serif text-lg font-semibold">角色加载失败</p>
+            <p className="max-w-sm text-xs text-[#68716d]">
+              {detailError instanceof Error ? detailError.message : '无法加载该角色，请稍后重试。'}
+            </p>
+            <div className="flex items-center gap-2 pt-1">
+              <Button size="sm" variant="outline" onClick={() => void refetchDetail()}>重试</Button>
+              <Link
+                href="/apps/characters"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                <span>返回资料库</span>
+              </Link>
+            </div>
+          </div>
+        </main>
+      );
+    }
+    return (
+      <main className="min-h-screen bg-[#f4f0e7] text-[#18201d]">
+        <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 sm:px-8">
+          <Skeleton className="h-8 w-1/3" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </main>
+    );
+  }
+
+  const saving = status === 'saving';
+
   return (
     <main className="min-h-screen bg-[#f4f0e7] text-[#18201d]">
       {/* Sticky Header */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-8 py-3.5 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 sm:px-8 py-3.5 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/apps/characters"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
@@ -382,7 +467,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             <span>资料库</span>
           </Link>
           <span className="text-xs text-[#68716d]">|</span>
-          <span className="text-xs text-[#68716d]">
+          <span className="min-w-0 truncate text-xs text-[#68716d]">
             {status === 'saving'
               ? '正在自动保存…'
               : status === 'dirty'
@@ -422,7 +507,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             size="sm"
             variant="accent"
             onClick={handlePublish}
-            disabled={!draft.displayName.trim()}
+            disabled={!draft.displayName.trim() || saving}
             loading={publishMutation.isPending}
           >
             <Send className="h-3.5 w-3.5" aria-hidden="true" />
@@ -521,6 +606,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 size="sm"
                 variant="accent"
                 loading={generateMutation.isPending}
+                disabled={saving}
                 onClick={handleGenerate}
               >
                 <span>生成草稿</span>
@@ -558,7 +644,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 canUpload={Boolean(characterId)}
                 onUploadClick={() => avatarInputRef.current?.click()}
                 onGenerateAvatar={() => void handleGenerateAvatar()}
-                generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending}
+                generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending || saving}
                 onChange={handleDraftChange}
                 control={control}
                 register={register}
@@ -571,21 +657,27 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 library={library}
                 canEdit={Boolean(characterId)}
                 onAddRelationship={async (rel) => {
-                  if (characterId) {
+                  if (!characterId) return;
+                  try {
                     await saveRelMutation.mutateAsync({
                       characterId,
                       relationship: rel,
                     });
                     toast.success('关系已保存');
+                  } catch (err) {
+                    toast.error('保存关系失败', err instanceof Error ? err.message : String(err));
                   }
                 }}
                 onRemoveRelationship={async (relId) => {
-                  if (characterId) {
+                  if (!characterId) return;
+                  try {
                     await deleteRelMutation.mutateAsync({
                       characterId,
                       relationshipId: relId,
                     });
                     toast.success('关系已移除');
+                  } catch (err) {
+                    toast.error('移除关系失败', err instanceof Error ? err.message : String(err));
                   }
                 }}
               />

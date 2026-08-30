@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Sparkles, ImagePlus } from 'lucide-react';
 import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contracts';
@@ -54,6 +54,13 @@ export function CreativeClient() {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pageError, setPageError] = useState('');
+  // 上传是异步的，完成回填前必须确认模式没有变化，否则图生图的参考图
+  // 会以幽灵状态残留进文生图模式，导致后续提交被服务端拒绝且无法移除。
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  const lastProgressSyncRef = useRef(0);
 
   useEffect(() => () => {
     if (sourcePreview?.startsWith('blob:')) URL.revokeObjectURL(sourcePreview);
@@ -63,7 +70,11 @@ export function CreativeClient() {
   }, [lastFramePreview]);
 
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
-  const artifacts = artifactsQuery.data?.items ?? [];
+  const artifacts = useMemo(
+    () => artifactsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [artifactsQuery.data]
+  );
+  const artifactsTotal = artifactsQuery.data?.pages[0]?.total ?? 0;
   const binding = statusQuery.data?.modes[
     mode === 'text-to-image' ? 'textToImage'
     : mode === 'image-to-image' ? 'imageToImage'
@@ -83,6 +94,13 @@ export function CreativeClient() {
 
   useGenerationEvents((event) => {
     if (event.appId !== 'creative-center') return;
+    // 生成期间的 progress 事件可能每秒多条，节流到 3 秒一次，
+    // 避免全量任务列表被高频重取；2s 轮询兜底保证最终一致。
+    if (event.eventType === 'progress') {
+      const now = Date.now();
+      if (now - lastProgressSyncRef.current < 3_000) return;
+      lastProgressSyncRef.current = now;
+    }
     void queryClient.invalidateQueries({ queryKey: creativeKeys.tasks() });
     if (event.eventType === 'succeeded' || event.eventType === 'failed' || event.eventType === 'abandoned') {
       void queryClient.invalidateQueries({ queryKey: creativeKeys.artifacts() });
@@ -118,9 +136,15 @@ export function CreativeClient() {
     }
     setPageError('');
     setUploading(true);
+    const requestedMode = mode;
     const previewUrl = URL.createObjectURL(file);
     try {
       const artifact = await uploadCreativeImage(file);
+      if (modeRef.current !== requestedMode) {
+        URL.revokeObjectURL(previewUrl);
+        toast.info('图片已加入媒体库', '但生成模式已切换，未用作本次参考图。');
+        return;
+      }
       if (target === 'first') {
         setSourcePreview(previewUrl);
         setSourceArtifact(artifact);
@@ -156,13 +180,30 @@ export function CreativeClient() {
       setPageError('首尾帧视频需要同时上传尾帧图片。');
       return;
     }
+    // 提交走 onClick 而非 form submit，输入框的 min/max 不会生效，这里补上基本校验。
+    const width = Number(form.width);
+    const height = Number(form.height);
+    const steps = Number(form.steps);
+    const duration = Number(form.duration);
+    if (!isVideoMode && (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0)) {
+      setPageError('请填写有效的宽度和高度。');
+      return;
+    }
+    if (!isVideoMode && (!Number.isFinite(steps) || steps <= 0)) {
+      setPageError('请填写有效的采样步数。');
+      return;
+    }
+    if (isVideoMode && (!Number.isFinite(duration) || duration <= 0)) {
+      setPageError('请填写有效的视频时长。');
+      return;
+    }
     setSubmitting(true);
     try {
       const payload: CreativeTaskInput = isVideoMode ? {
         mode,
         prompt: form.prompt.trim(),
-        duration: Number(form.duration),
-        aspectRatio: form.aspectRatio,
+        duration,
+        aspectRatio: form.aspectRatio.trim() || '16:9',
         seed: form.seed.trim() ? Number(form.seed) : null,
         firstFrameId: sourceArtifact?.id,
         lastFrameId: lastFrameArtifact?.id,
@@ -170,11 +211,12 @@ export function CreativeClient() {
         mode: mode as 'text-to-image' | 'image-to-image',
         prompt: form.prompt.trim(),
         negativePrompt: form.negativePrompt.trim(),
-        width: Number(form.width),
-        height: Number(form.height),
-        steps: Number(form.steps),
+        width,
+        height,
+        steps,
         seed: form.seed.trim() ? Number(form.seed) : null,
-        sourceArtifactId: sourceArtifact?.id,
+        // 上传竞态可能在文生图模式残留参考图状态；只有图生图才随请求发送。
+        sourceArtifactId: mode === 'image-to-image' ? sourceArtifact?.id : undefined,
       };
       await createCreativeTask(payload);
       toast.success('创作任务已提交，将在后台执行');
@@ -245,6 +287,9 @@ export function CreativeClient() {
     try {
       await deleteCreativeArtifact(artifact.id);
       await queryClient.invalidateQueries({ queryKey: creativeKeys.artifacts() });
+      // 任务卡的缩略图直接引用产物 URL，删除后同步失效任务缓存，
+      // 否则最多 10s 内任务卡仍渲染已 404 的图片。
+      void queryClient.invalidateQueries({ queryKey: creativeKeys.tasks() });
       toast.success('作品已删除');
     } catch (error) {
       toast.error('删除失败', error instanceof Error ? error.message : String(error));
@@ -263,7 +308,11 @@ export function CreativeClient() {
           actions={<Button size="sm" variant="outline" onClick={() => { void statusQuery.refetch(); void tasksQuery.refetch(); void artifactsQuery.refetch(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>}
         />
         {(pageError || serviceError) && (
-          <Alert variant="danger" title="创作中心暂时无法完成操作" onDismiss={() => setPageError('')}>
+          <Alert
+            variant="danger"
+            title={pageError ? '创作中心操作未完成' : '创作中心暂时无法完成操作'}
+            onDismiss={pageError ? () => setPageError('') : undefined}
+          >
             {pageError || (serviceError instanceof Error ? serviceError.message : String(serviceError))}
           </Alert>
         )}
@@ -304,7 +353,7 @@ export function CreativeClient() {
             ) : (
               <ImageGenerator
                 form={form}
-                mode={mode}
+                mode={mode as 'text-to-image' | 'image-to-image'}
                 binding={binding}
                 sourceArtifact={sourceArtifact}
                 sourcePreview={sourcePreview}
@@ -320,7 +369,16 @@ export function CreativeClient() {
           <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
         </div>
         <TaskList tasks={sortedTasks} artifacts={artifacts} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />
-        <MediaGallery artifacts={artifacts} total={artifactsQuery.data?.total ?? artifacts.length} isLoading={artifactsQuery.isLoading} onPin={handlePin} onDelete={handleDelete} />
+        <MediaGallery
+          artifacts={artifacts}
+          total={artifactsTotal}
+          isLoading={artifactsQuery.isLoading}
+          hasMore={Boolean(artifactsQuery.hasNextPage)}
+          isLoadingMore={artifactsQuery.isFetchingNextPage}
+          onLoadMore={() => { void artifactsQuery.fetchNextPage(); }}
+          onPin={handlePin}
+          onDelete={handleDelete}
+        />
       </div>
     </main>
   );

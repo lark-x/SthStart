@@ -41,7 +41,7 @@ export function ArtifactPicker({
           <p className="mt-1.5 text-[11px] leading-relaxed text-[#68716d]">{hint} 浏览器不会发送 Base64。</p>
         </div>
         {artifact && (
-          <button type="button" onClick={onRemove} className="self-start rounded p-1.5 text-[#68716d] hover:bg-[#c9674a]/10 hover:text-[#b83b1b]" aria-label={`移除${label}`}>
+          <button type="button" onClick={onRemove} className="flex h-8 w-8 flex-none items-center justify-center self-start rounded text-[#68716d] hover:bg-[#c9674a]/10 hover:text-[#b83b1b]" aria-label={`移除${label}`}>
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         )}

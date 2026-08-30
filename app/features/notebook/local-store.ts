@@ -45,6 +45,8 @@ const LOCAL_ASSET_PREFIX = 'notebook-local://';
 const MAX_PENDING_ASSET_BYTES = 100 * 1024 * 1024;
 const CHANGE_EVENT = 'sthstart:notebook-local-change';
 let databasePromise: Promise<IDBPDatabase<NotebookDatabase>> | null = null;
+// 本次会话内已删除笔记的墓碑：防止过期的服务端列表响应复活已删除的笔记。
+const deletedNoteTombstones = new Set<string>();
 
 function database() {
   if (typeof indexedDB === 'undefined') throw new Error('indexeddb_unavailable');
@@ -95,7 +97,7 @@ export async function saveLocalNote(note: CreativeNote, status: NotebookSyncStat
   }
   const record: LocalNoteRecord = {
     noteId: note.id,
-    note: { ...note, id: note.id },
+    note: { ...note, id: note.id, updatedAt: note.updatedAt ?? new Date().toISOString() },
     localVersion: (existing?.localVersion ?? 0) + 1,
     status,
     updatedAt: Date.now(),
@@ -112,9 +114,16 @@ export async function saveServerNotes(notes: CreativeNote[]) {
   const db = await database();
   const transaction = db.transaction('notes', 'readwrite');
   for (const note of notes) {
-    if (!note.id) continue;
+    if (!note.id || deletedNoteTombstones.has(note.id)) continue;
     const existing = await transaction.store.get(note.id);
     if (existing && existing.status !== 'synced') continue;
+    // 列表响应可能早于本机的 PUT 完成（内容更旧），按 revision 丢弃过期版本。
+    if (
+      existing
+      && typeof existing.note.revision === 'number'
+      && typeof note.revision === 'number'
+      && note.revision < existing.note.revision
+    ) continue;
     await transaction.store.put({
       noteId: note.id,
       note,
@@ -130,6 +139,7 @@ export async function saveServerNotes(notes: CreativeNote[]) {
 }
 
 export async function markLocalNoteDeleted(noteId: string, fallback: CreativeNote) {
+  deletedNoteTombstones.add(noteId);
   const db = await database();
   const existing = await db.get('notes', noteId);
   await db.put('notes', {
@@ -210,7 +220,8 @@ export async function pendingLocalNotes(force = false, noteId?: string) {
 export async function addLocalAsset(noteId: string, blob: Blob, filename: string) {
   const db = await database();
   const existing = await db.getAll('assets');
-  const usedBytes = existing.reduce((sum, asset) => sum + asset.blob.size, 0);
+  // 配额只约束“待上传”的资产；已上传、等待被 prune 回收的不占额度。
+  const usedBytes = existing.reduce((sum, asset) => sum + (asset.uploadedUrl ? 0 : asset.blob.size), 0);
   if (usedBytes + blob.size > MAX_PENDING_ASSET_BYTES) throw new Error('local_asset_quota_exceeded');
   const id = crypto.randomUUID();
   await db.put('assets', { id, noteId, blob, filename, contentType: blob.type, createdAt: Date.now() });
@@ -254,7 +265,36 @@ export async function replaceLocalAssetReference(noteId: string, assetId: string
     record.updatedAt = Date.now();
     await transaction.objectStore('notes').put(record);
   }
-  await transaction.objectStore('assets').delete(assetId);
+  // 保留本地 blob（只标记已上传）：编辑器的内存态可能仍持有 notebook-local://
+  // 引用并在下一次自动保存时写回；blob 一旦删除，同步就会永久报 local_image_missing。
+  // 未再被引用的上传资产由 pruneLocalAssets 统一回收。
+  const asset = await transaction.objectStore('assets').get(assetId);
+  if (asset && !asset.uploadedUrl) {
+    asset.uploadedUrl = uploadedUrl;
+    await transaction.objectStore('assets').put(asset);
+  }
   await transaction.done;
   announce(noteId);
+}
+
+export async function pruneLocalAssets() {
+  const db = await database();
+  const [notes, assets] = await Promise.all([
+    db.getAll('notes'),
+    db.getAll('assets'),
+  ]);
+  const referenced = new Set<string>();
+  for (const record of notes) {
+    for (const block of record.note.content) {
+      if (block.type !== 'image') continue;
+      const assetId = localAssetId(block.src);
+      if (assetId) referenced.add(assetId);
+    }
+  }
+  const stale = assets.filter((asset) => asset.uploadedUrl && !referenced.has(asset.id));
+  if (!stale.length) return;
+  const transaction = db.transaction('assets', 'readwrite');
+  for (const asset of stale) await transaction.store.delete(asset.id);
+  await transaction.done;
+  if (stale.length) announce();
 }

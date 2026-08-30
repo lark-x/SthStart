@@ -41,7 +41,8 @@ export async function fetchCreativeStatus() {
 }
 
 export async function fetchCreativeTasks() {
-  const response = await getJson<{ items: CreativeTaskResponse[] }>('creative/tasks');
+  // 服务端默认只返回 30 条，不显式传 limit 会让旧任务在 UI 上静默消失。
+  const response = await getJson<{ items: CreativeTaskResponse[] }>('creative/tasks?limit=100');
   return response.items.map(withPortalArtifactUrls);
 }
 
@@ -60,9 +61,18 @@ export async function retryCreativeTask(id: string) {
   return withPortalArtifactUrls(task);
 }
 
-export async function fetchCreativeArtifacts() {
-  const response = await getJson<{ items: ArtifactDescriptor[]; total: number }>('creative/artifacts', undefined, CreativeArtifactListResponseSchema);
-  return { ...response, items: response.items.map((artifact) => ({ ...artifact, url: portalArtifactUrl(artifact.id) })) };
+export async function fetchCreativeArtifacts(offset = 0) {
+  // 服务端单页上限 100；媒体库分页加载，nextOffset 供无限查询续拉。
+  const response = await getJson<{ items: ArtifactDescriptor[]; total: number }>(
+    `creative/artifacts?limit=100&offset=${offset}`,
+    undefined,
+    CreativeArtifactListResponseSchema,
+  );
+  return {
+    ...response,
+    nextOffset: offset + response.items.length,
+    items: response.items.map((artifact) => ({ ...artifact, url: portalArtifactUrl(artifact.id) })),
+  };
 }
 
 export async function pinCreativeArtifact(id: string, pinned: boolean) {

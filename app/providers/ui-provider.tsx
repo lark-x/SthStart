@@ -152,7 +152,7 @@ function ToastContainer({
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="fixed bottom-5 right-5 z-50 flex max-w-sm w-full flex-col gap-2 pointer-events-none p-4"
+      className="fixed bottom-5 left-4 right-4 sm:left-auto z-50 flex max-w-sm w-full flex-col gap-2 pointer-events-none sm:p-4"
     >
       {toasts.map((item) => (
         <div

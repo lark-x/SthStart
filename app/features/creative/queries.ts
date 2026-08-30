@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { creativeKeys } from '@/app/lib/query-keys';
 import { fetchCreativeArtifacts, fetchCreativeStatus, fetchCreativeTasks } from './api';
 
@@ -24,9 +24,12 @@ export function useCreativeTasks() {
 }
 
 export function useCreativeArtifacts() {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: creativeKeys.artifacts(),
-    queryFn: fetchCreativeArtifacts,
+    queryFn: ({ pageParam }) => fetchCreativeArtifacts(pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.nextOffset < lastPage.total ? lastPage.nextOffset : undefined,
     refetchInterval: 10_000,
     staleTime: 3_000,
   });
