@@ -20,6 +20,10 @@ import {
 } from './local-store';
 
 let activeSync: Promise<void> | null = null;
+// 同步在开始时一次性快照待同步列表；进行中的同步会合并并发调用，
+// 但这轮期间新保存的笔记（含强制/定向同步请求）必须补跑一轮，
+// 否则要等下一个 15s 周期甚至更久（当轮卡在大图片上传时）。
+let pendingRerun: { force?: boolean; noteId?: string } | null = null;
 
 function updateNoteCaches(queryClient: QueryClient | undefined, note: CreativeNote) {
   if (!queryClient || !note.id) return;
@@ -107,6 +111,20 @@ async function runSync(queryClient?: QueryClient, options?: { force?: boolean; n
 }
 
 export function syncPendingNotebookData(queryClient?: QueryClient, options?: { force?: boolean; noteId?: string }) {
-  activeSync ??= runSync(queryClient, options).finally(() => { activeSync = null; });
+  if (activeSync) {
+    pendingRerun = {
+      force: (pendingRerun?.force ?? false) || Boolean(options?.force),
+      noteId: options?.noteId ?? pendingRerun?.noteId,
+    };
+    return activeSync;
+  }
+  activeSync = runSync(queryClient, options).finally(() => {
+    activeSync = null;
+    if (pendingRerun) {
+      const next = pendingRerun;
+      pendingRerun = null;
+      void syncPendingNotebookData(queryClient, next);
+    }
+  });
   return activeSync;
 }

@@ -45,6 +45,8 @@ export function RelationsSection({
       setTargetId('');
       setRelationType('');
       setDescription('');
+    } catch {
+      // 保存失败时保留用户输入，错误提示由编辑器统一弹出。
     } finally {
       setSaving(false);
     }

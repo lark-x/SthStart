@@ -76,10 +76,21 @@ export function CreativeClient() {
   }, [lastFramePreview]);
 
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
-  const artifacts = useMemo(
-    () => artifactsQuery.data?.pages.flatMap((page) => page.items) ?? [],
-    [artifactsQuery.data]
-  );
+  // 媒体库是 created_at DESC + OFFSET 分页：上传/删除/10s 轮询都会移动偏移
+  // 基准，先加载的旧页与按新序位取到的下一页可能重叠，按 id 去重避免
+  // 重复卡片与重复 React key。
+  const artifacts = useMemo(() => {
+    const seen = new Set<string>();
+    const items: ArtifactDescriptor[] = [];
+    for (const page of artifactsQuery.data?.pages ?? []) {
+      for (const artifact of page.items) {
+        if (seen.has(artifact.id)) continue;
+        seen.add(artifact.id);
+        items.push(artifact);
+      }
+    }
+    return items;
+  }, [artifactsQuery.data]);
   const artifactsTotal = artifactsQuery.data?.pages[0]?.total ?? 0;
   const binding = statusQuery.data?.modes[
     mode === 'text-to-image' ? 'textToImage'

@@ -142,7 +142,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         setTags(updated.tags);
       }
       setStatus(unchanged ? 'saved' : 'dirty');
-      if (unchanged) setTimeout(() => setStatus('clean'), 1200);
       if (!quiet) toast.success('草稿已保存');
       return characterId;
     } catch (err) {
@@ -193,6 +192,17 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }, 900);
     return () => clearTimeout(timer);
   }, [characterId, handleSave, status]);
+
+  // 「已保存」徽标回落干净态必须放在 effect 里：用户新输入会把 status 变为
+  // dirty 并随之取消回落定时器；裸 setTimeout 会在用户继续输入后仍把状态改回
+  // clean，让上面的自动保存 effect 跳过最后一次编辑。
+  useEffect(() => {
+    if (status !== 'saved') return;
+    const timer = setTimeout(() => {
+      setStatus((current) => (current === 'saved' ? 'clean' : current));
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [status]);
 
   const handleDraftChange = (patch: Partial<CharacterDraft>) => {
     for (const [key, value] of Object.entries(patch) as Array<[
@@ -372,8 +382,18 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     characterIdRef.current = characterId;
     pendingEditsRef.current = isDirty || status === 'dirty';
   }, [handleSave, characterId, isDirty, status]);
-  useEffect(() => () => {
-    if (characterIdRef.current && pendingEditsRef.current) void saveRef.current(true);
+  useEffect(() => {
+    const flushPending = () => {
+      if (characterIdRef.current && pendingEditsRef.current) void saveRef.current(true);
+    };
+    // pagehide 覆盖 iOS Safari 切后台/杀进程等既不触发 beforeunload、
+    // 也不触发组件卸载清理的退出路径，与 note-editor 的兜底一致。
+    const handlePageHide = () => flushPending();
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      flushPending();
+    };
   }, []);
 
   const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -595,7 +615,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               </strong>
             </div>
             <p className="text-xs text-[#68716d] leading-relaxed">
-              输入角色名或人物背景片段，系统将联网检索资料并自动生成结构化草稿，保留原始出处供复核。
+              输入角色名或人物背景片段，系统将自动生成结构化草稿；默认联网检索公开资料并保留原始出处供复核，可勾选下方开关关闭联网。
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
@@ -672,6 +692,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                     toast.success('关系已保存');
                   } catch (err) {
                     toast.error('保存关系失败', err instanceof Error ? err.message : String(err));
+                    // 向表单回传失败： RelationsSection 依赖 reject 跳过清空，
+                    // 否则用户填写的关系描述在失败后被静默丢弃。
+                    throw err;
                   }
                 }}
                 onRemoveRelationship={async (relId) => {

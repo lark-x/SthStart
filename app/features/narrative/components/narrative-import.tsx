@@ -74,10 +74,12 @@ export function NarrativeImport({
   };
 
   const handleCommit = async () => {
-    if (!preview) return;
+    if (!preview || busy) return;
     setBusy(true);
     try {
       const res = await commitNarrativeImport(preview.id);
+      // 批次已落库，立刻清掉预览避免二次提交命中 batch_not_pending。
+      setPreview(null);
       toast.success('已成功写入本地叙事档案');
       await onImportComplete(res.workId);
     } catch (e) {

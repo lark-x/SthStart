@@ -956,6 +956,22 @@ button.primary-action:hover,
     min-height: calc(100dvh - 48px);
   }
 
+  /* 单栏布局下滚动发生在文档上：pane 与工作区容器若保留 overflow 捕获，
+     编辑器的 sticky 保存栏会相对一个永不滚动的 scrollport 计算，等于失效。 */
+  .notebook-workspace-body {
+    overflow: visible;
+  }
+
+  .notebook-detail-pane {
+    overflow: visible;
+  }
+
+  /* 编辑器保存栏是移动端的主操作，让它单独吸附在视口顶部；
+     工作台头部若同时吸附会以更高的 z-index 盖住保存栏。 */
+  .notebook-workspace-header {
+    position: static;
+  }
+
   /* iOS Safari（含 iPad）在焦点控件字号 < 16px 时会缩放页面；单栏移动布局的
      JS 断点是 1024px，因此 16px 兜底必须覆盖到 1023px，769–1023px 才不会留下空窗。 */
   :where(

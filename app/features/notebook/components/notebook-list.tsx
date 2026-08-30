@@ -103,7 +103,9 @@ export function NotebookList() {
         </div>
 
         <div
-          className="notebook-filter-options flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0"
+          // globals.css 的未分层 .notebook-filter-options 会压过 overflow-x-auto
+          // utility，这里与工作台一致改为换行，避免 769-1023px 视口裁掉尾部分类。
+          className="notebook-filter-options flex flex-wrap items-center gap-1.5 w-full"
           role="group"
           aria-label="笔记分类筛选"
         >
