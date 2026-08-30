@@ -291,6 +291,38 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   expect(noteWrites).toBe(3);
 });
 
+test('notebook mobile roundtrip returns to the list and picks another note', async ({ page }) => {
+  const suffix = Date.now().toString(36);
+  const titleA = `往返甲${suffix}`;
+  const titleB = `往返乙${suffix}`;
+  for (const t of [titleA, titleB]) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/apps/notebook/new');
+    await page.getByPlaceholder('输入笔记标题…').fill(t);
+    await page.getByRole('button', { name: '保存' }).click();
+    await expect(page.getByText('已保存到本机').first()).toBeVisible();
+    await page.waitForTimeout(1200);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/apps/notebook');
+  await expect(page.getByRole('heading', { name: titleA })).toBeVisible();
+  await page.getByRole('heading', { name: titleA }).click();
+  await page.waitForTimeout(2000);
+  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue(titleA);
+
+  // 返回列表后不得被 initialNoteId 自动拉回编辑器
+  await page.getByRole('button', { name: '返回笔记列表' }).click();
+  await page.waitForTimeout(1200);
+  await expect(page.locator('.notebook-master-pane')).toBeVisible();
+  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveCount(0);
+
+  await expect(page.getByRole('heading', { name: titleB })).toBeVisible();
+  await page.getByRole('heading', { name: titleB }).click();
+  await page.waitForTimeout(2000);
+  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue(titleB);
+});
+
 test('notebook mobile layout stays compact and within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/apps/notebook');

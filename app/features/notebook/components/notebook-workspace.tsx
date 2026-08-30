@@ -80,6 +80,10 @@ export function NotebookWorkspace({
   const [query, setQuery] = useState('');
   const [activeId, setActiveId] = useState<string | null>(initialNoteId ?? null);
   const [isCreating, setIsCreating] = useState<boolean>(isNew);
+  // 用户在移动端点过“返回笔记列表”后不再被 initialNoteId 自动拉回编辑器：
+  // initialNoteId 是固定 prop，若不加此标记，返回会被 effect 立即撤销，
+  // 列表永远隐藏（表现为“列表无法选择”）。
+  const [exitedToMobileList, setExitedToMobileList] = useState(false);
   const [createKind, setCreateKind] = useState<NoteKind>(
     (searchParams?.get('kind') as NoteKind) || initialKind
   );
@@ -120,7 +124,7 @@ export function NotebookWorkspace({
   }, []);
 
   useEffect(() => {
-    if (initialNoteId) {
+    if (initialNoteId && !exitedToMobileList) {
       setActiveId(initialNoteId);
       setIsCreating(false);
     } else if (isNew) {
@@ -131,7 +135,7 @@ export function NotebookWorkspace({
         setActiveId(notes[0].id ?? null);
       }
     }
-  }, [initialNoteId, isNew, notes, activeId, isCreating]);
+  }, [initialNoteId, isNew, notes, activeId, isCreating, exitedToMobileList]);
 
   const handleSelectNote = (id: string) => {
     setIsCreating(false);
@@ -155,6 +159,7 @@ export function NotebookWorkspace({
   };
 
   const handleMobileBack = () => {
+    setExitedToMobileList(true);
     setActiveId(null);
     setIsCreating(false);
     if (typeof window !== 'undefined') {
