@@ -16,7 +16,7 @@ const envValue = (name, fallback) => String(process.env[name] ?? fileEnvironment
 // Keep these values in sync with the migration arrays in the service and
 // narrative database modules. Doctor is an executable .mjs script and cannot
 // import the TypeScript modules without bootstrapping the application.
-const expectedMigrations = { service: 11, narrative: 1 };
+const expectedMigrations = { service: 12, narrative: 1 };
 
 function checkTool(cmd) {
   try {
