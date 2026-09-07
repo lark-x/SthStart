@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/start.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build --workspace @sthstart/activity-playback && tsc -p tsconfig.json",
     "start": "node dist/start.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/*.test.js"
@@ -13,6 +13,7 @@
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@sinclair/typebox": "^0.34.41",
+    "@sthstart/activity-playback": "0.1.0",
     "@sthstart/contracts": "0.1.0",
     "cross-keychain": "^1.1.0",
     "fastify": "^5.6.2"

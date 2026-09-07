@@ -17,7 +17,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const { path } = await context.params;
   const target = `${serviceUrl}/api/v1/admin/${path.join('/')}${request.nextUrl.search}`;
   const contentType = request.headers.get('content-type') ?? '';
-  const streamBody = request.method !== 'GET' && request.method !== 'HEAD' && Boolean(request.body) && /^(?:image\/|application\/octet-stream)/i.test(contentType);
+  const streamBody = request.method !== 'GET' && request.method !== 'HEAD' && Boolean(request.body) && /^(?:image\/|video\/|audio\/|application\/octet-stream|application\/zip|application\/x-zip-compressed)/i.test(contentType);
   const body = request.method === 'GET' || request.method === 'HEAD'
     ? undefined
     : streamBody
@@ -25,7 +25,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       : await request.text();
   const headers: Record<string, string> = { 'x-sthstart-admin-token': adminToken, 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() };
   if (body && contentType) headers['content-type'] = contentType;
-  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename', 'x-note-id', 'range', 'if-none-match', 'last-event-id', 'accept']) {
+  for (const name of ['content-length', 'idempotency-key', 'x-artifact-original-name', 'x-original-filename', 'x-note-id', 'x-asset-key', 'x-artifact-key', 'range', 'if-none-match', 'last-event-id', 'accept']) {
     const value = request.headers.get(name);
     if (value) headers[name] = value;
   }
@@ -61,6 +61,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 }
 
 export const GET = proxy;
+export const HEAD = proxy;
 export const POST = proxy;
 export const PUT = proxy;
 export const DELETE = proxy;

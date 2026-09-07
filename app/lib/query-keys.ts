@@ -44,3 +44,21 @@ export const providerKeys = {
   discover: (params: Record<string, unknown>) =>
     [...providerKeys.all, 'discover', params] as const,
 };
+
+export const activityKeys = {
+  all: ['activities'] as const,
+  list: (filters?: { q?: string; archived?: boolean }) => [...activityKeys.all, 'list', filters] as const,
+  detail: (id: string) => [...activityKeys.all, 'detail', id] as const,
+  draft: (id: string) => [...activityKeys.all, 'draft', id] as const,
+  revisions: (id: string) => [...activityKeys.all, 'revisions', id] as const,
+  revision: (id: string, revisionId: string) => [...activityKeys.all, 'revision', id, revisionId] as const,
+  mediaRevision: (id: string, mediaRevisionId: string) => [...activityKeys.all, 'mediaRevision', id, mediaRevisionId] as const,
+  playbackRevision: (id: string, playbackRevisionId: string) => [...activityKeys.all, 'playbackRevision', id, playbackRevisionId] as const,
+  assets: (id: string) => [...activityKeys.all, 'assets', id] as const,
+  jobs: (id: string) => [...activityKeys.all, 'jobs', id] as const,
+  job: (id: string, jobId: string) => [...activityKeys.all, 'job', id, jobId] as const,
+  candidates: (id: string) => [...activityKeys.all, 'candidates', id] as const,
+  candidate: (id: string, candidateId: string) => [...activityKeys.all, 'candidate', id, candidateId] as const,
+  checkpoints: (id: string) => [...activityKeys.all, 'checkpoints', id] as const,
+  capabilities: () => [...activityKeys.all, 'capabilities'] as const,
+};

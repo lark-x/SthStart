@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { Plus, PenLine, Sparkles, BookOpen } from 'lucide-react';
+import { Plus, PenLine, Sparkles, BookOpen, Film } from 'lucide-react';
 import { LinsheCard } from './components/linshe-card';
 import { NotebookCard } from './components/notebook-card';
 import { NarrativeCard } from './components/narrative-card';
 import { RuntimeStrip } from './components/runtime-strip';
 import { CharacterLibraryCard } from './components/character-library-card';
 import { CreativeCard } from './components/creative-card';
+import { ActivityStudioCard } from './components/activity-studio-card';
 import { EyeCareToggle } from './components/shared/eye-care-toggle';
 
 export default function Home() {
@@ -18,6 +19,7 @@ export default function Home() {
             <span>SthStart</span>
           </Link>
           <nav className="header-nav">
+            <Link href="/apps/activities">活动工作室</Link>
             <Link href="/apps/creative">创作中心</Link>
             <Link href="/settings/control-center">控制中心</Link>
             <Link href="/settings/public-services">公共服务</Link>
@@ -60,6 +62,10 @@ export default function Home() {
                   <Sparkles className="h-3.5 w-3.5 text-[#e45d35]" aria-hidden="true" />
                   <span>新建生图</span>
                 </Link>
+                <Link href="/apps/activities/new" className="quick-action-pill">
+                  <Film className="h-3.5 w-3.5 text-[#e45d35]" aria-hidden="true" />
+                  <span>新建活动</span>
+                </Link>
                 <Link href="/apps/narrative" className="quick-action-pill">
                   <BookOpen className="h-3.5 w-3.5 text-[#e45d35]" aria-hidden="true" />
                   <span>查阅档案</span>
@@ -76,11 +82,12 @@ export default function Home() {
                   <p className="eyebrow">APPLICATIONS</p>
                   <h2 id="apps-title">已接入应用</h2>
                 </div>
-                <span className="app-count">05</span>
+                <span className="app-count">06</span>
               </div>
 
               <div className="app-list">
                 <LinsheCard />
+                <ActivityStudioCard />
                 <CreativeCard />
                 <CharacterLibraryCard />
                 <NotebookCard />

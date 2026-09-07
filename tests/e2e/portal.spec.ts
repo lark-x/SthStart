@@ -41,12 +41,13 @@ test('portal exposes its primary applications and lucide modern navigation', asy
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/');
   await expect(page).toHaveTitle(/SthStart/);
-  await expect(page.locator('.app-card')).toHaveCount(5);
+  await expect(page.locator('.app-card')).toHaveCount(6);
   await expect(page.getByRole('link', { name: '开始创作' })).toBeVisible();
   await expect(page.getByRole('link', { name: '打开笔记' })).toBeVisible();
   await expect(page.getByRole('link', { name: '进入档案' })).toBeVisible();
   await expect(page.getByRole('link', { name: '打开资料库' })).toBeVisible();
   await expect(page.getByRole('link', { name: '进入邻舍' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '进入工作室' })).toBeVisible();
 
   const firstAction = await page.getByRole('link', { name: '进入邻舍' }).boundingBox();
   expect(firstAction).not.toBeNull();

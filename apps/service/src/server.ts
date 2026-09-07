@@ -24,6 +24,7 @@ import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runti
 import { applyCreativeWhenReady, registerRuntimeRoutes } from './runtime-routes.js';
 import { ensureCreativeApp, registerCreativeRoutes } from './creative.js';
 import { ensureGenerationConsumerApps } from './generation/consumers.js';
+import { registerActivityRoutes } from './activities/routes.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -83,6 +84,11 @@ export async function createService(options: ServiceOptions = {}) {
     launchUrl: `${config.portalOrigins[0]}/apps/creative`, status: 'online', version: SERVICE_VERSION,
     sourceRevision: null, capabilities: ['image-generation', 'image-to-image', 'video-generation', 'h3-t2v', 'h3-i2v', 'h3-fl2va', 'artifact-library'], checkedAt: new Date().toISOString(),
   });
+  const inspectActivities = (): AppDescriptor => ({
+    id: 'activities', name: '活动工作室', description: '创作并回放多阶段角色群聊、朋友圈动态，导出自包含可渲染工程与离线阅读包。',
+    launchUrl: `${config.portalOrigins[0]}/apps/activities`, status: 'online', version: SERVICE_VERSION,
+    sourceRevision: null, capabilities: ['activity-chat', 'moments', 'media-slots', 'playback', 'hyperframes-export'], checkedAt: new Date().toISOString(),
+  });
 
   await app.register(cors, {
     origin(origin, callback) {
@@ -94,6 +100,8 @@ export async function createService(options: ServiceOptions = {}) {
   app.addContentTypeParser(
     [
       'application/octet-stream',
+      'application/zip',
+      'application/x-zip-compressed',
       'image/png',
       'image/jpeg',
       'image/webp',
@@ -162,20 +170,23 @@ export async function createService(options: ServiceOptions = {}) {
       { id: 'runtime-manager', version: '1.0.0', description: '托管本地应用进程、运行配置与有界日志。' },
       { id: 'artifact-service', version: '2.0.0', description: '基于流式处理、分层授权与 50 GiB 配额保护的中央媒体库。' },
       { id: 'generation-core', version: '1.0.0', description: '通用生成任务核心、版本化工作流引擎与隔离事件流。' },
+      { id: 'activity-studio', version: '1.0.0', description: '多角色活动记录创作、版本回溯、镜头编排与 HyperFrames 工程导出。' },
     ],
   }));
 
-  app.get<{ Reply: AppsResponse }>('/api/v1/apps', async () => ({ items: [await inspectApp(), inspectCreative(), inspectNotebook(), inspectNarrative()] }));
+  app.get<{ Reply: AppsResponse }>('/api/v1/apps', async () => ({ items: [await inspectApp(), inspectCreative(), inspectNotebook(), inspectNarrative(), inspectActivities()] }));
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/linshe', async () => inspectApp());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/notebook', async () => inspectNotebook());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/narrative', async () => inspectNarrative());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/creative', async () => inspectCreative());
+  app.get<{ Reply: AppDescriptor }>('/api/v1/apps/activities', async () => inspectActivities());
 
   registerManagementRoutes(app, config, database, secrets, options.fetcher);
   registerCreativeRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
+  registerActivityRoutes(app, config, database, secrets, options.fetcher);
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 

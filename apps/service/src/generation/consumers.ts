@@ -11,6 +11,7 @@ type GenerationConsumer = {
 const CONSUMERS: readonly GenerationConsumer[] = [
   { id: 'characters', name: '角色库', capabilities: ['generation', 'artifact', 'persona'] },
   { id: 'narrative', name: '叙事档案', capabilities: ['generation', 'artifact'] },
+  { id: 'activities', name: '活动工作室', capabilities: ['generation', 'artifact', 'activities'] },
 ];
 
 /**

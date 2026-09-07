@@ -302,6 +302,135 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
   { version: 12, name: 'notebook-local-first-sync', statements: [
     'ALTER TABLE creative_notes ADD COLUMN revision INTEGER NOT NULL DEFAULT 1',
   ] },
+  { version: 13, name: 'activity-studio', statements: [
+    `CREATE TABLE IF NOT EXISTS activities (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL,
+      theme TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '',
+      rules TEXT NOT NULL DEFAULT '',
+      archived INTEGER NOT NULL DEFAULT 0,
+      head_version INTEGER NOT NULL DEFAULT 1,
+      current_content_revision_id TEXT,
+      current_media_revision_id TEXT,
+      current_playback_revision_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activities_updated ON activities(updated_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_activities_archived ON activities(archived, updated_at DESC)',
+    `CREATE TABLE IF NOT EXISTS activity_drafts (
+      activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+      draft_version INTEGER NOT NULL DEFAULT 1,
+      document_json TEXT NOT NULL,
+      base_content_revision_id TEXT,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS activity_content_revisions (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      parent_id TEXT,
+      document_json TEXT NOT NULL,
+      schema_version INTEGER NOT NULL DEFAULT 1,
+      hash TEXT NOT NULL,
+      created_source TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_content_revisions_act ON activity_content_revisions(activity_id, created_at DESC)',
+    `CREATE TABLE IF NOT EXISTS activity_candidates (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      base_revision_id TEXT,
+      draft_version INTEGER,
+      scope_json TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      validation_json TEXT NOT NULL,
+      adopted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_candidates_act ON activity_candidates(activity_id, created_at DESC)',
+    `CREATE TABLE IF NOT EXISTS activity_media_revisions (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      content_revision_id TEXT NOT NULL REFERENCES activity_content_revisions(id) ON DELETE CASCADE,
+      slot_bindings_json TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_media_revisions_content ON activity_media_revisions(content_revision_id)',
+    `CREATE TABLE IF NOT EXISTS activity_playback_revisions (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      content_revision_id TEXT NOT NULL REFERENCES activity_content_revisions(id) ON DELETE CASCADE,
+      media_revision_id TEXT NOT NULL REFERENCES activity_media_revisions(id) ON DELETE CASCADE,
+      document_json TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_playback_revisions_content ON activity_playback_revisions(content_revision_id)',
+    `CREATE TABLE IF NOT EXISTS activity_checkpoints (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      head_version INTEGER NOT NULL,
+      content_revision_id TEXT NOT NULL,
+      media_revision_id TEXT NOT NULL,
+      playback_revision_id TEXT,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_checkpoints_act ON activity_checkpoints(activity_id, created_at DESC)',
+    `CREATE TABLE IF NOT EXISTS activity_assets (
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      asset_key TEXT NOT NULL,
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+      source TEXT NOT NULL,
+      type TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      duration_ms INTEGER,
+      hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(activity_id, asset_key)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_assets_artifact ON activity_assets(artifact_id)',
+    `CREATE TABLE IF NOT EXISTS activity_jobs (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT REFERENCES activities(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      status TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      idempotency_key TEXT,
+      target_revision_id TEXT,
+      result_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      error_message TEXT,
+      model_metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_jobs_act_status ON activity_jobs(activity_id, status)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_jobs_idempotency ON activity_jobs(activity_id, kind, idempotency_key) WHERE idempotency_key IS NOT NULL',
+    `CREATE TABLE IF NOT EXISTS activity_job_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id TEXT NOT NULL REFERENCES activity_jobs(id) ON DELETE CASCADE,
+      activity_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_job_events_job ON activity_job_events(job_id, id)',
+    `CREATE TABLE IF NOT EXISTS activity_media_job_links (
+      task_id TEXT NOT NULL REFERENCES generation_tasks(id) ON DELETE CASCADE,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      content_revision_id TEXT NOT NULL,
+      slot_id TEXT NOT NULL,
+      slot_fingerprint TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(task_id, slot_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_media_job_links_act ON activity_media_job_links(activity_id, content_revision_id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

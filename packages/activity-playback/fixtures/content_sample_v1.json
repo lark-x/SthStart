@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "activity": {
+    "title": "海边夏日露营",
+    "type": "日常度假",
+    "theme": "两位好友在海边营地搭建帐篷、准备晚餐并记录美好瞬间",
+    "location": "日落海岸营地",
+    "rules": "友好互动，记录真实温馨的生活点滴",
+    "generationMode": "autonomous"
+  },
+  "actors": [
+    {
+      "id": "actor_lan",
+      "displayName": "岚",
+      "activityRole": "营地组织者",
+      "outfitDescription": "浅蓝色工装衬衫，米色短裤，戴草帽",
+      "avatarAssetKey": "asset_lan_avatar",
+      "appearanceReferenceAssetKeys": [],
+      "persona": {
+        "name": "lan",
+        "displayName": "岚",
+        "title": "露营达人",
+        "summary": "温和沉稳，喜欢大自然与摄影的好友",
+        "personality": "细心、可靠、善于照顾人",
+        "speakingStyle": "语气平和亲切，常带鼓励性词汇",
+        "background": "摄影爱好者，热爱户外露营",
+        "rules": []
+      }
+    },
+    {
+      "id": "actor_cheng",
+      "displayName": "澄",
+      "activityRole": "氛围活跃者",
+      "outfitDescription": "橙白色条纹短袖，牛仔背带裤，白色帆布鞋",
+      "avatarAssetKey": "asset_cheng_avatar",
+      "appearanceReferenceAssetKeys": [],
+      "persona": {
+        "name": "cheng",
+        "displayName": "澄",
+        "title": "活力探险家",
+        "summary": "开朗元气，对新鲜事物充满好奇心",
+        "personality": "活泼直爽，富有感染力",
+        "speakingStyle": "句尾喜欢带叹号，语速轻快",
+        "background": "喜欢美食与记录生活视频的大学生",
+        "rules": []
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "fromActorId": "actor_lan",
+      "toActorId": "actor_cheng",
+      "description": "多年好友兼露营搭档，彼此非常信任"
+    },
+    {
+      "fromActorId": "actor_cheng",
+      "toActorId": "actor_lan",
+      "description": "依赖岚的沉稳规划，常为岚带来欢乐与惊喜"
+    }
+  ],
+  "stages": [
+    {
+      "id": "stage_1",
+      "title": "布置营地",
+      "order": 1,
+      "actorIds": ["actor_lan", "actor_cheng"],
+      "location": "海边营地沙滩",
+      "instruction": "分工布置帐篷和灯串",
+      "requiredBeats": [
+        {
+          "id": "beat_tent",
+          "text": "完成帐篷与灯串的架设",
+          "actorIds": ["actor_lan", "actor_cheng"]
+        }
+      ],
+      "locked": false,
+      "endCondition": "营地设施布置完毕"
+    },
+    {
+      "id": "stage_2",
+      "title": "晚餐与合照",
+      "order": 2,
+      "actorIds": ["actor_lan", "actor_cheng"],
+      "location": "营地长桌与篝火旁",
+      "instruction": "共进晚餐并拍照留念",
+      "requiredBeats": [
+        {
+          "id": "beat_photo",
+          "text": "拍摄营地合照与记录视频",
+          "actorIds": ["actor_lan", "actor_cheng"]
+        }
+      ],
+      "locked": true,
+      "endCondition": "合照完成并发布朋友圈"
+    }
+  ],
+  "conversations": [
+    {
+      "id": "group_main",
+      "kind": "group",
+      "title": "海边营地小分队",
+      "memberActorIds": ["actor_lan", "actor_cheng"]
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_1",
+      "conversationId": "group_main",
+      "stageId": "stage_1",
+      "kind": "message",
+      "speakerActorId": "actor_lan",
+      "text": "海风好舒服，澄，我们先把桌椅和灯串拉好。",
+      "mediaSlotIds": [],
+      "storyOrder": 10,
+      "storyTimeLabel": "16:30"
+    },
+    {
+      "id": "msg_2",
+      "conversationId": "group_main",
+      "stageId": "stage_1",
+      "kind": "message",
+      "speakerActorId": "actor_cheng",
+      "text": "收到！灯串我已经挂在帐篷前了，等天黑就会亮起来！✨",
+      "mediaSlotIds": [],
+      "storyOrder": 20,
+      "storyTimeLabel": "16:35"
+    },
+    {
+      "id": "msg_photo",
+      "conversationId": "group_main",
+      "stageId": "stage_2",
+      "kind": "message",
+      "speakerActorId": "actor_lan",
+      "text": "快看营地全景，第一张合照先拍好啦！",
+      "mediaSlotIds": ["slot_photo"],
+      "storyOrder": 30,
+      "storyTimeLabel": "18:20"
+    },
+    {
+      "id": "msg_video",
+      "conversationId": "group_main",
+      "stageId": "stage_2",
+      "kind": "message",
+      "speakerActorId": "actor_cheng",
+      "text": "还有这个！我录了一段海浪声和海边微风～",
+      "mediaSlotIds": ["slot_video"],
+      "storyOrder": 40,
+      "storyTimeLabel": "18:25"
+    }
+  ],
+  "posts": [
+    {
+      "id": "post_after",
+      "stageId": "stage_2",
+      "authorActorId": "actor_cheng",
+      "text": "海风、灯串，还有今晚的星空营地！🏕️🌊",
+      "mediaSlotIds": ["slot_photo"],
+      "storyOrder": 50,
+      "storyTimeLabel": "19:00",
+      "sourceFactIds": ["fact_camp_ready"]
+    }
+  ],
+  "comments": [
+    {
+      "id": "comment_1",
+      "postId": "post_after",
+      "authorActorId": "actor_lan",
+      "text": "下次再一起来海边看日出。",
+      "storyOrder": 60
+    }
+  ],
+  "likes": [
+    {
+      "postId": "post_after",
+      "actorId": "actor_lan"
+    }
+  ],
+  "mediaSlots": [
+    {
+      "id": "slot_photo",
+      "stageId": "stage_2",
+      "kind": "image",
+      "caption": "营地合照",
+      "shotDescription": "长桌与灯串下的营地全景",
+      "actorIds": ["actor_lan", "actor_cheng"],
+      "sourceFactIds": ["fact_camp_ready"]
+    },
+    {
+      "id": "slot_video",
+      "stageId": "stage_2",
+      "kind": "video",
+      "caption": "海浪微风片段",
+      "shotDescription": "海边黄昏波浪与晚霞",
+      "actorIds": ["actor_cheng"],
+      "sourceFactIds": ["fact_dinner_photo"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "fact_camp_ready",
+      "stageId": "stage_1",
+      "text": "海边营地与灯串已布置完毕",
+      "sourceRecordIds": ["msg_1", "msg_2"],
+      "knownByActorIds": ["actor_lan", "actor_cheng"],
+      "status": "happened"
+    },
+    {
+      "id": "fact_dinner_photo",
+      "stageId": "stage_2",
+      "text": "合照与视频已完成拍摄",
+      "sourceRecordIds": ["msg_photo", "msg_video"],
+      "knownByActorIds": ["actor_lan", "actor_cheng"],
+      "status": "happened"
+    }
+  ],
+  "stageResults": [
+    {
+      "stageId": "stage_1",
+      "sourceContextHash": "init",
+      "reviewState": "ready",
+      "summary": "营地布置完成",
+      "factIds": ["fact_camp_ready"]
+    },
+    {
+      "stageId": "stage_2",
+      "sourceContextHash": "stage1",
+      "reviewState": "ready",
+      "summary": "晚餐与合影留念圆满结束",
+      "factIds": ["fact_dinner_photo"]
+    }
+  ]
+}

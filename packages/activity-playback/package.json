@@ -1,0 +1,25 @@
+{
+  "name": "@sthstart/activity-playback",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.52",
+    "@sthstart/contracts": "0.1.0"
+  }
+}

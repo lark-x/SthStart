@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "contentRevisionId": "content_sample_v1",
+  "mediaRevisionId": "media_sample_v1",
+  "template": {
+    "id": "phone-v1",
+    "version": "1.0.0"
+  },
+  "viewerActorId": "actor_lan",
+  "layout": {
+    "width": 360,
+    "height": 640
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30
+  },
+  "totalDurationMs": 25000,
+  "actions": [
+    {
+      "id": "a1",
+      "type": "open_view",
+      "atMs": 0,
+      "durationMs": 4000,
+      "view": "chat",
+      "conversationId": "group_main",
+      "visibleThroughOrder": 25
+    },
+    {
+      "id": "a2",
+      "type": "scroll_to",
+      "atMs": 4000,
+      "durationMs": 1000,
+      "targetType": "message",
+      "targetId": "msg_photo",
+      "align": "center"
+    },
+    {
+      "id": "a3",
+      "type": "open_media",
+      "atMs": 5000,
+      "durationMs": 4000,
+      "slotId": "slot_photo",
+      "assetKey": "asset_photo",
+      "kind": "image"
+    },
+    {
+      "id": "a4",
+      "type": "close_media",
+      "atMs": 9000,
+      "durationMs": 400
+    },
+    {
+      "id": "a5",
+      "type": "scroll_to",
+      "atMs": 9400,
+      "durationMs": 1000,
+      "targetType": "message",
+      "targetId": "msg_video",
+      "align": "center"
+    },
+    {
+      "id": "a6",
+      "type": "open_media",
+      "atMs": 10400,
+      "durationMs": 5000,
+      "slotId": "slot_video",
+      "assetKey": "asset_video",
+      "kind": "video",
+      "sourceInMs": 0,
+      "volume": 1
+    },
+    {
+      "id": "a7",
+      "type": "close_media",
+      "atMs": 15400,
+      "durationMs": 400
+    },
+    {
+      "id": "a8",
+      "type": "open_view",
+      "atMs": 15800,
+      "durationMs": 1200,
+      "view": "moments",
+      "visibleThroughOrder": 65
+    },
+    {
+      "id": "a9",
+      "type": "scroll_to",
+      "atMs": 17000,
+      "durationMs": 1000,
+      "targetType": "post",
+      "targetId": "post_after",
+      "align": "start"
+    },
+    {
+      "id": "a10",
+      "type": "hold",
+      "atMs": 18000,
+      "durationMs": 7000
+    }
+  ]
+}
