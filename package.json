@@ -30,7 +30,7 @@
     "build": "npm run build:portal && npm run build:service",
     "build:portal": "vinext build",
     "build:service": "npm run build --workspace @sthstart/service",
-    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build --workspace @sthstart/activity-playback && tsc --noEmit && npm run typecheck --workspaces --if-present",
     "test": "npm run test:portal && npm run test:windows-worker && npm run test --workspaces --if-present",
     "test:windows-worker": "npm --prefix workers/windows-worker test",
     "test:e2e": "npm run build && playwright test",

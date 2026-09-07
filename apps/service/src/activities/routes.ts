@@ -22,6 +22,7 @@ import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
 import { resolveAssignedLlmProfile } from '../providers.js';
+import { ActivityStore } from './store.js';
 import { extractCharacterPersonaDraft } from './characters.js';
 import {
   createActivityMediaJob,
@@ -33,8 +34,7 @@ import {
   uploadActivityAsset,
 } from './media.js';
 import { generateAutoPlayback, validatePlaybackDocument } from './playback.js';
-import { ActivityStore } from './store.js';
-import { adoptCandidate, runTextGenerationJob } from './text-jobs.js';
+import { adoptCandidate, cancelTextJob, retryTextJob, runTextGenerationJob } from './text-jobs.js';
 import { buildActivityExportPackage, startExportJob } from './exports.js';
 import { commitActivityImport, stageActivityImport } from './imports.js';
 
@@ -46,6 +46,7 @@ export function registerActivityRoutes(
   fetcher: typeof fetch = fetch,
 ) {
   const store = new ActivityStore(database);
+  store.recoverDanglingJobs();
 
   function checkAdmin(request: FastifyRequest, reply: FastifyReply): boolean {
     if (config.adminToken && !authenticateAdmin(config.adminToken, request)) {
@@ -233,14 +234,22 @@ export function registerActivityRoutes(
       return reply.code(404).send({ error: 'activity_not_found', message: '活动不存在。' });
     }
     const draft = store.getDraft(request.params.id);
+    const currentContentRev = act.currentContentRevisionId ? store.getContentRevision(act.id, act.currentContentRevisionId) : null;
+    const currentMediaRev = act.currentMediaRevisionId ? store.getMediaRevision(act.id, act.currentMediaRevisionId) : null;
+    const currentPlaybackRev = act.currentPlaybackRevisionId ? store.getPlaybackRevision(act.id, act.currentPlaybackRevisionId) : null;
+
     return {
       activity: act,
+      draft: draft || null,
       draftVersion: draft?.draftVersion ?? 1,
       head: {
         contentRevisionId: act.currentContentRevisionId,
         mediaRevisionId: act.currentMediaRevisionId,
         playbackRevisionId: act.currentPlaybackRevisionId,
       },
+      currentContentRevision: currentContentRev,
+      currentMediaRevision: currentMediaRev,
+      currentPlaybackRevision: currentPlaybackRev,
     };
   });
 
@@ -301,7 +310,10 @@ export function registerActivityRoutes(
     if (!checkAdmin(request, reply)) return;
     const draft = store.getDraft(request.params.id);
     if (!draft) return reply.code(404).send({ error: 'draft_not_found' });
-    return draft;
+    return {
+      ...draft,
+      draft,
+    };
   });
 
   // 8. Update Draft (CAS Auto-save)
@@ -368,7 +380,13 @@ export function registerActivityRoutes(
     handleCommitDraft,
   );
 
-  // 10. Get Content Revision
+  // 10. List & Get Content Revisions
+  app.get<{ Params: { id: string } }>('/api/v1/admin/activities/:id/revisions', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const items = store.listContentRevisions(request.params.id);
+    return { items };
+  });
+
   const handleGetContentRevision = async (
     request: FastifyRequest<{ Params: { id: string; revisionId: string } }>,
     reply: FastifyReply,
@@ -392,7 +410,7 @@ export function registerActivityRoutes(
   const handleListCheckpoints = async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     if (!checkAdmin(request, reply)) return;
     const checkpoints = store.listCheckpoints(request.params.id);
-    return { checkpoints };
+    return { items: checkpoints, checkpoints };
   };
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/activities/:id/history', handleListCheckpoints);
@@ -547,13 +565,14 @@ export function registerActivityRoutes(
         scope?: { stageId?: string; recordIds?: string[] };
         stageId?: string;
         userInstruction?: string;
+        idempotencyKey?: string;
       };
     }>,
     reply: FastifyReply,
   ) => {
     if (!checkAdmin(request, reply)) return;
-    const idempotencyKey = request.headers['idempotency-key'] as string | undefined;
     const body = request.body || {};
+    const idempotencyKey = (request.headers['idempotency-key'] as string | undefined) || body.idempotencyKey;
     const scope = body.scope || (body.stageId ? { stageId: body.stageId } : undefined);
 
     try {
@@ -588,6 +607,28 @@ export function registerActivityRoutes(
   app.post<{ Params: { id: string }; Body: any }>(
     '/api/v1/admin/activities/:id/text-jobs',
     handleGenerationJob,
+  );
+
+  // 17b. Cancel Job
+  app.post<{ Params: { id: string; jobId: string } }>(
+    '/api/v1/admin/activities/:id/jobs/:jobId/cancel',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const job = cancelTextJob(store, request.params.id, request.params.jobId);
+      if (!job) return reply.code(404).send({ error: 'job_not_found' });
+      return { ...job, job };
+    },
+  );
+
+  // 17c. Retry Job
+  app.post<{ Params: { id: string; jobId: string } }>(
+    '/api/v1/admin/activities/:id/jobs/:jobId/retry',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const job = await retryTextJob(database, secrets, store, request.params.id, request.params.jobId, fetcher);
+      if (!job) return reply.code(404).send({ error: 'job_not_found' });
+      return reply.code(202).send({ ...job, job });
+    },
   );
 
   // 18. Jobs list
@@ -795,15 +836,29 @@ export function registerActivityRoutes(
   });
 
   // 25. Media Jobs: sync completed outputs
-  app.post<{
-    Params: { id: string };
-    Body: { taskId: string };
-  }>('/api/v1/admin/activities/:id/media-jobs/sync', async (request, reply) => {
+  const handleSyncMediaOutputs = async (
+    request: FastifyRequest<{
+      Params: { id: string; taskId?: string };
+      Body: { taskId?: string };
+    }>,
+    reply: FastifyReply,
+  ) => {
     if (!checkAdmin(request, reply)) return;
-    const res = syncActivityMediaTaskOutputs(database, request.params.id, request.body.taskId);
+    const taskId = request.params.taskId || request.body?.taskId;
+    if (!taskId) return reply.code(400).send({ error: 'task_id_required' });
+    const res = syncActivityMediaTaskOutputs(database, request.params.id, taskId);
     if (!res) return reply.code(404).send({ error: 'task_not_found_or_not_linked' });
     return res;
-  });
+  };
+
+  app.post<{ Params: { id: string }; Body: { taskId: string } }>(
+    '/api/v1/admin/activities/:id/media-jobs/sync',
+    handleSyncMediaOutputs,
+  );
+  app.post<{ Params: { id: string; taskId: string }; Body: any }>(
+    '/api/v1/admin/activities/:id/media-jobs/:taskId/sync',
+    handleSyncMediaOutputs,
+  );
 
   // 26. Select Media for slots
   const handleMediaSelection = async (
@@ -824,14 +879,34 @@ export function registerActivityRoutes(
     if (!checkAdmin(request, reply)) return;
     const act = store.getActivity(request.params.id);
     if (!act) return reply.code(404).send({ error: 'activity_not_found' });
-    const expectedHeadVersion = request.body.expectedHeadVersion ?? act.headVersion;
+    const body = request.body as any;
+    const expectedHeadVersion = body.expectedHeadVersion ?? act.headVersion;
+
+    const slotBindings = body.slotBindings || (
+      Array.isArray(body.selections)
+        ? body.selections.map((s: any) => ({
+            slotId: s.slotId,
+            slotFingerprint: s.slotFingerprint || '',
+            assets: Array.isArray(s.assets)
+              ? s.assets
+              : (s.assetKeys || []).map((ak: string, idx: number) => ({ assetKey: ak, order: idx + 1 })),
+          }))
+        : []
+    );
 
     try {
       const result = selectMediaForSlots(database, store, request.params.id, {
         ...request.body,
+        slotBindings,
         expectedHeadVersion,
       });
-      return reply.code(201).send(result.mediaRevision || result);
+      const mediaRev = result.mediaRevision;
+      return reply.code(201).send({
+        ...mediaRev,
+        mediaRevision: mediaRev,
+        mediaRevisionId: mediaRev?.id,
+        activity: result.activity,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('conflict')) {
@@ -849,13 +924,35 @@ export function registerActivityRoutes(
     '/api/v1/admin/activities/:id/media-revisions',
     handleMediaSelection,
   );
+  app.post<{ Params: { id: string }; Body: any }>(
+    '/api/v1/admin/activities/:id/media/select',
+    handleMediaSelection,
+  );
 
   // 27. Get Media Revision
+  const handleGetMediaRevision = async (
+    request: FastifyRequest<{ Params: { id: string; mediaRevisionId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    if (!checkAdmin(request, reply)) return;
+    const rev = store.getMediaRevision(request.params.id, request.params.mediaRevisionId);
+    if (!rev) return reply.code(404).send({ error: 'revision_not_found' });
+    return rev;
+  };
+
   app.get<{ Params: { id: string; mediaRevisionId: string } }>(
     '/api/v1/admin/activities/:id/media/:mediaRevisionId',
+    handleGetMediaRevision,
+  );
+  app.get<{ Params: { id: string; mediaRevisionId: string } }>(
+    '/api/v1/admin/activities/:id/media-revisions/:mediaRevisionId',
+    handleGetMediaRevision,
+  );
+  app.get<{ Params: { mediaRevisionId: string } }>(
+    '/api/v1/admin/media-revisions/:mediaRevisionId',
     async (request, reply) => {
       if (!checkAdmin(request, reply)) return;
-      const rev = store.getMediaRevision(request.params.id, request.params.mediaRevisionId);
+      const rev = store.getMediaRevisionById(request.params.mediaRevisionId);
       if (!rev) return reply.code(404).send({ error: 'revision_not_found' });
       return rev;
     },
@@ -982,11 +1079,29 @@ export function registerActivityRoutes(
   );
 
   // 30. Get Playback Revision
+  const handleGetPlaybackRevision = async (
+    request: FastifyRequest<{ Params: { id: string; playbackRevisionId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    if (!checkAdmin(request, reply)) return;
+    const doc = store.getPlaybackRevision(request.params.id, request.params.playbackRevisionId);
+    if (!doc) return reply.code(404).send({ error: 'revision_not_found' });
+    return doc;
+  };
+
   app.get<{ Params: { id: string; playbackRevisionId: string } }>(
     '/api/v1/admin/activities/:id/playback/:playbackRevisionId',
+    handleGetPlaybackRevision,
+  );
+  app.get<{ Params: { id: string; playbackRevisionId: string } }>(
+    '/api/v1/admin/activities/:id/playback-revisions/:playbackRevisionId',
+    handleGetPlaybackRevision,
+  );
+  app.get<{ Params: { playbackRevisionId: string } }>(
+    '/api/v1/admin/playback-revisions/:playbackRevisionId',
     async (request, reply) => {
       if (!checkAdmin(request, reply)) return;
-      const doc = store.getPlaybackRevision(request.params.id, request.params.playbackRevisionId);
+      const doc = store.getPlaybackRevisionById(request.params.playbackRevisionId);
       if (!doc) return reply.code(404).send({ error: 'revision_not_found' });
       return doc;
     },
@@ -1071,6 +1186,7 @@ export function registerActivityRoutes(
   app.get<{ Params: { id: string; jobId: string } }>(
     '/api/v1/admin/activities/:id/exports/:jobId/download',
     async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
       const row = database.connection.prepare(
         'SELECT id, activity_id, status, model_metadata_json FROM activity_jobs WHERE id = ? AND activity_id = ? AND kind = ?'
       ).get(request.params.jobId, request.params.id, 'export') as {

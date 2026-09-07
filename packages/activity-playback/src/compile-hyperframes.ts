@@ -179,14 +179,16 @@ export function compileHyperFramesComposition(
       case 'open_media':
         if (action.kind === 'video') {
           const videoUrl = assetMap[action.assetKey || ''] || '';
+          const inSec = (action.sourceInMs || 0) / 1000;
+          const endSec = inSec + durSec;
           gsapTimelineCommands.push(`
             tl.call(() => {
               modalPhoto.style.display = 'none';
               modalVideo.src = '${escapeHtml(videoUrl)}';
               modalVideo.style.display = 'block';
-              modalVideo.currentTime = ${(action.sourceInMs || 0) / 1000};
             }, null, ${startSec});
             tl.to(mediaModal, { opacity: 1, duration: 0.3, ease: "power1.out" }, ${startSec});
+            tl.fromTo(modalVideo, { currentTime: ${inSec} }, { currentTime: ${endSec}, duration: ${durSec}, ease: "none" }, ${startSec});
           `);
         } else {
           const photoUrl = assetMap[action.assetKey || ''] || '';
@@ -207,7 +209,6 @@ export function compileHyperFramesComposition(
           tl.call(() => {
             modalPhoto.style.display = 'none';
             modalVideo.style.display = 'none';
-            modalVideo.pause();
           }, null, ${startSec + durSec});
         `);
         break;

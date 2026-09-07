@@ -9,7 +9,9 @@ import { readConfig } from './config.js';
 import { createService } from './server.js';
 import { SecretStore } from './security.js';
 import { readZip } from './activities/zip.js';
-import type { ContentDocument } from '@sthstart/contracts';
+import { ActivityStore } from './activities/store.js';
+import { compileHyperFramesComposition } from '@sthstart/activity-playback';
+import type { ContentDocument, PlaybackDocument } from '@sthstart/contracts';
 
 const adminToken = 'admin-activities-test-token-1234567890';
 const adminHeaders = { 'x-sthstart-admin-token': adminToken };
@@ -668,6 +670,11 @@ test('Activity Studio: self-contained ZIP export and import with ID remapping', 
   assert.ok(files.has('reader.html'));
   assert.ok(files.has('index.html')); // HyperFrames project entry
   assert.ok(files.has('project.json'));
+  assert.ok(files.has('assets/gsap.min.js'));
+  assert.ok(files.has('assets/default_avatar.png'));
+  assert.ok(files.has('package.json'));
+  const pkgData = JSON.parse(new TextDecoder().decode(files.get('package.json')!));
+  assert.equal(pkgData.devDependencies?.hyperframes || pkgData.dependencies?.hyperframes, '0.8.30');
   assert.ok([...files.keys()].some((k) => k.startsWith('assets/')));
 
   // Read manifest.json from ZIP
@@ -715,6 +722,521 @@ test('Activity Studio: self-contained ZIP export and import with ID remapping', 
   const importedAssets = importedAssetsRes.json().items;
   assert.equal(importedAssets.length, 1);
   assert.equal(importedAssets[0].assetKey, 'export_test_photo');
+
+  await app.close();
+  database.close();
+});
+
+test('Activity Studio: strict revision consistency, CAS binding migration, baseline revision creation, and asset immutability', async () => {
+  const database = new ServiceDatabase();
+  const artifactDirectory = await mkdtemp(resolve(tmpdir(), 'sthstart-activities-rev-'));
+  const config = readConfig({
+    STHSTART_ADMIN_TOKEN: adminToken,
+    STHSTART_ARTIFACT_DIR: artifactDirectory,
+  });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+  const store = new ActivityStore(database);
+
+  // 1. Create activity: check that baseline MediaRevision and Checkpoint exist and are not null/'initial'
+  const initialDoc = createMinimalDocument('版本一致性测试');
+  const createRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/activities',
+    headers: adminHeaders,
+    payload: { document: initialDoc },
+  });
+  assert.equal(createRes.statusCode, 201);
+  const createdAct = createRes.json().activity;
+  const activityId = createdAct.id;
+  assert.ok(createdAct.currentMediaRevisionId);
+  assert.notEqual(createdAct.currentMediaRevisionId, 'initial');
+
+  // Verify GET /activities/:id returns draft, head, current revisions
+  const getActRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}`,
+    headers: adminHeaders,
+  });
+  assert.equal(getActRes.statusCode, 200);
+  const actBody = getActRes.json();
+  assert.equal(actBody.activity.id, activityId);
+  assert.equal(actBody.draftVersion, 1);
+  assert.ok(actBody.draft);
+  assert.ok(actBody.currentContentRevision);
+  assert.ok(actBody.currentMediaRevision);
+
+  // Verify GET /activities/:id/draft returns { ...draft, draft }
+  const getDraftRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/draft`,
+    headers: adminHeaders,
+  });
+  assert.equal(getDraftRes.statusCode, 200);
+  const draftBody = getDraftRes.json();
+  assert.ok(draftBody.draft);
+  assert.ok(draftBody.document);
+
+  // Verify GET /activities/:id/checkpoints and /history return items
+  const getCpRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/checkpoints`,
+    headers: adminHeaders,
+  });
+  assert.equal(getCpRes.statusCode, 200);
+  assert.ok(Array.isArray(getCpRes.json().items));
+  assert.ok(getCpRes.json().items.length >= 1);
+  assert.equal(getCpRes.json().items[0].mediaRevisionId, createdAct.currentMediaRevisionId);
+
+  const getHistRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/history`,
+    headers: adminHeaders,
+  });
+  assert.equal(getHistRes.statusCode, 200);
+  assert.ok(Array.isArray(getHistRes.json().items));
+
+  // Verify GET /activities/:id/revisions returns items
+  const getRevsRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/revisions`,
+    headers: adminHeaders,
+  });
+  assert.equal(getRevsRes.statusCode, 200);
+  assert.ok(Array.isArray(getRevsRes.json().items));
+  assert.equal(getRevsRes.json().items.length, 1);
+
+  // Verify GET media revision directly and through alias
+  const mediaRevId = createdAct.currentMediaRevisionId;
+  const getMediaRevRes1 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/media-revisions/${mediaRevId}`,
+    headers: adminHeaders,
+  });
+  assert.equal(getMediaRevRes1.statusCode, 200);
+  assert.equal(getMediaRevRes1.json().id, mediaRevId);
+
+  const getMediaRevRes2 = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/media-revisions/${mediaRevId}`,
+    headers: adminHeaders,
+  });
+  assert.equal(getMediaRevRes2.statusCode, 200);
+  assert.equal(getMediaRevRes2.json().id, mediaRevId);
+
+  // 2. Asset Immutability:
+  // Upload asset
+  const fakeImageData = Buffer.from('IMMUTABLE_ASSET_BYTES_123');
+  const uploadRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/uploads`,
+    headers: {
+      ...adminHeaders,
+      'content-type': 'image/png',
+      'x-asset-key': 'immutable_key_1',
+    },
+    payload: fakeImageData,
+  });
+  assert.equal(uploadRes.statusCode, 201);
+
+  // Attempt to overwrite the same assetKey with a different artifactId must fail with 409 conflict
+  assert.throws(
+    () => {
+      store.saveAsset({
+        activityId,
+        assetKey: 'immutable_key_1',
+        artifactId: 'different-artifact-uuid-999',
+        source: 'upload',
+        type: 'image',
+        createdAt: new Date().toISOString(),
+      });
+    },
+    (err: any) => String(err).includes('asset_key_immutable_conflict')
+  );
+
+  // 3. Slot Binding Migration on Draft Commit:
+  // Add a media slot to draft
+  const docWithSlot: ContentDocument = {
+    ...initialDoc,
+    mediaSlots: [
+      {
+        id: 'slot_hero',
+        stageId: 'stage_1',
+        kind: 'image',
+        caption: '营地合影',
+        shotDescription: '全景',
+        actorIds: ['actor_lumine'],
+        sourceFactIds: [],
+      },
+    ],
+  };
+  await app.inject({
+    method: 'PUT',
+    url: `/api/v1/admin/activities/${activityId}/draft`,
+    headers: adminHeaders,
+    payload: { expectedDraftVersion: 1, document: docWithSlot },
+  });
+  const commit1Res = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/commit`,
+    headers: adminHeaders,
+    payload: { expectedHeadVersion: 1 },
+  });
+  assert.equal(commit1Res.statusCode, 200);
+  const head2 = commit1Res.json().activity;
+  assert.equal(head2.headVersion, 2);
+
+  // Select media for slot_hero
+  const selectMediaRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/media/select`,
+    headers: adminHeaders,
+    payload: {
+      contentRevisionId: head2.currentContentRevisionId,
+      selections: [
+        {
+          slotId: 'slot_hero',
+          slotFingerprint: 'fp_hero_consistent',
+          assetKeys: ['immutable_key_1'],
+        },
+      ],
+    },
+  });
+  assert.ok(selectMediaRes.statusCode === 200 || selectMediaRes.statusCode === 201);
+
+  // Generate & save Playback revision
+  const autoPbRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/playback/generate`,
+    headers: adminHeaders,
+    payload: {
+      contentRevisionId: head2.currentContentRevisionId,
+      mediaRevisionId: selectMediaRes.json().mediaRevisionId,
+    },
+  });
+  assert.equal(autoPbRes.statusCode, 200);
+  const pbDoc = autoPbRes.json().document;
+
+  const savePbRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/playback-revisions`,
+    headers: adminHeaders,
+    payload: {
+      contentRevisionId: head2.currentContentRevisionId,
+      mediaRevisionId: selectMediaRes.json().mediaRevisionId,
+      document: pbDoc,
+    },
+  });
+  assert.equal(savePbRes.statusCode, 201);
+  const pbRevId = savePbRes.json().id;
+
+  // Playback revision pointer is set
+  const actWithPb = (await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}`,
+    headers: adminHeaders,
+  })).json().activity;
+  assert.equal(actWithPb.currentPlaybackRevisionId, pbRevId);
+
+  // Invalidation: Changing media selection MUST clear current_playback_revision_id
+  await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/media/select`,
+    headers: adminHeaders,
+    payload: {
+      contentRevisionId: head2.currentContentRevisionId,
+      selections: [
+        {
+          slotId: 'slot_hero',
+          slotFingerprint: 'fp_hero_consistent',
+          assetKeys: ['immutable_key_1'],
+        },
+      ],
+    },
+  });
+  const actAfterMedia = (await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}`,
+    headers: adminHeaders,
+  })).json().activity;
+  assert.equal(actAfterMedia.currentPlaybackRevisionId, null); // Invalidated!
+
+  // Consistency check: Saving playback revision with mismatched contentRevisionId fails with 400
+  const mismatchPbRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/playback-revisions`,
+    headers: adminHeaders,
+    payload: {
+      contentRevisionId: 'non-existent-content-rev',
+      mediaRevisionId: actAfterMedia.currentMediaRevisionId,
+      document: pbDoc,
+    },
+  });
+  assert.ok(mismatchPbRes.statusCode === 400 || mismatchPbRes.statusCode === 404);
+  assert.equal(mismatchPbRes.json().error, 'content_revision_not_found');
+
+  // Now test Slot Binding Migration:
+  // Update draft (add message, keep slot_hero with same fp), then commit
+  const doc3: ContentDocument = {
+    ...docWithSlot,
+    messages: [
+      ...docWithSlot.messages,
+      {
+        id: 'msg_slot_preserved',
+        conversationId: 'conv_main',
+        stageId: 'stage_1',
+        kind: 'message',
+        speakerActorId: 'actor_paimon',
+        text: '看，照片拍得多好！',
+        mediaSlotIds: ['slot_hero'],
+        storyOrder: 5,
+      },
+    ],
+  };
+  await app.inject({
+    method: 'PUT',
+    url: `/api/v1/admin/activities/${activityId}/draft`,
+    headers: adminHeaders,
+    payload: { expectedDraftVersion: 1, document: doc3 },
+  });
+  const commit2Res = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/commit`,
+    headers: adminHeaders,
+    payload: { expectedHeadVersion: actAfterMedia.headVersion },
+  });
+  assert.equal(commit2Res.statusCode, 200);
+  const head3 = commit2Res.json().activity;
+  assert.equal(head3.headVersion, actAfterMedia.headVersion + 1);
+
+  // Fetch the new current media revision: slot_hero binding should be preserved!
+  const newMediaRev = (await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/media-revisions/${head3.currentMediaRevisionId}`,
+    headers: adminHeaders,
+  })).json();
+  const heroBinding = newMediaRev.slotBindings.find((b: any) => b.slotId === 'slot_hero');
+  assert.ok(heroBinding, 'Slot binding for slot_hero should be preserved in new media revision');
+  assert.equal(heroBinding.assets[0]?.assetKey, 'immutable_key_1');
+
+  await app.close();
+  database.close();
+});
+
+test('Activity Studio: plan locked stage preservation, downstream needs_review, job cancel/recovery, and video seek animation', async () => {
+  const database = new ServiceDatabase();
+  const artifactDirectory = await mkdtemp(resolve(tmpdir(), 'sthstart-activities-adv-'));
+  const config = readConfig({
+    STHSTART_ADMIN_TOKEN: adminToken,
+    STHSTART_ARTIFACT_DIR: artifactDirectory,
+  });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+  const store = new ActivityStore(database);
+
+  // 1. Plan locked stage preservation & downstream needs_review
+  const docWithLocked: ContentDocument = {
+    ...createMinimalDocument('锁定阶段测试'),
+    stages: [
+      {
+        id: 'stage_1',
+        title: '原始锁定阶段1',
+        order: 1,
+        actorIds: ['actor_lumine'],
+        location: '海滩',
+        instruction: '整理装备',
+        requiredBeats: [{ id: 'beat_1', text: '原节拍1', actorIds: ['actor_lumine'] }],
+        locked: true,
+        endCondition: '结束1',
+      },
+      {
+        id: 'stage_2',
+        title: '原始未锁定阶段2',
+        order: 2,
+        actorIds: ['actor_paimon'],
+        location: '火堆',
+        instruction: '生火',
+        requiredBeats: [{ id: 'beat_2', text: '原节拍2', actorIds: ['actor_paimon'] }],
+        locked: false,
+        endCondition: '结束2',
+      },
+    ],
+    stageResults: [
+      {
+        stageId: 'stage_1',
+        sourceContextHash: 'ctx_hash_1',
+        reviewState: 'ready',
+        summary: '阶段1已完成',
+        factIds: [],
+      },
+      {
+        stageId: 'stage_2',
+        sourceContextHash: 'ctx_hash_2',
+        reviewState: 'ready',
+        summary: '阶段2已完成',
+        factIds: [],
+      },
+    ],
+  };
+
+  const createRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/activities',
+    headers: adminHeaders,
+    payload: { document: docWithLocked },
+  });
+  const activityId = createRes.json().activity.id;
+
+  // Create a plan candidate that tries to overwrite both stage 1 and stage 2
+  const planCandidate = store.createCandidate({
+    activityId,
+    baseRevisionId: createRes.json().activity.currentContentRevisionId,
+    draftVersion: 1,
+    scope: { mode: 'plan' },
+    payload: {
+      stages: [
+        {
+          stageId: 'stage_1',
+          title: 'AI篡改的阶段1标题',
+          description: 'AI篡改的指令1',
+          requiredBeats: ['AI节拍1'],
+        },
+        {
+          stageId: 'stage_2',
+          title: 'AI生成的阶段2新标题',
+          description: 'AI生成的指令2',
+          requiredBeats: ['AI节拍2'],
+        },
+      ],
+    },
+    validation: { valid: true },
+  });
+
+  // Adopt this plan candidate
+  const adoptRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/candidates/${planCandidate.id}/adopt`,
+    headers: adminHeaders,
+    payload: { expectedHeadVersion: 1 },
+  });
+  assert.equal(adoptRes.statusCode, 200);
+
+  // Verify: stage_1 was preserved (locked: true), while stage_2 was updated
+  const headRevId = adoptRes.json().activity.currentContentRevisionId;
+  const headRevDoc = store.getContentRevision(activityId, headRevId)!.document;
+  const s1 = headRevDoc.stages.find((s) => s.order === 1);
+  const s2 = headRevDoc.stages.find((s) => s.order === 2);
+
+  assert.equal(s1?.title, '原始锁定阶段1'); // Preserved!
+  assert.equal(s1?.locked, true);
+  assert.equal(s2?.title, 'AI生成的阶段2新标题'); // Adopted!
+
+  // All stageResults marked as needs_review on plan adoption
+  for (const sr of headRevDoc.stageResults || []) {
+    assert.equal(sr.reviewState, 'needs_review');
+  }
+
+  // 2. Downstream stage reviewState marking on stage-level adopt
+  const stageCandidate = store.createCandidate({
+    activityId,
+    baseRevisionId: headRevId,
+    draftVersion: 1,
+    scope: { mode: 'stage', stageId: 'stage_1' },
+    payload: {
+      stageId: 'stage_1',
+      summary: '阶段1新记录',
+      messages: [
+        {
+          clientId: 'msg_ai_1',
+          speakerActorId: 'actor_lumine',
+          text: '新的阶段1台词',
+        },
+      ],
+    },
+    validation: { valid: true },
+  });
+
+  const adoptStageRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/candidates/${stageCandidate.id}/adopt`,
+    headers: adminHeaders,
+    payload: { expectedHeadVersion: 2 },
+  });
+  assert.equal(adoptStageRes.statusCode, 200);
+  const stageAdoptRevDoc = store.getContentRevision(activityId, adoptStageRes.json().activity.currentContentRevisionId)!.document;
+  const sr2 = stageAdoptRevDoc.stageResults?.find((s) => s.stageId === 'stage_2');
+  assert.equal(sr2?.reviewState, 'needs_review');
+
+  // 3. Job Cancel and Dangling Job Recovery
+  const { job: jobToCancel } = store.createJob({
+    activityId,
+    kind: 'text',
+    mode: 'stage',
+    requestHash: 'hash_to_cancel',
+  });
+  const cancelRes = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activityId}/jobs/${jobToCancel.id}/cancel`,
+    headers: adminHeaders,
+  });
+  assert.equal(cancelRes.statusCode, 200);
+  assert.equal(cancelRes.json().job.status, 'cancelled');
+
+  // Insert a dangling running job
+  const { job: danglingJob } = store.createJob({
+    activityId,
+    kind: 'text',
+    mode: 'plan',
+    requestHash: 'dangling_hash_1',
+  });
+  database.connection.prepare(
+    `UPDATE activity_jobs SET status = 'running' WHERE id = ?`
+  ).run(danglingJob.id);
+
+  const recoveredCount = store.recoverDanglingJobs();
+  assert.ok(recoveredCount >= 1);
+  const recoveredJob = store.getJob(activityId, danglingJob.id);
+  assert.equal(recoveredJob?.status, 'result_unknown');
+  assert.equal(recoveredJob?.errorMessage, 'server_restarted_result_unknown');
+
+  // 4. Download Export Security
+  const unauthDownloadRes = await app.inject({
+    method: 'GET',
+    url: `/api/v1/admin/activities/${activityId}/exports/fake_export_job/download`,
+  });
+  assert.equal(unauthDownloadRes.statusCode, 401);
+
+  // 5. Video Seek Animation in HyperFrames compilation
+  const playbackDocWithVideo: PlaybackDocument = {
+    schemaVersion: 1,
+    contentRevisionId: 'rev_v1',
+    mediaRevisionId: 'mrev_v1',
+    template: { id: 'phone-v1', version: '1.0.0' },
+    viewerActorId: 'actor_lumine',
+    layout: { width: 1080, height: 1920 },
+    output: { width: 1080, height: 1920, fps: 30 },
+    totalDurationMs: 8000,
+    actions: [
+      {
+        id: 'act_video_clip',
+        type: 'open_media',
+        kind: 'video',
+        atMs: 1000,
+        durationMs: 4000,
+        sourceInMs: 500,
+        assetKey: 'video_ocean_view',
+      },
+    ],
+  };
+
+  const compiled = compileHyperFramesComposition(
+    createMinimalDocument(),
+    { schemaVersion: 1, slotBindings: [] },
+    playbackDocWithVideo,
+  );
+  // Verify gsap currentTime animation
+  assert.ok(
+    compiled.html.includes('tl.fromTo(modalVideo, { currentTime: 0.5 }, { currentTime: 4.5, duration: 4, ease: "none" }, 1);'),
+    'Compiled HyperFrames HTML must animate modalVideo.currentTime via GSAP fromTo'
+  );
 
   await app.close();
   database.close();

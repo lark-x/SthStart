@@ -112,13 +112,14 @@ export class ActivityStore {
 
     return this.db.transaction(() => {
       const initialRevId = `rev_content_${crypto.randomUUID().replace(/-/g, '')}`;
+      const initialMediaRevId = `rev_media_${crypto.randomUUID().replace(/-/g, '')}`;
       const docJson = JSON.stringify(initialDoc);
       const hash = crypto.createHash('sha256').update(docJson).digest('hex');
 
       // 1. Insert activity parent row first
       this.connection.prepare(
-        `INSERT INTO activities(id, title, type, theme, location, rules, archived, head_version, current_content_revision_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 1, NULL, ?, ?)`
+        `INSERT INTO activities(id, title, type, theme, location, rules, archived, head_version, current_content_revision_id, current_media_revision_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 1, NULL, NULL, ?, ?)`
       ).run(id, title, type, theme, location, rules, now, now);
 
       // 2. Insert initial baseline ContentRevision (satisfies FOREIGN KEY to activities.id)
@@ -127,16 +128,37 @@ export class ActivityStore {
          VALUES (?, ?, NULL, ?, 1, ?, 'initial_baseline', ?)`
       ).run(initialRevId, id, docJson, hash, now);
 
-      // 3. Point activity to initial content revision
-      this.connection.prepare(
-        `UPDATE activities SET current_content_revision_id = ? WHERE id = ?`
-      ).run(initialRevId, id);
+      // 3. Insert initial baseline MediaRevision
+      const initialBindings: MediaRevisionDocument['slotBindings'] = (initialDoc.mediaSlots || []).map((s) => ({
+        slotId: s.id,
+        slotFingerprint: hashDocument({ kind: s.kind, shot: s.shotDescription, actorIds: s.actorIds }),
+        assets: [],
+      }));
+      const initialMediaDoc: MediaRevisionDocument = { schemaVersion: 1, slotBindings: initialBindings };
+      const mediaHash = hashDocument(initialMediaDoc);
 
-      // 4. Insert initial draft
+      this.connection.prepare(
+        `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, slot_bindings_json, hash, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(initialMediaRevId, id, initialRevId, JSON.stringify(initialBindings), mediaHash, now);
+
+      // 4. Point activity to initial content revision and media revision
+      this.connection.prepare(
+        `UPDATE activities SET current_content_revision_id = ?, current_media_revision_id = ? WHERE id = ?`
+      ).run(initialRevId, initialMediaRevId, id);
+
+      // 5. Insert initial draft
       this.connection.prepare(
         `INSERT INTO activity_drafts(activity_id, draft_version, document_json, base_content_revision_id, updated_at)
          VALUES (?, 1, ?, ?, ?)`
       ).run(id, docJson, initialRevId, now);
+
+      // 6. Insert initial checkpoint
+      const checkpointId = crypto.randomUUID();
+      this.connection.prepare(
+        `INSERT INTO activity_checkpoints(id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, created_at)
+         VALUES (?, ?, '初始创建', 1, ?, ?, NULL, ?)`
+      ).run(checkpointId, id, initialRevId, initialMediaRevId, now);
 
       const activity: Activity = {
         id,
@@ -148,7 +170,7 @@ export class ActivityStore {
         archived: false,
         headVersion: 1,
         currentContentRevisionId: initialRevId,
-        currentMediaRevisionId: null,
+        currentMediaRevisionId: initialMediaRevId,
         currentPlaybackRevisionId: null,
         createdAt: now,
         updatedAt: now,
@@ -412,13 +434,28 @@ export class ActivityStore {
     const now = nowIso();
     const docHash = hashDocument(draft.document);
 
-    // Initial slot bindings from slots
-    const initialBindings: MediaRevisionDocument['slotBindings'] = draft.document.mediaSlots.map((s) => ({
-      slotId: s.id,
-      slotFingerprint: hashDocument({ kind: s.kind, shot: s.shotDescription, actorIds: s.actorIds }),
-      assets: [],
-    }));
-    const mediaDoc: MediaRevisionDocument = { schemaVersion: 1, slotBindings: initialBindings };
+    // Migrate existing slot bindings from current media revision based on slotId + slotFingerprint
+    const currentMediaRev = act.currentMediaRevisionId ? this.getMediaRevision(activityId, act.currentMediaRevisionId) : null;
+    const existingBindingsMap = new Map<string, Array<{ assetKey: string; order: number }>>();
+    if (currentMediaRev?.slotBindings) {
+      for (const b of currentMediaRev.slotBindings) {
+        existingBindingsMap.set(`${b.slotId}:::${b.slotFingerprint}`, b.assets);
+        if (!existingBindingsMap.has(b.slotId)) {
+          existingBindingsMap.set(b.slotId, b.assets);
+        }
+      }
+    }
+
+    const migratedBindings: MediaRevisionDocument['slotBindings'] = draft.document.mediaSlots.map((s) => {
+      const fp = hashDocument({ kind: s.kind, shot: s.shotDescription, actorIds: s.actorIds });
+      const preservedAssets = existingBindingsMap.get(`${s.id}:::${fp}`) || existingBindingsMap.get(s.id) || [];
+      return {
+        slotId: s.id,
+        slotFingerprint: fp,
+        assets: preservedAssets,
+      };
+    });
+    const mediaDoc: MediaRevisionDocument = { schemaVersion: 1, slotBindings: migratedBindings };
     const mediaHash = hashDocument(mediaDoc);
 
     return this.db.transaction(() => {
@@ -432,7 +469,7 @@ export class ActivityStore {
       this.connection.prepare(
         `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, slot_bindings_json, hash, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(mediaRevId, activityId, contentRevId, JSON.stringify(initialBindings), mediaHash, now);
+      ).run(mediaRevId, activityId, contentRevId, JSON.stringify(migratedBindings), mediaHash, now);
 
       // 3. Write Checkpoint
       const checkpointId = crypto.randomUUID();
@@ -463,6 +500,36 @@ export class ActivityStore {
         mediaRevisionId: mediaRevId,
       };
     });
+  }
+
+  listContentRevisions(activityId: string, limit = 100): Array<{
+    id: string;
+    activityId: string;
+    parentId: string | null;
+    document: ContentDocument;
+    schemaVersion: number;
+    hash: string;
+    createdSource: string;
+    createdAt: string;
+  }> {
+    const rows = this.connection.prepare(
+      `SELECT id, activity_id, parent_id, document_json, schema_version, hash, created_source, created_at
+       FROM activity_content_revisions
+       WHERE activity_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`
+    ).all(activityId, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      id: String(r.id),
+      activityId: String(r.activity_id),
+      parentId: r.parent_id ? String(r.parent_id) : null,
+      document: JSON.parse(String(r.document_json)),
+      schemaVersion: Number(r.schema_version),
+      hash: String(r.hash),
+      createdSource: String(r.created_source),
+      createdAt: String(r.created_at),
+    }));
   }
 
   getContentRevision(activityId: string, revisionId: string): { id: string; activityId: string; document: ContentDocument; hash: string; createdAt: string } | null {
@@ -497,7 +564,7 @@ export class ActivityStore {
       name: String(r.name),
       headVersion: Number(r.head_version),
       contentRevisionId: String(r.content_revision_id),
-      mediaRevisionId: String(r.media_revision_id),
+      mediaRevisionId: r.media_revision_id ? String(r.media_revision_id) : null,
       playbackRevisionId: r.playback_revision_id ? String(r.playback_revision_id) : null,
       createdAt: String(r.created_at),
     }));
@@ -510,7 +577,7 @@ export class ActivityStore {
 
     const id = crypto.randomUUID();
     const now = nowIso();
-    const mediaRevId = act.currentMediaRevisionId || 'initial';
+    const mediaRevId = act.currentMediaRevisionId || null;
 
     this.connection.prepare(
       `INSERT INTO activity_checkpoints(id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, created_at)
@@ -572,7 +639,7 @@ export class ActivityStore {
       ).run(
         newHeadVersion,
         String(cp.content_revision_id),
-        String(cp.media_revision_id),
+        cp.media_revision_id ? String(cp.media_revision_id) : null,
         cp.playback_revision_id ? String(cp.playback_revision_id) : null,
         now,
         activityId,
@@ -680,6 +747,21 @@ export class ActivityStore {
     };
   }
 
+  getMediaRevisionById(mediaRevisionId: string): { id: string; activityId: string; contentRevisionId: string; slotBindings: MediaRevisionDocument['slotBindings'] } | null {
+    const row = this.connection.prepare(
+      `SELECT id, activity_id, content_revision_id, slot_bindings_json
+       FROM activity_media_revisions WHERE id = ?`
+    ).get(mediaRevisionId) as Record<string, unknown> | undefined;
+
+    if (!row) return null;
+    return {
+      id: String(row.id),
+      activityId: String(row.activity_id),
+      contentRevisionId: String(row.content_revision_id),
+      slotBindings: JSON.parse(String(row.slot_bindings_json)),
+    };
+  }
+
   saveMediaSelection(
     activityId: string,
     expectedHeadVersion: number,
@@ -710,9 +792,10 @@ export class ActivityStore {
          VALUES (?, ?, ?, ?, ?, ?)`
       ).run(newMediaRevId, activityId, act.currentContentRevisionId, JSON.stringify(slotBindings), hash, now);
 
+      // Invalidate current_playback_revision_id because media revision has changed!
       this.connection.prepare(
         `UPDATE activities
-         SET head_version = ?, current_media_revision_id = ?, updated_at = ?
+         SET head_version = ?, current_media_revision_id = ?, current_playback_revision_id = NULL, updated_at = ?
          WHERE id = ? AND head_version = ?`
       ).run(newHeadVersion, newMediaRevId, now, activityId, expectedHeadVersion);
 
@@ -735,6 +818,32 @@ export class ActivityStore {
       (err as unknown as { statusCode: number; code: string }).statusCode = 409;
       (err as unknown as { code: string }).code = 'revision_conflict';
       throw err;
+    }
+
+    // Consistency check: contentRevisionId must exist in this activity
+    const contentRev = this.getContentRevision(activityId, document.contentRevisionId);
+    if (!contentRev) {
+      const err = new Error(`Content revision '${document.contentRevisionId}' not found for this activity`);
+      (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+      (err as unknown as { code: string }).code = 'content_revision_not_found';
+      throw err;
+    }
+
+    // Consistency check: mediaRevisionId must exist in this activity and be linked to contentRevisionId
+    if (document.mediaRevisionId && document.mediaRevisionId !== 'none') {
+      const mediaRev = this.getMediaRevision(activityId, document.mediaRevisionId);
+      if (!mediaRev) {
+        const err = new Error(`Media revision '${document.mediaRevisionId}' not found for this activity`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+        (err as unknown as { code: string }).code = 'media_revision_not_found';
+        throw err;
+      }
+      if (mediaRev.contentRevisionId !== document.contentRevisionId) {
+        const err = new Error(`Media revision '${document.mediaRevisionId}' is linked to content revision '${mediaRev.contentRevisionId}', not '${document.contentRevisionId}'`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+        (err as unknown as { code: string }).code = 'revision_consistency_mismatch';
+        throw err;
+      }
     }
 
     const newPlaybackRevId = crypto.randomUUID();
@@ -778,19 +887,34 @@ export class ActivityStore {
     return JSON.parse(row.document_json) as PlaybackDocument;
   }
 
+  getPlaybackRevisionById(revisionId: string): PlaybackDocument | null {
+    const row = this.connection.prepare(
+      `SELECT document_json FROM activity_playback_revisions WHERE id = ?`
+    ).get(revisionId) as { document_json: string } | undefined;
+
+    if (!row) return null;
+    return JSON.parse(row.document_json) as PlaybackDocument;
+  }
+
   // --- Assets ---
   saveAsset(asset: ActivityAsset): ActivityAsset {
+    const existing = this.connection.prepare(
+      `SELECT artifact_id FROM activity_assets WHERE activity_id = ? AND asset_key = ?`
+    ).get(asset.activityId, asset.assetKey) as { artifact_id: string } | undefined;
+
+    if (existing) {
+      if (existing.artifact_id !== asset.artifactId) {
+        const err = new Error(`asset_key_immutable_conflict: Asset key '${asset.assetKey}' is already bound to artifact '${existing.artifact_id}' and cannot be overwritten.`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 409;
+        (err as unknown as { code: string }).code = 'asset_key_immutable_conflict';
+        throw err;
+      }
+      return asset;
+    }
+
     this.connection.prepare(
       `INSERT INTO activity_assets(activity_id, asset_key, artifact_id, source, type, width, height, duration_ms, hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(activity_id, asset_key) DO UPDATE SET
-         artifact_id = excluded.artifact_id,
-         source = excluded.source,
-         type = excluded.type,
-         width = excluded.width,
-         height = excluded.height,
-         duration_ms = excluded.duration_ms,
-         hash = excluded.hash`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       asset.activityId,
       asset.assetKey,
@@ -989,6 +1113,35 @@ export class ActivityStore {
       input.slotFingerprint,
       now
     );
+  }
+
+  recoverDanglingJobs(): number {
+    const now = nowIso();
+    const res = this.connection.prepare(
+      `UPDATE activity_jobs
+       SET status = 'result_unknown', error_message = 'server_restarted_result_unknown', updated_at = ?
+       WHERE status IN ('running', 'queued')`
+    ).run(now);
+    return Number(res.changes);
+  }
+
+  cancelJob(activityId: string, jobId: string): ActivityJob | null {
+    const job = this.getJob(activityId, jobId);
+    if (!job) return null;
+    if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled') {
+      return job;
+    }
+    this.updateJob(jobId, { status: 'cancelled' as ActivityJob['status'], errorMessage: '用户手动取消' });
+    this.appendJobEvent(jobId, activityId, 'cancelled', {});
+    return this.getJob(activityId, jobId);
+  }
+
+  retryJob(activityId: string, jobId: string): ActivityJob | null {
+    const job = this.getJob(activityId, jobId);
+    if (!job) return null;
+    this.updateJob(jobId, { status: 'queued', errorMessage: null });
+    this.appendJobEvent(jobId, activityId, 'retried', {});
+    return this.getJob(activityId, jobId);
   }
 
   private mapJobRow(r: Record<string, unknown>): ActivityJob {

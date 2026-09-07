@@ -268,7 +268,7 @@ export const ActivityCheckpointSchema = Type.Object({
   name: Type.String(),
   headVersion: Type.Number(),
   contentRevisionId: Type.String(),
-  mediaRevisionId: Type.String(),
+  mediaRevisionId: Type.Union([Type.String(), Type.Null()]),
   playbackRevisionId: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.String(),
 });

@@ -20,7 +20,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@sthstart/activity-playback": ["./packages/activity-playback/src/index.ts"],
+      "@sthstart/activity-playback/*": ["./packages/activity-playback/src/*"]
     }
   },
   "include": [

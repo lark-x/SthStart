@@ -23,6 +23,7 @@ export interface ExecuteJobOptions {
   mode: string;
   scope: Record<string, unknown>;
   instructions?: string;
+  inputSnapshot?: ContentDocument;
 }
 
 export async function executeTextJob(options: ExecuteJobOptions): Promise<void> {
@@ -30,6 +31,11 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
   const fetchFn = options.fetcher ?? fetch;
 
   try {
+    const existingJob = store.getJob(activityId, jobId);
+    if (existingJob?.status === 'cancelled') {
+      return;
+    }
+
     store.updateJob(jobId, { status: 'running' });
     store.appendJobEvent(jobId, activityId, 'started', { mode });
 
@@ -42,36 +48,38 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
       throw new Error('未配置可用的 LLM 模型。请在控制中心配置并启用一个 LLM Profile。');
     }
 
-    // 2. Fetch current draft
+    // 2. Fetch input document (prefer frozen snapshot)
     const draft = store.getDraft(activityId);
-    if (!draft) throw new Error('活动草稿不存在');
+    const document = options.inputSnapshot || draft?.document;
+    if (!document) throw new Error('活动文档不存在');
 
     let prompt = '';
     if (mode === 'plan') {
-      prompt = buildPlanPrompt(draft.document, instructions);
+      prompt = buildPlanPrompt(document, instructions);
     } else if (mode === 'stage') {
-      const stageId = String(scope.stageId || draft.document.stages[0]?.id);
-      const stage = draft.document.stages.find((s) => s.id === stageId);
+      const stageId = String(scope.stageId || document.stages[0]?.id);
+      const stage = document.stages.find((s) => s.id === stageId);
       if (!stage) throw new Error(`阶段 ${stageId} 未找到`);
-      prompt = buildStagePrompt(draft.document, stage, instructions);
+      prompt = buildStagePrompt(document, stage, instructions);
     } else if (mode === 'rewrite-records') {
       const recordIds = (scope.recordIds as string[]) || [];
       const reason = instructions || '优化对白';
-      prompt = buildRewritePrompt(draft.document, recordIds, reason);
+      prompt = buildRewritePrompt(document, recordIds, reason);
     } else if (mode === 'whole-text') {
       // Whole text sequentially generates each stage
-      for (let i = 0; i < draft.document.stages.length; i++) {
-        const currentDraft = store.getDraft(activityId);
-        if (!currentDraft) break;
-        const currentStage = currentDraft.document.stages[i];
+      for (let i = 0; i < document.stages.length; i++) {
+        const check = store.getJob(activityId, jobId);
+        if (check?.status === 'cancelled') return;
+
+        const currentStage = document.stages[i];
         store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id });
-        const stPrompt = buildStagePrompt(currentDraft.document, currentStage, instructions);
+        const stPrompt = buildStagePrompt(document, currentStage, instructions);
         const stResp = await callLlm(profile, stPrompt, fetchFn);
         const stOutput = parseAiJsonOutput<StageGenerationOutput>(stResp);
         const candidate = store.createCandidate({
           activityId,
-          baseRevisionId: currentDraft.baseContentRevisionId,
-          draftVersion: currentDraft.draftVersion,
+          baseRevisionId: draft?.baseContentRevisionId || null,
+          draftVersion: draft?.draftVersion || 1,
           scope: { stageId: currentStage.id, batchIndex: i },
           payload: stOutput as unknown as Record<string, unknown>,
           validation: { valid: true },
@@ -80,6 +88,9 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
         const candidateIds = [...(currentJob?.resultCandidateIds || []), candidate.id];
         store.updateJob(jobId, { resultCandidateIds: candidateIds });
       }
+
+      const finalCheck = store.getJob(activityId, jobId);
+      if (finalCheck?.status === 'cancelled') return;
 
       store.updateJob(jobId, {
         status: 'succeeded',
@@ -94,14 +105,17 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     // Call LLM
     const llmResponse = await callLlm(profile, prompt, fetchFn);
 
+    const checkMid = store.getJob(activityId, jobId);
+    if (checkMid?.status === 'cancelled') return;
+
     // Parse & Validate
     const parsedPayload = parseAiJsonOutput<Record<string, unknown>>(llmResponse);
 
     // Create Candidate
     const candidate = store.createCandidate({
       activityId,
-      baseRevisionId: draft.baseContentRevisionId,
-      draftVersion: draft.draftVersion,
+      baseRevisionId: draft?.baseContentRevisionId || null,
+      draftVersion: draft?.draftVersion || 1,
       scope,
       payload: parsedPayload,
       validation: { valid: true },
@@ -114,6 +128,8 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     });
     store.appendJobEvent(jobId, activityId, 'succeeded', { candidateId: candidate.id });
   } catch (err) {
+    const currentJob = store.getJob(activityId, jobId);
+    if (currentJob?.status === 'cancelled') return;
     const msg = (err as Error).message;
     store.updateJob(jobId, { status: 'failed', errorMessage: msg });
     store.appendJobEvent(jobId, activityId, 'failed', { error: msg });
@@ -177,22 +193,50 @@ export function adoptCandidateIntoDocument(
   // If candidate is a plan
   if (Array.isArray(candidatePayload.stages)) {
     const plan = candidatePayload as unknown as PlanGenerationOutput;
-    const newStages = plan.stages.map((s, idx) => ({
-      id: s.stageId || `stage_${idx + 1}`,
-      title: s.title,
-      order: idx + 1,
-      actorIds: s.actorIds && s.actorIds.length > 0 ? s.actorIds : updatedDoc.actors.map((a) => a.id),
-      location: s.location || updatedDoc.activity.location,
-      instruction: s.description,
-      requiredBeats: (s.requiredBeats || []).map((text, bIdx) => ({
-        id: `beat_${idx + 1}_${bIdx + 1}`,
-        text,
-        actorIds: s.actorIds || [],
-      })),
-      locked: false,
-      endCondition: s.endCondition || '',
-    }));
-    updatedDoc.stages = newStages;
+    const existingStages = currentDoc.stages || [];
+    const lockedMap = new Map(existingStages.filter((s) => s.locked).map((s) => [s.order, s]));
+
+    const mergedStages = plan.stages.map((s, idx) => {
+      const order = idx + 1;
+      const locked = lockedMap.get(order);
+      if (locked) {
+        // Locked stage MUST NOT be overwritten!
+        return { ...locked };
+      }
+      return {
+        id: s.stageId || `stage_${order}`,
+        title: s.title,
+        order,
+        actorIds: s.actorIds && s.actorIds.length > 0 ? s.actorIds : updatedDoc.actors.map((a) => a.id),
+        location: s.location || updatedDoc.activity.location,
+        instruction: s.description,
+        requiredBeats: (s.requiredBeats || []).map((text, bIdx) => ({
+          id: `beat_${order}_${bIdx + 1}`,
+          text,
+          actorIds: s.actorIds || [],
+        })),
+        locked: false,
+        endCondition: s.endCondition || '',
+      };
+    });
+
+    // Retain any higher-order locked stages
+    for (const [order, locked] of lockedMap.entries()) {
+      if (!mergedStages.some((m) => m.order === order)) {
+        mergedStages.push({ ...locked });
+      }
+    }
+    mergedStages.sort((a, b) => a.order - b.order);
+    updatedDoc.stages = mergedStages;
+
+    // Any plan change requires downstream review of all stage results
+    if (updatedDoc.stageResults && updatedDoc.stageResults.length > 0) {
+      updatedDoc.stageResults = updatedDoc.stageResults.map((sr) => ({
+        ...sr,
+        reviewState: 'needs_review' as const,
+      }));
+    }
+
     return updatedDoc;
   }
 
@@ -301,6 +345,17 @@ export function adoptCandidateIntoDocument(
     } else {
       updatedDoc.stageResults.push(newStageResult);
     }
+
+    // Crucial: When an earlier stage changes, all subsequent stages must be flagged with needs_review
+    const currentStage = updatedDoc.stages.find((s) => s.id === stageId);
+    const currentOrder = currentStage?.order ?? 1;
+    updatedDoc.stageResults = updatedDoc.stageResults.map((sr) => {
+      const targetStage = updatedDoc.stages.find((s) => s.id === sr.stageId);
+      if (targetStage && targetStage.order > currentOrder) {
+        return { ...sr, reviewState: 'needs_review' as const };
+      }
+      return sr;
+    });
   }
 
   return updatedDoc;
@@ -320,6 +375,17 @@ export async function runTextGenerationJob(
   },
   fetcher?: typeof fetch,
 ) {
+  // Snapshot input document to isolate from concurrent draft modifications
+  let inputSnapshot: ContentDocument | undefined;
+  if (params.targetRevisionId) {
+    const rev = store.getContentRevision(activityId, params.targetRevisionId);
+    if (rev) inputSnapshot = rev.document;
+  }
+  if (!inputSnapshot) {
+    const draft = store.getDraft(activityId);
+    if (draft) inputSnapshot = draft.document;
+  }
+
   const requestHash = crypto.createHash('sha256')
     .update(JSON.stringify({
       activityId,
@@ -356,6 +422,50 @@ export async function runTextGenerationJob(
         mode: params.mode,
         scope: params.scope || {},
         instructions: params.userInstruction,
+        inputSnapshot,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      store.updateJob(job.id, {
+        status: 'failed',
+        errorMessage: msg,
+      });
+    }
+  });
+
+  return job;
+}
+
+export function cancelTextJob(
+  store: ActivityStore,
+  activityId: string,
+  jobId: string,
+) {
+  return store.cancelJob(activityId, jobId);
+}
+
+export async function retryTextJob(
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  store: ActivityStore,
+  activityId: string,
+  jobId: string,
+  fetcher?: typeof fetch,
+) {
+  const job = store.retryJob(activityId, jobId);
+  if (!job) return null;
+
+  setImmediate(async () => {
+    try {
+      await executeTextJob({
+        store,
+        database,
+        secrets,
+        fetcher,
+        jobId: job.id,
+        activityId,
+        mode: job.mode,
+        scope: {},
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

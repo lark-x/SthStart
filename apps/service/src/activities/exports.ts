@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   Activity,
   ContentDocument,
@@ -13,7 +14,7 @@ import { nowIso } from '../database.js';
 import { getActivityAssetFile, listActivityAssets } from './media.js';
 import { generateAutoPlayback } from './playback.js';
 import type { ActivityStore } from './store.js';
-import { createZip, type ZipEntryInput } from './zip.js';
+import { createZip, createZipToFile, type ZipEntryInput } from './zip.js';
 import { compileHyperFramesComposition } from '@sthstart/activity-playback';
 
 export type ExportFormat = 'reader' | 'project' | 'hyperframes-project';
@@ -396,13 +397,13 @@ export function generateOfflineReaderHtml(
 </html>`;
 }
 
-export async function buildActivityExportPackage(
+export async function collectExportEntries(
   config: ServiceConfig,
   database: ServiceDatabase,
   store: ActivityStore,
   activityId: string,
   options: ExportOptions = {},
-): Promise<Buffer> {
+): Promise<ZipEntryInput[]> {
   const activity = store.getActivity(activityId);
   if (!activity) throw new Error('activity_not_found');
 
@@ -417,17 +418,16 @@ export async function buildActivityExportPackage(
 
   const format: ExportFormat = options.format || 'hyperframes-project';
 
-  // Gather media files
+// Gather media files
   const assets = listActivityAssets(database, activityId);
-  const mediaEntries: Array<{ relativePath: string; buffer: Buffer; assetKey: string }> = [];
+  const mediaEntries: Array<{ relativePath: string; filePath: string; assetKey: string }> = [];
 
   for (const ast of assets) {
     const file = getActivityAssetFile(database, activityId, ast.assetKey);
     if (file && existsSync(file.localPath)) {
-      const buf = readFileSync(file.localPath);
       const ext = ast.type === 'video' ? '.mp4' : (ast.type === 'audio' ? '.mp3' : '.png');
       const relPath = `media/${ast.assetKey}${ext}`;
-      mediaEntries.push({ relativePath: relPath, buffer: buf, assetKey: ast.assetKey });
+      mediaEntries.push({ relativePath: relPath, filePath: file.localPath, assetKey: ast.assetKey });
     }
   }
 
@@ -467,11 +467,11 @@ export async function buildActivityExportPackage(
     data: JSON.stringify(playbackDoc, null, 2),
   });
 
-  // 3. Media files
+  // 3. Media files (streamed from disk via filePath)
   for (const m of mediaEntries) {
     entries.push({
       path: `assets/${m.relativePath}`,
-      data: m.buffer,
+      filePath: m.filePath,
     });
   }
 
@@ -517,13 +517,39 @@ export async function buildActivityExportPackage(
             render: 'npx hyperframes render . -o output.mp4',
           },
           devDependencies: {
-            hyperframes: '^0.8.30',
+            hyperframes: '0.8.30',
           },
         },
         null,
         2,
       ),
     });
+
+    // Bundle assets/gsap.min.js
+    const candidateGsap = [
+      fileURLToPath(new URL('../../../../packages/activity-playback/templates/phone-v1/assets/gsap.min.js', import.meta.url)),
+      resolve(process.cwd(), 'packages/activity-playback/templates/phone-v1/assets/gsap.min.js'),
+      resolve(process.cwd(), '../../packages/activity-playback/templates/phone-v1/assets/gsap.min.js'),
+      resolve(process.cwd(), 'packages/activity-playback/sample-render/assets/gsap.min.js'),
+      resolve(process.cwd(), '../../packages/activity-playback/sample-render/assets/gsap.min.js'),
+    ];
+    const foundGsap = candidateGsap.find((p) => existsSync(p));
+    if (foundGsap) {
+      entries.push({ path: 'assets/gsap.min.js', filePath: foundGsap });
+    }
+
+    // Bundle assets/default_avatar.png
+    const candidateAvatar = [
+      fileURLToPath(new URL('../../../../packages/activity-playback/templates/phone-v1/assets/default_avatar.png', import.meta.url)),
+      resolve(process.cwd(), 'packages/activity-playback/templates/phone-v1/assets/default_avatar.png'),
+      resolve(process.cwd(), '../../packages/activity-playback/templates/phone-v1/assets/default_avatar.png'),
+      resolve(process.cwd(), 'packages/activity-playback/fixtures/lan_avatar.png'),
+      resolve(process.cwd(), '../../packages/activity-playback/fixtures/lan_avatar.png'),
+    ];
+    const foundAvatar = candidateAvatar.find((p) => existsSync(p));
+    if (foundAvatar) {
+      entries.push({ path: 'assets/default_avatar.png', filePath: foundAvatar });
+    }
 
     entries.push({
       path: 'README.md',
@@ -555,7 +581,16 @@ export async function buildActivityExportPackage(
 
   // 6. Manifest with SHA-256
   const manifestFiles: ExportManifest['files'] = entries.map((e) => {
-    const b = typeof e.data === 'string' ? Buffer.from(e.data, 'utf8') : e.data;
+    if (e.filePath) {
+      const stat = statSync(e.filePath);
+      const fileBuf = readFileSync(e.filePath);
+      return {
+        path: e.path,
+        byteSize: stat.size,
+        sha256: computeSha256(fileBuf),
+      };
+    }
+    const b = typeof e.data === 'string' ? Buffer.from(e.data, 'utf8') : (e.data || Buffer.alloc(0));
     return {
       path: e.path,
       byteSize: b.length,
@@ -580,7 +615,30 @@ export async function buildActivityExportPackage(
     data: JSON.stringify(manifest, null, 2),
   });
 
-  // Package into zip
+  return entries;
+}
+
+export async function buildActivityExportPackageToFile(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  store: ActivityStore,
+  activityId: string,
+  options: ExportOptions = {},
+  targetFilePath: string,
+): Promise<{ byteSize: number }> {
+  const entries = await collectExportEntries(config, database, store, activityId, options);
+  const result = await createZipToFile(entries, targetFilePath);
+  return { byteSize: result.totalBytes };
+}
+
+export async function buildActivityExportPackage(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  store: ActivityStore,
+  activityId: string,
+  options: ExportOptions = {},
+): Promise<Buffer> {
+  const entries = await collectExportEntries(config, database, store, activityId, options);
   return createZip(entries);
 }
 
@@ -611,14 +669,21 @@ export function startExportJob(
     now,
   );
 
-  // Run async export packaging
+  // Run async streaming export packaging
   setImmediate(async () => {
     try {
-      const zipBuffer = await buildActivityExportPackage(config, database, store, activityId, options);
       const exportDir = resolve(config.artifactDirectory, 'activities', 'exports');
       mkdirSync(exportDir, { recursive: true });
       const exportPath = resolve(exportDir, `${jobId}.zip`);
-      writeFileSync(exportPath, zipBuffer);
+
+      const { byteSize } = await buildActivityExportPackageToFile(
+        config,
+        database,
+        store,
+        activityId,
+        options,
+        exportPath,
+      );
 
       const doneAt = nowIso();
       database.connection.prepare(`
@@ -626,7 +691,7 @@ export function startExportJob(
         SET status = 'succeeded', model_metadata_json = ?, updated_at = ?
         WHERE id = ?
       `).run(
-        JSON.stringify({ exportPath, byteSize: zipBuffer.length }),
+        JSON.stringify({ exportPath, byteSize }),
         doneAt,
         jobId,
       );

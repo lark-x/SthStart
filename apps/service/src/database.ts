@@ -375,7 +375,7 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       name TEXT NOT NULL,
       head_version INTEGER NOT NULL,
       content_revision_id TEXT NOT NULL,
-      media_revision_id TEXT NOT NULL,
+      media_revision_id TEXT,
       playback_revision_id TEXT,
       created_at TEXT NOT NULL
     )`,

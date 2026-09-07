@@ -1,9 +1,11 @@
 import { Buffer } from 'node:buffer';
+import { createReadStream, createWriteStream, readFileSync, statSync } from 'node:fs';
 import { deflateRawSync, inflateRawSync, crc32 } from 'node:zlib';
 
 export interface ZipEntryInput {
   path: string;
-  data: Buffer | string;
+  data?: Buffer | string;
+  filePath?: string;
   mtime?: Date;
 }
 
@@ -44,6 +46,169 @@ function sanitizeZipPath(rawPath: string): string {
   return p;
 }
 
+async function computeFileCrc32(filePath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let currentCrc = 0;
+    const stream = createReadStream(filePath);
+    stream.on('data', (chunk: Buffer | string) => {
+      currentCrc = crc32(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk), currentCrc);
+    });
+    stream.on('end', () => resolve(currentCrc));
+    stream.on('error', reject);
+  });
+}
+
+export async function createZipToFile(
+  entries: ZipEntryInput[],
+  outputFilePath: string,
+): Promise<{ totalBytes: number }> {
+  const outStream = createWriteStream(outputFilePath);
+  const centralHeaders: Buffer[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const cleanPath = sanitizeZipPath(entry.path);
+    const pathBuf = Buffer.from(cleanPath, 'utf8');
+    const mtime = entry.mtime ?? new Date();
+    const { dosTime, dosDate } = dateToDosTime(mtime);
+
+    if (entry.filePath) {
+      // Large file streamed from disk without loading into RAM (use STORE method 0)
+      const stat = statSync(entry.filePath);
+      const fileCrc = await computeFileCrc32(entry.filePath);
+      const compressionMethod = 0; // STORE
+      const compressedSize = stat.size;
+      const uncompressedSize = stat.size;
+
+      const localHeader = Buffer.alloc(30);
+      localHeader.writeUInt32LE(0x04034b50, 0); // signature
+      localHeader.writeUInt16LE(20, 4); // version needed
+      localHeader.writeUInt16LE(0x0800, 6); // flags (UTF-8)
+      localHeader.writeUInt16LE(compressionMethod, 8);
+      localHeader.writeUInt16LE(dosTime, 10);
+      localHeader.writeUInt16LE(dosDate, 12);
+      localHeader.writeUInt32LE(fileCrc, 14);
+      localHeader.writeUInt32LE(compressedSize, 18);
+      localHeader.writeUInt32LE(uncompressedSize, 22);
+      localHeader.writeUInt16LE(pathBuf.length, 26);
+      localHeader.writeUInt16LE(0, 28);
+
+      outStream.write(localHeader);
+      outStream.write(pathBuf);
+
+      // Stream file data in chunks to output
+      await new Promise<void>((resolve, reject) => {
+        const fileStream = createReadStream(entry.filePath!);
+        fileStream.on('data', (chunk) => {
+          if (!outStream.write(chunk)) {
+            fileStream.pause();
+            outStream.once('drain', () => fileStream.resume());
+          }
+        });
+        fileStream.on('end', () => resolve());
+        fileStream.on('error', reject);
+      });
+
+      // Central directory header
+      const cdHeader = Buffer.alloc(46);
+      cdHeader.writeUInt32LE(0x02014b50, 0);
+      cdHeader.writeUInt16LE(20, 4);
+      cdHeader.writeUInt16LE(20, 6);
+      cdHeader.writeUInt16LE(0x0800, 8);
+      cdHeader.writeUInt16LE(compressionMethod, 10);
+      cdHeader.writeUInt16LE(dosTime, 12);
+      cdHeader.writeUInt16LE(dosDate, 14);
+      cdHeader.writeUInt32LE(fileCrc, 16);
+      cdHeader.writeUInt32LE(compressedSize, 20);
+      cdHeader.writeUInt32LE(uncompressedSize, 24);
+      cdHeader.writeUInt16LE(pathBuf.length, 28);
+      cdHeader.writeUInt16LE(0, 30);
+      cdHeader.writeUInt16LE(0, 32);
+      cdHeader.writeUInt16LE(0, 34);
+      cdHeader.writeUInt16LE(0, 36);
+      cdHeader.writeUInt32LE(0, 38);
+      cdHeader.writeUInt32LE(offset, 42);
+
+      centralHeaders.push(cdHeader, pathBuf);
+      offset += localHeader.length + pathBuf.length + compressedSize;
+    } else {
+      // In-memory buffer or string
+      const rawData = typeof entry.data === 'string'
+        ? Buffer.from(entry.data, 'utf8')
+        : (entry.data ?? Buffer.alloc(0));
+
+      const dataCrc = crc32(rawData);
+      const compressedData = deflateRawSync(rawData);
+      const useCompression = compressedData.length < rawData.length;
+      const finalData = useCompression ? compressedData : rawData;
+      const compressionMethod = useCompression ? 8 : 0;
+
+      const localHeader = Buffer.alloc(30);
+      localHeader.writeUInt32LE(0x04034b50, 0);
+      localHeader.writeUInt16LE(20, 4);
+      localHeader.writeUInt16LE(0x0800, 6);
+      localHeader.writeUInt16LE(compressionMethod, 8);
+      localHeader.writeUInt16LE(dosTime, 10);
+      localHeader.writeUInt16LE(dosDate, 12);
+      localHeader.writeUInt32LE(dataCrc, 14);
+      localHeader.writeUInt32LE(finalData.length, 18);
+      localHeader.writeUInt32LE(rawData.length, 22);
+      localHeader.writeUInt16LE(pathBuf.length, 26);
+      localHeader.writeUInt16LE(0, 28);
+
+      outStream.write(localHeader);
+      outStream.write(pathBuf);
+      outStream.write(finalData);
+
+      const cdHeader = Buffer.alloc(46);
+      cdHeader.writeUInt32LE(0x02014b50, 0);
+      cdHeader.writeUInt16LE(20, 4);
+      cdHeader.writeUInt16LE(20, 6);
+      cdHeader.writeUInt16LE(0x0800, 8);
+      cdHeader.writeUInt16LE(compressionMethod, 10);
+      cdHeader.writeUInt16LE(dosTime, 12);
+      cdHeader.writeUInt16LE(dosDate, 14);
+      cdHeader.writeUInt32LE(dataCrc, 16);
+      cdHeader.writeUInt32LE(finalData.length, 20);
+      cdHeader.writeUInt32LE(rawData.length, 24);
+      cdHeader.writeUInt16LE(pathBuf.length, 28);
+      cdHeader.writeUInt16LE(0, 30);
+      cdHeader.writeUInt16LE(0, 32);
+      cdHeader.writeUInt16LE(0, 34);
+      cdHeader.writeUInt16LE(0, 36);
+      cdHeader.writeUInt32LE(0, 38);
+      cdHeader.writeUInt32LE(offset, 42);
+
+      centralHeaders.push(cdHeader, pathBuf);
+      offset += localHeader.length + pathBuf.length + finalData.length;
+    }
+  }
+
+  const centralDirOffset = offset;
+  const centralDirBuffer = Buffer.concat(centralHeaders);
+  const centralDirSize = centralDirBuffer.length;
+
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralDirSize, 12);
+  eocd.writeUInt32LE(centralDirOffset, 16);
+  eocd.writeUInt16LE(0, 20);
+
+  outStream.write(centralDirBuffer);
+  outStream.write(eocd);
+
+  await new Promise<void>((resolve, reject) => {
+    outStream.end(() => resolve());
+    outStream.on('error', reject);
+  });
+
+  return { totalBytes: offset + centralDirSize + 22 };
+}
+
 export function createZip(entries: ZipEntryInput[]): Buffer {
   const localHeaders: Buffer[] = [];
   const centralHeaders: Buffer[] = [];
@@ -52,7 +217,11 @@ export function createZip(entries: ZipEntryInput[]): Buffer {
   for (const entry of entries) {
     const cleanPath = sanitizeZipPath(entry.path);
     const pathBuf = Buffer.from(cleanPath, 'utf8');
-    const rawData = typeof entry.data === 'string' ? Buffer.from(entry.data, 'utf8') : entry.data;
+    const rawData = entry.filePath
+      ? readFileSync(entry.filePath)
+      : (typeof entry.data === 'string'
+        ? Buffer.from(entry.data, 'utf8')
+        : (entry.data ?? Buffer.alloc(0)));
 
     const dataCrc = crc32(rawData);
     const compressedData = deflateRawSync(rawData);
