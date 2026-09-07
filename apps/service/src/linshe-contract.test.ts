@@ -21,7 +21,7 @@ type LinsheCharacterIntegration = {
 
 async function loadLinsheCharacterIntegration(): Promise<LinsheCharacterIntegration> {
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-  const modulePath = resolve(repositoryRoot, 'upstream/linshe/agent-core/src/integrations/sthstart/characters.js');
+  const modulePath = resolve(repositoryRoot, 'upstream/linshe/agent-core/src/integrations/sthstart/character-contract.js');
   return await import(pathToFileURL(modulePath).href) as LinsheCharacterIntegration;
 }
 

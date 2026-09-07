@@ -1060,6 +1060,56 @@ test("Generation poll timeout and 404: poll deadline marks abandoned with poll_t
   database.close();
 });
 
+test("Generation polling: status checks can skip joining an active long poll", async () => {
+  const database = new ServiceDatabase();
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-poll-join-"));
+  seedApp(database, "poll-join-app");
+  const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
+  const now = nowIso();
+
+  database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-1", "Engine", "comfyui", "http://comfy.test:8188", null, 1, 2, now, now);
+  database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-1", "WF", "", "comfyui", "image", 1, now, now);
+  database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-1", 1, "eng-1", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
+  database.connection.prepare("INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)").run("poll-join-app", "default", "wf-1", 1, "eng-1", now);
+  database.connection.prepare("INSERT INTO generation_tasks(id, app_id, engine_id, workflow_id, workflow_version, request_hash, request_params_json, workflow_snapshot_json, status, provider_task_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run("t-active", "poll-join-app", "eng-1", "wf-1", 1, "h1", "{}", "{}", "accepted", "prompt-active", now, now);
+
+  let releaseHistory!: () => void;
+  let historyStarted!: () => void;
+  const releaseHistoryPromise = new Promise<void>((resolveRelease) => { releaseHistory = resolveRelease; });
+  const historyStartedPromise = new Promise<void>((resolveStarted) => { historyStarted = resolveStarted; });
+  let historyFetches = 0;
+
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/history/")) {
+      historyFetches += 1;
+      historyStarted();
+      await releaseHistoryPromise;
+      return new Response(null, { status: 404 });
+    }
+    if (url.includes("/queue")) return Response.json({ queue_running: [[1, "prompt-active"]] });
+    return Response.json({});
+  };
+
+  const activePoll = pollAndCompleteTask(config, database, new SecretStore({}), "t-active", fetcher, { pollTimeoutMs: 5_000, pollIntervalMs: 10 });
+  await historyStartedPromise;
+
+  const startedAt = Date.now();
+  await pollAndCompleteTask(config, database, new SecretStore({}), "t-active", fetcher, {
+    pollTimeoutMs: 15_000,
+    pollIntervalMs: 50,
+    joinExisting: false,
+  });
+
+  assert.ok(Date.now() - startedAt < 200, "joinExisting=false must not wait for the active poll to finish");
+  assert.equal(historyFetches, 1, "joinExisting=false must not start a second provider poll");
+
+  releaseHistory();
+  await activePoll;
+  database.close();
+});
+
 test("Generation cancellation upstream error: failsafe marks task as abandoned instead of false cancelled when queue deletion fails", async () => {
   const database = new ServiceDatabase();
   const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-cancel-err-"));

@@ -176,7 +176,12 @@ test('completed legacy image outputs keep central artifacts referenced until the
     payload: { workflow: { 1: {} } },
   });
   const taskId = created.json().id as string;
-  const completed = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  let completed = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  const deadline = Date.now() + 2_000;
+  while (completed.json().status !== 'complete' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    completed = await app.inject({ method: 'GET', url: `/api/v1/images/tasks/${taskId}`, headers: { authorization: `Bearer ${token}` } });
+  }
   assert.equal(completed.json().status, 'complete');
   assert.equal(completed.json().artifacts.length, 1);
   const artifactId = completed.json().artifacts[0].id as string;

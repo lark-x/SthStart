@@ -22,6 +22,12 @@ import { getGenerationTask, resolveWorkflowAndEngine } from './task-store.js';
 
 const activeTaskPolls = new WeakMap<ServiceDatabase, Map<string, Promise<void>>>();
 
+type PollAndCompleteTaskOptions = {
+  pollTimeoutMs?: number;
+  pollIntervalMs?: number;
+  joinExisting?: boolean;
+};
+
 export interface CreateTaskOptions {
   appId: string;
   idempotencyKey?: string | null;
@@ -548,7 +554,7 @@ async function pollAndCompleteWorkerTask(
   secrets: SecretStore,
   taskId: string,
   fetcher: typeof fetch,
-  options?: { pollTimeoutMs?: number; pollIntervalMs?: number },
+  options?: PollAndCompleteTaskOptions,
 ): Promise<void> {
   const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
   if (!taskRow) return;
@@ -787,7 +793,7 @@ async function pollAndCompleteTaskInternal(
   secrets: SecretStore,
   taskId: string,
   fetcher: typeof fetch = fetch,
-  options?: { pollTimeoutMs?: number; pollIntervalMs?: number },
+  options?: PollAndCompleteTaskOptions,
 ): Promise<void> {
   const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
   if (!taskRow) return;
@@ -1066,7 +1072,7 @@ export async function pollAndCompleteTask(
   secrets: SecretStore,
   taskId: string,
   fetcher: typeof fetch = fetch,
-  options?: { pollTimeoutMs?: number; pollIntervalMs?: number },
+  options?: PollAndCompleteTaskOptions,
 ): Promise<void> {
   let polls = activeTaskPolls.get(database);
   if (!polls) {
@@ -1076,6 +1082,7 @@ export async function pollAndCompleteTask(
 
   const active = polls.get(taskId);
   if (active) {
+    if (options?.joinExisting === false) return;
     await active;
     return;
   }

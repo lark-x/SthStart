@@ -378,7 +378,11 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     let generationTask = getGenerationTask(database, request.params.id, identity.id);
     if (generationTask?.purpose === 'legacy-image') {
       if (generationTask.status === 'accepted' || generationTask.status === 'running') {
-        await pollAndCompleteTask(config, database, secrets, generationTask.id, fetcher, { pollTimeoutMs: 15_000, pollIntervalMs: 50 });
+        await pollAndCompleteTask(config, database, secrets, generationTask.id, fetcher, {
+          pollTimeoutMs: 15_000,
+          pollIntervalMs: 50,
+          joinExisting: false,
+        });
         generationTask = getGenerationTask(database, request.params.id, identity.id)!;
       }
       return legacyImageTaskDescriptor(config, generationTask);
