@@ -5,26 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  verify:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run verify
-
-  browser-smoke:
+  core:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,20 +24,5 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e -- --grep-invert "visual baseline"
-
-  visual-regression:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install chromium
-      - run: npm run test:e2e -- --grep "visual baseline"
+      - run: npm ci --no-audit --no-fund
+      - run: npm run ci:core

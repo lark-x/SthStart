@@ -20,6 +20,8 @@ import { normalizeInputArtifacts, parseGenerationRequestParams, prepareInputArti
 import type { GenerationInputArtifact } from './inputs.js';
 import { getGenerationTask, resolveWorkflowAndEngine } from './task-store.js';
 
+const activeTaskPolls = new WeakMap<ServiceDatabase, Map<string, Promise<void>>>();
+
 export interface CreateTaskOptions {
   appId: string;
   idempotencyKey?: string | null;
@@ -779,7 +781,7 @@ async function pollAndCompleteWorkerTask(
   setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
 }
 
-export async function pollAndCompleteTask(
+async function pollAndCompleteTaskInternal(
   config: ServiceConfig,
   database: ServiceDatabase,
   secrets: SecretStore,
@@ -1056,6 +1058,36 @@ export async function pollAndCompleteTask(
   }
 
   setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+}
+
+export async function pollAndCompleteTask(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  secrets: SecretStore,
+  taskId: string,
+  fetcher: typeof fetch = fetch,
+  options?: { pollTimeoutMs?: number; pollIntervalMs?: number },
+): Promise<void> {
+  let polls = activeTaskPolls.get(database);
+  if (!polls) {
+    polls = new Map();
+    activeTaskPolls.set(database, polls);
+  }
+
+  const active = polls.get(taskId);
+  if (active) {
+    await active;
+    return;
+  }
+
+  const poll = pollAndCompleteTaskInternal(config, database, secrets, taskId, fetcher, options);
+  polls.set(taskId, poll);
+  try {
+    await poll;
+  } finally {
+    if (polls.get(taskId) === poll) polls.delete(taskId);
+    if (polls.size === 0) activeTaskPolls.delete(database);
+  }
 }
 
 export async function processTaskExecution(
