@@ -46,6 +46,7 @@
     "start:local": "concurrently --kill-others-on-fail --names portal,service --prefix-colors cyan,green \"npm run start:portal\" \"npm run start:service\"",
     "start:lan": "node scripts/start-lan.mjs",
     "start:lan:processes": "concurrently --kill-others-on-fail --names portal,service --prefix-colors cyan,green \"npm run start:portal:lan\" \"npm run start:service\"",
+    "start:docker": "node scripts/start-docker.mjs",
     "start:local:all": "npm run start:local",
     "start:local:legacy": "concurrently --kill-others-on-fail --names portal,service,linshe --prefix-colors cyan,green,magenta \"npm run start:portal\" \"npm run start:service\" \"npm run dev:linshe\"",
     "deploy:local": "npm run build && npm run start:local",

@@ -25,6 +25,7 @@ export interface ServiceConfig {
   vectorDefaultUrl: string;
   imageSigningSecret: string;
   akashaMcpUrl: string | null;
+  akashaMcpKey: string | null;
   mcpTimeoutMs: number;
   linsheRoot: string;
   logDirectory: string;
@@ -131,6 +132,7 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
     vectorDefaultUrl: httpUrl(environment.STHSTART_VECTOR_URL ?? 'http://127.0.0.1:8765', 'STHSTART_VECTOR_URL'),
     imageSigningSecret: signingSecret ?? adminToken ?? Buffer.from(randomBytes(32)).toString('hex'),
     akashaMcpUrl: optionalHttpUrl(environment.STHSTART_AKASHA_MCP_URL, 'STHSTART_AKASHA_MCP_URL'),
+    akashaMcpKey: environment.STHSTART_AKASHA_MCP_KEY?.trim() || environment.STHSTART_MCP_KEY?.trim() || null,
     mcpTimeoutMs: integer(environment.STHSTART_MCP_TIMEOUT_MS, 45_000, 'STHSTART_MCP_TIMEOUT_MS', 1_000, 120_000),
     linsheRoot: projectPath(environment.STHSTART_LINSHE_ROOT, 'upstream/linshe'),
     logDirectory: projectPath(environment.STHSTART_LOG_DIR, 'data/logs'),

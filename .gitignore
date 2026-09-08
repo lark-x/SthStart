@@ -21,6 +21,7 @@
 # misc
 .DS_Store
 *.pem
+pelican-bike-animation.html
 
 # debug
 npm-debug.log*
@@ -31,6 +32,7 @@ yarn-error.log*
 # local environment
 .env*
 !.env.example
+!.env.docker.example
 
 # local application data
 /data/

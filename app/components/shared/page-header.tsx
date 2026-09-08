@@ -55,7 +55,7 @@ export function PageHeader({
           )}
         </div>
 
-        <div className="page-header-actions flex items-center gap-2 flex-wrap sm:flex-nowrap">
+        <div className="page-header-actions flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap shrink-0 self-start sm:self-auto">
           <AppSwitcher />
           <EyeCareToggle />
           {actions}

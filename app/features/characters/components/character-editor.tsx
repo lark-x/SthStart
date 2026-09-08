@@ -578,7 +578,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap shrink-0">
           <AppSwitcher />
           <EyeCareToggle />
           <Button
@@ -589,6 +589,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">导入角色卡</span>
+            <span className="sm:hidden">导入</span>
           </Button>
 
           <Button
@@ -597,7 +598,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             onClick={() => setEditorMode((current) => current === 'simple' ? 'detailed' : 'simple')}
             title={editorMode === 'simple' ? '展开关系、背景和详细字段' : '收起不常用的详细字段'}
           >
-            {editorMode === 'simple' ? '详细模式' : '简洁模式'}
+            <span className="hidden sm:inline">{editorMode === 'simple' ? '详细模式' : '简洁模式'}</span>
+            <span className="sm:hidden">{editorMode === 'simple' ? '详细' : '简洁'}</span>
           </Button>
 
           <Button
@@ -617,6 +619,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             onClick={handlePublish}
             disabled={!draft.displayName.trim() || saving}
             loading={publishMutation.isPending}
+            className="shrink-0"
           >
             <Send className="h-3.5 w-3.5" aria-hidden="true" />
             <span>保存并使用</span>

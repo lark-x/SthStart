@@ -235,7 +235,7 @@ export function NotebookWorkspace({
         </div>
 
         {/* Top Right: Actions */}
-        <div className="page-header-actions flex items-center gap-2">
+        <div className="page-header-actions flex items-center gap-1.5 sm:gap-2 shrink-0">
           <AppSwitcher />
           <EyeCareToggle />
           <Link
@@ -246,10 +246,11 @@ export function NotebookWorkspace({
                 handleStartNew('diary');
               }
             }}
-            className="notebook-new-note-action inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[3px_10px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors shadow-xs cursor-pointer"
+            className="notebook-new-note-action inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors shadow-xs cursor-pointer shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>新建记录</span>
+            <span className="hidden sm:inline">新建记录</span>
+            <span className="sm:hidden">新建</span>
           </Link>
         </div>
       </header>

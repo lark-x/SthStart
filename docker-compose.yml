@@ -1,0 +1,47 @@
+services:
+  sthstart:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sthstart:latest
+    container_name: sthstart
+    restart: unless-stopped
+    ports:
+      - "${PORTAL_PORT:-4173}:4173"
+    environment:
+      # 核心运行端口
+      - PORTAL_PORT=4173
+      - SERVICE_PORT=4100
+      - SERVICE_HOST=127.0.0.1
+
+      # 访问控制与安全凭据（至少32字符；若留空，容器启动将自动生成临时高熵凭据）
+      - STHSTART_ADMIN_TOKEN=${STHSTART_ADMIN_TOKEN:-}
+      - STHSTART_IMAGE_SIGNING_SECRET=${STHSTART_IMAGE_SIGNING_SECRET:-}
+      - STHSTART_SESSION_SECRET=${STHSTART_SESSION_SECRET:-}
+
+      # 局域网访问授权：设为 true 允许局域网私有 IPv4 设备访问
+      - STHSTART_LAN_ACCESS=${STHSTART_LAN_ACCESS:-true}
+
+      # 远程访问或自定义域名 Origin（多个用逗号分隔，如 https://sth.example.com）
+      - STHSTART_PUBLIC_ORIGINS=${STHSTART_PUBLIC_ORIGINS:-}
+
+      # Cloudflare Access 远程单点登录（可选）
+      - CF_ACCESS_TEAM_DOMAIN=${CF_ACCESS_TEAM_DOMAIN:-}
+      - CF_ACCESS_AUD=${CF_ACCESS_AUD:-}
+
+      # Akasha MCP 服务集成与鉴权
+      - STHSTART_AKASHA_MCP_URL=${STHSTART_AKASHA_MCP_URL:-https://agent.zlb.ink/api/mcp/}
+      - STHSTART_AKASHA_MCP_KEY=${STHSTART_AKASHA_MCP_KEY:-}
+      - STHSTART_MCP_TIMEOUT_MS=${STHSTART_MCP_TIMEOUT_MS:-45000}
+
+      # 容器内数据持久化目录
+      - STHSTART_DATABASE_PATH=/app/data/sthstart.db
+      - STHSTART_NARRATIVE_DATABASE_PATH=/app/data/narrative.db
+      - STHSTART_ARTIFACT_DIR=/app/data/artifacts
+      - STHSTART_LOG_DIR=/app/data/logs
+    volumes:
+      # 挂载宿主机 ./data 目录，持久化 SQLite 数据库、多媒体制品和日志
+      - ./data:/app/data
+    extra_hosts:
+      # 允许容器通过 host.docker.internal 访问宿主机上运行的 ComfyUI (8188)、Worker 或邻舍
+      - "host.docker.internal:host-gateway"

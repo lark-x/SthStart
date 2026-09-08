@@ -104,22 +104,22 @@ export default function ActivitiesPage() {
           title="活动工作室"
           description="独立活动聊天与动态内容创作平台。设定情节阶段、AI 驱动多角色互动、编排拟真设备回放，导出可离线渲染的 HyperFrames 视频工程。"
           actions={
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setImportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[3px_12px_3px_3px] border-[rgb(24_32_29/20%)] bg-surface hover:bg-stone-100 text-xs font-semibold"
               >
-                <FolderDown className="h-4 w-4 text-muted" />
-                <span>导入活动</span>
+                <FolderDown className="h-3.5 w-3.5 text-muted" />
+                <span className="hidden sm:inline">导入活动</span>
+                <span className="sm:hidden">导入</span>
               </Button>
 
               <Link
                 href="/apps/activities/new"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-xs tracking-wide transition-colors cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shadow-xs shrink-0"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
                 <span>新建活动</span>
               </Link>
             </div>

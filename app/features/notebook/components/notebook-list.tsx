@@ -76,9 +76,9 @@ export function NotebookList() {
         actions={
           <Link
             href="/apps/notebook/new"
-            className="notebook-new-note-action inline-flex items-center gap-2 px-4 py-2 rounded-[3px_14px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shadow-xs"
+            className="notebook-new-note-action inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shadow-xs shrink-0"
           >
-            <Plus className="h-4 w-4" aria-hidden="true" />
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             <span>新建记录</span>
           </Link>
         }

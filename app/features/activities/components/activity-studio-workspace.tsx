@@ -1,5 +1,6 @@
 'use client';
 import { AppSwitcher } from '@/app/components/shared/app-switcher';
+import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -127,16 +128,15 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
       <div className="max-w-7xl mx-auto space-y-4">
         {/* Studio Top Navigation Bar */}
         <header className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] shadow-xs">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <Link
               href="/apps/activities"
-              className="p-1.5 rounded hover:bg-stone-100 text-muted hover:text-ink transition-colors"
+              className="p-1.5 rounded hover:bg-stone-100 text-muted hover:text-ink transition-colors shrink-0"
               title="返回活动列表"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
 
-            <AppSwitcher />
             <div className="min-w-0 space-y-0.5">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="break-words text-lg font-bold text-ink">{document.activity.title}</h1>
@@ -194,7 +194,10 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
+            <AppSwitcher />
+            <EyeCareToggle />
+
             <Button
               variant="outline"
               size="sm"
@@ -202,7 +205,8 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               className="text-sm h-8 flex items-center gap-1.5"
             >
               <History className="h-3.5 w-3.5 text-muted" />
-              <span>版本回溯</span>
+              <span className="hidden sm:inline">版本回溯</span>
+              <span className="sm:hidden">回溯</span>
             </Button>
 
             <Button
@@ -212,14 +216,15 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               className="text-sm h-8 flex items-center gap-1.5"
             >
               <Download className="h-3.5 w-3.5 text-muted" />
-              <span>导出工程</span>
+              <span className="hidden sm:inline">导出工程</span>
+              <span className="sm:hidden">导出</span>
             </Button>
 
             <Button
               size="sm"
               onClick={handleCommitDraft}
               disabled={committing || saveStatus === 'conflict' || saveStatus === 'error'}
-              className="text-sm h-8 px-3.5 bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+              className="text-sm h-8 px-3 bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs shrink-0"
             >
               <Save className="h-3.5 w-3.5" />
               <span>{committing ? '保存中…' : '保存新版本'}</span>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Search, Upload, Link as LinkIcon, Check, AlertTriangle } from 'lucide-react';
+import { Search, Upload, Link as LinkIcon, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import type { CharacterCardSearchResult, CharacterImportSession } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -52,6 +52,7 @@ export function CharacterImportDialog({
   const [coverAvatar, setCoverAvatar] = useState(false);
   const [coverReference, setCoverReference] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loadingOnlineId, setLoadingOnlineId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   /* eslint-disable react-hooks/set-state-in-effect -- reset and hydrate the explicit import-session editor state. */
@@ -115,7 +116,7 @@ export function CharacterImportDialog({
   };
 
   const search = async (cursor?: string) => {
-    if (query.trim().length < 2) return;
+    if (!query.trim()) return;
     const requestQuery = query.trim();
     if (cursor && requestQuery !== searchedQuery) cursor = undefined;
     searchControllerRef.current?.abort();
@@ -140,11 +141,13 @@ export function CharacterImportDialog({
   };
 
   const importOnline = async (item: CharacterCardSearchResult) => {
+    const onlineKey = `${item.providerId}:${item.externalId}`;
+    setLoadingOnlineId(onlineKey);
     setBusy(true); setError('');
     try {
       loadSession(await createCharacterImportSession({ providerId: item.providerId, externalId: item.externalId, url: item.sourceUrl, ...(targetCharacterId ? { targetCharacterId } : {}), ...(baseDraftRevision == null ? {} : { baseDraftRevision }) }, crypto.randomUUID()));
     } catch (value) { showError(value); }
-    finally { setBusy(false); }
+    finally { setLoadingOnlineId(null); setBusy(false); }
   };
 
   const persistPreview = async () => {
@@ -179,17 +182,17 @@ export function CharacterImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => void close(nextOpen)} title="导入角色卡" description="先解析并预览候选字段，确认后才会写入角色库。原始卡片会作为来源快照保留。" className="max-w-2xl max-h-[95dvh] overflow-y-auto" footer={
-      session ? <div className="flex w-full items-center justify-between gap-2"><Button variant="outline" size="sm" onClick={() => void close(false)}>取消</Button><div className="flex gap-2"><Button size="sm" onClick={() => void commit()} disabled={busy || !name.trim() || session.status !== 'ready'}><Check className="h-4 w-4" />确认导入</Button></div></div> : <Button variant="outline" size="sm" onClick={() => void close(false)}>关闭</Button>
+      session ? <div className="flex w-full items-center justify-between gap-2"><Button variant="outline" size="sm" onClick={() => void close(false)}>取消</Button><div className="flex gap-2"><Button size="sm" onClick={() => void commit()} disabled={busy || !name.trim() || session.status !== 'ready'}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}<span>{busy ? '正在导入…' : '确认导入'}</span></Button></div></div> : <Button variant="outline" size="sm" onClick={() => void close(false)}>关闭</Button>
     }>
       {!session ? (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-1 border-b border-[rgb(24_32_29/10%)]">
             {([['file', '本地 JSON / PNG', Upload], ['url', '来源 URL', LinkIcon], ['paste', '粘贴资料', LinkIcon], ['online', '在线搜索', Search]] as const).map(([value, label, Icon]) => <button key={value} type="button" onClick={() => setMode(value)} className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm ${mode === value ? 'border-accent text-accent' : 'border-transparent text-muted'}`}><Icon className="h-4 w-4" />{label}</button>)}
           </div>
-          {mode === 'file' && <div className="rounded border border-dashed border-[rgb(24_32_29/18%)] p-6 text-center"><p className="text-sm text-muted">支持 Tavern Card V1/V2/V3 JSON，以及带 chara / ccv3 元数据的 PNG。</p><Button className="mt-3" onClick={() => fileRef.current?.click()} disabled={busy}><Upload className="h-4 w-4" />选择文件</Button><input ref={fileRef} hidden type="file" accept="application/json,.json,image/png,.png,image/jpeg,.jpg,image/webp,.webp" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFile(file); }} /></div>}
-          {mode === 'url' && <div className="space-y-2"><Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Character Tavern 角色页或 PNG 下载地址" /><Button onClick={() => void importUrl()} disabled={busy || !url.trim()}><LinkIcon className="h-4 w-4" />获取并预览</Button></div>}
-          {mode === 'paste' && <div className="space-y-2"><Textarea value={pastedText} onChange={(event) => setPastedText(event.target.value)} rows={9} placeholder="粘贴角色描述，或粘贴一段 Tavern JSON。纯文字会作为身份描述候选，确认前仍可编辑。" /><Button onClick={() => void importPastedText()} disabled={busy || !pastedText.trim()}><LinkIcon className="h-4 w-4" />解析并预览</Button></div>}
-          {mode === 'online' && <div className="space-y-3"><div className="flex gap-2"><Input value={query} onChange={(event) => { searchControllerRef.current?.abort(); ++searchSequenceRef.current; setBusy(false); setQuery(event.target.value); setResults([]); setNextCursor(null); setSearchedQuery(''); }} placeholder="搜索角色名或作品" onKeyDown={(event) => { if (event.key === 'Enter') void search(); }} /><Button onClick={() => void search()} disabled={busy || query.trim().length < 2}><Search className="h-4 w-4" />搜索</Button></div><div className="space-y-2">{results.map((item) => <div key={`${item.providerId}:${item.externalId}`} className="flex items-center justify-between gap-3 rounded border border-[rgb(24_32_29/12%)] p-3"><div className="flex min-w-0 items-center gap-3">{item.thumbnail && <Image src={item.thumbnail} alt="" width={48} height={48} unoptimized className="h-12 w-12 shrink-0 rounded object-cover" />}<div className="min-w-0"><p className="truncate text-sm font-semibold">{item.name}</p><p className="truncate text-xs text-muted">{item.author || '未知作者'} · {item.summary || '无摘要'}</p></div></div><Button size="sm" variant="outline" onClick={() => void importOnline(item)} disabled={busy}>预览</Button></div>)}{!busy && searchedQuery === query.trim() && searchedQuery.length >= 2 && results.length === 0 && !error && <p className="rounded border border-dashed border-[rgb(24_32_29/14%)] p-4 text-center text-sm text-muted">没有找到匹配的角色卡。</p>}{nextCursor && searchedQuery === query.trim() && <Button size="sm" variant="outline" onClick={() => void search(nextCursor)} disabled={busy}>加载更多</Button>}</div></div>}
+          {mode === 'file' && <div className="rounded border border-dashed border-[rgb(24_32_29/18%)] p-6 text-center"><p className="text-sm text-muted">支持 Tavern Card V1/V2/V3 JSON，以及带 chara / ccv3 元数据的 PNG。</p><Button className="mt-3" onClick={() => fileRef.current?.click()} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}<span>{busy ? '正在解析…' : '选择文件'}</span></Button><input ref={fileRef} hidden type="file" accept="application/json,.json,image/png,.png,image/jpeg,.jpg,image/webp,.webp" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFile(file); }} /></div>}
+          {mode === 'url' && <div className="space-y-2"><Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Character Tavern 角色页或 PNG 下载地址" /><Button onClick={() => void importUrl()} disabled={busy || !url.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}<span>{busy ? '正在获取…' : '获取并预览'}</span></Button></div>}
+          {mode === 'paste' && <div className="space-y-2"><Textarea value={pastedText} onChange={(event) => setPastedText(event.target.value)} rows={9} placeholder="粘贴角色描述，或粘贴一段 Tavern JSON。纯文字会作为身份描述候选，确认前仍可编辑。" /><Button onClick={() => void importPastedText()} disabled={busy || !pastedText.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}<span>{busy ? '正在解析…' : '解析并预览'}</span></Button></div>}
+          {mode === 'online' && <div className="space-y-3"><div className="flex gap-2"><Input value={query} onChange={(event) => { searchControllerRef.current?.abort(); ++searchSequenceRef.current; setBusy(false); setQuery(event.target.value); setResults([]); setNextCursor(null); setSearchedQuery(''); }} placeholder="搜索角色名或作品" onKeyDown={(event) => { if (event.key === 'Enter') void search(); }} /><Button onClick={() => void search()} disabled={busy || !query.trim()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}<span>{busy ? '搜索中…' : '搜索'}</span></Button></div><div className="space-y-2">{results.map((item) => <div key={`${item.providerId}:${item.externalId}`} className="flex items-center justify-between gap-3 rounded border border-[rgb(24_32_29/12%)] p-3"><div className="flex min-w-0 items-center gap-3">{item.thumbnail && <Image src={item.thumbnail} alt="" width={48} height={48} unoptimized className="h-12 w-12 shrink-0 rounded object-cover" />}<div className="min-w-0"><p className="truncate text-sm font-semibold">{item.name}</p><p className="truncate text-xs text-muted">{item.author || '未知作者'} · {item.summary || '无摘要'}</p></div></div><Button size="sm" variant="outline" onClick={() => void importOnline(item)} disabled={busy}>{loadingOnlineId === `${item.providerId}:${item.externalId}` ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /><span>下载解析中…</span></> : '预览'}</Button></div>)}{!busy && searchedQuery === query.trim() && searchedQuery.length >= 1 && results.length === 0 && !error && <p className="rounded border border-dashed border-[rgb(24_32_29/14%)] p-4 text-center text-sm text-muted">没有找到匹配的角色卡。</p>}{nextCursor && searchedQuery === query.trim() && <Button size="sm" variant="outline" onClick={() => void search(nextCursor)} disabled={busy}>加载更多</Button>}</div></div>}
           {error && <p className="text-sm text-accent-dark">{error}</p>}
         </div>
       ) : (

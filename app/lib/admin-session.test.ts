@@ -43,3 +43,9 @@ test('session creation returns its CSRF token without a verification round trip'
     else process.env.STHSTART_SESSION_SECRET = previousSecret;
   }
 });
+
+test('admin BFF route exports PATCH handler for resource updates such as character import sessions', async () => {
+  const { PATCH } = await import('../api/admin/[...path]/route');
+  assert.equal(typeof PATCH, 'function');
+});
+

@@ -20,11 +20,13 @@ interface McpEnvelope {
 }
 
 class McpHttpClient {
-  constructor(private readonly url: string, private readonly timeoutMs: number, private readonly fetcher: typeof fetch) {}
+  constructor(private readonly url: string, private readonly timeoutMs: number, private readonly fetcher: typeof fetch, private readonly apiKey: string | null = null) {}
 
   async request(method: string, params: Record<string, unknown>) {
+    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
+    if (this.apiKey) headers['authorization'] = `Bearer ${this.apiKey}`;
     const response = await this.fetcher(this.url, {
-      method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      method: 'POST', headers,
       body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method, params }), signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) throw new Error(`mcp_http_${response.status}`);
@@ -58,8 +60,8 @@ export class AkashaMcpConnector implements NarrativeSourceConnector {
   readonly id = 'akasha-mcp'; readonly name = '虚空终端 Story MCP'; readonly kind = 'mcp' as const;
   private readonly client: McpHttpClient | null;
 
-  constructor(url: string | null, timeoutMs: number, fetcher: typeof fetch = fetch) {
-    this.client = url ? new McpHttpClient(url, timeoutMs, fetcher) : null;
+  constructor(url: string | null, timeoutMs: number, fetcher: typeof fetch = fetch, apiKey: string | null = null) {
+    this.client = url ? new McpHttpClient(url, timeoutMs, fetcher, apiKey) : null;
   }
 
   describe() {
@@ -126,5 +128,5 @@ export class AkashaMcpConnector implements NarrativeSourceConnector {
 }
 
 export function createNarrativeConnectors(config: ServiceConfig, fetcher: typeof fetch = fetch) {
-  return [new JsonNarrativeConnector(), new AkashaMcpConnector(config.akashaMcpUrl, config.mcpTimeoutMs, fetcher)] as const;
+  return [new JsonNarrativeConnector(), new AkashaMcpConnector(config.akashaMcpUrl, config.mcpTimeoutMs, fetcher, config.akashaMcpKey)] as const;
 }

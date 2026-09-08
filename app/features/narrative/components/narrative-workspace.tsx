@@ -169,32 +169,49 @@ export function NarrativeWorkspace() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-1 bg-[rgb(32_38_49/6%)] p-1 rounded-full">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <AppSwitcher />
-          <button type="button" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen(!inspectorOpen)} className="min-h-10 px-3 text-sm rounded-md border border-border-default">检索原文</button>
           <EyeCareToggle />
+
           <button
             type="button"
-            onClick={() => setMode('read')}
-            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
-              mode === 'read'
-                ? 'bg-[#283548] text-white'
-                : 'text-muted hover:text-ink'
+            aria-expanded={inspectorOpen}
+            onClick={() => setInspectorOpen(!inspectorOpen)}
+            className={`inline-flex items-center h-8 px-2.5 text-sm font-medium rounded-md border transition-colors cursor-pointer select-none ${
+              inspectorOpen
+                ? 'bg-accent/12 text-accent-dark border-accent/30 font-semibold shadow-2xs'
+                : 'bg-surface hover:bg-white text-muted hover:text-ink border-[rgb(24_32_29/14%)] shadow-2xs'
             }`}
           >
-            阅读模式
+            <span className="hidden sm:inline">检索原文</span>
+            <span className="sm:hidden">检索</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setMode('import')}
-            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
-              mode === 'import'
-                ? 'bg-[#283548] text-white'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            数据源与导入
-          </button>
+
+          <div className="flex items-center rounded-md border border-[rgb(24_32_29/14%)] bg-surface p-0.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setMode('read')}
+              className={`h-7 px-2.5 sm:px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                mode === 'read'
+                  ? 'bg-ink text-paper shadow-2xs font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              阅读模式
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('import')}
+              className={`h-7 px-2.5 sm:px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                mode === 'import'
+                  ? 'bg-ink text-paper shadow-2xs font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <span className="hidden sm:inline">数据源与导入</span>
+              <span className="sm:hidden">导入</span>
+            </button>
+          </div>
         </div>
       </header>
 

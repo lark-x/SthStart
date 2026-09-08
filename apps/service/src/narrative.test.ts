@@ -157,3 +157,23 @@ test('Akasha connector stays idle until invoked and normalizes mocked documents'
     ['dialogue', '林', '你来了。'], ['narration', undefined, '雨还没有停。'],
   ]);
 });
+
+test('Akasha connector sends Authorization Bearer header when apiKey is configured', async () => {
+  let capturedHeaders: Record<string, string> | undefined;
+  const fetcher: typeof fetch = async (_input, init) => {
+    capturedHeaders = init?.headers as Record<string, string>;
+    return Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        serverInfo: { name: 'Story MCP', version: '1.0' },
+        tools: [{ name: 'akasha_search' }, { name: 'akasha_read' }, { name: 'akasha_catalog' }],
+      },
+    });
+  };
+  const connector = new AkashaMcpConnector('https://mcp.test/api', 5_000, fetcher, 'akasha-secret-token-xyz');
+  const probe = await connector.probe();
+  assert.equal(probe.status, 'ready');
+  assert.equal(capturedHeaders?.['authorization'], 'Bearer akasha-secret-token-xyz');
+});
+
