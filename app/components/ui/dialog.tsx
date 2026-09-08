@@ -25,6 +25,8 @@ export function Dialog({
 }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => { onOpenChangeRef.current = onOpenChange; }, [onOpenChange]);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -44,7 +46,7 @@ export function Dialog({
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
           event.preventDefault();
-          onOpenChange(false);
+          onOpenChangeRef.current(false);
           return;
         }
 
@@ -82,7 +84,7 @@ export function Dialog({
         previousFocus.current = null;
       };
     }
-  }, [open, onOpenChange]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -106,11 +108,11 @@ export function Dialog({
         ref={dialogRef}
         tabIndex={-1}
         className={cn(
-          'relative z-50 w-full max-w-lg rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 shadow-2xl transition-all focus:outline-none animate-in zoom-in-95',
+          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 shadow-2xl transition-all focus:outline-none animate-in zoom-in-95',
           className
         )}
       >
-        <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="flex shrink-0 items-start justify-between gap-4 mb-4">
           <div>
             <h2 id={titleId} className="font-serif text-2xl font-medium text-ink">
               {title}
@@ -131,10 +133,10 @@ export function Dialog({
           </button>
         </div>
 
-        <div className="my-4 max-h-[75vh] overflow-y-auto pr-1">{children}</div>
+        <div className="my-4 min-h-0 overflow-y-auto pr-1">{children}</div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-[rgb(24_32_29/10%)]">
+          <div className="flex shrink-0 items-center justify-end gap-3 mt-6 pt-4 border-t border-[rgb(24_32_29/10%)]">
             {footer}
           </div>
         )}

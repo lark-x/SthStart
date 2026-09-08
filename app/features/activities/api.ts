@@ -221,6 +221,18 @@ export async function fetchActivityAssets(id: string): Promise<{ items: Activity
   return getJson(`/api/admin/activities/${encodeURIComponent(id)}/assets`);
 }
 
+export async function transferCharacterReferenceToActivity(
+  activityId: string,
+  input: { characterId: string; version?: number | null; referenceId: string },
+): Promise<ActivityAsset> {
+  const idempotencyKey = `character-reference-${activityId}-${input.referenceId}`;
+  return postJson<ActivityAsset>(
+    `/api/admin/activities/${encodeURIComponent(activityId)}/character-references`,
+    input,
+    { headers: { 'idempotency-key': idempotencyKey } },
+  );
+}
+
 export async function uploadActivityAsset(
   id: string,
   file: File | Blob,
@@ -509,4 +521,9 @@ export async function fetchAssetLineage(
 
 export async function fetchImageExecutionSnapshots(id: string, attemptId: string): Promise<{ items: import('@sthstart/contracts').ExecutionSnapshot[] }> {
   return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}/execution-snapshots`);
+}
+
+export async function fetchActivityCharacterSnapshot(characterId: string, version?: number): Promise<import('@sthstart/contracts').ActorSnapshot> {
+  const query = version == null ? '' : `?version=${version}`;
+  return getJson(`/api/admin/activities/characters/${encodeURIComponent(characterId)}/snapshot${query}`);
 }

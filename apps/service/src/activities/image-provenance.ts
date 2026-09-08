@@ -71,6 +71,28 @@ export const ALLOWED_FIELD_PATHS: Record<SourceEntityKind, readonly string[]> = 
   override: [
     '/overrideText',
   ],
+  character: [
+    '/displayName',
+    '/draftRevision',
+    '/appearance',
+    '/appearance/description',
+    '/appearance/hair',
+    '/appearance/eyes',
+    '/appearance/build',
+    '/appearance/outfits',
+    '/appearance/accessories',
+  ],
+  character_version: [
+    '/version',
+    '/data',
+    '/appearanceSnapshot',
+  ],
+  reference: [
+    '/assetId',
+    '/purpose',
+    '/outfitId',
+    '/sha256',
+  ],
 };
 
 export function isAllowedFieldPath(entityKind: SourceEntityKind, fieldPath: string): boolean {
@@ -158,7 +180,7 @@ export interface ResolvedSourceDetail {
     entityKind: SourceEntityKind;
     entityId: string;
     fieldPath: string;
-    panel: 'actor' | 'stage' | 'fact' | 'image_config' | 'shot' | 'override';
+    panel: 'actor' | 'stage' | 'fact' | 'image_config' | 'shot' | 'override' | 'character';
     label: string;
   };
 }
@@ -170,7 +192,7 @@ export function resolveSourceRef(
 ): ResolvedSourceDetail {
   let currentValue: unknown = null;
   let isDeleted = false;
-  let panel: 'actor' | 'stage' | 'fact' | 'image_config' | 'shot' | 'override' = 'actor';
+  let panel: 'actor' | 'stage' | 'fact' | 'image_config' | 'shot' | 'override' | 'character' = 'actor';
   let label = sourceRef.labelSnapshot;
 
   switch (sourceRef.entityKind) {
@@ -242,6 +264,19 @@ export function resolveSourceRef(
       panel = 'override';
       label = '单次生成覆盖';
       currentValue = sourceRef.valueSnapshot;
+      break;
+    }
+    case 'character':
+    case 'character_version': {
+      panel = 'character';
+      const actor = currentContent.actors.find((item) => item.sourceCharacterId === sourceRef.entityId);
+      if (!actor) {
+        isDeleted = true;
+      } else {
+        label = `公共角色·${actor.displayName}`;
+        const res = extractEntityFieldValue(actor.persona as Record<string, unknown>, sourceRef.fieldPath);
+        currentValue = res.found ? res.value : null;
+      }
       break;
     }
     default: {

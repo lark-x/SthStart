@@ -123,6 +123,7 @@ function safeInputCapabilities(value: unknown) {
     maxBytes?: number;
     required?: boolean;
     maxCount?: number;
+    semantic?: 'init_image' | 'identity' | 'outfit' | 'pose' | 'style' | 'composition' | 'mask';
   }> = {};
   for (const [key, raw] of Object.entries(parsed)) {
     if (!isRecord(raw)) continue;
@@ -139,6 +140,9 @@ function safeInputCapabilities(value: unknown) {
     if (typeof raw.required === 'boolean') capability.required = raw.required;
     const maxCount = Number(raw.maxCount);
     if (Number.isSafeInteger(maxCount) && maxCount > 0) capability.maxCount = maxCount;
+    if (['init_image', 'identity', 'outfit', 'pose', 'style', 'composition', 'mask'].includes(String(raw.semantic))) {
+      capability.semantic = raw.semantic as typeof capability.semantic;
+    }
     if (Object.keys(capability).length) result[key.slice(0, 80)] = capability;
   }
   return result;

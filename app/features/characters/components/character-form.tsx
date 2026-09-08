@@ -29,6 +29,7 @@ export type CharacterArrayName =
   | 'boundaries'
   | 'speech.catchphrases'
   | 'speech.examples'
+  | 'appearance.stableFeatures'
   | 'appearance.outfits'
   | 'appearance.accessories';
 
@@ -59,7 +60,8 @@ export type CharacterFormValues = Omit<
     catchphrases: StringField[];
     examples: StringField[];
   };
-  appearance: Omit<CharacterAppearance, 'outfits' | 'accessories'> & {
+  appearance: Omit<CharacterAppearance, 'outfits' | 'accessories' | 'stableFeatures'> & {
+    stableFeatures: StringField[];
     outfits: StringField[];
     accessories: StringField[];
   };
@@ -108,6 +110,9 @@ export function characterDraftToFormValues(draft: CharacterDraft): CharacterForm
       hair: draft.appearance.hair,
       eyes: draft.appearance.eyes,
       build: draft.appearance.build,
+      stableFeatures: toFields(draft.appearance.stableFeatures),
+      defaultOutfitId: draft.appearance.defaultOutfitId,
+      referenceIds: draft.appearance.referenceIds,
       outfits: toFields(draft.appearance.outfits),
       accessories: toFields(draft.appearance.accessories),
     },
@@ -147,6 +152,9 @@ export function characterFormValuesToDraft(values: CharacterFormValues): Charact
       hair: values.appearance.hair,
       eyes: values.appearance.eyes,
       build: values.appearance.build,
+      stableFeatures: fromFields(values.appearance.stableFeatures),
+      defaultOutfitId: values.appearance.defaultOutfitId,
+      referenceIds: values.appearance.referenceIds,
       outfits: fromFields(values.appearance.outfits),
       accessories: fromFields(values.appearance.accessories),
     },

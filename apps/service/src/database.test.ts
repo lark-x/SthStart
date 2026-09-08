@@ -9,7 +9,7 @@ import { ServiceDatabase } from './database.js';
 test('fresh databases record an explicit migration baseline', () => {
   const database = new ServiceDatabase();
   const migrations = database.connection.prepare('SELECT version,name FROM schema_migrations').all() as Array<{ version: number; name: string }>;
-  assert.equal(migrations.length, 15);
+  assert.equal(migrations.length, 17);
   assert.equal(migrations[0].version, 1);
   assert.equal(migrations[0].name, 'initial');
   assert.equal(migrations[1].version, 2);
@@ -32,6 +32,12 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(migrations[12].name, 'activity-studio');
   assert.equal(migrations[13].version, 14);
   assert.equal(migrations[13].name, 'activity-image-provenance');
+  assert.equal(migrations[14].version, 15);
+  assert.equal(migrations[14].name, 'activity-frozen-image-plans');
+  assert.equal(migrations[15].version, 16);
+  assert.equal(migrations[15].name, 'character-library-remediation');
+  assert.equal(migrations[16].version, 17);
+  assert.equal(migrations[16].name, 'character-source-snapshot-links');
   const columns = database.connection.prepare('PRAGMA table_info(provider_profile_options)').all() as Array<{ name: string }>;
   assert.equal(columns.some((column) => column.name === 'capabilities_json'), true);
   const taskColumns = database.connection.prepare('PRAGMA table_info(generation_tasks)').all() as Array<{ name: string }>;
@@ -46,6 +52,7 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(artifactColumns.some((column) => column.name === 'thumbnail_artifact_id'), true);
   const characterAssetColumns = database.connection.prepare('PRAGMA table_info(character_assets)').all() as Array<{ name: string }>;
   assert.equal(characterAssetColumns.some((column) => column.name === 'artifact_id'), true);
+  assert.equal(characterAssetColumns.some((column) => column.name === 'sha256'), true);
   const noteColumns = database.connection.prepare('PRAGMA table_info(creative_notes)').all() as Array<{ name: string }>;
   assert.equal(noteColumns.some((column) => column.name === 'revision'), true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='generation_context_links'").get() !== undefined, true);
@@ -55,6 +62,9 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_image_config_drafts'").get() !== undefined, true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_prompt_recipes'").get() !== undefined, true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_image_attempts'").get() !== undefined, true);
+  assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_import_sessions'").get() !== undefined, true);
+  assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_field_provenance'").get() !== undefined, true);
+  assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_visual_references'").get() !== undefined, true);
   database.close();
 });
 
@@ -80,7 +90,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
   const migrated = new ServiceDatabase(path);
   const row = migrated.connection.prepare("SELECT capabilities_json FROM provider_profile_options WHERE profile_id='old'").get() as { capabilities_json: string };
   assert.deepEqual(JSON.parse(row.capabilities_json), ['text']);
-  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 15);
+  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 17);
   migrated.close();
 });
 

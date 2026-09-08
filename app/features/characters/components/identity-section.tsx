@@ -14,6 +14,7 @@ import {
 
 export function IdentitySection({
   draft,
+  simple = false,
   tags,
   onChange,
   onTagsChange,
@@ -22,6 +23,7 @@ export function IdentitySection({
   displayNameError,
 }: {
   draft: CharacterDraft;
+  simple?: boolean;
   tags: string[];
   onChange: (patch: Partial<CharacterDraft>) => void;
   onTagsChange: (tags: string[]) => void;
@@ -34,7 +36,7 @@ export function IdentitySection({
       <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
         <h3 className="font-serif text-2xl font-medium text-ink">身份与经历</h3>
         <p className="text-sm text-muted mt-1 leading-relaxed">
-          先写清楚她是怎样的一个人，再写她为什么会成为现在的样子。
+          {simple ? '先填名字和一段描述即可保存；详细经历可以稍后展开。' : '先写清楚她是怎样的一个人，再写她为什么会成为现在的样子。'}
         </p>
       </div>
 
@@ -59,7 +61,7 @@ export function IdentitySection({
           )}
         </label>
 
-        <label className="block text-sm font-semibold text-ink">
+        {!simple && <label className="block text-sm font-semibold text-ink">
           <span>
             英文名 / 拼音
           </span>
@@ -69,9 +71,9 @@ export function IdentitySection({
             placeholder="Furina"
             className="mt-1.5"
           />
-        </label>
+        </label>}
 
-        <label className="block text-sm font-semibold text-ink">
+        {!simple && <label className="block text-sm font-semibold text-ink">
           <span>来源类型</span>
           <Select
             value={draft.originType}
@@ -81,7 +83,7 @@ export function IdentitySection({
             <option value="original">原创角色</option>
             <option value="ip">已有作品角色 (IP)</option>
           </Select>
-        </label>
+        </label>}
 
         <label className="block text-sm font-semibold text-ink">
           <span>所属作品</span>
@@ -93,7 +95,7 @@ export function IdentitySection({
           />
         </label>
 
-        <label className="block text-sm font-semibold text-ink">
+        {!simple && <label className="block text-sm font-semibold text-ink">
           <span>所属世界 / 舞台</span>
           <Input
             value={draft.world}
@@ -101,15 +103,15 @@ export function IdentitySection({
             placeholder="例如：提瓦特 / 枫丹"
             className="mt-1.5"
           />
-        </label>
+        </label>}
 
-        <StringListField
+        {!simple && <StringListField
           control={control}
           register={register}
           name="aliases"
           label="别名 / 称号"
           placeholder="例如：芙芙"
-        />
+        />}
       </div>
 
       <label className="block text-sm font-semibold text-ink">
@@ -134,7 +136,7 @@ export function IdentitySection({
         />
       </label>
 
-      <label className="block text-sm font-semibold text-ink">
+      {!simple && <label className="block text-sm font-semibold text-ink">
         <span>关键过往经历</span>
         <Textarea
           rows={6}
@@ -143,9 +145,9 @@ export function IdentitySection({
           placeholder="经历过哪些决定性的事件？哪些记忆塑就了现在的她？"
           className="mt-1.5"
         />
-      </label>
+      </label>}
 
-      <label className="block text-sm font-semibold text-ink">
+      {!simple && <label className="block text-sm font-semibold text-ink">
         <span>当前处境与心境</span>
         <Textarea
           rows={3}
@@ -154,7 +156,7 @@ export function IdentitySection({
           placeholder="故事起点时她正在面对什么？有哪些待解决的心事？"
           className="mt-1.5"
         />
-      </label>
+      </label>}
 
       <label className="block text-sm font-semibold text-ink">
         <span>

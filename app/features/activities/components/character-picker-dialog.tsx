@@ -2,12 +2,13 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { Search, UserPlus, Check } from 'lucide-react';
+import { Search, Check } from 'lucide-react';
 import { useCharacters } from '@/app/features/characters/queries';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { fetchActivityCharacterSnapshot } from '../api';
 import type { ActorSnapshot } from '@sthstart/contracts';
 
 interface CharacterPickerDialogProps {
@@ -26,6 +27,8 @@ export function CharacterPickerDialog({
   const { data, isLoading } = useCharacters();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   const filteredCharacters = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -38,37 +41,23 @@ export function CharacterPickerDialog({
     );
   }, [data, search]);
 
-  const handleConfirm = () => {
-    if (!selectedId) return;
+  const handleConfirm = async () => {
     const char = data?.items?.find((c) => c.id === selectedId);
-    if (!char) return;
-
-    const newActor: ActorSnapshot = {
-      id: `actor_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      sourceCharacterId: char.id,
-      sourceVersion: 1,
-      displayName: char.displayName,
-      activityRole: '参与者',
-      persona: {
-        identity: char.draft?.identity || char.displayName,
-        personality: char.draft?.personality?.join('；') || '',
-        appearance: char.draft?.appearance?.description || '',
-        speakingStyle: char.draft?.speech?.tone || '',
-      },
-      avatarAssetKey: char.avatarUrl || undefined,
-      outfitDescription: '日常活动便服',
-      appearanceReferenceAssetKeys: char.avatarUrl ? [char.avatarUrl] : [],
-    };
-
-    onSelectCharacter(newActor);
-    setSelectedId(null);
-    onOpenChange(false);
+    if (!char || busy) return;
+    setBusy(true); setError('');
+    try {
+      const actor = await fetchActivityCharacterSnapshot(char.id, char.latestVersion ?? undefined);
+      onSelectCharacter(actor);
+      setSelectedId(null);
+      onOpenChange(false);
+    } catch (value) { setError(value instanceof Error ? value.message : String(value)); }
+    finally { setBusy(false); }
   };
 
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(value) => { if (!busy) onOpenChange(value); }}
       title="从公共角色库添加人物快照"
       description="活动将锁定选定角色的当前人设快照，后续公共角色更新不会篡改本场活动剧本。"
       footer={
@@ -83,8 +72,8 @@ export function CharacterPickerDialog({
           </Button>
           <Button
             size="sm"
-            disabled={!selectedId}
-            onClick={handleConfirm}
+            disabled={!selectedId || busy}
+            onClick={() => void handleConfirm()}
             className="text-sm bg-accent hover:bg-accent-dark text-white"
           >
             确认添加快照
@@ -92,6 +81,7 @@ export function CharacterPickerDialog({
         </div>
       }
     >
+      {error && <p role="alert" className="mb-3 text-sm text-accent-dark">{error}</p>}
       <div className="space-y-3 py-1">
         <div className="relative">
           <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted" />

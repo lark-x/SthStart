@@ -27,8 +27,8 @@ export function useCreateCharacter() {
 export function useUpdateCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, draft, tags }: { id: string; draft: CharacterDraft; tags: string[] }) =>
-      updateCharacter(id, { draft, tags }),
+    mutationFn: ({ id, draft, tags, expectedDraftRevision }: { id: string; draft: CharacterDraft; tags: string[]; expectedDraftRevision?: number }) =>
+      updateCharacter(id, { draft, tags, expectedDraftRevision }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.all });
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(data.id) });
@@ -50,7 +50,7 @@ export function useGenerateCharacterDraft() {
 export function usePublishCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: publishCharacter,
+    mutationFn: ({ id, expectedDraftRevision }: { id: string; expectedDraftRevision?: number }) => publishCharacter(id, expectedDraftRevision),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.all });
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(data.characterId) });

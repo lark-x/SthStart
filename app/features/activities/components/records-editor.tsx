@@ -308,9 +308,9 @@ export function RecordsEditor({
                   >
                     {/* Avatar */}
                     <div className="h-8 w-8 rounded-full bg-stone-300 overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold text-stone-700">
-                      {speaker?.appearanceReferenceAssetKeys?.[0] ? (
+                      {(speaker?.avatarUrl || speaker?.appearanceReferenceAssetKeys?.[0]) ? (
                         <Image
-                          src={speaker.appearanceReferenceAssetKeys[0]}
+                          src={speaker.avatarUrl || speaker.appearanceReferenceAssetKeys[0]}
                           alt={speaker.displayName}
                           width={32}
                           height={32}
@@ -440,9 +440,9 @@ export function RecordsEditor({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="h-9 w-9 rounded bg-stone-300 overflow-hidden flex items-center justify-center text-sm font-semibold text-stone-700">
-                          {author?.appearanceReferenceAssetKeys?.[0] ? (
+                          {(author?.avatarUrl || author?.appearanceReferenceAssetKeys?.[0]) ? (
                             <Image
-                              src={author.appearanceReferenceAssetKeys[0]}
+                              src={author.avatarUrl || author.appearanceReferenceAssetKeys[0]}
                               alt={author.displayName}
                               width={36}
                               height={36}

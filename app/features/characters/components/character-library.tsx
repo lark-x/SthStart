@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/app/components/ui/button';
+import { CharacterImportDialog } from './character-import-dialog';
 import Image from 'next/image';
 import { Plus, Search } from 'lucide-react';
 import { useCharacters } from '../queries';
@@ -13,7 +16,9 @@ import { Skeleton } from '@/app/components/ui/skeleton';
 
 export function CharacterLibrary() {
   const [query, setQuery] = useState('');
-  const { data, isLoading, error } = useCharacters();
+  const [importOpen, setImportOpen] = useState(false);
+  const router = useRouter();
+  const { data, isLoading, error, refetch } = useCharacters();
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -34,9 +39,10 @@ export function CharacterLibrary() {
         backLabel="返回门户首页"
         eyebrow="SHARED CHARACTER LIBRARY"
         title="角色资料库"
-        description="角色不是一段静态提示词，而是一份持续生长的可信资料。在此统一维护设定与外貌，发布后直接供应邻舍与后续互动体验。"
+        description="搜索现成角色卡，整理人设与外观，再用于你的活动。"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={() => setImportOpen(true)}><Search className="h-4 w-4" />搜索 / 导入角色卡</Button>
             <Link
               href="/apps/characters/new"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-sm tracking-wide transition-colors cursor-pointer shadow-xs"
@@ -161,6 +167,7 @@ export function CharacterLibrary() {
         />
       )}
       </div>
+      <CharacterImportDialog open={importOpen} onOpenChange={setImportOpen} initialMode="online" onCommitted={(id) => { void refetch(); router.push(`/apps/characters/${id}`); }} />
     </main>
   );
 }

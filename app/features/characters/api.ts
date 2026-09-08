@@ -1,4 +1,4 @@
-import { getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
+import { adminFetch, getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
 import {
   CharacterAssetResponseSchema,
   GenerationTaskDescriptorSchema,
@@ -7,6 +7,7 @@ import {
   CharacterListResponseSchema,
   CharacterProfileSchema,
   CharacterVersionSchema,
+  CharacterImportSessionSchema,
 } from '@sthstart/contracts';
 import type {
   CharacterDraft,
@@ -15,6 +16,8 @@ import type {
   CharacterSource,
   CharacterVersion,
   GenerationTaskDescriptor,
+  CharacterImportSession,
+  CharacterCardSearchResponse,
 } from '@sthstart/contracts';
 
 export type CharacterDetail = CharacterProfile & {
@@ -47,7 +50,7 @@ export async function createCharacter(payload: {
 
 export async function updateCharacter(
   id: string,
-  payload: { draft: CharacterDraft; tags: string[] }
+  payload: { draft: CharacterDraft; tags: string[]; expectedDraftRevision?: number }
 ): Promise<CharacterProfile> {
   return putJson<CharacterProfile>(`characters/${id}`, payload, undefined, CharacterProfileSchema);
 }
@@ -60,8 +63,8 @@ export async function generateCharacterDraft(
   return postJson(`characters/${id}/generate`, { description, useWeb }, undefined, CharacterGenerateResponseSchema);
 }
 
-export async function publishCharacter(id: string): Promise<CharacterVersion> {
-  return postJson<CharacterVersion>(`characters/${id}/publish`, undefined, undefined, CharacterVersionSchema);
+export async function publishCharacter(id: string, expectedDraftRevision?: number): Promise<CharacterVersion> {
+  return postJson<CharacterVersion>(`characters/${id}/publish`, expectedDraftRevision == null ? undefined : { expectedDraftRevision }, undefined, CharacterVersionSchema);
 }
 
 export async function uploadCharacterAvatar(
@@ -80,6 +83,51 @@ export async function uploadCharacterAvatar(
     undefined,
     CharacterAssetResponseSchema
   );
+}
+
+export async function uploadCharacterReference(id: string, file: File, purposes = ['identity']): Promise<{ id: string; url: string; reference?: Record<string, unknown> }> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
+  });
+  return postJson(`characters/${id}/assets`, { dataUrl, filename: file.name, kind: 'reference', purposes }, undefined);
+}
+
+export async function fetchCharacterVisualReferences(id: string): Promise<{ items: Array<Record<string, unknown>> }> {
+  return getJson(`characters/${id}/visual-references`);
+}
+
+export async function extractCharacterAppearance(id: string, referenceId: string, expectedDraftRevision?: number): Promise<{ id: string; referenceId: string; extraction: Record<string, unknown>; draftRevision: number }> {
+  return postJson(`characters/${id}/appearance-extractions`, { referenceId, ...(expectedDraftRevision == null ? {} : { expectedDraftRevision }) });
+}
+
+export async function applyCharacterAppearanceExtraction(id: string, taskId: string, expectedDraftRevision: number, fieldPaths: string[]): Promise<{ draft: CharacterDraft; draftRevision: number; candidateId: string }> {
+  return postJson(`characters/${id}/appearance-extractions/${taskId}/apply`, { expectedDraftRevision, fieldPaths });
+}
+
+export type CharacterAuditionResult = {
+  id: string;
+  scenario: string;
+  output: string;
+  feedback?: string;
+  suggestions: Array<{ fieldPath: string; before: string; after: string; reason: string }>;
+  draftRevision: number;
+  compilerVersion: string;
+  profileId: string;
+};
+
+export async function auditionCharacter(
+  id: string,
+  input: { scenario: string; feedback?: string; draftRevision?: number },
+): Promise<CharacterAuditionResult> {
+  return postJson<CharacterAuditionResult>(`characters/${id}/auditions`, input);
+}
+
+export async function fetchCharacterModelAssignments(id: string): Promise<{ items: Array<{ role: 'text' | 'multimodal'; profile_id: string; updated_at: string }> }> {
+  return getJson(`characters/${id}/model-assignments`);
+}
+
+export async function updateCharacterModelAssignments(id: string, input: { textProfileId?: string | null; multimodalProfileId?: string | null }) {
+  return putJson(`characters/${id}/model-assignments`, input);
 }
 
 export async function generateCharacterAvatar(id: string, prompt?: string): Promise<GenerationTaskDescriptor> {
@@ -110,6 +158,45 @@ export async function applyCharacterAvatar(id: string, taskId: string): Promise<
 
 export async function importTavernCard(card: Record<string, unknown>): Promise<CharacterProfile> {
   return postJson<CharacterProfile>('characters/import-tavern', { card }, undefined, CharacterProfileSchema);
+}
+
+export async function searchCharacterCards(input: { providerId?: string; query: string; cursor?: string; limit?: number; signal?: AbortSignal }): Promise<CharacterCardSearchResponse> {
+  const params = new URLSearchParams({ providerId: input.providerId || 'character-tavern', q: input.query });
+  if (input.cursor) params.set('cursor', input.cursor);
+  if (input.limit) params.set('limit', String(input.limit));
+  return getJson<CharacterCardSearchResponse>(`characters/card-search?${params.toString()}`, { signal: input.signal });
+}
+
+export async function fetchCharacterCardDetail(providerId: string, externalId: string): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams({ providerId, externalId });
+  return getJson<Record<string, unknown>>(`characters/card-detail?${params.toString()}`);
+}
+
+export async function createCharacterImportSession(payload: Record<string, unknown>, idempotencyKey?: string): Promise<CharacterImportSession> {
+  return postJson<CharacterImportSession>('characters/import-sessions', payload, idempotencyKey ? { headers: { 'idempotency-key': idempotencyKey } } : undefined, CharacterImportSessionSchema);
+}
+
+export async function updateCharacterImportSession(id: string, payload: Record<string, unknown>): Promise<CharacterImportSession> {
+  const response = await adminFetch(`/api/admin/characters/import-sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(payload), cache: 'no-store',
+  });
+  if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+  return (await response.json()) as CharacterImportSession;
+}
+
+export async function commitCharacterImportSession(id: string, payload: { expectedPreviewRevision: number; previewHash?: string; targetCharacterId?: string | null; baseDraftRevision?: number | null }, idempotencyKey: string): Promise<{ characterId: string; created: boolean; draftRevision: number }> {
+  return postJson(`characters/import-sessions/${encodeURIComponent(id)}/commit`, payload, { headers: { 'idempotency-key': idempotencyKey } });
+}
+
+export async function cancelCharacterImportSession(id: string): Promise<{ cancelled: boolean }> {
+  return deleteJson(`characters/import-sessions/${encodeURIComponent(id)}`);
+}
+
+export async function createCharacterImportSessionFromFile(file: File, targetCharacterId?: string, baseDraftRevision?: number): Promise<CharacterImportSession> {
+  const bytes = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
+  });
+  return createCharacterImportSession({ dataBase64: bytes, mimeType: file.type || 'application/octet-stream', filename: file.name, ...(targetCharacterId ? { targetCharacterId } : {}), ...(baseDraftRevision == null ? {} : { baseDraftRevision }) }, crypto.randomUUID());
 }
 
 export async function exportTavernCard(id: string): Promise<Record<string, unknown>> {

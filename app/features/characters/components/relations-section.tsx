@@ -209,6 +209,16 @@ export function RelationsSection({
                   <ExternalLink className="h-3 w-3" />
                 </a>
               )}
+              {source.sourceSnapshotId && (
+                <a
+                  href={`/api/admin/characters/${detail?.id}/source-snapshots/${source.sourceSnapshotId}/raw`}
+                  download
+                  className="inline-flex items-center gap-1 text-sm text-accent-dark font-medium hover:underline pt-1 ml-3"
+                >
+                  <span>下载原始快照</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
             </div>
           ))}
 

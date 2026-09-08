@@ -21,7 +21,10 @@ type InputCapability = {
   maxBytes?: number;
   required?: boolean;
   maxCount?: number;
+  semantic?: 'init_image' | 'identity' | 'outfit' | 'pose' | 'style' | 'composition' | 'mask';
 };
+
+const INPUT_SEMANTICS = new Set<InputCapability['semantic']>(['init_image', 'identity', 'outfit', 'pose', 'style', 'composition', 'mask']);
 
 const DEFAULT_MEDIA_LIMITS: Record<string, number> = {
   image: 12 * 1024 * 1024,
@@ -48,11 +51,15 @@ function capabilityFor(inputKey: string, capabilities: Record<string, unknown>):
     : undefined;
   const maxBytes = Number(raw.maxBytes);
   const maxCount = Number(raw.maxCount);
+  const semantic = typeof raw.semantic === 'string' && INPUT_SEMANTICS.has(raw.semantic as InputCapability['semantic'])
+    ? raw.semantic as InputCapability['semantic']
+    : undefined;
   return {
     mediaTypes,
     maxBytes: Number.isSafeInteger(maxBytes) && maxBytes > 0 ? maxBytes : undefined,
     required: raw.required === true,
     maxCount: Number.isSafeInteger(maxCount) && maxCount > 0 ? maxCount : undefined,
+    semantic,
   };
 }
 

@@ -25,7 +25,7 @@ import { nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
 import { resolveAssignedLlmProfile } from '../providers.js';
 import { ActivityStore } from './store.js';
-import { extractCharacterPersonaDraft } from './characters.js';
+import { createActorSnapshotFromCharacter, transferCharacterReferenceToActivity, materializeCharacterAvatars } from './characters.js';
 import {
   createActivityMediaJob,
   getActivityAssetFile,
@@ -155,11 +155,29 @@ export function registerActivityRoutes(
       return reply.code(400).send({ error: 'minimum_two_stages_required', message: '活动至少必须包含两个阶段。' });
     }
 
+    const requestedActors = body.document?.actors ?? body.actors ?? [];
+    for (const actor of requestedActors) {
+      if (actor.sourceCharacterId && !createActorSnapshotFromCharacter(database, actor.sourceCharacterId, { sourceVersion: actor.sourceVersion })) {
+        return reply.code(409).send({ error: 'character_snapshot_not_found', characterId: actor.sourceCharacterId, version: actor.sourceVersion ?? null });
+      }
+    }
+
     let initialDocument: ContentDocument;
 
     if (body.document) {
+      const hydratedActors = body.document.actors.map((actor) => {
+        if (!actor.sourceCharacterId) return actor;
+        const snapshot = createActorSnapshotFromCharacter(database, actor.sourceCharacterId, {
+          sourceVersion: actor.sourceVersion,
+          activityRole: actor.activityRole,
+          outfitDescription: actor.outfitDescription,
+        });
+        if (!snapshot) throw new Error('character_snapshot_not_found');
+        return { ...snapshot, id: actor.id };
+      });
       initialDocument = {
         ...body.document,
+        actors: hydratedActors,
         activity: {
           ...body.document.activity,
           title,
@@ -173,35 +191,36 @@ export function registerActivityRoutes(
       // Map actors with snapshot personas
       const actors = (body.actors || []).map((a, idx) => {
         const actorId = `act_${idx + 1}_${randomUUID().replace(/-/g, '').slice(0, 6)}`;
-        let persona = undefined;
         if (a.sourceCharacterId) {
-          persona = extractCharacterPersonaDraft(database, a.sourceCharacterId, a.sourceVersion);
+          const snapshot = createActorSnapshotFromCharacter(database, a.sourceCharacterId, {
+            sourceVersion: a.sourceVersion, activityRole: a.activityRole, outfitDescription: a.outfitDescription,
+          });
+          if (!snapshot) throw new Error('character_snapshot_not_found');
+          return { ...snapshot, id: actorId };
         }
-        if (!persona) {
-          persona = {
-            displayName: a.displayName,
-            englishName: '',
-            aliases: [],
-            originType: 'original' as const,
-            work: '',
-            world: '',
-            summary: `${a.displayName}参加${title}`,
-            identity: a.activityRole || '参与者',
-            background: '',
-            currentSituation: '',
-            personality: ['友好', '热情'],
-            motivations: ['共度愉快活动'],
-            beliefs: [],
-            secrets: [],
-            speech: { tone: '自然友好', habits: '', catchphrases: [], examples: [] },
-            likes: [],
-            dislikes: [],
-            fears: [],
-            boundaries: [],
-            appearance: { description: a.outfitDescription || '日常便装', hair: '', eyes: '', build: '', outfits: [], accessories: [] },
-            extraRules: '',
-          };
-        }
+        const persona = {
+          displayName: a.displayName,
+          englishName: '',
+          aliases: [],
+          originType: 'original' as const,
+          work: '',
+          world: '',
+          summary: `${a.displayName}参加${title}`,
+          identity: a.activityRole || '参与者',
+          background: '',
+          currentSituation: '',
+          personality: [],
+          motivations: [],
+          beliefs: [],
+          secrets: [],
+          speech: { tone: '', habits: '', catchphrases: [], examples: [] },
+          likes: [],
+          dislikes: [],
+          fears: [],
+          boundaries: [],
+          appearance: { description: '', hair: '', eyes: '', build: '', outfits: [], accessories: [] },
+          extraRules: '',
+        };
 
         return {
           id: actorId,
@@ -210,7 +229,7 @@ export function registerActivityRoutes(
           displayName: a.displayName,
           persona,
           activityRole: a.activityRole || '参与者',
-          outfitDescription: a.outfitDescription || '日常便装',
+          outfitDescription: a.outfitDescription || '',
           appearanceReferenceAssetKeys: [],
         };
       });
@@ -403,6 +422,14 @@ export function registerActivityRoutes(
       expectedDraftVersion = draft ? draft.draftVersion : 1;
     }
     try {
+      const currentDraft = store.getDraft(request.params.id);
+      if (currentDraft && currentDraft.draftVersion !== expectedDraftVersion) throw new Error('draft_version_conflict');
+      if (currentDraft) {
+        const withAvatars = await materializeCharacterAvatars(config, database, request.params.id, currentDraft.document);
+        if (withAvatars !== currentDraft.document) {
+          expectedDraftVersion = store.updateDraft(request.params.id, expectedDraftVersion, withAvatars).draftVersion;
+        }
+      }
       const result = store.commitDraft(request.params.id, expectedHeadVersion, expectedDraftVersion);
 
       const draft = store.getDraft(request.params.id);
@@ -581,6 +608,14 @@ export function registerActivityRoutes(
         maxDocumentBytes: 20 * 1024 * 1024,
       },
     };
+  });
+
+  app.get<{ Params: { characterId: string }; Querystring: { version?: string } }>('/api/v1/admin/activities/characters/:characterId/snapshot', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const version = request.query.version == null ? undefined : Number(request.query.version);
+    if (version != null && (!Number.isSafeInteger(version) || version < 1)) return reply.code(400).send({ error: 'invalid_character_version' });
+    const snapshot = createActorSnapshotFromCharacter(database, request.params.characterId, { sourceVersion: version });
+    return snapshot ?? reply.code(404).send({ error: 'character_snapshot_not_found' });
   });
 
   // 16. Characters for selection
@@ -805,6 +840,26 @@ export function registerActivityRoutes(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return reply.code(400).send({ error: 'link_failed', message: msg });
+    }
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: { characterId?: string; version?: number | null; referenceId?: string; idempotencyKey?: string };
+  }>('/api/v1/admin/activities/:id/character-references', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const idempotencyKey = (request.headers['idempotency-key'] as string | undefined) || request.body?.idempotencyKey;
+    if (!request.body?.characterId || !request.body?.referenceId || !idempotencyKey) return reply.code(400).send({ error: 'character_reference_parameters_required' });
+    try {
+      const asset = await transferCharacterReferenceToActivity(config, database, {
+        activityId: request.params.id, characterId: request.body.characterId, version: request.body.version,
+        referenceId: request.body.referenceId, idempotencyKey,
+      });
+      return reply.code(201).send(asset);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes('not_found') ? 404 : msg.includes('conflict') || msg.includes('UNIQUE') ? 409 : 400;
+      return reply.code(status).send({ error: 'character_reference_transfer_failed', message: msg });
     }
   });
 

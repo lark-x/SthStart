@@ -182,6 +182,15 @@ export const WorkflowInputCapabilitySchema = Type.Object({
   maxBytes: Type.Optional(Type.Integer({ minimum: 1 })),
   required: Type.Optional(Type.Boolean()),
   maxCount: Type.Optional(Type.Integer({ minimum: 1 })),
+  semantic: Type.Optional(Type.Union([
+    Type.Literal('init_image'),
+    Type.Literal('identity'),
+    Type.Literal('outfit'),
+    Type.Literal('pose'),
+    Type.Literal('style'),
+    Type.Literal('composition'),
+    Type.Literal('mask'),
+  ])),
 });
 export type WorkflowInputCapability = Static<typeof WorkflowInputCapabilitySchema>;
 
@@ -471,6 +480,10 @@ export const CreativeWorkflowBindingSchema = Type.Object({
     maxBytes: Type.Optional(Type.Integer({ minimum: 1 })),
     required: Type.Optional(Type.Boolean()),
     maxCount: Type.Optional(Type.Integer({ minimum: 1 })),
+    semantic: Type.Optional(Type.Union([
+      Type.Literal('init_image'), Type.Literal('identity'), Type.Literal('outfit'), Type.Literal('pose'),
+      Type.Literal('style'), Type.Literal('composition'), Type.Literal('mask'),
+    ])),
   }))),
 });
 export type CreativeWorkflowBinding = Static<typeof CreativeWorkflowBindingSchema>;
@@ -556,6 +569,9 @@ export const CharacterAppearanceSchema = Type.Object({
   build: Type.String(),
   outfits: Type.Array(Type.String()),
   accessories: Type.Array(Type.String()),
+  stableFeatures: Type.Optional(Type.Array(Type.String())),
+  defaultOutfitId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  referenceIds: Type.Optional(Type.Array(Type.String())),
 });
 export type CharacterAppearance = Static<typeof CharacterAppearanceSchema>;
 
@@ -633,8 +649,14 @@ export const CharacterSourceSchema = Type.Object({
     Type.Literal('moegirl'),
     Type.Literal('web'),
     Type.Literal('tavern-card'),
+    Type.Literal('character-tavern'),
+    Type.Literal('external-card'),
   ]),
   fetchedAt: Type.String(),
+  providerId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  externalId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  payloadHash: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  sourceSnapshotId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type CharacterSource = Static<typeof CharacterSourceSchema>;
 
@@ -645,6 +667,9 @@ export const CharacterVersionSchema = Type.Object({
   compiledLinshePrompt: Type.String(),
   relationships: Type.Array(CharacterRelationshipSchema),
   createdAt: Type.String(),
+  draftRevision: Type.Optional(Type.Number()),
+  appearanceSnapshot: Type.Optional(CharacterAppearanceSchema),
+  provenance: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 export type CharacterVersion = Static<typeof CharacterVersionSchema>;
 
@@ -659,6 +684,8 @@ export const CharacterProfileSchema = Type.Object({
   archived: Type.Boolean(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
+  draftRevision: Type.Optional(Type.Number()),
+  defaultOutfitId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type CharacterProfile = Static<typeof CharacterProfileSchema>;
 
@@ -699,6 +726,167 @@ export const CharacterDetailSchema = Type.Intersect([
   }),
 ]);
 export type CharacterDetail = Static<typeof CharacterDetailSchema>;
+
+export const CharacterCardProviderCapabilitiesSchema = Type.Object({
+  search: Type.Boolean(),
+  detail: Type.Boolean(),
+  download: Type.Boolean(),
+  importUrl: Type.Boolean(),
+});
+export type CharacterCardProviderCapabilities = Static<typeof CharacterCardProviderCapabilitiesSchema>;
+
+export const CharacterCardProviderSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  capabilities: CharacterCardProviderCapabilitiesSchema,
+  enabled: Type.Boolean(),
+  status: Type.Union([
+    Type.Literal('ready'),
+    Type.Literal('unavailable'),
+    Type.Literal('needs_configuration'),
+  ]),
+  message: Type.Optional(Type.String()),
+});
+export type CharacterCardProvider = Static<typeof CharacterCardProviderSchema>;
+
+export const CharacterCardSearchResultSchema = Type.Object({
+  providerId: Type.String(),
+  externalId: Type.String(),
+  name: Type.String(),
+  author: Type.Union([Type.String(), Type.Null()]),
+  summary: Type.String(),
+  sourceUrl: Type.String(),
+  thumbnail: Type.Union([Type.String(), Type.Null()]),
+  tags: Type.Array(Type.String()),
+  language: Type.Union([Type.String(), Type.Null()]),
+  remoteUpdatedAt: Type.Union([Type.String(), Type.Null()]),
+  formatHint: Type.Union([Type.String(), Type.Null()]),
+});
+export type CharacterCardSearchResult = Static<typeof CharacterCardSearchResultSchema>;
+
+export const CharacterCardSearchResponseSchema = Type.Object({
+  providerId: Type.String(),
+  items: Type.Array(CharacterCardSearchResultSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  total: Type.Union([Type.Number(), Type.Null()]),
+});
+export type CharacterCardSearchResponse = Static<typeof CharacterCardSearchResponseSchema>;
+
+export const CharacterCardCompatibilitySchema = Type.Object({
+  format: Type.String(),
+  supported: Type.Boolean(),
+  warnings: Type.Array(Type.String()),
+  preservedFields: Type.Array(Type.String()),
+  ignoredFields: Type.Array(Type.String()),
+  worldBookEntries: Type.Number(),
+  isSceneCard: Type.Boolean(),
+});
+export type CharacterCardCompatibility = Static<typeof CharacterCardCompatibilitySchema>;
+
+export const CharacterFieldMappingSchema = Type.Object({
+  fieldPath: Type.String(),
+  sourcePointer: Type.String(),
+  valueHash: Type.String(),
+  status: Type.Union([
+    Type.Literal('source_extract'),
+    Type.Literal('card_author'),
+    Type.Literal('user_edit'),
+    Type.Literal('ai_inferred'),
+    Type.Literal('image_observed'),
+    Type.Literal('legacy_unknown'),
+  ]),
+  note: Type.Optional(Type.String()),
+});
+export type CharacterFieldMapping = Static<typeof CharacterFieldMappingSchema>;
+
+export const CharacterImportCandidateSchema = Type.Object({
+  draft: CharacterDraftSchema,
+  mappings: Type.Array(CharacterFieldMappingSchema),
+  cover: Type.Object({
+    available: Type.Boolean(),
+    selectedForAvatar: Type.Boolean(),
+    selectedForReference: Type.Boolean(),
+  }),
+  originalCard: Type.Record(Type.String(), Type.Unknown()),
+});
+export type CharacterImportCandidate = Static<typeof CharacterImportCandidateSchema>;
+
+export const CharacterImportSessionStatusSchema = Type.Union([
+  Type.Literal('fetching'), Type.Literal('parsing'), Type.Literal('ready'),
+  Type.Literal('committing'), Type.Literal('committed'), Type.Literal('failed'),
+  Type.Literal('cancelled'), Type.Literal('expired'),
+]);
+export type CharacterImportSessionStatus = Static<typeof CharacterImportSessionStatusSchema>;
+
+export const CharacterImportSessionSchema = Type.Object({
+  id: Type.String(),
+  status: CharacterImportSessionStatusSchema,
+  expiresAt: Type.String(),
+  previewRevision: Type.Number(),
+  previewHash: Type.String(),
+  candidate: Type.Union([CharacterImportCandidateSchema, Type.Null()]),
+  compatibility: Type.Union([CharacterCardCompatibilitySchema, Type.Null()]),
+  source: Type.Record(Type.String(), Type.Unknown()),
+  targetCharacterId: Type.Union([Type.String(), Type.Null()]),
+  baseDraftRevision: Type.Union([Type.Number(), Type.Null()]),
+  commitResult: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type CharacterImportSession = Static<typeof CharacterImportSessionSchema>;
+
+export const CharacterVisualReferenceSchema = Type.Object({
+  id: Type.String(),
+  characterId: Type.String(),
+  assetId: Type.String(),
+  artifactId: Type.Union([Type.String(), Type.Null()]),
+  sha256: Type.String(),
+  width: Type.Union([Type.Number(), Type.Null()]),
+  height: Type.Union([Type.Number(), Type.Null()]),
+  purposes: Type.Array(Type.Union([
+    Type.Literal('avatar'), Type.Literal('identity'), Type.Literal('outfit'),
+    Type.Literal('pose'), Type.Literal('style'), Type.Literal('init_image'),
+  ])),
+  outfitId: Type.Union([Type.String(), Type.Null()]),
+  sourcePage: Type.Union([Type.String(), Type.Null()]),
+  originalUrl: Type.Union([Type.String(), Type.Null()]),
+  authorNote: Type.String(),
+  userNote: Type.String(),
+  enabled: Type.Boolean(),
+  crop: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
+  url: Type.String(),
+  createdAt: Type.String(),
+});
+export type CharacterVisualReference = Static<typeof CharacterVisualReferenceSchema>;
+
+export const CharacterAppearanceExtractionSchema = Type.Object({
+  description: Type.String(),
+  hair: Type.String(),
+  eyes: Type.String(),
+  build: Type.String(),
+  accessories: Type.Array(Type.String()),
+  observedOutfit: Type.String(),
+  unknowns: Type.Array(Type.String()),
+  conflicts: Type.Array(Type.String()),
+  evidence: Type.Array(Type.String()),
+});
+export type CharacterAppearanceExtraction = Static<typeof CharacterAppearanceExtractionSchema>;
+
+export const CharacterAuditionResponseSchema = Type.Object({
+  scenario: Type.String(),
+  output: Type.String(),
+  feedback: Type.Optional(Type.String()),
+  suggestions: Type.Array(Type.Object({
+    fieldPath: Type.String(),
+    before: Type.String(),
+    after: Type.String(),
+    reason: Type.String(),
+  })),
+  draftRevision: Type.Number(),
+  compilerVersion: Type.String(),
+  profileId: Type.Union([Type.String(), Type.Null()]),
+});
+export type CharacterAuditionResponse = Static<typeof CharacterAuditionResponseSchema>;
 
 export const PublicServiceOverviewSchema = Type.Object({
   keyring: Type.Object({
@@ -1052,12 +1240,19 @@ export const ActorSnapshotSchema = Type.Object({
   id: Type.String(),
   sourceCharacterId: Type.Optional(Type.String()),
   sourceVersion: Type.Optional(Type.Number()),
+  sourceVersionStatus: Type.Optional(Type.Union([
+    Type.Literal('published'), Type.Literal('draft'), Type.Literal('unknown'), Type.Literal('missing'),
+  ])),
+  characterDraftRevision: Type.Optional(Type.Number()),
   displayName: Type.String(),
   persona: ActorPersonaSchema,
   avatarAssetKey: Type.Optional(Type.String()),
+  avatarAssetId: Type.Optional(Type.String()),
+  avatarUrl: Type.Optional(Type.String()),
   activityRole: Type.String(),
   outfitDescription: Type.String(),
   appearanceReferenceAssetKeys: Type.Array(Type.String()),
+  appearanceReferenceAssetIds: Type.Optional(Type.Array(Type.String())),
 });
 export type ActorSnapshot = Static<typeof ActorSnapshotSchema>;
 
@@ -1409,6 +1604,7 @@ export const SourceOwnerKindSchema = Type.Union([
   Type.Literal('content'),
   Type.Literal('image_config'),
   Type.Literal('recipe'),
+  Type.Literal('character'),
 ]);
 export type SourceOwnerKind = Static<typeof SourceOwnerKindSchema>;
 
@@ -1420,6 +1616,9 @@ export const SourceEntityKindSchema = Type.Union([
   Type.Literal('shot'),
   Type.Literal('style'),
   Type.Literal('override'),
+  Type.Literal('character'),
+  Type.Literal('character_version'),
+  Type.Literal('reference'),
 ]);
 export type SourceEntityKind = Static<typeof SourceEntityKindSchema>;
 
@@ -1594,6 +1793,7 @@ export const ImageExecutionPlanSchema = Type.Object({
   engineId: Type.String(),
   definitionHash: Type.String(),
   nodeBindings: Type.Record(Type.String(), Type.Array(Type.String())),
+  inputCapabilities: Type.Optional(WorkflowInputCapabilitiesSchema),
 });
 export type ImageExecutionPlan = Static<typeof ImageExecutionPlanSchema>;
 

@@ -29,11 +29,10 @@ import {
   useUploadCharacterAvatar,
   useGenerateCharacterAvatar,
   useApplyCharacterAvatar,
-  useImportTavernCard,
   useSaveRelationship,
   useDeleteRelationship,
 } from '../mutations';
-import { exportTavernCard, fetchCharacterGenerationTask } from '../api';
+import { applyCharacterAppearanceExtraction, extractCharacterAppearance, exportTavernCard, fetchCharacterGenerationTask, fetchCharacterVisualReferences, uploadCharacterReference } from '../api';
 import { EMPTY_DRAFT } from '../schemas';
 import {
   characterDraftToFormValues,
@@ -50,8 +49,12 @@ import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
 import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
+import { CharacterImportDialog } from './character-import-dialog';
+import { CharacterAuditionPanel } from './character-audition-panel';
+import { CharacterModelRoutingPanel } from './character-model-routing-panel';
 
 type Section = 'identity' | 'personality' | 'appearance' | 'relations' | 'publish';
+type EditorMode = 'simple' | 'detailed';
 
 const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT);
 
@@ -59,14 +62,25 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const router = useRouter();
   const toast = useToast();
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
 
   const [activeSection, setActiveSection] = useState<Section>('identity');
+  const [editorMode, setEditorMode] = useState<EditorMode>('simple');
   const [tags, setTags] = useState<string[]>([]);
   const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
   const [aiPrompt, setAiPrompt] = useState('');
   const [useWeb, setUseWeb] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [visualReferences, setVisualReferences] = useState<Array<{ id: string; url: string; authorNote?: string; purposes?: string[] }>>([]);
+  const [referencePurpose, setReferencePurpose] = useState<'identity' | 'outfit' | 'pose' | 'style' | 'init_image'>('identity');
+  const [extractingReference, setExtractingReference] = useState<string | null>(null);
+  const [appearanceCandidate, setAppearanceCandidate] = useState<{ id: string; extraction: Record<string, unknown> } | null>(null);
+  const [appearanceCandidateFields, setAppearanceCandidateFields] = useState<string[]>(['/appearance/description', '/appearance/hair', '/appearance/eyes', '/appearance/build', '/appearance/accessories']);
+  const [sourceFocusPath] = useState(() => typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('fieldPath') || '');
+  const [sourceFocusActive, setSourceFocusActive] = useState(false);
+  const [draftRevision, setDraftRevision] = useState<number | undefined>(undefined);
+  const draftRevisionRef = useRef<number | undefined>(undefined);
 
   const {
     control,
@@ -96,7 +110,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const uploadAvatarMutation = useUploadCharacterAvatar();
   const generateAvatarMutation = useGenerateCharacterAvatar();
   const applyAvatarMutation = useApplyCharacterAvatar();
-  const importMutation = useImportTavernCard();
   const saveRelMutation = useSaveRelationship();
   const deleteRelMutation = useDeleteRelationship();
   const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
@@ -124,6 +137,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           draft: currentDraft,
           tags,
         });
+        draftRevisionRef.current = created.draftRevision;
+        setDraftRevision(created.draftRevision);
         toast.success('角色创建成功');
         router.replace(`/apps/characters/${created.id}`);
         return created.id;
@@ -133,7 +148,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         id: characterId,
         draft: currentDraft,
         tags,
+        expectedDraftRevision: draftRevisionRef.current ?? detailData?.draftRevision,
       });
+      draftRevisionRef.current = updated.draftRevision;
+      setDraftRevision(updated.draftRevision);
       const currentValues = characterFormValuesToDraft(getValues());
       const unchanged =
         JSON.stringify(currentValues) === JSON.stringify(currentDraft) &&
@@ -152,17 +170,39 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       if (!quiet) toast.error('保存失败', msg);
       return null;
     }
-  }, [characterId, clearErrors, createMutation, getValues, reset, router, setError, tags, toast, updateMutation]);
+  }, [characterId, clearErrors, createMutation, detailData, getValues, reset, router, setError, tags, toast, updateMutation]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- references are an external resource keyed by the selected character. */
   useEffect(() => {
     if (detailData && !isDirty && status === 'clean') {
       // Query refreshes may hydrate a clean editor, but never overwrite dirty input.
       reset(characterDraftToFormValues(detailData.draft));
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTags(detailData.tags);
       setStatus('clean');
     }
+    if (detailData?.draftRevision != null && !isDirty) {
+      draftRevisionRef.current = detailData.draftRevision;
+      setDraftRevision(detailData.draftRevision);
+    }
   }, [detailData, isDirty, reset, status]);
+
+  useEffect(() => {
+    if (!characterId) { setVisualReferences([]); return; }
+    void fetchCharacterVisualReferences(characterId).then((response) => {
+      setVisualReferences(response.items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string' ? [{ id: item.id, url: item.url, authorNote: typeof item.authorNote === 'string' ? item.authorNote : undefined, purposes: Array.isArray(item.purposes) ? item.purposes.filter((value): value is string => typeof value === 'string') : undefined }] : []));
+    }).catch(() => undefined);
+  }, [characterId]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- source links intentionally select and focus the target editor panel. */
+  useEffect(() => {
+    if (!sourceFocusPath) return;
+    setActiveSection(sourceFocusPath.includes('appearance') ? 'appearance' : sourceFocusPath.includes('speech') || sourceFocusPath.includes('personality') ? 'personality' : 'identity');
+    setSourceFocusActive(true);
+    const timer = window.setTimeout(() => document.getElementById('character-source-focus-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    const clear = window.setTimeout(() => setSourceFocusActive(false), 2_500);
+    return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
+  }, [sourceFocusPath]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -210,18 +250,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       keyof CharacterDraft,
       CharacterDraft[keyof CharacterDraft]
     ]>) {
-      if (key === 'speech' && value && typeof value === 'object') {
-        const speech = value as CharacterDraft['speech'];
-        setValue('speech.tone', speech.tone, { shouldDirty: true, shouldTouch: true });
-        setValue('speech.habits', speech.habits, { shouldDirty: true, shouldTouch: true });
-        continue;
-      }
-      if (key === 'appearance' && value && typeof value === 'object') {
-        const appearance = value as CharacterDraft['appearance'];
-        setValue('appearance.description', appearance.description, { shouldDirty: true, shouldTouch: true });
-        setValue('appearance.hair', appearance.hair, { shouldDirty: true, shouldTouch: true });
-        setValue('appearance.eyes', appearance.eyes, { shouldDirty: true, shouldTouch: true });
-        setValue('appearance.build', appearance.build, { shouldDirty: true, shouldTouch: true });
+      if ((key === 'speech' || key === 'appearance') && value && typeof value === 'object') {
+        const values = characterDraftToFormValues({ ...characterFormValuesToDraft(getValues()), [key]: value });
+        if (key === 'speech') setValue('speech', values.speech, { shouldDirty: true, shouldTouch: true });
+        else setValue('appearance', values.appearance, { shouldDirty: true, shouldTouch: true });
         continue;
       }
       setValue(key as never, value as never, { shouldDirty: true, shouldTouch: true });
@@ -284,7 +316,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }
 
     try {
-      const ver = await publishMutation.mutateAsync(targetId);
+      let expectedDraftRevision = draftRevisionRef.current ?? detailData?.draftRevision;
+      if (isDirty || status === 'dirty') {
+        const refreshed = await refetchDetail();
+        expectedDraftRevision = refreshed.data?.draftRevision ?? expectedDraftRevision;
+        draftRevisionRef.current = expectedDraftRevision;
+      }
+      const ver = await publishMutation.mutateAsync({ id: targetId, expectedDraftRevision });
+      draftRevisionRef.current = ver.draftRevision ?? expectedDraftRevision;
+      setDraftRevision(ver.draftRevision ?? expectedDraftRevision);
       toast.success(`已成功发布版本 v${ver.version}`);
       if (characterId) await refetchDetail();
     } catch (err) {
@@ -306,13 +346,62 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }
   };
 
+  const handleUploadReference = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !characterId) return;
+    try {
+      await uploadCharacterReference(characterId, file, [referencePurpose]);
+      setVisualReferences((await fetchCharacterVisualReferences(characterId)).items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string' ? [{ id: item.id, url: item.url }] : []));
+      toast.success('外观参考图已保存');
+    } catch (err) { toast.error('上传参考图失败', err instanceof Error ? err.message : String(err)); }
+  };
+
+  const handleExtractReference = async (referenceId: string) => {
+    if (!characterId) return;
+    setExtractingReference(referenceId);
+    try {
+      if ((isDirty || status === 'dirty') && !await handleSave(true)) return;
+      const result = await extractCharacterAppearance(characterId, referenceId, draftRevisionRef.current ?? detailData?.draftRevision);
+      setAppearanceCandidate({ id: result.id, extraction: result.extraction });
+      setAppearanceCandidateFields(['/appearance/description', '/appearance/hair', '/appearance/eyes', '/appearance/build', '/appearance/accessories']);
+      toast.success('已生成视觉候选，请确认后应用');
+    } catch (err) { toast.error('视觉提取失败', err instanceof Error ? err.message : String(err)); }
+    finally { setExtractingReference(null); }
+  };
+
+  const handleApplyAppearanceCandidate = async (candidate: { id: string; extraction: Record<string, unknown> }, fieldPaths: string[]) => {
+    if (!characterId) return;
+    try {
+      if ((isDirty || status === 'dirty') && !await handleSave(true)) return;
+      const before = JSON.stringify(getValues());
+      const result = await applyCharacterAppearanceExtraction(characterId, candidate.id, draftRevisionRef.current ?? detailData?.draftRevision ?? 1, fieldPaths);
+      draftRevisionRef.current = result.draftRevision;
+      setDraftRevision(result.draftRevision);
+      if (JSON.stringify(getValues()) === before) {
+        reset(characterDraftToFormValues(result.draft));
+        setStatus('saved');
+      } else {
+        const appearance = { ...characterFormValuesToDraft(getValues()).appearance };
+        for (const path of fieldPaths) {
+          const field = path.split('/').at(-1)!;
+          if (Object.hasOwn(result.draft.appearance, field)) (appearance as unknown as Record<string, unknown>)[field] = (result.draft.appearance as unknown as Record<string, unknown>)[field];
+        }
+        handleDraftChange({ appearance });
+      }
+      setAppearanceCandidate(null);
+      await refetchDetail();
+      toast.success('已确认应用视觉字段');
+    } catch (err) { toast.error('应用视觉候选失败', err instanceof Error ? err.message : String(err)); }
+  };
+
   const handleGenerateAvatar = async () => {
     if (!characterId) {
       toast.warning('请先保存角色草稿');
       return;
     }
     try {
-      if (isDirty || status === 'dirty') await handleSave(true);
+      if ((isDirty || status === 'dirty') && !await handleSave(true)) return;
       const task = await generateAvatarMutation.mutateAsync({ id: characterId });
       setAvatarTaskId(task.id);
       toast.success('头像生成任务已提交');
@@ -397,21 +486,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     };
   }, []);
 
-  const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-
-    try {
-      const card = JSON.parse(await file.text()) as Record<string, unknown>;
-      const created = await importMutation.mutateAsync(card);
-      toast.success('角色卡导入成功');
-      router.push(`/apps/characters/${created.id}`);
-    } catch (err) {
-      toast.error('导入失败', err instanceof Error ? err.message : '角色卡 JSON 格式无效');
-    }
-  };
-
   const handleExportJson = async () => {
     if (!characterId) return;
     try {
@@ -431,13 +505,14 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }
   };
 
-  const navItems: Array<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  const navItems: Array<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }>; detailed?: boolean }> = [
     { id: 'identity', label: '身份与经历', icon: User },
     { id: 'personality', label: '性格与表达', icon: Heart },
     { id: 'appearance', label: '外观与素材', icon: Palette },
-    { id: 'relations', label: '关系与来源', icon: Users },
+    { id: 'relations', label: '关系与来源', icon: Users, detailed: true },
     { id: 'publish', label: '应用与版本', icon: Layers },
   ];
+  const visibleNavItems = navItems.filter((item) => editorMode === 'detailed' || !item.detailed);
 
   // 编辑既有角色前必须等详情加载完成：空表单若允许交互，用户先打的字会
   // 阻断数据水合，随后自动保存用近乎空白的草稿整体覆盖服务端数据。
@@ -509,11 +584,20 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => importInputRef.current?.click()}
-            title="导入 Tavern Card V2 JSON"
+            onClick={async () => { if (characterId && (isDirty || status === 'dirty') && !await handleSave(true)) return; setImportDialogOpen(true); }}
+            title="导入角色卡并预览候选字段"
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">导入 JSON</span>
+            <span className="hidden sm:inline">导入角色卡</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setEditorMode((current) => current === 'simple' ? 'detailed' : 'simple')}
+            title={editorMode === 'simple' ? '展开关系、背景和详细字段' : '收起不常用的详细字段'}
+          >
+            {editorMode === 'simple' ? '详细模式' : '简洁模式'}
           </Button>
 
           <Button
@@ -535,7 +619,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             loading={publishMutation.isPending}
           >
             <Send className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>发布版本</span>
+            <span>保存并使用</span>
           </Button>
         </div>
       </header>
@@ -582,7 +666,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             role="tablist"
             aria-label="角色编辑分区"
           >
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
               return (
@@ -647,6 +731,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             {activeSection === 'identity' && (
               <IdentitySection
                 draft={draft}
+                simple={editorMode === 'simple'}
                 tags={tags}
                 onChange={handleDraftChange}
                 onTagsChange={handleTagsChange}
@@ -657,26 +742,43 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             )}
 
             {activeSection === 'personality' && (
-              <PersonalitySection
-                draft={draft}
-                onChange={handleDraftChange}
-                control={control}
-                register={register}
-              />
+              <div className="space-y-6">
+                <PersonalitySection
+                  draft={draft}
+                  simple={editorMode === 'simple'}
+                  onChange={handleDraftChange}
+                  control={control}
+                  register={register}
+                />
+                <CharacterAuditionPanel characterId={characterId} draftRevision={detailData?.draftRevision} />
+              </div>
             )}
 
             {activeSection === 'appearance' && (
-              <AppearanceSection
-                draft={draft}
-                avatarUrl={detailData?.avatarUrl}
-                canUpload={Boolean(characterId)}
-                onUploadClick={() => avatarInputRef.current?.click()}
-                onGenerateAvatar={() => void handleGenerateAvatar()}
-                generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending || saving}
-                onChange={handleDraftChange}
-                control={control}
-                register={register}
-              />
+              <div id="character-source-focus-panel" className={sourceFocusActive ? 'rounded-lg ring-2 ring-accent/50 ring-offset-4 transition' : ''}>
+                <AppearanceSection
+                  draft={draft}
+                  simple={editorMode === 'simple'}
+                  avatarUrl={detailData?.avatarUrl}
+                  canUpload={Boolean(characterId)}
+                  onUploadClick={() => avatarInputRef.current?.click()}
+                  onGenerateAvatar={() => void handleGenerateAvatar()}
+                  generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending || saving}
+                  onChange={handleDraftChange}
+                  control={control}
+                  register={register}
+                  references={visualReferences}
+                  onUploadReference={() => referenceInputRef.current?.click()}
+                  referencePurpose={referencePurpose}
+                  onReferencePurposeChange={setReferencePurpose}
+                  onExtractReference={(referenceId: string) => void handleExtractReference(referenceId)}
+                  extractingReference={extractingReference}
+                  appearanceCandidate={appearanceCandidate}
+                  selectedCandidateFields={appearanceCandidateFields}
+                  onCandidateFieldsChange={setAppearanceCandidateFields}
+                  onApplyAppearanceCandidate={(candidate: { id: string; extraction: Record<string, unknown> }, fieldPaths: string[]) => void handleApplyAppearanceCandidate(candidate, fieldPaths)}
+                />
+              </div>
             )}
 
             {activeSection === 'relations' && (
@@ -715,12 +817,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             )}
 
             {activeSection === 'publish' && (
-              <PublishSection
-                detail={detailData}
-                draft={draft}
-                onPublish={handlePublish}
-                publishing={publishMutation.isPending}
-              />
+              <div className="space-y-6">
+                <PublishSection
+                  detail={detailData}
+                  draft={draft}
+                  onPublish={handlePublish}
+                  publishing={publishMutation.isPending}
+                />
+                <CharacterModelRoutingPanel characterId={characterId} />
+              </div>
             )}
 
             <div className="mt-8 pt-4 border-t border-[rgb(24_32_29/10%)] flex justify-end">
@@ -794,12 +899,30 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         onChange={handleUploadAvatar}
       />
       <input
-        ref={importInputRef}
+        ref={referenceInputRef}
         hidden
         type="file"
-        accept="application/json,.json"
-        aria-label="导入角色 JSON 文件"
-        onChange={handleImportJson}
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        aria-label="上传外观参考图"
+        onChange={handleUploadReference}
+      />
+      <CharacterImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        targetCharacterId={characterId}
+        baseDraftRevision={draftRevision ?? detailData?.draftRevision}
+        onCommitted={(committedId) => {
+          if (characterId) {
+            void refetchDetail().then(({ data }) => {
+              if (!data) return;
+              reset(characterDraftToFormValues(data.draft)); setTags(data.tags);
+              draftRevisionRef.current = data.draftRevision; setDraftRevision(data.draftRevision); setStatus('clean');
+              void fetchCharacterVisualReferences(characterId).then((response) => setVisualReferences(response.items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string' ? [{ id: item.id, url: item.url }] : [])));
+            });
+          }
+          else router.push(`/apps/characters/${committedId}`);
+          toast.success('角色卡已确认导入');
+        }}
       />
     </main>
   );

@@ -20,12 +20,19 @@ export const ActorSnapshotSchema = Type.Object({
   id: Type.String(),
   sourceCharacterId: Type.Optional(Type.String()),
   sourceVersion: Type.Optional(Type.Number()),
+  sourceVersionStatus: Type.Optional(Type.Union([
+    Type.Literal('published'), Type.Literal('draft'), Type.Literal('unknown'), Type.Literal('missing'),
+  ])),
+  characterDraftRevision: Type.Optional(Type.Number()),
   displayName: Type.String(),
   persona: ActorPersonaSchema,
   avatarAssetKey: Type.Optional(Type.String()),
+  avatarAssetId: Type.Optional(Type.String()),
+  avatarUrl: Type.Optional(Type.String()),
   activityRole: Type.String(),
   outfitDescription: Type.String(),
   appearanceReferenceAssetKeys: Type.Array(Type.String()),
+  appearanceReferenceAssetIds: Type.Optional(Type.Array(Type.String())),
 });
 export type ActorSnapshot = Static<typeof ActorSnapshotSchema>;
 

@@ -8,11 +8,13 @@ import { StringListField, type CharacterFormValues } from './character-form';
 
 export function PersonalitySection({
   draft,
+  simple = false,
   onChange,
   control,
   register,
 }: {
   draft: CharacterDraft;
+  simple?: boolean;
   onChange: (patch: Partial<CharacterDraft>) => void;
   control: Control<CharacterFormValues>;
   register: UseFormRegister<CharacterFormValues>;
@@ -26,7 +28,7 @@ export function PersonalitySection({
       <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
         <h3 className="font-serif text-2xl font-medium text-ink">性格与表达</h3>
         <p className="text-sm text-muted mt-1 leading-relaxed">
-          列表项支持每行一条，让性格、驱动力和语言习惯可以被其他应用灵活拆分使用。
+          {simple ? '保留最常用的性格和语气字段；更多动机、边界和偏好可在详细模式中编辑。' : '列表项支持每行一条，让性格、驱动力和语言习惯可以被其他应用灵活拆分使用。'}
         </p>
       </div>
 
@@ -38,7 +40,7 @@ export function PersonalitySection({
         placeholder="例如：表面浮夸自大"
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {!simple && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StringListField
           control={control}
           register={register}
@@ -67,7 +69,7 @@ export function PersonalitySection({
           label="边界与禁忌"
           placeholder="例如：绝不在审判庭上退缩"
         />
-      </div>
+      </div>}
 
       <div className="pt-2 border-t border-[rgb(24_32_29/10%)] space-y-4">
         <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
@@ -84,7 +86,7 @@ export function PersonalitySection({
           />
         </div>
 
-        <div>
+        {!simple && <div>
           <label className="block text-sm font-semibold text-ink mb-1.5">表达习惯与反差细节</label>
           <Textarea
             rows={3}
@@ -92,16 +94,16 @@ export function PersonalitySection({
             onChange={(e) => updateSpeech({ habits: e.target.value })}
             placeholder="激动时习惯整理帽子，陷入困境时会下意识寻找甜品或茶杯掩饰。"
           />
-        </div>
+        </div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <StringListField
+          {!simple && <StringListField
             control={control}
             register={register}
             name="speech.catchphrases"
             label="口头禅"
             placeholder="例如：哼，这正是本神预料之中的！"
-          />
+          />}
           <StringListField
             control={control}
             register={register}
@@ -111,7 +113,7 @@ export function PersonalitySection({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {!simple && <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StringListField
             control={control}
             register={register}
@@ -133,7 +135,7 @@ export function PersonalitySection({
             label="恐惧"
             placeholder="例如：被所有人抛弃"
           />
-        </div>
+        </div>}
       </div>
     </div>
   );

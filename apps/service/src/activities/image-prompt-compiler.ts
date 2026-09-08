@@ -22,11 +22,22 @@ export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferenc
   const purpose = assigned ? preferred : 'activity_media_slot';
   if (!database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE app_id = ? AND purpose = ?').get('activities', purpose)) return null;
   const resolved = resolveWorkflowAndEngine(database, 'activities', { purpose });
+  const capabilityRow = database.connection.prepare(`SELECT v.input_capabilities_json, m.input_capabilities_json AS legacy_input_capabilities_json
+    FROM generation_workflow_versions v
+    LEFT JOIN generation_workflow_media_versions m ON m.workflow_id=v.workflow_id AND m.version=v.version
+    WHERE v.workflow_id=? AND v.version=?`).get(resolved.workflow.id, resolved.workflow.version) as { input_capabilities_json?: string; legacy_input_capabilities_json?: string } | undefined;
+  let directCapabilities: Record<string, unknown> = {};
+  let legacyCapabilities: Record<string, unknown> = {};
+  try { directCapabilities = JSON.parse(capabilityRow?.input_capabilities_json ?? '{}') as Record<string, unknown>; } catch { directCapabilities = {}; }
+  try { legacyCapabilities = JSON.parse(capabilityRow?.legacy_input_capabilities_json ?? '{}') as Record<string, unknown>; } catch { legacyCapabilities = {}; }
+  const inputCapabilities = Object.keys(directCapabilities).length ? directCapabilities : legacyCapabilities;
   return { purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, engineId: resolved.engine.id,
-    definitionHash: createHash('sha256').update(JSON.stringify(resolved.workflow.definition)).digest('hex'), nodeBindings: resolved.workflow.nodeBindings };
+    definitionHash: createHash('sha256').update(JSON.stringify(resolved.workflow.definition)).digest('hex'), nodeBindings: resolved.workflow.nodeBindings,
+    ...(Object.keys(inputCapabilities).length ? { inputCapabilities: inputCapabilities as ImageExecutionPlan['inputCapabilities'] } : {}) };
 }
 
 import { createSourceRef, extractEntityFieldValue } from './image-provenance.js';
+import { buildCharacterVisualPrompt, normalizeCharacterAppearance } from '../characters/persona-compiler.js';
 
 export const PROMPT_COMPILER_VERSION = 'v1.0.0';
 export const DEFAULT_TEMPLATE_ID = 'activity-image-v1';
@@ -197,8 +208,9 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   // 3. Actors: Identity, Appearance, Outfit
   for (const actor of actors) {
     // Identity & Appearance
-    const appearanceField = (actor.persona as Record<string, unknown>)?.appearance as string | undefined;
-    const appearanceText = appearanceField || '';
+    const appearanceField = (actor.persona as Record<string, unknown>)?.appearance;
+    const appearanceObject = normalizeCharacterAppearance(appearanceField);
+    const appearanceText = buildCharacterVisualPrompt({ ...appearanceObject, outfits: [], defaultOutfitId: null });
     const appearanceSourceRef = createSourceRef({
       activityId,
       ownerKind: 'content',
@@ -206,10 +218,27 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
       entityKind: 'actor',
       entityId: actor.id,
       fieldPath: '/persona/appearance',
-      valueSnapshot: appearanceText,
+      valueSnapshot: appearanceObject,
       labelSnapshot: `角色外貌「${actor.displayName}」`,
     });
     sourceRefs.push(appearanceSourceRef);
+    const appearanceSourceRefIds = [appearanceSourceRef.id];
+    if (actor.sourceCharacterId) {
+      const characterSourceRef = createSourceRef({
+        activityId,
+        ownerKind: 'character',
+        ownerRevisionId: actor.sourceVersion == null
+          ? `${actor.sourceCharacterId}:draft:${actor.characterDraftRevision ?? 'unknown'}`
+          : `${actor.sourceCharacterId}:v${actor.sourceVersion}`,
+        entityKind: actor.sourceVersion == null ? 'character' : 'character_version',
+        entityId: actor.sourceCharacterId,
+        fieldPath: '/appearance',
+        valueSnapshot: appearanceObject,
+        labelSnapshot: `公共角色来源「${actor.displayName}」`,
+      });
+      sourceRefs.push(characterSourceRef);
+      appearanceSourceRefIds.push(characterSourceRef.id);
+    }
 
     const appearanceOverride = overrideMap.get(`/actors/${actor.id}/appearance`);
     const renderedAppearance = appearanceOverride ? appearanceOverride.overrideText : appearanceText;
@@ -218,7 +247,7 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
       id: `blk_actor_${actor.id}_app_${randomUUID().replace(/-/g, '').slice(0, 6)}`,
       kind: 'appearance',
       actorIds: [actor.id],
-      sourceRefIds: [appearanceSourceRef.id],
+      sourceRefIds: appearanceSourceRefIds,
       originalText: appearanceText,
       renderedText: renderedAppearance ? `${actor.displayName}, ${renderedAppearance}` : actor.displayName,
       origin: appearanceOverride ? 'manual' : 'source',
@@ -462,7 +491,12 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
       if (effectiveParams[key] === undefined) { delete effectiveParams[key]; continue; }
       if (!bindings[key]) throw new Error(`unsupported_parameter: 工作流未绑定参数 ${key}`);
     }
-    for (const ref of references) if (!bindings[ref.inputKey]) throw new Error(`input_binding_missing: ${ref.inputKey}`);
+    for (const ref of references) {
+      if (!bindings[ref.inputKey]) throw new Error(`input_binding_missing: ${ref.inputKey}`);
+      const capability = options.executionPlan.inputCapabilities?.[ref.inputKey];
+      if (options.executionPlan.inputCapabilities && !capability) throw new Error(`input_capability_missing: ${ref.inputKey}`);
+      if ((capability?.semantic || 'init_image') !== ref.role) throw new Error(`input_semantic_mismatch: ${ref.inputKey} expects ${capability?.semantic || 'init_image'}`);
+    }
   }
   const executionPlanPayload = {
     plan: options.executionPlan || null,

@@ -1,7 +1,8 @@
 'use client';
 
 import { SourceFieldEditor } from './source-field-editor';
-import { fetchActivity, saveMediaRevision, fetchPromptRecipe, fetchImageExecutionSnapshots } from '../api';
+import { fetchActivity, saveMediaRevision, fetchPromptRecipe, fetchImageExecutionSnapshots, transferCharacterReferenceToActivity } from '../api';
+import { fetchCharacterVisualReferences } from '@/app/features/characters/api';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SourceRef } from '@sthstart/contracts';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -147,6 +148,8 @@ export function ImageWorkbench({
   const [selectedReferenceKey, setSelectedReferenceKey] = useState<string | null>(null);
   const [referenceRole, setReferenceRole] = useState<'init_image' | 'identity' | 'outfit' | 'style'>('init_image');
   const [denoise, setDenoise] = useState<number>(0.75);
+  const [characterReferences, setCharacterReferences] = useState<Array<{ characterId: string; characterName: string; version?: number; referenceId: string; url: string }>>([]);
+  const [transferringReference, setTransferringReference] = useState<string | null>(null);
 
   // Comparison State
   const [compareAttemptId, setCompareAttemptId] = useState<string | null>(null);
@@ -155,6 +158,24 @@ export function ImageWorkbench({
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- character references are loaded from the character service for this activity. */
+  useEffect(() => {
+    const actors = (document.actors || []).filter((actor) => actor.sourceCharacterId);
+    if (!actors.length) { setCharacterReferences([]); return; }
+    let active = true;
+    void Promise.all(actors.map(async (actor) => {
+      const characterId = actor.sourceCharacterId!;
+      const response = await fetchCharacterVisualReferences(characterId);
+      const frozenAssetIds = Array.isArray(actor.appearanceReferenceAssetIds) ? new Set(actor.appearanceReferenceAssetIds) : null;
+      return response.items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string'
+        && (!frozenAssetIds || (typeof item.assetId === 'string' && frozenAssetIds.has(item.assetId)))
+        ? [{ characterId, characterName: actor.displayName, version: actor.sourceVersion, referenceId: item.id, url: item.url }]
+        : []);
+    })).then((groups) => { if (active) setCharacterReferences(groups.flat()); }).catch(() => { if (active) setCharacterReferences([]); });
+    return () => { active = false; };
+  }, [document.actors]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Active slot config lookup
   const activeSlotConfig: SlotImageConfig = useMemo(() => {
@@ -213,6 +234,18 @@ export function ImageWorkbench({
     } catch (err) {
       setStatusMessage({ type: 'error', text: '提交版本失败: ' + String(err) });
     }
+  };
+
+  const handleTransferCharacterReference = async (reference: typeof characterReferences[number]) => {
+    setTransferringReference(reference.referenceId);
+    try {
+      const asset = await transferCharacterReferenceToActivity(activity.id, { characterId: reference.characterId, version: reference.version, referenceId: reference.referenceId });
+      await queryClient.invalidateQueries();
+      setSelectedReferenceKey(asset.assetKey);
+      setStatusMessage({ type: 'success', text: `已将${reference.characterName}的角色参考图转入本活动。` });
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: `转入角色参考图失败：${error instanceof Error ? error.message : String(error)}` });
+    } finally { setTransferringReference(null); }
   };
 
   // Prepare recipe
@@ -682,6 +715,7 @@ export function ImageWorkbench({
               <option value="">不使用参考图</option>
               {(assetsData?.items || []).filter((asset) => asset.type === 'image').map((asset) => <option key={asset.assetKey} value={asset.assetKey}>{asset.assetKey}</option>)}
             </select>
+            {characterReferences.length > 0 && <div className="space-y-1.5 rounded border border-accent/20 bg-accent/5 p-2"><p className="text-xs font-semibold text-accent-dark">公共角色参考图（先转入活动再参与生成）</p>{characterReferences.map((reference) => <div key={`${reference.characterId}:${reference.referenceId}`} className="flex items-center justify-between gap-2 text-xs"><span className="truncate text-muted">{reference.characterName} · {reference.referenceId.slice(0, 8)}</span><Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={Boolean(transferringReference)} onClick={() => void handleTransferCharacterReference(reference)}>{transferringReference === reference.referenceId ? '转入中…' : '转入并选择'}</Button></div>)}</div>}
             {selectedReferenceKey ? (
               <div className="flex items-center gap-3 bg-paper p-2 rounded border border-border-default">
                 <div className="w-12 h-12 rounded bg-surface border border-border-default overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -694,7 +728,7 @@ export function ImageWorkbench({
                     <span className="font-mono text-muted">{selectedReferenceKey}</span>
                     <select
                       value={referenceRole}
-                      onChange={(e) => setReferenceRole(e.target.value as any)}
+                      onChange={(e) => setReferenceRole(e.target.value as typeof referenceRole)}
                       className="bg-surface border border-border-default text-muted text-sm rounded px-1.5 py-0.5"
                     >
                       <option value="init_image">图生图 (init_image)</option>
@@ -739,6 +773,8 @@ export function ImageWorkbench({
                   setOverrides(sourceRecipe?.overrides || []);
                   setSelectedAttemptId(null);
                   setStatusMessage({ type: 'success', text: '已载入当时的单次覆盖，修改后重新准备即可；历史记录不会更改。' });
+                } else if (source && ['character', 'character_version', 'reference'].includes(source.entityKind)) {
+                  window.open(`/apps/characters/${encodeURIComponent(source.entityId)}?fieldPath=${encodeURIComponent(source.fieldPath)}`, '_blank', 'noopener,noreferrer');
                 } else if (source) setEditingSource(source);
               }}
             />
