@@ -12,12 +12,26 @@ import type {
   ActivityCandidate,
   ActivityCheckpoint,
   ActivityJob,
+  ImageConfigDocument,
+  ImageConfigDraft,
+  ImageConfigRevision,
+  PromptRecipe,
+  PromptCompilation,
+  GenerationAttempt,
+  ImpactPreview,
+  SourceRef,
+  AssetLineageEdge,
+  ActivityCapabilitiesResponse,
 } from '@sthstart/contracts';
 
 export interface ActivityCapabilities {
   llm: boolean;
   llmProfile: { id: string; name: string } | null;
   media: boolean;
+  images?: {
+    textToImage: import('@sthstart/contracts').ImageCapabilityDescriptor;
+    imageToImage: import('@sthstart/contracts').ImageCapabilityDescriptor;
+  };
   templates: Array<{ id: string; name: string; version: string }>;
   limits: {
     maxActors: number;
@@ -377,4 +391,122 @@ export async function stageActivityZip(file: File | Blob): Promise<StagedImportP
 
 export async function commitActivityImport(importId: string): Promise<{ activity: Activity; headVersion: number }> {
   return postJson(`/api/admin/activities/imports/${encodeURIComponent(importId)}/commit`, {});
+}
+
+// 9. Image Configs & Revisions
+export async function fetchImageConfigDraft(id: string): Promise<ImageConfigDraft> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-config/draft`);
+}
+
+export async function saveImageConfigDraft(id: string, document: ImageConfigDocument, expectedDraftVersion?: number): Promise<ImageConfigDraft> {
+  return putJson(`/api/admin/activities/${encodeURIComponent(id)}/image-config/draft`, { document, expectedDraftVersion: expectedDraftVersion ?? (await fetchImageConfigDraft(id)).draftVersion });
+}
+
+export async function commitImageConfigRevision(id: string, document: ImageConfigDocument, expectedDraftVersion?: number, expectedHeadVersion?: number): Promise<ImageConfigRevision> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-config/revisions`, { document, expectedDraftVersion, expectedHeadVersion });
+}
+
+export async function fetchImageConfigRevisions(id: string): Promise<{ items: ImageConfigRevision[] }> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-config/revisions`);
+}
+
+// 10. Prompt Recipes & Preparation
+export async function preparePromptRecipe(
+  id: string,
+  input: {
+    contentRevisionId: string;
+    imageConfigRevisionId?: string;
+    slotId: string;
+    expectedHeadVersion?: number;
+    overrides?: Array<{ id: string; fieldPath: string; overrideText: string; reason?: string }>;
+    references?: import('@sthstart/contracts').ReferenceInput[];
+    customParams?: Record<string, unknown>;
+  }
+): Promise<{ recipe: PromptRecipe; compilation: PromptCompilation }> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/recipes/prepare`, input);
+}
+
+export async function fetchPromptRecipe(id: string, recipeId: string): Promise<{ recipe: PromptRecipe; compilation: PromptCompilation }> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/recipes/${encodeURIComponent(recipeId)}`);
+}
+
+export async function fetchPromptCompilation(id: string, compilationId: string): Promise<PromptCompilation> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/compilations/${encodeURIComponent(compilationId)}`);
+}
+
+// 11. Generation Attempts
+export async function createImageAttempt(
+  id: string,
+  input: {
+    contentRevisionId: string;
+    imageConfigRevisionId: string;
+    slotId: string;
+    recipeId: string;
+    compilationId: string;
+    executionPlanHash: string;
+    expectedHeadVersion?: number;
+    seed?: number;
+    retryOfAttemptId?: string;
+    parentAttemptIds?: string[];
+    idempotencyKey?: string;
+  }
+): Promise<GenerationAttempt> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts`, input);
+}
+
+export async function fetchImageAttempts(id: string, slotId?: string): Promise<{ items: GenerationAttempt[] }> {
+  const query = slotId ? `?slotId=${encodeURIComponent(slotId)}` : '';
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts${query}`);
+}
+
+export async function fetchImageAttempt(id: string, attemptId: string): Promise<GenerationAttempt> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}`);
+}
+
+export async function retryImageAttempt(id: string, attemptId: string): Promise<GenerationAttempt> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}/retry`, {});
+}
+
+export async function cancelImageAttempt(id: string, attemptId: string): Promise<{ cancelled: boolean; status: string }> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}/cancel`, {});
+}
+
+// 12. Provenance, Sources, Impact & Lineage
+export async function previewImageImpact(
+  id: string,
+  input: {
+    changedEntityKind: string;
+    changedEntityId: string;
+    fieldPath: string;
+    newValue: unknown;
+  }
+): Promise<ImpactPreview> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-impact/preview`, input);
+}
+
+export async function resolveImageSource(
+  id: string,
+  sourceRefId: string
+): Promise<{
+  sourceRef: SourceRef;
+  currentValue: unknown;
+  hasChanged: boolean;
+  fieldPath: string;
+  entityKind: string;
+  entityId: string;
+  label: string;
+}> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-sources/resolve`, { sourceRefId });
+}
+
+export async function fetchAssetLineage(
+  id: string,
+  assetKey: string
+): Promise<{ lineage: AssetLineageEdge[]; ancestors: string[] }> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-lineage/${encodeURIComponent(assetKey)}`);
+}
+
+
+export async function fetchImageExecutionSnapshots(id: string, attemptId: string): Promise<{ items: import('@sthstart/contracts').ExecutionSnapshot[] }> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}/execution-snapshots`);
 }

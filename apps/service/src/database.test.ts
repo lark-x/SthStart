@@ -9,7 +9,7 @@ import { ServiceDatabase } from './database.js';
 test('fresh databases record an explicit migration baseline', () => {
   const database = new ServiceDatabase();
   const migrations = database.connection.prepare('SELECT version,name FROM schema_migrations').all() as Array<{ version: number; name: string }>;
-  assert.equal(migrations.length, 13);
+  assert.equal(migrations.length, 15);
   assert.equal(migrations[0].version, 1);
   assert.equal(migrations[0].name, 'initial');
   assert.equal(migrations[1].version, 2);
@@ -30,6 +30,8 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(migrations[11].name, 'notebook-local-first-sync');
   assert.equal(migrations[12].version, 13);
   assert.equal(migrations[12].name, 'activity-studio');
+  assert.equal(migrations[13].version, 14);
+  assert.equal(migrations[13].name, 'activity-image-provenance');
   const columns = database.connection.prepare('PRAGMA table_info(provider_profile_options)').all() as Array<{ name: string }>;
   assert.equal(columns.some((column) => column.name === 'capabilities_json'), true);
   const taskColumns = database.connection.prepare('PRAGMA table_info(generation_tasks)').all() as Array<{ name: string }>;
@@ -50,6 +52,9 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activities'").get() !== undefined, true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_drafts'").get() !== undefined, true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_content_revisions'").get() !== undefined, true);
+  assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_image_config_drafts'").get() !== undefined, true);
+  assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_prompt_recipes'").get() !== undefined, true);
+  assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='activity_image_attempts'").get() !== undefined, true);
   database.close();
 });
 
@@ -75,7 +80,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
   const migrated = new ServiceDatabase(path);
   const row = migrated.connection.prepare("SELECT capabilities_json FROM provider_profile_options WHERE profile_id='old'").get() as { capabilities_json: string };
   assert.deepEqual(JSON.parse(row.capabilities_json), ['text']);
-  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 13);
+  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 15);
   migrated.close();
 });
 

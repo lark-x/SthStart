@@ -44,7 +44,7 @@ export function WorkflowPanel({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[#b83b1b]"><span className="text-[10px] font-bold tracking-[0.16em] uppercase">WORKFLOW VERSIONS</span></div>
+          <div className="flex items-center gap-2 text-accent-dark"><span className="text-sm font-bold tracking-[0.16em] uppercase">WORKFLOW VERSIONS</span></div>
           {onImport && (
             <div>
               <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" aria-label="导入工作流 JSON 文件" onChange={handleFileChange} />
@@ -73,16 +73,16 @@ export function WorkflowPanel({
         {workflows.length ? (
           <div className="space-y-2">
             {workflows.map((workflow) => (
-              <button type="button" key={workflow.id} onClick={() => onSelect(workflow.id)} className={`flex w-full items-center justify-between rounded border p-3 text-left ${selectedWorkflowId === workflow.id ? 'border-[#e45d35] bg-[#e45d35]/6' : 'border-[rgb(24_32_29/12%)] bg-[#fffdf8]'}`}>
+              <button type="button" key={workflow.id} onClick={() => onSelect(workflow.id)} className={`flex w-full items-center justify-between rounded border p-3 text-left ${selectedWorkflowId === workflow.id ? 'border-accent bg-accent/6' : 'border-[rgb(24_32_29/12%)] bg-surface'}`}>
                 <span>
-                  <strong className="text-xs">{workflow.name}</strong>
-                  <code className="mt-0.5 block text-[10px] text-[#68716d]">{workflow.id} · {workflow.versions.length} 个版本</code>
+                  <strong className="text-sm">{workflow.name}</strong>
+                  <code className="mt-0.5 block text-sm text-muted">{workflow.id} · {workflow.versions.length} 个版本</code>
                 </span>
                 <ChevronRight className="h-4 w-4 text-[#89908a]" aria-hidden="true" />
               </button>
             ))}
           </div>
-        ) : <p className="text-xs text-[#89908a]">创建第一个工作流后，它会出现在这里。</p>}
+        ) : <p className="text-sm text-[#89908a]">创建第一个工作流后，它会出现在这里。</p>}
       </CardContent>
     </Card>
   );

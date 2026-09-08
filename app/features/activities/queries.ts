@@ -93,7 +93,8 @@ export function useActivityJobs(id?: string) {
     queryKey: activityKeys.jobs(id ?? ''),
     queryFn: () => fetchActivityJobs(id!),
     enabled: Boolean(id),
-    refetchInterval: 3_000,
+    refetchInterval: (q) => q.state.data?.items.some(item => ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(item.status)) ? 3_000 : 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -102,7 +103,7 @@ export function useActivityJob(id?: string, jobId?: string) {
     queryKey: activityKeys.job(id ?? '', jobId ?? ''),
     queryFn: () => fetchActivityJob(id!, jobId!),
     enabled: Boolean(id && jobId),
-    refetchInterval: 2_000,
+    refetchInterval: (q) => ['queued', 'running'].includes(q.state.data?.job.status ?? 'queued') ? 2_000 : false,
   });
 }
 
@@ -129,5 +130,60 @@ export function useActivityCapabilities() {
     queryKey: activityKeys.capabilities(),
     queryFn: () => fetchCapabilities(),
     staleTime: 60_000,
+  });
+}
+
+export function useImageConfigDraft(id?: string) {
+  return useQuery({
+    queryKey: activityKeys.imageConfigDraft(id ?? ''),
+    queryFn: () => import('./api').then(m => m.fetchImageConfigDraft(id!)),
+    enabled: Boolean(id),
+    staleTime: 5_000,
+  });
+}
+
+export function useImageConfigRevisions(id?: string) {
+  return useQuery({
+    queryKey: activityKeys.imageConfigRevisions(id ?? ''),
+    queryFn: () => import('./api').then(m => m.fetchImageConfigRevisions(id!)),
+    enabled: Boolean(id),
+    staleTime: 30_000,
+  });
+}
+
+export function useImageAttempts(id?: string, slotId?: string) {
+  return useQuery({
+    queryKey: activityKeys.attempts(id ?? '', slotId),
+    queryFn: () => import('./api').then(m => m.fetchImageAttempts(id!, slotId)),
+    enabled: Boolean(id),
+    refetchInterval: (q) => q.state.data?.items.some(item => ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(item.status)) ? 3_000 : 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useImageAttempt(id?: string, attemptId?: string) {
+  return useQuery({
+    queryKey: activityKeys.attempt(id ?? '', attemptId ?? ''),
+    queryFn: () => import('./api').then(m => m.fetchImageAttempt(id!, attemptId!)),
+    enabled: Boolean(id && attemptId),
+    refetchInterval: (q) => ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(q.state.data?.status ?? 'queued') ? 2_000 : false,
+  });
+}
+
+export function useAssetLineage(id?: string, assetKey?: string) {
+  return useQuery({
+    queryKey: activityKeys.lineage(id ?? '', assetKey ?? ''),
+    queryFn: () => import('./api').then(m => m.fetchAssetLineage(id!, assetKey!)),
+    enabled: Boolean(id && assetKey),
+    staleTime: 30_000,
+  });
+}
+
+export function useSourceResolve(id?: string, sourceRefId?: string) {
+  return useQuery({
+    queryKey: activityKeys.sourceResolve(id ?? '', sourceRefId ?? ''),
+    queryFn: () => import('./api').then(m => m.resolveImageSource(id!, sourceRefId!)),
+    enabled: Boolean(id && sourceRefId),
+    staleTime: 10_000,
   });
 }

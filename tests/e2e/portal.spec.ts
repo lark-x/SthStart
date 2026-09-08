@@ -59,6 +59,7 @@ test('creative center exposes a safe unconfigured image workspace', async ({ pag
   await expect(page.getByRole('heading', { name: '创作中心' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '文本生图' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '图生图' })).toBeVisible();
+  await page.locator('summary').filter({ hasText: '生成服务' }).click();
   await expect(page.getByRole('heading', { name: '公共生成状态' })).toBeVisible();
   await expect(page.getByRole('link', { name: '进入生成配置' })).toBeVisible();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
@@ -155,10 +156,12 @@ test('public services creates, discovers, clones, and assigns application models
   await editor.getByRole('button', { name: '保存修改' }).click();
   await expect(page.getByText(updatedName).first()).toBeVisible();
 
+  await page.getByRole('button', { name: '访问与其他能力', exact: true }).click();
   const appForm = page.locator('form').filter({ has: page.getByPlaceholder('应用 ID，例如 my-app') });
   await appForm.getByPlaceholder('应用 ID，例如 my-app').fill(appId);
   await appForm.getByPlaceholder('应用名称').fill(`测试应用 ${suffix}`);
   await appForm.getByRole('button', { name: '创建应用令牌' }).click();
+  await page.getByRole('button', { name: '应用路由', exact: true }).click();
   const assignment = page.locator('form.assignment-card').filter({ hasText: `测试应用 ${suffix}` });
   await assignment.getByLabel('文本模型').selectOption(cloneId);
   await assignment.getByLabel('多模态模型').selectOption(profileId);
@@ -400,6 +403,7 @@ test('generation settings creates isolated engine and workflow records', async (
   await expect(page.getByRole('heading', { name: '生成工作流配置', level: 1 })).toBeVisible();
   await page.getByRole('button', { name: '刷新' }).click();
 
+  await page.getByRole('button', { name: '引擎与执行器', exact: true }).click();
   await page.getByLabel('引擎 ID').fill(engineId);
   await page.getByLabel('引擎名称').fill(`测试引擎 ${suffix}`);
   await page.getByLabel('ComfyUI 地址').fill('http://127.0.0.1:8188');
@@ -407,10 +411,12 @@ test('generation settings creates isolated engine and workflow records', async (
   await page.getByRole('button', { name: '保存引擎' }).click();
   await expect(page.getByText(`测试引擎 ${suffix}`).first()).toBeVisible();
 
+  await page.getByRole('button', { name: '工作流', exact: true }).click();
   await page.getByLabel('工作流 ID').fill(workflowId);
   await page.getByLabel('工作流名称').fill(`测试工作流 ${suffix}`);
   await page.getByRole('button', { name: '创建工作流' }).click();
   await expect(page.getByText(`测试工作流 ${suffix}`).first()).toBeVisible();
+  await page.getByRole('button', { name: '应用绑定', exact: true }).click();
   await page.getByRole('button', { name: '保存绑定' }).click();
   await expect(page.getByText('创作中心绑定已保存')).toBeVisible();
 });

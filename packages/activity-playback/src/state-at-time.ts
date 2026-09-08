@@ -2,9 +2,9 @@ import type { ContentDocument, PlaybackDocument } from '@sthstart/contracts';
 import type { StateAtTimeResult } from './types.js';
 
 /**
- * Pure deterministic state evaluation function.
- * Given a playback document, content document, and timestamp in ms,
- * returns the exact state of the player at that time.
+ * Legacy approximate diagnostic state; does not measure DOM layout.
+ * @deprecated Do not use for rendering or preview. The compiled HyperFrames
+ * timeline is authoritative, including measured scroll positions and media clips.
  */
 export function stateAtTime(
   playback: PlaybackDocument,

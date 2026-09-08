@@ -37,6 +37,7 @@ interface RecordsEditorProps {
   onSelectStage?: (stageId: string) => void;
   onUpdateDocument: (doc: ContentDocument) => void;
   onOpenAiGenerator?: () => void;
+  onOpenWorkbench?: (slotId: string) => void;
   disabled?: boolean;
 }
 
@@ -48,6 +49,7 @@ export function RecordsEditor({
   onSelectStage,
   onUpdateDocument,
   onOpenAiGenerator,
+  onOpenWorkbench,
   disabled,
 }: RecordsEditorProps) {
   const [activeTab, setActiveTab] = useState<'chat' | 'moments' | 'facts'>('chat');
@@ -90,7 +92,7 @@ export function RecordsEditor({
 
     const newMsg: ChatMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      conversationId: 'group_main',
+      conversationId: document.conversations[0]?.id || 'group_main',
       stageId: selectedStageId,
       kind: 'message',
       speakerActorId: composerActorId,
@@ -198,11 +200,11 @@ export function RecordsEditor({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="studio-records">
       {/* Stage Selector Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-[4px_14px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)]">
-        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-          <span className="text-xs font-semibold text-[#68716d] px-2 flex-shrink-0">当前阶段：</span>
+      <div className="studio-stages p-2.5 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]">
+        <div className="studio-stage-list">
+          <span className="text-sm font-semibold text-muted px-2 flex-shrink-0">当前阶段：</span>
           {stages.map((stage, idx) => {
             const isSelected = selectedStageId === stage.id;
             return (
@@ -210,10 +212,10 @@ export function RecordsEditor({
                 key={stage.id}
                 type="button"
                 onClick={() => handleSelectStage(stage.id)}
-                className={`px-3 py-1.5 rounded-[3px_10px_3px_3px] text-xs font-medium transition-colors cursor-pointer flex-shrink-0 ${
+                className={`px-3 py-1.5 rounded-[3px_10px_3px_3px] text-sm font-medium transition-colors cursor-pointer flex-shrink-0 ${
                   isSelected
-                    ? 'bg-[#e45d35] text-white shadow-xs'
-                    : 'bg-stone-100 text-[#18201d] hover:bg-stone-200'
+                    ? 'bg-accent text-white shadow-xs'
+                    : 'bg-stone-100 text-ink hover:bg-stone-200'
                 }`}
               >
                 #{idx + 1} {stage.title}
@@ -222,13 +224,18 @@ export function RecordsEditor({
           })}
         </div>
 
+        <label className="studio-stage-mobile text-sm">当前阶段
+          <Select value={selectedStageId} onChange={(e) => handleSelectStage(e.target.value)}>
+            {stages.map((stage, index) => <option key={stage.id} value={stage.id}>{index + 1}. {stage.title}</option>)}
+          </Select>
+        </label>
         {onOpenAiGenerator && (
           <Button
             type="button"
             size="sm"
             onClick={onOpenAiGenerator}
             disabled={disabled}
-            className="text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1.5 shadow-xs"
+            className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
           >
             <Sparkles className="h-3.5 w-3.5" />
             AI 生成内容
@@ -236,15 +243,16 @@ export function RecordsEditor({
         )}
       </div>
 
+      <div className="studio-records-body space-y-4">
       {/* Mode Subtabs: Chat vs Moments vs Facts */}
       <div className="flex items-center gap-2 border-b border-[rgb(24_32_29/14%)] pb-2">
         <button
           type="button"
           onClick={() => setActiveTab('chat')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-xs font-semibold transition-colors cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
             activeTab === 'chat'
-              ? 'text-[#e45d35] border-b-2 border-[#e45d35]'
-              : 'text-[#68716d] hover:text-[#18201d]'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-muted hover:text-ink'
           }`}
         >
           <MessageSquare className="h-4 w-4" />
@@ -253,10 +261,10 @@ export function RecordsEditor({
         <button
           type="button"
           onClick={() => setActiveTab('moments')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-xs font-semibold transition-colors cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
             activeTab === 'moments'
-              ? 'text-[#e45d35] border-b-2 border-[#e45d35]'
-              : 'text-[#68716d] hover:text-[#18201d]'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-muted hover:text-ink'
           }`}
         >
           <Share2 className="h-4 w-4" />
@@ -265,14 +273,14 @@ export function RecordsEditor({
         <button
           type="button"
           onClick={() => setActiveTab('facts')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-xs font-semibold transition-colors cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
             activeTab === 'facts'
-              ? 'text-[#e45d35] border-b-2 border-[#e45d35]'
-              : 'text-[#68716d] hover:text-[#18201d]'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-muted hover:text-ink'
           }`}
         >
           <FileCheck className="h-4 w-4" />
-          阶段事实状态 ({facts.length})
+          本阶段发生的事 ({facts.length})
         </button>
       </div>
 
@@ -281,10 +289,10 @@ export function RecordsEditor({
         <div className="space-y-4">
           <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-4 min-h-[360px] max-h-[500px] overflow-y-auto space-y-3">
             {messages.length === 0 ? (
-              <div className="py-16 text-center text-xs text-[#68716d] space-y-2">
+              <div className="py-16 text-center text-sm text-muted space-y-2">
                 <MessageSquare className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
                 <p>当前活动尚无群聊记录</p>
-                <p className="text-[11px]">可在下方直接输入对话，或点击右上角使用 AI 自动生成。</p>
+                <p className="text-sm">可在下方直接输入对话，或点击右上角使用 AI 自动生成。</p>
               </div>
             ) : (
               messages.map((msg, idx) => {
@@ -299,7 +307,7 @@ export function RecordsEditor({
                     }`}
                   >
                     {/* Avatar */}
-                    <div className="h-8 w-8 rounded-full bg-stone-300 overflow-hidden flex-shrink-0 flex items-center justify-center text-xs font-semibold text-stone-700">
+                    <div className="h-8 w-8 rounded-full bg-stone-300 overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold text-stone-700">
                       {speaker?.appearanceReferenceAssetKeys?.[0] ? (
                         <Image
                           src={speaker.appearanceReferenceAssetKeys[0]}
@@ -315,17 +323,17 @@ export function RecordsEditor({
 
                     {/* Bubble & Name */}
                     <div className={`space-y-1 max-w-[75%] ${isUser ? 'items-end text-right' : 'items-start'}`}>
-                      <div className="flex items-center gap-1.5 text-[11px] text-[#68716d]">
-                        <span className="font-medium text-[#18201d]">
+                      <div className="flex items-center gap-1.5 text-sm text-muted">
+                        <span className="font-medium text-ink">
                           {speaker?.displayName || msg.speakerActorId || '系统'}
                         </span>
-                        <span className="text-[10px] opacity-70">#{idx + 1}</span>
+                        <span className="text-sm opacity-70">#{idx + 1}</span>
                       </div>
                       <div
-                        className={`p-2.5 rounded-[4px_12px_4px_4px] text-xs leading-relaxed break-words shadow-2xs ${
+                        className={`p-2.5 rounded-[4px_12px_4px_4px] text-sm leading-relaxed break-words shadow-2xs ${
                           isUser
-                            ? 'bg-[#e45d35] text-white'
-                            : 'bg-[#fffdf8] text-[#18201d] border border-[rgb(24_32_29/12%)]'
+                            ? 'bg-accent text-white'
+                            : 'bg-surface text-ink border border-[rgb(24_32_29/12%)]'
                         }`}
                       >
                         {msg.text}
@@ -335,9 +343,17 @@ export function RecordsEditor({
                       {msg.mediaSlotIds && msg.mediaSlotIds.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {msg.mediaSlotIds.map((slotId) => (
-                            <Badge key={slotId} variant="outline" className="text-[10px] bg-amber-50 text-amber-700">
-                              📷 媒体槽位: {slotId}
-                            </Badge>
+                            <button
+                              key={slotId}
+                              type="button"
+                              onClick={() => onOpenWorkbench?.(slotId)}
+                              className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 transition cursor-pointer"
+                              title="点击打开 AI 生图 / 提示词溯源工作台"
+                            >
+                              <span>📷 媒体镜头:</span>
+                              <span className="font-mono font-semibold">{slotId}</span>
+                              <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                            </button>
                           ))}
                         </div>
                       )}
@@ -362,14 +378,14 @@ export function RecordsEditor({
           {/* Chat Message Input Composer */}
           <form
             onSubmit={handleSendMessage}
-            className="flex items-center gap-2 p-2 rounded-[4px_12px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)]"
+            className="flex items-center gap-2 p-2 rounded-[4px_12px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]"
           >
             <div className="w-32 flex-shrink-0">
               <Select
                 value={composerActorId}
                 onChange={(e) => setComposerActorId(e.target.value)}
                 disabled={disabled}
-                className="h-8 text-xs bg-transparent border-0 ring-0 focus:ring-0 min-h-0"
+                className="h-8 text-sm bg-transparent border-0 ring-0 focus:ring-0 min-h-0"
               >
                 {actors.map((actor) => (
                   <option key={actor.id} value={actor.id}>
@@ -384,14 +400,14 @@ export function RecordsEditor({
               onChange={(e) => setComposerText(e.target.value)}
               placeholder="在此输入群聊内容，按回车添加…"
               disabled={disabled}
-              className="h-8 text-xs flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
+              className="h-8 text-sm flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
             />
 
             <Button
               type="submit"
               size="sm"
               disabled={disabled || !composerText.trim()}
-              className="h-8 px-3 text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1"
+              className="h-8 px-3 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
             >
               <Send className="h-3.5 w-3.5" />
               发送
@@ -405,10 +421,10 @@ export function RecordsEditor({
         <div className="space-y-4">
           <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-4 min-h-[360px] space-y-4">
             {posts.length === 0 ? (
-              <div className="py-16 text-center text-xs text-[#68716d] space-y-2">
+              <div className="py-16 text-center text-sm text-muted space-y-2">
                 <Share2 className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
                 <p>当前活动尚无朋友圈动态</p>
-                <p className="text-[11px]">可使用下方发布新动态，或由 AI 根据群聊及发生事实生成。</p>
+                <p className="text-sm">可使用下方发布新动态，或由 AI 根据群聊及发生事实生成。</p>
               </div>
             ) : (
               posts.map((post) => {
@@ -419,11 +435,11 @@ export function RecordsEditor({
                 return (
                   <div
                     key={post.id}
-                    className="p-4 rounded-[4px_12px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/12%)] space-y-3"
+                    className="p-4 rounded-[4px_12px_4px_4px] bg-surface border border-[rgb(24_32_29/12%)] space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded bg-stone-300 overflow-hidden flex items-center justify-center text-xs font-semibold text-stone-700">
+                        <div className="h-9 w-9 rounded bg-stone-300 overflow-hidden flex items-center justify-center text-sm font-semibold text-stone-700">
                           {author?.appearanceReferenceAssetKeys?.[0] ? (
                             <Image
                               src={author.appearanceReferenceAssetKeys[0]}
@@ -437,10 +453,10 @@ export function RecordsEditor({
                           )}
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-[#18201d]">
+                          <div className="text-sm font-bold text-ink">
                             {author?.displayName || post.authorActorId}
                           </div>
-                          <div className="text-[10px] text-[#68716d]">动态作者</div>
+                          <div className="text-sm text-muted">动态作者</div>
                         </div>
                       </div>
 
@@ -454,7 +470,7 @@ export function RecordsEditor({
                       </button>
                     </div>
 
-                    <p className="text-xs text-[#18201d] leading-relaxed whitespace-pre-wrap">
+                    <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap">
                       {post.text}
                     </p>
 
@@ -462,16 +478,24 @@ export function RecordsEditor({
                     {post.mediaSlotIds && post.mediaSlotIds.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {post.mediaSlotIds.map((slotId) => (
-                          <Badge key={slotId} variant="outline" className="text-[10px] bg-blue-50 text-blue-700">
-                            🖼️ 动态配图槽位: {slotId}
-                          </Badge>
+                          <button
+                            key={slotId}
+                            type="button"
+                            onClick={() => onOpenWorkbench?.(slotId)}
+                            className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition cursor-pointer"
+                            title="点击打开 AI 生图 / 提示词溯源工作台"
+                          >
+                            <span>🖼️ 动态配图镜头:</span>
+                            <span className="font-mono font-semibold">{slotId}</span>
+                            <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                          </button>
                         ))}
                       </div>
                     )}
 
                     {/* Likes & Comments Section */}
                     <div className="pt-2 border-t border-[rgb(24_32_29/8%)] space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-[#68716d]">
+                      <div className="flex items-center gap-2 text-sm text-muted">
                         <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500" />
                         <span>点赞 ({postLikes.length} 人)：</span>
                         <div className="flex items-center gap-1">
@@ -483,7 +507,7 @@ export function RecordsEditor({
                                 type="button"
                                 onClick={() => handleToggleLike(post.id, act.id)}
                                 disabled={disabled}
-                                className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                className={`text-sm px-1.5 py-0.5 rounded transition-colors ${
                                   isLiked
                                     ? 'bg-rose-100 text-rose-700 font-medium'
                                     : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
@@ -498,15 +522,15 @@ export function RecordsEditor({
 
                       {/* Comments list */}
                       {postComments.length > 0 && (
-                        <div className="bg-[#faf8f2] p-2.5 rounded text-xs space-y-1.5 border border-stone-200/60">
+                        <div className="bg-[#faf8f2] p-2.5 rounded text-sm space-y-1.5 border border-stone-200/60">
                           {postComments.map((comm) => {
                             const commAuthor = actorMap.get(comm.authorActorId);
                             return (
-                              <div key={comm.id} className="text-xs">
-                                <span className="font-semibold text-[#e45d35]">
+                              <div key={comm.id} className="text-sm">
+                                <span className="font-semibold text-accent">
                                   {commAuthor?.displayName || comm.authorActorId}:
                                 </span>{' '}
-                                <span className="text-[#18201d]">{comm.text}</span>
+                                <span className="text-ink">{comm.text}</span>
                               </div>
                             );
                           })}
@@ -525,7 +549,7 @@ export function RecordsEditor({
                             }
                           }}
                           disabled={disabled}
-                          className="h-7 text-xs bg-transparent"
+                          className="h-7 text-sm bg-transparent"
                         />
                       </div>
                     </div>
@@ -538,16 +562,16 @@ export function RecordsEditor({
           {/* Create Post Form */}
           <form
             onSubmit={handleCreatePost}
-            className="p-3.5 rounded-[4px_12px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] space-y-2.5"
+            className="p-3.5 rounded-[4px_12px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-2.5"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-[#18201d]">发布新动态</span>
+              <span className="text-sm font-semibold text-ink">发布新动态</span>
               <div className="w-36">
                 <Select
                   value={postAuthorId}
                   onChange={(e) => setPostAuthorId(e.target.value)}
                   disabled={disabled}
-                  className="h-7 text-xs min-h-0"
+                  className="h-7 text-sm min-h-0"
                 >
                   {actors.map((actor) => (
                     <option key={actor.id} value={actor.id}>
@@ -564,7 +588,7 @@ export function RecordsEditor({
               placeholder="分享此刻的活动体验…"
               rows={2}
               disabled={disabled}
-              className="text-xs bg-transparent resize-none"
+              className="text-sm bg-transparent resize-none"
             />
 
             <div className="flex justify-end">
@@ -572,7 +596,7 @@ export function RecordsEditor({
                 type="submit"
                 size="sm"
                 disabled={disabled || !postText.trim()}
-                className="h-7 px-3 text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1"
+                className="h-7 px-3 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
               >
                 <Plus className="h-3.5 w-3.5" />
                 发布朋友圈
@@ -587,20 +611,20 @@ export function RecordsEditor({
         <div className="space-y-4">
           <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-4 min-h-[300px] space-y-2.5">
             {facts.length === 0 ? (
-              <div className="py-16 text-center text-xs text-[#68716d] space-y-2">
+              <div className="py-16 text-center text-sm text-muted space-y-2">
                 <FileCheck className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
                 <p>当前活动尚无确定的阶段事实</p>
-                <p className="text-[11px]">事实作为前序剧情的依据，供后续阶段或朋友圈引用。</p>
+                <p className="text-sm">事实作为前序剧情的依据，供后续阶段或朋友圈引用。</p>
               </div>
             ) : (
               facts.map((fact) => (
                 <div
                   key={fact.id}
-                  className="flex items-center justify-between p-2.5 rounded bg-white border border-stone-200 text-xs"
+                  className="flex items-center justify-between p-2.5 rounded bg-white border border-stone-200 text-sm"
                 >
                   <div className="space-y-1">
-                    <div className="font-medium text-[#18201d]">{fact.text}</div>
-                    <div className="text-[10px] text-[#68716d]">
+                    <div className="font-medium text-ink">{fact.text}</div>
+                    <div className="text-sm text-muted">
                       状态: {fact.status === 'happened' ? '已发生' : '预定事实'} | 知晓角色:{' '}
                       {(fact.knownByActorIds || []).map((id) => actorMap.get(id)?.displayName || id).join(', ')}
                     </div>
@@ -624,13 +648,13 @@ export function RecordsEditor({
               onChange={(e) => setFactText(e.target.value)}
               placeholder="记录本阶段确定的剧情事实（如：岚与澄在海边营地完成了晚餐合照）…"
               disabled={disabled}
-              className="h-8 text-xs bg-[#fffdf8]"
+              className="h-8 text-sm bg-surface"
             />
             <Button
               type="submit"
               size="sm"
               disabled={disabled || !factText.trim()}
-              className="h-8 text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1"
+              className="h-8 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
             >
               <Plus className="h-3.5 w-3.5" />
               添加事实
@@ -639,5 +663,6 @@ export function RecordsEditor({
         </div>
       )}
     </div>
+      </div>
   );
 }

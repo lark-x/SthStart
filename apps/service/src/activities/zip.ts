@@ -339,6 +339,7 @@ export function readZip(
     }
 
     const compressionMethod = b.readUInt16LE(cdPtr + 10);
+    const expectedCrc = b.readUInt32LE(cdPtr + 16);
     const compressedSize = b.readUInt32LE(cdPtr + 20);
     const uncompressedSize = b.readUInt32LE(cdPtr + 24);
     const fileNameLen = b.readUInt16LE(cdPtr + 28);
@@ -376,17 +377,20 @@ export function readZip(
     const localExtraLen = b.readUInt16LE(localHeaderOffset + 28);
     const dataOffset = localHeaderOffset + 30 + localNameLen + localExtraLen;
 
+    if (dataOffset + compressedSize > centralDirOffset) throw new Error('invalid_zip_archive: compressed data extends beyond file area');
     const dataSlice = buffer.subarray(dataOffset, dataOffset + compressedSize);
 
     let extractedData: Buffer;
     if (compressionMethod === 0) {
       extractedData = Buffer.from(dataSlice);
     } else if (compressionMethod === 8) {
-      extractedData = inflateRawSync(dataSlice);
+      extractedData = inflateRawSync(dataSlice, { maxOutputLength: Math.max(1, Math.min(uncompressedSize, maxTotalBytes)) });
     } else {
       throw new Error(`unsupported_zip_compression: method ${compressionMethod}`);
     }
 
+    if (extractedData.length !== uncompressedSize || crc32(extractedData) !== expectedCrc) throw new Error('invalid_zip_archive: size or CRC mismatch');
+    if (files.has(cleanPath)) throw new Error('invalid_zip_archive: duplicate path');
     files.set(cleanPath, extractedData);
   }
 

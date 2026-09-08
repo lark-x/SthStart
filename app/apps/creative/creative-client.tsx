@@ -328,7 +328,7 @@ export function CreativeClient() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f4f0e7] px-4 py-6 text-[#18201d] sm:px-8 md:px-12">
+    <main className="min-h-screen w-full bg-paper px-4 py-6 text-ink sm:px-8 md:px-12">
       <div className="mx-auto max-w-7xl space-y-5">
         <PageHeader
           backHref="/"
@@ -347,9 +347,13 @@ export function CreativeClient() {
             {pageError || (serviceError instanceof Error ? serviceError.message : String(serviceError))}
           </Alert>
         )}
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <details className="rounded-lg border border-border-default bg-surface p-3">
+          <summary className="cursor-pointer text-sm font-medium">生成服务 · {ready ? '当前模式已就绪' : '当前模式待配置'} · 查看连接详情</summary>
+          <div className="mt-3"><CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} /></div>
+        </details>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,.85fr)_minmax(0,1.3fr)]">
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 rounded-lg bg-[#f4f0e7] p-1" role="tablist" aria-label="生成模式">
+            <div className="flex flex-wrap gap-2 rounded-lg bg-paper p-1" role="tablist" aria-label="生成模式">
               {[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => (
                 <button
                   key={value}
@@ -357,7 +361,7 @@ export function CreativeClient() {
                   role="tab"
                   aria-selected={mode === value}
                   onClick={() => handleModeChange(value)}
-                  className={`flex min-w-[104px] flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-xs font-semibold transition-colors ${mode === value ? 'bg-[#18201d] text-[#f4f0e7] shadow-sm' : 'text-[#68716d] hover:bg-[#fffdf8] hover:text-[#18201d]'}`}
+                  className={`flex min-w-[104px] flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-xs font-semibold transition-colors ${mode === value ? 'bg-ink text-paper shadow-sm' : 'text-muted hover:bg-surface hover:text-ink'}`}
                 >
                   <Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}
                 </button>
@@ -397,9 +401,7 @@ export function CreativeClient() {
               />
             )}
           </div>
-          <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
-        </div>
-        <TaskList tasks={sortedTasks} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />
+          <div className="min-w-0 space-y-4">
         <MediaGallery
           artifacts={artifacts}
           total={artifactsTotal}
@@ -410,6 +412,10 @@ export function CreativeClient() {
           onPin={handlePin}
           onDelete={handleDelete}
         />
+          </div>
+        </div>
+        <TaskList tasks={sortedTasks} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />
+
       </div>
     </main>
   );

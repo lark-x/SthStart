@@ -29,18 +29,18 @@ export function RuntimeOverviewPanel({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-[#18201d] text-[#f4f0e7] border-none md:col-span-2">
+        <Card className="bg-ink text-paper border-none md:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#e45d35]">
+              <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent">
                 RUNTIME ENVIRONMENT
               </span>
               <Badge variant={allRunning ? 'running' : anyRunning ? 'warning' : 'stopped'}>
                 {allRunning ? '全部就绪' : anyRunning ? '部分运行' : '已停止'}
               </Badge>
             </div>
-            <CardTitle className="text-[#f4f0e7] text-2xl mt-1">邻舍运行栈</CardTitle>
-            <CardDescription className="text-[#f4f0e7]/70">
+            <CardTitle className="text-paper text-2xl mt-1">邻舍运行栈</CardTitle>
+            <CardDescription className="text-paper/70">
               本地微服务组合管理。支持独立启停、自动拉起与实时诊断。
             </CardDescription>
           </CardHeader>
@@ -60,7 +60,7 @@ export function RuntimeOverviewPanel({
               <Button
                 variant="secondary"
                 size="md"
-                className="border-white/20 text-[#f4f0e7] hover:bg-white/10"
+                className="border-white/20 text-paper hover:bg-white/10"
                 disabled={Boolean(busy) || !anyRunning}
                 onClick={onStopAll}
                 loading={busy === 'stop-all'}
@@ -73,7 +73,7 @@ export function RuntimeOverviewPanel({
                 href={launchUrl}
                 target={isLinsheRunning ? '_blank' : undefined}
                 rel="noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-[3px_12px_3px_3px] border border-white/20 text-[#f4f0e7] hover:bg-white/10 transition-colors ml-auto"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-[3px_12px_3px_3px] border border-white/20 text-paper hover:bg-white/10 transition-colors ml-auto"
               >
                 <span>打开邻舍界面</span>
                 <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -81,8 +81,8 @@ export function RuntimeOverviewPanel({
             </div>
 
             {overview?.linsheLlm.enabled && !overview.linsheLlm.ready && (
-              <div className="mt-4 flex items-start gap-2.5 rounded border border-[#e45d35]/30 bg-[#e45d35]/15 p-3 text-xs text-[#f4f0e7]">
-                <AlertTriangle className="h-4 w-4 text-[#e45d35] flex-shrink-0 mt-0.5" />
+              <div className="mt-4 flex items-start gap-2.5 rounded border border-accent/30 bg-accent/15 p-3 text-sm text-paper">
+                <AlertTriangle className="h-4 w-4 text-accent flex-shrink-0 mt-0.5" />
                 <div>
                   <strong>公共模型未完全就绪：</strong>
                   <span> 请在公共服务中配置生效文本模型，否则邻舍无法生成对话。</span>
@@ -94,17 +94,17 @@ export function RuntimeOverviewPanel({
 
         <Card className="flex flex-col justify-between">
           <div>
-            <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#68716d]">
+            <span className="text-sm font-bold tracking-[0.16em] uppercase text-muted">
               SERVICE HEALTH
             </span>
-            <div className="mt-3 font-serif text-5xl font-medium text-[#18201d]">
+            <div className="mt-3 font-serif text-5xl font-medium text-ink">
               {runningServices.length}
-              <span className="text-xl text-[#68716d] font-sans font-normal"> / {services.length}</span>
+              <span className="text-xl text-muted font-sans font-normal"> / {services.length}</span>
             </div>
-            <p className="mt-1 text-xs text-[#68716d]">当前运行中服务</p>
+            <p className="mt-1 text-sm text-muted">当前运行中服务</p>
           </div>
 
-          <div className="pt-4 border-t border-[rgb(24_32_29/10%)] text-xs text-[#68716d] space-y-1">
+          <div className="pt-4 border-t border-[rgb(24_32_29/10%)] text-sm text-muted space-y-1">
             <div className="flex justify-between">
               <span>最近异常:</span>
               <strong className={overview?.recentErrors ? 'text-[#c9674a]' : 'text-[#4e9b6b]'}>

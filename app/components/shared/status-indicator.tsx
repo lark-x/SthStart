@@ -16,7 +16,7 @@ export function StatusIndicator({
   const isError = status === 'offline' || status === 'error' || status === 'stopped';
 
   return (
-    <span className={cn('inline-flex items-center gap-2 text-xs font-medium', className)}>
+    <span className={cn('inline-flex items-center gap-2 text-sm font-medium', className)}>
       <span
         className={cn(
           'h-2 w-2 rounded-full',

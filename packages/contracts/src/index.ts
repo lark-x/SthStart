@@ -1302,6 +1302,7 @@ export const ActivityCheckpointSchema = Type.Object({
   contentRevisionId: Type.String(),
   mediaRevisionId: Type.Union([Type.String(), Type.Null()]),
   playbackRevisionId: Type.Union([Type.String(), Type.Null()]),
+  imageConfigRevisionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(),
 });
 export type ActivityCheckpoint = Static<typeof ActivityCheckpointSchema>;
@@ -1339,6 +1340,7 @@ export const MediaRevisionSchema = Type.Object({
   id: Type.String(),
   activityId: Type.String(),
   contentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   slotBindings: Type.Array(Type.Object({
     slotId: Type.String(),
     slotFingerprint: Type.String(),
@@ -1402,3 +1404,365 @@ export const ActivityJobSchema = Type.Object({
   updatedAt: Type.String(),
 });
 export type ActivityJob = Static<typeof ActivityJobSchema>;
+
+export const SourceOwnerKindSchema = Type.Union([
+  Type.Literal('content'),
+  Type.Literal('image_config'),
+  Type.Literal('recipe'),
+]);
+export type SourceOwnerKind = Static<typeof SourceOwnerKindSchema>;
+
+export const SourceEntityKindSchema = Type.Union([
+  Type.Literal('actor'),
+  Type.Literal('stage'),
+  Type.Literal('fact'),
+  Type.Literal('activity'),
+  Type.Literal('shot'),
+  Type.Literal('style'),
+  Type.Literal('override'),
+]);
+export type SourceEntityKind = Static<typeof SourceEntityKindSchema>;
+
+export const SourceRefSchema = Type.Object({
+  id: Type.String(),
+  activityId: Type.String(),
+  ownerKind: SourceOwnerKindSchema,
+  ownerRevisionId: Type.String(),
+  entityKind: SourceEntityKindSchema,
+  entityId: Type.String(),
+  fieldPath: Type.String(),
+  valueSnapshot: Type.Unknown(),
+  valueHash: Type.String(),
+  labelSnapshot: Type.String(),
+});
+export type SourceRef = Static<typeof SourceRefSchema>;
+
+export const PromptBlockKindSchema = Type.Union([
+  Type.Literal('identity'),
+  Type.Literal('appearance'),
+  Type.Literal('outfit'),
+  Type.Literal('scene'),
+  Type.Literal('action'),
+  Type.Literal('composition'),
+  Type.Literal('style'),
+  Type.Literal('negative'),
+  Type.Literal('supplement'),
+]);
+export type PromptBlockKind = Static<typeof PromptBlockKindSchema>;
+
+export const PromptBlockOriginSchema = Type.Union([
+  Type.Literal('source'),
+  Type.Literal('manual'),
+  Type.Literal('ai_derived'),
+]);
+export type PromptBlockOrigin = Static<typeof PromptBlockOriginSchema>;
+
+export const PromptBlockMappingPrecisionSchema = Type.Union([
+  Type.Literal('exact_block'),
+  Type.Literal('derived_block'),
+  Type.Literal('whole_prompt'),
+]);
+export type PromptBlockMappingPrecision = Static<typeof PromptBlockMappingPrecisionSchema>;
+
+export const PromptBlockSchema = Type.Object({
+  id: Type.String(),
+  kind: PromptBlockKindSchema,
+  actorIds: Type.Array(Type.String()),
+  sourceRefIds: Type.Array(Type.String()),
+  originalText: Type.String(),
+  renderedText: Type.String(),
+  origin: PromptBlockOriginSchema,
+  locked: Type.Boolean(),
+  mappingPrecision: PromptBlockMappingPrecisionSchema,
+});
+export type PromptBlock = Static<typeof PromptBlockSchema>;
+
+export const ReferenceInputRoleSchema = Type.Union([
+  Type.Literal('init_image'),
+  Type.Literal('identity'),
+  Type.Literal('outfit'),
+  Type.Literal('composition'),
+  Type.Literal('pose'),
+  Type.Literal('style'),
+  Type.Literal('mask'),
+]);
+export type ReferenceInputRole = Static<typeof ReferenceInputRoleSchema>;
+
+export const ImageTransformParamsSchema = Type.Object({
+  crop: Type.Optional(Type.Object({
+    x: Type.Number(),
+    y: Type.Number(),
+    width: Type.Number(),
+    height: Type.Number(),
+  })),
+  rotation: Type.Optional(Type.Number()),
+  targetWidth: Type.Optional(Type.Number()),
+  targetHeight: Type.Optional(Type.Number()),
+  interpolation: Type.Optional(Type.String()),
+});
+export type ImageTransformParams = Static<typeof ImageTransformParamsSchema>;
+
+export const ReferenceInputSchema = Type.Object({
+  referenceId: Type.String(),
+  assetKey: Type.String(),
+  artifactId: Type.String(),
+  sha256: Type.String(),
+  actorId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  role: ReferenceInputRoleSchema,
+  inputKey: Type.String(),
+  parentAttemptId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  transform: Type.Optional(ImageTransformParamsSchema),
+});
+export type ReferenceInput = Static<typeof ReferenceInputSchema>;
+
+export const SlotImageConfigSchema = Type.Object({
+  slotId: Type.String(),
+  shotType: Type.Optional(Type.String()),
+  composition: Type.Optional(Type.String()),
+  viewpoint: Type.Optional(Type.String()),
+  lighting: Type.Optional(Type.String()),
+  aspectRatio: Type.Optional(Type.String()),
+  supplementPrompt: Type.Optional(Type.String()),
+  negativePrompt: Type.Optional(Type.String()),
+  referenceAssetKeys: Type.Optional(Type.Array(Type.String())),
+  workflowId: Type.Optional(Type.String()),
+  workflowVersion: Type.Optional(Type.Number()),
+  params: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+export type SlotImageConfig = Static<typeof SlotImageConfigSchema>;
+
+export const ImageConfigDocumentSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  stylePreset: Type.String(),
+  globalStylePrompt: Type.String(),
+  globalNegativePrompt: Type.String(),
+  defaultWorkflowId: Type.Optional(Type.String()),
+  defaultWorkflowVersion: Type.Optional(Type.Number()),
+  defaultParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  slotConfigs: Type.Array(SlotImageConfigSchema),
+});
+export type ImageConfigDocument = Static<typeof ImageConfigDocumentSchema>;
+
+export const ImageConfigDraftSchema = Type.Object({
+  activityId: Type.String(),
+  draftVersion: Type.Number(),
+  document: ImageConfigDocumentSchema,
+  baseRevisionId: Type.Union([Type.String(), Type.Null()]),
+  updatedAt: Type.String(),
+});
+export type ImageConfigDraft = Static<typeof ImageConfigDraftSchema>;
+
+export const ImageConfigRevisionSchema = Type.Object({
+  id: Type.String(),
+  activityId: Type.String(),
+  parentId: Type.Union([Type.String(), Type.Null()]),
+  document: ImageConfigDocumentSchema,
+  hash: Type.String(),
+  createdAt: Type.String(),
+});
+export type ImageConfigRevision = Static<typeof ImageConfigRevisionSchema>;
+
+export const PromptRecipeOverrideSchema = Type.Object({
+  id: Type.String(),
+  fieldPath: Type.String(),
+  overrideText: Type.String(),
+  reason: Type.Optional(Type.String()),
+});
+export type PromptRecipeOverride = Static<typeof PromptRecipeOverrideSchema>;
+
+export const PromptRecipeSchema = Type.Object({
+  id: Type.String(),
+  activityId: Type.String(),
+  contentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.String(),
+  slotId: Type.String(),
+  slotFingerprint: Type.String(),
+  sourceRefs: Type.Array(SourceRefSchema),
+  blocks: Type.Array(PromptBlockSchema),
+  references: Type.Array(ReferenceInputSchema),
+  overrides: Type.Array(PromptRecipeOverrideSchema),
+  recipeHash: Type.String(),
+  schemaVersion: Type.Literal(1),
+  createdAt: Type.String(),
+});
+export type PromptRecipe = Static<typeof PromptRecipeSchema>;
+
+export const ImageExecutionPlanSchema = Type.Object({
+  purpose: Type.String(),
+  workflowId: Type.String(),
+  workflowVersion: Type.Number(),
+  engineId: Type.String(),
+  definitionHash: Type.String(),
+  nodeBindings: Type.Record(Type.String(), Type.Array(Type.String())),
+});
+export type ImageExecutionPlan = Static<typeof ImageExecutionPlanSchema>;
+
+export const PromptCompilationSchema = Type.Object({
+  executionPlan: Type.Optional(Type.Union([ImageExecutionPlanSchema, Type.Null()])),
+  id: Type.String(),
+  recipeId: Type.String(),
+  compilerVersion: Type.String(),
+  templateId: Type.String(),
+  templateVersion: Type.String(),
+  channels: Type.Record(Type.String(), Type.String()),
+  effectiveParams: Type.Record(Type.String(), Type.Unknown()),
+  executionPlanHash: Type.String(),
+  createdAt: Type.String(),
+});
+export type PromptCompilation = Static<typeof PromptCompilationSchema>;
+
+export const GenerationAttemptStatusSchema = Type.Union([
+  Type.Literal('preparing'),
+  Type.Literal('submitting'),
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled'),
+  Type.Literal('result_unknown'),
+]);
+export type GenerationAttemptStatus = Static<typeof GenerationAttemptStatusSchema>;
+
+export const AttemptOutputSchema = Type.Object({
+  outputName: Type.String(),
+  sortOrder: Type.Number(),
+  artifactId: Type.String(),
+  assetKey: Type.String(),
+  mediaType: Type.String(),
+  byteSize: Type.Number(),
+  sha256: Type.String(),
+  width: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+  height: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+});
+export type AttemptOutput = Static<typeof AttemptOutputSchema>;
+
+export const GenerationAttemptSchema = Type.Object({
+  id: Type.String(),
+  activityId: Type.String(),
+  baseContentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.String(),
+  slotId: Type.String(),
+  slotFingerprint: Type.String(),
+  recipeId: Type.String(),
+  compilationId: Type.String(),
+  recipeHash: Type.String(),
+  executionPlanHash: Type.String(),
+  taskId: Type.String(),
+  status: GenerationAttemptStatusSchema,
+  actualSeed: Type.Number(),
+  retryOfAttemptId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  parentAttemptIds: Type.Array(Type.String()),
+  idempotencyKey: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  businessRequestHash: Type.String(),
+  outputs: Type.Array(AttemptOutputSchema),
+  errorCode: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  errorMessage: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type GenerationAttempt = Static<typeof GenerationAttemptSchema>;
+
+export const ExecutionSnapshotSchema = Type.Object({
+  attemptId: Type.String(),
+  phase: Type.Union([Type.Literal('prepared'), Type.Literal('uploaded'), Type.Literal('dispatched'), Type.Literal('completed')]),
+  actualInputs: Type.Record(Type.String(), Type.Unknown()),
+  uploadedFileMappings: Type.Record(Type.String(), Type.String()),
+  requestSummary: Type.Record(Type.String(), Type.Unknown()),
+  createdAt: Type.String(),
+});
+export type ExecutionSnapshot = Static<typeof ExecutionSnapshotSchema>;
+
+export const AssetLineageEdgeSchema = Type.Object({
+  id: Type.String(),
+  activityId: Type.String(),
+  childAssetKey: Type.String(),
+  parentAssetKey: Type.String(),
+  attemptId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  role: Type.String(),
+  transformParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  createdAt: Type.String(),
+});
+export type AssetLineageEdge = Static<typeof AssetLineageEdgeSchema>;
+
+export const SourceDependencySchema = Type.Object({
+  activityId: Type.String(),
+  slotId: Type.String(),
+  recipeId: Type.String(),
+  entityKind: SourceEntityKindSchema,
+  entityId: Type.String(),
+  fieldPath: Type.String(),
+  valueHash: Type.String(),
+  updatedAt: Type.String(),
+});
+export type SourceDependency = Static<typeof SourceDependencySchema>;
+
+export const AffectedSlotPreviewSchema = Type.Object({
+  slotId: Type.String(),
+  reason: Type.String(),
+  fieldPath: Type.String(),
+  oldValueHash: Type.String(),
+  newValueHash: Type.String(),
+  currentAssetKey: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  needsReview: Type.Boolean(),
+  hasActiveAttempt: Type.Boolean(),
+});
+export type AffectedSlotPreview = Static<typeof AffectedSlotPreviewSchema>;
+
+export const ImpactPreviewSchema = Type.Object({
+  activityId: Type.String(),
+  changedEntityKind: SourceEntityKindSchema,
+  changedEntityId: Type.String(),
+  fieldPath: Type.String(),
+  oldValue: Type.Unknown(),
+  newValue: Type.Unknown(),
+  affectedSlots: Type.Array(AffectedSlotPreviewSchema),
+});
+export type ImpactPreview = Static<typeof ImpactPreviewSchema>;
+
+export const ImageCapabilityDescriptorSchema = Type.Object({
+  purpose: Type.String(),
+  configured: Type.Boolean(),
+  workflowValid: Type.Boolean(),
+  readiness: Type.Union([
+    Type.Literal('ready'),
+    Type.Literal('unreachable'),
+    Type.Literal('incompatible'),
+    Type.Literal('unknown'),
+  ]),
+  reasonCode: Type.Optional(Type.String()),
+  workflowId: Type.Optional(Type.String()),
+  workflowVersion: Type.Optional(Type.Number()),
+  engineId: Type.Optional(Type.String()),
+  engineKind: Type.Optional(Type.String()),
+  supportedInputs: Type.Array(Type.String()),
+  supportedParameters: Type.Array(Type.String()),
+  maxInputArtifacts: Type.Number(),
+});
+export type ImageCapabilityDescriptor = Static<typeof ImageCapabilityDescriptorSchema>;
+
+export const ActivityCapabilitiesResponseSchema = Type.Object({
+  llm: Type.Boolean(),
+  llmProfile: Type.Union([
+    Type.Object({ id: Type.String(), name: Type.String() }),
+    Type.Null(),
+  ]),
+  media: Type.Boolean(),
+  images: Type.Object({
+    textToImage: ImageCapabilityDescriptorSchema,
+    imageToImage: ImageCapabilityDescriptorSchema,
+  }),
+  templates: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      version: Type.String(),
+    })
+  ),
+  limits: Type.Object({
+    maxActors: Type.Number(),
+    maxStages: Type.Number(),
+    maxRecords: Type.Number(),
+    maxDocumentBytes: Type.Number(),
+  }),
+});
+export type ActivityCapabilitiesResponse = Static<typeof ActivityCapabilitiesResponseSchema>;

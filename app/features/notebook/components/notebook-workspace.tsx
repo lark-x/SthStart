@@ -1,4 +1,5 @@
 'use client';
+import { AppSwitcher } from '@/app/components/shared/app-switcher';
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
@@ -199,25 +200,25 @@ export function NotebookWorkspace({
     : 'flex w-full lg:w-[300px] lg:min-w-[300px]';
 
   return (
-    <main className="notebook-workspace-shell notebook-list-page min-h-screen w-full bg-[#f4f0e7] text-[#18201d] flex flex-col">
+    <main className="notebook-workspace-shell notebook-list-page min-h-screen w-full bg-paper text-ink flex flex-col">
       {/* Top Global Header Bar */}
-      <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-6 py-2 bg-[#f4f0e7]/95 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
+      <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
         {/* Top Left: Navigation & Sidebar Drawer Toggle */}
         <div className="flex items-center gap-3">
           <Link
             href="/"
-            className="notebook-back-home inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+            className="notebook-back-home inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>返回门户首页</span>
           </Link>
-          <span className="text-xs text-[#68716d]/30 hidden sm:inline">|</span>
+          <span className="text-sm text-muted/30 hidden sm:inline">|</span>
 
           {/* Toggle sidebar button (Desktop Left) */}
           <button
             type="button"
             onClick={toggleCollapsed}
-            className="hidden lg:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px_8px_3px_3px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] hover:bg-white text-xs font-semibold text-[#68716d] hover:text-[#18201d] transition-colors shadow-2xs cursor-pointer"
+            className="hidden lg:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px_8px_3px_3px] border border-[rgb(24_32_29/14%)] bg-surface hover:bg-white text-sm font-semibold text-muted hover:text-ink transition-colors shadow-2xs cursor-pointer"
             title={collapsed ? '展开笔记列表' : '收起笔记列表'}
             aria-label={collapsed ? '展开笔记列表' : '收起笔记列表'}
           >
@@ -225,8 +226,8 @@ export function NotebookWorkspace({
             <span>{collapsed ? '展开列表' : '收起列表'}</span>
           </button>
 
-          <h1 className="font-serif text-sm font-semibold text-[#18201d] flex items-center gap-2">
-            <span className="h-5 w-5 rounded-full bg-[#6b7160] text-[#f4f0e7] flex items-center justify-center font-serif text-xs font-bold">
+          <h1 className="font-serif text-sm font-semibold text-ink flex items-center gap-2">
+            <span className="h-5 w-5 rounded-full bg-[#6b7160] text-paper flex items-center justify-center font-serif text-sm font-bold">
               拾
             </span>
             <span>创作笔记</span>
@@ -235,6 +236,7 @@ export function NotebookWorkspace({
 
         {/* Top Right: Actions */}
         <div className="page-header-actions flex items-center gap-2">
+          <AppSwitcher />
           <EyeCareToggle />
           <Link
             href="/apps/notebook/new"
@@ -244,7 +246,7 @@ export function NotebookWorkspace({
                 handleStartNew('diary');
               }
             }}
-            className="notebook-new-note-action inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[3px_10px_3px_3px] bg-[#e45d35] text-white hover:bg-[#b83b1b] font-semibold text-xs transition-colors shadow-xs cursor-pointer"
+            className="notebook-new-note-action inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-[3px_10px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors shadow-xs cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>新建记录</span>
@@ -262,17 +264,17 @@ export function NotebookWorkspace({
           }
         >
           {/* List Search & Filter Toolbar */}
-          <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-[rgb(24_32_29/8%)] bg-[#fffdf8]/70">
+          <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-[rgb(24_32_29/8%)] bg-surface/70">
             <div className="relative w-full">
               <Search
-                className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#68716d]"
+                className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
                 aria-hidden="true"
               />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="搜索标题、正文或标签…"
-                className="pl-7.5 h-8 bg-transparent border-[rgb(24_32_29/12%)] text-xs placeholder:text-[#68716d]/50 focus:bg-white"
+                className="pl-7.5 h-8 bg-transparent border-[rgb(24_32_29/12%)] text-sm placeholder:text-muted/50 focus:bg-white"
               />
             </div>
 
@@ -290,10 +292,10 @@ export function NotebookWorkspace({
                     type="button"
                     aria-pressed={isActive}
                     onClick={() => setSelectedFilter(opt.value)}
-                    className={"px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors cursor-pointer " + (
+                    className={"px-2.5 py-1 rounded-full text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer " + (
                       isActive
-                        ? 'bg-[#18201d] text-[#f4f0e7]'
-                        : 'text-[#68716d] hover:text-[#18201d] hover:bg-[rgb(24_32_29/6%)]'
+                        ? 'bg-ink text-paper'
+                        : 'text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)]'
                     )}
                   >
                     {opt.label}
@@ -310,7 +312,7 @@ export function NotebookWorkspace({
                 {[1, 2, 3, 4, 5].map((n) => (
                   <div
                     key={n}
-                    className="p-3 rounded-lg border border-[rgb(24_32_29/8%)] bg-[#fffdf8] space-y-2"
+                    className="p-3 rounded-lg border border-[rgb(24_32_29/8%)] bg-surface space-y-2"
                   >
                     <Skeleton className="h-3 w-1/3" />
                     <Skeleton className="h-4 w-3/4" />
@@ -328,12 +330,12 @@ export function NotebookWorkspace({
                     aria-current={isSelected ? 'page' : undefined}
                     className={"notebook-list-item group relative p-3 rounded-[3px_10px_3px_3px] border transition-all duration-150 cursor-pointer " + (
                       isSelected
-                        ? 'bg-[#fffdf8] border-[#e45d35] shadow-xs ring-1 ring-[#e45d35]/30'
-                        : 'bg-[#fffdf8]/60 border-[rgb(24_32_29/8%)] hover:bg-[#fffdf8] hover:border-[rgb(24_32_29/18%)]'
+                        ? 'bg-surface border-accent shadow-xs ring-1 ring-accent/30'
+                        : 'bg-surface/60 border-[rgb(24_32_29/8%)] hover:bg-surface hover:border-[rgb(24_32_29/18%)]'
                     )}
                   >
-                    <div className="flex items-center justify-between text-[10px] text-[#68716d] mb-1">
-                      <span className="font-semibold text-[#b83b1b]">
+                    <div className="flex items-center justify-between text-sm text-muted mb-1">
+                      <span className="font-semibold text-accent-dark">
                         {kindLabels[item.kind]}
                       </span>
                       <time className="font-mono text-[9.5px]">{formatDate(item.updatedAt)}</time>
@@ -342,26 +344,26 @@ export function NotebookWorkspace({
                     <h4
                       className={"font-serif text-sm font-semibold truncate transition-colors " + (
                         isSelected
-                          ? 'text-[#18201d]'
-                          : 'text-[#18201d] group-hover:text-[#e45d35]'
+                          ? 'text-ink'
+                          : 'text-ink group-hover:text-accent'
                       )}
                     >
                       {item.title || '未命名笔记'}
                     </h4>
 
-                    <p className="mt-1 text-[11px] text-[#68716d] line-clamp-2 leading-relaxed">
+                    <p className="mt-1 text-sm text-muted line-clamp-2 leading-relaxed">
                       {item.summary || '写下一段文字记录…'}
                     </p>
 
-                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[rgb(24_32_29/6%)] text-[10px] text-[#68716d]">
-                      <span className="text-[9.5px] font-medium text-[#68716d]/80">
+                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[rgb(24_32_29/6%)] text-sm text-muted">
+                      <span className="text-[9.5px] font-medium text-muted/80">
                         {stageLabels[item.stage]}
                       </span>
                       <div className="flex items-center gap-1">
                         {item.tags.slice(0, 2).map((t) => (
                           <span
                             key={t}
-                            className="bg-[rgb(24_32_29/5%)] px-1.5 py-0.2 rounded text-[9px]"
+                            className="bg-[rgb(24_32_29/5%)] px-1.5 py-0.2 rounded text-sm"
                           >
                             #{t}
                           </span>
@@ -378,12 +380,12 @@ export function NotebookWorkspace({
                 );
               })
             ) : (
-              <div className="p-6 text-center text-xs text-[#68716d] space-y-2">
+              <div className="p-6 text-center text-sm text-muted space-y-2">
                 <p>{query ? '未搜索到相关笔记' : '暂无此类记录'}</p>
                 <button
                   type="button"
                   onClick={() => handleStartNew(selectedFilter === 'all' ? 'diary' : selectedFilter)}
-                  className="text-[#e45d35] font-semibold hover:underline cursor-pointer"
+                  className="text-accent font-semibold hover:underline cursor-pointer"
                 >
                   ＋ 新建记录
                 </button>
@@ -395,22 +397,22 @@ export function NotebookWorkspace({
         {/* Right Column: Detail Canvas Pane */}
         <section
           className={
-            "notebook-detail-pane flex-1 min-w-0 bg-[#fffdf8] flex flex-col min-h-0 overflow-y-auto " +
+            "notebook-detail-pane flex-1 min-w-0 bg-surface flex flex-col min-h-0 overflow-y-auto " +
             (isEditingOnMobile ? 'flex' : 'hidden lg:flex')
           }
         >
           {/* Mobile Back Button Bar */}
           {isEditingOnMobile && (
-            <div className="lg:hidden flex items-center justify-between px-4 py-2 bg-[#f4f0e7] border-b border-[rgb(24_32_29/10%)]">
+            <div className="lg:hidden flex items-center justify-between px-4 py-2 bg-paper border-b border-[rgb(24_32_29/10%)]">
               <button
                 type="button"
                 onClick={handleExitEditor}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] cursor-pointer"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-accent cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4" />
                 <span>返回笔记列表</span>
               </button>
-              <span className="text-xs text-[#68716d] font-medium">编辑模式</span>
+              <span className="text-sm text-muted font-medium">编辑模式</span>
             </div>
           )}
 

@@ -76,26 +76,26 @@ export function ProviderForm({
   };
 
   return (
-    <Card className="border-[rgb(24_32_29/14%)] bg-[#fffdf8]">
+    <Card className="border-[rgb(24_32_29/14%)] bg-surface">
       <form onSubmit={handleSubmit(onSubmit)} className="settings-form llm-editor space-y-4">
         <div className="editor-title flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b] eyebrow">
+            <p className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark eyebrow">
               {cloneSourceId ? 'CLONE TEMPLATE' : editingId ? 'EDIT TEMPLATE' : 'NEW TEMPLATE'}
             </p>
-            <h3 className="font-serif text-2xl font-medium text-[#18201d]">
+            <h3 className="font-serif text-2xl font-medium text-ink">
               {cloneSourceId ? '复制为独立模板' : editingId ? '编辑 LLM 模板' : '添加 LLM 模板'}
             </h3>
           </div>
           {(editingId || cloneSourceId) && (
-            <button type="button" className="text-button text-xs text-[#68716d] hover:text-[#18201d]" onClick={onReset}>
+            <button type="button" className="text-button text-sm text-muted hover:text-ink" onClick={onReset}>
               取消
             </button>
           )}
         </div>
 
         <div className="form-columns grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="block text-xs font-semibold text-[#18201d]">
+          <label className="block text-sm font-semibold text-ink">
             <span>配置 ID</span>
             <Input
               {...register('id', {
@@ -111,13 +111,13 @@ export function ProviderForm({
               error={errors.id?.message}
               className="mt-1"
             />
-            {errors.id?.message && <small id="provider-id-error" role="alert" className="text-[10px] text-[#c9674a]">{errors.id.message}</small>}
-            <small className="text-[10px] text-[#68716d] block mt-0.5 font-normal">
+            {errors.id?.message && <small id="provider-id-error" role="alert" className="text-sm text-[#c9674a]">{errors.id.message}</small>}
+            <small className="text-sm text-muted block mt-0.5 font-normal">
               以小写字母开头，只能使用小写字母、数字和连字符。
             </small>
           </label>
 
-          <label className="block text-xs font-semibold text-[#18201d]">
+          <label className="block text-sm font-semibold text-ink">
             <span>显示名称</span>
             <Input
               {...register('name', { required: '请输入显示名称' })}
@@ -127,10 +127,10 @@ export function ProviderForm({
               error={errors.name?.message}
               className="mt-1"
             />
-            {errors.name?.message && <small id="provider-name-error" role="alert" className="text-[10px] text-[#c9674a]">{errors.name.message}</small>}
+            {errors.name?.message && <small id="provider-name-error" role="alert" className="text-sm text-[#c9674a]">{errors.name.message}</small>}
           </label>
 
-          <label className="span-two col-span-full block text-xs font-semibold text-[#18201d]">
+          <label className="span-two col-span-full block text-sm font-semibold text-ink">
             <span>API Base URL</span>
             <Input
               {...register('baseUrl', { required: '请输入 API Base URL', pattern: { value: /^https?:\/\//, message: '请输入有效的 HTTP(S) 地址' } })}
@@ -141,11 +141,11 @@ export function ProviderForm({
               error={errors.baseUrl?.message}
               className="mt-1"
             />
-            {errors.baseUrl?.message && <small id="provider-base-url-error" role="alert" className="text-[10px] text-[#c9674a]">{errors.baseUrl.message}</small>}
+            {errors.baseUrl?.message && <small id="provider-base-url-error" role="alert" className="text-sm text-[#c9674a]">{errors.baseUrl.message}</small>}
           </label>
 
           {!cloneSourceId && (
-            <label className="span-two col-span-full block text-xs font-semibold text-[#18201d]">
+            <label className="span-two col-span-full block text-sm font-semibold text-ink">
               <span>API Key</span>
               <Input
                 {...register('secret')}
@@ -157,7 +157,7 @@ export function ProviderForm({
             </label>
           )}
 
-          <label className="span-two col-span-full block text-xs font-semibold text-[#18201d] model-picker-label">
+          <label className="span-two col-span-full block text-sm font-semibold text-ink model-picker-label">
             <span>模型 ID</span>
             <div className="model-picker-row flex gap-2 mt-1">
               <Input
@@ -170,7 +170,7 @@ export function ProviderForm({
                 className="flex-1"
               />
               {errors.model?.message && (
-                <small id="provider-model-error" role="alert" className="text-[10px] text-[#c9674a]">
+                <small id="provider-model-error" role="alert" className="text-sm text-[#c9674a]">
                   {errors.model.message}
                 </small>
               )}
@@ -178,7 +178,7 @@ export function ProviderForm({
                 type="button"
                 onClick={handleDiscover}
                 disabled={discovering}
-                className="min-h-[42px] px-4 rounded-[3px_12px_3px_3px] border border-[rgb(24_32_29/18%)] bg-[#fffdf8] hover:bg-[rgb(24_32_29/6%)] text-xs font-medium text-[#18201d] cursor-pointer transition-colors"
+                className="min-h-[42px] px-4 rounded-[3px_12px_3px_3px] border border-[rgb(24_32_29/18%)] bg-surface hover:bg-[rgb(24_32_29/6%)] text-sm font-medium text-ink cursor-pointer transition-colors"
               >
                 {discovering ? '正在获取…' : '获取模型'}
               </button>
@@ -190,7 +190,7 @@ export function ProviderForm({
             </datalist>
           </label>
 
-          <label className="block text-xs font-semibold text-[#18201d]">
+          <label className="block text-sm font-semibold text-ink">
             <span>思考参数</span>
             <Select
               {...register('thinkingMode')}
@@ -203,11 +203,11 @@ export function ProviderForm({
           </label>
 
           <div className="flex items-center pt-6">
-            <label className="inline-check flex items-center gap-2 cursor-pointer text-xs font-medium text-[#18201d]">
+            <label className="inline-check flex items-center gap-2 cursor-pointer text-sm font-medium text-ink">
               <input
                 {...register('enabled')}
                 type="checkbox"
-                className="h-4 w-4 rounded border-[rgb(24_32_29/24%)] text-[#e45d35] accent-[#e45d35]"
+                className="h-4 w-4 rounded border-[rgb(24_32_29/24%)] text-accent accent-accent"
               />
               <span>启用此配置</span>
             </label>
@@ -215,23 +215,23 @@ export function ProviderForm({
         </div>
 
         <fieldset className="capability-picker p-3.5 rounded border border-[rgb(24_32_29/12%)] space-y-2">
-          <legend className="text-xs font-bold text-[#68716d] px-1">模型能力</legend>
+          <legend className="text-sm font-bold text-muted px-1">模型能力</legend>
           <div className="flex gap-6">
-            <label className="flex items-center gap-2 text-xs text-[#18201d] cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
               <input
                 type="checkbox"
                 checked={capabilities.includes('text')}
                 onChange={() => toggleCapability('text')}
-                className="h-4 w-4 accent-[#e45d35]"
+                className="h-4 w-4 accent-accent"
               />
               <span>文本</span>
             </label>
-            <label className="flex items-center gap-2 text-xs text-[#18201d] cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
               <input
                 type="checkbox"
                 checked={capabilities.includes('multimodal')}
                 onChange={() => toggleCapability('multimodal')}
-                className="h-4 w-4 accent-[#e45d35]"
+                className="h-4 w-4 accent-accent"
               />
               <span>多模态（文本＋图片输入）</span>
             </label>
@@ -240,24 +240,24 @@ export function ProviderForm({
 
         {!cloneSourceId && (
           <details className="pt-2">
-            <summary className="text-xs font-semibold text-[#68716d] cursor-pointer hover:text-[#18201d]">
+            <summary className="text-sm font-semibold text-muted cursor-pointer hover:text-ink">
               高级请求设置
             </summary>
             <div className="form-columns advanced-fields grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
-              <label className="block text-[11px] text-[#68716d]">
+              <label className="block text-sm text-muted">
                 <span>自定义请求头 JSON</span>
                 <Textarea
                   {...register('headers')}
                   rows={3}
-                  className="mt-1 font-mono text-xs"
+                  className="mt-1 font-mono text-sm"
                 />
               </label>
-              <label className="block text-[11px] text-[#68716d]">
+              <label className="block text-sm text-muted">
                 <span>额外请求参数 JSON</span>
                 <Textarea
                   {...register('extraBody')}
                   rows={3}
-                  className="mt-1 font-mono text-xs"
+                  className="mt-1 font-mono text-sm"
                 />
               </label>
             </div>
@@ -269,7 +269,7 @@ export function ProviderForm({
             {cloneSourceId ? '创建独立副本' : editingId ? '保存修改' : '保存模板配置'}
           </Button>
         </div>
-        {isDirty && <p className="text-right text-[10px] text-[#68716d]">有未保存的修改</p>}
+        {isDirty && <p className="text-right text-sm text-muted">有未保存的修改</p>}
       </form>
     </Card>
   );

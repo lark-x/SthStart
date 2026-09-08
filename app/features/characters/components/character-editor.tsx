@@ -1,4 +1,5 @@
 'use client';
+import { AppSwitcher } from '@/app/components/shared/app-switcher';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -443,17 +444,17 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   if (characterId && !detailData) {
     if (detailError) {
       return (
-        <main className="min-h-screen bg-[#f4f0e7] text-[#18201d]">
+        <main className="min-h-screen bg-paper text-ink">
           <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="font-serif text-lg font-semibold">角色加载失败</p>
-            <p className="max-w-sm text-xs text-[#68716d]">
+            <p className="max-w-sm text-sm text-muted">
               {detailError instanceof Error ? detailError.message : '无法加载该角色，请稍后重试。'}
             </p>
             <div className="flex items-center gap-2 pt-1">
               <Button size="sm" variant="outline" onClick={() => void refetchDetail()}>重试</Button>
               <Link
                 href="/apps/characters"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                 <span>返回资料库</span>
@@ -464,7 +465,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       );
     }
     return (
-      <main className="min-h-screen bg-[#f4f0e7] text-[#18201d]">
+      <main className="min-h-screen bg-paper text-ink">
         <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 sm:px-8">
           <Skeleton className="h-8 w-1/3" />
           <Skeleton className="h-40 w-full" />
@@ -477,19 +478,19 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const saving = status === 'saving';
 
   return (
-    <main className="min-h-screen bg-[#f4f0e7] text-[#18201d]">
+    <main className="min-h-screen bg-paper text-ink">
       {/* Sticky Header */}
-      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 sm:px-8 py-3.5 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
+      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 sm:px-8 py-3.5 bg-paper/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/apps/characters"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#68716d] hover:text-[#e45d35] transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span>资料库</span>
           </Link>
-          <span className="text-xs text-[#68716d]">|</span>
-          <span className="min-w-0 truncate text-xs text-[#68716d]">
+          <span className="text-sm text-muted">|</span>
+          <span className="min-w-0 truncate text-sm text-muted">
             {status === 'saving'
               ? '正在自动保存…'
               : status === 'dirty'
@@ -503,6 +504,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <AppSwitcher />
           <EyeCareToggle />
           <Button
             size="sm"
@@ -550,7 +552,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Navigation */}
         <aside className="lg:col-span-3 space-y-5 lg:sticky lg:top-20">
-          <div className="flex items-center gap-3.5 p-3.5 rounded-[4px_16px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/12%)]">
+          <div className="flex items-center gap-3.5 p-3.5 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/12%)]">
             <button
               type="button"
               onClick={() => characterId && avatarInputRef.current?.click()}
@@ -566,10 +568,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               )}
             </button>
             <div className="min-w-0">
-              <h1 className="font-serif text-lg font-medium text-[#18201d] truncate">
+              <h1 className="font-serif text-lg font-medium text-ink truncate">
                 {draft.displayName || '新角色草稿'}
               </h1>
-              <p className="text-xs text-[#68716d] truncate">
+              <p className="text-sm text-muted truncate">
                 {draft.work || draft.world || '尚未设置作品'}
               </p>
             </div>
@@ -590,10 +592,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   role="tab"
                   aria-selected={isActive}
                   onClick={() => setActiveSection(item.id)}
-                  className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
+                  className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
                     isActive
-                      ? 'bg-[#18201d] text-[#f4f0e7]'
-                      : 'text-[#68716d] hover:bg-[rgb(24_32_29/6%)] hover:text-[#18201d]'
+                      ? 'bg-ink text-paper'
+                      : 'text-muted hover:bg-[rgb(24_32_29/6%)] hover:text-ink'
                   }`}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
@@ -607,14 +609,14 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         {/* Center Main Editor */}
         <div className="lg:col-span-6 space-y-6">
           {/* AI Extraction Assist */}
-          <div className="p-4 rounded-[4px_18px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] space-y-3">
-            <div className="flex items-center gap-2 text-[#e45d35]">
+          <details className="p-4 rounded-[4px_18px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface space-y-3">
+            <summary className="flex cursor-pointer items-center gap-2 text-accent">
               <Sparkles className="h-4 w-4" />
-              <strong className="text-xs font-bold uppercase tracking-wider">
+              <strong className="text-sm font-bold uppercase tracking-wider">
                 智能角色草稿提取
               </strong>
-            </div>
-            <p className="text-xs text-[#68716d] leading-relaxed">
+            </summary>
+            <p className="text-sm text-muted leading-relaxed">
               输入角色名或人物背景片段，系统将自动生成结构化草稿；默认联网检索公开资料并保留原始出处供复核，可勾选下方开关关闭联网。
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -622,7 +624,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 placeholder="例如：芙宁娜（原神），保留她表面戏剧化、内心敏感的反差"
-                className="flex-1 min-h-[38px] rounded border border-[rgb(24_32_29/18%)] bg-[#fffdf8] px-3 py-1 text-xs text-[#18201d] placeholder:text-[#68716d]/60 outline-none focus:border-[#e45d35]"
+                className="flex-1 min-h-[38px] rounded border border-[rgb(24_32_29/18%)] bg-surface px-3 py-1 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-accent"
               />
               <Button
                 size="sm"
@@ -634,14 +636,14 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 <span>生成草稿</span>
               </Button>
             </div>
-            <label className="flex items-center gap-2 text-xs text-[#68716d] cursor-pointer select-none">
-              <input type="checkbox" checked={useWeb} onChange={(e) => setUseWeb(e.target.checked)} className="accent-[#e45d35]" />
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
+              <input type="checkbox" checked={useWeb} onChange={(e) => setUseWeb(e.target.checked)} className="accent-accent" />
               联网检索公开资料（关闭时仅根据描述生成草稿，不产生外部请求）
             </label>
-          </div>
+          </details>
 
           {/* Section Panels */}
-          <div className="p-6 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] shadow-sm">
+          <div className="p-6 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface shadow-sm">
             {activeSection === 'identity' && (
               <IdentitySection
                 draft={draft}
@@ -735,8 +737,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         {/* Right Preview Card */}
-        <aside className="lg:col-span-3 lg:sticky lg:top-20 hidden lg:block">
-          <div className="p-4 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] shadow-sm space-y-3">
+        <aside className="lg:col-span-3 lg:sticky lg:top-20 self-start">
+          <div className="p-4 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface shadow-sm space-y-3">
             <div className="relative aspect-4/5 w-full rounded-[3px_14px_3px_3px] overflow-hidden bg-[#777865] flex items-center justify-center text-white font-serif text-5xl shadow-inner">
               {detailData?.avatarUrl ? (
                 <Image
@@ -751,14 +753,19 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               )}
             </div>
 
+            <div className="rounded bg-surface-muted p-3 text-sm space-y-2">
+              <strong>资料检查</strong>
+              {[['名字', draft.displayName, 'identity'], ['简介', draft.summary, 'identity'], ['外貌', draft.appearance.description, 'appearance'], ['说话语气', draft.speech.tone, 'personality']].map(([label, value, section]) =>
+                !value?.trim() && <button type="button" key={label} onClick={() => setActiveSection(section as Section)} className="block text-accent-dark underline">补充{label}</button>)}
+            </div>
             <div>
-              <span className="text-[9px] uppercase font-bold tracking-widest text-[#68716d] block truncate">
+              <span className="text-sm uppercase font-bold tracking-widest text-muted block truncate">
                 {draft.work || draft.world || '原创世界'}
               </span>
-              <h3 className="font-serif text-xl font-medium text-[#18201d] truncate mt-0.5">
+              <h3 className="font-serif text-xl font-medium text-ink truncate mt-0.5">
                 {draft.displayName || '未命名角色'}
               </h3>
-              <p className="text-xs text-[#68716d] line-clamp-3 leading-relaxed mt-1">
+              <p className="text-sm text-muted line-clamp-3 leading-relaxed mt-1">
                 {draft.summary || draft.identity || '此处将实时展示角色卡片预览。'}
               </p>
             </div>
@@ -767,7 +774,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               {draft.personality.slice(0, 4).map((trait) => (
                 <span
                   key={trait}
-                  className="text-[9px] bg-[rgb(24_32_29/6%)] text-[#68716d] px-2 py-0.5 rounded"
+                  className="text-sm bg-[rgb(24_32_29/6%)] text-muted px-2 py-0.5 rounded"
                 >
                   {trait.slice(0, 10)}
                 </span>

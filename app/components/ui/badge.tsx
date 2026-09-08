@@ -3,22 +3,22 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
 export const badgeVariants = cva(
-  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium tracking-wide transition-colors',
+  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-sm font-medium tracking-wide transition-colors',
   {
     variants: {
       variant: {
-        default: 'bg-[rgb(24_32_29/8%)] text-[#18201d]',
+        default: 'bg-[rgb(24_32_29/8%)] text-ink',
         secondary: 'bg-[rgb(108_107_91/10%)] text-[#6c6d5e]',
-        outline: 'border border-[rgb(24_32_29/14%)] text-[#68716d]',
+        outline: 'border border-[rgb(24_32_29/14%)] text-muted',
         online: 'bg-[#4e9b6b]/12 text-[#35754d] font-semibold',
         running: 'bg-[#4e9b6b]/12 text-[#35754d] font-semibold',
         offline: 'bg-[#c9674a]/12 text-[#a84427]',
-        stopped: 'bg-[rgb(24_32_29/8%)] text-[#68716d]',
+        stopped: 'bg-[rgb(24_32_29/8%)] text-muted',
         unknown: 'bg-[#d0a731]/15 text-[#8f6f1a]',
         warning: 'bg-[#d0a731]/15 text-[#8f6f1a]',
-        error: 'bg-[#c9674a]/15 text-[#b83b1b]',
-        accent: 'bg-[#e45d35]/12 text-[#b83b1b]',
-        system: 'bg-[#e45d35]/10 text-[#b83b1b] font-bold text-[9px] uppercase px-1.5 py-0.5',
+        error: 'bg-[#c9674a]/15 text-accent-dark',
+        accent: 'bg-accent/12 text-accent-dark',
+        system: 'bg-accent/10 text-accent-dark font-bold text-sm uppercase px-1.5 py-0.5',
       },
     },
     defaultVariants: {
@@ -43,7 +43,7 @@ export function Badge({ className, variant, dot, children, ...props }: BadgeProp
             (variant === 'online' || variant === 'running') && 'bg-[#4e9b6b]',
             (variant === 'offline' || variant === 'error') && 'bg-[#c9674a]',
             (variant === 'unknown' || variant === 'warning') && 'bg-[#d0a731]',
-            (!variant || variant === 'default' || variant === 'secondary' || variant === 'stopped') && 'bg-[#68716d]'
+            (!variant || variant === 'default' || variant === 'secondary' || variant === 'stopped') && 'bg-muted'
           )}
           aria-hidden="true"
         />

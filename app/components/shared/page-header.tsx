@@ -1,3 +1,4 @@
+import { AppSwitcher } from '@/app/components/shared/app-switcher';
 import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -29,7 +30,7 @@ export function PageHeader({
         <div>
           <Link
             href={backHref}
-            className="inline-flex min-h-7 items-center gap-1.5 text-xs text-[#68716d] hover:text-[#e45d35] transition-colors font-medium"
+            className="inline-flex min-h-7 items-center gap-1.5 text-sm text-muted hover:text-accent transition-colors font-medium"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{backLabel}</span>
@@ -40,21 +41,22 @@ export function PageHeader({
       <div className="page-header-main flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           {eyebrow && (
-            <p className="page-header-eyebrow text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b] mb-0.5">
+            <p className="page-header-eyebrow hidden text-xs font-bold tracking-[0.16em] uppercase text-accent-dark mb-0.5">
               {eyebrow}
             </p>
           )}
-          <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-[#18201d]">
+          <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-ink">
             {title}
           </h1>
           {description && (
-            <p className="page-header-description mt-1 max-w-2xl text-xs sm:text-sm text-[#68716d] leading-relaxed">
+            <p className="page-header-description mt-1 max-w-2xl text-sm sm:text-sm text-muted leading-relaxed">
               {description}
             </p>
           )}
         </div>
 
         <div className="page-header-actions flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <AppSwitcher />
           <EyeCareToggle />
           {actions}
         </div>

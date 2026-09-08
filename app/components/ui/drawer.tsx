@@ -92,7 +92,7 @@ export function Drawer({
       className="fixed inset-0 z-50 flex"
     >
       <div
-        className="fixed inset-0 bg-[#18201d]/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-ink/60 backdrop-blur-xs transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -101,7 +101,7 @@ export function Drawer({
         ref={drawerRef}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex flex-col bg-[#fffdf8] shadow-2xl transition-transform',
+          'relative z-50 flex flex-col bg-surface shadow-2xl transition-transform',
           position === 'right' &&
             'ml-auto h-full w-full max-w-md border-l border-[rgb(24_32_29/16%)] p-6 animate-in slide-in-from-right',
           position === 'bottom' &&
@@ -111,17 +111,17 @@ export function Drawer({
       >
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <h3 id={titleId} className="font-serif text-2xl font-medium text-[#18201d]">
+            <h3 id={titleId} className="font-serif text-2xl font-medium text-ink">
               {title}
             </h3>
             {description && (
-              <p id={descriptionId} className="text-xs text-[#68716d] leading-relaxed mt-1">{description}</p>
+              <p id={descriptionId} className="text-sm text-muted leading-relaxed mt-1">{description}</p>
             )}
           </div>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md p-1.5 text-[#68716d] hover:text-[#18201d] hover:bg-[rgb(24_32_29/6%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e45d35]"
+            className="rounded-md p-1.5 text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭抽屉"
           >
             <X className="h-5 w-5" aria-hidden="true" />

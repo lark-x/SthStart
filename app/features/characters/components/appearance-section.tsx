@@ -37,13 +37,13 @@ export function AppearanceSection({
   return (
     <div className="space-y-5">
       <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
-        <h3 className="font-serif text-2xl font-medium text-[#18201d]">外观与素材</h3>
-        <p className="text-xs text-[#68716d] mt-1 leading-relaxed">
+        <h3 className="font-serif text-2xl font-medium text-ink">外观与素材</h3>
+        <p className="text-sm text-muted mt-1 leading-relaxed">
           稳定的外貌锚点会被邻舍用于对话意象与图像生成；情境服装与动作仍由应用生成。
         </p>
       </div>
 
-      <div className="flex items-center gap-4 p-4 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/12%)] bg-[#fffdf8]">
+      <div className="flex items-center gap-4 p-4 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/12%)] bg-surface">
         <div className="relative h-16 w-16 rounded-full overflow-hidden bg-[#777865] flex items-center justify-center text-white font-serif text-2xl flex-shrink-0">
           {avatarUrl ? (
             <Image src={avatarUrl} alt="" fill unoptimized className="object-cover" />
@@ -52,8 +52,8 @@ export function AppearanceSection({
           )}
         </div>
         <div>
-          <h4 className="text-sm font-semibold text-[#18201d]">角色头像与视觉锚点</h4>
-          <p className="text-xs text-[#68716d] mt-0.5">
+          <h4 className="text-sm font-semibold text-ink">角色头像与视觉锚点</h4>
+          <p className="text-sm text-muted mt-0.5">
             {canUpload ? '支持上传高清 PNG/JPG/WebP 头像' : '先保存角色草稿后再上传头像'}
           </p>
           <Button
@@ -83,7 +83,7 @@ export function AppearanceSection({
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-[#18201d] mb-1.5">
+        <label className="block text-sm font-semibold text-ink mb-1.5">
           整体外貌综合描述
         </label>
         <Textarea
@@ -97,7 +97,7 @@ export function AppearanceSection({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className="block text-xs font-semibold text-[#18201d] mb-1.5">发型与发色</label>
+          <label className="block text-sm font-semibold text-ink mb-1.5">发型与发色</label>
           <Textarea
             aria-label="发型与发色"
             rows={3}
@@ -108,7 +108,7 @@ export function AppearanceSection({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-[#18201d] mb-1.5">眼睛特征</label>
+          <label className="block text-sm font-semibold text-ink mb-1.5">眼睛特征</label>
           <Textarea
             aria-label="眼睛特征"
             rows={3}
@@ -119,7 +119,7 @@ export function AppearanceSection({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-[#18201d] mb-1.5">体态与身材</label>
+          <label className="block text-sm font-semibold text-ink mb-1.5">体态与身材</label>
           <Textarea
             aria-label="体态与身材"
             rows={3}
@@ -148,7 +148,7 @@ export function AppearanceSection({
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-[#18201d] mb-1.5">
+        <label className="block text-sm font-semibold text-ink mb-1.5">
           额外系统运行规则 / 负面提示词约束
         </label>
         <Textarea

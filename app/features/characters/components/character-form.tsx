@@ -176,7 +176,7 @@ export function StringListField({
   return (
     <div className={className}>
       <div className="flex items-center justify-between gap-2 mb-1.5">
-        <label className="text-xs font-semibold text-[#18201d]">{label}</label>
+        <label className="text-sm font-semibold text-ink">{label}</label>
         <Button
           type="button"
           size="sm"
@@ -190,7 +190,7 @@ export function StringListField({
 
       <div className="space-y-2">
         {fields.length === 0 && (
-          <p className="rounded border border-dashed border-[rgb(24_32_29/16%)] px-3 py-2 text-xs text-[#68716d]">
+          <p className="rounded border border-dashed border-[rgb(24_32_29/16%)] px-3 py-2 text-sm text-muted">
             暂无条目，点击“添加”开始填写。
           </p>
         )}

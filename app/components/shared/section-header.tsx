@@ -20,15 +20,15 @@ export function SectionHeader({
     <div className={cn('flex items-end justify-between gap-4 mb-5 pb-3 border-b border-[rgb(24_32_29/10%)]', className)}>
       <div>
         {eyebrow && (
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b] mb-1">
+          <p className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark mb-1">
             {eyebrow}
           </p>
         )}
-        <h2 className="font-serif text-2xl font-medium tracking-tight text-[#18201d]">
+        <h2 className="font-serif text-2xl font-medium tracking-tight text-ink">
           {title}
         </h2>
         {description && (
-          <p className="mt-1 text-xs text-[#68716d] leading-relaxed">
+          <p className="mt-1 text-sm text-muted leading-relaxed">
             {description}
           </p>
         )}

@@ -34,7 +34,7 @@ export function Alert({
         variant === 'warning' && 'border-[#d0a731]/40 bg-[#d0a731]/10 text-[#856515]',
         variant === 'danger' && 'border-[#c9674a]/40 bg-[#c9674a]/10 text-[#a83a1b]',
         variant === 'info' && 'border-[#4d6684]/30 bg-[#4d6684]/10 text-[#304b69]',
-        variant === 'default' && 'border-[rgb(24_32_29/18%)] bg-[#fffdf8] text-[#18201d]',
+        variant === 'default' && 'border-[rgb(24_32_29/18%)] bg-surface text-ink',
         className
       )}
       {...props}
@@ -42,7 +42,7 @@ export function Alert({
       <Icon className="h-5 w-5 flex-shrink-0 mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
         {title && <h5 className="font-semibold mb-1">{title}</h5>}
-        <div className="text-xs leading-relaxed">{children}</div>
+        <div className="text-sm leading-relaxed">{children}</div>
       </div>
       {onDismiss && (
         <button

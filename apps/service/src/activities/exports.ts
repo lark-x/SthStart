@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { syncImageExecutionSnapshots } from './image-attempts.js';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,7 @@ export interface ExportManifest {
   format: ExportFormat;
   contentRevisionId: string;
   mediaRevisionId?: string;
+  imageConfigRevisionId?: string;
   playbackRevisionId?: string;
   exportedAt: string;
   files: Array<{
@@ -475,6 +477,198 @@ export async function collectExportEntries(
     });
   }
 
+  // 3b. Provenance records (if format === 'project')
+  if (format === 'project' || format === 'hyperframes-project') {
+    syncImageExecutionSnapshots(database, activityId);
+    const configRows = database.connection.prepare(
+      'SELECT id, activity_id, parent_id, document_json, hash, created_at FROM activity_image_config_revisions WHERE activity_id = ? ORDER BY created_at ASC'
+    ).all(activityId) as Array<{ id: string; activity_id: string; parent_id: string | null; document_json: string; hash: string; created_at: string }>;
+
+    const configs = configRows.map((r) => ({
+      id: r.id,
+      activityId: r.activity_id,
+      parentId: r.parent_id,
+      document: JSON.parse(r.document_json),
+      hash: r.hash,
+      createdAt: r.created_at,
+    }));
+
+    const recipeRows = database.connection.prepare(
+      'SELECT id, activity_id, content_revision_id, image_config_revision_id, slot_id, slot_fingerprint, source_refs_json, blocks_json, references_json, overrides_json, recipe_hash, schema_version, created_at FROM activity_prompt_recipes WHERE activity_id = ? ORDER BY created_at ASC'
+    ).all(activityId) as Array<{
+      id: string; activity_id: string; content_revision_id: string; image_config_revision_id: string;
+      slot_id: string; slot_fingerprint: string; source_refs_json: string; blocks_json: string;
+      references_json: string; overrides_json: string; recipe_hash: string; schema_version: number; created_at: string;
+    }>;
+
+    const recipes = recipeRows.map((r) => ({
+      id: r.id,
+      activityId: r.activity_id,
+      contentRevisionId: r.content_revision_id,
+      imageConfigRevisionId: r.image_config_revision_id,
+      slotId: r.slot_id,
+      slotFingerprint: r.slot_fingerprint,
+      sourceRefs: JSON.parse(r.source_refs_json),
+      blocks: JSON.parse(r.blocks_json),
+      references: JSON.parse(r.references_json),
+      overrides: JSON.parse(r.overrides_json),
+      recipeHash: r.recipe_hash,
+      schemaVersion: r.schema_version,
+      createdAt: r.created_at,
+    }));
+
+    const compRows = database.connection.prepare(
+      'SELECT id, recipe_id, activity_id, compiler_version, template_id, template_version, channels_json, effective_params_json, execution_plan_hash, execution_plan_json, created_at FROM activity_prompt_compilations WHERE activity_id = ? ORDER BY created_at ASC'
+    ).all(activityId) as Array<{
+      id: string; recipe_id: string; activity_id: string; compiler_version: string;
+      template_id: string; template_version: string; channels_json: string;
+      effective_params_json: string; execution_plan_hash: string; execution_plan_json: string; created_at: string;
+    }>;
+
+    const compilations = compRows.map((r) => ({
+      id: r.id,
+      recipeId: r.recipe_id,
+      activityId: r.activity_id,
+      compilerVersion: r.compiler_version,
+      templateId: r.template_id,
+      templateVersion: r.template_version,
+      channels: JSON.parse(r.channels_json),
+      effectiveParams: JSON.parse(r.effective_params_json),
+      executionPlanHash: r.execution_plan_hash,
+      executionPlan: JSON.parse(r.execution_plan_json || 'null'),
+      createdAt: r.created_at,
+    }));
+
+    const attemptRows = database.connection.prepare(
+      `SELECT a.id, a.activity_id, a.base_content_revision_id, a.image_config_revision_id,
+              a.slot_id, a.slot_fingerprint, a.recipe_id, a.compilation_id,
+              a.recipe_hash, a.execution_plan_hash, a.task_id, a.status,
+              a.actual_seed, a.retry_of_attempt_id, a.parent_attempt_ids_json,
+              a.idempotency_key, a.business_request_hash, a.error_code, a.error_message,
+              a.created_at, a.updated_at
+       FROM activity_image_attempts a
+       WHERE a.activity_id = ?
+       ORDER BY a.created_at ASC`
+    ).all(activityId) as Array<{
+      id: string; activity_id: string; base_content_revision_id: string; image_config_revision_id: string;
+      slot_id: string; slot_fingerprint: string; recipe_id: string; compilation_id: string;
+      recipe_hash: string; execution_plan_hash: string; task_id: string; status: string;
+      actual_seed: number; retry_of_attempt_id: string | null; parent_attempt_ids_json: string;
+      idempotency_key: string | null; business_request_hash: string; error_code: string | null;
+      error_message: string | null; created_at: string; updated_at: string;
+    }>;
+
+    const attempts = attemptRows.map((r) => {
+      const outputs = (database.connection.prepare(
+        `SELECT o.output_name, o.sort_order, o.artifact_id, o.asset_key,
+                art.media_type, art.byte_size, art.sha256, art.width, art.height
+         FROM activity_image_attempt_outputs o
+         JOIN artifacts art ON art.id = o.artifact_id
+         WHERE o.attempt_id = ?
+         ORDER BY o.sort_order ASC`
+      ).all(r.id) as Array<{
+        output_name: string; sort_order: number; artifact_id: string; asset_key: string;
+        media_type: string | null; byte_size: number; sha256: string | null;
+        width: number | null; height: number | null;
+      }>).map((o) => ({
+        outputName: o.output_name,
+        sortOrder: o.sort_order,
+        artifactId: o.artifact_id,
+        assetKey: o.asset_key,
+        mediaType: o.media_type || 'image/png',
+        byteSize: o.byte_size,
+        sha256: o.sha256 || '',
+        width: o.width,
+        height: o.height,
+      }));
+
+      return {
+        id: r.id,
+        activityId: r.activity_id,
+        baseContentRevisionId: r.base_content_revision_id,
+        imageConfigRevisionId: r.image_config_revision_id,
+        slotId: r.slot_id,
+        slotFingerprint: r.slot_fingerprint,
+        recipeId: r.recipe_id,
+        compilationId: r.compilation_id,
+        recipeHash: r.recipe_hash,
+        executionPlanHash: r.execution_plan_hash,
+        taskId: r.task_id,
+        status: r.status,
+        actualSeed: r.actual_seed,
+        retryOfAttemptId: r.retry_of_attempt_id,
+        parentAttemptIds: JSON.parse(r.parent_attempt_ids_json),
+        idempotencyKey: r.idempotency_key,
+        businessRequestHash: r.business_request_hash,
+        outputs,
+        errorCode: r.error_code,
+        errorMessage: r.error_message,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+    });
+
+    const snapshotRows = database.connection.prepare(
+      `SELECT s.attempt_id, s.phase, s.actual_inputs_json, s.uploaded_file_mappings_json,
+              s.request_summary_json, s.created_at
+       FROM activity_image_execution_snapshots s
+       JOIN activity_image_attempts a ON a.id = s.attempt_id
+       WHERE a.activity_id = ?
+       ORDER BY s.id ASC`
+    ).all(activityId) as Array<{
+      attempt_id: string; phase: string; actual_inputs_json: string;
+      uploaded_file_mappings_json: string; request_summary_json: string; created_at: string;
+    }>;
+
+    const snapshots = snapshotRows.map((r) => ({
+      attemptId: r.attempt_id,
+      phase: r.phase,
+      actualInputs: JSON.parse(r.actual_inputs_json),
+      uploadedFileMappings: JSON.parse(r.uploaded_file_mappings_json),
+      requestSummary: JSON.parse(r.request_summary_json),
+      createdAt: r.created_at,
+    }));
+
+    const lineageRows = database.connection.prepare(
+      'SELECT id, activity_id, child_asset_key, parent_asset_key, attempt_id, role, transform_params_json, created_at FROM activity_image_lineage WHERE activity_id = ? ORDER BY created_at ASC'
+    ).all(activityId) as Array<{
+      id: string; activity_id: string; child_asset_key: string; parent_asset_key: string;
+      attempt_id: string | null; role: string; transform_params_json: string; created_at: string;
+    }>;
+
+    const lineage = lineageRows.map((r) => ({
+      id: r.id,
+      activityId: r.activity_id,
+      childAssetKey: r.child_asset_key,
+      parentAssetKey: r.parent_asset_key,
+      attemptId: r.attempt_id,
+      role: r.role,
+      transformParams: JSON.parse(r.transform_params_json),
+      createdAt: r.created_at,
+    }));
+
+    const provenanceIndex = {
+      schemaVersion: 1,
+      imageConfigsCount: configs.length,
+      recipesCount: recipes.length,
+      compilationsCount: compilations.length,
+      attemptsCount: attempts.length,
+      executionSnapshotsCount: snapshots.length,
+      lineageEdgesCount: lineage.length,
+      exportedAt: nowIso(),
+    };
+
+    entries.push(
+      { path: 'data/provenance/index.json', data: JSON.stringify(provenanceIndex, null, 2) },
+      { path: 'data/provenance/image-configs.json', data: JSON.stringify(configs, null, 2) },
+      { path: 'data/provenance/recipes.json', data: JSON.stringify(recipes, null, 2) },
+      { path: 'data/provenance/compilations.json', data: JSON.stringify(compilations, null, 2) },
+      { path: 'data/provenance/attempts.json', data: JSON.stringify(attempts, null, 2) },
+      { path: 'data/provenance/execution-snapshots.json', data: JSON.stringify(snapshots, null, 2) },
+      { path: 'data/provenance/lineage.json', data: JSON.stringify(lineage, null, 2) },
+    );
+  }
+
   // 4. Offline Reader HTML
   const readerHtml = generateOfflineReaderHtml(
     activity,
@@ -580,14 +774,15 @@ export async function collectExportEntries(
   }
 
   // 6. Manifest with SHA-256
-  const manifestFiles: ExportManifest['files'] = entries.map((e) => {
+  const manifestFiles: ExportManifest['files'] = await Promise.all(entries.map(async (e) => {
     if (e.filePath) {
       const stat = statSync(e.filePath);
-      const fileBuf = readFileSync(e.filePath);
+      const hasher = createHash('sha256');
+      for await (const chunk of createReadStream(e.filePath)) hasher.update(chunk);
       return {
         path: e.path,
         byteSize: stat.size,
-        sha256: computeSha256(fileBuf),
+        sha256: hasher.digest('hex'),
       };
     }
     const b = typeof e.data === 'string' ? Buffer.from(e.data, 'utf8') : (e.data || Buffer.alloc(0));
@@ -596,7 +791,7 @@ export async function collectExportEntries(
       byteSize: b.length,
       sha256: computeSha256(b),
     };
-  });
+  }));
 
   const manifest: ExportManifest = {
     schemaVersion: 1,
@@ -605,6 +800,7 @@ export async function collectExportEntries(
     format,
     contentRevisionId: contentRevId,
     mediaRevisionId: mediaRev?.id,
+    imageConfigRevisionId: mediaRev?.imageConfigRevisionId || undefined,
     playbackRevisionId: playbackDoc.schemaVersion === 1 ? 'auto' : undefined,
     exportedAt: nowIso(),
     files: manifestFiles,

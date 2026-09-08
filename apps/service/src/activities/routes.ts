@@ -1,6 +1,8 @@
+import { compileHyperFramesComposition } from '@sthstart/activity-playback';
+import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, statSync, readFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
@@ -37,6 +39,39 @@ import { generateAutoPlayback, validatePlaybackDocument } from './playback.js';
 import { adoptCandidate, cancelTextJob, retryTextJob, runTextGenerationJob } from './text-jobs.js';
 import { buildActivityExportPackage, startExportJob } from './exports.js';
 import { commitActivityImport, stageActivityImport } from './imports.js';
+import {
+  commitImageConfigRevision,
+  getImageConfigDraft,
+  hashImageConfig,
+  getImageConfigRevision,
+  listImageConfigRevisions,
+  saveImageConfigDraft,
+} from './image-configs.js';
+import {
+  compilePromptRecipe,
+  resolveImageExecutionPlan,
+  getPromptRecipe,
+  saveRecipeAndCompilation,
+} from './image-prompt-compiler.js';
+import {
+  cancelImageAttempt,
+  createImageGenerationAttempt,
+  getImageAttempt,
+  listImageAttempts,
+  resolveImageCapabilityDescriptor,
+  syncAttemptOutputs,
+  syncImageExecutionSnapshots,
+} from './image-attempts.js';
+import { previewSourceImpact } from './image-impact.js';
+import { resolveSourceRef } from './image-provenance.js';
+import { getAssetAncestors } from './image-lineage.js';
+import type {
+  ImageConfigDocument,
+  PromptRecipeOverride,
+  ReferenceInput,
+  SourceEntityKind,
+  SourceRef,
+} from '@sthstart/contracts';
 
 export function registerActivityRoutes(
   app: FastifyInstance,
@@ -55,6 +90,23 @@ export function registerActivityRoutes(
     }
     return true;
   }
+
+  app.post<{ Params: { id: string }; Body: { playback: PlaybackDocument } }>(
+    '/api/v1/admin/activities/:id/playback-preview', async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const playback = request.body.playback;
+      const content = store.getContentRevision(request.params.id, playback.contentRevisionId);
+      const media = store.getMediaRevision(request.params.id, playback.mediaRevisionId);
+      if (!content || !media || media.contentRevisionId !== content.id) return reply.code(409).send({ error: 'preview_revision_mismatch' });
+      const validation = validatePlaybackDocument(playback, content.document, { schemaVersion: 1, slotBindings: media.slotBindings });
+      if (!validation.valid) return reply.code(400).send({ error: 'invalid_playback', details: validation.errors });
+      const assetMap = Object.fromEntries(listActivityAssets(database, request.params.id).map(asset => [asset.assetKey,
+        `/api/admin/activities/${encodeURIComponent(request.params.id)}/assets/${encodeURIComponent(asset.assetKey)}`]));
+      const gsapSource = readFileSync(fileURLToPath(new URL('../../../../packages/activity-playback/templates/phone-v1/assets/gsap.min.js', import.meta.url)), 'utf8');
+      const result = compileHyperFramesComposition(content.document, { schemaVersion: 1, slotBindings: media.slotBindings }, playback, { assetUrlMap: assetMap, gsapSource });
+      const avatar = Buffer.from(readFileSync(fileURLToPath(new URL('../../../../packages/activity-playback/templates/phone-v1/assets/default_avatar.png', import.meta.url)))).toString('base64');
+      return { html: result.html.replaceAll('assets/default_avatar.png', `data:image/png;base64,${avatar}`) };
+    });
 
   // 1. List activities
   app.get<{ Querystring: { q?: string; archived?: string; limit?: string } }>(
@@ -236,7 +288,7 @@ export function registerActivityRoutes(
     const draft = store.getDraft(request.params.id);
     const currentContentRev = act.currentContentRevisionId ? store.getContentRevision(act.id, act.currentContentRevisionId) : null;
     const currentMediaRev = act.currentMediaRevisionId ? store.getMediaRevision(act.id, act.currentMediaRevisionId) : null;
-    const currentPlaybackRev = act.currentPlaybackRevisionId ? store.getPlaybackRevision(act.id, act.currentPlaybackRevisionId) : null;
+    const currentPlaybackRev = act.currentPlaybackRevisionId ? store.getPlaybackRevisionRecord(act.id, act.currentPlaybackRevisionId) : null;
 
     return {
       activity: act,
@@ -510,10 +562,17 @@ export function registerActivityRoutes(
   app.get('/api/v1/admin/activities/capabilities', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
     const llmProfile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
+    const textToImage = resolveImageCapabilityDescriptor(database, 'activity_image_text', 'activity_media_slot');
+    const imageToImage = resolveImageCapabilityDescriptor(database, 'activity_image_edit', 'activity_media_slot');
+
     return {
       llm: Boolean(llmProfile),
       llmProfile: llmProfile ? { id: llmProfile.id, name: llmProfile.id } : null,
       media: true,
+      images: {
+        textToImage,
+        imageToImage,
+      },
       templates: [{ id: 'phone-v1', name: '手机通用竖屏 (1080x1920)', version: '1.0.0' }],
       limits: {
         maxActors: 20,
@@ -883,15 +942,21 @@ export function registerActivityRoutes(
     const expectedHeadVersion = body.expectedHeadVersion ?? act.headVersion;
 
     const slotBindings = body.slotBindings || (
-      Array.isArray(body.selections)
-        ? body.selections.map((s: any) => ({
-            slotId: s.slotId,
-            slotFingerprint: s.slotFingerprint || '',
-            assets: Array.isArray(s.assets)
-              ? s.assets
-              : (s.assetKeys || []).map((ak: string, idx: number) => ({ assetKey: ak, order: idx + 1 })),
-          }))
-        : []
+      body.slotId && body.assetKey
+        ? [{
+            slotId: body.slotId,
+            slotFingerprint: body.slotFingerprint || '',
+            assets: [{ assetKey: body.assetKey, order: 1 }],
+          }]
+        : Array.isArray(body.selections)
+          ? body.selections.map((s: any) => ({
+              slotId: s.slotId,
+              slotFingerprint: s.slotFingerprint || '',
+              assets: Array.isArray(s.assets)
+                ? s.assets
+                : (s.assetKeys || []).map((ak: string, idx: number) => ({ assetKey: ak, order: idx + 1 })),
+            }))
+          : []
     );
 
     try {
@@ -901,16 +966,18 @@ export function registerActivityRoutes(
         expectedHeadVersion,
       });
       const mediaRev = result.mediaRevision;
-      return reply.code(201).send({
+      const statusCode = request.url.includes('/media-selection') ? 200 : 201;
+      return reply.code(statusCode).send({
         ...mediaRev,
+        headVersion: result.activity.headVersion,
         mediaRevision: mediaRev,
         mediaRevisionId: mediaRev?.id,
         activity: result.activity,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('conflict')) {
-        return reply.code(409).send({ error: 'revision_conflict', message: msg });
+      if (msg.includes('conflict') || (err as { code?: string })?.code === 'revision_conflict' || (err as { code?: string })?.code === 'head_version_conflict') {
+        return reply.code(409).send({ error: 'head_version_conflict', message: msg });
       }
       return reply.code(400).send({ error: 'media_selection_failed', message: msg });
     }
@@ -955,6 +1022,447 @@ export function registerActivityRoutes(
       const rev = store.getMediaRevisionById(request.params.mediaRevisionId);
       if (!rev) return reply.code(404).send({ error: 'revision_not_found' });
       return rev;
+    },
+  );
+
+  // --- Activity Image Config Routes ---
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/admin/activities/:id/image-config/draft',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      return getImageConfigDraft(database, request.params.id);
+    },
+  );
+
+  app.put<{
+    Params: { id: string };
+    Body: { expectedDraftVersion: number; document: ImageConfigDocument };
+  }>('/api/v1/admin/activities/:id/image-config/draft', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const updated = saveImageConfigDraft(
+        database,
+        request.params.id,
+        request.body.expectedDraftVersion,
+        request.body.document,
+      );
+      return updated;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('conflict')) {
+        return reply.code(409).send({ error: 'draft_version_conflict', message: msg });
+      }
+      return reply.code(400).send({ error: 'save_image_config_failed', message: msg });
+    }
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      expectedDraftVersion?: number;
+      expectedHeadVersion?: number;
+      document?: ImageConfigDocument;
+    };
+  }>('/api/v1/admin/activities/:id/image-config/revisions', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const activityId = request.params.id;
+      let draft = getImageConfigDraft(database, activityId);
+      if (request.body?.document) {
+        draft = saveImageConfigDraft(
+          database,
+          activityId,
+          request.body.expectedDraftVersion ?? draft.draftVersion,
+          request.body.document,
+        );
+      }
+      const activity = store.getActivity(activityId);
+      if (!activity) return reply.code(404).send({ error: 'activity_not_found' });
+      const expDraftVer = request.body?.document ? draft.draftVersion : request.body?.expectedDraftVersion ?? draft.draftVersion;
+      const expHeadVer = request.body?.expectedHeadVersion ?? activity.headVersion;
+
+      const res = commitImageConfigRevision(
+        database,
+        store,
+        activityId,
+        expDraftVer,
+        expHeadVer,
+      );
+      return reply.code(201).send({
+        ...res.revision,
+        revision: res.revision,
+        activity: res.activity,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('conflict')) {
+        return reply.code(409).send({ error: 'revision_conflict', message: msg });
+      }
+      return reply.code(400).send({ error: 'commit_image_config_failed', message: msg });
+    }
+  });
+
+  app.get<{ Params: { id: string } }>(
+    '/api/v1/admin/activities/:id/image-config/revisions',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      return { items: listImageConfigRevisions(database, request.params.id) };
+    },
+  );
+
+  app.get<{ Params: { id: string; revId: string } }>(
+    '/api/v1/admin/activities/:id/image-config/revisions/:revId',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const rev = getImageConfigRevision(database, request.params.id, request.params.revId);
+      if (!rev) return reply.code(404).send({ error: 'image_config_revision_not_found' });
+      return rev;
+    },
+  );
+
+  // --- Prompt Recipes & Compilation Routes ---
+  const handlePrepareRecipe = async (
+    request: FastifyRequest<{
+      Params: { id: string };
+      Body: {
+        slotId: string;
+        contentRevisionId?: string;
+        imageConfigRevisionId?: string;
+        overrides?: PromptRecipeOverride[];
+        references?: ReferenceInput[];
+        customParams?: Record<string, unknown>;
+        workflowId?: string;
+        workflowVersion?: number;
+      };
+    }>,
+    reply: FastifyReply,
+  ) => {
+    if (!checkAdmin(request, reply)) return;
+    const { id: activityId } = request.params;
+    const body = request.body || {};
+
+    const activity = store.getActivity(activityId);
+    if (!activity) return reply.code(404).send({ error: 'activity_not_found' });
+
+    const contentRevId = body.contentRevisionId || activity.currentContentRevisionId;
+    if (!contentRevId) return reply.code(400).send({ error: 'no_content_revision' });
+
+    const contentRev = store.getContentRevision(activityId, contentRevId);
+    if (!contentRev) return reply.code(404).send({ error: 'content_revision_not_found' });
+
+    let imageConfigRevId = body.imageConfigRevisionId;
+    let imageConfigDoc: ImageConfigDocument;
+
+    if (imageConfigRevId) {
+      const cfgRev = getImageConfigRevision(database, activityId, imageConfigRevId);
+      if (!cfgRev) return reply.code(404).send({ error: 'image_config_revision_not_found' });
+      imageConfigDoc = cfgRev.document;
+    } else {
+      const currentMediaRev = activity.currentMediaRevisionId
+        ? store.getMediaRevision(activityId, activity.currentMediaRevisionId)
+        : null;
+      if (currentMediaRev?.imageConfigRevisionId) {
+        imageConfigRevId = currentMediaRev.imageConfigRevisionId;
+        const cfgRev = getImageConfigRevision(database, activityId, imageConfigRevId);
+        imageConfigDoc = cfgRev ? cfgRev.document : getImageConfigDraft(database, activityId).document;
+      } else {
+        const draft = getImageConfigDraft(database, activityId);
+        imageConfigRevId = draft.baseRevisionId || 'draft';
+        imageConfigDoc = draft.document;
+      }
+    }
+
+    try {
+      if (!getImageConfigRevision(database, activityId, imageConfigRevId)) {
+        imageConfigRevId = `imgcfg_${randomUUID()}`;
+        database.connection.prepare('INSERT INTO activity_image_config_revisions (id, activity_id, parent_id, document_json, hash, created_at) VALUES (?, ?, NULL, ?, ?, ?)')
+          .run(imageConfigRevId, activityId, JSON.stringify(imageConfigDoc), hashImageConfig(imageConfigDoc), nowIso());
+      }
+      const references = (body.references || []).map((ref) => {
+        const asset = listActivityAssets(database, activityId).find((asset) => asset.assetKey === ref.assetKey);
+        if (!asset || asset.type !== 'image' || !asset.artifactId) throw new Error('reference_asset_not_found');
+        if (ref.actorId && !contentRev.document.actors.some((actor) => actor.id === ref.actorId)) throw new Error('reference_actor_not_found');
+        return { ...ref, artifactId: asset.artifactId, sha256: asset.sha256 || '' };
+      });
+      const executionPlan = resolveImageExecutionPlan(database, references.length > 0);
+      const { recipe, compilation } = compilePromptRecipe({
+        activityId,
+        contentRevisionId: contentRevId,
+        contentDoc: contentRev.document,
+        imageConfigRevisionId: imageConfigRevId,
+        imageConfigDoc,
+        slotId: body.slotId,
+        overrides: body.overrides,
+        references,
+        executionPlan,
+        customParams: body.customParams,
+        workflowId: body.workflowId,
+        workflowVersion: body.workflowVersion,
+      });
+
+      saveRecipeAndCompilation(database, recipe, compilation);
+      return { recipe, compilation };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'recipe_preparation_failed', message: msg });
+    }
+  };
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      slotId: string;
+      contentRevisionId?: string;
+      imageConfigRevisionId?: string;
+      overrides?: PromptRecipeOverride[];
+      references?: ReferenceInput[];
+      customParams?: Record<string, unknown>;
+      workflowId?: string;
+      workflowVersion?: number;
+    };
+  }>('/api/v1/admin/activities/:id/image-recipes/prepare', handlePrepareRecipe);
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      slotId: string;
+      contentRevisionId?: string;
+      imageConfigRevisionId?: string;
+      overrides?: PromptRecipeOverride[];
+      references?: ReferenceInput[];
+      customParams?: Record<string, unknown>;
+      workflowId?: string;
+      workflowVersion?: number;
+    };
+  }>('/api/v1/admin/activities/:id/recipes/prepare', handlePrepareRecipe);
+
+  const handleGetRecipe = async (
+    request: FastifyRequest<{ Params: { id: string; recipeId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    if (!checkAdmin(request, reply)) return;
+    const res = getPromptRecipe(database, request.params.id, request.params.recipeId);
+    if (!res) return reply.code(404).send({ error: 'recipe_not_found' });
+    return res;
+  };
+
+  app.get<{ Params: { id: string; recipeId: string } }>(
+    '/api/v1/admin/activities/:id/image-recipes/:recipeId',
+    handleGetRecipe,
+  );
+
+  app.get<{ Params: { id: string; recipeId: string } }>(
+    '/api/v1/admin/activities/:id/recipes/:recipeId',
+    handleGetRecipe,
+  );
+
+  // --- Generation Attempts Routes ---
+  app.post<{
+    Params: { id: string };
+    Body: {
+      recipeId: string;
+      expectedHeadVersion?: number;
+      seed?: number | null;
+      idempotencyKey?: string | null;
+      retryOfAttemptId?: string | null;
+      customInputs?: Record<string, unknown>;
+      purpose?: string;
+    };
+  }>('/api/v1/admin/activities/:id/image-attempts', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const idempotencyKey = (request.headers['idempotency-key'] as string | undefined) || request.body?.idempotencyKey;
+    try {
+      const attempt = await createImageGenerationAttempt(
+        config,
+        database,
+        secrets,
+        store,
+        request.params.id,
+        {
+          ...request.body,
+          idempotencyKey,
+        },
+        fetcher,
+      );
+      return reply.code(202).send(attempt);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('conflict') || (err as { code?: string })?.code === 'idempotency_conflict' || (err as { code?: string })?.code === 'head_conflict' || (err as { code?: string })?.code === 'execution_plan_conflict') {
+        return reply.code(409).send({ error: 'conflict', message: msg });
+      }
+      if (msg.includes('assignment_missing') || (err as { code?: string })?.code === 'assignment_missing') {
+        return reply.code(400).send({ error: 'assignment_missing', message: msg });
+      }
+      return reply.code(400).send({ error: 'image_attempt_failed', message: msg });
+    }
+  });
+
+  app.get<{
+    Params: { id: string };
+    Querystring: { slotId?: string; limit?: string };
+  }>('/api/v1/admin/activities/:id/image-attempts', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+    const items = listImageAttempts(database, request.params.id, request.query.slotId, limit);
+    return { items: items.map(item => syncAttemptOutputs(database, request.params.id, item.id) || item) };
+  });
+
+  app.get<{ Params: { id: string; attemptId: string } }>(
+    '/api/v1/admin/activities/:id/image-attempts/:attemptId',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const attempt = syncAttemptOutputs(database, request.params.id, request.params.attemptId) || getImageAttempt(database, request.params.id, request.params.attemptId);
+      if (!attempt) return reply.code(404).send({ error: 'attempt_not_found' });
+      return attempt;
+    },
+  );
+
+  app.post<{ Params: { id: string; attemptId: string } }>(
+    '/api/v1/admin/activities/:id/image-attempts/:attemptId/sync',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const res = syncAttemptOutputs(database, request.params.id, request.params.attemptId);
+      if (!res) return reply.code(404).send({ error: 'attempt_not_found' });
+      return res;
+    },
+  );
+
+  app.post<{
+    Params: { id: string; attemptId: string };
+    Body?: { seed?: number | null; idempotencyKey?: string | null };
+  }>('/api/v1/admin/activities/:id/image-attempts/:attemptId/retry', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const prev = getImageAttempt(database, request.params.id, request.params.attemptId);
+    if (!prev) return reply.code(404).send({ error: 'attempt_not_found' });
+
+    const idempotencyKey = (request.headers['idempotency-key'] as string | undefined) || request.body?.idempotencyKey;
+    try {
+      const attempt = await createImageGenerationAttempt(
+        config,
+        database,
+        secrets,
+        store,
+        request.params.id,
+        {
+          recipeId: prev.recipeId,
+          seed: request.body?.seed !== undefined ? request.body.seed : prev.actualSeed,
+          idempotencyKey,
+          retryOfAttemptId: prev.id,
+        },
+        fetcher,
+      );
+      return reply.code(202).send(attempt);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'retry_attempt_failed', message: msg });
+    }
+  });
+
+  app.post<{ Params: { id: string; attemptId: string } }>(
+    '/api/v1/admin/activities/:id/image-attempts/:attemptId/cancel',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const res = await cancelImageAttempt(
+        config,
+        database,
+        secrets,
+        request.params.id,
+        request.params.attemptId,
+        fetcher,
+      );
+      if (!res) return reply.code(404).send({ error: 'attempt_not_found' });
+      return res;
+    },
+  );
+
+  app.get<{ Params: { id: string; attemptId: string } }>('/api/v1/admin/activities/:id/image-attempts/:attemptId/execution-snapshots', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    if (!getImageAttempt(database, request.params.id, request.params.attemptId)) return reply.code(404).send({ error: 'attempt_not_found' });
+    syncImageExecutionSnapshots(database, request.params.id);
+    const rows = database.connection.prepare('SELECT * FROM activity_image_execution_snapshots WHERE attempt_id = ? ORDER BY created_at').all(request.params.attemptId) as Array<Record<string, unknown>>;
+    return { items: rows.map(row => ({ attemptId: row.attempt_id, phase: row.phase, actualInputs: JSON.parse(String(row.actual_inputs_json)), uploadedFileMappings: JSON.parse(String(row.uploaded_file_mappings_json)), requestSummary: JSON.parse(String(row.request_summary_json)), createdAt: row.created_at })) };
+  });
+
+  // --- Source Impact & Resolution Routes ---
+  app.post<{
+    Params: { id: string };
+    Body: {
+      changedEntityKind: SourceEntityKind;
+      changedEntityId: string;
+      fieldPath: string;
+      newValue: unknown;
+    };
+  }>('/api/v1/admin/activities/:id/image-impact/preview', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const preview = previewSourceImpact(database, store, request.params.id, request.body);
+      return preview;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'impact_preview_failed', message: msg });
+    }
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: { sourceRef?: SourceRef; sourceRefId?: string };
+  }>('/api/v1/admin/activities/:id/image-sources/resolve', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const activity = store.getActivity(request.params.id);
+    if (!activity) return reply.code(404).send({ error: 'activity_not_found' });
+
+    const contentRev = activity.currentContentRevisionId
+      ? store.getContentRevision(request.params.id, activity.currentContentRevisionId)
+      : null;
+    const contentDoc = contentRev ? contentRev.document : store.getDraft(request.params.id)?.document;
+
+    const imgDraft = getImageConfigDraft(database, request.params.id);
+    const imgDoc = imgDraft.document;
+
+    if (!contentDoc) return reply.code(400).send({ error: 'no_content_available' });
+
+    let sourceRef = request.body.sourceRef;
+    const sourceRefId = request.body.sourceRefId || (request.body as any)?.id;
+
+    if (!sourceRef && sourceRefId) {
+      const rows = database.connection.prepare(`
+        SELECT source_refs_json FROM activity_prompt_recipes WHERE activity_id = ?
+      `).all(request.params.id) as Array<{ source_refs_json: string }>;
+
+      for (const row of rows) {
+        try {
+          const refs = JSON.parse(row.source_refs_json) as SourceRef[];
+          const found = refs.find((r) => r.id === sourceRefId);
+          if (found) {
+            sourceRef = found;
+            break;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!sourceRef) {
+      return reply.code(404).send({ error: 'source_ref_not_found' });
+    }
+
+    try {
+      const detail = resolveSourceRef(sourceRef, contentDoc, imgDoc);
+      return detail;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'source_resolve_failed', message: msg });
+    }
+  });
+
+  // --- Asset Lineage Routes ---
+  app.get<{ Params: { id: string; assetKey: string } }>(
+    '/api/v1/admin/activities/:id/image-lineage/:assetKey',
+    async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const ancestors = getAssetAncestors(database, request.params.id, request.params.assetKey);
+      return { items: ancestors };
     },
   );
 
@@ -1084,9 +1592,9 @@ export function registerActivityRoutes(
     reply: FastifyReply,
   ) => {
     if (!checkAdmin(request, reply)) return;
-    const doc = store.getPlaybackRevision(request.params.id, request.params.playbackRevisionId);
-    if (!doc) return reply.code(404).send({ error: 'revision_not_found' });
-    return doc;
+    const revision = store.getPlaybackRevisionRecord(request.params.id, request.params.playbackRevisionId);
+    if (!revision) return reply.code(404).send({ error: 'revision_not_found' });
+    return { ...revision.document, ...revision };
   };
 
   app.get<{ Params: { id: string; playbackRevisionId: string } }>(

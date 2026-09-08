@@ -32,6 +32,7 @@ const CREATIVE_PURPOSES = ['text-to-image', 'image-to-image', 'h3-t2v', 'h3-i2v'
 
 export function GenerationSettingsFeature() {
   const toast = useToast();
+  const [section, setSection] = useState('workflows');
   const [engines, setEngines] = useState<Engine[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [diagnostics, setDiagnostics] = useState<MediaDiagnostics | null>(null);
@@ -236,7 +237,7 @@ export function GenerationSettingsFeature() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f4f0e7] px-4 py-6 text-[#18201d] sm:px-8 md:px-12">
+    <main className="min-h-screen w-full bg-paper px-4 py-6 text-ink sm:px-8 md:px-12">
       <div className="mx-auto max-w-7xl space-y-5">
         <PageHeader
           backHref="/apps/creative"
@@ -247,31 +248,35 @@ export function GenerationSettingsFeature() {
           actions={(
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>
-              <a href="/apps/creative" className="inline-flex h-8 items-center gap-1.5 rounded border border-[rgb(24_32_29/18%)] bg-[#fffdf8] px-3 text-xs font-semibold text-[#18201d] hover:bg-[#18201d]/5">创作中心<ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a>
+              <a href="/apps/creative" className="inline-flex h-8 items-center gap-1.5 rounded border border-[rgb(24_32_29/18%)] bg-surface px-3 text-sm font-semibold text-ink hover:bg-ink/5">创作中心<ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a>
             </div>
           )}
         />
         {error && <Alert variant="danger" title="生成配置操作失败" onDismiss={() => setError('')}>{error}</Alert>}
+        <nav className="flex flex-wrap gap-2" aria-label="生成配置分类">
+          {[['workflows','工作流'], ['engines','引擎与执行器'], ['bindings','应用绑定'], ['diagnostics','诊断']].map(([id, label]) =>
+            <Button key={id} variant={section === id ? 'primary' : 'outline'} aria-pressed={section === id} onClick={() => setSection(id)}>{label}</Button>)}
+        </nav>
         {loading ? (
-          <div className="rounded border border-dashed border-[rgb(24_32_29/18%)] bg-[#fffdf8]/70 p-12 text-center text-sm text-[#68716d]">正在读取生成配置…</div>
+          <div className="rounded border border-dashed border-[rgb(24_32_29/18%)] bg-surface/70 p-12 text-center text-sm text-muted">正在读取生成配置…</div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <EnginePanel engines={engines} busy={busy} onSubmit={(event) => { void saveEngine(event); }} />
-              <WorkflowPanel workflows={workflows} selectedWorkflowId={versionWorkflowId} busy={busy} onSelect={setVersionWorkflowId} onCreate={(event) => { void createWorkflow(event); }} onImport={(json) => { void importWorkflow(json); }} onImportError={(message) => handleError('导入工作流失败', message)} />
+            <div className="space-y-5">
+              <div hidden={section !== 'engines'}><EnginePanel engines={engines} busy={busy} onSubmit={(event) => { void saveEngine(event); }} /></div>
+              <div hidden={section !== 'workflows'}><WorkflowPanel workflows={workflows} selectedWorkflowId={versionWorkflowId} busy={busy} onSelect={setVersionWorkflowId} onCreate={(event) => { void createWorkflow(event); }} onImport={(json) => { void importWorkflow(json); }} onImportError={(message) => handleError('导入工作流失败', message)} /></div>
             </div>
-            {workerToken && <Alert variant="warning" title="请立即保存 Worker token" onDismiss={() => setWorkerToken('')}>这是本次创建或轮换后唯一一次显示的 token：<code className="mt-1 block break-all rounded bg-black/5 p-2 text-[11px]">{workerToken}</code>请将它写入 Windows Worker 的安全环境变量，之后不会在列表中再次显示。</Alert>}
-            <WorkerPanel workers={workers} busy={busy} onSubmit={(event) => { void saveWorker(event); }} />
-            <DiagnosticsPanel diagnostics={diagnostics} />
-            <WorkflowEditor workflows={workflows} engines={engines} selectedWorkflowId={versionWorkflowId} busy={busy} onSelectWorkflow={setVersionWorkflowId} onPublish={(input) => { void publishVersion(input); }} />
-            <AssignmentPanel
+            {workerToken && <Alert variant="warning" title="请立即保存 Worker token" onDismiss={() => setWorkerToken('')}>这是本次创建或轮换后唯一一次显示的 token：<code className="mt-1 block break-all rounded bg-black/5 p-2 text-sm">{workerToken}</code>请将它写入 Windows Worker 的安全环境变量，之后不会在列表中再次显示。</Alert>}
+            <div hidden={section !== 'engines'}><WorkerPanel workers={workers} busy={busy} onSubmit={(event) => { void saveWorker(event); }} /></div>
+            <div hidden={section !== 'diagnostics'}><DiagnosticsPanel diagnostics={diagnostics} /></div>
+            <div hidden={section !== 'workflows'}><WorkflowEditor workflows={workflows} engines={engines} selectedWorkflowId={versionWorkflowId} busy={busy} onSelectWorkflow={setVersionWorkflowId} onPublish={(input) => { void publishVersion(input); }} /></div>
+            <div hidden={section !== 'bindings'}><AssignmentPanel
               workflows={workflows}
               engines={engines}
               bindings={creativeBindings}
               busy={busy}
               onBindingChange={(purpose, value) => setCreativeBindings((current) => ({ ...current, [purpose]: value }))}
               onSave={() => { void saveCreativeBindings(); }}
-            />
+            /></div>
           </>
         )}
       </div>

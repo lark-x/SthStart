@@ -9,6 +9,7 @@ import type { CompiledHyperFramesProject } from './types.js';
 export interface CompileOptions {
   assetUrlMap?: Record<string, string>; // assetKey -> relative path (e.g. assets/photo.png)
   standalone?: boolean;
+  gsapSource?: string;
 }
 
 /**
@@ -56,7 +57,7 @@ export function compileHyperFramesComposition(
             return `
               <div class="media-bubble">
                 <div class="video-preview-wrapper">
-                  <img src="${escapeHtml(url)}" class="media-thumb" alt="视频预览" />
+                  <div class="media-thumb" aria-label="视频">视频</div>
                   <div class="play-badge">▶</div>
                 </div>
               </div>`;
@@ -69,7 +70,7 @@ export function compileHyperFramesComposition(
         .join('');
 
       return `
-        <div id="${escapeHtml(msg.id)}" class="msg-row ${isViewer ? 'right' : 'left'}" data-order="${msg.storyOrder}">
+        <div id="msg_${escapeHtml(msg.id)}" data-conversation="${escapeHtml(msg.conversationId)}" class="msg-row ${isViewer ? 'right' : 'left'}" data-order="${msg.storyOrder}">
           <img src="${escapeHtml(avatarUrl)}" class="avatar" alt="${escapeHtml(actorName)}" />
           <div class="msg-body">
             <span class="msg-name">${escapeHtml(actorName)}</span>
@@ -91,7 +92,8 @@ export function compileHyperFramesComposition(
         .map((slotId) => {
           const assetKey = slotAssetMap.get(slotId);
           const url = (assetKey && assetMap[assetKey]) || '';
-          return `<img src="${escapeHtml(url)}" class="post-image" alt="配图" />`;
+          const slot = content.mediaSlots.find(s => s.id === slotId);
+          return slot?.kind === 'video' ? '<div class="post-image">▶ 视频</div>' : `<img src="${escapeHtml(url)}" class="post-image" alt="配图" />`;
         })
         .join('');
 
@@ -101,7 +103,7 @@ export function compileHyperFramesComposition(
         .map((c) => {
           const cAuthor = actorMap.get(c.authorActorId)?.displayName || '好友';
           return `
-            <div class="comment-row">
+            <div id="comment_${escapeHtml(c.id)}" class="comment-row" data-post="${escapeHtml(post.id)}" data-order="${c.storyOrder}">
               <span class="comment-author">${escapeHtml(cAuthor)}：</span>${escapeHtml(c.text)}
             </div>`;
         })
@@ -114,7 +116,7 @@ export function compileHyperFramesComposition(
         .join(', ');
 
       return `
-        <div id="${escapeHtml(post.id)}" class="moments-post" data-order="${post.storyOrder}">
+        <div id="post_${escapeHtml(post.id)}" class="moments-post" data-order="${post.storyOrder}">
           <img src="${escapeHtml(avatarUrl)}" class="avatar" alt="${escapeHtml(authorName)}" />
           <div class="post-content">
             <span class="post-author">${escapeHtml(authorName)}</span>
@@ -135,94 +137,22 @@ export function compileHyperFramesComposition(
     })
     .join('\n');
 
-  // Generate GSAP timeline script from playback actions
-  const gsapTimelineCommands: string[] = [];
   const sortedActions = [...playback.actions].sort((a, b) => a.atMs - b.atMs);
-
-  for (const action of sortedActions) {
-    const startSec = action.atMs / 1000;
-    const durSec = action.durationMs / 1000;
-
-    switch (action.type) {
-      case 'open_view':
-        if (action.view === 'moments') {
-          gsapTimelineCommands.push(`
-            tl.call(() => { navTitle.innerHTML = '<span>朋友圈</span>'; }, null, ${startSec});
-            tl.to(chatView, { x: -1080, duration: ${Math.max(0.3, durSec)}, ease: "power2.inOut" }, ${startSec});
-            tl.to(momentsView, { x: -1080, duration: ${Math.max(0.3, durSec)}, ease: "power2.inOut" }, ${startSec});
-          `);
-        } else {
-          gsapTimelineCommands.push(`
-            tl.call(() => { navTitle.innerHTML = '<span>${escapeHtml(content.conversations[0]?.title || '群聊')}</span>'; }, null, ${startSec});
-            tl.to(chatView, { x: 0, duration: ${Math.max(0.3, durSec)}, ease: "power2.inOut" }, ${startSec});
-            tl.to(momentsView, { x: 0, duration: ${Math.max(0.3, durSec)}, ease: "power2.inOut" }, ${startSec});
-          `);
-        }
-        break;
-
-      case 'scroll_to':
-        if (action.targetType === 'message' && action.targetId) {
-          const idx = content.messages.findIndex((m) => m.id === action.targetId);
-          const scrollTargetY = Math.max(0, idx * 240);
-          gsapTimelineCommands.push(`
-            tl.to(chatScroll, { y: -${scrollTargetY}, duration: ${durSec}, ease: "power2.inOut" }, ${startSec});
-          `);
-        } else if (action.targetType === 'post' && action.targetId) {
-          const pIdx = content.posts.findIndex((p) => p.id === action.targetId);
-          const scrollTargetY = Math.max(0, pIdx * 300);
-          gsapTimelineCommands.push(`
-            tl.to(momentsScroll, { y: -${scrollTargetY}, duration: ${durSec}, ease: "power2.inOut" }, ${startSec});
-          `);
-        }
-        break;
-
-      case 'open_media':
-        if (action.kind === 'video') {
-          const videoUrl = assetMap[action.assetKey || ''] || '';
-          const inSec = (action.sourceInMs || 0) / 1000;
-          const endSec = inSec + durSec;
-          gsapTimelineCommands.push(`
-            tl.call(() => {
-              modalPhoto.style.display = 'none';
-              modalVideo.src = '${escapeHtml(videoUrl)}';
-              modalVideo.style.display = 'block';
-            }, null, ${startSec});
-            tl.to(mediaModal, { opacity: 1, duration: 0.3, ease: "power1.out" }, ${startSec});
-            tl.fromTo(modalVideo, { currentTime: ${inSec} }, { currentTime: ${endSec}, duration: ${durSec}, ease: "none" }, ${startSec});
-          `);
-        } else {
-          const photoUrl = assetMap[action.assetKey || ''] || '';
-          gsapTimelineCommands.push(`
-            tl.call(() => {
-              modalPhoto.src = '${escapeHtml(photoUrl)}';
-              modalPhoto.style.display = 'block';
-              modalVideo.style.display = 'none';
-            }, null, ${startSec});
-            tl.to(mediaModal, { opacity: 1, duration: 0.3, ease: "power1.out" }, ${startSec});
-          `);
-        }
-        break;
-
-      case 'close_media':
-        gsapTimelineCommands.push(`
-          tl.to(mediaModal, { opacity: 0, duration: ${durSec}, ease: "power1.in" }, ${startSec});
-          tl.call(() => {
-            modalPhoto.style.display = 'none';
-            modalVideo.style.display = 'none';
-          }, null, ${startSec + durSec});
-        `);
-        break;
-
-      case 'hold':
-        gsapTimelineCommands.push(`
-          tl.to({}, { duration: ${durSec} }, ${startSec});
-        `);
-        break;
-
-      default:
-        break;
-    }
-  }
+  const json = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
+  const mediaClips = sortedActions.flatMap((action, index) => {
+    if (action.type !== 'open_media') return [];
+    const key = action.assetKey || slotAssetMap.get(action.slotId || '') || '';
+    const src = escapeHtml(assetMap[key] || '');
+    const next = sortedActions.slice(index + 1).find(a => a.type === 'close_media' || a.type === 'open_media');
+    const end = Math.min(action.atMs + action.durationMs, next?.atMs ?? playback.totalDurationMs);
+    const duration = Math.max(0, end - action.atMs) / 1000;
+    if (!duration) return [];
+    const timing = `data-start="${action.atMs / 1000}" data-duration="${duration}" data-media-start="${(action.sourceInMs || 0) / 1000}"`;
+    return action.kind === 'video'
+      ? [`<video id="media_${index}" class="clip media-overlay" src="${src}" ${timing} data-track-index="2" muted playsinline preload="auto"></video>`,
+         `<audio id="sound_${index}" class="clip" src="${src}" ${timing} data-track-index="3" data-volume="${Math.max(0, Math.min(1, action.volume ?? 1))}" preload="auto"></audio>`]
+      : [`<div id="media_${index}" class="clip media-overlay" data-start="${action.atMs / 1000}" data-duration="${duration}" data-track-index="2"><img src="${src}" alt="展开图片" /></div>`];
+  }).join('\n');
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -230,7 +160,7 @@ export function compileHyperFramesComposition(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${width}, height=${height}, initial-scale=1.0" />
     <title>${escapeHtml(content.activity.title)} - 回放</title>
-    <script src="assets/gsap.min.js"></script>
+    ${options.gsapSource ? `<script>${options.gsapSource.replace(/<\/script/gi, '<\\/script')}</script>` : '<script src="assets/gsap.min.js"></script>'}
     <style>
       @font-face {
         font-family: 'PingFang SC';
@@ -297,7 +227,7 @@ export function compileHyperFramesComposition(
         background: #ccc; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
       }
       .msg-body { display: flex; flex-direction: column; gap: 8px; }
-      .msg-name { font-size: 26px; color: #777; }
+      .msg-name { font-size: 26px; color: #656565; }
       .msg-row.right .msg-name { text-align: right; }
       .bubble {
         padding: 24px 32px; border-radius: 20px; font-size: 36px;
@@ -331,11 +261,17 @@ export function compileHyperFramesComposition(
       .post-author { font-size: 34px; font-weight: 600; color: #576b95; }
       .post-text { font-size: 36px; line-height: 1.5; color: #222; }
       .post-image { width: 520px; height: 320px; border-radius: 12px; object-fit: cover; }
-      .post-meta { display: flex; justify-content: space-between; font-size: 28px; color: #999; margin-top: 8px; }
+      .post-meta { display: flex; justify-content: space-between; font-size: 28px; color: #656565; margin-top: 8px; }
       .post-comments-box { background: #f7f7f7; border-radius: 12px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; font-size: 30px; }
       .post-likes { color: #576b95; font-weight: 600; border-bottom: 1px solid #eee; padding-bottom: 12px; }
       .comment-row { color: #333; }
       .comment-author { color: #576b95; font-weight: 600; }
+      .bubble, .post-text { white-space: pre-wrap; }
+      .media-overlay { position:absolute; inset:0; width:100%; height:100%; background:#080808; object-fit:contain; z-index:200; }
+      div.media-overlay { display:flex; align-items:center; justify-content:center; }
+      .media-overlay img { width:100%; height:100%; object-fit:contain; }
+      .stage-card { position:absolute; inset:0; z-index:210; background:#ededed; display:flex; align-items:center; justify-content:center; padding:80px; font-size:54px; }
+      .typing-indicator { position:absolute; bottom:30px; left:40px; z-index:150; background:#fff; padding:20px; font-size:30px; }
       #media-modal {
         position: absolute; top: 0; left: 0; width: ${width}px; height: ${height}px;
         background: rgba(0, 0, 0, 0.94); display: flex; align-items: center; justify-content: center;
@@ -347,18 +283,19 @@ export function compileHyperFramesComposition(
     </style>
   </head>
   <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="${durationSec}" data-width="${width}" data-height="${height}">
-      <div class="status-bar">
+    <div id="root" data-composition-id="main" data-duration="${durationSec}" data-width="${width}" data-height="${height}">
+      <div id="device-content">
+      <div class="status-bar" data-layout-allow-overlap="true" data-layout-allow-occlusion="true">
         <span>18:30</span>
         <div class="status-icons"><span>5G</span><span>●●●</span><span>98%</span></div>
       </div>
-      <div class="nav-bar">
-        <div id="nav-title-text" class="nav-title">
+      <div class="nav-bar" data-layout-allow-overlap="true" data-layout-allow-occlusion="true">
+        <div id="nav-title-text" class="nav-title" data-layout-allow-overlap="true">
           <span>${escapeHtml(content.conversations[0]?.title || '群聊')}</span>
         </div>
         <div class="nav-action">•••</div>
       </div>
-      <div class="viewport-container">
+      <div class="viewport-container" data-layout-allow-overflow="true">
         <div id="chat-view">
           <div id="chat-scroll" class="chat-scroll">
             ${chatMessagesHtml}
@@ -366,7 +303,7 @@ export function compileHyperFramesComposition(
         </div>
         <div id="moments-view">
           <div id="moments-scroll" class="moments-scroll">
-            <div class="moments-cover">
+            <div class="moments-cover" data-layout-allow-overflow="true">
               <div class="moments-user-strip">
                 <span class="moments-user-name">${escapeHtml(content.actors[0]?.displayName || '')}</span>
                 <img src="${escapeHtml((content.actors[0]?.avatarAssetKey && assetMap[content.actors[0].avatarAssetKey]) || 'assets/default_avatar.png')}" class="moments-user-avatar" alt="用户头像" />
@@ -376,34 +313,96 @@ export function compileHyperFramesComposition(
           </div>
         </div>
       </div>
-      <div id="media-modal">
-        <div class="modal-content">
-          <img id="modal-photo-img" src="" alt="展开图片" />
-          <video id="modal-video-elem" playsinline preload="auto"></video>
-        </div>
       </div>
+      ${mediaClips}
+      <div id="stage-card" class="stage-card"></div>
+      <div id="typing" class="typing-indicator">正在输入…</div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-      const chatScroll = document.getElementById("chat-scroll");
-      const chatView = document.getElementById("chat-view");
-      const momentsView = document.getElementById("moments-view");
-      const momentsScroll = document.getElementById("moments-scroll");
-      const navTitle = document.getElementById("nav-title-text");
-      const mediaModal = document.getElementById("media-modal");
-      const modalPhoto = document.getElementById("modal-photo-img");
-      const modalVideo = document.getElementById("modal-video-elem");
-
-      ${gsapTimelineCommands.join('\n')}
-
-      window.__timelines["main"] = tl;
+      document.fonts.ready.then(() => {
+        const actions = ${json(sortedActions)};
+        const conversations = ${json(content.conversations.map(c => ({ id: c.id, title: c.title })))};
+        const byId = id => document.getElementById(id);
+        const messages = [...document.querySelectorAll('.msg-row')];
+        const comments = [...document.querySelectorAll('.comment-row')];
+        const offsets = {};
+        // Measure each conversation's real text/media layout once at the render dimensions.
+        for (const conversation of conversations) {
+          messages.forEach(el => { el.style.display = el.dataset.conversation === conversation.id ? 'flex' : 'none'; });
+          messages.filter(el => el.dataset.conversation === conversation.id).forEach(el => { offsets[el.id] = { top: el.offsetTop, height: el.offsetHeight }; });
+        }
+        document.querySelectorAll('.moments-post,.comment-row').forEach(el => {
+          const base = byId('moments-scroll').getBoundingClientRect();
+          const box = el.getBoundingClientRect(); offsets[el.id] = { top: box.top - base.top, height: box.height };
+        });
+        const initialConversation = conversations[0]?.id;
+        messages.forEach(el => { el.style.display = el.dataset.conversation === initialConversation ? 'flex' : 'none'; });
+        const tl = gsap.timeline({ paused: true });
+        const chat = byId('chat-view'), moments = byId('moments-view'), nav = byId('nav-title-text');
+        const scroll = { message: byId('chat-scroll'), post: byId('moments-scroll'), comment: byId('moments-scroll') };
+        gsap.set([chat, moments, ...Object.values(scroll)], { x: 0, y: 0 });
+        gsap.set([byId('stage-card'), byId('typing')], { autoAlpha: 0 });
+        // Explicit reveal actions own visibility; archive-style scripts without them show all records.
+        const reveals = actions.some(a => a.type === 'reveal_message' || a.visibleThroughOrder !== undefined);
+        if (reveals) gsap.set(messages, { autoAlpha: 0 });
+        for (const comment of comments) {
+          if (actions.some(a => a.type === 'reveal_comments' && a.postId === comment.dataset.post)) gsap.set(comment, { autoAlpha: 0 });
+        }
+        gsap.set(moments, { autoAlpha: 0 });
+        for (const clip of document.querySelectorAll('.media-overlay')) {
+          const at = Number(clip.dataset.start), end = at + Number(clip.dataset.duration);
+          tl.set(byId('device-content'), { autoAlpha: 0 }, at);
+          tl.set(byId('device-content'), { autoAlpha: 1 }, end);
+        }
+        let visibleOrder = 0;
+        for (const action of actions) {
+          const at = action.atMs / 1000, duration = action.durationMs / 1000;
+          if (action.type === 'open_view') {
+            const isMoments = action.view === 'moments';
+            tl.set(isMoments ? moments : chat, { autoAlpha: 1 }, at);
+            tl.set(isMoments ? chat : moments, { autoAlpha: 0 }, at + duration);
+            tl.to([chat, moments], { x: isMoments ? -${width} : 0, duration, ease: 'power1.inOut' }, at);
+            tl.set(nav, { textContent: isMoments ? '朋友圈' : (conversations.find(c => c.id === action.conversationId)?.title || conversations[0]?.title || '群聊') }, at);
+            if (!isMoments && action.conversationId) {
+              for (const el of messages) tl.set(el, { display: el.dataset.conversation === action.conversationId ? 'flex' : 'none' }, at);
+              tl.set(scroll.message, { y: 0 }, at);
+            }
+          }
+          if (action.type === 'reveal_message' || action.visibleThroughOrder !== undefined) {
+            const target = action.targetId ? byId('msg_' + action.targetId) : null;
+            visibleOrder = Math.max(visibleOrder, action.visibleThroughOrder ?? Number(target?.dataset.order || 0));
+            for (const el of messages) if (Number(el.dataset.order) <= visibleOrder) tl.set(el, { autoAlpha: 1 }, at);
+          }
+          if (action.type === 'reveal_comments') {
+            for (const el of comments) if (el.dataset.post === action.postId && Number(el.dataset.order) <= (action.throughOrder ?? Infinity)) tl.set(el, { autoAlpha: 1 }, at);
+          }
+          if (action.type === 'scroll_to') {
+            const prefix = action.targetType === 'message' ? 'msg_' : action.targetType === 'comment' ? 'comment_' : 'post_';
+            const box = offsets[prefix + action.targetId];
+            if (box) {
+              const align = action.align === 'end' ? 1 : action.align === 'start' ? 0 : 0.5;
+              const y = Math.max(0, box.top - (${height - 198} - box.height) * align);
+              tl.to(scroll[action.targetType], { y: -y, duration, ease: 'power1.inOut' }, at);
+              if (action.targetType !== 'message') tl.set('.moments-cover', { autoAlpha: y >= 480 ? 0 : 1 }, at + duration);
+            }
+          }
+          if (action.type === 'stage_card' || action.type === 'typing') {
+            const el = byId(action.type === 'typing' ? 'typing' : 'stage-card');
+            tl.set(el, { textContent: action.text || (action.type === 'typing' ? '正在输入…' : ''), autoAlpha: 1 }, at);
+            tl.set(el, { autoAlpha: 0 }, at + duration);
+          }
+        }
+        tl.to({}, { duration: ${durationSec} }, 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines.main = tl;
+        tl.seek(0);
+      });
     </script>
   </body>
 </html>`;
 
   return {
-    html,
+    html: html.split('\n').map((line) => line.trimEnd()).join('\n'),
     assets: [],
     manifest: {
       schemaVersion: 1,

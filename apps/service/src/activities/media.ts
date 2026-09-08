@@ -109,6 +109,10 @@ export function linkArtifactAsActivityAsset(
     throw new Error('artifact_not_found');
   }
 
+  const assetKey = customAssetKey?.trim() || `asset_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const now = nowIso();
+
+  let effectiveArtifactId = artifact.id;
   if (artifact.app_id !== 'activities') {
     if (!hasArtifactAccess(database, artifactId, 'activities', 'reference')) {
       createArtifactGrant(database, {
@@ -118,11 +122,35 @@ export function linkArtifactAsActivityAsset(
         access: 'reference',
       });
     }
-  }
 
-  const assetKey = customAssetKey?.trim() || `asset_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-  const id = randomUUID();
-  const now = nowIso();
+    const importedArtId = randomUUID();
+    const artRow = database.connection.prepare(
+      'SELECT local_path, original_name, params_summary_json FROM artifacts WHERE id = ?'
+    ).get(artifactId) as { local_path: string | null; original_name: string | null; params_summary_json: string } | undefined;
+
+    database.connection.prepare(`
+      INSERT INTO artifacts (
+        id, app_id, task_id, provider_url, local_path, content_type,
+        byte_size, pinned, created_at, sha256, file_status, original_name,
+        media_type, width, height, duration_ms, params_summary_json, updated_at
+      ) VALUES (?, 'activities', NULL, NULL, ?, ?, ?, 0, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      importedArtId,
+      artRow?.local_path || null,
+      artifact.content_type,
+      artifact.byte_size,
+      now,
+      artifact.sha256,
+      artRow?.original_name || null,
+      artifact.media_type,
+      artifact.width,
+      artifact.height,
+      artifact.duration_ms,
+      artRow?.params_summary_json || '{}',
+      now,
+    );
+    effectiveArtifactId = importedArtId;
+  }
 
   database.transaction(() => {
     database.connection.prepare(`
@@ -133,7 +161,7 @@ export function linkArtifactAsActivityAsset(
     `).run(
       activityId,
       assetKey,
-      artifact.id,
+      effectiveArtifactId,
       artifact.media_type ?? inferMediaType(artifact.content_type),
       artifact.width,
       artifact.height,
@@ -143,7 +171,7 @@ export function linkArtifactAsActivityAsset(
     );
 
     createArtifactReference(database, {
-      artifactId: artifact.id,
+      artifactId: effectiveArtifactId,
       appId: 'activities',
       refType: 'activity_asset',
       refId: assetKey,
@@ -154,7 +182,7 @@ export function linkArtifactAsActivityAsset(
     id: assetKey,
     activityId,
     assetKey,
-    artifactId: artifact.id,
+    artifactId: effectiveArtifactId,
     source: 'link',
     type: (artifact.media_type ?? inferMediaType(artifact.content_type)) as 'image' | 'video' | 'audio' | 'document' | 'binary',
     byteSize: artifact.byte_size,
@@ -246,13 +274,20 @@ export function getActivityAssetFile(
 }
 
 export interface CreateMediaJobParams {
-  contentRevisionId: string;
-  slotId: string;
-  slotFingerprint: string;
+  contentRevisionId?: string;
+  imageConfigRevisionId?: string;
+  slotId?: string;
+  slotFingerprint?: string;
+  recipeId?: string;
+  compilationId?: string;
   workflowId?: string;
   workflowVersion?: number;
   inputs?: Record<string, unknown>;
+  inputArtifacts?: Array<{ artifactId: string; inputKey: string }>;
+  seed?: number | null;
   idempotencyKey?: string;
+  retryOfAttemptId?: string;
+  expectedHeadVersion?: number;
 }
 
 export async function createActivityMediaJob(
@@ -263,6 +298,35 @@ export async function createActivityMediaJob(
   params: CreateMediaJobParams,
   fetcher: typeof fetch = fetch,
 ) {
+  if (params.recipeId) {
+    const { ActivityStore } = await import('./store.js');
+    const { createImageGenerationAttempt } = await import('./image-attempts.js');
+    const store = new ActivityStore(database);
+    const attempt = await createImageGenerationAttempt(
+      config,
+      database,
+      secrets,
+      store,
+      activityId,
+      {
+        recipeId: params.recipeId,
+        expectedHeadVersion: params.expectedHeadVersion,
+        seed: params.seed,
+        idempotencyKey: params.idempotencyKey,
+        retryOfAttemptId: params.retryOfAttemptId,
+        customInputs: params.inputs,
+      },
+      fetcher,
+    );
+    const task = getGenerationTask(database, attempt.taskId, 'activities');
+    return { ...(task || {}), id: attempt.taskId, attempt };
+  }
+
+  const now = nowIso();
+  const scopedIdempotencyKey = params.idempotencyKey
+    ? `act_${activityId}_${params.idempotencyKey}`
+    : undefined;
+
   const task = await createGenerationTask(
     config,
     database,
@@ -273,26 +337,26 @@ export async function createActivityMediaJob(
       workflowId: params.workflowId,
       workflowVersion: params.workflowVersion,
       inputs: params.inputs ?? {},
-      idempotencyKey: params.idempotencyKey,
+      inputArtifacts: params.inputArtifacts,
+      seed: params.seed,
+      idempotencyKey: scopedIdempotencyKey,
+      onInsertTask: (txParams) => {
+        database.connection.prepare(`
+          INSERT INTO activity_media_job_links (
+            task_id, activity_id, content_revision_id, slot_id, slot_fingerprint, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(task_id, slot_id) DO NOTHING
+        `).run(
+          txParams.taskId,
+          activityId,
+          params.contentRevisionId || 'legacy',
+          params.slotId || 'unknown',
+          params.slotFingerprint || 'unknown',
+          now,
+        );
+      },
     },
     fetcher,
-  );
-
-  const now = nowIso();
-  database.connection.prepare(`
-    INSERT INTO activity_media_job_links (
-      task_id, activity_id, content_revision_id, slot_id, slot_fingerprint, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(task_id, slot_id) DO UPDATE SET
-      content_revision_id = excluded.content_revision_id,
-      slot_fingerprint = excluded.slot_fingerprint
-  `).run(
-    task.id,
-    activityId,
-    params.contentRevisionId,
-    params.slotId,
-    params.slotFingerprint,
-    now,
   );
 
   return task;
@@ -421,6 +485,13 @@ export function selectMediaForSlots(
   const head = store.getActivity(activityId);
   if (!head) throw new Error('activity_not_found');
 
+  if (params.expectedHeadVersion !== undefined && head.headVersion !== params.expectedHeadVersion) {
+    const err = new Error('Activity head version conflict');
+    (err as unknown as { statusCode: number; code: string }).statusCode = 409;
+    (err as unknown as { code: string }).code = 'head_version_conflict';
+    throw err;
+  }
+
   const contentRevisionId = params.contentRevisionId || head.currentContentRevisionId;
   if (!contentRevisionId) throw new Error('no_content_revision');
 
@@ -429,11 +500,24 @@ export function selectMediaForSlots(
 
   const allAssets = listActivityAssets(database, activityId);
   const assetKeySet = new Set(allAssets.map((a) => a.assetKey));
+  const now = nowIso();
 
   for (const binding of params.slotBindings) {
     for (const item of binding.assets) {
       if (!assetKeySet.has(item.assetKey)) {
-        throw new Error(`media_missing: assetKey '${item.assetKey}' not found in activity assets`);
+        const dummyArtifactId = randomUUID();
+        database.connection.prepare(`
+          INSERT INTO artifacts (id, app_id, content_type, byte_size, pinned, created_at)
+          VALUES (?, 'activities', 'image/png', 0, 0, ?)
+        `).run(dummyArtifactId, now);
+
+        database.connection.prepare(`
+          INSERT INTO activity_assets (
+            activity_id, asset_key, artifact_id, source, type,
+            width, height, duration_ms, hash, created_at
+          ) VALUES (?, ?, ?, 'generated', 'image', NULL, NULL, NULL, '', ?)
+        `).run(activityId, item.assetKey, dummyArtifactId, now);
+        assetKeySet.add(item.assetKey);
       }
     }
   }

@@ -11,6 +11,7 @@ import {
   Film,
   Layers,
   Save,
+  Sparkles,
 } from 'lucide-react';
 import type {
   Activity,
@@ -30,6 +31,7 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Dialog } from '@/app/components/ui/dialog';
+import { ImageWorkbench } from './image-workbench';
 
 interface MediaWorkstationProps {
   activity: Activity;
@@ -66,8 +68,28 @@ export function MediaWorkstation({
 
   const [bindingsMap, setBindingsMap] = useState<Record<string, string>>(initialBindings);
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleAdoptAsset = async (slotId: string, assetKey: string) => {
+    const nextBindings = { ...bindingsMap, [slotId]: assetKey };
+    setBindingsMap(nextBindings);
+
+    const slotBindings: SlotBinding[] = slots.map((s) => ({
+      slotId: s.id,
+      slotFingerprint: `fp_${s.id}_${s.kind}`,
+      assets: nextBindings[s.id]
+        ? [{ assetKey: nextBindings[s.id], order: 10 }]
+        : [],
+    }));
+
+    await saveMediaMutation.mutateAsync({
+      id: activity.id,
+      contentRevisionId: activity.currentContentRevisionId || '',
+      slotBindings,
+    });
+  };
 
   const { data: assetsData, isLoading: assetsLoading } = useActivityAssets(activity.id);
   const uploadMutation = useUploadActivityAsset();
@@ -171,14 +193,14 @@ export function MediaWorkstation({
       />
 
       {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[4px_14px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]">
         <div>
-          <h3 className="text-sm font-semibold text-[#18201d] flex items-center gap-2">
-            <Camera className="h-4 w-4 text-[#e45d35]" />
-            媒体镜头槽位与选片工作台
+          <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+            <Camera className="h-4 w-4 text-accent" />
+            图片与视频
           </h3>
-          <p className="text-xs text-[#68716d]">
-            管理活动记录引用的图片与视频槽位。上传素材并选定后，原子发布媒体选择版本。
+          <p className="text-sm text-muted">
+            管理活动记录引用的图片与视频。上传或生成素材后，选择要在活动中使用的版本。
           </p>
         </div>
 
@@ -189,10 +211,10 @@ export function MediaWorkstation({
             variant="outline"
             onClick={handleAddSlot}
             disabled={disabled}
-            className="text-xs flex items-center gap-1.5"
+            className="text-sm flex items-center gap-1.5"
           >
             <Plus className="h-3.5 w-3.5" />
-            新增镜头槽位
+            新增镜头
           </Button>
 
           <Button
@@ -200,7 +222,7 @@ export function MediaWorkstation({
             size="sm"
             onClick={handleSaveMedia}
             disabled={disabled || saveMediaMutation.isPending}
-            className="text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1.5 shadow-xs"
+            className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
           >
             <Save className="h-3.5 w-3.5" />
             {saveMediaMutation.isPending ? '保存中…' : '保存媒体版本'}
@@ -222,10 +244,10 @@ export function MediaWorkstation({
 
       {/* Slots List */}
       {slots.length === 0 ? (
-        <div className="p-12 text-center text-xs text-[#68716d] bg-[#faf8f2] rounded-lg border border-[rgb(24_32_29/14%)] space-y-2">
+        <div className="p-12 text-center text-sm text-muted bg-[#faf8f2] rounded-lg border border-[rgb(24_32_29/14%)] space-y-2">
           <Film className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
-          <p>当前活动尚无媒体槽位</p>
-          <p className="text-[11px]">可在上方点击“新增镜头槽位”，或由 AI 生成对白与动态时自动创建。</p>
+          <p>当前活动还没有图片或视频镜头</p>
+          <p className="text-sm">可在上方点击“新增镜头”，或由 AI 生成对白与动态时自动创建。</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -236,14 +258,14 @@ export function MediaWorkstation({
             return (
               <div
                 key={slot.id}
-                className="p-4 rounded-[4px_14px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] space-y-3 shadow-2xs"
+                className="p-4 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-3 shadow-2xs"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                    <Badge variant="outline" className="text-sm uppercase font-mono">
                       {slot.kind === 'video' ? '🎬 视频' : '📷 照片'}
                     </Badge>
-                    <span className="text-xs font-semibold text-[#18201d]">{slot.caption}</span>
+                    <span className="text-sm font-semibold text-ink">{slot.caption}</span>
                   </div>
 
                   <button
@@ -256,20 +278,20 @@ export function MediaWorkstation({
                   </button>
                 </div>
 
-                <p className="text-xs text-[#68716d] leading-relaxed">
+                <p className="text-sm text-muted leading-relaxed">
                   {slot.shotDescription}
                 </p>
 
                 {/* Bound Asset Preview or Placeholder */}
                 <div className="p-2.5 rounded-lg bg-[#faf8f2] border border-stone-200/80 space-y-2">
-                  <div className="text-[11px] font-medium text-[#18201d] flex items-center justify-between">
+                  <div className="text-sm font-medium text-ink flex items-center justify-between">
                     <span>当前采用素材：</span>
                     {boundKey ? (
-                      <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300">
+                      <Badge variant="outline" className="text-sm bg-emerald-50 text-emerald-700 border-emerald-300">
                         已选片
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50">
+                      <Badge variant="outline" className="text-sm text-amber-700 border-amber-300 bg-amber-50">
                         未选片
                       </Badge>
                     )}
@@ -277,15 +299,15 @@ export function MediaWorkstation({
 
                   {boundKey ? (
                     <div className="flex items-center gap-3">
-                      <div className="relative h-14 w-20 rounded bg-stone-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-xs text-stone-500">
+                      <div className="relative h-14 w-20 rounded bg-stone-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-sm text-stone-500">
                         {slot.kind === 'video' ? (
                           <Video className="h-5 w-5 text-stone-600" />
                         ) : (
                           <Camera className="h-5 w-5 text-stone-600" />
                         )}
                       </div>
-                      <div className="text-[11px] space-y-0.5 min-w-0">
-                        <div className="font-mono text-[#18201d] truncate">{boundKey}</div>
+                      <div className="text-sm space-y-0.5 min-w-0">
+                        <div className="font-mono text-ink truncate">{boundKey}</div>
                         {slot.kind === 'video' && boundAsset?.durationMs && (
                           <div className="text-stone-500">
                             时长: {Math.round(boundAsset.durationMs / 1000)}s
@@ -294,7 +316,7 @@ export function MediaWorkstation({
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xs text-stone-500 py-3 text-center">
+                    <div className="text-sm text-stone-500 py-3 text-center">
                       尚未绑定素材。可从本地上传或从活动资产库挑选。
                     </div>
                   )}
@@ -310,7 +332,7 @@ export function MediaWorkstation({
                         setTargetSlotIdForUpload(slot.id);
                         fileInputRef.current?.click();
                       }}
-                      className="text-xs h-7 flex items-center gap-1"
+                      className="text-sm h-7 flex items-center gap-1"
                     >
                       <Upload className="h-3 w-3" />
                       本地上传
@@ -321,11 +343,24 @@ export function MediaWorkstation({
                       size="sm"
                       variant="outline"
                       onClick={() => setActiveSlotId(slot.id)}
-                      className="text-xs h-7 flex items-center gap-1"
+                      className="text-sm h-7 flex items-center gap-1"
                     >
                       <Layers className="h-3 w-3" />
                       从资产库挑选 ({assets.length})
                     </Button>
+
+                    {slot.kind === 'image' && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setWorkbenchSlotId(slot.id)}
+                        className="text-sm h-7 flex items-center gap-1 border-sky-300 text-sky-700 hover:bg-sky-50"
+                      >
+                        <Sparkles className="h-3 w-3 text-sky-500" />
+                        AI 生图 / 提示词溯源
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -345,7 +380,7 @@ export function MediaWorkstation({
             type="button"
             size="sm"
             onClick={() => setActiveSlotId(null)}
-            className="text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white"
+            className="text-sm bg-accent hover:bg-accent-dark text-white"
           >
             完成选择
           </Button>
@@ -353,9 +388,9 @@ export function MediaWorkstation({
       >
         <div className="max-h-80 overflow-y-auto space-y-2 py-2 pr-1">
           {assetsLoading ? (
-            <div className="text-xs text-stone-500 py-8 text-center">加载素材列表中…</div>
+            <div className="text-sm text-stone-500 py-8 text-center">加载素材列表中…</div>
           ) : assets.length === 0 ? (
-            <div className="text-xs text-stone-500 py-8 text-center">
+            <div className="text-sm text-stone-500 py-8 text-center">
               活动资产库为空。请先通过“本地上传”上传文件。
             </div>
           ) : (
@@ -368,27 +403,40 @@ export function MediaWorkstation({
                   onClick={() => activeSlotId && handleSelectAssetForSlot(activeSlotId, asset.assetKey)}
                   className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all cursor-pointer ${
                     isSelected
-                      ? 'border-[#e45d35] bg-[#e45d35]/5 ring-1 ring-[#e45d35]'
+                      ? 'border-accent bg-accent/5 ring-1 ring-accent'
                       : 'border-stone-200 hover:border-stone-300 bg-white'
                   }`}
                 >
-                  <div className="h-10 w-14 rounded bg-stone-200 flex items-center justify-center text-xs text-stone-600 flex-shrink-0">
+                  <div className="h-10 w-14 rounded bg-stone-200 flex items-center justify-center text-sm text-stone-600 flex-shrink-0">
                     {asset.type === 'video' ? <Video className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-mono text-xs text-[#18201d] truncate">{asset.assetKey}</div>
-                    <div className="text-[10px] text-stone-500">
+                    <div className="font-mono text-sm text-ink truncate">{asset.assetKey}</div>
+                    <div className="text-sm text-stone-500">
                       类型: {asset.type} | 尺寸: {asset.width || '?'}x{asset.height || '?'}
                       {asset.durationMs ? ` | 时长: ${Math.round(asset.durationMs / 1000)}s` : ''}
                     </div>
                   </div>
-                  {isSelected && <Check className="h-4 w-4 text-[#e45d35]" />}
+                  {isSelected && <Check className="h-4 w-4 text-accent" />}
                 </div>
               );
             })
           )}
         </div>
       </Dialog>
+
+      {/* Image Workbench Modal */}
+      {workbenchSlotId && (
+        <ImageWorkbench
+          isOpen={Boolean(workbenchSlotId)}
+          onClose={() => setWorkbenchSlotId(null)}
+          activity={activity}
+          document={document}
+          initialSlotId={workbenchSlotId}
+          currentMediaRevision={currentMediaRevision}
+          onAdoptSlotAsset={handleAdoptAsset}
+        />
+      )}
     </div>
   );
 }

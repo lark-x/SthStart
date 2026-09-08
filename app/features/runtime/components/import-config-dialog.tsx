@@ -35,7 +35,7 @@ export function ImportConfigDialog({
         </>
       }
     >
-      <div className="space-y-3 text-xs text-[#68716d]">
+      <div className="space-y-3 text-sm text-muted">
         <div className="p-3 bg-[rgb(24_32_29/6%)] rounded">
           <div>
             <strong>启动器路径:</strong> {preview?.launcher.path || '未找到'}

@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
+import { validateGeneratedOutput } from './generation-validation.js';
 import type { ContentDocument } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import type { SecretStore } from '../security.js';
-import { resolveAssignedLlmProfile, resolveProfile, upstreamHeaders } from '../providers.js';
+import { resolveAssignedLlmProfile, upstreamHeaders } from '../providers.js';
 import type { ActivityStore } from './store.js';
 import {
   buildPlanPrompt,
@@ -40,10 +41,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     store.appendJobEvent(jobId, activityId, 'started', { mode });
 
     // 1. Resolve LLM profile
-    let profile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
-    if (!profile) {
-      profile = await resolveProfile(database, secrets, 'llm');
-    }
+    const profile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
     if (!profile) {
       throw new Error('未配置可用的 LLM 模型。请在控制中心配置并启用一个 LLM Profile。');
     }
@@ -66,6 +64,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
       const reason = instructions || '优化对白';
       prompt = buildRewritePrompt(document, recordIds, reason);
     } else if (mode === 'whole-text') {
+      const precedingStages: StageGenerationOutput[] = [];
       // Whole text sequentially generates each stage
       for (let i = 0; i < document.stages.length; i++) {
         const check = store.getJob(activityId, jobId);
@@ -73,9 +72,12 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
 
         const currentStage = document.stages[i];
         store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id });
-        const stPrompt = buildStagePrompt(document, currentStage, instructions);
+        const stPrompt = buildStagePrompt(document, currentStage, instructions) +
+          '\n【本批已生成的前序阶段（尚未采用，后续必须保持事实连续；clientId 仅在各阶段内有效）】\n' + JSON.stringify(precedingStages);
         const stResp = await callLlm(profile, stPrompt, fetchFn);
         const stOutput = parseAiJsonOutput<StageGenerationOutput>(stResp);
+        validateGeneratedOutput(stOutput, document, 'stage', currentStage.id);
+        precedingStages.push(stOutput);
         const candidate = store.createCandidate({
           activityId,
           baseRevisionId: draft?.baseContentRevisionId || null,
@@ -111,6 +113,8 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     // Parse & Validate
     const parsedPayload = parseAiJsonOutput<Record<string, unknown>>(llmResponse);
 
+    validateGeneratedOutput(parsedPayload, document, mode, mode === 'stage' ? String(scope.stageId || document.stages[0]?.id) : undefined);
+
     // Create Candidate
     const candidate = store.createCandidate({
       activityId,
@@ -137,7 +141,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
 }
 
 async function callLlm(
-  profile: NonNullable<Awaited<ReturnType<typeof resolveProfile>>>,
+  profile: NonNullable<Awaited<ReturnType<typeof resolveAssignedLlmProfile>>>,
   prompt: string,
   fetchFn: typeof fetch
 ): Promise<string> {

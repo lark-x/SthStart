@@ -59,11 +59,11 @@ export function NarrativeTree({
   }, [nodes]);
 
   return (
-    <aside className="w-full md:w-64 flex flex-col bg-[#e3ded4] border-r border-[rgb(32_38_49/13%)] max-h-[45dvh] md:max-h-none md:min-h-[calc(100dvh-68px)]">
+    <aside className="w-full md:w-64 flex flex-col bg-surface-muted border-r border-[rgb(32_38_49/13%)] max-h-[45dvh] md:max-h-none md:min-h-[calc(100dvh-68px)]">
       <div className="p-4 border-b border-[rgb(32_38_49/11%)] space-y-1.5">
         <label
           htmlFor="narrative-work-select"
-          className="block text-[10px] font-bold uppercase tracking-wider text-[#777b7f]"
+          className="block text-sm font-bold uppercase tracking-wider text-[#777b7f]"
         >
           当前作品
         </label>
@@ -71,7 +71,7 @@ export function NarrativeTree({
           id="narrative-work-select"
           value={selectedWorkId}
           onChange={(e) => onSelectWork(e.target.value)}
-          className="bg-[#f5f1e8] text-xs h-9"
+          className="bg-surface text-sm h-9"
         >
           <option value="">尚未选择作品</option>
           {works.map((w) => (
@@ -94,14 +94,14 @@ export function NarrativeTree({
               style={{ paddingLeft: `${12 + depth * 14}px` }}
               className={`flex flex-col w-full text-left py-2 pr-3 border-l-3 transition-colors cursor-pointer ${
                 isActive
-                  ? 'border-[#b08a4b] bg-[#f5f1e8]/90 text-[#18201d] font-semibold'
-                  : 'border-transparent text-[#343a43] hover:bg-[#f5f1e8]/50'
+                  ? 'border-[#b08a4b] bg-surface/90 text-ink font-semibold'
+                  : 'border-transparent text-[#343a43] hover:bg-surface/50'
               }`}
             >
-              <span className="text-[9px] uppercase font-bold tracking-widest text-[#898b8d]">
+              <span className="text-sm uppercase font-bold tracking-widest text-[#898b8d]">
                 {node.kind}
               </span>
-              <span className="text-xs truncate">{node.title}</span>
+              <span className="text-sm truncate">{node.title}</span>
             </button>
           );
         })}

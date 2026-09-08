@@ -6,7 +6,8 @@ export function useCreativeStatus() {
   return useQuery({
     queryKey: creativeKeys.status(),
     queryFn: fetchCreativeStatus,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
     staleTime: 3_000,
   });
 }
@@ -17,7 +18,7 @@ export function useCreativeTasks() {
     queryFn: fetchCreativeTasks,
     refetchInterval: (query) => {
       const tasks = query.state.data ?? [];
-      return tasks.some((task) => ['queued', 'submitting', 'accepted', 'running'].includes(task.status)) ? 2_000 : 10_000;
+      return tasks.some((task) => ['queued', 'submitting', 'accepted', 'running'].includes(task.status)) ? 3_000 : 30_000;
     },
     staleTime: 1_000,
   });
@@ -30,7 +31,8 @@ export function useCreativeArtifacts() {
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
       lastPage.nextOffset < lastPage.total ? lastPage.nextOffset : undefined,
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
     staleTime: 3_000,
   });
 }

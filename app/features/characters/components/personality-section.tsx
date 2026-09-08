@@ -24,8 +24,8 @@ export function PersonalitySection({
   return (
     <div className="space-y-5">
       <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
-        <h3 className="font-serif text-2xl font-medium text-[#18201d]">性格与表达</h3>
-        <p className="text-xs text-[#68716d] mt-1 leading-relaxed">
+        <h3 className="font-serif text-2xl font-medium text-ink">性格与表达</h3>
+        <p className="text-sm text-muted mt-1 leading-relaxed">
           列表项支持每行一条，让性格、驱动力和语言习惯可以被其他应用灵活拆分使用。
         </p>
       </div>
@@ -70,12 +70,12 @@ export function PersonalitySection({
       </div>
 
       <div className="pt-2 border-t border-[rgb(24_32_29/10%)] space-y-4">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-[#68716d]">
+        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
           对白风格与表达模式
         </h4>
 
         <div>
-          <label className="block text-xs font-semibold text-[#18201d] mb-1.5">说话语气与用词风格</label>
+          <label className="block text-sm font-semibold text-ink mb-1.5">说话语气与用词风格</label>
           <Textarea
             rows={3}
             value={draft.speech.tone}
@@ -85,7 +85,7 @@ export function PersonalitySection({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-[#18201d] mb-1.5">表达习惯与反差细节</label>
+          <label className="block text-sm font-semibold text-ink mb-1.5">表达习惯与反差细节</label>
           <Textarea
             rows={3}
             value={draft.speech.habits}

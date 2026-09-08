@@ -12,5 +12,5 @@ export default async function ActivityWorkspacePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <ActivityStudioWorkspace activityId={id} />;
+  return <ActivityStudioWorkspace key={id} activityId={id} />;
 }

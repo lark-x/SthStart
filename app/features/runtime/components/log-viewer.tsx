@@ -74,7 +74,7 @@ export function LogViewer({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-[#18201d] text-[#dae2de] overflow-hidden shadow-lg">
+      <div className="rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-ink text-[#dae2de] overflow-hidden shadow-lg">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-white/10 bg-[#1f2925]">
           <div className="flex items-center gap-2 flex-wrap">
@@ -84,14 +84,14 @@ export function LogViewer({
               }`}
               title={connected ? 'SSE 实时已连接' : '未连接'}
             />
-            <span className="text-xs font-mono text-[#8bbfa0] mr-2">
+            <span className="text-sm font-mono text-[#8bbfa0] mr-2">
               {connected ? 'LIVE STREAM' : 'DISCONNECTED'}
             </span>
 
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value)}
-              className="h-8 rounded bg-[#2a3732] border border-white/10 text-xs text-[#dae2de] px-2 py-0.5 outline-none"
+              className="h-8 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
             >
               <option value="all">所有日志级别</option>
               <option value="error">ERROR</option>
@@ -103,7 +103,7 @@ export function LogViewer({
             <select
               value={serviceFilter}
               onChange={(e) => setServiceFilter(e.target.value)}
-              className="h-8 rounded bg-[#2a3732] border border-white/10 text-xs text-[#dae2de] px-2 py-0.5 outline-none"
+              className="h-8 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
             >
               <option value="all">所有服务</option>
               {services.map((s) => (
@@ -120,7 +120,7 @@ export function LogViewer({
                 onChange={(event) => {
                   void onUpdatePolicy({ globalLevel: event.target.value as LogLevel });
                 }}
-                className="h-8 rounded bg-[#2a3732] border border-white/10 text-xs text-[#dae2de] px-2 py-0.5 outline-none"
+                className="h-8 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
               >
                 <option value="off">OFF</option>
                 <option value="error">ERROR 起</option>
@@ -137,7 +137,7 @@ export function LogViewer({
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
                 placeholder="搜索日志内容…"
-                className="h-8 w-44 sm:w-60 rounded bg-[#2a3732] border border-white/10 text-xs text-[#dae2de] pl-7 pr-2 outline-none focus:border-[#e45d35]"
+                className="h-8 w-44 sm:w-60 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] pl-7 pr-2 outline-none focus:border-accent"
               />
               <Search className="h-3.5 w-3.5 absolute left-2 top-2.5 text-white/40" />
             </div>
@@ -147,7 +147,7 @@ export function LogViewer({
             <button
               type="button"
               onClick={onTogglePause}
-              className="inline-flex items-center gap-1 h-8 px-2.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-xs text-[#dae2de] border border-white/10 transition-colors"
+              className="inline-flex items-center gap-1 h-8 px-2.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-sm text-[#dae2de] border border-white/10 transition-colors"
               title={paused ? '恢复实时滚动' : '暂停接收新输出'}
             >
               {paused ? (
@@ -166,7 +166,7 @@ export function LogViewer({
             <button
               type="button"
               onClick={() => setAutoScroll((value) => !value)}
-              className={`h-8 px-2.5 rounded text-xs border border-white/10 transition-colors ${
+              className={`h-8 px-2.5 rounded text-sm border border-white/10 transition-colors ${
                 autoScroll ? 'bg-[#34453e] text-[#dae2de]' : 'bg-[#2a3732] text-white/50'
               }`}
               aria-pressed={autoScroll}
@@ -178,7 +178,7 @@ export function LogViewer({
             <button
               type="button"
               onClick={handleCopy}
-              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-xs text-[#dae2de] border border-white/10 transition-colors"
+              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-sm text-[#dae2de] border border-white/10 transition-colors"
               title="复制当前过滤日志"
               aria-label="复制当前过滤日志"
             >
@@ -188,7 +188,7 @@ export function LogViewer({
             <button
               type="button"
               onClick={handleDownload}
-              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-xs text-[#dae2de] border border-white/10 transition-colors"
+              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-sm text-[#dae2de] border border-white/10 transition-colors"
               title="下载日志文件"
               aria-label="下载日志文件"
             >
@@ -211,10 +211,10 @@ export function LogViewer({
         <div
           ref={logContainerRef}
           data-visual-dynamic="true"
-          className="h-[520px] overflow-y-auto p-3 font-mono text-[11px] leading-relaxed space-y-1 select-text"
+          className="h-[520px] overflow-y-auto p-3 font-mono text-sm leading-relaxed space-y-1 select-text"
         >
           {filteredLogs.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-white/40 text-xs">
+            <div className="flex h-full items-center justify-center text-white/40 text-sm">
               暂无符合条件的日志记录
             </div>
           ) : (
@@ -236,10 +236,10 @@ export function LogViewer({
                       : 'text-[#dae2de]'
                   }`}
                 >
-                  <time className="text-white/40 text-[10px] flex-shrink-0 pt-0.5">
+                  <time className="text-white/40 text-sm flex-shrink-0 pt-0.5">
                     {log.timestamp.slice(11, 19)}
                   </time>
-                  <span className="font-semibold text-[#8bbfa0] flex-shrink-0 text-[10px] w-24 truncate">
+                  <span className="font-semibold text-[#8bbfa0] flex-shrink-0 text-sm w-24 truncate">
                     [{log.serviceId}]
                   </span>
                   <span className="break-all whitespace-pre-wrap flex-1">{log.message}</span>

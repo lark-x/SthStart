@@ -95,7 +95,7 @@ export default function ActivitiesPage() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6">
+    <main className="min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <PageHeader
           backHref="/"
@@ -109,15 +109,15 @@ export default function ActivitiesPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setImportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[3px_12px_3px_3px] border-[rgb(24_32_29/20%)] bg-[#fffdf8] hover:bg-stone-100 text-xs font-semibold"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[3px_12px_3px_3px] border-[rgb(24_32_29/20%)] bg-surface hover:bg-stone-100 text-xs font-semibold"
               >
-                <FolderDown className="h-4 w-4 text-[#68716d]" />
+                <FolderDown className="h-4 w-4 text-muted" />
                 <span>导入活动</span>
               </Button>
 
               <Link
                 href="/apps/activities/new"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-[#e45d35] text-white hover:bg-[#b83b1b] font-semibold text-xs tracking-wide transition-colors cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-xs tracking-wide transition-colors cursor-pointer shadow-xs"
               >
                 <Plus className="h-4 w-4" />
                 <span>新建活动</span>
@@ -139,9 +139,9 @@ export default function ActivitiesPage() {
         )}
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2.5 px-4 rounded-[4px_14px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] shadow-xs">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2.5 px-4 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] shadow-xs">
           <div className="relative w-full sm:max-w-md">
-            <Search className="h-4 w-4 absolute left-3 top-2.5 text-[#68716d]" />
+            <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -156,7 +156,7 @@ export default function ActivitiesPage() {
                 type="button"
                 onClick={() => setShowArchived(false)}
                 className={`px-3 py-1 text-xs font-semibold rounded-[3px_8px_3px_3px] transition-colors cursor-pointer ${
-                  !showArchived ? 'bg-white text-[#18201d] shadow-xs' : 'text-[#68716d] hover:text-[#18201d]'
+                  !showArchived ? 'bg-white text-ink shadow-xs' : 'text-muted hover:text-ink'
                 }`}
               >
                 活跃活动
@@ -165,14 +165,14 @@ export default function ActivitiesPage() {
                 type="button"
                 onClick={() => setShowArchived(true)}
                 className={`px-3 py-1 text-xs font-semibold rounded-[3px_8px_3px_3px] transition-colors cursor-pointer ${
-                  showArchived ? 'bg-white text-[#18201d] shadow-xs' : 'text-[#68716d] hover:text-[#18201d]'
+                  showArchived ? 'bg-white text-ink shadow-xs' : 'text-muted hover:text-ink'
                 }`}
               >
                 已归档
               </button>
             </div>
 
-            <span className="text-xs text-[#68716d] font-medium flex-shrink-0">
+            <span className="text-xs text-muted font-medium flex-shrink-0">
               共 {filtered.length} 场活动
             </span>
           </div>
@@ -184,7 +184,7 @@ export default function ActivitiesPage() {
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="p-5 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/12%)] bg-[#fffdf8] space-y-3"
+                className="p-5 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/12%)] bg-surface space-y-3"
               >
                 <Skeleton className="h-5 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
@@ -201,7 +201,7 @@ export default function ActivitiesPage() {
               !showArchived && (
                 <Link
                   href="/apps/activities/new"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-[#e45d35] text-white hover:bg-[#b83b1b] font-semibold text-xs transition-colors"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[3px_12px_3px_3px] bg-accent text-white hover:bg-accent-dark font-semibold text-xs transition-colors"
                 >
                   <Plus className="h-4 w-4" />
                   新建活动
@@ -214,19 +214,19 @@ export default function ActivitiesPage() {
             {filtered.map((act) => (
               <div
                 key={act.id}
-                className="group flex flex-col justify-between p-5 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] hover:border-[#e45d35]/60 hover:shadow-md transition-all duration-200"
+                className="group flex flex-col justify-between p-5 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface hover:border-accent/60 hover:shadow-md transition-all duration-200"
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <Link
                       href={`/apps/activities/${act.id}`}
-                      className="text-base font-bold text-[#18201d] group-hover:text-[#e45d35] transition-colors line-clamp-1"
+                      className="text-base font-bold text-ink group-hover:text-accent transition-colors line-clamp-1"
                     >
                       {act.title}
                     </Link>
                     <Badge
                       variant="outline"
-                      className="text-[10px] font-mono flex-shrink-0 bg-stone-100 text-stone-700"
+                      className="text-xs font-mono flex-shrink-0 bg-stone-100 text-stone-700"
                     >
                       v{act.headVersion}
                     </Badge>
@@ -234,32 +234,32 @@ export default function ActivitiesPage() {
 
                   <div className="flex flex-wrap gap-1.5">
                     {act.type && (
-                      <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200">
+                      <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-200">
                         {act.type}
                       </Badge>
                     )}
                     {act.theme && (
-                      <Badge variant="outline" className="text-[10px] bg-stone-100 text-stone-700 border-stone-200">
+                      <Badge variant="outline" className="text-xs bg-stone-100 text-stone-700 border-stone-200">
                         {act.theme}
                       </Badge>
                     )}
                     {act.archived ? (
-                      <Badge variant="outline" className="text-[10px] bg-stone-200 text-stone-600">
+                      <Badge variant="outline" className="text-xs bg-stone-200 text-stone-600">
                         已归档
                       </Badge>
                     ) : null}
                   </div>
 
                   {act.rules && (
-                    <p className="text-xs text-[#68716d] line-clamp-2 leading-relaxed">
+                    <p className="text-xs text-muted line-clamp-2 leading-relaxed">
                       {act.rules}
                     </p>
                   )}
                 </div>
 
                 {/* Footer and Actions */}
-                <div className="pt-4 mt-4 border-t border-[rgb(24_32_29/8%)] flex items-center justify-between text-xs text-[#68716d]">
-                  <span className="text-[11px] font-mono">
+                <div className="pt-4 mt-4 border-t border-[rgb(24_32_29/8%)] flex items-center justify-between text-xs text-muted">
+                  <span className="text-xs font-mono">
                     {new Date(act.updatedAt).toLocaleDateString('zh-CN')}
                   </span>
 
@@ -296,7 +296,7 @@ export default function ActivitiesPage() {
 
                     <Link
                       href={`/apps/activities/${act.id}`}
-                      className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-[3px_8px_3px_3px] bg-[#e45d35]/10 text-[#e45d35] hover:bg-[#e45d35] hover:text-white font-semibold text-[11px] transition-colors"
+                      className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-[3px_8px_3px_3px] bg-accent/10 text-accent hover:bg-accent hover:text-white font-semibold text-xs transition-colors"
                     >
                       <span>进入</span>
                       <ExternalLink className="h-3 w-3" />

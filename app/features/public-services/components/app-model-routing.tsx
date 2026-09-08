@@ -60,20 +60,20 @@ function AssignmentForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="flex flex-col md:flex-row items-start md:items-end justify-between gap-3 p-4 rounded-[3px_14px_3px_3px] border border-[rgb(24_32_29/12%)] bg-[#fffdf8] assignment-card"
+      className="flex flex-col md:flex-row items-start md:items-end justify-between gap-3 p-4 rounded-[3px_14px_3px_3px] border border-[rgb(24_32_29/12%)] bg-surface assignment-card"
     >
       <div className="min-w-[140px]">
         <div className="flex items-center gap-1.5">
-          <strong className="text-sm font-semibold text-[#18201d]">{app.name}</strong>
+          <strong className="text-sm font-semibold text-ink">{app.name}</strong>
           {app.id === 'linshe' && <span className="system-app-badge">系统</span>}
         </div>
-        <code className="text-xs text-[#68716d] block font-mono mt-0.5">{app.id}</code>
+        <code className="text-sm text-muted block font-mono mt-0.5">{app.id}</code>
       </div>
 
       <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block text-[11px] font-semibold text-[#68716d]">
+        <label className="block text-sm font-semibold text-muted">
           <span>文本模型</span>
-          <Select {...register('textProfileId')} className="mt-1 text-xs">
+          <Select {...register('textProfileId')} className="mt-1 text-sm">
             <option value="">尚未选择文本模型</option>
             {textOptions.map((profile) => (
               <option value={profile.id} key={profile.id}>
@@ -83,9 +83,9 @@ function AssignmentForm({
           </Select>
         </label>
 
-        <label className="block text-[11px] font-semibold text-[#68716d]">
+        <label className="block text-sm font-semibold text-muted">
           <span>多模态模型 (图文)</span>
-          <Select {...register('multimodalProfileId')} className="mt-1 text-xs">
+          <Select {...register('multimodalProfileId')} className="mt-1 text-sm">
             <option value="">尚未选择多模态模型</option>
             {multimodalOptions.map((profile) => (
               <option value={profile.id} key={profile.id}>
@@ -130,7 +130,7 @@ export function AppModelRouting({
   return (
     <Card id="app-model-routing">
       <CardHeader>
-        <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b]">
+        <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
           APP MODEL ROLE BINDING
         </span>
         <CardTitle>应用角色模型绑定</CardTitle>

@@ -189,7 +189,7 @@ export function ControlCenter() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6">
+    <main className="min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6">
       <div className="max-w-7xl mx-auto space-y-5">
       <PageHeader
         backHref="/"
@@ -228,7 +228,7 @@ export function ControlCenter() {
 
       {/* Tabs */}
       <div
-        className="control-center-tabs sticky top-0 z-20 flex gap-1.5 overflow-x-auto pb-2 pt-2 bg-[#f4f0e7]/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]"
+        className="control-center-tabs sticky top-0 z-20 flex gap-1.5 overflow-x-auto pb-2 pt-2 bg-paper/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]"
         role="tablist"
         aria-label="控制中心分区"
       >
@@ -250,8 +250,8 @@ export function ControlCenter() {
               onClick={() => setTab(item.id as Tab)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                 isActive
-                  ? 'bg-[#18201d] text-[#f4f0e7]'
-                  : 'text-[#68716d] hover:text-[#18201d] hover:bg-[rgb(24_32_29/6%)]'
+                  ? 'bg-ink text-paper'
+                  : 'text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)]'
               }`}
             >
               <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -283,7 +283,7 @@ export function ControlCenter() {
           />
           <RemotePerformancePanel />
           <div>
-            <h3 className="font-serif text-xl font-medium text-[#18201d] mb-3">
+            <h3 className="font-serif text-xl font-medium text-ink mb-3">
               已注册服务组件
             </h3>
             <RuntimeServiceList
@@ -305,7 +305,7 @@ export function ControlCenter() {
             loading={settingsMutation.isPending}
           />
           <div>
-            <h3 className="font-serif text-xl font-medium text-[#18201d] mb-3">
+            <h3 className="font-serif text-xl font-medium text-ink mb-3">
               服务启停调度
             </h3>
             <RuntimeServiceList

@@ -36,17 +36,17 @@ export function ProviderList({
           return (
             <article
               key={profile.id}
-              className={`flex flex-col justify-between p-4 rounded-[3px_16px_3px_3px] border border-[rgb(24_32_29/13%)] bg-[#fffdf8] model-card ${
+              className={`flex flex-col justify-between p-4 rounded-[3px_16px_3px_3px] border border-[rgb(24_32_29/13%)] bg-surface model-card ${
                 profile.enabled ? '' : 'opacity-65'
               }`}
             >
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <strong className="text-sm font-semibold text-[#18201d] block truncate">
+                    <strong className="text-sm font-semibold text-ink block truncate">
                       {profile.name}
                     </strong>
-                    <code className="text-xs text-[#b83b1b] block truncate mt-0.5 font-mono">
+                    <code className="text-sm text-accent-dark block truncate mt-0.5 font-mono">
                       {profile.model || '尚未选择模型'}
                     </code>
                   </div>
@@ -59,14 +59,14 @@ export function ProviderList({
                   {profile.capabilities.map((c) => (
                     <span
                       key={c}
-                      className="text-[10px] bg-[rgb(24_32_29/6%)] text-[#596654] px-2 py-0.5 rounded-full font-medium"
+                      className="text-sm bg-[rgb(24_32_29/6%)] text-[#596654] px-2 py-0.5 rounded-full font-medium"
                     >
                       {c === 'text' ? '文本' : '多模态'}
                     </span>
                   ))}
                 </div>
 
-                <div className="text-[11px] text-[#68716d] space-y-0.5 pt-1">
+                <div className="text-sm text-muted space-y-0.5 pt-1">
                   <p className="truncate">URL: {profile.baseUrl}</p>
                   <p>凭据: {profile.hasCredential ? profile.credentialSource : '未配置'}</p>
                   <p className="truncate">
@@ -99,7 +99,7 @@ export function ProviderList({
         })}
 
         {profiles.length === 0 && (
-          <div className="col-span-full p-8 text-center text-xs text-[#68716d] border border-dashed border-[rgb(24_32_29/18%)] rounded">
+          <div className="col-span-full p-8 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/18%)] rounded">
             还没有配置公共 LLM 模型。请在下方创建配置，并为邻舍等应用选择生效模型。
           </div>
         )}

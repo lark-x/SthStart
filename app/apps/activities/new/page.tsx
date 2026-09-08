@@ -134,7 +134,7 @@ export default function NewActivityPage() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6">
+    <main className="min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <PageHeader
           backHref="/apps/activities"
@@ -152,15 +152,15 @@ export default function NewActivityPage() {
 
         <form onSubmit={handleCreate} className="space-y-6">
           {/* 1. Basic Metadata */}
-          <div className="p-5 rounded-[4px_16px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] space-y-4 shadow-xs">
-            <h3 className="text-sm font-bold text-[#18201d] flex items-center gap-2">
-              <Compass className="h-4 w-4 text-[#e45d35]" />
+          <div className="p-5 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-4 shadow-xs">
+            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+              <Compass className="h-4 w-4 text-accent" />
               基本信息设定
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-semibold text-[#18201d]">
+                <label className="text-xs font-semibold text-ink">
                   活动标题 <span className="text-rose-500">*</span>
                 </label>
                 <Input
@@ -172,7 +172,7 @@ export default function NewActivityPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#18201d]">活动类型</label>
+                <label className="text-xs font-semibold text-ink">活动类型</label>
                 <Input
                   value={type}
                   onChange={(e) => setType(e.target.value)}
@@ -182,7 +182,7 @@ export default function NewActivityPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#18201d]">活动地点</label>
+                <label className="text-xs font-semibold text-ink">活动地点</label>
                 <Input
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
@@ -192,7 +192,7 @@ export default function NewActivityPage() {
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-semibold text-[#18201d]">活动主题与梗概</label>
+                <label className="text-xs font-semibold text-ink">活动主题与梗概</label>
                 <Input
                   value={theme}
                   onChange={(e) => setTheme(e.target.value)}
@@ -202,7 +202,7 @@ export default function NewActivityPage() {
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-semibold text-[#18201d]">活动规则或导演约束（可选）</label>
+                <label className="text-xs font-semibold text-ink">活动规则或导演约束（可选）</label>
                 <Textarea
                   value={rules}
                   onChange={(e) => setRules(e.target.value)}
@@ -215,14 +215,14 @@ export default function NewActivityPage() {
           </div>
 
           {/* 2. Actors Snapshot Picker */}
-          <div className="p-5 rounded-[4px_16px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] space-y-4 shadow-xs">
+          <div className="p-5 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-4 shadow-xs">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-[#18201d] flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-[#e45d35]" />
+                <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-accent" />
                   参与角色与人设快照 ({actors.length})
                 </h3>
-                <p className="text-xs text-[#68716d]">
+                <p className="text-xs text-muted">
                   选入活动的角色将锁定此时的人设快照，即使角色库后续修改也不会破坏活动对话风格。
                 </p>
               </div>
@@ -260,14 +260,14 @@ export default function NewActivityPage() {
 
                   <div className="flex-1 min-w-0 pr-6 space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-[#18201d] truncate">
+                      <span className="text-xs font-bold text-ink truncate">
                         {act.displayName}
                       </span>
-                      <Badge variant="outline" className="text-[9px] bg-white">
+                      <Badge variant="outline" className="text-xs bg-white">
                         {act.activityRole || '参与者'}
                       </Badge>
                     </div>
-                    <p className="text-[11px] text-[#68716d] line-clamp-2 leading-tight">
+                    <p className="text-xs text-muted line-clamp-2 leading-tight">
                       {String(act.persona?.identity || '自定义参与角色')}
                     </p>
                   </div>
@@ -287,7 +287,7 @@ export default function NewActivityPage() {
           </div>
 
           {/* 3. Stages Initial Setup */}
-          <div className="p-5 rounded-[4px_16px_4px_4px] bg-[#fffdf8] border border-[rgb(24_32_29/14%)] space-y-4 shadow-xs">
+          <div className="p-5 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-4 shadow-xs">
             <StagesEditor
               stages={stages}
               actors={actors}
@@ -311,7 +311,7 @@ export default function NewActivityPage() {
               type="submit"
               size="sm"
               disabled={createMutation.isPending}
-              className="px-5 text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1.5 shadow-xs"
+              className="px-5 text-xs bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
             >
               <span>{createMutation.isPending ? '创建中…' : '创建并进入工作室'}</span>
               <ArrowRight className="h-3.5 w-3.5" />

@@ -42,7 +42,7 @@ export function ImageGenerator({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2 text-[#b83b1b]"><Sparkles className="h-4 w-4" aria-hidden="true" /><span className="text-[10px] font-bold tracking-[0.16em] uppercase">MAKE AN IMAGE</span></div>
+        <div className="flex items-center gap-2 text-accent-dark"><Sparkles className="h-4 w-4" aria-hidden="true" /><span className="text-sm font-bold tracking-[0.16em] uppercase">MAKE AN IMAGE</span></div>
         <CardTitle>开始一次创作</CardTitle>
         <CardDescription>只填写创作参数；实际模型、工作流与引擎由管理端绑定并在服务端执行。</CardDescription>
       </CardHeader>
@@ -50,7 +50,7 @@ export function ImageGenerator({
         <div>
           <InputLabel htmlFor="creative-prompt">正向提示词</InputLabel>
           <Textarea id="creative-prompt" className="mt-1.5 min-h-[128px]" value={form.prompt} onChange={(event) => onFormChange('prompt', event.target.value)} placeholder="描述主体、场景、光线与画面气质…" maxLength={10000} />
-          <p className="mt-1 text-right text-[10px] text-[#89908a]">{form.prompt.length}/10000</p>
+          <p className="mt-1 text-right text-sm text-[#89908a]">{form.prompt.length}/10000</p>
         </div>
         <div>
           <InputLabel htmlFor="creative-negative" hint="可选">反向提示词</InputLabel>
@@ -77,7 +77,7 @@ export function ImageGenerator({
         </div>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-        <div className="flex-1 text-xs text-[#68716d]">{binding ? <><span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${ready ? 'bg-[#4e9b6b]' : 'bg-[#d0a731]'}`} />{ready ? `${binding.workflow?.name ?? '已配置'} · ${binding.engine?.name ?? 'ComfyUI'}` : '当前模式尚未就绪'}</> : '正在检查公共生成状态…'}</div>
+        <div className="flex-1 text-sm text-muted">{binding ? <><span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${ready ? 'bg-[#4e9b6b]' : 'bg-[#d0a731]'}`} />{ready ? `${binding.workflow?.name ?? '已配置'} · ${binding.engine?.name ?? 'ComfyUI'}` : '当前模式尚未就绪'}</> : '正在检查公共生成状态…'}</div>
         <Button variant="accent" size="lg" onClick={onSubmit} loading={submitting} disabled={!ready || uploading}><Sparkles className="h-4 w-4" aria-hidden="true" />开始生成</Button>
       </CardFooter>
     </Card>

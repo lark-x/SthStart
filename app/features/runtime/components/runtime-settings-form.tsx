@@ -90,7 +90,7 @@ export function RuntimeSettingsForm({
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
       <Card>
         <CardHeader>
-          <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b]">
+          <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
             STARTUP & NETWORK
           </span>
           <CardTitle>运行参数与自启配置</CardTitle>
@@ -124,7 +124,7 @@ export function RuntimeSettingsForm({
 
           <div className="pt-4 border-t border-[rgb(24_32_29/10%)] space-y-4">
             <div>
-              <label htmlFor="runtime-comfyui-executable" className="block text-xs font-semibold text-[#18201d] mb-1.5">
+              <label htmlFor="runtime-comfyui-executable" className="block text-sm font-semibold text-ink mb-1.5">
                 ComfyUI 独立执行路径
               </label>
               <Input
@@ -132,19 +132,19 @@ export function RuntimeSettingsForm({
                 placeholder="留空使用默认内部路径，或填写自定义 python/comfyui 脚本路径"
                 {...register('comfyuiExecutable')}
               />
-              <p className="mt-1 text-[11px] text-[#68716d]">
+              <p className="mt-1 text-sm text-muted">
                 若使用已有 ComfyUI 环境，可在此指定绝对路径。
               </p>
             </div>
 
             <div>
-              <label htmlFor="runtime-extra-lora-folders" className="block text-xs font-semibold text-[#18201d] mb-1.5">
+              <label htmlFor="runtime-extra-lora-folders" className="block text-sm font-semibold text-ink mb-1.5">
                 额外 LoRA 模型目录（每行一个）
               </label>
               <Textarea
                 id="runtime-extra-lora-folders"
                 rows={3}
-                className="font-mono text-xs"
+                className="font-mono text-sm"
                 placeholder="/path/to/custom/loras"
                 {...register('extraLoraFolders')}
               />
@@ -152,7 +152,7 @@ export function RuntimeSettingsForm({
           </div>
 
           <div className="pt-4 border-t border-[rgb(24_32_29/10%)] space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#68716d]">
+            <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
               MAIBOT 辅助生态
             </h4>
             <Switch
@@ -167,7 +167,7 @@ export function RuntimeSettingsForm({
           </div>
         </CardContent>
         <CardFooter>
-          <div className="text-xs text-[#68716d]">
+          <div className="text-sm text-muted">
             {isDirty ? '有未保存的修改' : '所有修改已与系统同步'}
           </div>
           <Button

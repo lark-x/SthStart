@@ -10,6 +10,7 @@ import type {
   ContentDocument,
   MediaRevisionDocument,
   PlaybackDocument,
+  PlaybackRevision,
 } from '@sthstart/contracts';
 import { nowIso, type ServiceDatabase } from '../database.js';
 
@@ -482,9 +483,9 @@ export class ActivityStore {
       // 4. Update Activity head pointers and increment head_version
       this.connection.prepare(
         `UPDATE activities
-         SET head_version = ?, current_content_revision_id = ?, current_media_revision_id = ?, current_playback_revision_id = NULL, updated_at = ?
+         SET head_version = ?, current_content_revision_id = ?, current_media_revision_id = ?, current_playback_revision_id = NULL, updated_at = ?, title = ?, theme = ?, location = ?, rules = ?
          WHERE id = ? AND head_version = ?`
-      ).run(newHeadVersion, contentRevId, mediaRevId, now, activityId, expectedHeadVersion);
+      ).run(newHeadVersion, contentRevId, mediaRevId, now, draft.document.activity.title, draft.document.activity.theme, draft.document.activity.location, draft.document.activity.rules, activityId, expectedHeadVersion);
 
       // 5. Update draft base_content_revision_id and reset draft_version to 1
       this.connection.prepare(
@@ -551,7 +552,7 @@ export class ActivityStore {
 
   listCheckpoints(activityId: string, limit = 50): ActivityCheckpoint[] {
     const rows = this.connection.prepare(
-      `SELECT id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, created_at
+      `SELECT id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, image_config_revision_id, created_at
        FROM activity_checkpoints
        WHERE activity_id = ?
        ORDER BY created_at DESC
@@ -566,6 +567,7 @@ export class ActivityStore {
       contentRevisionId: String(r.content_revision_id),
       mediaRevisionId: r.media_revision_id ? String(r.media_revision_id) : null,
       playbackRevisionId: r.playback_revision_id ? String(r.playback_revision_id) : null,
+      imageConfigRevisionId: r.image_config_revision_id ? String(r.image_config_revision_id) : null,
       createdAt: String(r.created_at),
     }));
   }
@@ -578,10 +580,12 @@ export class ActivityStore {
     const id = crypto.randomUUID();
     const now = nowIso();
     const mediaRevId = act.currentMediaRevisionId || null;
+    const currentMediaRev = mediaRevId ? this.getMediaRevision(activityId, mediaRevId) : null;
+    const imageConfigRevId = currentMediaRev?.imageConfigRevisionId || null;
 
     this.connection.prepare(
-      `INSERT INTO activity_checkpoints(id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO activity_checkpoints(id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, image_config_revision_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       activityId,
@@ -590,6 +594,7 @@ export class ActivityStore {
       act.currentContentRevisionId,
       mediaRevId,
       act.currentPlaybackRevisionId,
+      imageConfigRevId,
       now
     );
 
@@ -601,6 +606,7 @@ export class ActivityStore {
       contentRevisionId: act.currentContentRevisionId,
       mediaRevisionId: mediaRevId,
       playbackRevisionId: act.currentPlaybackRevisionId,
+      imageConfigRevisionId: imageConfigRevId,
       createdAt: now,
     };
   }
@@ -616,7 +622,7 @@ export class ActivityStore {
     }
 
     const cp = this.connection.prepare(
-      `SELECT id, name, content_revision_id, media_revision_id, playback_revision_id
+      `SELECT id, name, content_revision_id, media_revision_id, playback_revision_id, image_config_revision_id
        FROM activity_checkpoints WHERE activity_id = ? AND id = ?`
     ).get(activityId, checkpointId) as Record<string, unknown> | undefined;
 
@@ -634,7 +640,7 @@ export class ActivityStore {
       // 1. Update activity pointers
       this.connection.prepare(
         `UPDATE activities
-         SET head_version = ?, current_content_revision_id = ?, current_media_revision_id = ?, current_playback_revision_id = ?, updated_at = ?
+         SET head_version = ?, current_content_revision_id = ?, current_media_revision_id = ?, current_playback_revision_id = ?, updated_at = ?, title = ?, theme = ?, location = ?, rules = ?
          WHERE id = ? AND head_version = ?`
       ).run(
         newHeadVersion,
@@ -642,6 +648,10 @@ export class ActivityStore {
         cp.media_revision_id ? String(cp.media_revision_id) : null,
         cp.playback_revision_id ? String(cp.playback_revision_id) : null,
         now,
+        contentRev.document.activity.title,
+        contentRev.document.activity.theme,
+        contentRev.document.activity.location,
+        contentRev.document.activity.rules,
         activityId,
         targetHead
       );
@@ -653,19 +663,34 @@ export class ActivityStore {
          WHERE activity_id = ?`
       ).run(JSON.stringify(contentRev.document), String(cp.content_revision_id), now, activityId);
 
-      // 3. Add restoration checkpoint
+      // 3. Restore image config draft if checkpoint has image_config_revision_id
+      if (cp.image_config_revision_id) {
+        const imgCfgRev = this.connection.prepare(
+          'SELECT document_json FROM activity_image_config_revisions WHERE activity_id = ? AND id = ?'
+        ).get(activityId, String(cp.image_config_revision_id)) as { document_json: string } | undefined;
+        if (imgCfgRev) {
+          this.connection.prepare(
+            `UPDATE activity_image_config_drafts
+             SET draft_version = draft_version + 1, document_json = ?, base_revision_id = ?, updated_at = ?
+             WHERE activity_id = ?`
+          ).run(imgCfgRev.document_json, String(cp.image_config_revision_id), now, activityId);
+        }
+      }
+
+      // 4. Add restoration checkpoint
       const newCpId = crypto.randomUUID();
       this.connection.prepare(
-        `INSERT INTO activity_checkpoints(id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO activity_checkpoints(id, activity_id, name, head_version, content_revision_id, media_revision_id, playback_revision_id, image_config_revision_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         newCpId,
         activityId,
         `恢复至「${String(cp.name)}」`,
         newHeadVersion,
         String(cp.content_revision_id),
-        String(cp.media_revision_id),
+        cp.media_revision_id ? String(cp.media_revision_id) : null,
         cp.playback_revision_id ? String(cp.playback_revision_id) : null,
+        cp.image_config_revision_id ? String(cp.image_config_revision_id) : null,
         now
       );
 
@@ -733,9 +758,9 @@ export class ActivityStore {
   }
 
   // --- Media Revisions & Assets ---
-  getMediaRevision(activityId: string, mediaRevisionId: string): { id: string; contentRevisionId: string; slotBindings: MediaRevisionDocument['slotBindings'] } | null {
+  getMediaRevision(activityId: string, mediaRevisionId: string): { id: string; contentRevisionId: string; imageConfigRevisionId?: string; slotBindings: MediaRevisionDocument['slotBindings'] } | null {
     const row = this.connection.prepare(
-      `SELECT id, content_revision_id, slot_bindings_json
+      `SELECT id, content_revision_id, image_config_revision_id, slot_bindings_json
        FROM activity_media_revisions WHERE activity_id = ? AND id = ?`
     ).get(activityId, mediaRevisionId) as Record<string, unknown> | undefined;
 
@@ -743,13 +768,14 @@ export class ActivityStore {
     return {
       id: String(row.id),
       contentRevisionId: String(row.content_revision_id),
+      imageConfigRevisionId: row.image_config_revision_id ? String(row.image_config_revision_id) : undefined,
       slotBindings: JSON.parse(String(row.slot_bindings_json)),
     };
   }
 
-  getMediaRevisionById(mediaRevisionId: string): { id: string; activityId: string; contentRevisionId: string; slotBindings: MediaRevisionDocument['slotBindings'] } | null {
+  getMediaRevisionById(mediaRevisionId: string): { id: string; activityId: string; contentRevisionId: string; imageConfigRevisionId?: string; slotBindings: MediaRevisionDocument['slotBindings'] } | null {
     const row = this.connection.prepare(
-      `SELECT id, activity_id, content_revision_id, slot_bindings_json
+      `SELECT id, activity_id, content_revision_id, image_config_revision_id, slot_bindings_json
        FROM activity_media_revisions WHERE id = ?`
     ).get(mediaRevisionId) as Record<string, unknown> | undefined;
 
@@ -758,6 +784,7 @@ export class ActivityStore {
       id: String(row.id),
       activityId: String(row.activity_id),
       contentRevisionId: String(row.content_revision_id),
+      imageConfigRevisionId: row.image_config_revision_id ? String(row.image_config_revision_id) : undefined,
       slotBindings: JSON.parse(String(row.slot_bindings_json)),
     };
   }
@@ -780,6 +807,11 @@ export class ActivityStore {
       throw new Error('Activity must have an adopted content revision before saving media selection');
     }
 
+    const prevMediaRev = act.currentMediaRevisionId
+      ? this.getMediaRevision(activityId, act.currentMediaRevisionId)
+      : null;
+    const imageConfigRevId = prevMediaRev?.imageConfigRevisionId || null;
+
     const newMediaRevId = crypto.randomUUID();
     const now = nowIso();
     const mediaDoc: MediaRevisionDocument = { schemaVersion: 1, slotBindings };
@@ -788,9 +820,9 @@ export class ActivityStore {
 
     return this.db.transaction(() => {
       this.connection.prepare(
-        `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, slot_bindings_json, hash, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(newMediaRevId, activityId, act.currentContentRevisionId, JSON.stringify(slotBindings), hash, now);
+        `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, image_config_revision_id, slot_bindings_json, hash, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(newMediaRevId, activityId, act.currentContentRevisionId, imageConfigRevId, JSON.stringify(slotBindings), hash, now);
 
       // Invalidate current_playback_revision_id because media revision has changed!
       this.connection.prepare(
@@ -885,6 +917,13 @@ export class ActivityStore {
 
     if (!row) return null;
     return JSON.parse(row.document_json) as PlaybackDocument;
+  }
+
+  getPlaybackRevisionRecord(activityId: string, revisionId: string): PlaybackRevision | null {
+    const row = this.connection.prepare('SELECT * FROM activity_playback_revisions WHERE activity_id = ? AND id = ?').get(activityId, revisionId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return { id: String(row.id), activityId: String(row.activity_id), contentRevisionId: String(row.content_revision_id),
+      mediaRevisionId: String(row.media_revision_id), document: JSON.parse(String(row.document_json)), hash: String(row.hash), createdAt: String(row.created_at) };
   }
 
   getPlaybackRevisionById(revisionId: string): PlaybackDocument | null {

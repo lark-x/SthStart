@@ -51,7 +51,7 @@ export function OtherProviders({
   return (
     <Card>
       <CardHeader>
-        <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b]">
+        <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
           OTHER CAPABILITIES
         </span>
         <CardTitle>向量与图片能力</CardTitle>
@@ -64,21 +64,21 @@ export function OtherProviders({
           {otherProfiles.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between p-3 rounded border border-[rgb(24_32_29/10%)] bg-[#fffdf8]"
+              className="flex items-center justify-between p-3 rounded border border-[rgb(24_32_29/10%)] bg-surface"
             >
               <div>
-                <strong className="text-xs font-semibold text-[#18201d]">{item.name}</strong>
-                <code className="text-[11px] text-[#68716d] block font-mono">
+                <strong className="text-sm font-semibold text-ink">{item.name}</strong>
+                <code className="text-sm text-muted block font-mono">
                   {item.kind} / {item.id}
                 </code>
               </div>
-              <span className="text-[10px] text-[#68716d]">
+              <span className="text-sm text-muted">
                 {item.baseUrl} · 密钥 {item.hasCredential ? `来自${item.credentialSource}` : '未配置'}
               </span>
             </div>
           ))}
           {otherProfiles.length === 0 && (
-            <div className="p-4 text-center text-xs text-[#68716d] border border-dashed border-[rgb(24_32_29/14%)] rounded">
+            <div className="p-4 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded">
               暂未配置向量或独立生图 Provider
             </div>
           )}

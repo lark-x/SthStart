@@ -40,6 +40,14 @@ export interface CreateTaskOptions {
   retryOf?: string | null;
   isInternal?: boolean;
   priority?: GenerationPriority;
+  onInsertTask?: (txParams: {
+    taskId: string;
+    actualSeed: number;
+    resolvedEngine: { id: string; name: string; kind: string };
+    resolvedWorkflow: { id: string; version: number; nodeBindings: Record<string, string[]> };
+    workflowSnapshot: Record<string, unknown>;
+    requestHash: string;
+  }) => void;
 }
 
 function normalizeProgress(value: unknown, fallbackStage: string): GenerationProgress {
@@ -210,6 +218,24 @@ export async function createGenerationTask(
         refId: id,
       });
     }
+    if (options.onInsertTask) {
+      options.onInsertTask({
+        taskId: id,
+        actualSeed,
+        resolvedEngine: {
+          id: resolved.engine.id,
+          name: resolved.engine.name,
+          kind: resolved.engine.kind,
+        },
+        resolvedWorkflow: {
+          id: resolved.workflow.id,
+          version: resolved.workflow.version,
+          nodeBindings: resolved.workflow.nodeBindings,
+        },
+        workflowSnapshot,
+        requestHash,
+      });
+    }
   });
 
   recordGenerationEvent(database, {
@@ -363,6 +389,20 @@ export async function executeQueuedTask(
     setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
+  const versionBindings = database.connection.prepare('SELECT node_bindings_json FROM generation_workflow_versions WHERE workflow_id = ? AND version = ?')
+    .get(String(taskRow.workflow_id), Number(taskRow.workflow_version)) as { node_bindings_json: string };
+  const bindings = JSON.parse(versionBindings.node_bindings_json) as Record<string, string[]>;
+  const mappings: Record<string, string> = {};
+  for (const input of parseGenerationRequestParams(taskRow.request_params_json).inputArtifacts) {
+    let value: unknown = workflowSnapshot;
+    for (const key of bindings[input.inputKey] || []) value = (value as Record<string, unknown>)?.[key];
+    if (typeof value === 'string') mappings[input.inputKey] = value;
+  }
+  // Persist before dispatch: a crash or timeout must preserve the exact request and its uncertain outcome.
+  recordGenerationEvent(database, { taskId, appId, eventType: 'execution_dispatch_snapshot', payload: {
+    actualInputs: workflowSnapshot, uploadedFileMappings: mappings,
+    requestSummary: { engineId, workflowId: taskRow.workflow_id, workflowVersion: taskRow.workflow_version, clientId: taskId, phaseMeaning: 'dispatch_started_not_acknowledged' },
+  } });
   if (engineRow.kind === 'worker') {
     let outputDeclarations: string[] = [];
     try {

@@ -24,7 +24,7 @@ export function ModelSettingsPanel({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b]">
+          <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
             PUBLIC LLM ROUTING
           </span>
           <Badge variant={isReady ? 'online' : isEnabled ? 'warning' : 'stopped'}>
@@ -38,20 +38,20 @@ export function ModelSettingsPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8]">
-            <span className="text-[10px] font-bold text-[#68716d] uppercase tracking-wider block">
+          <div className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface">
+            <span className="text-sm font-bold text-muted uppercase tracking-wider block">
               生效文本模型
             </span>
-            <div className="mt-1 font-semibold text-sm text-[#18201d]">
+            <div className="mt-1 font-semibold text-sm text-ink">
               {linsheLlm?.textModel || linsheLlm?.textProfileId || '尚未配置'}
             </div>
           </div>
 
-          <div className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8]">
-            <span className="text-[10px] font-bold text-[#68716d] uppercase tracking-wider block">
+          <div className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface">
+            <span className="text-sm font-bold text-muted uppercase tracking-wider block">
               生效多模态模型
             </span>
-            <div className="mt-1 font-semibold text-sm text-[#18201d]">
+            <div className="mt-1 font-semibold text-sm text-ink">
               {linsheLlm?.multimodalModel || linsheLlm?.multimodalProfileId || '尚未配置'}
             </div>
           </div>
@@ -60,7 +60,7 @@ export function ModelSettingsPanel({
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[rgb(24_32_29/10%)]">
           <Link
             href="/settings/public-services"
-            className="inline-flex items-center gap-1.5 text-xs text-[#18201d] font-semibold hover:text-[#e45d35] transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-ink font-semibold hover:text-accent transition-colors"
           >
             <span>进入公共模型服务管理与分配</span>
             <ArrowRight className="h-4 w-4" aria-hidden="true" />

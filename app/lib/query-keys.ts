@@ -61,4 +61,11 @@ export const activityKeys = {
   candidate: (id: string, candidateId: string) => [...activityKeys.all, 'candidate', id, candidateId] as const,
   checkpoints: (id: string) => [...activityKeys.all, 'checkpoints', id] as const,
   capabilities: () => [...activityKeys.all, 'capabilities'] as const,
+  imageConfigDraft: (id: string) => [...activityKeys.all, 'imageConfigDraft', id] as const,
+  imageConfigRevisions: (id: string) => [...activityKeys.all, 'imageConfigRevisions', id] as const,
+  recipes: (id: string, slotId?: string) => [...activityKeys.all, 'recipes', id, slotId] as const,
+  attempts: (id: string, slotId?: string) => [...activityKeys.all, 'attempts', id, slotId] as const,
+  attempt: (id: string, attemptId: string) => [...activityKeys.all, 'attempt', id, attemptId] as const,
+  lineage: (id: string, assetKey: string) => [...activityKeys.all, 'lineage', id, assetKey] as const,
+  sourceResolve: (id: string, refId: string) => [...activityKeys.all, 'sourceResolve', id, refId] as const,
 };

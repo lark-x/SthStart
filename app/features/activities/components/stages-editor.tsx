@@ -78,8 +78,8 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-[#18201d]">活动阶段设定</h3>
-          <p className="text-xs text-[#68716d]">
+          <h3 className="text-sm font-semibold text-ink">活动阶段设定</h3>
+          <p className="text-sm text-muted">
             活动按阶段推进情节展开。锁定阶段将不会被 AI 全局规划覆盖。至少需要保留 2 个阶段。
           </p>
         </div>
@@ -88,7 +88,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
           size="sm"
           onClick={handleAddStage}
           disabled={disabled}
-          className="text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1.5"
+          className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5"
         >
           <Plus className="h-3.5 w-3.5" />
           新增阶段
@@ -108,13 +108,13 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
             className={`p-4 rounded-[4px_14px_4px_4px] border transition-all ${
               stage.locked
                 ? 'bg-amber-50/40 border-amber-300/60'
-                : 'bg-[#fffdf8] border-[rgb(24_32_29/14%)]'
+                : 'bg-surface border-[rgb(24_32_29/14%)]'
             }`}
           >
             {/* Header: Title, order, lock toggle, delete */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-[rgb(24_32_29/10%)]">
               <div className="flex items-center gap-2 flex-1">
-                <Badge variant="outline" className="text-[10px] font-mono">
+                <Badge variant="outline" className="text-sm font-mono">
                   #{index + 1}
                 </Badge>
                 <Input
@@ -122,10 +122,10 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   onChange={(e) => handleUpdateStage(index, { title: e.target.value })}
                   placeholder="阶段名称（如：海边营地布置）"
                   disabled={disabled || stage.locked}
-                  className="h-8 text-xs font-semibold max-w-xs bg-transparent"
+                  className="h-8 text-sm font-semibold max-w-xs bg-transparent"
                 />
                 {stage.locked && (
-                  <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 flex items-center gap-1">
+                  <Badge variant="outline" className="text-sm text-amber-700 border-amber-300 bg-amber-50 flex items-center gap-1">
                     <Lock className="h-2.5 w-2.5" />
                     已锁定
                   </Badge>
@@ -181,7 +181,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
             {/* Stage Body */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3">
               <div className="space-y-2">
-                <label className="text-[11px] font-medium text-[#68716d] flex items-center gap-1">
+                <label className="text-sm font-medium text-muted flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
                   阶段地点
                 </label>
@@ -190,12 +190,12 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   onChange={(e) => handleUpdateStage(index, { location: e.target.value })}
                   placeholder="如：海边沙滩、营地长桌"
                   disabled={disabled || stage.locked}
-                  className="h-8 text-xs bg-transparent"
+                  className="h-8 text-sm bg-transparent"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-medium text-[#68716d] flex items-center gap-1">
+                <label className="text-sm font-medium text-muted flex items-center gap-1">
                   <CheckCircle2 className="h-3 w-3" />
                   阶段结束条件
                 </label>
@@ -204,12 +204,12 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   onChange={(e) => handleUpdateStage(index, { endCondition: e.target.value })}
                   placeholder="如：营地帐篷搭建完毕，晚餐准备好"
                   disabled={disabled || stage.locked}
-                  className="h-8 text-xs bg-transparent"
+                  className="h-8 text-sm bg-transparent"
                 />
               </div>
 
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[11px] font-medium text-[#68716d] flex items-center gap-1">
+                <label className="text-sm font-medium text-muted flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   阶段指引 (Instruction)
                 </label>
@@ -219,7 +219,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   placeholder="描述此阶段发生的主要事情，指导 AI 生成对白与动态…"
                   disabled={disabled || stage.locked}
                   rows={2}
-                  className="text-xs bg-transparent resize-none"
+                  className="text-sm bg-transparent resize-none"
                 />
               </div>
             </div>

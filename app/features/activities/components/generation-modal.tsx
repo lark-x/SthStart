@@ -120,7 +120,7 @@ export function GenerationModal({
             variant="outline"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="text-xs"
+            className="text-sm"
           >
             关闭
           </Button>
@@ -131,9 +131,9 @@ export function GenerationModal({
               variant="outline"
               disabled={triggerMutation.isPending || (job && job.status === 'running')}
               onClick={handleStartGeneration}
-              className="text-xs flex items-center gap-1.5"
+              className="text-sm flex items-center gap-1.5"
             >
-              <Sparkles className="h-3.5 w-3.5 text-[#e45d35]" />
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
               {candidate ? '重新生成' : '开始生成'}
             </Button>
 
@@ -142,7 +142,7 @@ export function GenerationModal({
                 size="sm"
                 disabled={adoptMutation.isPending}
                 onClick={handleAdopt}
-                className="text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white flex items-center gap-1.5 shadow-xs"
+                className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
               >
                 <Check className="h-3.5 w-3.5" />
                 采用并更新版本
@@ -176,13 +176,13 @@ export function GenerationModal({
                 onClick={() => setMode(m.id as any)}
                 className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-[#e45d35] bg-[#e45d35]/5 shadow-xs ring-1 ring-[#e45d35]'
-                    : 'border-[rgb(24_32_29/10%)] hover:border-[#e45d35]/40 bg-[#faf8f2]'
+                    ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
+                    : 'border-[rgb(24_32_29/10%)] hover:border-accent/40 bg-[#faf8f2]'
                 }`}
               >
-                <Icon className={`h-4 w-4 mb-1.5 ${isSelected ? 'text-[#e45d35]' : 'text-[#68716d]'}`} />
-                <div className="text-xs font-semibold text-[#18201d]">{m.label}</div>
-                <div className="text-[10px] text-[#68716d] leading-tight mt-0.5">{m.desc}</div>
+                <Icon className={`h-4 w-4 mb-1.5 ${isSelected ? 'text-accent' : 'text-muted'}`} />
+                <div className="text-sm font-semibold text-ink">{m.label}</div>
+                <div className="text-sm text-muted leading-tight mt-0.5">{m.desc}</div>
               </button>
             );
           })}
@@ -191,11 +191,11 @@ export function GenerationModal({
         {/* Stage selector if stage/rewrite */}
         {(mode === 'stage' || mode === 'rewrite-records') && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#18201d]">目标阶段</label>
+            <label className="text-sm font-medium text-ink">目标阶段</label>
             <Select
               value={targetStageId}
               onChange={(e) => setTargetStageId(e.target.value)}
-              className="h-9 text-xs"
+              className="h-9 text-sm"
             >
               {stages.map((st, i) => (
                 <option key={st.id} value={st.id}>
@@ -208,13 +208,13 @@ export function GenerationModal({
 
         {/* Instruction prompt */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#18201d]">生成指引与风格要求（可选）</label>
+          <label className="text-sm font-medium text-ink">生成指引与风格要求（可选）</label>
           <Textarea
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
             placeholder="例如：着重描写晚餐时的温馨合照，岚要调侃一下澄的灯串挂反了…"
             rows={3}
-            className="text-xs bg-transparent border-[rgb(24_32_29/14%)] resize-none"
+            className="text-sm bg-transparent border-[rgb(24_32_29/14%)] resize-none"
           />
         </div>
 
@@ -222,7 +222,7 @@ export function GenerationModal({
         {job && job.status === 'running' && (
           <div className="p-3.5 rounded-lg bg-amber-50/50 border border-amber-200/80 flex items-center gap-3">
             <Spinner className="h-4 w-4 text-amber-600 animate-spin" />
-            <div className="text-xs text-amber-900">
+            <div className="text-sm text-amber-900">
               AI 正在生成内容中（模式：{mode}）… 请稍候
             </div>
           </div>
@@ -232,21 +232,21 @@ export function GenerationModal({
         {candidate && candidatePayload && (
           <div className="p-3.5 rounded-lg bg-[#faf8f2] border border-[rgb(24_32_29/14%)] space-y-2.5 max-h-60 overflow-y-auto">
             <div className="flex items-center justify-between">
-              <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-300">
+              <Badge variant="outline" className="text-sm bg-green-50 text-green-700 border-green-300">
                 生成候选已就绪
               </Badge>
-              <span className="text-[11px] text-[#68716d]">候选ID: {candidate.id.slice(0, 8)}…</span>
+              <span className="text-sm text-muted">候选ID: {candidate.id.slice(0, 8)}…</span>
             </div>
 
             {candidatePayload.overview && (
-              <div className="text-xs text-[#18201d] bg-white p-2 rounded border border-[rgb(24_32_29/10%)]">
+              <div className="text-sm text-ink bg-white p-2 rounded border border-[rgb(24_32_29/10%)]">
                 <span className="font-semibold">剧情规划概览：</span>
                 {candidatePayload.overview}
               </div>
             )}
 
             {candidatePayload.summary && (
-              <div className="text-xs text-[#18201d] bg-white p-2 rounded border border-[rgb(24_32_29/10%)]">
+              <div className="text-sm text-ink bg-white p-2 rounded border border-[rgb(24_32_29/10%)]">
                 <span className="font-semibold">阶段梗概：</span>
                 {candidatePayload.summary}
               </div>
@@ -254,11 +254,11 @@ export function GenerationModal({
 
             {Array.isArray(candidatePayload.stages) && (
               <div className="space-y-1.5">
-                <div className="text-xs font-semibold text-[#18201d]">规划阶段清单 ({candidatePayload.stages.length})：</div>
+                <div className="text-sm font-semibold text-ink">规划阶段清单 ({candidatePayload.stages.length})：</div>
                 {candidatePayload.stages.map((st: any, idx: number) => (
-                  <div key={idx} className="text-xs p-2 rounded bg-white border border-[rgb(24_32_29/10%)] space-y-1">
-                    <div className="font-medium text-[#18201d]">#{idx + 1} {st.title}（{st.location || '无地点'}）</div>
-                    <div className="text-[11px] text-[#68716d]">{st.description || st.instruction}</div>
+                  <div key={idx} className="text-sm p-2 rounded bg-white border border-[rgb(24_32_29/10%)] space-y-1">
+                    <div className="font-medium text-ink">#{idx + 1} {st.title}（{st.location || '无地点'}）</div>
+                    <div className="text-sm text-muted">{st.description || st.instruction}</div>
                   </div>
                 ))}
               </div>
@@ -266,17 +266,17 @@ export function GenerationModal({
 
             {Array.isArray(candidatePayload.messages) && (
               <div className="space-y-1">
-                <div className="text-xs font-semibold text-[#18201d]">
+                <div className="text-sm font-semibold text-ink">
                   生成的群聊消息 ({candidatePayload.messages.length} 条)：
                 </div>
                 {candidatePayload.messages.slice(0, 5).map((msg: any, idx: number) => (
-                  <div key={idx} className="text-[11px] text-[#18201d] p-1.5 rounded bg-white border border-stone-200">
-                    <span className="font-medium text-[#e45d35]">{msg.speakerActorId || '角色'}: </span>
+                  <div key={idx} className="text-sm text-ink p-1.5 rounded bg-white border border-stone-200">
+                    <span className="font-medium text-accent">{msg.speakerActorId || '角色'}: </span>
                     {msg.text}
                   </div>
                 ))}
                 {candidatePayload.messages.length > 5 && (
-                  <div className="text-[10px] text-[#68716d] pl-1">
+                  <div className="text-sm text-muted pl-1">
                     … 以及另外 {candidatePayload.messages.length - 5} 条消息
                   </div>
                 )}
@@ -285,12 +285,12 @@ export function GenerationModal({
 
             {Array.isArray(candidatePayload.posts) && candidatePayload.posts.length > 0 && (
               <div className="space-y-1 pt-1">
-                <div className="text-xs font-semibold text-[#18201d]">
+                <div className="text-sm font-semibold text-ink">
                   生成的朋友圈动态 ({candidatePayload.posts.length} 条)：
                 </div>
                 {candidatePayload.posts.map((post: any, idx: number) => (
-                  <div key={idx} className="text-[11px] text-[#18201d] p-2 rounded bg-white border border-stone-200 space-y-1">
-                    <div><span className="font-medium text-[#e45d35]">{post.authorActorId || '作者'}:</span> {post.text}</div>
+                  <div key={idx} className="text-sm text-ink p-2 rounded bg-white border border-stone-200 space-y-1">
+                    <div><span className="font-medium text-accent">{post.authorActorId || '作者'}:</span> {post.text}</div>
                   </div>
                 ))}
               </div>

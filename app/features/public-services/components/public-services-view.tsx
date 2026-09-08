@@ -59,6 +59,7 @@ export function PublicServicesSettings() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cloneSourceId, setCloneSourceId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [section, setSection] = useState('models');
 
   const createProfileMutation = useCreateProfile();
   const cloneProfileMutation = useCloneProfile();
@@ -173,7 +174,7 @@ export function PublicServicesSettings() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f4f0e7] text-[#18201d] px-4 sm:px-8 md:px-12 py-6 public-services-layout">
+    <main className="min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6 public-services-layout">
       <div className="max-w-7xl mx-auto space-y-5">
       <PageHeader
         backHref="/"
@@ -220,57 +221,63 @@ export function PublicServicesSettings() {
       )}
 
       {/* Overview Status Card */}
-      <section className="settings-panel settings-summary rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-[#fffdf8] p-6 shadow-sm">
-        <p className="eyebrow text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b]">
+      <section className="settings-panel settings-summary rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 shadow-sm">
+        <p className="eyebrow text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
           SERVICE STATUS
         </p>
-        <h2 className="font-serif text-2xl font-medium text-[#18201d] mt-1">公共服务底座</h2>
+        <h2 className="font-serif text-2xl font-medium text-ink mt-1">公共服务底座</h2>
         <div className="metric-row flex gap-8 sm:gap-16 py-4 my-2 border-y border-[rgb(24_32_29/12%)]">
           <span>
-            <strong className="font-serif text-3xl text-[#18201d]">
+            <strong className="font-serif text-3xl text-ink">
               {overview?.apps.length ?? '—'}
             </strong>{' '}
             应用
           </span>
           <span>
-            <strong className="font-serif text-3xl text-[#18201d]">
+            <strong className="font-serif text-3xl text-ink">
               {llmProfiles.length || '—'}
             </strong>{' '}
             LLM 模型
           </span>
           <span>
-            <strong className="font-serif text-3xl text-[#18201d]">
+            <strong className="font-serif text-3xl text-ink">
               {overview?.personas.length ?? '—'}
             </strong>{' '}
             角色模板
           </span>
         </div>
-        <p className="settings-note text-xs text-[#68716d] mt-2">
+        <p className="settings-note text-sm text-muted mt-2">
           安全存储：{overview?.keyring.available ? `已连接 ${overview.keyring.backend}` : '不可用，仅允许环境变量回退；无法独立复制带密钥的配置'}
         </p>
       </section>
 
+      <nav className="flex flex-wrap gap-2" aria-label="公共服务分类">
+        {[['models','模型模板'], ['routing','应用路由'], ['access','访问与其他能力']].map(([id, label]) =>
+          <button type="button" key={id} aria-pressed={section === id} onClick={() => setSection(id)} className={`min-h-10 rounded-md px-4 text-sm font-medium ${section === id ? 'bg-accent text-white' : 'border border-border-default bg-surface'}`}>{label}</button>)}
+      </nav>
+      <div hidden={section !== 'models'}>
       {/* LLM Model Library */}
-      <section className="settings-panel settings-wide rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-[#fffdf8] p-6 space-y-4">
+      <section className="settings-panel settings-wide rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 space-y-4">
         <div className="settings-heading-row flex items-center justify-between pb-2 border-b border-[rgb(24_32_29/10%)]">
           <div>
-            <p className="eyebrow text-[10px] font-bold uppercase tracking-wider text-[#b83b1b]">
+            <p className="eyebrow text-sm font-bold uppercase tracking-wider text-accent-dark">
               LLM TEMPLATE LIBRARY
             </p>
-            <h2 className="font-serif text-2xl font-medium text-[#18201d]">公共 LLM 模板库</h2>
+            <h2 className="font-serif text-2xl font-medium text-ink">公共 LLM 模板库</h2>
           </div>
           <button
             type="button"
-            className="min-h-[34px] px-3.5 bg-[#e45d35] text-white hover:bg-[#b83b1b] rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            className="min-h-[34px] px-3.5 bg-accent text-white hover:bg-accent-dark rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer"
             onClick={handleBeginNew}
           >
             新建模板
           </button>
         </div>
-        <p className="settings-note text-xs text-[#68716d]">
+        <p className="settings-note text-sm text-muted">
           LLM 模板包含地址、密钥、模型 ID、思考模式与自定义参数。修改模板后，所有绑定该模板的应用发起的新请求即时生效。
         </p>
 
+        <div className="grid gap-6 xl:grid-cols-2 items-start">
         <ProviderList
           profiles={llmProfiles}
           overview={overview}
@@ -287,8 +294,11 @@ export function PublicServicesSettings() {
           cloneSourceId={cloneSourceId}
           loading={createProfileMutation.isPending || cloneProfileMutation.isPending}
         />
+        </div>
       </section>
 
+      </div>
+      <div hidden={section !== 'routing'}>
       {/* App Model Routing */}
       <AppModelRouting
         overview={overview}
@@ -296,6 +306,8 @@ export function PublicServicesSettings() {
         onSaveAssignment={handleSaveAssignment}
       />
 
+      </div>
+      <div hidden={section !== 'access'}>
       {/* App Tokens & Other Providers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppTokens overview={overview} onCreateApp={handleCreateApp} />
@@ -308,20 +320,21 @@ export function PublicServicesSettings() {
         />
       </div>
 
+      </div>
       {/* Character Library Entry Link */}
-      <section className="settings-panel settings-wide character-service-entry rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-[#fffdf8] p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+      <section className="settings-panel settings-wide character-service-entry rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
         <div className="md:col-span-2 space-y-1">
-          <p className="eyebrow text-[10px] font-bold uppercase tracking-wider text-[#b83b1b]">
+          <p className="eyebrow text-sm font-bold uppercase tracking-wider text-accent-dark">
             CHARACTER LIBRARY
           </p>
-          <h2 className="font-serif text-2xl font-medium text-[#18201d]">公共角色资料</h2>
-          <p className="settings-note text-xs text-[#68716d]">
+          <h2 className="font-serif text-2xl font-medium text-ink">公共角色资料</h2>
+          <p className="settings-note text-sm text-muted">
             角色创作、资料来源、关系与发布版本已经迁移到独立资料库。这里仅展示公共服务状态，不再用一段人格提示词代替完整角色资料。
           </p>
         </div>
         <div className="flex justify-end">
           <Link
-            className="character-service-link inline-flex items-center gap-1.5 px-4 py-2.5 rounded-[3px_14px_3px_3px] bg-[#e45d35] text-white font-semibold text-xs hover:bg-[#b83b1b] transition-colors shadow-xs"
+            className="character-service-link inline-flex items-center gap-1.5 px-4 py-2.5 rounded-[3px_14px_3px_3px] bg-accent text-white font-semibold text-sm hover:bg-accent-dark transition-colors shadow-xs"
             href="/apps/characters"
           >
             <span>打开角色资料库 →</span>

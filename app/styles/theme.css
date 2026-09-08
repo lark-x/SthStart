@@ -3,7 +3,7 @@
   --ink: #18201d;
   --muted: #68716d;
   --paper: #f4f0e7;
-  --accent: #e45d35;
+  --accent: #c04c28;
   --accent-dark: #b83b1b;
 
   /* Surfaces & Backgrounds */
@@ -55,7 +55,7 @@ html[data-eye-care="true"]:not([data-app="linshe"]) {
   --ink: #27302c;
   --muted: #6b736e;
   --paper: #ebe3d3;
-  --accent: #d35832;
+  --accent: #b94b2a;
   --accent-dark: #a8391b;
 
   --bg-app: #ebe3d3;

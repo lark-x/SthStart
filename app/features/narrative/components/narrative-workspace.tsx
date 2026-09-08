@@ -1,4 +1,5 @@
 'use client';
+import { AppSwitcher } from '@/app/components/shared/app-switcher';
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -22,6 +23,7 @@ import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
 export function NarrativeWorkspace() {
   const toast = useToast();
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'read' | 'import'>('read');
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
@@ -152,13 +154,13 @@ export function NarrativeWorkspace() {
   };
 
   return (
-    <main className="min-h-screen md:h-dvh md:overflow-hidden w-full bg-[#ece8df] text-[#202631] flex flex-col">
+    <main className="min-h-screen md:h-dvh md:overflow-hidden w-full bg-paper text-ink flex flex-col">
       {/* Header */}
-      <header className="sticky md:static top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-3 bg-[#f5f1e8] border-b border-[rgb(32_38_49/15%)]">
+      <header className="sticky md:static top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-3 bg-surface border-b border-[rgb(32_38_49/15%)]">
         <div className="flex items-center gap-3">
           <Link
             href="/"
-            className="flex items-center gap-2 font-serif text-lg font-medium text-[#202631]"
+            className="flex items-center gap-2 font-serif text-lg font-medium text-ink"
           >
             <span className="h-8 w-8 rounded-full bg-[#283548] text-[#f6ebd2] font-serif flex items-center justify-center text-sm">
               叙
@@ -168,14 +170,16 @@ export function NarrativeWorkspace() {
         </div>
 
         <div className="flex items-center gap-1 bg-[rgb(32_38_49/6%)] p-1 rounded-full">
+          <AppSwitcher />
+          <button type="button" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen(!inspectorOpen)} className="min-h-10 px-3 text-sm rounded-md border border-border-default">检索原文</button>
           <EyeCareToggle />
           <button
             type="button"
             onClick={() => setMode('read')}
-            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
               mode === 'read'
                 ? 'bg-[#283548] text-white'
-                : 'text-[#6a7078] hover:text-[#202631]'
+                : 'text-muted hover:text-ink'
             }`}
           >
             阅读模式
@@ -183,10 +187,10 @@ export function NarrativeWorkspace() {
           <button
             type="button"
             onClick={() => setMode('import')}
-            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
               mode === 'import'
                 ? 'bg-[#283548] text-white'
-                : 'text-[#6a7078] hover:text-[#202631]'
+                : 'text-muted hover:text-ink'
             }`}
           >
             数据源与导入
@@ -224,12 +228,12 @@ export function NarrativeWorkspace() {
               generatingConcept={Boolean(conceptTaskId) || submittingConcept}
             />
 
-            <NarrativeInspector
+            {inspectorOpen && <NarrativeInspector
               query={searchQuery}
               onQueryChange={setSearchQuery}
               results={searchData?.items ?? []}
               onSelectResult={handleSelectSearchResult}
-            />
+            />}
           </>
         ) : (
           <NarrativeImport

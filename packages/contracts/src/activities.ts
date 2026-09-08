@@ -270,6 +270,7 @@ export const ActivityCheckpointSchema = Type.Object({
   contentRevisionId: Type.String(),
   mediaRevisionId: Type.Union([Type.String(), Type.Null()]),
   playbackRevisionId: Type.Union([Type.String(), Type.Null()]),
+  imageConfigRevisionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(),
 });
 export type ActivityCheckpoint = Static<typeof ActivityCheckpointSchema>;
@@ -307,6 +308,7 @@ export const MediaRevisionSchema = Type.Object({
   id: Type.String(),
   activityId: Type.String(),
   contentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   slotBindings: Type.Array(Type.Object({
     slotId: Type.String(),
     slotFingerprint: Type.String(),

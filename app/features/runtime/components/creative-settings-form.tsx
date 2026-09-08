@@ -59,7 +59,7 @@ export function CreativeSettingsForm({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-[#b83b1b]">
+            <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
               CREATIVE WORKFLOW CONFIG
             </span>
             {onSyncPublicModel && (
@@ -75,7 +75,7 @@ export function CreativeSettingsForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label htmlFor="creative-json-text" className="block text-xs font-semibold text-[#18201d] mb-1.5">
+            <label htmlFor="creative-json-text" className="block text-sm font-semibold text-ink mb-1.5">
               JSON 配置结构
             </label>
             <Textarea
@@ -84,18 +84,18 @@ export function CreativeSettingsForm({
               {...register('jsonText', { required: '请输入 JSON 配置' })}
               error={errors.jsonText?.message}
               aria-describedby={errors.jsonText ? 'creative-json-error' : undefined}
-              className="bg-[#18201d] p-3 text-xs text-[#dae2de] font-mono leading-relaxed"
+              className="bg-ink p-3 text-sm text-[#dae2de] font-mono leading-relaxed"
               spellCheck={false}
             />
             {errors.jsonText?.message && (
-              <p id="creative-json-error" role="alert" className="mt-1.5 text-xs text-[#c9674a] font-medium">
+              <p id="creative-json-error" role="alert" className="mt-1.5 text-sm text-[#c9674a] font-medium">
                 {errors.jsonText.message}
               </p>
             )}
           </div>
         </CardContent>
         <CardFooter>
-          <span className="text-xs text-[#68716d]">修改将实时写入 runtime.creative 配置</span>
+          <span className="text-sm text-muted">修改将实时写入 runtime.creative 配置</span>
           <Button
             type="submit"
             variant="primary"

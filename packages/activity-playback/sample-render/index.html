@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0" />
-    <title>活动回放样片 - 海边夏日露营</title>
+    <title>海边夏日露营 - 回放</title>
     <script src="assets/gsap.min.js"></script>
     <style>
       @font-face {
@@ -18,11 +18,7 @@
         font-family: 'Microsoft YaHei';
         src: local('Microsoft YaHei');
       }
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
         width: 1080px;
         height: 1920px;
@@ -39,512 +35,279 @@
         background: #ededed;
         overflow: hidden;
       }
-
-      /* 手机状态栏 */
       .status-bar {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 88px;
+        top: 0; left: 0; width: 100%; height: 88px;
         padding: 0 48px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 32px;
-        font-weight: 600;
-        color: #000;
-        z-index: 100;
-        background: rgba(237, 237, 237, 0.96);
+        display: flex; justify-content: space-between; align-items: center;
+        font-size: 32px; font-weight: 600; color: #000;
+        z-index: 100; background: rgba(237, 237, 237, 0.96);
       }
-      .status-icons {
-        display: flex;
-        gap: 16px;
-        font-size: 28px;
-      }
-
-      /* 顶部导航栏 */
+      .status-icons { display: flex; gap: 16px; font-size: 28px; }
       .nav-bar {
-        position: absolute;
-        top: 88px;
-        left: 0;
-        width: 100%;
-        height: 110px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 36px;
-        background: #ededed;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-        z-index: 90;
+        position: absolute; top: 88px; left: 0; width: 100%; height: 110px;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 36px; background: #ededed;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08); z-index: 90;
       }
-      .nav-title {
-        font-size: 42px;
-        font-weight: 600;
-        color: #111;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .nav-badge {
-        font-size: 26px;
-        color: #666;
-        font-weight: 400;
-      }
-      .nav-action {
-        font-size: 36px;
-        color: #333;
-      }
-
-      /* 主体视口容器 */
+      .nav-title { font-size: 42px; font-weight: 600; color: #111; display: flex; align-items: center; gap: 12px; }
+      .nav-action { font-size: 36px; color: #333; }
       .viewport-container {
-        position: absolute;
-        top: 198px;
-        left: 0;
-        width: 1080px;
-        height: 1722px;
+        position: absolute; top: 198px; left: 0; width: 1080px; height: 1722px;
         overflow: hidden;
       }
-
-      /* 聊天视图 */
       #chat-view {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 1080px;
-        height: 1722px;
+        position: absolute; top: 0; left: 0; width: 1080px; height: 1722px;
         background: #ededed;
       }
       .chat-scroll {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        padding: 40px 36px 140px;
-        display: flex;
-        flex-direction: column;
-        gap: 36px;
+        position: absolute; top: 0; left: 0; width: 100%;
+        padding: 40px 36px 140px; display: flex; flex-direction: column; gap: 36px;
       }
-
-      /* 消息行 */
-      .msg-row {
-        display: flex;
-        gap: 24px;
-        max-width: 860px;
-      }
-      .msg-row.right {
-        align-self: flex-end;
-        flex-direction: row-reverse;
-      }
+      .msg-row { display: flex; gap: 24px; max-width: 860px; }
+      .msg-row.right { align-self: flex-end; flex-direction: row-reverse; }
       .avatar {
-        width: 96px;
-        height: 96px;
-        border-radius: 18px;
-        object-fit: cover;
-        background: #ccc;
-        flex-shrink: 0;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        width: 96px; height: 96px; border-radius: 18px; object-fit: cover;
+        background: #ccc; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);
       }
-      .msg-body {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .msg-name {
-        font-size: 26px;
-        color: #777;
-      }
-      .msg-row.right .msg-name {
-        text-align: right;
-      }
+      .msg-body { display: flex; flex-direction: column; gap: 8px; }
+      .msg-name { font-size: 26px; color: #656565; }
+      .msg-row.right .msg-name { text-align: right; }
       .bubble {
-        padding: 24px 32px;
-        border-radius: 20px;
-        font-size: 36px;
-        line-height: 1.45;
-        position: relative;
-        word-break: break-word;
+        padding: 24px 32px; border-radius: 20px; font-size: 36px;
+        line-height: 1.45; position: relative; word-break: break-word;
         box-shadow: 0 2px 8px rgba(0,0,0,0.04);
       }
-      .bubble.left {
-        background: #ffffff;
-        color: #111;
-        border-top-left-radius: 4px;
-      }
-      .bubble.right {
-        background: #95ec69;
-        color: #000;
-        border-top-right-radius: 4px;
-      }
-
-      /* 图片/视频气泡预览 */
-      .media-bubble {
-        padding: 0;
-        border-radius: 20px;
-        overflow: hidden;
-        background: #000;
-        display: inline-block;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-      }
-      .media-thumb {
-        display: block;
-        width: 440px;
-        height: 280px;
-        object-fit: cover;
-      }
-      .video-preview-wrapper {
-        position: relative;
-        width: 440px;
-        height: 280px;
-      }
+      .bubble.left { background: #ffffff; color: #111; border-top-left-radius: 4px; }
+      .bubble.right { background: #95ec69; color: #000; border-top-right-radius: 4px; }
+      .media-bubble { padding: 0; border-radius: 20px; overflow: hidden; background: #000; display: inline-block; }
+      .media-thumb { display: block; width: 440px; height: 280px; object-fit: cover; }
+      .video-preview-wrapper { position: relative; width: 440px; height: 280px; }
       .play-badge {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 72px;
-        height: 72px;
-        background: rgba(0, 0, 0, 0.65);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
-        font-size: 32px;
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 72px; height: 72px; background: rgba(0,0,0,0.65); border-radius: 50%;
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 32px;
       }
-
-      /* 朋友圈视图 */
       #moments-view {
-        position: absolute;
-        top: 0;
-        left: 1080px; /* 初始位于右侧 */
-        width: 1080px;
-        height: 1722px;
-        background: #ffffff;
-        overflow: hidden;
+        position: absolute; top: 0; left: 1080px; width: 1080px; height: 1722px;
+        background: #ffffff; overflow: hidden;
       }
-      .moments-scroll {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        padding-bottom: 80px;
-      }
+      .moments-scroll { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 80px; }
       .moments-cover {
-        width: 100%;
-        height: 480px;
-        background: linear-gradient(135deg, #2b4c7e 0%, #1e3557 100%);
-        position: relative;
-        margin-bottom: 80px;
+        width: 100%; height: 480px; background: linear-gradient(135deg, #2b4c7e 0%, #1e3557 100%);
+        position: relative; margin-bottom: 80px;
       }
-      .moments-user-strip {
-        position: absolute;
-        right: 48px;
-        bottom: -44px;
-        display: flex;
-        align-items: center;
-        gap: 24px;
-      }
-      .moments-user-name {
-        color: #fff;
-        font-size: 38px;
-        font-weight: 600;
-        text-shadow: 0 2px 8px rgba(0,0,0,0.5);
-      }
-      .moments-user-avatar {
-        width: 140px;
-        height: 140px;
-        border-radius: 24px;
-        border: 4px solid #fff;
-        object-fit: cover;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-      }
-      .moments-post {
-        display: flex;
-        gap: 28px;
-        padding: 40px 48px;
-        border-bottom: 1px solid #f0f0f0;
-      }
-      .post-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-      }
-      .post-author {
-        font-size: 34px;
-        font-weight: 600;
-        color: #576b95;
-      }
-      .post-text {
-        font-size: 36px;
-        line-height: 1.5;
-        color: #222;
-      }
-      .post-image {
-        width: 520px;
-        height: 320px;
-        border-radius: 12px;
-        object-fit: cover;
-      }
-      .post-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 28px;
-        color: #999;
-        margin-top: 8px;
-      }
-      .post-comments-box {
-        background: #f7f7f7;
-        border-radius: 12px;
-        padding: 20px 24px;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        font-size: 30px;
-        line-height: 1.45;
-      }
-      .post-likes {
-        color: #576b95;
-        font-weight: 600;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 12px;
-      }
-      .comment-row {
-        color: #333;
-      }
-      .comment-author {
-        color: #576b95;
-        font-weight: 600;
-      }
-
-      /* 展开弹窗遮罩 */
+      .moments-user-strip { position: absolute; right: 48px; bottom: -44px; display: flex; align-items: center; gap: 24px; }
+      .moments-user-name { color: #fff; font-size: 38px; font-weight: 600; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+      .moments-user-avatar { width: 140px; height: 140px; border-radius: 24px; border: 4px solid #fff; object-fit: cover; }
+      .moments-post { display: flex; gap: 28px; padding: 40px 48px; border-bottom: 1px solid #f0f0f0; }
+      .post-content { flex: 1; display: flex; flex-direction: column; gap: 18px; }
+      .post-author { font-size: 34px; font-weight: 600; color: #576b95; }
+      .post-text { font-size: 36px; line-height: 1.5; color: #222; }
+      .post-image { width: 520px; height: 320px; border-radius: 12px; object-fit: cover; }
+      .post-meta { display: flex; justify-content: space-between; font-size: 28px; color: #656565; margin-top: 8px; }
+      .post-comments-box { background: #f7f7f7; border-radius: 12px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; font-size: 30px; }
+      .post-likes { color: #576b95; font-weight: 600; border-bottom: 1px solid #eee; padding-bottom: 12px; }
+      .comment-row { color: #333; }
+      .comment-author { color: #576b95; font-weight: 600; }
+      .bubble, .post-text { white-space: pre-wrap; }
+      .media-overlay { position:absolute; inset:0; width:100%; height:100%; background:#080808; object-fit:contain; z-index:200; }
+      div.media-overlay { display:flex; align-items:center; justify-content:center; }
+      .media-overlay img { width:100%; height:100%; object-fit:contain; }
+      .stage-card { position:absolute; inset:0; z-index:210; background:#ededed; display:flex; align-items:center; justify-content:center; padding:80px; font-size:54px; }
+      .typing-indicator { position:absolute; bottom:30px; left:40px; z-index:150; background:#fff; padding:20px; font-size:30px; }
       #media-modal {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 1080px;
-        height: 1920px;
-        background: rgba(0, 0, 0, 0.94);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 200;
-        opacity: 0;
-        pointer-events: none;
+        position: absolute; top: 0; left: 0; width: 1080px; height: 1920px;
+        background: rgba(0, 0, 0, 0.94); display: flex; align-items: center; justify-content: center;
+        z-index: 200; opacity: 0; pointer-events: none;
       }
-      .modal-content {
-        width: 960px;
-        max-height: 1400px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      #modal-photo-img {
-        width: 100%;
-        max-height: 1300px;
-        object-fit: contain;
-        border-radius: 16px;
-        display: none;
-      }
-      #modal-video-elem {
-        width: 100%;
-        max-height: 1300px;
-        border-radius: 16px;
-        display: none;
-      }
+      .modal-content { width: 960px; max-height: 1400px; display: flex; align-items: center; justify-content: center; }
+      #modal-photo-img { width: 100%; max-height: 1300px; object-fit: contain; border-radius: 16px; display: none; }
+      #modal-video-elem { width: 100%; max-height: 1300px; border-radius: 16px; display: none; }
     </style>
   </head>
   <body>
-    <div
-      id="root"
-      data-composition-id="main"
-      data-start="0"
-      data-duration="25"
-      data-width="1080"
-      data-height="1920"
-    >
-      <!-- 手机状态栏 -->
-      <div class="status-bar">
+    <div id="root" data-composition-id="main" data-duration="25" data-width="1080" data-height="1920">
+      <div id="device-content">
+      <div class="status-bar" data-layout-allow-overlap="true" data-layout-allow-occlusion="true">
         <span>18:30</span>
-        <div class="status-icons">
-          <span>5G</span>
-          <span>●●●</span>
-          <span>98%</span>
-        </div>
+        <div class="status-icons"><span>5G</span><span>●●●</span><span>98%</span></div>
       </div>
-
-      <!-- 顶部导航栏 -->
-      <div class="nav-bar">
-        <div id="nav-title-text" class="nav-title">
+      <div class="nav-bar" data-layout-allow-overlap="true" data-layout-allow-occlusion="true">
+        <div id="nav-title-text" class="nav-title" data-layout-allow-overlap="true">
           <span>海边营地小分队</span>
-          <span class="nav-badge">(2)</span>
         </div>
         <div class="nav-action">•••</div>
       </div>
-
-      <!-- 视口容器 -->
-      <div class="viewport-container">
-        <!-- 聊天视图 -->
+      <div class="viewport-container" data-layout-allow-overflow="true">
         <div id="chat-view">
           <div id="chat-scroll" class="chat-scroll">
-            <!-- 消息 1: 岚 -->
-            <div id="msg_1" class="msg-row right">
-              <img src="assets/lan_avatar.png" class="avatar" alt="岚" />
-              <div class="msg-body">
-                <span class="msg-name">岚</span>
-                <div class="bubble right">海风好舒服，澄，我们先把桌椅和灯串拉好。</div>
-              </div>
-            </div>
 
-            <!-- 消息 2: 澄 -->
-            <div id="msg_2" class="msg-row">
-              <img src="assets/cheng_avatar.png" class="avatar" alt="澄" />
-              <div class="msg-body">
-                <span class="msg-name">澄</span>
-                <div class="bubble left">收到！灯串我已经挂在帐篷前了，等天黑就会亮起来！✨</div>
-              </div>
-            </div>
+        <div id="msg_msg_1" data-conversation="group_main" class="msg-row right" data-order="10">
+          <img src="assets/lan_avatar.png" class="avatar" alt="岚" />
+          <div class="msg-body">
+            <span class="msg-name">岚</span>
+            <div class="bubble right">海风好舒服，澄，我们先把桌椅和灯串拉好。</div>
 
-            <!-- 消息 3: 岚 + 照片 -->
-            <div id="msg_photo" class="msg-row right">
-              <img src="assets/lan_avatar.png" class="avatar" alt="岚" />
-              <div class="msg-body">
-                <span class="msg-name">岚</span>
-                <div class="bubble right">快看营地全景，第一张合照先拍好啦！</div>
-                <div class="media-bubble">
-                  <img src="assets/camp_photo.png" class="media-thumb" alt="合照" />
-                </div>
-              </div>
-            </div>
+          </div>
+        </div>
 
-            <!-- 消息 4: 澄 + 视频 -->
-            <div id="msg_video" class="msg-row">
-              <img src="assets/cheng_avatar.png" class="avatar" alt="澄" />
-              <div class="msg-body">
-                <span class="msg-name">澄</span>
-                <div class="bubble left">还有这个！我录了一段海浪声和海边微风～</div>
-                <div class="media-bubble">
-                  <div class="video-preview-wrapper">
-                    <img src="assets/camp_photo.png" class="media-thumb" alt="视频预览" />
-                    <div class="play-badge">▶</div>
-                  </div>
-                </div>
-              </div>
+        <div id="msg_msg_2" data-conversation="group_main" class="msg-row left" data-order="20">
+          <img src="assets/cheng_avatar.png" class="avatar" alt="澄" />
+          <div class="msg-body">
+            <span class="msg-name">澄</span>
+            <div class="bubble left">收到！灯串我已经挂在帐篷前了，等天黑就会亮起来！✨</div>
+
+          </div>
+        </div>
+
+        <div id="msg_msg_photo" data-conversation="group_main" class="msg-row right" data-order="30">
+          <img src="assets/lan_avatar.png" class="avatar" alt="岚" />
+          <div class="msg-body">
+            <span class="msg-name">岚</span>
+            <div class="bubble right">快看营地全景，第一张合照先拍好啦！</div>
+
+            <div class="media-bubble">
+              <img src="assets/camp_photo.png" class="media-thumb" alt="图片" />
             </div>
           </div>
         </div>
 
-        <!-- 朋友圈视图 -->
+        <div id="msg_msg_video" data-conversation="group_main" class="msg-row left" data-order="40">
+          <img src="assets/cheng_avatar.png" class="avatar" alt="澄" />
+          <div class="msg-body">
+            <span class="msg-name">澄</span>
+            <div class="bubble left">还有这个！我录了一段海浪声和海边微风～</div>
+
+              <div class="media-bubble">
+                <div class="video-preview-wrapper">
+                  <div class="media-thumb" aria-label="视频">视频</div>
+                  <div class="play-badge">▶</div>
+                </div>
+              </div>
+          </div>
+        </div>
+          </div>
+        </div>
         <div id="moments-view">
           <div id="moments-scroll" class="moments-scroll">
-            <div class="moments-cover">
+            <div class="moments-cover" data-layout-allow-overflow="true">
               <div class="moments-user-strip">
-                <span class="moments-user-name">澄</span>
-                <img src="assets/cheng_avatar.png" class="moments-user-avatar" alt="澄" />
+                <span class="moments-user-name">岚</span>
+                <img src="assets/lan_avatar.png" class="moments-user-avatar" alt="用户头像" />
               </div>
             </div>
 
-            <!-- 朋友圈动态 -->
-            <div id="post_after" class="moments-post">
-              <img src="assets/cheng_avatar.png" class="avatar" alt="澄" />
-              <div class="post-content">
-                <span class="post-author">澄</span>
-                <p class="post-text">海风、灯串，还有今晚的星空营地！🏕️🌊</p>
-                <img src="assets/camp_photo.png" class="post-image" alt="配图" />
-                <div class="post-meta">
-                  <span>10分钟前</span>
-                  <span>••</span>
-                </div>
-                <div class="post-comments-box">
-                  <div class="post-likes">❤️ 岚</div>
-                  <div class="comment-row">
-                    <span class="comment-author">岚：</span>下次再一起来海边看日出。
-                  </div>
-                </div>
-              </div>
+        <div id="post_post_after" class="moments-post" data-order="50">
+          <img src="assets/cheng_avatar.png" class="avatar" alt="澄" />
+          <div class="post-content">
+            <span class="post-author">澄</span>
+            <p class="post-text">海风、灯串，还有今晚的星空营地！🏕️🌊</p>
+            <img src="assets/camp_photo.png" class="post-image" alt="配图" />
+            <div class="post-meta">
+              <span>19:00</span>
+              <span>••</span>
             </div>
+
+              <div class="post-comments-box">
+                <div class="post-likes">❤️ 岚</div>
+
+            <div id="comment_comment_1" class="comment-row" data-post="post_after" data-order="60">
+              <span class="comment-author">岚：</span>下次再一起来海边看日出。
+            </div>
+              </div>
+
+          </div>
+        </div>
           </div>
         </div>
       </div>
-
-      <!-- 展开弹窗 -->
-      <div id="media-modal">
-        <div class="modal-content">
-          <img id="modal-photo-img" src="assets/camp_photo.png" alt="展开合照" />
-          <video
-            id="modal-video-elem"
-            src="assets/camp_video.mp4"
-            data-start="10.4"
-            data-duration="5"
-            playsinline
-            muted="false"
-            preload="auto"
-          ></video>
-        </div>
       </div>
+      <div id="media_2" class="clip media-overlay" data-start="5" data-duration="4" data-track-index="2"><img src="assets/camp_photo.png" alt="展开图片" /></div>
+<video id="media_5" class="clip media-overlay" src="assets/camp_video.mp4" data-start="10.4" data-duration="5" data-media-start="0" data-track-index="2" muted playsinline preload="auto"></video>
+<audio id="sound_5" class="clip" src="assets/camp_video.mp4" data-start="10.4" data-duration="5" data-media-start="0" data-track-index="3" data-volume="1" preload="auto"></audio>
+      <div id="stage-card" class="stage-card"></div>
+      <div id="typing" class="typing-indicator">正在输入…</div>
     </div>
-
-    <!-- GSAP 动画编排脚本 -->
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      const chatScroll = document.getElementById("chat-scroll");
-      const chatView = document.getElementById("chat-view");
-      const momentsView = document.getElementById("moments-view");
-      const momentsScroll = document.getElementById("moments-scroll");
-      const navTitle = document.getElementById("nav-title-text");
-      const mediaModal = document.getElementById("media-modal");
-      const modalPhoto = document.getElementById("modal-photo-img");
-      const modalVideo = document.getElementById("modal-video-elem");
-
-      // t=0s 到 4s: 停留在聊天视图初始位置
-      // t=4s 到 5s: 滚动到 msg_photo
-      tl.to(chatScroll, { y: -240, duration: 1.0, ease: "power2.inOut" }, 4.0);
-
-      // t=5s 到 9s: 展开图片弹窗 (open_media: image)
-      tl.call(() => {
-        modalPhoto.style.display = "block";
-        modalVideo.style.display = "none";
-      }, null, 5.0);
-      tl.to(mediaModal, { opacity: 1, duration: 0.3, ease: "power1.out" }, 5.0);
-      // t=9s 到 9.4s: 关闭图片弹窗 (close_media)
-      tl.to(mediaModal, { opacity: 0, duration: 0.3, ease: "power1.in" }, 8.7);
-      tl.call(() => {
-        modalPhoto.style.display = "none";
-      }, null, 9.4);
-
-      // t=9.4s 到 10.4s: 滚动到 msg_video
-      tl.to(chatScroll, { y: -540, duration: 1.0, ease: "power2.inOut" }, 9.4);
-
-      // t=10.4s 到 15.4s: 展开视频弹窗并播放 (open_media: video)
-      tl.call(() => {
-        modalPhoto.style.display = "none";
-        modalVideo.style.display = "block";
-      }, null, 10.4);
-      tl.to(mediaModal, { opacity: 1, duration: 0.3, ease: "power1.out" }, 10.4);
-      // t=15.0s 到 15.4s: 关闭视频弹窗 (close_media)
-      tl.to(mediaModal, { opacity: 0, duration: 0.3, ease: "power1.in" }, 15.0);
-      tl.call(() => {
-        modalVideo.style.display = "none";
-      }, null, 15.4);
-
-      // t=15.8s 到 17.0s: 切换到朋友圈 (open_view: moments)
-      tl.call(() => {
-        navTitle.innerHTML = "<span>朋友圈</span>";
-      }, null, 15.8);
-      tl.to(chatView, { x: -1080, duration: 0.8, ease: "power2.inOut" }, 15.8);
-      tl.to(momentsView, { x: -1080, duration: 0.8, ease: "power2.inOut" }, 15.8);
-
-      // t=17.0s 到 18.0s: 滚动朋友圈到 post_after
-      tl.to(momentsScroll, { y: -160, duration: 1.0, ease: "power2.inOut" }, 17.0);
-
-      // t=18.0s 到 25.0s: 停留阅读
-      tl.to({}, { duration: 7.0 }, 18.0);
-
-      window.__timelines["main"] = tl;
+      document.fonts.ready.then(() => {
+        const actions = [{"id":"a1","type":"open_view","atMs":0,"durationMs":4000,"view":"chat","conversationId":"group_main","visibleThroughOrder":25},{"id":"a2","type":"scroll_to","atMs":4000,"durationMs":1000,"targetType":"message","targetId":"msg_photo","align":"center"},{"id":"a3","type":"open_media","atMs":5000,"durationMs":4000,"slotId":"slot_photo","assetKey":"asset_photo","kind":"image"},{"id":"a4","type":"close_media","atMs":9000,"durationMs":400},{"id":"a5","type":"scroll_to","atMs":9400,"durationMs":1000,"targetType":"message","targetId":"msg_video","align":"center"},{"id":"a6","type":"open_media","atMs":10400,"durationMs":5000,"slotId":"slot_video","assetKey":"asset_video","kind":"video","sourceInMs":0,"volume":1},{"id":"a7","type":"close_media","atMs":15400,"durationMs":400},{"id":"a8","type":"open_view","atMs":15800,"durationMs":1200,"view":"moments","visibleThroughOrder":65},{"id":"a9","type":"scroll_to","atMs":17000,"durationMs":1000,"targetType":"post","targetId":"post_after","align":"start"},{"id":"a10","type":"hold","atMs":18000,"durationMs":7000}];
+        const conversations = [{"id":"group_main","title":"海边营地小分队"}];
+        const byId = id => document.getElementById(id);
+        const messages = [...document.querySelectorAll('.msg-row')];
+        const comments = [...document.querySelectorAll('.comment-row')];
+        const offsets = {};
+        // Measure each conversation's real text/media layout once at the render dimensions.
+        for (const conversation of conversations) {
+          messages.forEach(el => { el.style.display = el.dataset.conversation === conversation.id ? 'flex' : 'none'; });
+          messages.filter(el => el.dataset.conversation === conversation.id).forEach(el => { offsets[el.id] = { top: el.offsetTop, height: el.offsetHeight }; });
+        }
+        document.querySelectorAll('.moments-post,.comment-row').forEach(el => {
+          const base = byId('moments-scroll').getBoundingClientRect();
+          const box = el.getBoundingClientRect(); offsets[el.id] = { top: box.top - base.top, height: box.height };
+        });
+        const initialConversation = conversations[0]?.id;
+        messages.forEach(el => { el.style.display = el.dataset.conversation === initialConversation ? 'flex' : 'none'; });
+        const tl = gsap.timeline({ paused: true });
+        const chat = byId('chat-view'), moments = byId('moments-view'), nav = byId('nav-title-text');
+        const scroll = { message: byId('chat-scroll'), post: byId('moments-scroll'), comment: byId('moments-scroll') };
+        gsap.set([chat, moments, ...Object.values(scroll)], { x: 0, y: 0 });
+        gsap.set([byId('stage-card'), byId('typing')], { autoAlpha: 0 });
+        // Explicit reveal actions own visibility; archive-style scripts without them show all records.
+        const reveals = actions.some(a => a.type === 'reveal_message' || a.visibleThroughOrder !== undefined);
+        if (reveals) gsap.set(messages, { autoAlpha: 0 });
+        for (const comment of comments) {
+          if (actions.some(a => a.type === 'reveal_comments' && a.postId === comment.dataset.post)) gsap.set(comment, { autoAlpha: 0 });
+        }
+        gsap.set(moments, { autoAlpha: 0 });
+        for (const clip of document.querySelectorAll('.media-overlay')) {
+          const at = Number(clip.dataset.start), end = at + Number(clip.dataset.duration);
+          tl.set(byId('device-content'), { autoAlpha: 0 }, at);
+          tl.set(byId('device-content'), { autoAlpha: 1 }, end);
+        }
+        let visibleOrder = 0;
+        for (const action of actions) {
+          const at = action.atMs / 1000, duration = action.durationMs / 1000;
+          if (action.type === 'open_view') {
+            const isMoments = action.view === 'moments';
+            tl.set(isMoments ? moments : chat, { autoAlpha: 1 }, at);
+            tl.set(isMoments ? chat : moments, { autoAlpha: 0 }, at + duration);
+            tl.to([chat, moments], { x: isMoments ? -1080 : 0, duration, ease: 'power1.inOut' }, at);
+            tl.set(nav, { textContent: isMoments ? '朋友圈' : (conversations.find(c => c.id === action.conversationId)?.title || conversations[0]?.title || '群聊') }, at);
+            if (!isMoments && action.conversationId) {
+              for (const el of messages) tl.set(el, { display: el.dataset.conversation === action.conversationId ? 'flex' : 'none' }, at);
+              tl.set(scroll.message, { y: 0 }, at);
+            }
+          }
+          if (action.type === 'reveal_message' || action.visibleThroughOrder !== undefined) {
+            const target = action.targetId ? byId('msg_' + action.targetId) : null;
+            visibleOrder = Math.max(visibleOrder, action.visibleThroughOrder ?? Number(target?.dataset.order || 0));
+            for (const el of messages) if (Number(el.dataset.order) <= visibleOrder) tl.set(el, { autoAlpha: 1 }, at);
+          }
+          if (action.type === 'reveal_comments') {
+            for (const el of comments) if (el.dataset.post === action.postId && Number(el.dataset.order) <= (action.throughOrder ?? Infinity)) tl.set(el, { autoAlpha: 1 }, at);
+          }
+          if (action.type === 'scroll_to') {
+            const prefix = action.targetType === 'message' ? 'msg_' : action.targetType === 'comment' ? 'comment_' : 'post_';
+            const box = offsets[prefix + action.targetId];
+            if (box) {
+              const align = action.align === 'end' ? 1 : action.align === 'start' ? 0 : 0.5;
+              const y = Math.max(0, box.top - (1722 - box.height) * align);
+              tl.to(scroll[action.targetType], { y: -y, duration, ease: 'power1.inOut' }, at);
+              if (action.targetType !== 'message') tl.set('.moments-cover', { autoAlpha: y >= 480 ? 0 : 1 }, at + duration);
+            }
+          }
+          if (action.type === 'stage_card' || action.type === 'typing') {
+            const el = byId(action.type === 'typing' ? 'typing' : 'stage-card');
+            tl.set(el, { textContent: action.text || (action.type === 'typing' ? '正在输入…' : ''), autoAlpha: 1 }, at);
+            tl.set(el, { autoAlpha: 0 }, at + duration);
+          }
+        }
+        tl.to({}, { duration: 25 }, 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines.main = tl;
+        tl.seek(0);
+      });
     </script>
   </body>
 </html>

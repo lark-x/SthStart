@@ -17,18 +17,18 @@ export function EnginePanel({
 }) {
   return (
     <Card>
-      <CardHeader><div className="flex items-center gap-2 text-[#b83b1b]"><span className="text-[10px] font-bold tracking-[0.16em] uppercase">ENGINES</span></div><CardTitle>生成引擎</CardTitle><CardDescription>ComfyUI 地址只保存在管理端；凭据会写入系统安全凭据库。</CardDescription></CardHeader>
+      <CardHeader><div className="flex items-center gap-2 text-accent-dark"><span className="text-sm font-bold tracking-[0.16em] uppercase">ENGINES</span></div><CardTitle>生成引擎</CardTitle><CardDescription>ComfyUI 地址只保存在管理端；凭据会写入系统安全凭据库。</CardDescription></CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-2">
           {engines.length ? engines.map((engine) => (
-            <div key={engine.id} className="flex items-center justify-between rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8] p-3">
+            <div key={engine.id} className="flex items-center justify-between rounded border border-[rgb(24_32_29/12%)] bg-surface p-3">
               <div>
-                <strong className="text-xs">{engine.name}</strong>
-                <code className="mt-0.5 block text-[10px] text-[#68716d]">{engine.id} · {engine.base_url}</code>
+                <strong className="text-sm">{engine.name}</strong>
+                <code className="mt-0.5 block text-sm text-muted">{engine.id} · {engine.base_url}</code>
               </div>
-              <span className="text-[10px] text-[#68716d]">并发 {engine.concurrency_limit}</span>
+              <span className="text-sm text-muted">并发 {engine.concurrency_limit}</span>
             </div>
-          )) : <p className="text-xs text-[#89908a]">还没有生成引擎。</p>}
+          )) : <p className="text-sm text-[#89908a]">还没有生成引擎。</p>}
         </div>
         <form onSubmit={onSubmit} className="space-y-2 border-t border-[rgb(24_32_29/10%)] pt-3" id="engine-form">
           <div className="grid grid-cols-2 gap-2">

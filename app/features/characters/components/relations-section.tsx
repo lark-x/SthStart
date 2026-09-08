@@ -55,21 +55,21 @@ export function RelationsSection({
   return (
     <div className="space-y-6">
       <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
-        <h3 className="font-serif text-2xl font-medium text-[#18201d]">关系与资料来源</h3>
-        <p className="text-xs text-[#68716d] mt-1 leading-relaxed">
+        <h3 className="font-serif text-2xl font-medium text-ink">关系与资料来源</h3>
+        <p className="text-sm text-muted mt-1 leading-relaxed">
           关系是有方向的；“A 如何看待 B” 与 “B 如何看待 A” 可以具有不同的态度与描述。
         </p>
       </div>
 
       {/* Relationship Creator */}
-      <div className="p-4 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/14%)] bg-[#fffdf8] space-y-3">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-[#68716d]">
+      <div className="p-4 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface space-y-3">
+        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
           添加人物关系
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] font-semibold text-[#18201d] mb-1">
+            <label className="block text-sm font-semibold text-ink mb-1">
               目标角色
             </label>
             <Select
@@ -87,7 +87,7 @@ export function RelationsSection({
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-[#18201d] mb-1">关系类型</label>
+            <label className="block text-sm font-semibold text-ink mb-1">关系类型</label>
             <Input
               value={relationType}
               onChange={(e) => setRelationType(e.target.value)}
@@ -98,7 +98,7 @@ export function RelationsSection({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold text-[#18201d] mb-1">关系说明与看法</label>
+          <label className="block text-sm font-semibold text-ink mb-1">关系说明与看法</label>
           <Textarea
             rows={2}
             value={description}
@@ -122,7 +122,7 @@ export function RelationsSection({
 
       {/* Relationship List */}
       <div className="space-y-3">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-[#68716d]">
+        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
           已建立的角色关系 ({detail?.relationships.length ?? 0})
         </h4>
 
@@ -135,22 +135,22 @@ export function RelationsSection({
             return (
               <div
                 key={rel.id}
-                className="flex items-start justify-between gap-3 p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8]"
+                className="flex items-start justify-between gap-3 p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <strong className="text-sm font-semibold text-[#18201d]">
+                    <strong className="text-sm font-semibold text-ink">
                       {other?.displayName || '未知角色'}
                     </strong>
-                    <span className="text-[11px] font-medium text-[#b83b1b] bg-[#e45d35]/10 px-2 py-0.5 rounded-full">
+                    <span className="text-sm font-medium text-accent-dark bg-accent/10 px-2 py-0.5 rounded-full">
                       {rel.relationType || '关系'}
                     </span>
-                    <span className="text-[10px] text-[#68716d]">
+                    <span className="text-sm text-muted">
                       {isOutward ? '由当前角色指向对方' : '由对方指向当前角色'}
                     </span>
                   </div>
                   {rel.description && (
-                    <p className="mt-1 text-xs text-[#68716d] leading-relaxed">
+                    <p className="mt-1 text-sm text-muted leading-relaxed">
                       {rel.description}
                     </p>
                   )}
@@ -159,7 +159,7 @@ export function RelationsSection({
                 <button
                   type="button"
                   onClick={() => onRemoveRelationship(rel.id)}
-                  className="p-1 text-[#68716d] hover:text-[#c9674a] transition-colors"
+                  className="p-1 text-muted hover:text-[#c9674a] transition-colors"
                   title="移除关系"
                   aria-label="移除关系"
                 >
@@ -170,7 +170,7 @@ export function RelationsSection({
           })}
 
           {(!detail?.relationships || detail.relationships.length === 0) && (
-            <div className="p-6 text-center text-xs text-[#68716d] border border-dashed border-[rgb(24_32_29/14%)] rounded">
+            <div className="p-6 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded">
               尚未建立任何角色关系。
             </div>
           )}
@@ -179,7 +179,7 @@ export function RelationsSection({
 
       {/* Sources List */}
       <div className="pt-4 border-t border-[rgb(24_32_29/10%)] space-y-3">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-[#68716d]">
+        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
           参考资料来源 ({detail?.sources.length ?? 0})
         </h4>
 
@@ -187,15 +187,15 @@ export function RelationsSection({
           {detail?.sources.map((source) => (
             <div
               key={source.id}
-              className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-[#fffdf8] space-y-1"
+              className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface space-y-1"
             >
               <div className="flex items-center justify-between">
-                <strong className="text-xs font-semibold text-[#18201d]">{source.title}</strong>
-                <span className="text-[10px] text-[#68716d]">
+                <strong className="text-sm font-semibold text-ink">{source.title}</strong>
+                <span className="text-sm text-muted">
                   {source.sourceType} · {new Date(source.fetchedAt).toLocaleDateString()}
                 </span>
               </div>
-              <p className="text-xs text-[#68716d] line-clamp-3 leading-relaxed">
+              <p className="text-sm text-muted line-clamp-3 leading-relaxed">
                 {source.excerpt}
               </p>
               {source.url && (
@@ -203,7 +203,7 @@ export function RelationsSection({
                   href={source.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-[#b83b1b] font-medium hover:underline pt-1"
+                  className="inline-flex items-center gap-1 text-sm text-accent-dark font-medium hover:underline pt-1"
                 >
                   <span>查看来源原文</span>
                   <ExternalLink className="h-3 w-3" />
@@ -213,7 +213,7 @@ export function RelationsSection({
           ))}
 
           {(!detail?.sources || detail.sources.length === 0) && (
-            <div className="p-6 text-center text-xs text-[#68716d] border border-dashed border-[rgb(24_32_29/14%)] rounded">
+            <div className="p-6 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded">
               暂无参考来源。使用 AI 智能草稿生成或导入 Tavern 卡片时会自动记录。
             </div>
           )}

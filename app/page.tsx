@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { RecentWork } from './components/recent-work';
 import { Plus, PenLine, Sparkles, BookOpen, Film } from 'lucide-react';
 import { LinsheCard } from './components/linshe-card';
 import { NotebookCard } from './components/notebook-card';
@@ -32,15 +33,10 @@ export default function Home() {
           {/* Left Column: Status & Control Central (38%) */}
           <div className="portal-sidebar-col">
             <section className="hero" aria-labelledby="portal-title">
-              <p className="eyebrow">你的本地互动世界，从这里开始</p>
-              <h1 id="portal-title">
-                一个入口，连接每一段
-                <span>正在生长的故事。</span>
-              </h1>
-              <p className="hero-copy">
-                SthStart 是你的本地应用门户。进入邻舍延续角色的生活，或在创作笔记里收好下一段故事的开端。
-              </p>
+              <h1 id="portal-title">今天，继续创作。</h1>
+              <p className="hero-copy">活动、角色与灵感，都在这里。</p>
             </section>
+            <RecentWork />
 
             <RuntimeStrip />
 
@@ -86,8 +82,8 @@ export default function Home() {
               </div>
 
               <div className="app-list">
-                <LinsheCard />
                 <ActivityStudioCard />
+                <LinsheCard />
                 <CreativeCard />
                 <CharacterLibraryCard />
                 <NotebookCard />

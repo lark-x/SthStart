@@ -22,11 +22,11 @@ export function Spinner({
   return (
     <div
       role="status"
-      className={cn('inline-flex items-center gap-2 text-[#68716d]', className)}
+      className={cn('inline-flex items-center gap-2 text-muted', className)}
       {...props}
     >
-      <Loader2 className={cn('animate-spin text-[#e45d35]', sizeClasses[size])} aria-hidden="true" />
-      {label && <span className="text-xs">{label}</span>}
+      <Loader2 className={cn('animate-spin text-accent', sizeClasses[size])} aria-hidden="true" />
+      {label && <span className="text-sm">{label}</span>}
       <span className="sr-only">{label}</span>
     </div>
   );

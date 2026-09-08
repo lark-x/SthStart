@@ -77,7 +77,7 @@ export function CharacterPickerDialog({
             variant="outline"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="text-xs"
+            className="text-sm"
           >
             取消
           </Button>
@@ -85,7 +85,7 @@ export function CharacterPickerDialog({
             size="sm"
             disabled={!selectedId}
             onClick={handleConfirm}
-            className="text-xs bg-[#e45d35] hover:bg-[#b83b1b] text-white"
+            className="text-sm bg-accent hover:bg-accent-dark text-white"
           >
             确认添加快照
           </Button>
@@ -94,12 +94,12 @@ export function CharacterPickerDialog({
     >
       <div className="space-y-3 py-1">
         <div className="relative">
-          <Search className="h-4 w-4 absolute left-3 top-2.5 text-[#68716d]" />
+          <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索角色姓名、世界观或标签…"
-            className="pl-9 h-9 bg-transparent border-[rgb(24_32_29/14%)] text-xs"
+            className="pl-9 h-9 bg-transparent border-[rgb(24_32_29/14%)] text-sm"
           />
         </div>
 
@@ -111,7 +111,7 @@ export function CharacterPickerDialog({
               ))}
             </div>
           ) : filteredCharacters.length === 0 ? (
-            <div className="py-8 text-center text-xs text-[#68716d]">
+            <div className="py-8 text-center text-sm text-muted">
               未找到匹配的角色
             </div>
           ) : (
@@ -127,8 +127,8 @@ export function CharacterPickerDialog({
                     isAdded
                       ? 'opacity-50 cursor-not-allowed bg-stone-100 border-stone-200'
                       : isSelected
-                      ? 'border-[#e45d35] bg-[#e45d35]/5 shadow-xs'
-                      : 'border-[rgb(24_32_29/10%)] hover:border-[#e45d35]/40 bg-[#faf8f2]'
+                      ? 'border-accent bg-accent/5 shadow-xs'
+                      : 'border-[rgb(24_32_29/10%)] hover:border-accent/40 bg-[#faf8f2]'
                   }`}
                 >
                   <div className="relative h-12 w-10 rounded overflow-hidden bg-stone-300 flex-shrink-0 flex items-center justify-center text-sm font-semibold text-stone-600">
@@ -145,19 +145,19 @@ export function CharacterPickerDialog({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-xs text-[#18201d] truncate">
+                      <span className="font-medium text-sm text-ink truncate">
                         {char.displayName}
                       </span>
                       {isAdded && (
-                        <span className="text-[10px] text-stone-500 font-medium">已添加</span>
+                        <span className="text-sm text-stone-500 font-medium">已添加</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-[#68716d] truncate">
+                    <p className="text-sm text-muted truncate">
                       {char.draft?.identity || char.draft?.work || '暂无详细身份'}
                     </p>
                   </div>
                   {isSelected && (
-                    <Check className="h-4 w-4 text-[#e45d35] flex-shrink-0" />
+                    <Check className="h-4 w-4 text-accent flex-shrink-0" />
                   )}
                 </div>
               );

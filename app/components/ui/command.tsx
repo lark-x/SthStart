@@ -115,7 +115,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4"
     >
       <div
-        className="fixed inset-0 bg-[#18201d]/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-ink/60 backdrop-blur-xs transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -124,10 +124,10 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
         ref={dialogRef}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/18%)] bg-[#fffdf8] shadow-2xl animate-in zoom-in-95"
+        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface shadow-2xl animate-in zoom-in-95"
       >
-        <div className="flex items-center gap-3 border-b border-[rgb(24_32_29/12%)] px-4 py-3 bg-[#fffdf8]">
-          <Search className="h-5 w-5 text-[#68716d]" aria-hidden="true" />
+        <div className="flex items-center gap-3 border-b border-[rgb(24_32_29/12%)] px-4 py-3 bg-surface">
+          <Search className="h-5 w-5 text-muted" aria-hidden="true" />
           <input
             ref={inputRef}
             aria-label="搜索命令"
@@ -137,7 +137,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
               setSelectedIndex(0);
             }}
             placeholder="搜索应用、操作、角色或笔记… (↑↓ 导航, Enter 执行)"
-            className="flex-1 bg-transparent text-sm text-[#18201d] placeholder:text-[#68716d]/70 outline-none"
+            className="flex-1 bg-transparent text-sm text-ink placeholder:text-muted/70 outline-none"
           />
           {query && (
             <button
@@ -146,20 +146,20 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                 setQuery('');
                 setSelectedIndex(0);
               }}
-              className="p-1 text-[#68716d] hover:text-[#18201d]"
+              className="p-1 text-muted hover:text-ink"
               aria-label="清空输入"
             >
               <X className="h-4 w-4" />
             </button>
           )}
-          <span className="text-[10px] uppercase font-bold tracking-widest text-[#68716d] bg-[rgb(24_32_29/6%)] px-2 py-0.5 rounded">
+          <span className="text-sm uppercase font-bold tracking-widest text-muted bg-[rgb(24_32_29/6%)] px-2 py-0.5 rounded">
             ESC
           </span>
         </div>
 
         <div className="max-h-[380px] overflow-y-auto p-2">
           {filteredItems.length === 0 ? (
-            <div className="py-10 text-center text-xs text-[#68716d]">
+            <div className="py-10 text-center text-sm text-muted">
               没有找到匹配项
             </div>
           ) : (
@@ -178,8 +178,8 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                     className={cn(
                       'flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors cursor-pointer',
                       isSelected
-                        ? 'bg-[#18201d] text-[#f4f0e7]'
-                        : 'text-[#18201d] hover:bg-[rgb(24_32_29/6%)]'
+                        ? 'bg-ink text-paper'
+                        : 'text-ink hover:bg-[rgb(24_32_29/6%)]'
                     )}
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -188,8 +188,8 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                           className={cn(
                             'flex h-7 w-7 items-center justify-center rounded',
                             isSelected
-                              ? 'bg-[#f4f0e7]/15 text-[#f4f0e7]'
-                              : 'bg-[rgb(24_32_29/8%)] text-[#68716d]'
+                              ? 'bg-paper/15 text-paper'
+                              : 'bg-[rgb(24_32_29/8%)] text-muted'
                           )}
                         >
                           {item.icon}
@@ -200,8 +200,8 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                         {item.description && (
                           <div
                             className={cn(
-                              'text-xs truncate mt-0.5',
-                              isSelected ? 'text-[#f4f0e7]/70' : 'text-[#68716d]'
+                              'text-sm truncate mt-0.5',
+                              isSelected ? 'text-paper/70' : 'text-muted'
                             )}
                           >
                             {item.description}
@@ -213,10 +213,10 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span
                         className={cn(
-                          'text-[10px] tracking-wider uppercase font-semibold px-2 py-0.5 rounded',
+                          'text-sm tracking-wider uppercase font-semibold px-2 py-0.5 rounded',
                           isSelected
-                            ? 'bg-[#f4f0e7]/20 text-[#f4f0e7]'
-                            : 'bg-[rgb(24_32_29/6%)] text-[#68716d]'
+                            ? 'bg-paper/20 text-paper'
+                            : 'bg-[rgb(24_32_29/6%)] text-muted'
                         )}
                       >
                         {item.category}

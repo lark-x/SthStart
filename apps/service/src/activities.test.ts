@@ -9,6 +9,7 @@ import { readConfig } from './config.js';
 import { createService } from './server.js';
 import { SecretStore } from './security.js';
 import { readZip } from './activities/zip.js';
+import { executeTextJob } from './activities/text-jobs.js';
 import { ActivityStore } from './activities/store.js';
 import { compileHyperFramesComposition } from '@sthstart/activity-playback';
 import type { ContentDocument, PlaybackDocument } from '@sthstart/contracts';
@@ -229,6 +230,7 @@ test('Activity Studio: lifecycle, 2-stage verification, CAS draft auto-save, and
   assert.equal(conflictRes.statusCode, 409);
   assert.equal(conflictRes.json().error, 'draft_version_conflict');
 
+  updatedDoc.activity = { ...updatedDoc.activity, title: '合并编辑后的活动', theme: '合并后的主题' };
   // 5. Successful draft auto-save
   const saveDraftRes = await app.inject({
     method: 'PUT',
@@ -264,6 +266,8 @@ test('Activity Studio: lifecycle, 2-stage verification, CAS draft auto-save, and
   assert.equal(commitRes.statusCode, 200);
   const commitData = commitRes.json();
   assert.equal(commitData.activity.headVersion, 2);
+  assert.equal(commitData.activity.title, updatedDoc.activity.title);
+  assert.equal(commitData.activity.theme, updatedDoc.activity.theme);
   assert.notEqual(commitData.activity.currentContentRevisionId, created.activity.currentContentRevisionId);
   assert.equal(commitData.draft.draftVersion, 1); // Reset draft version for fresh edit cycle
 
@@ -289,43 +293,12 @@ test('Activity Studio: text generation runner and candidate adoption with CAS', 
             message: {
               role: 'assistant',
               content: JSON.stringify({
-                narrativeSummary: '荧和派蒙搭好了帐篷，随后生火野炊。',
-                newFacts: [
-                  { text: '荧生起了篝火，烤熟了两条海鱼。', knownByActorIds: ['actor_lumine', 'actor_paimon'] },
-                ],
-                messages: [
-                  {
-                    conversationId: 'conv_main',
-                    stageId: 'stage_2',
-                    kind: 'message',
-                    speakerActorId: 'actor_lumine',
-                    text: '火升起来了，烤鱼烤好了！',
-                    mediaSlotIds: [],
-                    storyOrder: 10,
-                  },
-                ],
-                posts: [
-                  {
-                    stageId: 'stage_2',
-                    authorActorId: 'actor_paimon',
-                    text: '烤鱼太香了！今天的露营满分！',
-                    mediaSlotIds: [],
-                    storyOrder: 11,
-                    sourceFactIds: [],
-                  },
-                ],
+                schemaVersion: 1, stageId: 'stage_2', summary: '荧生起篝火烤鱼。',
+                facts: [{ clientId: 'f1', text: '荧烤好了鱼', status: 'happened', sourceRecordClientIds: ['m1'], knownByActorIds: ['actor_lumine', 'actor_paimon'] }],
+                messages: [{ clientId: 'm1', conversationId: 'conv_main', speakerActorId: 'actor_lumine', text: '烤鱼烤好了！', mediaClientIds: ['s1'], order: 10 }],
+                posts: [{ clientId: 'p1', authorActorId: 'actor_paimon', text: '烤鱼真香！', order: 11, sourceFactClientIds: ['f1'] }],
                 comments: [],
-                likes: [],
-                mediaSlots: [
-                  {
-                    stageId: 'stage_2',
-                    kind: 'image',
-                    caption: '篝火与烤鱼',
-                    shotDescription: '篝火上烤着两条香气扑鼻的鱼，派蒙在一旁流口水',
-                    actorIds: ['actor_paimon'],
-                    sourceFactIds: [],
-                  },
-                ],
+                mediaSlots: [{ clientId: 's1', kind: 'image', caption: '篝火与烤鱼', shotDescription: '篝火上的烤鱼', actorIds: ['actor_paimon'], sourceFactClientIds: ['f1'] }],
               }),
             },
           },
@@ -341,6 +314,8 @@ test('Activity Studio: text generation runner and candidate adoption with CAS', 
     .run('llm', 'LLM', 'llm', 'http://llm.test/v1', 'gpt-4o', null, now, now);
 
   const { app } = await createService({ config, database, secrets: new SecretStore({}), fetcher });
+
+  database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('activities', 'text', 'llm', ?)").run(now);
 
   // Create initial activity
   const createRes = await app.inject({
@@ -568,6 +543,8 @@ test('Activity Studio: checkpoints and restoration', async () => {
     STHSTART_ARTIFACT_DIR: artifactDirectory,
   });
   const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+
+
 
   // Create initial activity
   const createRes = await app.inject({
@@ -1232,12 +1209,43 @@ test('Activity Studio: plan locked stage preservation, downstream needs_review, 
     { schemaVersion: 1, slotBindings: [] },
     playbackDocWithVideo,
   );
-  // Verify gsap currentTime animation
-  assert.ok(
-    compiled.html.includes('tl.fromTo(modalVideo, { currentTime: 0.5 }, { currentTime: 4.5, duration: 4, ease: "none" }, 1);'),
-    'Compiled HyperFrames HTML must animate modalVideo.currentTime via GSAP fromTo'
-  );
+  assert.match(compiled.html, /<video[^>]+data-start="1" data-duration="4" data-media-start="0.5"/);
+  assert.match(compiled.html, /<audio[^>]+data-start="1" data-duration="4" data-media-start="0.5"/);
+  assert.doesNotMatch(compiled.html, /currentTime|modalVideo.src/);
 
   await app.close();
   database.close();
+});
+
+
+test('Activity Studio: whole-text carries preceding generated facts without implicitly adopting them', async () => {
+  const database = new ServiceDatabase();
+  const config = readConfig({ STHSTART_ADMIN_TOKEN: adminToken });
+  const secrets = new SecretStore({});
+  const { app } = await createService({ config, database, secrets });
+  try {
+    const now = new Date().toISOString();
+    database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('batch-llm', 'LLM', 'llm', 'http://llm.test/v1', 'test-model', null, now, now);
+    database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('activities', 'text', 'batch-llm', ?)").run(now);
+    const result = await app.inject({ method: 'POST', url: '/api/v1/admin/activities', headers: adminHeaders, payload: { document: createMinimalDocument() } });
+    const activity = result.json().activity;
+    const store = new ActivityStore(database);
+    const doc = store.getDraft(activity.id)!.document;
+    const job = store.createJob({ activityId: activity.id, kind: 'text', mode: 'whole-text', requestHash: 'batch-proof' }).job;
+    const prompts: string[] = [];
+    let index = 0;
+    await executeTextJob({ store, database, secrets, activityId: activity.id, jobId: job.id, mode: 'whole-text', scope: {}, inputSnapshot: doc,
+      fetcher: async (_input, init) => {
+        prompts.push(String(init?.body));
+        const stage = doc.stages[index++];
+        return Response.json({ choices: [{ message: { content: JSON.stringify({ schemaVersion: 1, stageId: stage.id,
+          summary: '本阶段完成', messages: [], posts: [], comments: [], mediaSlots: [],
+          facts: [{ clientId: 'batch-fact', text: index === 1 ? '特殊蓝色蛋糕已经送到营地' : '大家分享了蓝色蛋糕', status: 'happened', knownByActorIds: stage.actorIds, sourceRecordClientIds: [] }] }) } }] });
+      } });
+    assert.equal(store.getJob(activity.id, job.id)?.status, 'succeeded');
+    assert.equal(prompts.length, 2);
+    assert.ok(prompts[1].includes('特殊蓝色蛋糕已经送到营地'));
+    assert.deepEqual(store.getDraft(activity.id)!.document, doc);
+    assert.equal(store.getActivity(activity.id)?.headVersion, activity.headVersion);
+  } finally { await app.close(); database.close(); }
 });

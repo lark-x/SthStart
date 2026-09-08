@@ -143,15 +143,15 @@ export function NarrativeImport({
   };
 
   return (
-    <div className="flex-1 bg-[#ece8df] p-6 sm:p-12 space-y-8 overflow-y-auto">
+    <div className="flex-1 bg-paper p-6 sm:p-12 space-y-8 overflow-y-auto">
       <div>
-        <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8a6a35]">
+        <span className="text-sm font-bold uppercase tracking-[0.16em] text-[#8a6a35]">
           SOURCE CONNECTORS
         </span>
-        <h2 className="font-serif text-3xl sm:text-4xl font-medium text-[#202631] mt-1">
+        <h2 className="font-serif text-3xl sm:text-4xl font-medium text-ink mt-1">
           把来源变成可追溯的本地档案
         </h2>
-        <p className="text-xs text-[#6e737a] leading-relaxed max-w-2xl mt-1">
+        <p className="text-sm text-[#6e737a] leading-relaxed max-w-2xl mt-1">
           MCP 与文件均为上游数据来源。确认差异后，剧情将永久固化为本地版本，不依赖外部服务器持续在线。
         </p>
       </div>
@@ -164,17 +164,17 @@ export function NarrativeImport({
             className="p-5 rounded-[4px_18px_4px_4px] bg-[#f8f4ec] border border-[rgb(32_38_49/14%)] space-y-2"
           >
             <div className="flex items-center justify-between">
-              <strong className="text-sm font-semibold text-[#202631]">{c.name}</strong>
+              <strong className="text-sm font-semibold text-ink">{c.name}</strong>
               <span
-                className={`text-[11px] font-semibold ${
+                className={`text-sm font-semibold ${
                   c.status === 'ready' ? 'text-[#487157]' : 'text-[#a06736]'
                 }`}
               >
                 {c.status === 'ready' ? '就绪可用' : '待配置'}
               </span>
             </div>
-            <p className="text-xs text-[#6e737a] leading-relaxed">{c.message}</p>
-            <small className="text-[10px] text-[#8a6a35] block">
+            <p className="text-sm text-[#6e737a] leading-relaxed">{c.message}</p>
+            <small className="text-sm text-[#8a6a35] block">
               {c.capabilities.join(' · ') || '未声明能力'}
             </small>
           </div>
@@ -184,11 +184,11 @@ export function NarrativeImport({
       {/* Akasha MCP Research Section */}
       <div className="p-6 rounded-[4px_22px_4px_4px] bg-[#f8f4ec] border border-[rgb(32_38_49/16%)] space-y-4">
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#8a6a35]">
+          <span className="text-sm font-bold uppercase tracking-wider text-[#8a6a35]">
             ONLINE RESEARCH · MANUAL ONLY
           </span>
-          <h3 className="font-serif text-2xl font-medium text-[#202631] mt-0.5">虚空终端检索</h3>
-          <p className="text-xs text-[#74787e] leading-relaxed">
+          <h3 className="font-serif text-2xl font-medium text-ink mt-0.5">虚空终端检索</h3>
+          <p className="text-sm text-[#74787e] leading-relaxed">
             不会自动触发网络请求。仅在点击搜索、读取或收藏时按需访问 MCP。
           </p>
         </div>
@@ -203,7 +203,7 @@ export function NarrativeImport({
               setRemoteResults([]);
               setRemoteDoc(null);
             }}
-            className="sm:w-44 bg-[#fffdf7] text-xs h-10"
+            className="sm:w-44 bg-surface text-sm h-10"
           >
             <option value="gi">原神 (Genshin)</option>
             <option value="hsr">星穹铁道 (HSR)</option>
@@ -216,7 +216,7 @@ export function NarrativeImport({
             onChange={(e) => setMcpQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearchRemote()}
             placeholder="输入角色、任务、地点或剧情台词关键词…"
-            className="flex-1 bg-[#fffdf7] text-xs"
+            className="flex-1 bg-surface text-sm"
           />
 
           <Button
@@ -236,9 +236,9 @@ export function NarrativeImport({
             {remoteResults.map((r) => (
               <div
                 key={r.pathHash}
-                className="p-4 rounded border border-[rgb(32_38_49/12%)] bg-[#fffdf7] space-y-2"
+                className="p-4 rounded border border-[rgb(32_38_49/12%)] bg-surface space-y-2"
               >
-                <div className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center justify-between text-sm">
                   <span
                     className={`px-2 py-0.5 rounded font-semibold ${
                       r.sourceTier === 'primary'
@@ -248,13 +248,13 @@ export function NarrativeImport({
                   >
                     {r.sourceTier === 'primary' ? '原始任务资料' : '二级整理'}
                   </span>
-                  <span className="text-[#68716d]">{r.totalLines} 行</span>
+                  <span className="text-muted">{r.totalLines} 行</span>
                 </div>
 
-                <h4 className="font-serif text-lg font-medium text-[#202631] truncate">
+                <h4 className="font-serif text-lg font-medium text-ink truncate">
                   {r.fileName}
                 </h4>
-                <p className="text-xs text-[#6d7278] line-clamp-2">
+                <p className="text-sm text-[#6d7278] line-clamp-2">
                   {r.hits[0]?.snippet || '无命中摘要'}
                 </p>
 
@@ -272,14 +272,14 @@ export function NarrativeImport({
         )}
 
         {remoteDoc && (
-          <div className="p-4 rounded bg-[#202631] text-[#e8e2d7] space-y-2">
-            <div className="flex justify-between text-xs">
+          <div className="p-4 rounded bg-ink text-[#e8e2d7] space-y-2">
+            <div className="flex justify-between text-sm">
               <strong>{remoteDoc.fileName}</strong>
               <span>
                 {remoteDoc.lineRange} / 共 {remoteDoc.totalLines} 行
               </span>
             </div>
-            <pre className="p-3 bg-[#171c24] rounded font-mono text-xs max-h-60 overflow-y-auto whitespace-pre-wrap">
+            <pre className="p-3 bg-[#171c24] rounded font-mono text-sm max-h-60 overflow-y-auto whitespace-pre-wrap">
               {remoteDoc.content}
             </pre>
           </div>
@@ -287,9 +287,9 @@ export function NarrativeImport({
       </div>
 
       {/* JSON Import Workbench */}
-      <div className="p-6 rounded-[4px_22px_4px_4px] bg-[#202631] text-[#e7e1d5] space-y-4">
+      <div className="p-6 rounded-[4px_22px_4px_4px] bg-ink text-[#e7e1d5] space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#c49a54]">
+          <span className="text-sm font-bold uppercase tracking-wider text-[#c49a54]">
             规范化剧情 JSON 工作台
           </span>
           <Button variant="accent" size="sm" onClick={handleValidateJson} loading={busy}>
@@ -305,17 +305,17 @@ export function NarrativeImport({
             setJsonText(e.target.value);
             setPreview(null);
           }}
-          className="w-full rounded bg-[#171c24] p-4 text-xs font-mono text-[#d6deca] border border-white/10 outline-none leading-relaxed"
+          className="w-full rounded bg-[#171c24] p-4 text-sm font-mono text-[#d6deca] border border-white/10 outline-none leading-relaxed"
           spellCheck={false}
         />
 
         {preview && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded bg-[#f8f4ec] text-[#202631]">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded bg-[#f8f4ec] text-ink">
             <div>
               <strong className="font-serif text-lg block">
                 {preview.report.workExists ? '增量更新现有作品' : '全新作品导入'}
               </strong>
-              <p className="text-xs text-[#73777c] mt-0.5">{preview.report.note}</p>
+              <p className="text-sm text-[#73777c] mt-0.5">{preview.report.note}</p>
             </div>
 
             <Button variant="primary" size="md" onClick={handleCommit} loading={busy}>

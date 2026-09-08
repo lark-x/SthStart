@@ -20,9 +20,16 @@ import {
   restoreCheckpoint,
   stageActivityZip,
   commitActivityImport,
+  saveImageConfigDraft,
+  commitImageConfigRevision,
+  preparePromptRecipe,
+  createImageAttempt,
+  retryImageAttempt,
+  cancelImageAttempt,
+  previewImageImpact,
   type CreateActivityInput,
 } from './api';
-import type { Activity, ContentDocument, MediaRevisionDocument, PlaybackDocument } from '@sthstart/contracts';
+import type { Activity, ContentDocument, MediaRevisionDocument, PlaybackDocument, ImageConfigDocument } from '@sthstart/contracts';
 
 export function useCreateActivity() {
   const queryClient = useQueryClient();
@@ -333,5 +340,118 @@ export function useCommitActivityImport() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: activityKeys.all });
     },
+  });
+}
+
+export function useSaveImageConfigDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, document }: { id: string; document: ImageConfigDocument }) =>
+      saveImageConfigDraft(id, document),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.imageConfigDraft(variables.id) });
+    },
+  });
+}
+
+export function useCommitImageConfigRevision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, document }: { id: string; document: ImageConfigDocument }) =>
+      commitImageConfigRevision(id, document),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.imageConfigDraft(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.imageConfigRevisions(variables.id) });
+    },
+  });
+}
+
+export function usePreparePromptRecipe() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: {
+        contentRevisionId: string;
+        imageConfigRevisionId?: string;
+        slotId: string;
+        expectedHeadVersion?: number;
+        overrides?: Array<{ id: string; fieldPath: string; overrideText: string; reason?: string }>;
+        references?: import('@sthstart/contracts').ReferenceInput[];
+      customParams?: Record<string, unknown>;
+      };
+    }) => preparePromptRecipe(id, input),
+  });
+}
+
+export function useCreateImageAttempt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: {
+        contentRevisionId: string;
+        imageConfigRevisionId: string;
+        slotId: string;
+        recipeId: string;
+        compilationId: string;
+        executionPlanHash: string;
+        expectedHeadVersion?: number;
+        seed?: number;
+        retryOfAttemptId?: string;
+        parentAttemptIds?: string[];
+        idempotencyKey?: string;
+      };
+    }) => createImageAttempt(id, input),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id, variables.input.slotId) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.candidates(variables.id) });
+    },
+  });
+}
+
+export function useRetryImageAttempt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, attemptId }: { id: string; attemptId: string }) =>
+      retryImageAttempt(id, attemptId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempt(variables.id, variables.attemptId) });
+    },
+  });
+}
+
+export function useCancelImageAttempt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, attemptId }: { id: string; attemptId: string }) =>
+      cancelImageAttempt(id, attemptId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempt(variables.id, variables.attemptId) });
+    },
+  });
+}
+
+export function usePreviewImageImpact() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: {
+        changedEntityKind: string;
+        changedEntityId: string;
+        fieldPath: string;
+        newValue: unknown;
+      };
+    }) => previewImageImpact(id, input),
   });
 }

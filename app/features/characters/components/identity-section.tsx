@@ -32,14 +32,14 @@ export function IdentitySection({
   return (
     <div className="space-y-5">
       <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
-        <h3 className="font-serif text-2xl font-medium text-[#18201d]">身份与经历</h3>
-        <p className="text-xs text-[#68716d] mt-1 leading-relaxed">
+        <h3 className="font-serif text-2xl font-medium text-ink">身份与经历</h3>
+        <p className="text-sm text-muted mt-1 leading-relaxed">
           先写清楚她是怎样的一个人，再写她为什么会成为现在的样子。
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label className="block text-xs font-semibold text-[#18201d]">
+        <label className="block text-sm font-semibold text-ink">
           <span>
             角色名称 <span className="text-[#c9674a]">*</span>
           </span>
@@ -53,13 +53,13 @@ export function IdentitySection({
             className="mt-1.5"
           />
           {displayNameError && (
-            <p id="character-display-name-error" role="alert" className="mt-1 text-[10px] text-[#c9674a]">
+            <p id="character-display-name-error" role="alert" className="mt-1 text-sm text-[#c9674a]">
               {displayNameError}
             </p>
           )}
         </label>
 
-        <label className="block text-xs font-semibold text-[#18201d]">
+        <label className="block text-sm font-semibold text-ink">
           <span>
             英文名 / 拼音
           </span>
@@ -71,7 +71,7 @@ export function IdentitySection({
           />
         </label>
 
-        <label className="block text-xs font-semibold text-[#18201d]">
+        <label className="block text-sm font-semibold text-ink">
           <span>来源类型</span>
           <Select
             value={draft.originType}
@@ -83,7 +83,7 @@ export function IdentitySection({
           </Select>
         </label>
 
-        <label className="block text-xs font-semibold text-[#18201d]">
+        <label className="block text-sm font-semibold text-ink">
           <span>所属作品</span>
           <Input
             value={draft.work}
@@ -93,7 +93,7 @@ export function IdentitySection({
           />
         </label>
 
-        <label className="block text-xs font-semibold text-[#18201d]">
+        <label className="block text-sm font-semibold text-ink">
           <span>所属世界 / 舞台</span>
           <Input
             value={draft.world}
@@ -112,7 +112,7 @@ export function IdentitySection({
         />
       </div>
 
-      <label className="block text-xs font-semibold text-[#18201d]">
+      <label className="block text-sm font-semibold text-ink">
         <span>一句话人物摘要</span>
         <Textarea
           rows={2}
@@ -123,7 +123,7 @@ export function IdentitySection({
         />
       </label>
 
-      <label className="block text-xs font-semibold text-[#18201d]">
+      <label className="block text-sm font-semibold text-ink">
         <span>身份与定位</span>
         <Textarea
           rows={4}
@@ -134,7 +134,7 @@ export function IdentitySection({
         />
       </label>
 
-      <label className="block text-xs font-semibold text-[#18201d]">
+      <label className="block text-sm font-semibold text-ink">
         <span>关键过往经历</span>
         <Textarea
           rows={6}
@@ -145,7 +145,7 @@ export function IdentitySection({
         />
       </label>
 
-      <label className="block text-xs font-semibold text-[#18201d]">
+      <label className="block text-sm font-semibold text-ink">
         <span>当前处境与心境</span>
         <Textarea
           rows={3}
@@ -156,7 +156,7 @@ export function IdentitySection({
         />
       </label>
 
-      <label className="block text-xs font-semibold text-[#18201d]">
+      <label className="block text-sm font-semibold text-ink">
         <span>
           标签分类（逗号分隔）
         </span>
