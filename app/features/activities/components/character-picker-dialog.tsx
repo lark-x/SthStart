@@ -1,160 +1,60 @@
 'use client';
-
-import React, { useState, useMemo } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
-import { Search, Check } from 'lucide-react';
-import { useCharacters } from '@/app/features/characters/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { Star } from 'lucide-react';
 import { Dialog } from '@/app/components/ui/dialog';
-import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
-import { Skeleton } from '@/app/components/ui/skeleton';
+import { CharacterFilters, CharacterPagination, useCharacterBrowser } from '@/app/features/characters/components/character-filters';
+import { editCharacterOrganization } from '@/app/features/characters/api';
+import { useActivityCapabilities } from '../queries';
 import { fetchActivityCharacterSnapshot } from '../api';
-import type { ActorSnapshot } from '@sthstart/contracts';
+import type { ActorSnapshot, CharacterProfile } from '@sthstart/contracts';
 
 interface CharacterPickerDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  existingSourceCharacterIds: string[];
+  open: boolean; onOpenChange: (open: boolean) => void; existingSourceCharacterIds: string[]; existingActorCount: number;
   onSelectCharacter: (actor: ActorSnapshot) => void;
 }
-
-export function CharacterPickerDialog({
-  open,
-  onOpenChange,
-  existingSourceCharacterIds,
-  onSelectCharacter,
-}: CharacterPickerDialogProps) {
-  const { data, isLoading } = useCharacters();
-  const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function CharacterPickerDialog({ open, onOpenChange, existingSourceCharacterIds, existingActorCount, onSelectCharacter }: CharacterPickerDialogProps) {
+  const [hideAdded, setHideAdded] = useState(false);
+  const browser = useCharacterBrowser({ excludeIds: hideAdded ? existingSourceCharacterIds : [] }, open);
+  const { data: capabilities } = useActivityCapabilities();
+  const remaining = Math.max(0, (capabilities?.limits.maxActors ?? 20) - existingActorCount);
+  const client = useQueryClient();
+  const [selected, setSelected] = useState<Record<string, CharacterProfile>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-
-  const filteredCharacters = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const items = data?.items ?? [];
-    if (!needle) return items;
-    return items.filter((c) =>
-      `${c.displayName} ${c.draft?.englishName || ''} ${c.draft?.work || ''} ${c.draft?.world || ''}`
-        .toLowerCase()
-        .includes(needle)
-    );
-  }, [data, search]);
-
-  const handleConfirm = async () => {
-    const char = data?.items?.find((c) => c.id === selectedId);
-    if (!char || busy) return;
+  const candidates = Object.values(selected).filter(c => !existingSourceCharacterIds.includes(c.id));
+  const toggle = (character: CharacterProfile) => setSelected(current => { const next = { ...current }; if (next[character.id]) delete next[character.id]; else next[character.id] = character; return next; });
+  const confirm = async () => {
+    if (busy || !candidates.length) return;
+    if (candidates.length > remaining) { setError(`本场还可加入 ${remaining} 位，请减少选择`); return; }
     setBusy(true); setError('');
     try {
-      const actor = await fetchActivityCharacterSnapshot(char.id, char.latestVersion ?? undefined);
-      onSelectCharacter(actor);
-      setSelectedId(null);
-      onOpenChange(false);
-    } catch (value) { setError(value instanceof Error ? value.message : String(value)); }
+      // Resolve every snapshot before changing the activity: failed reads cannot partially add a cast.
+      const actors: ActorSnapshot[] = [];
+      for (const character of candidates) actors.push(await fetchActivityCharacterSnapshot(character.id, character.latestVersion ?? undefined));
+      for (const actor of actors) onSelectCharacter(actor);
+      setSelected({}); onOpenChange(false);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => { if (!busy) onOpenChange(value); }}
-      title="从公共角色库添加人物快照"
-      description="活动将锁定选定角色的当前人设快照，后续公共角色更新不会篡改本场活动剧本。"
-      footer={
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="text-sm"
-          >
-            取消
-          </Button>
-          <Button
-            size="sm"
-            disabled={!selectedId || busy}
-            onClick={() => void handleConfirm()}
-            className="text-sm bg-accent hover:bg-accent-dark text-white"
-          >
-            确认添加快照
-          </Button>
-        </div>
-      }
-    >
-      {error && <p role="alert" className="mb-3 text-sm text-accent-dark">{error}</p>}
-      <div className="space-y-3 py-1">
-        <div className="relative">
-          <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索角色姓名、世界观或标签…"
-            className="pl-9 h-9 bg-transparent border-[rgb(24_32_29/14%)] text-sm"
-          />
-        </div>
-
-        <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((n) => (
-                <Skeleton key={n} className="h-16 w-full rounded-md" />
-              ))}
-            </div>
-          ) : filteredCharacters.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted">
-              未找到匹配的角色
-            </div>
-          ) : (
-            filteredCharacters.map((char) => {
-              const isAdded = existingSourceCharacterIds.includes(char.id);
-              const isSelected = selectedId === char.id;
-
-              return (
-                <div
-                  key={char.id}
-                  onClick={() => !isAdded && setSelectedId(char.id)}
-                  className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all cursor-pointer ${
-                    isAdded
-                      ? 'opacity-50 cursor-not-allowed bg-stone-100 border-stone-200'
-                      : isSelected
-                      ? 'border-accent bg-accent/5 shadow-xs'
-                      : 'border-[rgb(24_32_29/10%)] hover:border-accent/40 bg-[#faf8f2]'
-                  }`}
-                >
-                  <div className="relative h-12 w-10 rounded overflow-hidden bg-stone-300 flex-shrink-0 flex items-center justify-center text-sm font-semibold text-stone-600">
-                    {char.avatarUrl ? (
-                      <Image
-                        src={char.avatarUrl}
-                        alt={char.displayName}
-                        fill
-                        className="object-cover"
-                      />
-                    ) : (
-                      char.displayName.slice(0, 1)
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm text-ink truncate">
-                        {char.displayName}
-                      </span>
-                      {isAdded && (
-                        <span className="text-sm text-stone-500 font-medium">已添加</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted truncate">
-                      {char.draft?.identity || char.draft?.work || '暂无详细身份'}
-                    </p>
-                  </div>
-                  {isSelected && (
-                    <Check className="h-4 w-4 text-accent flex-shrink-0" />
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </Dialog>
-  );
+  const favorite = async (character: CharacterProfile) => {
+    try { await editCharacterOrganization({ ids: [character.id], favorite: !character.organization?.favorite }); void client.invalidateQueries({ queryKey: ['characters'] }); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+  };
+  return <Dialog open={open} onOpenChange={v => { if (!busy) onOpenChange(v); }} title="选择活动角色" description="可跨页多选。加入时使用角色已发布版本；尚未发布的角色使用当前草稿。" className="max-w-4xl" footer={<div className="flex w-full items-center justify-between gap-2"><span className="text-sm">已选 {candidates.length} 位 · 还可加入 {remaining} 位</span><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={busy || !candidates.length || candidates.length > remaining} onClick={() => void confirm()}>{busy ? '正在添加…' : `确认加入 ${candidates.length} 位`}</Button></div></div>}>
+    <fieldset disabled={busy} className="space-y-3">
+      <CharacterFilters filter={browser.filter} onChange={browser.change} onReset={() => { browser.reset(); setHideAdded(false); }} facets={browser.facets} />
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={hideAdded} disabled={!existingSourceCharacterIds.length} onChange={e => { setHideAdded(e.target.checked); browser.change({ page: 1 }); }} />隐藏已加入角色</label>
+      {!!candidates.length && <div className="flex flex-wrap gap-2 rounded-lg bg-accent/5 p-3">{candidates.map(c => <button key={c.id} type="button" className="rounded bg-surface px-2 py-1 text-sm" onClick={() => toggle(c)}>{c.displayName} ×</button>)}<Button size="sm" variant="ghost" onClick={() => setSelected({})}>清空已选</Button></div>}
+      {(error || browser.error) && <p role="alert" className="text-sm text-accent-dark">{error || String(browser.error)}</p>}
+      {browser.isLoading ? <p className="py-6 text-center text-muted">正在加载…</p> : <div className="grid gap-2 sm:grid-cols-2">{browser.data?.items.map(character => {
+        const added = existingSourceCharacterIds.includes(character.id);
+        return <div key={character.id} className={`flex items-center gap-3 rounded-lg border p-3 ${selected[character.id] ? 'border-accent bg-accent/5' : 'border-[rgb(24_32_29/12%)]'}`}><label className={`flex min-w-0 flex-1 items-center gap-3 ${added ? 'opacity-50' : 'cursor-pointer'}`}><input type="checkbox" checked={added || !!selected[character.id]} disabled={added || (!selected[character.id] && candidates.length >= remaining)} onChange={() => toggle(character)} />{character.avatarUrl ? <Image src={character.avatarUrl} width={40} height={40} alt="" unoptimized className="h-10 w-10 rounded object-cover" /> : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-surface-muted">{character.displayName.slice(0, 1)}</span>}<span className="min-w-0"><span className="block truncate text-sm font-medium">{character.displayName}{added ? ' · 已加入' : ''}</span><span className="block truncate text-sm text-muted">{character.draft.work || '未分类'} · {character.organization?.interpretation || (character.latestVersion ? `v${character.latestVersion}` : '草稿')}</span></span></label><button type="button" aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`} onClick={() => void favorite(character)}><Star className={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`} /></button></div>;
+      })}</div>}
+      {!browser.isLoading && browser.data?.total === 0 && <p className="py-6 text-center text-muted">没有匹配角色，请调整筛选。</p>}
+      <CharacterPagination data={browser.data} onPage={page => browser.change({ page })} />
+    </fieldset>
+  </Dialog>;
 }

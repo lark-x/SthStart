@@ -323,6 +323,7 @@ export default function NewActivityPage() {
           open={pickerOpen}
           onOpenChange={setPickerOpen}
           existingSourceCharacterIds={actors.map((a) => a.sourceCharacterId).filter(Boolean) as string[]}
+          existingActorCount={actors.length}
           onSelectCharacter={handleAddActorSnapshot}
         />
       </div>

@@ -10,6 +10,8 @@ import type {
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
+import { canonicalWork, normalizeOrganization } from './organization.js';
+import { list } from './draft.js';
 import { normalizeCharacterDraft } from './draft.js';
 import { parseCharacterCard, CARD_PARSER_VERSION } from './card-parser.js';
 import { mapCharacterCard, mapCharacterImage } from './card-mapper.js';
@@ -201,6 +203,7 @@ export function updateCharacterImportSession(
       appearance: { ...before.appearance, ...(draftPatch.appearance as object ?? {}) },
       speech: { ...before.speech, ...(draftPatch.speech as object ?? {}) },
     });
+    if (typeof draftPatch.work === 'string') candidate.draft.work = canonicalWork(database, candidate.draft.work);
     for (const [key, value] of Object.entries(candidate.draft)) {
       const fields = key === 'appearance' || key === 'speech'
         ? Object.entries(value as Record<string, unknown>).map(([child, childValue]) => ({ path: `/${key}/${child}`, value: childValue, old: (before[key] as unknown as Record<string, unknown>)[child] }))
@@ -212,6 +215,8 @@ export function updateCharacterImportSession(
       }
     }
   }
+  if (patch.tags !== undefined) candidate.tags = [...new Set(list(patch.tags, 50))];
+  if (patch.organization !== undefined) candidate.organization = normalizeOrganization(patch.organization);
   if (input.cover) candidate.cover = { ...candidate.cover, ...input.cover };
   const previewRevision = session.previewRevision + 1;
   const previewHash = digest({ candidate, compatibility: session.compatibility });
@@ -349,6 +354,20 @@ export async function commitCharacterImportSession(
       }
       database.connection.prepare(`UPDATE character_profiles SET display_name=?,draft_json=?,updated_at=?,draft_revision=?${avatarAssetId ? ',avatar_asset_id=?' : ''} WHERE id=?`)
         .run(...(avatarAssetId ? [draft.displayName, JSON.stringify(draft), now, newDraftRevision, avatarAssetId, characterId] : [draft.displayName, JSON.stringify(draft), now, newDraftRevision, characterId]));
+      if (candidate.tags) {
+        const previousTags = profile ? JSON.parse(String(database.connection.prepare('SELECT tags_json FROM character_profiles WHERE id=?').get(characterId)!.tags_json)) as string[] : [];
+        database.connection.prepare('UPDATE character_profiles SET tags_json=? WHERE id=?').run(JSON.stringify([...new Set([...previousTags, ...candidate.tags])].slice(0, 50)), characterId);
+      }
+      if (candidate.organization) {
+        const organization = normalizeOrganization(candidate.organization);
+        if (profile) {
+          const previous = normalizeOrganization(JSON.parse(String(database.connection.prepare('SELECT organization_json FROM character_profiles WHERE id=?').get(characterId)!.organization_json || '{}')));
+          organization.favorite = previous.favorite;
+          organization.groups = [...new Set([...previous.groups, ...organization.groups])].slice(0, 50);
+          organization.interpretation ||= previous.interpretation;
+        }
+        database.connection.prepare('UPDATE character_profiles SET organization_json=? WHERE id=?').run(JSON.stringify(organization), characterId);
+      }
       if (assetId && stagedPath && assetArtifactId) {
         database.connection.prepare(`INSERT INTO character_assets
           (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id,sha256,width,height,source_page,source_url,author_note,user_note,purposes_json,outfit_id,enabled,crop_json)

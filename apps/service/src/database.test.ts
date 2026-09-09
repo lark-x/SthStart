@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { ServiceDatabase } from './database.js';
+import { ServiceDatabase, SERVICE_DATABASE_MIGRATIONS, migrateDatabase } from './database.js';
 
 test('fresh databases record an explicit migration baseline', () => {
   const database = new ServiceDatabase();
   const migrations = database.connection.prepare('SELECT version,name FROM schema_migrations').all() as Array<{ version: number; name: string }>;
-  assert.equal(migrations.length, 17);
+  assert.equal(migrations.length, 18);
   assert.equal(migrations[0].version, 1);
   assert.equal(migrations[0].name, 'initial');
   assert.equal(migrations[1].version, 2);
@@ -38,6 +38,7 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(migrations[15].name, 'character-library-remediation');
   assert.equal(migrations[16].version, 17);
   assert.equal(migrations[16].name, 'character-source-snapshot-links');
+  assert.equal(migrations[17].name, 'character-library-organization');
   const columns = database.connection.prepare('PRAGMA table_info(provider_profile_options)').all() as Array<{ name: string }>;
   assert.equal(columns.some((column) => column.name === 'capabilities_json'), true);
   const taskColumns = database.connection.prepare('PRAGMA table_info(generation_tasks)').all() as Array<{ name: string }>;
@@ -90,7 +91,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
   const migrated = new ServiceDatabase(path);
   const row = migrated.connection.prepare("SELECT capabilities_json FROM provider_profile_options WHERE profile_id='old'").get() as { capabilities_json: string };
   assert.deepEqual(JSON.parse(row.capabilities_json), ['text']);
-  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 17);
+  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 18);
   migrated.close();
 });
 
@@ -102,4 +103,20 @@ test('transaction helper rolls back all writes on failure', () => {
   }));
   assert.equal(database.connection.prepare('SELECT COUNT(*) count FROM runtime_settings').get()!.count, 0);
   database.close();
+});
+
+
+test('version 17 character data survives the organization migration', () => {
+  const connection = new DatabaseSync(':memory:');
+  try {
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter(m => m.version <= 17), 'service');
+    connection.prepare("INSERT INTO character_profiles(id,slug,display_name,draft_json,tags_json,archived,created_at,updated_at,draft_revision) VALUES ('old','old','已有角色',?, ?,0,'then','then',4)").run('{"work":"星铁","identity":"原有设定"}', '["原有标签"]');
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'service');
+    const row = connection.prepare("SELECT * FROM character_profiles WHERE id='old'").get()!;
+    assert.equal(row.draft_json, '{"work":"星铁","identity":"原有设定"}');
+    assert.equal(row.tags_json, '["原有标签"]');
+    assert.equal(row.draft_revision, 4);
+    assert.equal(row.organization_json, '{}');
+    assert.equal(connection.prepare('SELECT count(*) count FROM character_works').get()!.count, 2);
+  } finally { connection.close(); }
 });

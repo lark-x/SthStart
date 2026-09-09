@@ -1,3 +1,6 @@
+import { browseCharacters, characterWorks, editCharacterOrganization, normalizeOrganization } from './characters/organization.js';
+import type { OrganizationEdit } from './characters/organization.js';
+import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -41,6 +44,7 @@ function avatarUrl(database: ServiceDatabase, assetId: unknown, assetPath: strin
 
 function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, assetPath = '/api/admin/characters/assets'): CharacterProfile {
   return {
+    organization: normalizeOrganization(JSON.parse(String(row.organization_json || '{}'))),
     id: String(row.id), slug: String(row.slug), displayName: String(row.display_name),
     draft: normalizeCharacterDraft(JSON.parse(String(row.draft_json))), tags: JSON.parse(String(row.tags_json)) as string[],
     avatarUrl: avatarUrl(database, row.avatar_asset_id, assetPath), latestVersion: row.latest_version == null ? null : Number(row.latest_version),
@@ -368,6 +372,45 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
   app.delete<{ Params: { id: string } }>('/api/v1/admin/characters/import-sessions/:id', async (request, reply) => {
     try { return { cancelled: await cancelCharacterImportSession(database, request.params.id) }; } catch (error) { return characterImportError(reply, error); }
+  });
+
+  app.get<{ Querystring: { filter?: string } }>('/api/v1/admin/characters/browse', async (request, reply) => {
+    let query: CharacterBrowseQuery;
+    try {
+      const raw = JSON.parse(request.query.filter || '{}');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error();
+      for (const key of ['works', 'tags', 'groups', 'excludeIds']) if (raw[key] !== undefined && (!Array.isArray(raw[key]) || raw[key].length > 500 || raw[key].some((v: unknown) => typeof v !== 'string' || v.length > 1000))) throw new Error();
+      for (const key of ['q', 'mediaType', 'originType', 'interpretation', 'source', 'reference', 'appearance', 'unclassified', 'tagMode', 'sort']) if (raw[key] !== undefined && (typeof raw[key] !== 'string' || raw[key].length > 300)) throw new Error();
+      for (const key of ['page', 'pageSize']) if (raw[key] !== undefined && (!Number.isSafeInteger(raw[key]) || raw[key] < 1)) throw new Error();
+      if (raw.favorite !== undefined && typeof raw.favorite !== 'boolean') throw new Error();
+      query = raw;
+    } catch { return reply.code(400).send({ error: '筛选参数无效' }); }
+    const { rows, ...result } = browseCharacters(database, query);
+    return { ...result, items: rows.map(row => mapProfile(database, row)) };
+  });
+  app.put<{ Body: OrganizationEdit }>('/api/v1/admin/characters/organization', async (request, reply) => {
+    try { return editCharacterOrganization(database, request.body || { ids: [] }); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : '整理失败' }); }
+  });
+  app.put<{ Body: CharacterWork }>('/api/v1/admin/characters/works', async (request, reply) => {
+    const name = text(request.body?.name, 200); const aliases = [...new Set(list(request.body?.aliases, 50))];
+    if (!name) return reply.code(400).send({ error: '请填写作品名称' });
+    const all = [name, ...aliases].map(n => n.toLowerCase());
+    if (characterWorks(database).filter(w => database.connection.prepare('SELECT 1 FROM character_works WHERE name=?').get(w.name)).some(w => w.name.toLowerCase() !== name.toLowerCase() && [w.name, ...w.aliases].some(n => all.includes(n.toLowerCase())))) return reply.code(409).send({ error: '名称或别名已属于其他作品，请先整理已有角色的作品' });
+    database.connection.prepare('INSERT INTO character_works(name,aliases_json,media_type) VALUES (?,?,?) ON CONFLICT(name) DO UPDATE SET aliases_json=excluded.aliases_json,media_type=excluded.media_type').run(name, JSON.stringify(aliases), text(request.body?.mediaType, 50));
+    return { name, aliases, mediaType: text(request.body?.mediaType, 50) };
+  });
+  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/import-sessions/:id/duplicates', async (request, reply) => {
+    const session = getCharacterImportSession(database, request.params.id);
+    if (!session) return reply.code(404).send({ error: 'import_session_not_found' });
+    const rows = database.connection.prepare(`SELECT DISTINCT p.id,p.display_name,p.draft_revision,
+      CASE WHEN s.payload_hash=? THEN 'exact' WHEN s.provider_id=? AND s.external_id=? AND s.external_id IS NOT NULL THEN 'source' ELSE 'name' END kind
+      FROM character_profiles p LEFT JOIN character_sources s ON s.character_id=p.id
+      WHERE p.archived=0 AND (s.payload_hash=? OR (s.provider_id=? AND s.external_id=? AND s.external_id IS NOT NULL) OR p.display_name=?)`).all(
+      String(session.source.payloadHash || ''), String(session.source.providerId || ''), session.source.externalId == null ? null : String(session.source.externalId),
+      String(session.source.payloadHash || ''), String(session.source.providerId || ''), session.source.externalId == null ? null : String(session.source.externalId), session.candidate?.draft.displayName || '',
+    );
+    return { items: rows.map(r => ({ id: String(r.id), displayName: String(r.display_name), draftRevision: Number(r.draft_revision), kind: String(r.kind) })) };
   });
 
   app.get<{ Querystring: { q?: string; archived?: string } }>('/api/v1/admin/characters', async (request) => {

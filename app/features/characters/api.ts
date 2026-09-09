@@ -32,8 +32,8 @@ export type CharacterDetail = CharacterProfile & {
   }>;
 };
 
-export async function fetchCharacters(): Promise<{ items: CharacterProfile[] }> {
-  return getJson<{ items: CharacterProfile[] }>('characters', undefined, CharacterListResponseSchema);
+export async function fetchCharacters(options?: { query?: string }): Promise<{ items: CharacterProfile[] }> {
+  return getJson<{ items: CharacterProfile[] }>(`characters${options?.query ? `?q=${encodeURIComponent(options.query)}` : ''}`, undefined, CharacterListResponseSchema);
 }
 
 export async function fetchCharacterDetail(id: string): Promise<CharacterDetail> {
@@ -216,3 +216,13 @@ export async function deleteCharacterRelationship(
 ): Promise<Record<string, unknown>> {
   return deleteJson(`characters/${id}/relationships/${relationshipId}`);
 }
+
+export async function browseCharacters(filter: import('@sthstart/contracts').CharacterBrowseQuery, signal?: AbortSignal): Promise<import('@sthstart/contracts').CharacterBrowseResult> {
+  return getJson(`characters/browse?${new URLSearchParams({ filter: JSON.stringify(filter) })}`, { signal });
+}
+export type OrganizationEdit = { ids: string[]; work?: string; originType?: 'ip' | 'original'; tags?: string[]; groups?: string[]; interpretation?: string; favorite?: boolean; fillEmpty?: boolean; replaceTags?: boolean; replaceGroups?: boolean };
+export const editCharacterOrganization = (input: OrganizationEdit) => putJson<{ updated: number }>('characters/organization', input);
+export const saveCharacterWork = (input: import('@sthstart/contracts').CharacterWork) => putJson('characters/works', input);
+export type ImportDuplicate = { id: string; displayName: string; draftRevision: number; kind: 'exact' | 'source' | 'name' };
+export const fetchImportDuplicates = (id: string) => getJson<{ items: ImportDuplicate[] }>(`characters/import-sessions/${id}/duplicates`);
+export const fetchImportSession = (id: string) => getJson<CharacterImportSession>(`characters/import-sessions/${id}`, undefined, CharacterImportSessionSchema);

@@ -5,7 +5,7 @@ import { fetchCharacters, fetchCharacterDetail } from './api';
 export function useCharacters(options?: { query?: string }) {
   return useQuery({
     queryKey: characterKeys.list(options),
-    queryFn: fetchCharacters,
+    queryFn: () => fetchCharacters(options),
     staleTime: 30_000,
   });
 }

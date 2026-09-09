@@ -710,6 +710,13 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'ALTER TABLE character_sources ADD COLUMN source_snapshot_id TEXT REFERENCES character_source_snapshots(id) ON DELETE SET NULL',
     'CREATE INDEX idx_character_sources_snapshot ON character_sources(source_snapshot_id)',
   ] },
+  { version: 18, name: 'character-library-organization', statements: [
+    "ALTER TABLE character_profiles ADD COLUMN organization_json TEXT NOT NULL DEFAULT '{}'",
+    `CREATE TABLE character_works(name TEXT PRIMARY KEY COLLATE NOCASE,aliases_json TEXT NOT NULL DEFAULT '[]',media_type TEXT NOT NULL DEFAULT '')`,
+    `INSERT INTO character_works VALUES ('原神','["Genshin Impact"]','游戏'),('崩坏：星穹铁道','["星铁","崩坏星穹铁道","Honkai: Star Rail"]','游戏')`,
+    'CREATE INDEX idx_character_browse_updated ON character_profiles(archived,updated_at DESC,id)',
+    "CREATE INDEX idx_character_browse_work ON character_profiles(json_extract(draft_json,'$.work'))",
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

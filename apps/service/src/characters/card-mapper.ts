@@ -151,6 +151,7 @@ export function mapCharacterCard(parsed: ParsedCharacterCard): {
 
   return {
     candidate: {
+      tags: Array.isArray(source.tags) ? [...new Set(source.tags.filter((tag): tag is string => typeof tag === 'string').map(tag => tag.trim().slice(0, 1000)).filter(Boolean))].slice(0, 50) : [],
       draft,
       mappings,
       cover: { available: parsed.mimeType === 'image/png' || parsed.mimeType.startsWith('image/'), selectedForAvatar: false, selectedForReference: false },

@@ -673,7 +673,27 @@ export const CharacterVersionSchema = Type.Object({
 });
 export type CharacterVersion = Static<typeof CharacterVersionSchema>;
 
+export const CharacterOrganizationSchema = Type.Object({
+  favorite: Type.Boolean(),
+  groups: Type.Array(Type.String()),
+  interpretation: Type.String(),
+});
+export type CharacterOrganization = Static<typeof CharacterOrganizationSchema>;
+export type CharacterBrowseQuery = {
+  q?: string; works?: string[]; tags?: string[]; groups?: string[];
+  tagMode?: 'any' | 'all'; favorite?: boolean; mediaType?: string; originType?: string;
+  reference?: 'yes' | 'no'; appearance?: 'yes' | 'no'; interpretation?: string;
+  source?: string; unclassified?: 'work' | 'tags'; excludeIds?: string[];
+  sort?: 'updated' | 'name'; page?: number; pageSize?: number;
+};
+export type CharacterWork = { name: string; aliases: string[]; mediaType: string };
+export type CharacterBrowseResult = {
+  items: CharacterProfile[]; total: number; page: number; pageSize: number;
+  facets: { works: CharacterWork[]; tags: string[]; groups: string[]; interpretations: string[]; sources: string[] };
+};
+
 export const CharacterProfileSchema = Type.Object({
+  organization: Type.Optional(CharacterOrganizationSchema),
   id: Type.String(),
   slug: Type.String(),
   displayName: Type.String(),
@@ -800,6 +820,8 @@ export const CharacterFieldMappingSchema = Type.Object({
 export type CharacterFieldMapping = Static<typeof CharacterFieldMappingSchema>;
 
 export const CharacterImportCandidateSchema = Type.Object({
+  tags: Type.Optional(Type.Array(Type.String())),
+  organization: Type.Optional(CharacterOrganizationSchema),
   draft: CharacterDraftSchema,
   mappings: Type.Array(CharacterFieldMappingSchema),
   cover: Type.Object({
