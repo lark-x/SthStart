@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { creativeKeys } from '@/app/lib/query-keys';
-import { fetchCreativeArtifacts, fetchCreativeStatus, fetchCreativeTasks } from './api';
+import { fetchCreativeArtifacts, fetchCreativeGenerationOptions, fetchCreativeStatus, fetchCreativeTasks } from './api';
 
 export function useCreativeStatus() {
   return useQuery({
@@ -9,6 +9,17 @@ export function useCreativeStatus() {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     staleTime: 3_000,
+  });
+}
+
+export function useCreativeGenerationOptions() {
+  return useQuery({
+    queryKey: creativeKeys.options(),
+    queryFn: fetchCreativeGenerationOptions,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 10_000,
+    retry: 1,
   });
 }
 

@@ -86,7 +86,7 @@ button.primary-action:hover {
   padding: 10px 14px;
   border: 1px solid var(--border-default);
   border-radius: 4px 14px 4px 4px;
-  background: rgb(255 253 248 / 85%);
+  background: var(--surface);
   box-shadow: var(--shadow-panel);
   font-size: 12px;
 }
@@ -294,7 +294,7 @@ button.primary-action:hover {
   min-height: 0;
   height: calc(100vh - 48px);
   height: calc(100dvh - 48px);
-  background: #fffdf8;
+  background: var(--surface);
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -323,13 +323,13 @@ button.primary-action:hover {
 
 /* Notebook editor (Seamless Structured Document Canvas) */
 .notebook-editor-shell {
-  background: #fffdf8;
+  background: var(--surface);
   min-height: 100%;
 }
 
 .notebook-editor-header {
   min-height: 44px;
-  background: rgb(255 253 248 / 95%);
+  background: var(--surface);
 }
 
 .notebook-save-status {
@@ -415,7 +415,7 @@ button.primary-action:hover {
 
 .notebook-textarea:focus {
   border-color: rgb(228 93 53 / 25%);
-  background: rgb(255 253 248 / 90%);
+  background: var(--surface);
   outline: none;
 }
 

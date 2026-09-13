@@ -7,6 +7,7 @@ import { Menu, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp } from './navigation';
 import { EyeCareToggle } from './eye-care-toggle';
 import { AutoHideScrollbars } from './auto-hide-scrollbars';
+import { useOverlayAccessibility } from '../ui/overlay';
 
 const COLLAPSE_KEY = 'sthstart_nav_collapsed';
 /** 1024–1439px 默认收窄为图标栏，用户显式选择过则沿用其偏好。 */
@@ -74,6 +75,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const collapsed = mobileCollapsed ?? collapsedPref;
   const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -96,24 +98,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (restoreFocus) triggerRef.current?.focus();
   }, []);
 
-  // 抽屉：Escape 关闭、滚动锁、焦点进入与恢复。
+  useOverlayAccessibility({
+    open: drawerOpen && !embed,
+    onRequestClose: closeDrawer,
+    containerRef: drawerRef,
+    initialFocusRef: closeButtonRef,
+  });
+
+  // 手机旋转/窗口放大进入桌面后，移除遮罩并释放滚动锁。
   useEffect(() => {
     if (!drawerOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    drawerRef.current?.querySelector<HTMLElement>('a, button')?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeDrawer();
-      }
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const onDesktop = () => {
+      if (desktop.matches) closeDrawer(false);
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
+    desktop.addEventListener('change', onDesktop);
+    return () => desktop.removeEventListener('change', onDesktop);
   }, [drawerOpen, closeDrawer]);
 
   const active = currentApp(pathname);
@@ -175,6 +175,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="shell-collapse-btn"
           onClick={toggleCollapsed}
           aria-pressed={collapsed}
+          aria-label={collapsed ? '展开导航' : '收起导航'}
           title={collapsed ? '展开导航' : '收起导航'}
         >
           {collapsed
@@ -210,7 +211,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button
             ref={triggerRef}
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-ink"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-ink"
             aria-label="打开导航"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(true)}
@@ -220,7 +221,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="shell-mobilebar-title">{pageTitle}</span>
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
             aria-label="搜索与命令"
             title="搜索与命令（Ctrl/Cmd + K）"
             onClick={() => {
@@ -237,10 +238,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {drawerOpen && (
         <>
           <div className="shell-drawer-backdrop" onClick={() => closeDrawer()} aria-hidden="true" />
-          <div className="shell-drawer" ref={drawerRef} role="dialog" aria-modal="true" aria-label="导航">
+          <div className="shell-drawer" ref={drawerRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="导航">
             <button
+              ref={closeButtonRef}
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
               onClick={() => closeDrawer()}
               aria-label="关闭导航"
             >

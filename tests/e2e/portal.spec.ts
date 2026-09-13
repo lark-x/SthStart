@@ -71,8 +71,17 @@ test('creative center exposes a safe unconfigured image workspace', async ({ pag
     const tab = page.getByRole('tab', { name: mode });
     await tab.click();
     await expect(tab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByLabel('正向提示词')).toBeVisible();
-    await expect(page.getByRole('button', { name: '开始生成' })).toBeDisabled();
+    /*
+     * 共享 e2e 数据库可能已为文本生图配置预设：此时显示契约驱动的预设表单；
+     * 未配置的模式仍显示固定表单。两种形态都必须安全（无密码输入、无裸凭据）。
+     */
+    const presetForm = page.getByLabel('工作流', { exact: true });
+    if (await presetForm.isVisible().catch(() => false)) {
+      await expect(page.getByText('提示词', { exact: true })).toBeVisible();
+    } else {
+      await expect(page.getByLabel('正向提示词')).toBeVisible();
+    }
+    await expect(page.getByRole('button', { name: '开始生成' })).toBeVisible();
   }
 
   await page.getByRole('tab', { name: '图生视频' }).click();
@@ -469,29 +478,42 @@ test('narrative workspace opens and supports reading and import views', async ({
 
 test('generation settings creates isolated engine and workflow records', async ({ page }) => {
   const suffix = Date.now().toString(36);
-  const engineId = `engine-${suffix}`;
-  const workflowId = `workflow-${suffix}`;
+  const engineName = `测试引擎 ${suffix}`;
   await page.goto('/settings/generation');
-  await expect(page.getByRole('heading', { name: '生成工作流配置', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '生成配置工作台', level: 1 })).toBeVisible();
   await page.getByRole('button', { name: '刷新' }).click();
 
-  // 分区导航改为页级 tab（§8.11），断言随之使用 tab 语义。
-  await page.getByRole('tab', { name: '引擎与执行器', exact: true }).click();
-  await page.getByLabel('引擎 ID').fill(engineId);
-  await page.getByLabel('引擎名称').fill(`测试引擎 ${suffix}`);
-  await page.getByLabel('ComfyUI 地址').fill('http://127.0.0.1:8188');
-  await page.getByLabel('并发限制').fill('1');
-  await page.getByRole('button', { name: '保存引擎' }).click();
-  await expect(page.getByText(`测试引擎 ${suffix}`).first()).toBeVisible();
+  // 连接页签：新建连接默认 ComfyUI 直连，只需名称与地址。
+  const connectionsTab = page.getByRole('tab', { name: '连接' });
+  for (let attempt = 0; attempt < 12 && !(await page.getByRole('button', { name: '新建连接' }).isVisible().catch(() => false)); attempt += 1) {
+    await connectionsTab.click();
+    await page.waitForTimeout(150);
+  }
+  await page.getByRole('button', { name: '新建连接' }).click();
+  const connectionDialog = page.getByRole('dialog');
+  await connectionDialog.getByLabel('名称').fill(engineName);
+  await connectionDialog.getByLabel('地址').fill('http://127.0.0.1:8188');
+  await connectionDialog.getByRole('button', { name: '保存连接' }).click();
+  await expect(page.getByText(engineName).first()).toBeVisible();
 
-  await page.getByRole('tab', { name: '工作流', exact: true }).click();
-  await page.getByLabel('工作流 ID').fill(workflowId);
-  await page.getByLabel('工作流名称').fill(`测试工作流 ${suffix}`);
-  await page.getByRole('button', { name: '创建工作流' }).click();
-  await expect(page.getByText(`测试工作流 ${suffix}`).first()).toBeVisible();
-  await page.getByRole('tab', { name: '应用绑定', exact: true }).click();
-  await page.getByRole('button', { name: '保存绑定' }).click();
-  await expect(page.getByText('创作中心绑定已保存')).toBeVisible();
+  // 工作流页签：导入原生 API JSON（先分析后创建），ID 由系统生成，不再手填。
+  const workflowsTab = page.getByRole('tab', { name: '工作流', exact: true });
+  for (let attempt = 0; attempt < 12 && !(await page.getByRole('button', { name: '导入', exact: true }).isVisible().catch(() => false)); attempt += 1) {
+    await workflowsTab.click();
+    await page.waitForTimeout(150);
+  }
+  await page.getByRole('button', { name: '导入', exact: true }).click();
+  const importDialog = page.getByRole('dialog');
+  await importDialog.getByLabel('工作流 JSON 内容').fill(JSON.stringify({
+    '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd15/model.safetensors' } },
+    '9': { class_type: 'SaveImage', inputs: { images: [['4', 0]] } },
+  }));
+  await importDialog.getByRole('button', { name: '分析' }).click();
+  await importDialog.getByLabel('工作流名称').fill(`测试工作流 ${suffix}`);
+  await importDialog.getByRole('button', { name: '创建并打开编辑器' }).click();
+  const workspace = page.getByTestId('workflow-workspace');
+  await expect(workspace).toBeVisible({ timeout: 15_000 });
+  await expect(workspace.getByRole('option', { name: `测试工作流 ${suffix}` })).toBeAttached();
 });
 
 test('application and settings pages keep one semantic main heading', async ({ page }) => {

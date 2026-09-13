@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
@@ -9,29 +9,21 @@ import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { useToast } from '@/app/providers/ui-provider';
 import {
-  createWorkflowConfig,
   fetchGenerationAssignments,
   fetchGenerationEngines,
   fetchGenerationWorkers,
   fetchGenerationWorkflows,
   fetchMediaDiagnostics,
-  importWorkflowBundle,
-  publishWorkflowVersion,
-  saveCreativeCenterAssignments,
-  saveGenerationEngine,
-  saveWorkerConfig,
 } from './api';
-import type { Assignment, Engine, MediaDiagnostics, Worker, Workflow } from './types';
-import { versionKey } from './types';
-import { AssignmentPanel } from './components/assignment-panel';
-import { DiagnosticsPanel } from './components/diagnostics-panel';
-import { EnginePanel } from './components/engine-panel';
-import { WorkerPanel } from './components/worker-panel';
-import { WorkflowEditor } from './components/workflow-editor';
-import { WorkflowPanel } from './components/workflow-panel';
+import type { Assignment, Engine, MediaDiagnostics, Workflow, Worker } from './types';
+import { ConnectionsPanel } from './components/connection-panel';
+import { PresetPanel } from './components/preset-panel';
+import { WorkflowWorkspace } from './components/workflow-workspace';
 
-const CREATIVE_PURPOSES = ['text-to-image', 'image-to-image', 'h3-t2v', 'h3-i2v', 'h3-fl2va'] as const;
-
+/**
+ * 生成配置工作台（规划 §4.1）：三个主标签——工作流（默认）、连接、预设与用途。
+ * 原「诊断」保留为连接详情内的高级诊断；不再以技术对象罗列配置。
+ */
 export function GenerationSettingsFeature() {
   const toast = useToast();
   const [section, setSection] = useState('workflows');
@@ -39,17 +31,12 @@ export function GenerationSettingsFeature() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [diagnostics, setDiagnostics] = useState<MediaDiagnostics | null>(null);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [workerToken, setWorkerToken] = useState('');
-  const [versionWorkflowId, setVersionWorkflowId] = useState('');
-  const [creativeBindings, setCreativeBindings] = useState<Record<string, string>>({
-    'text-to-image': '', 'image-to-image': '', 'h3-t2v': '', 'h3-i2v': '', 'h3-fl2va': '',
-  });
+  const [savePresetRequest, setSavePresetRequest] = useState<{ workflowId: string; workflowVersion: number; values: Record<string, unknown> } | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
       const [engineItems, workerItems, workflowItems, assignmentItems, diagnosticsData] = await Promise.all([
@@ -59,16 +46,12 @@ export function GenerationSettingsFeature() {
         fetchGenerationAssignments(),
         fetchMediaDiagnostics(),
       ]);
+      // 数据局部加载：部分数据源失败不应让整个配置页进入失败空白。
       setEngines(engineItems);
       setWorkers(workerItems);
-      setDiagnostics(diagnosticsData);
       setWorkflows(workflowItems);
-      setVersionWorkflowId((current) => workflowItems.some((item) => item.id === current) ? current : workflowItems[0]?.id ?? '');
-      const nextBindings: Record<string, string> = Object.fromEntries(CREATIVE_PURPOSES.map((purpose) => [purpose, '']));
-      assignmentItems
-        .filter((item: Assignment) => item.app_id === 'creative-center')
-        .forEach((item) => { nextBindings[item.purpose] = versionKey(item.workflow_id, item.workflow_version); });
-      setCreativeBindings(nextBindings);
+      setAssignments(assignmentItems);
+      setDiagnostics(diagnosticsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -76,216 +59,66 @@ export function GenerationSettingsFeature() {
     }
   }, []);
 
-  // The first request is intentionally owned by this feature component; the
-  // page wrapper remains a pure composition layer.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, [load]);
-
-  const publishedVersions = useMemo(
-    () => workflows.flatMap((workflow) => workflow.versions.filter((version) => version.isPublished).map((version) => ({ workflow, version }))),
-    [workflows],
-  );
-
-  const handleError = (prefix: string, err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    setError(message);
-    toast.error(prefix, message);
-  };
-
-  const saveEngine = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setBusy('engine');
-    setError('');
-    try {
-      const data = new FormData(form);
-      const value = (name: string) => String(data.get(name) ?? '').trim();
-      await saveGenerationEngine({
-        id: value('engine-id'), name: value('engine-name'), baseUrl: value('engine-url'),
-        secret: value('engine-secret') || undefined, concurrencyLimit: Number(value('engine-concurrency')),
-      });
-      form.reset();
-      await load();
-      toast.success('生成引擎已保存');
-    } catch (err) {
-      handleError('保存生成引擎失败', err);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const createWorkflow = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setBusy('workflow');
-    setError('');
-    try {
-      const data = new FormData(form);
-      const value = (name: string) => String(data.get(name) ?? '').trim();
-      await createWorkflowConfig({
-        id: value('workflow-id'), name: value('workflow-name'), description: value('workflow-description'),
-        engineKind: 'comfyui', category: (value('workflow-category') || 'image') as 'image' | 'video' | 'audio' | 'transform',
-      });
-      form.reset();
-      await load();
-      toast.success('工作流已创建');
-    } catch (err) {
-      handleError('创建工作流失败', err);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const importWorkflow = async (bundle: unknown) => {
-    setBusy('workflow-import');
-    setError('');
-    try {
-      const res = await importWorkflowBundle(bundle);
-      await load();
-      setVersionWorkflowId(res.workflowId || res.id);
-      toast.success(`工作流 ${res.workflowId || res.id} 导入成功 (v${res.version})`);
-    } catch (err) {
-      handleError('导入工作流失败', err);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const saveWorker = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setBusy('worker');
-    setError('');
-    try {
-      const data = new FormData(form);
-      const value = (name: string) => String(data.get(name) ?? '').trim();
-      const response = await saveWorkerConfig({
-        id: value('worker-id'), name: value('worker-name'), baseUrl: value('worker-url'),
-        token: value('worker-token') || undefined, model: value('worker-model'), temperature: Number(value('worker-temperature')),
-        ipAllowlist: value('worker-ip-allowlist').split(',').map((item) => item.trim()).filter(Boolean),
-        diskWarningBytes: Number(value('worker-disk-warning')), diskStopBytes: Number(value('worker-disk-stop')),
-      });
-      if (response.token) setWorkerToken(response.token);
-      form.reset();
-      await load();
-      toast.success('Windows Worker 已保存');
-    } catch (err) {
-      handleError('保存 Windows Worker 失败', err);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const publishVersion = async (input: {
-    engineId: string;
-    inputSchema: string;
-    inputCapabilities: string;
-    nodeBindings: string;
-    outputDeclarations: string;
-    outputMediaTypes: string;
-    outputSchema: string;
-    definition: string;
-  }) => {
-    if (!versionWorkflowId) return;
-    setBusy('version');
-    setError('');
-    try {
-      const parseObject = (value: string, label: string) => {
-        const parsed: unknown = JSON.parse(value);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${label}必须是 JSON 对象。`);
-        return parsed as Record<string, unknown>;
-      };
-      const parseBindings = (value: string) => parseObject(value, '节点绑定') as Record<string, string[]>;
-      const selectedWorkflow = workflows.find((item) => item.id === versionWorkflowId);
-      const outputMediaTypes = input.outputMediaTypes.split(',').map((item) => item.trim()).filter(Boolean);
-      await publishWorkflowVersion(versionWorkflowId, {
-        engineId: input.engineId || undefined,
-        inputSchema: parseObject(input.inputSchema, '输入结构'),
-        inputCapabilities: parseObject(input.inputCapabilities, '输入媒体能力'),
-        nodeBindings: parseBindings(input.nodeBindings),
-        outputDeclarations: input.outputDeclarations.split(',').map((item) => item.trim()).filter(Boolean),
-        outputMediaTypes: outputMediaTypes.length ? outputMediaTypes : selectedWorkflow?.category === 'video' ? ['video/mp4'] : ['image/png'],
-        outputSchema: parseObject(input.outputSchema, '输出结构'),
-        definition: parseObject(input.definition, 'ComfyUI API JSON'),
-      });
-      await load();
-      toast.success('工作流版本已发布');
-    } catch (err) {
-      handleError('发布工作流版本失败', err);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const saveCreativeBindings = async () => {
-    const selected = CREATIVE_PURPOSES.map((purpose) => {
-      const value = creativeBindings[purpose];
-      const match = publishedVersions.find((item) => versionKey(item.workflow.id, item.version.version) === value);
-      if (!match) return null;
-      const engineId = match.version.engineId || engines.find((engine) => engine.kind === match.workflow.engine_kind)?.id || '';
-      return engineId ? { purpose, workflowId: match.workflow.id, workflowVersion: match.version.version, engineId } : null;
-    }).filter((item): item is { purpose: typeof CREATIVE_PURPOSES[number]; workflowId: string; workflowVersion: number; engineId: string } => Boolean(item));
-    setBusy('assignment');
-    setError('');
-    try {
-      await saveCreativeCenterAssignments(selected);
-      await load();
-      toast.success('创作中心绑定已保存');
-    } catch (err) {
-      handleError('保存创作中心绑定失败', err);
-    } finally {
-      setBusy('');
-    }
-  };
+  useEffect(() => {
+    // 页面数据来自管理 API（外部系统）；挂载时加载一次（沿用本页既有约定）。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   return (
-    <PageContainer width="settings" className="space-y-4 py-6">
-        <PageHeader
-          backHref="/apps/creative"
-          backLabel="返回创作中心"
-          title="生成工作流配置"
-          description="这里管理引擎、版本化 ComfyUI API 工作流、媒体能力和应用绑定。普通创作页面只会看到安全连接状态，不会看到原始凭据。"
-          actions={(
-            <Button size="sm" variant="outline" onClick={() => void load()}>
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新
-            </Button>
-          )}
-        />
-        {error && <Alert variant="danger" title="生成配置操作失败" onDismiss={() => setError('')}>{error}</Alert>}
-        {/* 分区导航使用页级 tab 语义，与活动/角色等工作台的模式切换保持一致（§8.11）。 */}
-        <PageTabs
-          ariaLabel="生成配置分类"
-          value={section}
-          onChange={setSection}
-          tabs={[
-            { id: 'workflows', label: '工作流', panelId: 'generation-panel-workflows' },
-            { id: 'engines', label: '引擎与执行器', panelId: 'generation-panel-engines' },
-            { id: 'bindings', label: '应用绑定', panelId: 'generation-panel-bindings' },
-            { id: 'diagnostics', label: '诊断', panelId: 'generation-panel-diagnostics' },
-          ]}
-        />
-        {loading ? (
-          <div className="tpl-panel p-12 text-center text-sm text-muted" role="status">正在读取生成配置…</div>
-        ) : (
-          <>
-            <div className="space-y-5">
-              <div id="generation-panel-engines" role="tabpanel" hidden={section !== 'engines'}><EnginePanel engines={engines} busy={busy} onSubmit={(event) => { void saveEngine(event); }} /></div>
-              <div id="generation-panel-workflows" role="tabpanel" hidden={section !== 'workflows'}><WorkflowPanel workflows={workflows} selectedWorkflowId={versionWorkflowId} busy={busy} onSelect={setVersionWorkflowId} onCreate={(event) => { void createWorkflow(event); }} onImport={(json) => { void importWorkflow(json); }} onImportError={(message) => handleError('导入工作流失败', message)} /></div>
-            </div>
-            {workerToken && <Alert variant="warning" title="请立即保存 Worker token" onDismiss={() => setWorkerToken('')}>这是本次创建或轮换后唯一一次显示的 token：<code className="mt-1 block break-all rounded bg-black/5 p-2 text-sm">{workerToken}</code>请将它写入 Windows Worker 的安全环境变量，之后不会在列表中再次显示。</Alert>}
-            <div role="tabpanel" hidden={section !== 'engines'}><WorkerPanel workers={workers} busy={busy} onSubmit={(event) => { void saveWorker(event); }} /></div>
-            <div id="generation-panel-diagnostics" role="tabpanel" hidden={section !== 'diagnostics'}><DiagnosticsPanel diagnostics={diagnostics} /></div>
-            <div role="tabpanel" hidden={section !== 'workflows'}><WorkflowEditor workflows={workflows} engines={engines} selectedWorkflowId={versionWorkflowId} busy={busy} onSelectWorkflow={setVersionWorkflowId} onPublish={(input) => { void publishVersion(input); }} /></div>
-            <div id="generation-panel-bindings" role="tabpanel" hidden={section !== 'bindings'}><AssignmentPanel
+    <PageContainer width="wide" className="space-y-4 py-6">
+      <PageHeader
+        backHref="/apps/creative"
+        backLabel="返回创作中心"
+        title="生成配置工作台"
+        description="选工作流 → 选兼容模型 → 配置参数 → 生成。连接、工作流、预设与默认用途统一在这里管理。"
+        actions={(
+          <Button size="sm" variant="outline" onClick={() => { void load(); }}>
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新
+          </Button>
+        )}
+      />
+      {error && <Alert variant="danger" title="生成配置读取失败" onDismiss={() => setError('')}>{error}</Alert>}
+      <PageTabs
+        ariaLabel="生成配置分类"
+        value={section}
+        onChange={setSection}
+        tabs={[
+          { id: 'workflows', label: '工作流', panelId: 'generation-panel-workflows' },
+          { id: 'connections', label: '连接', panelId: 'generation-panel-connections' },
+          { id: 'presets', label: '预设与用途', panelId: 'generation-panel-presets' },
+        ]}
+      />
+      {loading ? (
+        <div className="tpl-panel p-12 text-center text-sm text-muted" role="status">正在读取生成配置…</div>
+      ) : (
+        <>
+          <div id="generation-panel-workflows" role="tabpanel" hidden={section !== 'workflows'}>
+            <WorkflowWorkspace
               workflows={workflows}
               engines={engines}
-              bindings={creativeBindings}
-              busy={busy}
-              onBindingChange={(purpose, value) => setCreativeBindings((current) => ({ ...current, [purpose]: value }))}
-              onSave={() => { void saveCreativeBindings(); }}
-            /></div>
-          </>
-        )}
+              onDataChanged={load}
+              onSaveAsPreset={(values, workflowId, workflowVersion) => {
+                setSavePresetRequest({ workflowId, workflowVersion, values });
+                setSection('presets');
+                toast.info('请在预设面板确认参数', '已带入试运行参数，保存后可在创作中心选择。');
+              }}
+            />
+          </div>
+          <div id="generation-panel-connections" role="tabpanel" hidden={section !== 'connections'}>
+            <ConnectionsPanel engines={engines} workers={workers} diagnostics={diagnostics} onRefresh={load} />
+          </div>
+          <div id="generation-panel-presets" role="tabpanel" hidden={section !== 'presets'}>
+            <PresetPanel
+              workflows={workflows}
+              engines={engines}
+              assignments={assignments}
+              draftFor={savePresetRequest}
+              onDataChanged={load}
+            />
+          </div>
+        </>
+      )}
     </PageContainer>
   );
 }

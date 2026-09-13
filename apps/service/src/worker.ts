@@ -193,3 +193,44 @@ export async function confirmWorkerTask(baseUrl: string, token: string, taskId: 
     body: JSON.stringify({ outputIds }),
   }, fetcher);
 }
+
+// ── 只读发现（规划 §5 / §12）：旧 Worker 不支持时上层返回「需升级以读取列表」。 ──
+
+export interface WorkerDiscoveryUnsupportedError extends Error {
+  code: 'worker_discovery_unsupported';
+}
+
+export function isWorkerDiscoveryUnsupported(error: unknown): error is WorkerDiscoveryUnsupportedError {
+  return Boolean(error && typeof error === 'object' && (error as { code?: string }).code === 'worker_discovery_unsupported');
+}
+
+export async function discoverWorkerModels(baseUrl: string, token: string, options: { refresh?: boolean }, fetcher: typeof fetch = fetch) {
+  try {
+    return await requestJson<{ items?: unknown[]; stale?: boolean; fetchedAt?: string; error?: string }>(
+      baseUrl, token, `/v1/worker/discovery/models${options.refresh ? '?refresh=1' : ''}`, { method: 'GET' }, fetcher,
+    );
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) {
+      const err = new Error('当前 Windows Worker 版本不支持模型发现，请升级 Worker 后重试。') as WorkerDiscoveryUnsupportedError;
+      err.code = 'worker_discovery_unsupported';
+      throw err;
+    }
+    throw error;
+  }
+}
+
+export async function discoverWorkerNodes(baseUrl: string, token: string, classTypes: string[], fetcher: typeof fetch = fetch) {
+  try {
+    return await requestJson<{ items?: unknown[]; stale?: boolean; fetchedAt?: string; error?: string }>(
+      baseUrl, token, `/v1/worker/discovery/nodes?classTypes=${encodeURIComponent(classTypes.slice(0, 64).join(','))}`, { method: 'GET' }, fetcher,
+    );
+  } catch (error) {
+    if (isWorkerDiscoveryUnsupported(error)) throw error;
+    if ((error as { status?: number }).status === 404) {
+      const err = new Error('当前 Windows Worker 版本不支持节点发现，请升级 Worker 后重试。') as WorkerDiscoveryUnsupportedError;
+      err.code = 'worker_discovery_unsupported';
+      throw err;
+    }
+    throw error;
+  }
+}

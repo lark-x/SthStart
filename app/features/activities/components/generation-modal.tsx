@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Sparkles,
   Check,
@@ -72,6 +72,28 @@ const MODE_GROUPS: Array<{
 
 const STAGE_SCOPED: GenerationMode[] = ['stage', 'rewrite-records', 'invite', 'wish', 'moment', 'shot'];
 const SNIPPET_MODES: GenerationMode[] = ['invite', 'wish', 'moment', 'shot'];
+
+// 每组按自身条目数分列：固定 6 列会把 3/4 张卡片压到 ~80px，导致四字标题逐字折行。
+const GROUP_GRID_CLASS: Record<number, string> = {
+  1: 'sm:grid-cols-2',
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-3',
+  4: 'sm:grid-cols-4',
+};
+
+/** 失败原因分层呈现：模型输出格式问题给出明确的重试引导，其余原因原样透出（可展开查看）。 */
+function describeJobFailure(message: string | null | undefined): { title: string; detail: string; raw?: string } {
+  const raw = (message || '').trim();
+  if (!raw) return { title: '生成失败', detail: '可以调整要求后重试。' };
+  if (raw.startsWith('invalid_ai_output:') || raw.includes('无法解析为 JSON')) {
+    return {
+      title: '模型输出不符合格式',
+      detail: '模型没有按约定的 JSON 结构返回内容。系统已自动修复常见偏差（如缺失字段、数字形式的文字）；请直接重试，若反复出现可补充生成指引或更换生成模型。',
+      raw,
+    };
+  }
+  return { title: '生成失败', detail: raw };
+}
 
 export function GenerationModal({ open, onOpenChange, activity, stages, currentStageId, onCandidateAdopted }: GenerationModalProps) {
   const initialMode: GenerationMode = currentStageId ? 'stage' : 'plan';
@@ -207,11 +229,13 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
   const canBatchAdopt = job?.status === 'succeeded' && orderedCandidates.length > 1;
   const isSnippet = SNIPPET_MODES.includes(mode);
   const modeHint = MODE_GROUPS.flatMap((group) => group.items).find((item) => item.id === mode)?.desc;
+  const jobFailure = job?.status === 'failed' ? describeJobFailure(job.errorMessage) : null;
 
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
+      size="lg"
       title="AI 活动内容生成"
       description="基于角色快照与剧情约束生成内容。生成结果是候选方案，必须由创作者确认后才会写入采用版本。"
       footer={
@@ -251,7 +275,7 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
                 <span className="text-sm font-semibold text-ink">{group.title}</span>
                 <span className="text-xs text-muted">{group.hint}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+              <div className={`grid grid-cols-2 gap-2 ${GROUP_GRID_CLASS[group.items.length] || 'sm:grid-cols-3'}`}>
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const isSelected = mode === item.id;
@@ -260,7 +284,7 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
                       key={item.id}
                       type="button"
                       onClick={() => setMode(item.id)}
-                      className={`rounded-lg border p-2.5 text-left transition-all ${isSelected ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border-subtle bg-surface hover:border-accent/40'}`}
+                      className={`h-full min-w-0 rounded-lg border p-2.5 text-left transition-all ${isSelected ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border-subtle bg-surface hover:border-accent/40'}`}
                     >
                       <Icon className={`mb-1.5 h-4 w-4 ${isSelected ? 'text-accent' : 'text-muted'}`} />
                       <div className="text-sm font-semibold text-ink">{item.label}</div>
@@ -361,7 +385,17 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
             <div className="text-sm text-amber-900">AI 正在生成内容中… 请稍候</div>
           </div>
         )}
-        {job?.status === 'failed' && <Alert variant="danger" title="生成失败">{job.errorMessage || '可以调整要求后重试。'}</Alert>}
+        {jobFailure && (
+          <Alert variant="danger" title={jobFailure.title}>
+            {jobFailure.detail}
+            {jobFailure.raw && (
+              <details className="mt-1.5 text-xs text-muted">
+                <summary className="cursor-pointer select-none">查看原始错误</summary>
+                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all">{jobFailure.raw}</pre>
+              </details>
+            )}
+          </Alert>
+        )}
         {job?.status === 'result_unknown' && <Alert variant="warning" title="任务中断">服务重启导致任务中断，可重新发起生成。</Alert>}
 
         {activeCandidate && activePayload && (

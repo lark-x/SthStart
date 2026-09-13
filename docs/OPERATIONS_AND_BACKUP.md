@@ -277,3 +277,28 @@ npm run db:backup -- /path/to/my-backups/2026-08-27
 | **服务停止** | `npm stop` | 校验目录并安全停止 Portal、公共服务及托管的邻舍进程 |
 | **本地服务启动** | `npm start` | 启动 Portal 与公共服务 |
 | **局域网模式启动** | `npm run start:lan` | 仅在受信任家庭网络中启动局域网访问 |
+
+---
+
+## 9. 生成配置工作台（2026-09 新增）
+
+`/settings/generation` 已改造为统一配置工作台（连接、工作流、预设与用途三个标签）。与备份/运维相关的增量：
+
+### 数据库对象（迁移 23，加法迁移，不删旧列）
+
+| 对象 | 用途 |
+| --- | --- |
+| `generation_workflow_drafts` | 每个工作流一份管理草稿（`revision` 乐观锁）。草稿是编辑状态，不是第二份权威配置；执行永远读取不可变版本 |
+| `generation_presets` | 常用生成预设：确切工作流版本 + 连接 + 覆盖值 + 开放用途；`revision` 随编辑递增 |
+| `generation_workflow_versions.config_format_version` / `editor_config_json` | V2 编辑器的显示信息（字段分组、模型类别、画幅组合）；默认值与范围仍只在 `input_schema_json` |
+| `generation_workflows.archived_at` | 工作流归档标记（替代删除） |
+| `app_generation_assignments.default_preset_id` | 用途默认预设；为空时完全沿用旧绑定行为 |
+
+备份与恢复流程不变；新增表随整库快照一起备份。恢复旧备份会同时回退草稿与预设，属预期行为（规划 §14：数据库恢复须停写并评估新增数据）。
+
+### 运维注意事项
+
+- **连接测试与模型发现**由 Service 后端向已配置的 ComfyUI/Worker 发起；浏览器不持有凭据。发现结果使用 60 秒内存缓存，重启后为空属正常。
+- **旧版 Windows Worker** 不提供发现端点：模型/节点列表会明确提示「需升级 Windows Worker」，不影响旧任务执行。
+- **试运行任务**归属 `creative-center` 应用的固定 `configuration-test` 用途；产物出现在创作中心媒体库，可用用途区分，不另建媒体仓库。
+- **删除连接**时若仍有预设引用会被拒绝（`engine_in_use`），需先删除或改绑这些预设。

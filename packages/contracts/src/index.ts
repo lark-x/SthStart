@@ -569,6 +569,7 @@ export const CreativeReplaySchema = Type.Object({
   mode: Type.Union([Type.Literal('text-to-image'), Type.Literal('image-to-image'), Type.Literal('h3-t2v'), Type.Literal('h3-i2v'), Type.Literal('h3-fl2va')]),
   inputs: Type.Record(Type.String(), Type.Union([Type.String(), Type.Number()])),
   inputArtifactIds: Type.Array(Type.String()),
+  presetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type CreativeReplay = Static<typeof CreativeReplaySchema>;
 
@@ -598,6 +599,304 @@ export const GenerationEventSchema = Type.Object({
   createdAt: Type.String(),
 });
 export type GenerationEvent = Static<typeof GenerationEventSchema>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// 生成配置工作台（V2 编辑器）
+// ────────────────────────────────────────────────────────────────────────────
+
+export const GenerationFieldSectionSchema = Type.Union([
+  Type.Literal('basic'),
+  Type.Literal('advanced'),
+  Type.Literal('fixed'),
+]);
+export type GenerationFieldSection = Static<typeof GenerationFieldSectionSchema>;
+
+export const GenerationFieldTypeSchema = Type.Union([
+  Type.Literal('text'),
+  Type.Literal('long-text'),
+  Type.Literal('integer'),
+  Type.Literal('number'),
+  Type.Literal('boolean'),
+  Type.Literal('enum'),
+  Type.Literal('model'),
+  Type.Literal('seed'),
+]);
+export type GenerationFieldType = Static<typeof GenerationFieldTypeSchema>;
+
+/** 编辑器里单个业务字段的显示信息；权威默认值/范围/枚举仍在 inputSchema。 */
+export const GenerationFieldConfigSchema = Type.Object({
+  key: Type.String(),
+  label: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  section: GenerationFieldSectionSchema,
+  order: Type.Integer(),
+  type: Type.Optional(GenerationFieldTypeSchema),
+  modelCategory: Type.Optional(Type.String()),
+  allowedModels: Type.Optional(Type.Array(Type.String())),
+  allowIndividualSwitch: Type.Optional(Type.Boolean()),
+});
+export type GenerationFieldConfig = Static<typeof GenerationFieldConfigSchema>;
+
+export const GenerationSizePresetSchema = Type.Object({
+  label: Type.String(),
+  width: Type.Integer({ minimum: 1 }),
+  height: Type.Integer({ minimum: 1 }),
+});
+export type GenerationSizePreset = Static<typeof GenerationSizePresetSchema>;
+
+/**
+ * editor_config_json 的结构说明（V2）。它只描述“如何呈现”，不是第二份参数源；
+ * 默认值、min/max、枚举唯一存于 input_schema_json，实际路径只存于 node_bindings_json。
+ */
+export const GenerationEditorConfigSchema = Type.Object({
+  version: Type.Literal(2),
+  fields: Type.Record(Type.String(), GenerationFieldConfigSchema),
+  modelSelection: Type.Union([Type.Literal('individual'), Type.Literal('preset-locked')]),
+  loraSlots: Type.Array(Type.Object({
+    nameKey: Type.String(),
+    strengthKey: Type.String(),
+  })),
+  sizePresets: Type.Array(GenerationSizePresetSchema),
+  constraints: Type.Object({
+    maxPixels: Type.Optional(Type.Integer({ minimum: 1 })),
+    allowedSizes: Type.Optional(Type.Array(Type.Object({
+      width: Type.Integer({ minimum: 1 }),
+      height: Type.Integer({ minimum: 1 }),
+    }))),
+  }),
+});
+export type GenerationEditorConfig = Static<typeof GenerationEditorConfigSchema>;
+
+/** 工作流草稿载荷：尚未固化为不可变版本的完整编辑状态。 */
+export const GenerationDraftPayloadSchema = Type.Object({
+  formatVersion: Type.Integer({ minimum: 1, maximum: 2 }),
+  name: Type.Union([Type.String(), Type.Null()]),
+  description: Type.Union([Type.String(), Type.Null()]),
+  category: Type.Optional(MediaCategorySchema),
+  engineId: Type.Union([Type.String(), Type.Null()]),
+  definition: Type.Record(Type.String(), Type.Unknown()),
+  inputSchema: Type.Record(Type.String(), Type.Unknown()),
+  inputCapabilities: Type.Record(Type.String(), Type.Unknown()),
+  nodeBindings: Type.Record(Type.String(), Type.Array(Type.String())),
+  outputDeclarations: Type.Array(Type.String()),
+  outputMediaTypes: Type.Optional(Type.Array(Type.String())),
+  outputSchema: Type.Record(Type.String(), Type.Unknown()),
+  editorConfig: Type.Union([GenerationEditorConfigSchema, Type.Null()]),
+});
+export type GenerationDraftPayload = Static<typeof GenerationDraftPayloadSchema>;
+
+export const GenerationWorkflowDraftSchema = Type.Object({
+  workflowId: Type.String(),
+  baseVersion: Type.Integer(),
+  revision: Type.Integer(),
+  draft: GenerationDraftPayloadSchema,
+  updatedAt: Type.String(),
+});
+export type GenerationWorkflowDraft = Static<typeof GenerationWorkflowDraftSchema>;
+
+export const GenerationPresetSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  description: Type.String(),
+  appId: Type.String(),
+  purpose: Type.String(),
+  workflowId: Type.String(),
+  workflowVersion: Type.Integer(),
+  engineId: Type.Union([Type.String(), Type.Null()]),
+  values: Type.Record(Type.String(), Type.Unknown()),
+  enabled: Type.Boolean(),
+  revision: Type.Integer(),
+  isDefault: Type.Boolean(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type GenerationPreset = Static<typeof GenerationPresetSchema>;
+
+export const GenerationPresetListResponseSchema = Type.Object({
+  items: Type.Array(GenerationPresetSchema),
+});
+export type GenerationPresetListResponse = Static<typeof GenerationPresetListResponseSchema>;
+
+/** 任务请求中的选择元信息：预设引用、连接与最终合并值，随快照持久化用于溯源。 */
+export const GenerationSelectionMetaSchema = Type.Object({
+  presetId: Type.Union([Type.String(), Type.Null()]),
+  presetRevision: Type.Union([Type.Integer(), Type.Null()]),
+  connectionId: Type.Union([Type.String(), Type.Null()]),
+  testMode: Type.Optional(Type.Boolean()),
+  resolvedValues: Type.Record(Type.String(), Type.Unknown()),
+});
+export type GenerationSelectionMeta = Static<typeof GenerationSelectionMetaSchema>;
+
+// ── 连接发现（只读） ──
+
+export const GenerationConnectionTestResultSchema = Type.Object({
+  ok: Type.Boolean(),
+  kind: GenerationEngineKindSchema,
+  latencyMs: Type.Union([Type.Number(), Type.Null()]),
+  checkedAt: Type.String(),
+  summary: Type.Union([Type.String(), Type.Null()]),
+  system: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  discoverySupported: Type.Union([Type.Boolean(), Type.Null()]),
+  errorCode: Type.Union([Type.String(), Type.Null()]),
+  errorMessage: Type.Union([Type.String(), Type.Null()]),
+});
+export type GenerationConnectionTestResult = Static<typeof GenerationConnectionTestResultSchema>;
+
+export const GenerationModelEntrySchema = Type.Object({
+  name: Type.String(),
+  category: Type.String(),
+});
+export type GenerationModelEntry = Static<typeof GenerationModelEntrySchema>;
+
+export const GenerationModelListResponseSchema = Type.Object({
+  items: Type.Array(GenerationModelEntrySchema),
+  stale: Type.Boolean(),
+  fetchedAt: Type.Union([Type.String(), Type.Null()]),
+  error: Type.Union([Type.String(), Type.Null()]),
+});
+export type GenerationModelListResponse = Static<typeof GenerationModelListResponseSchema>;
+
+export const GenerationNodeDefinitionSchema = Type.Object({
+  classType: Type.String(),
+  input: Type.Record(Type.String(), Type.Unknown()),
+});
+export type GenerationNodeDefinition = Static<typeof GenerationNodeDefinitionSchema>;
+
+export const GenerationNodeListResponseSchema = Type.Object({
+  items: Type.Array(GenerationNodeDefinitionSchema),
+  stale: Type.Boolean(),
+  fetchedAt: Type.Union([Type.String(), Type.Null()]),
+  error: Type.Union([Type.String(), Type.Null()]),
+});
+export type GenerationNodeListResponse = Static<typeof GenerationNodeListResponseSchema>;
+
+// ── 工作流导入分析 ──
+
+export const GenerationAnalyzedInputSchema = Type.Object({
+  key: Type.String(),
+  nodeId: Type.String(),
+  inputName: Type.String(),
+  classType: Type.String(),
+  currentValue: Type.Unknown(),
+  kind: GenerationFieldTypeSchema,
+  semantic: Type.Union([Type.String(), Type.Null()]),
+  enumValues: Type.Optional(Type.Array(Type.String())),
+  modelCategory: Type.Optional(Type.String()),
+  modelLabel: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  confidence: Type.Union([Type.Literal('known'), Type.Literal('guessed')]),
+  autoMapped: Type.Boolean(),
+  note: Type.Union([Type.String(), Type.Null()]),
+});
+export type GenerationAnalyzedInput = Static<typeof GenerationAnalyzedInputSchema>;
+
+export const WorkflowAnalyzeResponseSchema = Type.Object({
+  source: Type.Union([Type.Literal('api-json'), Type.Literal('config-package')]),
+  nodeCount: Type.Integer(),
+  inputs: Type.Array(GenerationAnalyzedInputSchema),
+  outputCandidates: Type.Array(Type.String()),
+  packageInfo: Type.Optional(Type.Object({
+    name: Type.Union([Type.String(), Type.Null()]),
+    description: Type.Union([Type.String(), Type.Null()]),
+    versionCount: Type.Integer(),
+    presetCount: Type.Integer(),
+  })),
+  warnings: Type.Array(Type.String()),
+  suggestedDraft: Type.Record(Type.String(), Type.Unknown()),
+});
+export type WorkflowAnalyzeResponse = Static<typeof WorkflowAnalyzeResponseSchema>;
+
+// ── 创作中心选择契约（服务端投影，客户端不自行决定可编辑字段） ──
+
+export const GenerationFieldContractSchema = Type.Object({
+  key: Type.String(),
+  label: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  type: GenerationFieldTypeSchema,
+  section: Type.Union([Type.Literal('basic'), Type.Literal('advanced')]),
+  order: Type.Integer(),
+  defaultValue: Type.Unknown(),
+  minimum: Type.Optional(Type.Number()),
+  maximum: Type.Optional(Type.Number()),
+  step: Type.Optional(Type.Number()),
+  enumValues: Type.Optional(Type.Array(Type.String())),
+  required: Type.Boolean(),
+  modelCategory: Type.Optional(Type.String()),
+});
+export type GenerationFieldContract = Static<typeof GenerationFieldContractSchema>;
+
+export const CreativePresetOptionSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  description: Type.String(),
+  revision: Type.Integer(),
+  isDefault: Type.Boolean(),
+  workflowId: Type.String(),
+  workflowName: Type.String(),
+  workflowVersion: Type.Integer(),
+  modelSummary: Type.Union([Type.String(), Type.Null()]),
+  values: Type.Record(Type.String(), Type.Unknown()),
+});
+export type CreativePresetOption = Static<typeof CreativePresetOptionSchema>;
+
+export const CreativePurposeOptionsSchema = Type.Object({
+  purpose: Type.String(),
+  ready: Type.Boolean(),
+  status: Type.String(),
+  workflow: Type.Union([
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      version: Type.Integer(),
+      category: Type.Optional(MediaCategorySchema),
+    }),
+    Type.Null(),
+  ]),
+  engine: Type.Union([
+    Type.Object({ id: Type.String(), name: Type.String(), kind: Type.String(), enabled: Type.Boolean() }),
+    Type.Null(),
+  ]),
+  defaultPresetId: Type.Union([Type.String(), Type.Null()]),
+  presets: Type.Array(CreativePresetOptionSchema),
+  fields: Type.Array(GenerationFieldContractSchema),
+  modelChoices: Type.Union([Type.Array(GenerationModelEntrySchema), Type.Null()]),
+  modelChoicesStale: Type.Optional(Type.Boolean()),
+});
+export type CreativePurposeOptions = Static<typeof CreativePurposeOptionsSchema>;
+
+export const CreativeGenerationOptionsResponseSchema = Type.Object({
+  app: Type.Object({ id: Type.String(), name: Type.String() }),
+  purposes: Type.Array(CreativePurposeOptionsSchema),
+});
+export type CreativeGenerationOptionsResponse = Static<typeof CreativeGenerationOptionsResponseSchema>;
+
+// ── 试运行 ──
+
+export const GenerationTestRunSummarySchema = Type.Object({
+  id: Type.String(),
+  workflowId: Type.String(),
+  workflowVersion: Type.Integer(),
+  status: GenerationTaskStatusSchema,
+  progress: Type.Optional(GenerationProgressSchema),
+  actualSeed: Type.Union([Type.Number(), Type.Null()]),
+  errorCode: Type.Union([Type.String(), Type.Null()]),
+  errorMessage: Type.Union([Type.String(), Type.Null()]),
+  artifactCount: Type.Integer(),
+  artifactIds: Type.Array(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  finishedAt: Type.Union([Type.String(), Type.Null()]),
+});
+export type GenerationTestRunSummary = Static<typeof GenerationTestRunSummarySchema>;
+
+export const GenerationTestRunDetailSchema = Type.Intersect([
+  GenerationTaskDescriptorSchema,
+  Type.Object({
+    selection: Type.Union([GenerationSelectionMetaSchema, Type.Null()]),
+    requestInputs: Type.Record(Type.String(), Type.Unknown()),
+    artifactUrls: Type.Array(Type.String()),
+  }),
+]);
+export type GenerationTestRunDetail = Static<typeof GenerationTestRunDetailSchema>;
 
 export const StoragePolicySchema = Type.Object({
   appId: Type.String(),

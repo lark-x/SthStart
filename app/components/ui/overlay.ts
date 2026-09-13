@@ -102,8 +102,9 @@ export function useOverlayAccessibility({
     focusInitial();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // 下层弹窗不能抢走上层弹窗的 Tab 焦点。
+      if (overlayStack[overlayStack.length - 1] !== overlayId) return;
       if (event.key === 'Escape') {
-        if (overlayStack[overlayStack.length - 1] !== overlayId) return;
         event.preventDefault();
         onRequestCloseRef.current();
         return;

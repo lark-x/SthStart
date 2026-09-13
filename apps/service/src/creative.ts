@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { ArtifactDescriptor } from '@sthstart/contracts';
+import type { ArtifactDescriptor, CreativePurposeOptions } from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
@@ -21,6 +21,9 @@ import {
   retryGenerationTask,
   sanitizeErrorMessage,
 } from './generation.js';
+import { parseEditorConfig, parseInputSchema, projectFieldContracts } from './generation/configuration.js';
+import { listPresets, resolveEnabledPreset } from './generation/configuration-store.js';
+import { cachedModels } from './generation/comfy-discovery.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
 import { getH3Status, type H3ExperimentStatus, type H3StatusOptions } from './h3.js';
 
@@ -47,6 +50,11 @@ interface CreativeTaskBody {
   aspectRatio?: unknown;
   firstFrameId?: unknown;
   lastFrameId?: unknown;
+  /** 预设选择通道（规划 §10）：服务端校验后解析内部工作流与连接。 */
+  presetId?: unknown;
+  presetRevision?: unknown;
+  /** 与 presetId 搭配的本次可修改参数；与旧顶层字段同名时拒绝含糊请求。 */
+  parameters?: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,6 +96,32 @@ function parsePrompt(value: unknown, label: string, required = false) {
   if (required && !prompt) throw errorWithCode('prompt_required', `${label}不能为空。`);
   if (prompt.length > 10_000) throw errorWithCode('prompt_too_long', `${label}不能超过 10000 个字符。`);
   return prompt;
+}
+
+/** 预设通道下折叠请求中「实际提供」的旧顶层字段；未提供的字段交给预设与工作流默认。 */
+function collectProvidedTopLevel(body: CreativeTaskBody, isVideo: boolean): Record<string, unknown> {
+  const provided: Record<string, unknown> = {};
+  if (body.prompt !== undefined && body.prompt !== null) provided.prompt = parsePrompt(body.prompt, '提示词');
+  if (body.negativePrompt !== undefined && body.negativePrompt !== null) provided.negativePrompt = parsePrompt(body.negativePrompt, '反向提示词');
+  const optionalInteger = (value: unknown, min: number, max: number, code: string, label: string) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return parseInteger(value, 0, min, max, code, label);
+  };
+  if (!isVideo) {
+    const width = optionalInteger(body.width, 64, 4096, 'invalid_dimensions', '宽度');
+    const height = optionalInteger(body.height, 64, 4096, 'invalid_dimensions', '高度');
+    const steps = optionalInteger(body.steps, 1, 150, 'invalid_steps', '步数');
+    if (width !== undefined) provided.width = width;
+    if (height !== undefined) provided.height = height;
+    if (steps !== undefined) provided.steps = steps;
+  } else {
+    const duration = optionalInteger(body.duration, 1, 10, 'invalid_duration', '时长');
+    if (duration !== undefined) provided.duration = duration;
+    if (body.aspectRatio !== undefined && body.aspectRatio !== null && String(body.aspectRatio).trim()) {
+      provided.aspectRatio = String(body.aspectRatio).trim();
+    }
+  }
+  return provided;
 }
 
 function safeJsonObject(value: unknown): Record<string, unknown> {
@@ -192,23 +226,30 @@ function safeTask(database: ServiceDatabase, taskId: string) {
   if (!descriptor) return null;
   const row = database.connection.prepare('SELECT request_params_json FROM generation_tasks WHERE id=? AND app_id=?').get(taskId, CREATIVE_APP_ID) as { request_params_json: string } | undefined;
   const request = parseGenerationRequestParams(row?.request_params_json ?? '{}');
+  let rawRequest: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(row?.request_params_json ?? '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) rawRequest = parsed as Record<string, unknown>;
+  } catch { /* keep empty */ }
   const mode: CreativeMode = descriptor.purpose === CREATIVE_IMAGE_PURPOSE ? 'image-to-image' : descriptor.purpose === 'h3-t2v' ? 'h3-t2v' : descriptor.purpose === 'h3-i2v' ? 'h3-i2v' : descriptor.purpose === 'h3-fl2va' ? 'h3-fl2va' : 'text-to-image';
+  const selection = rawRequest.selection && typeof rawRequest.selection === 'object' && !Array.isArray(rawRequest.selection)
+    ? rawRequest.selection as Record<string, unknown>
+    : null;
   return {
     ...descriptor,
     artifacts: descriptor.artifacts.map((artifact) => ({ ...artifact, url: creativeArtifactUrl(artifact.artifactId) })),
     replay: {
       mode,
-      inputs: Object.fromEntries(Object.entries(request.inputs).filter(([key, value]) => (
-        ['prompt', 'negativePrompt', 'width', 'height', 'steps', 'duration', 'aspectRatio'].includes(key) &&
-        (typeof value === 'string' || typeof value === 'number')
-      ))),
+      inputs: Object.fromEntries(Object.entries(request.inputs).filter(([, value]) => (
+        typeof value === 'string' || typeof value === 'number'
+      )).slice(0, 24)),
       inputArtifactIds: request.inputArtifacts.map((item) => item.artifactId),
+      ...(selection && typeof selection.presetId === 'string' ? { presetId: selection.presetId } : {}),
     },
   };
 }
 
-function safeStatusBinding(database: ServiceDatabase, purpose: string) {
-  const assignment = database.connection.prepare(`
+function safeStatusBinding(database: ServiceDatabase, purpose: string) {  const assignment = database.connection.prepare(`
     SELECT a.workflow_id, a.workflow_version, a.engine_id,
       w.name AS workflow_name, w.engine_kind,
       v.is_published, v.input_capabilities_json, m.input_capabilities_json AS legacy_input_capabilities_json,
@@ -251,6 +292,80 @@ function safeStatusBinding(database: ServiceDatabase, purpose: string) {
   };
 }
 
+/**
+ * 创作中心选项投影（规划 §10）：可调字段来自服务端契约，客户端不自行决定。
+ * 「工作流选择」只包含至少有一个启用预设引用的工作流；模型选项来自缓存的
+ * 库存视图与允许列表的交集投影，缺失时返回 null 由界面显示模型组合摘要。
+ */
+function buildPurposeOptions(database: ServiceDatabase, purpose: string): CreativePurposeOptions {
+  const binding = safeStatusBinding(database, purpose);
+  const presets = listPresets(database, { appId: CREATIVE_APP_ID, purpose }).filter((preset) => preset.enabled);
+  const assignment = database.connection.prepare(
+    'SELECT default_preset_id FROM app_generation_assignments WHERE app_id = ? AND purpose = ?',
+  ).get(CREATIVE_APP_ID, purpose) as { default_preset_id: string | null } | undefined;
+
+  let fields: CreativePurposeOptions['fields'] = [];
+  let modelChoices: CreativePurposeOptions['modelChoices'] = null;
+  let modelChoicesStale: boolean | undefined = undefined;
+
+  if (binding.workflow) {
+    const version = database.connection.prepare(
+      `SELECT v.input_schema_json, v.editor_config_json, v.config_format_version
+       FROM generation_workflow_versions v WHERE v.workflow_id = ? AND v.version = ?`,
+    ).get(binding.workflow.id, binding.workflow.version) as { input_schema_json: string; editor_config_json: string | null; config_format_version: number } | undefined;
+    if (version) {
+      const inputSchema = parseInputSchema(version.input_schema_json);
+      const editorConfig = parseEditorConfig(version.editor_config_json);
+      fields = projectFieldContracts(inputSchema, editorConfig);
+
+      const modelFields = editorConfig
+        ? Object.values(editorConfig.fields).filter((field) => field.type === 'model' || Boolean(field.modelCategory))
+        : [];
+      if (editorConfig?.modelSelection === 'individual' && binding.engine && modelFields.length) {
+        const cached = cachedModels({ id: binding.engine.id, kind: binding.engine.kind, baseUrl: '', credentialAccount: null });
+        if (cached) {
+          const categories = new Set(modelFields.map((field) => field.modelCategory).filter((category): category is string => Boolean(category)));
+          const allowed = new Set(modelFields.flatMap((field) => field.allowedModels ?? []));
+          modelChoices = cached.items.filter((item) => {
+            if (categories.size && !categories.has(item.category)) return false;
+            if (allowed.size && !allowed.has(item.name)) return false;
+            return true;
+          });
+          modelChoicesStale = cached.stale;
+        }
+      }
+    }
+  }
+
+  return {
+    purpose,
+    ready: binding.ready,
+    status: binding.status,
+    workflow: binding.workflow,
+    engine: binding.engine,
+    defaultPresetId: assignment?.default_preset_id ?? null,
+    presets: presets.map((preset) => {
+      const workflowName = database.connection.prepare('SELECT name FROM generation_workflows WHERE id = ?')
+        .get(preset.workflowId) as { name: string } | undefined;
+      return {
+        id: preset.id,
+        name: preset.name,
+        description: preset.description,
+        revision: preset.revision,
+        isDefault: preset.id === (assignment?.default_preset_id ?? null),
+        workflowId: preset.workflowId,
+        workflowName: workflowName?.name ?? preset.workflowId,
+        workflowVersion: preset.workflowVersion,
+        modelSummary: null,
+        values: preset.values,
+      };
+    }),
+    fields,
+    modelChoices,
+    ...(modelChoicesStale !== undefined ? { modelChoicesStale } : {}),
+  };
+}
+
 function inputStream(request: FastifyRequest): NodeJS.ReadableStream {
   if (Buffer.isBuffer(request.body)) return Readable.from(request.body as unknown as Uint8Array);
   if (request.body && typeof (request.body as NodeJS.ReadableStream).pipe === 'function') return request.body as NodeJS.ReadableStream;
@@ -280,7 +395,7 @@ function errorStatus(code: string) {
   if (['input_artifact_not_found', 'workflow_not_found', 'workflow_version_not_found'].includes(code)) return 404;
   if (['generation_engine_unavailable', 'input_artifact_unavailable', 'input_artifact_missing_file'].includes(code)) return 503;
   if (['input_artifact_too_large'].includes(code)) return 413;
-  if (['generation_assignment_not_found', 'unsupported_engine', 'not_retryable', 'not_cancellable', 'artifact_is_pinned', 'artifact_is_referenced'].includes(code)) return 409;
+  if (['generation_assignment_not_found', 'unsupported_engine', 'not_retryable', 'not_cancellable', 'artifact_is_pinned', 'artifact_is_referenced', 'preset_not_available', 'preset_revision_conflict', 'idempotency_conflict'].includes(code)) return 409;
   if (['input_upload_failed'].includes(code)) return 502;
   return 400;
 }
@@ -418,6 +533,17 @@ export function registerCreativeRoutes(
   secrets: SecretStore,
   fetcher: typeof fetch = fetch,
 ) {
+  app.get('/api/v1/admin/creative/options', async () => {
+    const purposes: CreativePurposeOptions[] = [];
+    for (const purpose of [CREATIVE_TEXT_PURPOSE, CREATIVE_IMAGE_PURPOSE, 'h3-t2v', 'h3-i2v', 'h3-fl2va']) {
+      purposes.push(buildPurposeOptions(database, purpose));
+    }
+    return {
+      app: { id: CREATIVE_APP_ID, name: '创作中心' },
+      purposes,
+    };
+  });
+
   app.get('/api/v1/admin/creative/status', async () => {
     const t2vBinding = safeStatusBinding(database, 'h3-t2v');
     const i2vBinding = safeStatusBinding(database, 'h3-i2v');
@@ -484,7 +610,9 @@ export function registerCreativeRoutes(
       const mode = normalizeMode(body.mode);
       if (!mode) throw errorWithCode('invalid_mode', '请选择有效的生成模式。');
       const isVideo = mode.startsWith('h3-');
-      const prompt = parsePrompt(body.prompt, '提示词', true);
+      // 预设路径下提示词可以来自 parameters；旧路径仍要求顶层提示词。
+      const presetIdEarly = typeof body.presetId === 'string' && body.presetId.trim();
+      const prompt = parsePrompt(body.prompt, '提示词', !presetIdEarly);
       const negativePrompt = parsePrompt(body.negativePrompt, '反向提示词');
       const seed = body.seed === undefined || body.seed === null || body.seed === ''
         ? null
@@ -493,6 +621,29 @@ export function registerCreativeRoutes(
       const firstFrameId = typeof body.firstFrameId === 'string' ? body.firstFrameId.trim() : '';
       const lastFrameId = typeof body.lastFrameId === 'string' ? body.lastFrameId.trim() : '';
       const aspectRatio = typeof body.aspectRatio === 'string' ? body.aspectRatio.trim() : '16:9';
+
+      // 预设通道（规划 §10.2）：服务端验证预设归属/启用/revision 后解析内部工作流与连接。
+      const presetId = typeof body.presetId === 'string' ? body.presetId.trim() : '';
+      const presetRevision = Number.isInteger(Number(body.presetRevision)) ? Number(body.presetRevision) : null;
+      const parameters = body.parameters !== undefined && body.parameters !== null
+        ? (isRecord(body.parameters) ? body.parameters : null)
+        : undefined;
+      if (body.presetId !== undefined && !presetId) throw errorWithCode('invalid_preset', 'presetId 必须为有效的预设 ID。');
+      if (body.parameters !== undefined && body.parameters !== null && !parameters) {
+        throw errorWithCode('invalid_parameters', 'parameters 必须是字符串键的对象。');
+      }
+      if (presetId) {
+        // 含糊请求拒绝：同名旧顶层字段与新 parameters 同时出现时不隐式决定优先级。
+        const topLevelKeys = ['prompt', 'negativePrompt', 'width', 'height', 'steps', 'duration', 'aspectRatio'] as const;
+        for (const key of topLevelKeys) {
+          if (body[key] !== undefined && body[key] !== null && parameters && parameters[key] !== undefined) {
+            throw errorWithCode('ambiguous_parameter', `字段 "${key}" 同时出现在顶层输入与 parameters 中，请只提供一处。`);
+          }
+        }
+      } else if (parameters && Object.keys(parameters).length) {
+        throw errorWithCode('parameters_require_preset', 'parameters 必须与 presetId 一起提交；旧请求请继续使用顶层字段。');
+      }
+
       // 宽高/步数只属于图片模式，时长只属于视频模式：解析彼此无关的字段
       // 会让另一模式因携带冗余参数而被误拒。
       const width = isVideo ? 0 : parseInteger(body.width, 1024, 64, 4096, 'invalid_dimensions', '宽度');
@@ -529,14 +680,25 @@ export function registerCreativeRoutes(
         }
       }
 
+      // 提交参数通道：图片模式的旧请求只转发客户端实际提供的字段（避免路由默认值
+      // 覆盖默认预设）；视频模式保持原形状。最终合并（工作流默认 → 预设 → 本次输入）
+      // 与校验在共享生成入口 createGenerationTask 内执行，V2 工作流启用 strict。
+      const userValues = isVideo
+        ? { prompt, duration, aspectRatio }
+        : presetId
+          ? { ...collectProvidedTopLevel(body, false), ...parameters }
+          : collectProvidedTopLevel(body, false);
+
       const task = await createGenerationTask(config, database, secrets, {
         appId: CREATIVE_APP_ID,
         idempotencyKey: requestIdempotencyKey(request, body),
         purpose: modePurpose(mode),
-        inputs: isVideo ? { prompt, duration, aspectRatio } : { prompt, negativePrompt, width, height, steps },
+        ...(presetId ? { presetId, presetRevision } : {}),
+        inputs: userValues,
         inputArtifacts: normalizeInputArtifacts(inputArtifacts),
         seed,
         priority: 'interactive',
+        validationMode: 'strict',
       }, fetcher);
       return reply.code(202).send(safeTask(database, task.id) ?? task);
     } catch (error) {

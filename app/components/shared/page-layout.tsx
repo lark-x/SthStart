@@ -25,6 +25,7 @@ export function PageContainer({
       className={cn(
         'tpl-container',
         width === 'settings' && 'tpl-settings',
+        width === 'reading' && 'tpl-reading',
         className,
       )}
       {...rest}
@@ -92,20 +93,20 @@ export function SidebarColumns({
 }) {
   const gridClassName = cn(
     'grid min-w-0 grid-cols-1 items-start gap-4',
-    sidebarFirst ? 'xl:grid-cols-[minmax(0,1fr)_360px]' : 'xl:grid-cols-[minmax(0,1fr)_360px]',
+    'xl:grid-cols-[minmax(0,1fr)_var(--aside-width)]',
     className
   );
-  void asideWidth;
+  const style = { '--aside-width': asideWidth } as React.CSSProperties;
   if (sidebarFirst) {
     return (
-      <div className={gridClassName}>
+      <div className={gridClassName} style={style}>
         <div className={cn('min-w-0 xl:col-start-2 xl:row-start-1', sidebarClassName)}>{sidebar}</div>
         <div className={cn('min-w-0 xl:col-start-1 xl:row-start-1', mainClassName)}>{main}</div>
       </div>
     );
   }
   return (
-    <div className={gridClassName}>
+    <div className={gridClassName} style={style}>
       <div className={cn('min-w-0', mainClassName)}>{main}</div>
       <div className={cn('min-w-0', sidebarClassName)}>{sidebar}</div>
     </div>
@@ -147,4 +148,3 @@ export function Panel({ className, children, ...rest }: React.ComponentProps<'di
     </div>
   );
 }
-

@@ -177,3 +177,37 @@ async function waitFor<T>(check: () => T | null, timeoutMs = 5_000): Promise<T> 
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+
+test('stage generation repairs drifted model output (missing caption, wrong types) instead of failing', async () => {
+  const { app, database, store, activityId } = await setup();
+  try {
+    const document = store.getDraft(activityId)!.document;
+    const job = store.createJob({ activityId, kind: 'text', mode: 'stage', requestHash: 'drift-proof' }).job;
+    await executeTextJob({
+      store, database, secrets: new SecretStore({}), activityId, jobId: job.id, mode: 'stage',
+      scope: { stageId: 'stage_2' }, inputSnapshot: document,
+      fetcher: async () => Response.json({ choices: [{ message: { content: '好的，以下是本阶段生成结果：' + JSON.stringify({
+        schemaVersion: '1',
+        stageId: 'stage_9',
+        summary: 20260913,
+        messages: [{ clientId: 'm1', conversationId: 'group_main', speakerActorId: '甲', text: 42, order: '10' }],
+        posts: [{ clientId: 'p1', authorActorId: 'actor_b', text: '海风记录', order: 20 }],
+        comments: [{ clientId: 'c1', postClientId: 'p1', authorActorId: 'actor_a', text: '好想加入' }],
+        facts: [{ clientId: 'f1', text: '海风记录完成', status: '已发生' }],
+        mediaSlots: [{ clientId: 's1', kind: '图片', shotDescription: '营地海景合影' }],
+      }) + '。希望符合要求。' } }] }),
+    });
+    const finished = store.getJob(activityId, job.id);
+    assert.equal(finished?.status, 'succeeded', finished?.errorMessage || undefined);
+    const candidate = store.getCandidate(activityId, finished!.resultCandidateIds[0]);
+    const payload = candidate!.payload as Record<string, unknown>;
+    assert.equal(payload.stageId, 'stage_2');
+    assert.equal(payload.summary, '20260913');
+    const slots = payload.mediaSlots as Array<Record<string, unknown>>;
+    assert.equal(slots[0].kind, 'image');
+    assert.equal(slots[0].caption, '营地海景合影');
+    const messages = payload.messages as Array<Record<string, unknown>>;
+    assert.equal(messages[0].speakerActorId, 'actor_a');
+    assert.equal(messages[0].text, '42');
+  } finally { await app.close(); database.close(); }
+});

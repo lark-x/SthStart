@@ -99,7 +99,7 @@ test('narrative concept generation is routed through Generation and attaches a c
   database.connection.prepare('INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)').run(engineId, 'Narrative Engine', 'comfyui', 'http://comfy.test', null, 1, 1, now, now);
   database.connection.prepare('INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(workflowId, 'Narrative Workflow', '', 'comfyui', 'image', 1, now, now);
   database.connection.prepare('INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(workflowId, 1, engineId, '{}', '{}', '["1"]', JSON.stringify({ '1': { class_type: 'SaveImage', inputs: {} } }), 1, now);
-  database.connection.prepare('INSERT INTO app_generation_assignments VALUES (?,?,?,?,?,?)').run('narrative', 'narrative-concept', workflowId, 1, engineId, now);
+  database.connection.prepare('INSERT INTO app_generation_assignments(app_id,purpose,workflow_id,workflow_version,engine_id,updated_at) VALUES (?,?,?,?,?,?)').run('narrative', 'narrative-concept', workflowId, 1, engineId, now);
 
   const taskParams = JSON.stringify({ inputs: { nodeId, workId, prompt: '雨夜车站的剧情概念图' } });
   database.connection.prepare(`INSERT INTO generation_tasks

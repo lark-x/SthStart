@@ -51,14 +51,15 @@ export function SplitPanes({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let lastTop = Number.NaN;
+    let lastAvailable = Number.NaN;
 
     const update = () => {
       // 用文档坐标：页面滚动时 rect.top 会变，但文档位置不变，数值才稳定。
       const top = el.getBoundingClientRect().top + window.scrollY;
-      if (Math.abs(top - lastTop) < 1) return;
-      lastTop = top;
       const available = Math.max(MIN_AVAILABLE, window.innerHeight - top - BOTTOM_GUTTER);
+      // 窗口只改变高度时 top 不变，也必须更新滚动边界。
+      if (Math.abs(available - lastAvailable) < 1) return;
+      lastAvailable = available;
       el.style.setProperty('--split-available', `${Math.round(available)}px`);
     };
 
@@ -90,4 +91,3 @@ export function SplitPanes({
 }
 
 export default SplitPanes;
-

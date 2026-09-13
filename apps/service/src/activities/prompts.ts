@@ -111,7 +111,7 @@ export function buildStagePrompt(
   const relationships = describeRelationships(content);
   const convId = content.conversations[0]?.id || 'group_main';
 
-  return `你是一位专业的多角色互动故事编剧。请根据角色人设、前序事实与当前阶段要求，为本阶段生成真实的群聊对话、朋友圈动态与评论。\r\n\r\n${INPUT_GUARD}\r\n\r\n【活动设定】\r\n${describeActivity(content)}\r\n\r\n【前序已发生事实】\r\n${priorFacts || '无（这是活动的初始阶段）'}\r\n\r\n【当前阶段要求】\r\n- 阶段 ID: ${stage.id}\r\n- 阶段名称: ${stage.title}\r\n- 发生地点: ${stage.location}\r\n- 参与角色 ID: ${stage.actorIds.join(', ')}\r\n- 行动指示: ${stage.instruction}\r\n- 必须发生的行动: ${stage.requiredBeats.map((b) => b.text).join('；') || '无'}\r\n- 结束条件: ${stage.endCondition}\r\n- 补充指示: ${instructions || '生动体现每位角色的鲜明性格，避免千人一面。'}\r\n\r\n【允许引用的角色人设】\r\n${describeCast(content, { includeExamples: 1 })}\r\n\r\n【角色关系】\r\n${relationships || '暂无特别设定'}\r\n\r\n【会话 ID】\r\n${convId}\r\n\r\n【输出规范】\r\n1. 只输出合法 JSON，严禁在 JSON 外输出任何解释。\r\n2. 对话要自然流畅，有问有答，体现不同角色的性格差异与说话习惯。\r\n3. 只有参与本阶段的角色可以发言：${stage.actorIds.join(', ') || '无'}。\r\n4. 朋友圈帖子必须基于阶段内已发生的事实，评论时间在发帖之后。\r\n5. 消息和帖子如有拍照/录像需求，可在 mediaSlots 中声明槽位（kind 为 'image' 或 'video'），并在 messages/posts 的 mediaClientIds 中引用其 clientId。\r\n6. 必须输出合法的 JSON，格式如下：\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"summary\": \"本阶段简要纪要\",\r\n  \"messages\": [\r\n    {\r\n      \"clientId\": \"m1\",\r\n      \"conversationId\": \"${convId}\",\r\n      \"speakerActorId\": \"${stage.actorIds[0] || 'actor_1'}\",\r\n      \"text\": \"大家准备好了吗？\",\r\n      \"mediaClientIds\": [],\r\n      \"order\": 10,\r\n      \"storyTimeLabel\": \"10:00\"\r\n    }\r\n  ],\r\n  \"posts\": [\r\n    {\r\n      \"clientId\": \"p1\",\r\n      \"authorActorId\": \"${stage.actorIds[0] || 'actor_1'}\",\r\n      \"text\": \"美好的一天从这里开始！\",\r\n      \"mediaClientIds\": [],\r\n      \"sourceFactClientIds\": [\"f1\"],\r\n      \"order\": 20,\r\n      \"storyTimeLabel\": \"10:15\"\r\n    }\r\n  ],\r\n  \"comments\": [\r\n    {\r\n      \"clientId\": \"c1\",\r\n      \"postClientId\": \"p1\",\r\n      \"authorActorId\": \"${stage.actorIds[1] || stage.actorIds[0] || 'actor_2'}\",\r\n      \"text\": \"出发！\",\r\n      \"order\": 30\r\n    }\r\n  ],\r\n  \"facts\": [\r\n    {\r\n      \"clientId\": \"f1\",\r\n      \"text\": \"成员已在营地完成集合\",\r\n      \"status\": \"happened\",\r\n      \"sourceRecordClientIds\": [\"m1\"],\r\n      \"knownByActorIds\": [${stage.actorIds.map((id) => `\"${id}\"`).join(', ')}]\r\n    }\r\n  ],\r\n  \"mediaSlots\": []\r\n}\r\n\`\`\``;
+  return `你是一位专业的多角色互动故事编剧。请根据角色人设、前序事实与当前阶段要求，为本阶段生成真实的群聊对话、朋友圈动态与评论。\r\n\r\n${INPUT_GUARD}\r\n\r\n【活动设定】\r\n${describeActivity(content)}\r\n\r\n【前序已发生事实】\r\n${priorFacts || '无（这是活动的初始阶段）'}\r\n\r\n【当前阶段要求】\r\n- 阶段 ID: ${stage.id}\r\n- 阶段名称: ${stage.title}\r\n- 发生地点: ${stage.location}\r\n- 参与角色 ID: ${stage.actorIds.join(', ')}\r\n- 行动指示: ${stage.instruction}\r\n- 必须发生的行动: ${stage.requiredBeats.map((b) => b.text).join('；') || '无'}\r\n- 结束条件: ${stage.endCondition}\r\n- 补充指示: ${instructions || '生动体现每位角色的鲜明性格，避免千人一面。'}\r\n\r\n【允许引用的角色人设】\r\n${describeCast(content, { includeExamples: 1 })}\r\n\r\n【角色关系】\r\n${relationships || '暂无特别设定'}\r\n\r\n【会话 ID】\r\n${convId}\r\n\r\n【输出规范】\r\n1. 只输出合法 JSON，严禁在 JSON 外输出任何解释。\r\n2. 对话要自然流畅，有问有答，体现不同角色的性格差异与说话习惯。\r\n3. 只有参与本阶段的角色可以发言：${stage.actorIds.join(', ') || '无'}。\r\n4. 朋友圈帖子必须基于阶段内已发生的事实，评论时间在发帖之后。\r\n5. 消息和帖子如有拍照/录像需求，可在 mediaSlots 中声明槽位（kind 为 'image' 或 'video'），并在 messages/posts 的 mediaClientIds 中引用其 clientId。\r\n6. 输出硬性格式：messages、posts、comments、facts、mediaSlots 五个分组必须全部出现且为数组；每条记录都必须有 clientId；order 必须是数字；text、caption、shotDescription 等文字字段必须是字符串，不能是 null、数字或对象。\r\n7. 必须输出合法的 JSON，格式如下：\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"summary\": \"本阶段简要纪要\",\r\n  \"messages\": [\r\n    {\r\n      \"clientId\": \"m1\",\r\n      \"conversationId\": \"${convId}\",\r\n      \"speakerActorId\": \"${stage.actorIds[0] || 'actor_1'}\",\r\n      \"text\": \"大家准备好了吗？\",\r\n      \"mediaClientIds\": [],\r\n      \"order\": 10,\r\n      \"storyTimeLabel\": \"10:00\"\r\n    }\r\n  ],\r\n  \"posts\": [\r\n    {\r\n      \"clientId\": \"p1\",\r\n      \"authorActorId\": \"${stage.actorIds[0] || 'actor_1'}\",\r\n      \"text\": \"美好的一天从这里开始！\",\r\n      \"mediaClientIds\": [],\r\n      \"sourceFactClientIds\": [\"f1\"],\r\n      \"order\": 20,\r\n      \"storyTimeLabel\": \"10:15\"\r\n    }\r\n  ],\r\n  \"comments\": [\r\n    {\r\n      \"clientId\": \"c1\",\r\n      \"postClientId\": \"p1\",\r\n      \"authorActorId\": \"${stage.actorIds[1] || stage.actorIds[0] || 'actor_2'}\",\r\n      \"text\": \"出发！\",\r\n      \"order\": 30\r\n    }\r\n  ],\r\n  \"facts\": [\r\n    {\r\n      \"clientId\": \"f1\",\r\n      \"text\": \"成员已在营地完成集合\",\r\n      \"status\": \"happened\",\r\n      \"sourceRecordClientIds\": [\"m1\"],\r\n      \"knownByActorIds\": [${stage.actorIds.map((id) => `\"${id}\"`).join(', ')}]\r\n    }\r\n  ],\r\n  \"mediaSlots\": [\r\n    {\r\n      \"clientId\": \"s1\",\r\n      \"kind\": \"image\",\r\n      \"caption\": \"简短配文（字符串）\",\r\n      \"shotDescription\": \"镜头与画面描述（字符串）\",\r\n      \"actorIds\": [\"${stage.actorIds[0] || 'actor_1'}\"],\r\n      \"sourceFactClientIds\": []\r\n    }\r\n  ]\r\n}\r\n\`\`\``;
 }
 
 function snippetBase(content: ContentDocument, stage: StageDefinition, instructions?: string) {
@@ -146,7 +146,7 @@ export function buildWishPrompt(content: ContentDocument, stage: StageDefinition
 export function buildMomentPrompt(content: ContentDocument, stage: StageDefinition, authorActorId: string, instructions?: string): string {
   const { header } = snippetBase(content, stage, instructions);
   const author = content.actors.find((actor) => actor.id === authorActorId);
-  return `你是一位专业编剧。请以指定角色的身份，写一条朋友圈动态（正文 1 条，可附带一张配图描述）。\r\n\r\n${header}\r\n【发布者】\r\n- ${author?.displayName || '未指定'}（ID: ${authorActorId}）\r\n\r\n【输出要求】\r\n只输出合法 JSON。动态写入 posts；需要配图时在 mediaSlots 声明槽位，并用 mediaClientIds 引用。其余分组留空数组。\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"messages\": [],\r\n  \"posts\": [\r\n    { \"clientId\": \"p1\", \"authorActorId\": \"${authorActorId}\", \"text\": \"动态正文\", \"mediaClientIds\": [], \"order\": 20, \"storyTimeLabel\": \"21:00\" }\r\n  ],\r\n  \"facts\": [],\r\n  \"mediaSlots\": []\r\n}\r\n\`\`\``;
+  return `你是一位专业编剧。请以指定角色的身份，写一条朋友圈动态（正文 1 条，可附带一张配图描述）。\r\n\r\n${header}\r\n【发布者】\r\n- ${author?.displayName || '未指定'}（ID: ${authorActorId}）\r\n\r\n【输出要求】\r\n只输出合法 JSON。动态写入 posts；需要配图时在 mediaSlots 声明槽位，并用 mediaClientIds 引用。其余分组留空数组。\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"messages\": [],\r\n  \"posts\": [\r\n    { \"clientId\": \"p1\", \"authorActorId\": \"${authorActorId}\", \"text\": \"动态正文\", \"mediaClientIds\": [\"s1\"], \"order\": 20, \"storyTimeLabel\": \"21:00\" }\r\n  ],\r\n  \"facts\": [],\r\n  \"mediaSlots\": [\r\n    { \"clientId\": \"s1\", \"kind\": \"image\", \"caption\": \"配图短标题（字符串）\", \"shotDescription\": \"画面描述（字符串）\", \"actorIds\": [\"${authorActorId}\"], \"sourceFactClientIds\": [] }\r\n  ]\r\n}\r\n\`\`\``;
 }
 
 /** 配图描述：只生成镜头与配文，不触发图像生成。 */
@@ -154,7 +154,7 @@ export function buildShotPrompt(content: ContentDocument, stage: StageDefinition
   const { header } = snippetBase(content, stage, instructions);
   const targetIds = actorIds.length ? actorIds : stage.actorIds;
   const targetLines = targetIds.map((id) => `- ${content.actors.find((actor) => actor.id === id)?.displayName || id}（ID: ${id}）`).join('\n');
-  return `你是一位分镜师。请为当前阶段写一条配图方案的镜头描述与配文（不生成图片本身）。\r\n\r\n${header}\r\n【画面中的角色】\r\n${targetLines}\r\n\r\n【输出要求】\r\n只输出合法 JSON，mediaSlots 之外的分组一律留空数组。\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"messages\": [],\r\n  \"posts\": [],\r\n  \"facts\": [],\r\n  \"mediaSlots\": [\r\n    { \"clientId\": \"s1\", \"kind\": \"image\", \"caption\": \"配文\", \"shotDescription\": \"镜头描述\", \"actorIds\": [${targetIds.map((id) => `\"${id}\"`).join(', ')}] }\r\n  ]\r\n}\r\n\`\`\``;
+  return `你是一位分镜师。请为当前阶段写一条配图方案的镜头描述与配文（不生成图片本身）。\r\n\r\n${header}\r\n【画面中的角色】\r\n${targetLines}\r\n\r\n【输出要求】\r\n只输出合法 JSON，mediaSlots 之外的分组一律留空数组。\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"messages\": [],\r\n  \"posts\": [],\r\n  \"facts\": [],\r\n  \"mediaSlots\": [\r\n    { \"clientId\": \"s1\", \"kind\": \"image\", \"caption\": \"配文（字符串）\", \"shotDescription\": \"镜头描述（字符串）\", \"actorIds\": [${targetIds.map((id) => `\"${id}\"`).join(', ')}], \"sourceFactClientIds\": [] }\r\n  ]\r\n}\r\n\`\`\``;
 }
 
 export function buildSnippetPrompt(content: ContentDocument, stage: StageDefinition, mode: SnippetMode, scope: { speakerActorId?: string; authorActorId?: string; actorIds?: string[]; birthdayActorIds?: string[] }, instructions?: string): string {
@@ -177,6 +177,35 @@ export function buildRewritePrompt(
   return `你是一位专业编剧。请根据修改原因，重新改写以下记录，保持与上下文、人设和已发生事实一致。\r\n\r\n${INPUT_GUARD}\r\n\r\n【活动设定】\r\n${describeActivity(content)}\r\n\r\n【本次涉及的说话角色人设】\r\n${involved.map((actor) => describeCast({ ...content, actors: [actor] }, { includeExamples: 1 })).join('\n') || '无'}\r\n\r\n【修改原因】\r\n${reason}\r\n\r\n【待改写记录】\r\n${JSON.stringify({ messages: targetMessages, posts: targetPosts }, null, 2)}\r\n\r\n【输出要求】\r\n1. 只输出合法 JSON，只改写上面列出的记录，不能新增、删除或改写其他记录。\r\n2. rewrittenMessages / rewrittenPosts 中的 id 必须与待改写记录的 id 完全一致。\r\n3. 严格使用以下 JSON 格式：\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"rewrittenMessages\": [\r\n    {\r\n      \"id\": \"原消息ID\",\r\n      \"text\": \"改写后的消息内容\"\r\n    }\r\n  ],\r\n  \"rewrittenPosts\": [\r\n    {\r\n      \"id\": \"原动态ID\",\r\n      \"text\": \"改写后的动态内容\"\r\n    }\r\n  ]\r\n}\r\n\`\`\``;
 }
 
+/**
+ * 从模型输出中提取第一个括号配对完整的 JSON 对象。
+ * 真实模型常在 JSON 前后附加说明文字，直接 JSON.parse 会失败；
+ * 这里按字符串感知的括号配对扫描兜底提取。
+ */
+function extractBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index++) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
 export function parseAiJsonOutput<T>(rawText: string): T {
   let cleaned = rawText.trim();
   // Strip Markdown code fences if present
@@ -187,9 +216,17 @@ export function parseAiJsonOutput<T>(rawText: string): T {
 
   try {
     return JSON.parse(cleaned) as T;
-  } catch (err) {
-    throw new Error(`AI 输出无法解析为 JSON: ${(err as Error).message}\n原始输出前 300 字符: ${cleaned.slice(0, 300)}`);
+  } catch {
+    // 兜底：从原文（而非仅围栏内）提取首个完整 JSON 对象再解析。
+    const extracted = extractBalancedJsonObject(cleaned);
+    if (extracted) {
+      try {
+        return JSON.parse(extracted) as T;
+      } catch { /* fall through to error below */ }
+    }
   }
+  throw new Error(`AI 输出无法解析为 JSON。请重试；若反复出现，请在生成指引中要求「只输出 JSON」。
+原始输出前 300 字符: ${cleaned.slice(0, 300)}`);
 }
 
 export type { ActivityPlanningOutput };

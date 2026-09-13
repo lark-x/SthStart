@@ -336,6 +336,11 @@ test('focused controls show a visible indicator with 3:1 contrast', async ({ pag
   for (const route of ROUTES) {
     const response = await page.goto(route);
     if (response && response.status() >= 400) continue;
+    /*
+     * 部分页面（如创作中心的预设选项）在数据到达后异步替换表单控件；
+     * 等待渲染稳定再聚焦，否则 activeElement 指向已被替换的旧节点。
+     */
+    await page.waitForTimeout(500);
     const target = page
       .locator('input[type="search"]:visible, input[type="text"]:visible, textarea:visible, select:visible')
       .first();

@@ -1,5 +1,6 @@
 import type { GenerationTaskDescriptor } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
+import { parseEditorConfig } from './configuration.js';
 
 function codedError(code: string, message: string) {
   const error = new Error(message) as Error & { code?: string };
@@ -44,7 +45,7 @@ function parseProgress(value: unknown, status: string) {
 export function resolveWorkflowAndEngine(
   database: ServiceDatabase,
   appId: string,
-  options: { purpose?: string | null; workflowId?: string | null; workflowVersion?: number | null; isInternal?: boolean },
+  options: { purpose?: string | null; workflowId?: string | null; workflowVersion?: number | null; isInternal?: boolean; engineId?: string | null },
 ) {
   if (!options.isInternal && (options.workflowId || options.workflowVersion != null)) {
     throw codedError('workflow_assignment_managed', '工作流由管理控制台统一分配，客户端不可直接指定 workflowId 或 workflowVersion。');
@@ -63,6 +64,12 @@ export function resolveWorkflowAndEngine(
     ).get(workflowId, version) as { engine_id: string | null } | undefined;
     if (!selected) throw codedError('workflow_version_not_found', `未找到工作流 ${workflowId} 的已发布版本 v${version}。`);
     engineId = selected.engine_id || (database.connection.prepare('SELECT id FROM generation_engines WHERE enabled = 1 ORDER BY created_at ASC LIMIT 1').get() as { id: string } | undefined)?.id || '';
+    if (options.engineId && options.engineId !== engineId) {
+      const engine = database.connection.prepare('SELECT id, kind, enabled FROM generation_engines WHERE id = ?')
+        .get(options.engineId) as { id: string; kind: string; enabled: number } | undefined;
+      if (!engine || !engine.enabled) throw codedError('generation_engine_unavailable', `生成引擎 ${options.engineId} 处于禁用或不存在状态。`);
+      engineId = engine.id;
+    }
   } else {
     const assignment = database.connection.prepare(
       'SELECT * FROM app_generation_assignments WHERE app_id = ? AND purpose = ?',
@@ -75,7 +82,8 @@ export function resolveWorkflowAndEngine(
   const workflow = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(workflowId) as { id: string; name: string; engine_kind: string; category?: string } | undefined;
   if (!workflow) throw codedError('workflow_not_found', `未找到指定的工作流 ${workflowId}。`);
   const workflowVersion = database.connection.prepare(`
-    SELECT v.*, m.category AS legacy_category, m.input_capabilities_json AS legacy_input_capabilities_json,
+    SELECT v.*, v.config_format_version AS config_format_version, v.editor_config_json,
+      m.category AS legacy_category, m.input_capabilities_json AS legacy_input_capabilities_json,
       m.output_media_types_json AS legacy_output_media_types_json, m.output_schema_json AS legacy_output_schema_json
     FROM generation_workflow_versions v
     LEFT JOIN generation_workflow_media_versions m ON m.workflow_id=v.workflow_id AND m.version=v.version
@@ -86,10 +94,13 @@ export function resolveWorkflowAndEngine(
   const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ? AND enabled = 1').get(engineId) as Record<string, unknown> | undefined;
   if (!engine) throw codedError('generation_engine_unavailable', `生成引擎 ${engineId} 处于禁用或不存在状态。`);
   if (engine.kind !== 'comfyui' && engine.kind !== 'worker') throw codedError('unsupported_engine', `暂不支持引擎类型 "${engine.kind}"。`);
+  const editorConfig = parseEditorConfig(workflowVersion.editor_config_json);
   return {
     workflow: {
       id: workflow.id, name: workflow.name, engineKind: workflow.engine_kind, version,
       category: workflow.category ?? String(workflowVersion.legacy_category ?? 'image'),
+      configFormatVersion: Number(workflowVersion.config_format_version ?? 1),
+      editorConfig,
       inputSchema: parseJsonObject(workflowVersion.input_schema_json),
       inputCapabilities: Object.keys(parseJsonObject(workflowVersion.input_capabilities_json)).length
         ? parseJsonObject(workflowVersion.input_capabilities_json)

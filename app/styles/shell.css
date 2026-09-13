@@ -300,6 +300,10 @@
   padding-inline: var(--shell-gutter-sm);
 }
 
+.tpl-reading {
+  max-width: var(--shell-reading);
+}
+
 .tpl-settings {
   max-width: var(--shell-settings-max);
 }

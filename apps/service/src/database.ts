@@ -856,6 +856,44 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     // 历史版本留空：它们由旧编译器生成，不能回填成新版本号去冒充新产物。
     'ALTER TABLE character_versions ADD COLUMN compiler_version TEXT',
   ] },
+  { version: 23, name: 'generation-configuration-workspace', statements: [
+    // 配置工作台（规划 §11）：全部为加法迁移，旧字段与旧行为保持不变。
+    // V1 旧版本 config_format_version=1，新编辑器保存的版本写入 2。
+    "ALTER TABLE generation_workflow_versions ADD COLUMN config_format_version INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE generation_workflow_versions ADD COLUMN editor_config_json TEXT",
+    // 工作流以归档替代删除，历史版本永远可追溯。
+    "ALTER TABLE generation_workflows ADD COLUMN archived_at TEXT",
+    // 单工作流一个管理草稿；多窗口用 revision 乐观锁。草稿是编辑状态，
+    // 不是运行时第二份权威配置——执行永远读取不可变版本。
+    `CREATE TABLE IF NOT EXISTS generation_workflow_drafts (
+      workflow_id TEXT PRIMARY KEY REFERENCES generation_workflows(id) ON DELETE CASCADE,
+      base_version INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 1,
+      draft_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    // 预设 = 确切工作流版本 + 连接 + 一组覆盖值 + 开放用途。
+    // values_json 只存覆盖值，不复制 definition、字段 Schema 或模型库存。
+    `CREATE TABLE IF NOT EXISTS generation_presets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      purpose TEXT NOT NULL,
+      workflow_id TEXT NOT NULL REFERENCES generation_workflows(id) ON DELETE RESTRICT,
+      workflow_version INTEGER NOT NULL,
+      engine_id TEXT REFERENCES generation_engines(id) ON DELETE RESTRICT,
+      values_json TEXT NOT NULL DEFAULT '{}',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      revision INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_generation_presets_app_purpose ON generation_presets(app_id, purpose, enabled)',
+    'CREATE INDEX IF NOT EXISTS idx_generation_presets_workflow ON generation_presets(workflow_id, workflow_version)',
+    // 未填时完全沿用旧配置，保证迁移后的默认行为不变。
+    'ALTER TABLE app_generation_assignments ADD COLUMN default_preset_id TEXT REFERENCES generation_presets(id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

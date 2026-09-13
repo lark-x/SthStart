@@ -6,6 +6,7 @@ import { RefreshCw, Sparkles, ImagePlus } from 'lucide-react';
 import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
+import { Dialog } from '@/app/components/ui/dialog';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { SplitPanes } from '@/app/components/shared/split-panes';
@@ -20,7 +21,7 @@ import {
   type CreativeTaskInput,
   uploadCreativeImage,
 } from '@/app/features/creative/api';
-import { useCreativeArtifacts, useCreativeStatus, useCreativeTasks } from '@/app/features/creative/queries';
+import { useCreativeArtifacts, useCreativeGenerationOptions, useCreativeStatus, useCreativeTasks } from '@/app/features/creative/queries';
 import {
   creativeImageAllowed,
   creativeInputMaxBytes,
@@ -32,6 +33,7 @@ import {
 import { useGenerationEvents } from '@/app/features/creative/events';
 import { CreativeStatusCard } from '@/app/features/creative/components/status-card';
 import { ImageGenerator } from '@/app/features/creative/components/image-generator';
+import { PresetGenerator } from '@/app/features/creative/components/preset-generator';
 import { VideoGenerator } from '@/app/features/creative/components/video-generator';
 import { TaskList } from '@/app/features/creative/components/task-list';
 import { MediaGallery } from '@/app/features/creative/components/media-gallery';
@@ -52,6 +54,7 @@ export function CreativeClient() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const statusQuery = useCreativeStatus();
+  const optionsQuery = useCreativeGenerationOptions();
   const tasksQuery = useCreativeTasks();
   const artifactsQuery = useCreativeArtifacts();
   const [mode, setMode] = useState<CreativeMode>('text-to-image');
@@ -64,6 +67,84 @@ export function CreativeClient() {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pageError, setPageError] = useState('');
+
+  // ── 预设选择（规划 §10.1）：工作流选择 → 预设选择；表单随选择变化。 ──
+  const imageOptions = mode === 'text-to-image' || mode === 'image-to-image'
+    ? optionsQuery.data?.purposes.find((item) => item.purpose === mode)
+    : undefined;
+  const presetFlow = Boolean(imageOptions && imageOptions.presets.length > 0);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [presetValues, setPresetValues] = useState<Record<string, unknown>>({});
+  const [presetInitial, setPresetInitial] = useState<Record<string, unknown>>({});
+  const [presetOverride, setPresetOverride] = useState<Array<string> | null>(null);
+  const pendingPresetRef = useRef<{ presetId: string; workflowId?: string } | null>(null);
+  const presetInitKeyRef = useRef('');
+  const pendingReplayRef = useRef<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const options = imageOptions;
+    if (!options || !options.presets.length) return;
+    const stillValid = options.presets.some((preset) => preset.id === selectedPresetId);
+    if (stillValid) return;
+    const fallback = options.presets.find((preset) => preset.id === options.defaultPresetId) ?? options.presets[0];
+    // 与服务端选项同步默认选择；选项数据是外部系统状态，首次到达时回填一次。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedWorkflowId(fallback.workflowId);
+    setSelectedPresetId(fallback.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageOptions]);
+
+  // 选中预设（或其 revision）变化时初始化参数：字段默认 → 预设覆盖值。
+  useEffect(() => {
+    const options = imageOptions;
+    if (!options || !selectedPresetId) return;
+    const preset = options.presets.find((item) => item.id === selectedPresetId);
+    if (!preset) return;
+    const initKey = `${selectedPresetId}@${preset.revision}`;
+    if (presetInitKeyRef.current === initKey) return;
+    presetInitKeyRef.current = initKey;
+    const defaults: Record<string, unknown> = {};
+    for (const field of options.fields) {
+      if (field.defaultValue != null) defaults[field.key] = field.defaultValue;
+    }
+    const replay = pendingReplayRef.current;
+    pendingReplayRef.current = null;
+    const initial = { ...defaults, ...preset.values, ...(replay ?? {}) };
+    setPresetValues(initial);
+    setPresetInitial({ ...defaults, ...preset.values });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPresetId, imageOptions?.presets]);
+
+  const applyPresetSwitch = () => {
+    const pending = pendingPresetRef.current;
+    if (!pending) return;
+    if (pending.workflowId) setSelectedWorkflowId(pending.workflowId);
+    setSelectedPresetId(pending.presetId);
+    presetInitKeyRef.current = '';
+    pendingPresetRef.current = null;
+    setPresetOverride(null);
+  };
+
+  // 切换预设只替换它明确包含的值；会覆盖用户已编辑值时先展示差异并确认（规划 §8.3）。
+  const requestPresetSwitch = (presetId: string, workflowId?: string) => {
+    const target = imageOptions?.presets.find((item) => item.id === presetId);
+    if (!target) return;
+    const editedKeys = new Set(Object.keys(presetValues).filter((key) => {
+      const current = presetValues[key];
+      const initial = presetInitial[key];
+      return JSON.stringify(current ?? null) !== JSON.stringify(initial ?? null);
+    }));
+    const overridden = Object.keys(target.values).filter((key) => editedKeys.has(key));
+    if (overridden.length) {
+      pendingPresetRef.current = { presetId, workflowId };
+      setPresetOverride(overridden);
+      return;
+    }
+    if (workflowId) setSelectedWorkflowId(workflowId);
+    presetInitKeyRef.current = '';
+    setSelectedPresetId(presetId);
+  };
   // 上传是异步的，完成回填前必须确认模式没有变化，否则图生图的参考图
   // 会以幽灵状态残留进文生图模式，导致后续提交被服务端拒绝且无法移除。
   const modeRef = useRef(mode);
@@ -185,6 +266,44 @@ export function CreativeClient() {
 
   const handleCreate = async () => {
     setPageError('');
+    if (presetFlow && imageOptions && (mode === 'text-to-image' || mode === 'image-to-image')) {
+      const preset = imageOptions.presets.find((item) => item.id === selectedPresetId);
+      if (!preset) {
+        setPageError('请先选择一个生成预设。');
+        return;
+      }
+      const missing = imageOptions.fields.filter((field) => field.required
+        && (presetValues[field.key] == null || presetValues[field.key] === ''));
+      if (missing.length) {
+        setPageError(`请先填写：${missing.map((field) => field.label).join('、')}。`);
+        return;
+      }
+      if (mode === 'image-to-image' && !sourceArtifact) {
+        setPageError('图生图需要先上传参考图片。');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const payload: CreativeTaskInput = {
+          mode,
+          ...(typeof presetValues.seed === 'number' ? { seed: presetValues.seed } : {}),
+          ...(mode === 'image-to-image' && sourceArtifact ? { sourceArtifactId: sourceArtifact.id } : {}),
+          presetId: preset.id,
+          presetRevision: preset.revision,
+          parameters: presetValues,
+        };
+        await createCreativeTask(payload);
+        setResultView('tasks');
+        toast.success('创作任务已提交，将在后台执行');
+        void statusQuery.refetch();
+        void tasksQuery.refetch();
+      } catch (err) {
+        setPageError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     if (!form.prompt.trim()) {
       setPageError('请先写下提示词。');
       return;
@@ -274,6 +393,15 @@ export function CreativeClient() {
   const handleReplay = (task: CreativeTaskResponse) => {
     const values = task.replay.inputs;
     setMode(task.replay.mode);
+    // 预设任务回放：切回对应预设并带入快照参数；旧任务走固定表单。
+    if (task.replay.presetId) {
+      pendingReplayRef.current = values;
+      presetInitKeyRef.current = '';
+      setSelectedPresetId(task.replay.presetId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast.info('已载入任务参数', '你可以修改参数后再次生成。');
+      return;
+    }
     setForm({
       prompt: String(values.prompt ?? ''),
       negativePrompt: String(values.negativePrompt ?? ''),
@@ -398,6 +526,29 @@ export function CreativeClient() {
                 onLastFrameSelect={(file) => { void handleFrameUpload(file, 'last'); }}
                 onLastFrameRemove={() => { setLastFrameArtifact(null); setLastFramePreview(null); }}
               />
+            ) : presetFlow && imageOptions ? (
+              <PresetGenerator
+                mode={mode as 'text-to-image' | 'image-to-image'}
+                options={imageOptions}
+                selectedWorkflowId={selectedWorkflowId}
+                selectedPresetId={selectedPresetId}
+                values={presetValues}
+                sourceArtifact={sourceArtifact}
+                sourcePreview={sourcePreview}
+                uploading={uploading}
+                submitting={submitting}
+                onWorkflowChange={(workflowId) => {
+                  const preset = imageOptions.presets.find((item) => item.workflowId === workflowId
+                    && item.id === imageOptions.defaultPresetId)
+                    ?? imageOptions.presets.find((item) => item.workflowId === workflowId);
+                  if (preset) requestPresetSwitch(preset.id, workflowId);
+                }}
+                onPresetChange={(presetId) => requestPresetSwitch(presetId)}
+                onValueChange={(key, value) => setPresetValues((current) => ({ ...current, [key]: value }))}
+                onSubmit={() => { void handleCreate(); }}
+                onSourceSelect={(file) => { void handleFrameUpload(file, 'first'); }}
+                onSourceRemove={() => { setSourceArtifact(null); setSourcePreview(null); }}
+              />
             ) : (
               <ImageGenerator
                 form={form}
@@ -434,6 +585,20 @@ export function CreativeClient() {
           </div>
           }
         />
+        <Dialog
+          open={presetOverride !== null}
+          onOpenChange={(open) => { if (!open) { setPresetOverride(null); pendingPresetRef.current = null; } }}
+          title="切换预设将覆盖已编辑的参数"
+          description={`以下字段会被新预设替换为它保存的值：${(presetOverride ?? []).map((key) => imageOptions?.fields.find((field) => field.key === key)?.label ?? key).join('、')}`}
+          footer={(
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setPresetOverride(null); pendingPresetRef.current = null; }}>继续编辑</Button>
+              <Button variant="primary" onClick={applyPresetSwitch}>覆盖并切换</Button>
+            </div>
+          )}
+        >
+          <p className="text-sm text-muted">未列出的已编辑内容会保留；切换后可以继续修改。</p>
+        </Dialog>
     </PageContainer>
   );
 }

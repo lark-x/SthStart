@@ -1,12 +1,14 @@
 import { getJson, postJson, putJson, deleteJson, adminFetch } from '@/app/lib/api-client';
 import {
   CreativeArtifactListResponseSchema,
+  CreativeGenerationOptionsResponseSchema,
   CreativeStatusResponseSchema,
   CreativeTaskListResponseSchema,
   CreativeTaskResponseSchema,
 } from '@sthstart/contracts';
 import type {
   ArtifactDescriptor,
+  CreativeGenerationOptionsResponse,
   CreativeStatusResponse,
   CreativeTaskListResponse,
   CreativeTaskResponse,
@@ -14,7 +16,7 @@ import type {
 
 export type CreativeTaskInput = {
   mode: 'text-to-image' | 'image-to-image' | 'h3-t2v' | 'h3-i2v' | 'h3-fl2va';
-  prompt: string;
+  prompt?: string;
   negativePrompt?: string;
   width?: number;
   height?: number;
@@ -25,7 +27,15 @@ export type CreativeTaskInput = {
   firstFrameId?: string;
   aspectRatio?: string;
   lastFrameId?: string;
+  /** 预设选择通道：服务端校验归属后解析内部工作流与连接（规划 §10.2）。 */
+  presetId?: string;
+  presetRevision?: number;
+  parameters?: Record<string, unknown>;
 };
+
+export async function fetchCreativeGenerationOptions() {
+  return getJson<CreativeGenerationOptionsResponse>('creative/options', undefined, CreativeGenerationOptionsResponseSchema);
+}
 
 function portalArtifactUrl(id: string) {
   return `/api/admin/creative/artifacts/${encodeURIComponent(id)}`;

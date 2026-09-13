@@ -9,6 +9,10 @@ import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
 import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVersionStructure } from './generation.js';
 import { defaultWorkerSettings, workerHealth } from './worker.js';
+import { cachedConnectionStatus } from './generation/comfy-discovery.js';
+import { markDraftSynced } from './generation/configuration-store.js';
+import { validateEditorConfig } from './generation/configuration.js';
+import { registerGenerationConfigRoutes } from './generation-config-routes.js';
 import { getH3Status, readH3Settings } from './h3.js';
 import { getMediaDiagnostics } from './media-diagnostics.js';
 import { resolveAppLlmBindingStatus } from './llm-status.js';
@@ -207,6 +211,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (!config.adminToken) return reply.code(503).send({ error: 'admin_not_configured', message: '请设置 STHSTART_ADMIN_TOKEN。' });
     if (!authenticateAdmin(config.adminToken, request)) return reply.code(401).send({ error: 'unauthorized' });
   });
+
+  // 配置工作台新路由（发现/分析/草稿/导出/试运行/预设）挂载在同一管理鉴权之下。
+  registerGenerationConfigRoutes(app, config, database, secrets, fetcher);
 
   app.get('/api/v1/admin/overview', async () => ({
     keyring: await secrets.status(), apps: appRows(database),
@@ -481,7 +488,12 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   app.get('/api/v1/admin/generation/engines', async () => ({
     items: (database.connection.prepare(`SELECT e.id,e.name,e.kind,e.base_url,o.headers_json,e.enabled,e.concurrency_limit,e.created_at,e.updated_at
       FROM generation_engines e LEFT JOIN generation_engine_options o ON o.engine_id=e.id ORDER BY e.name`).all() as Record<string, unknown>[])
-      .map((row) => ({ ...row, headers: JSON.parse(String(row.headers_json ?? '{}')), headers_json: undefined })),
+      .map((row) => ({
+        ...row,
+        headers: JSON.parse(String(row.headers_json ?? '{}')),
+        headers_json: undefined,
+        lastTest: cachedConnectionStatus(String(row.id)),
+      })),
   }));
 
   app.post<{
@@ -661,10 +673,15 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   app.delete<{ Params: { id: string } }>('/api/v1/admin/generation/engines/:id', async (request, reply) => {
     const inUse = database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE engine_id = ?').get(request.params.id);
     if (inUse) return reply.code(409).send({ error: 'engine_in_use', message: '该生成引擎正被应用绑定使用，请先更换绑定。' });
+    const presetRefs = database.connection.prepare('SELECT id, name FROM generation_presets WHERE engine_id = ?').all(request.params.id) as Array<{ id: string; name: string }>;
+    if (presetRefs.length) {
+      return reply.code(409).send({ error: 'engine_in_use', message: `该连接被 ${presetRefs.length} 个生成预设引用（${presetRefs.slice(0, 5).map((p) => p.name).join('、')}…），请先删除或改绑这些预设。` });
+    }
+    const versionRefs = database.connection.prepare('SELECT COUNT(*) AS count FROM generation_workflow_versions WHERE engine_id = ?').get(request.params.id) as { count: number };
     const engine = database.connection.prepare('SELECT kind,credential_account FROM generation_engines WHERE id=?').get(request.params.id) as { kind: string; credential_account: string | null } | undefined;
     database.connection.prepare('DELETE FROM generation_engines WHERE id = ?').run(request.params.id);
     if (engine?.credential_account) await secrets.delete(engine.credential_account).catch(() => undefined);
-    return { ok: true };
+    return { ok: true, detachedWorkflowVersions: Number(versionRefs.count) };
   });
 
   // ── Generation Workflows & Versions Admin ──
@@ -675,6 +692,8 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     return {
       items: workflows.map((wf) => ({
         ...wf,
+        archivedAt: (wf.archived_at as string | null) ?? null,
+        archived_at: undefined,
         versions: versions.filter((v) => v.workflow_id === wf.id).map((v) => ({
           ...(() => {
             const media = mediaVersions.find((item) => item.workflow_id === v.workflow_id && Number(item.version) === Number(v.version));
@@ -690,6 +709,8 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
           inputSchema: JSON.parse(String(v.input_schema_json ?? '{}')),
           nodeBindings: JSON.parse(String(v.node_bindings_json ?? '{}')),
           outputDeclarations: JSON.parse(String(v.output_declarations_json ?? '[]')),
+          configFormatVersion: Number(v.config_format_version ?? 1),
+          editorConfig: v.editor_config_json ? JSON.parse(String(v.editor_config_json)) : null,
           isPublished: Boolean(v.is_published),
           createdAt: v.created_at,
         })),
@@ -706,7 +727,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       category?: 'image' | 'video' | 'audio' | 'transform';
     };
   }>('/api/v1/admin/generation/workflows', async (request, reply) => {
-    const { id, name, description = '', engineKind = 'comfyui', category = 'image' } = request.body ?? {};
+    const { name, description = '', engineKind = 'comfyui', category = 'image' } = request.body ?? {};
+    // 新配置工作台由系统生成 ID（规划 §6.1）；显式 ID 仍保留给脚本与旧客户端。
+    const id = request.body?.id?.trim() || `wf-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(engineKind) || !['image', 'video', 'audio', 'transform'].includes(category)) {
       return reply.code(400).send({ error: 'invalid_workflow' });
     }
@@ -730,6 +753,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       inputCapabilities?: Record<string, unknown>;
       outputMediaTypes?: string[];
       outputSchema?: Record<string, unknown>;
+      editorConfig?: unknown;
     };
   }>('/api/v1/admin/generation/workflows/:id/versions', async (request, reply) => {
     const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number; engine_kind: string; category?: string } | undefined;
@@ -759,6 +783,18 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
     }
 
+    // 新编辑器保存 V2（规划 §11.1）：editorConfig 仅描述呈现，不新增并行参数源。
+    let editorConfigJson: string | null = null;
+    let configFormatVersion = 1;
+    if (request.body?.editorConfig !== undefined && request.body?.editorConfig !== null) {
+      try {
+        editorConfigJson = JSON.stringify(validateEditorConfig(request.body.editorConfig));
+        configFormatVersion = 2;
+      } catch (err) {
+        return reply.code(400).send({ error: 'invalid_editor_config', message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
     const version = Number(wf.latest_version) + 1;
     const now = nowIso();
     const inputCapabilities = jsonObject(request.body?.inputCapabilities);
@@ -774,8 +810,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         INSERT INTO generation_workflow_versions (
           workflow_id, version, engine_id, input_schema_json, node_bindings_json,
           output_declarations_json, definition_json, input_capabilities_json,
-          output_media_types_json, output_schema_json, is_published, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          output_media_types_json, output_schema_json, config_format_version, editor_config_json,
+          is_published, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       `).run(
         request.params.id,
         version,
@@ -787,6 +824,8 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         JSON.stringify(inputCapabilities),
         JSON.stringify(outputMediaTypes),
         JSON.stringify(outputSchema),
+        configFormatVersion,
+        editorConfigJson,
         now,
       );
       database.connection.prepare(`
@@ -801,9 +840,10 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       `).run(request.params.id, version, wf.category ?? 'image', JSON.stringify(inputCapabilities), JSON.stringify(outputMediaTypes), JSON.stringify(outputSchema), now);
       database.connection.prepare('UPDATE generation_workflows SET latest_version = ?, updated_at = ? WHERE id = ?')
         .run(version, now, request.params.id);
+      markDraftSynced(database, request.params.id, version);
     });
 
-    return reply.code(201).send({ workflowId: request.params.id, version });
+    return reply.code(201).send({ workflowId: request.params.id, version, configFormatVersion });
   });
 
   app.post<{
@@ -972,6 +1012,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         workflowId: string;
         workflowVersion?: number;
         engineId: string;
+        defaultPresetId?: string | null;
       }>;
     };
   }>('/api/v1/admin/apps/:appId/generation-assignments', async (request, reply) => {
@@ -979,7 +1020,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (!appRow) return reply.code(404).send({ error: 'app_not_found', message: '目标应用不存在。' });
 
     const list = Array.isArray(request.body?.assignments) ? request.body.assignments : [];
-    const validatedItems: Array<{ purpose: string; workflowId: string; workflowVersion: number; engineId: string }> = [];
+    const validatedItems: Array<{ purpose: string; workflowId: string; workflowVersion: number; engineId: string; defaultPresetId: string | null }> = [];
 
     for (const item of list) {
       if (!item.purpose || typeof item.purpose !== 'string' || !item.purpose.trim()) {
@@ -1014,11 +1055,22 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         return reply.code(400).send({ error: 'engine_kind_mismatch', message: `生成引擎类型 (${engine.kind}) 与工作流类型 (${wf.engine_kind}) 不匹配。` });
       }
 
+      let defaultPresetId: string | null = null;
+      if (item.defaultPresetId) {
+        const preset = database.connection.prepare('SELECT id, app_id, purpose, enabled, workflow_id, workflow_version FROM generation_presets WHERE id = ?')
+          .get(item.defaultPresetId) as { id: string; app_id: string; purpose: string; enabled: number; workflow_id: string; workflow_version: number } | undefined;
+        if (!preset || preset.app_id !== request.params.appId || preset.purpose !== item.purpose.trim() || !preset.enabled) {
+          return reply.code(400).send({ error: 'invalid_default_preset', message: '默认预设必须属于同一应用与用途，且处于启用状态。' });
+        }
+        defaultPresetId = preset.id;
+      }
+
       validatedItems.push({
         purpose: item.purpose.trim(),
         workflowId: item.workflowId.trim(),
         workflowVersion: verNum,
         engineId: item.engineId.trim(),
+        defaultPresetId,
       });
     }
 
@@ -1027,9 +1079,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       database.connection.prepare('DELETE FROM app_generation_assignments WHERE app_id = ?').run(request.params.appId);
       for (const item of validatedItems) {
         database.connection.prepare(`
-          INSERT INTO app_generation_assignments (app_id, purpose, workflow_id, workflow_version, engine_id, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(request.params.appId, item.purpose, item.workflowId, item.workflowVersion, item.engineId, now);
+          INSERT INTO app_generation_assignments (app_id, purpose, workflow_id, workflow_version, engine_id, default_preset_id, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(request.params.appId, item.purpose, item.workflowId, item.workflowVersion, item.engineId, item.defaultPresetId, now);
       }
     });
 

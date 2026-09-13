@@ -16,9 +16,13 @@ import {
 import { activeGenerationExecutions, generationExecutionsStopped, recordGenerationEvent } from './events.js';
 import { generationError, sanitizeErrorMessage } from './errors.js';
 import { computeRequestHash, renderWorkflowSnapshot } from './workflows.js';
+import { mergeGenerationValues, validateRequiredValues } from './configuration.js';
+import type { InputSchemaMap } from './configuration.js';
+import { resolveDefaultPreset, resolveEnabledPreset } from './configuration-store.js';
 import { normalizeInputArtifacts, parseGenerationRequestParams, prepareInputArtifacts, validateInputArtifacts } from './inputs.js';
 import type { GenerationInputArtifact } from './inputs.js';
 import { getGenerationTask, resolveWorkflowAndEngine } from './task-store.js';
+import type { GenerationSelectionMeta } from '@sthstart/contracts';
 
 const activeTaskPolls = new WeakMap<ServiceDatabase, Map<string, Promise<void>>>();
 
@@ -34,11 +38,18 @@ export interface CreateTaskOptions {
   purpose?: string | null;
   workflowId?: string | null;
   workflowVersion?: number | null;
+  /** 选择已授权的预设（服务端校验归属/启用/版本/连接后解析内部工作流与连接）。 */
+  presetId?: string | null;
+  presetRevision?: number | null;
   inputs?: Record<string, unknown>;
   inputArtifacts?: GenerationInputArtifact[];
   seed?: number | null;
   retryOf?: string | null;
   isInternal?: boolean;
+  /** strict 只在 V2 版本上生效：拒绝未知参数；V1 版本一律 lenient 以兼容旧调用方。 */
+  validationMode?: 'strict' | 'lenient';
+  /** 试运行标记：写入选择元信息，供配置页结果核对使用。 */
+  testMode?: boolean;
   priority?: GenerationPriority;
   onInsertTask?: (txParams: {
     taskId: string;
@@ -138,15 +149,110 @@ export async function createGenerationTask(
 ): Promise<GenerationTaskDescriptor> {
   const inputs = options.inputs ?? {};
   const inputArtifacts = normalizeInputArtifacts(options.inputArtifacts);
-  const canonicalPayload = {
-    purpose: options.purpose?.trim() || 'default',
+  const purpose = options.purpose?.trim() || 'default';
+
+  // 预设解析（规划 §10.2）：显式 presetId 必须属于当前应用/用途且启用；
+  // 未选择时加载该用途的默认预设（旧配置没有默认预设，行为完全不变）。
+  let presetValues: Record<string, unknown> = {};
+  let selection: GenerationSelectionMeta | null = null;
+  let resolveOptions: Parameters<typeof resolveWorkflowAndEngine>[2] = {
+    purpose,
+    isInternal: options.isInternal,
+    workflowId: options.workflowId,
+    workflowVersion: options.workflowVersion,
+  };
+  if (options.presetId) {
+    const resolved = resolveEnabledPreset(database, options.appId, purpose, options.presetId, options.presetRevision ?? null);
+    presetValues = resolved.values;
+    resolveOptions = {
+      purpose,
+      isInternal: true,
+      workflowId: resolved.preset.workflowId,
+      workflowVersion: resolved.preset.workflowVersion,
+      engineId: resolved.preset.engineId,
+    };
+    selection = {
+      presetId: resolved.preset.id,
+      presetRevision: resolved.preset.revision,
+      connectionId: resolved.preset.engineId,
+      resolvedValues: {},
+    };
+  } else if (!options.isInternal && !options.workflowId) {
+    const defaultPreset = resolveDefaultPreset(database, options.appId, purpose);
+    if (defaultPreset) {
+      presetValues = defaultPreset.values;
+      selection = {
+        presetId: defaultPreset.preset.id,
+        presetRevision: defaultPreset.preset.revision,
+        connectionId: defaultPreset.preset.engineId,
+        resolvedValues: {},
+      };
+    }
+  }
+
+  const resolved = resolveWorkflowAndEngine(database, options.appId, resolveOptions);
+  // 试运行也写入选择元信息（presetId 为空、testMode 标记），供配置页核对真实参数（规划 §9.7）。
+  if (!selection && options.testMode) {
+    selection = {
+      presetId: null,
+      presetRevision: null,
+      connectionId: resolved.engine.id,
+      resolvedValues: {},
+      testMode: true,
+    };
+  }
+
+  // 参数合并与校验（规划 §8.2）：工作流默认 → 已选预设 → 本次允许修改的输入。
+  // strict 仅在 V2 版本上拒绝未知参数；V1 版本与内部调用方保持 lenient。
+  const configFormatVersion = resolved.workflow.configFormatVersion ?? 1;
+  const hasPresetChannel = Boolean(selection) || Object.keys(presetValues).length > 0;
+  const mode = options.validationMode === 'strict' && configFormatVersion >= 2 ? 'strict' : 'lenient';
+  const merged = hasPresetChannel
+    ? mergeGenerationValues(
+        resolved.workflow.inputSchema as InputSchemaMap,
+        resolved.workflow.editorConfig,
+        presetValues,
+        inputs,
+        mode,
+      )
+    : { values: mergeGenerationValues(resolved.workflow.inputSchema as InputSchemaMap, resolved.workflow.editorConfig, {}, inputs, mode, { applyDefaults: false }).values };
+  const mergedInputs = merged.values;
+  if (mode === 'strict') {
+    validateRequiredValues(resolved.workflow.inputSchema as InputSchemaMap, resolved.workflow.editorConfig, mergedInputs);
+  }
+  if (selection) selection.resolvedValues = mergedInputs;
+
+  validateInputArtifacts(database, options.appId, inputArtifacts, resolved.workflow.inputCapabilities);
+  for (const input of inputArtifacts) {
+    if (!resolved.workflow.nodeBindings[input.inputKey]) {
+      throw generationError('input_binding_not_found', `工作流没有为输入 ${input.inputKey} 配置节点绑定。`);
+    }
+  }
+  const actualSeed = options.seed ?? Math.floor(Math.random() * 1_000_000_000);
+  const renderInputs = { ...mergedInputs };
+  for (const input of inputArtifacts) delete renderInputs[input.inputKey];
+  const workflowSnapshot = renderWorkflowSnapshot(
+    resolved.workflow.definition,
+    resolved.workflow.nodeBindings,
+    renderInputs,
+    actualSeed,
+  );
+
+  const canonicalPayload: Record<string, unknown> = {
+    purpose,
     workflowId: options.workflowId?.trim() || null,
     workflowVersion: options.workflowVersion ?? null,
-    inputs,
+    inputs: mergedInputs,
     inputArtifacts,
     seed: options.seed ?? null,
     priority: options.priority ?? 'normal',
   };
+  if (selection) {
+    // 生成请求哈希覆盖执行身份：预设/连接/最终合并值变化必须产生不同哈希（规划 §11.4）。
+    canonicalPayload.presetId = selection.presetId;
+    canonicalPayload.presetRevision = selection.presetRevision;
+    canonicalPayload.connectionId = selection.connectionId;
+  }
   const requestHash = computeRequestHash(canonicalPayload);
 
   if (options.idempotencyKey) {
@@ -163,23 +269,6 @@ export async function createGenerationTask(
       throw err;
     }
   }
-
-  const resolved = resolveWorkflowAndEngine(database, options.appId, options);
-  validateInputArtifacts(database, options.appId, inputArtifacts, resolved.workflow.inputCapabilities);
-  for (const input of inputArtifacts) {
-    if (!resolved.workflow.nodeBindings[input.inputKey]) {
-      throw generationError('input_binding_not_found', `工作流没有为输入 ${input.inputKey} 配置节点绑定。`);
-    }
-  }
-  const actualSeed = options.seed ?? Math.floor(Math.random() * 1_000_000_000);
-  const renderInputs = { ...inputs };
-  for (const input of inputArtifacts) delete renderInputs[input.inputKey];
-  const workflowSnapshot = renderWorkflowSnapshot(
-    resolved.workflow.definition,
-    resolved.workflow.nodeBindings,
-    renderInputs,
-    actualSeed,
-  );
 
   const id = randomUUID();
   const now = nowIso();
@@ -198,10 +287,10 @@ export async function createGenerationTask(
       resolved.engine.id,
       resolved.workflow.id,
       resolved.workflow.version,
-      options.purpose?.trim() || 'default',
+      purpose,
       options.idempotencyKey ?? null,
       requestHash,
-      JSON.stringify({ inputs, inputArtifacts }),
+      JSON.stringify({ inputs: mergedInputs, inputArtifacts, ...(selection ? { selection } : {}) }),
       JSON.stringify(workflowSnapshot),
       actualSeed,
       options.retryOf ?? null,

@@ -59,6 +59,15 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && parts.length === 1 && parts[0] === 'health') {
       return sendJson(response, 200, await worker.health());
     }
+    if (request.method === 'GET' && parts.length === 4 && parts[0] === 'v1' && parts[1] === 'worker' && parts[2] === 'discovery' && parts[3] === 'models') {
+      const refresh = new URL(request.url, 'http://localhost').searchParams.get('refresh') === '1';
+      return sendJson(response, 200, await worker.discoveryModels(refresh));
+    }
+    if (request.method === 'GET' && parts.length === 4 && parts[0] === 'v1' && parts[1] === 'worker' && parts[2] === 'discovery' && parts[3] === 'nodes') {
+      const classTypes = new URL(request.url, 'http://localhost').searchParams.get('classTypes') ?? '';
+      const list = classTypes.split(',').map((item) => item.trim()).filter(Boolean);
+      return sendJson(response, 200, await worker.discoveryNodes(list));
+    }
     if (request.method === 'POST' && parts.length === 3 && parts[0] === 'v1' && parts[1] === 'worker' && parts[2] === 'tasks') {
       return sendJson(response, 202, await worker.submitTask(await readJson(request)));
     }

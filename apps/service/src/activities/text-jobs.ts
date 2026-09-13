@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { validateGeneratedOutput } from './generation-validation.js';
+import { normalizeModelOutput, validateGeneratedOutput } from './generation-validation.js';
 import type { ContentDocument } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import type { SecretStore } from '../security.js';
@@ -87,7 +87,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
         const stPrompt = buildStagePrompt(document, currentStage, instructions) +
           '\n【本批已生成的前序阶段（尚未采用，后续必须保持事实连续；clientId 仅在各阶段内有效）】\n' + JSON.stringify(precedingStages);
         const stResp = await callLlm(profile, stPrompt, fetchFn);
-        const stOutput = parseAiJsonOutput<StageGenerationOutput>(stResp);
+        const stOutput = normalizeModelOutput(parseAiJsonOutput<StageGenerationOutput>(stResp), document, { stageId: currentStage.id });
         validateGeneratedOutput(stOutput, document, 'stage', currentStage.id);
         precedingStages.push(stOutput);
         const candidate = store.createCandidate({
@@ -134,9 +134,13 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     const checkMid = store.getJob(activityId, jobId);
     if (checkMid?.status === 'cancelled') return;
 
-    // Parse & Validate
-    const parsedPayload = parseAiJsonOutput<Record<string, unknown>>(llmResponse);
+    // Parse & Validate（先做确定性类型修复，再走严格校验）
     const targetStageId = String(scope.stageId || document.stages[0]?.id || '');
+    const parsedPayload = normalizeModelOutput(
+      parseAiJsonOutput<Record<string, unknown>>(llmResponse),
+      document,
+      snippetMode || mode === 'stage' ? { stageId: targetStageId } : undefined
+    );
     if (snippetMode) {
       validateSnippetOutput(parsedPayload, document, targetStageId, snippetMode);
     } else {

@@ -37,6 +37,21 @@ function safeJson(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+const DISCOVERY_LOADER_CATEGORIES = {
+  CheckpointLoaderSimple: { inputName: 'ckpt_name', category: 'checkpoints' },
+  unCLIPCheckpointLoader: { inputName: 'ckpt_name', category: 'checkpoints' },
+  checkpointLoader: { inputName: 'ckpt_name', category: 'checkpoints' },
+  VAELoader: { inputName: 'vae_name', category: 'vae' },
+  CLIPLoader: { inputName: 'clip_name', category: 'clip' },
+  CLIPVisionLoader: { inputName: 'clip_name', category: 'clip_vision' },
+  UNETLoader: { inputName: 'unet_name', category: 'unet' },
+  LoraLoader: { inputName: 'lora_name', category: 'loras' },
+  LoraLoaderModelOnly: { inputName: 'lora_name', category: 'loras' },
+  ControlNetLoader: { inputName: 'control_net_name', category: 'controlnet' },
+  StyleModelLoader: { inputName: 'style_name', category: 'style_models' },
+  UpscaleModelLoader: { inputName: 'model_name', category: 'upscale_models' },
+};
+
 function cleanFileExtension(_name, contentType) {
   const normalized = String(contentType || '').split(';')[0].trim().toLowerCase();
   return MIME_EXTENSIONS[normalized] || '.bin';
@@ -637,6 +652,63 @@ export class WindowsWorker {
     await this.pollComfy(task);
   }
 
+  // ── 只读发现（规划 §12）：向 Service 提供模型/节点枚举，只访问 ComfyUI 现有 API。 ──
+
+  async fetchObjectInfo(refresh = false) {
+    if (!refresh && this.objectInfoCache && Date.now() - this.objectInfoCache.at < 60_000) {
+      return this.objectInfoCache.value;
+    }
+    const response = await this.comfyResponse('/object_info', {}, 20_000);
+    if (!response.ok) throw new WorkerError('comfy_object_info_failed', `读取 ComfyUI 节点信息失败：HTTP ${response.status}`, 502);
+    const parsed = safeJson(await response.json().catch(() => null));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new WorkerError('comfy_object_info_failed', 'ComfyUI 节点信息格式无效。', 502);
+    }
+    this.objectInfoCache = { value: parsed, at: Date.now() };
+    return parsed;
+  }
+
+  async discoveryModels(refresh = false) {
+    const objectInfo = await this.fetchObjectInfo(refresh);
+    const MODEL_FILE = /\.(safetensors|ckpt|pt|sft|gguf|bin|pth)$/i;
+    const byCategory = new Map();
+    for (const [classType, rawNode] of Object.entries(objectInfo)) {
+      const input = safeJson(rawNode?.input);
+      for (const group of ['required', 'optional']) {
+        const inputs = safeJson(input[group]);
+        for (const [inputName, spec] of Object.entries(inputs)) {
+          if (!Array.isArray(spec) || !Array.isArray(spec[0])) continue;
+          const values = spec[0].filter((item) => typeof item === 'string');
+          if (!values.length) continue;
+          if (!values.some((value) => MODEL_FILE.test(value) || value.includes('/'))) continue;
+          const category = DISCOVERY_LOADER_CATEGORIES[classType]?.inputName === inputName
+            ? DISCOVERY_LOADER_CATEGORIES[classType].category
+            : classType;
+          const bucket = byCategory.get(category) ?? new Set();
+          for (const value of values) bucket.add(value);
+          byCategory.set(category, bucket);
+        }
+      }
+    }
+    const items = [];
+    for (const [category, names] of byCategory) {
+      for (const name of [...names].sort((left, right) => left.localeCompare(right))) items.push({ name, category });
+    }
+    return { items, stale: false, fetchedAt: now(), error: null };
+  }
+
+  async discoveryNodes(classTypes) {
+    const objectInfo = await this.fetchObjectInfo(false);
+    const items = [];
+    for (const classType of classTypes.slice(0, 64)) {
+      const node = safeJson(objectInfo[classType]);
+      if (!node || typeof node !== 'object') continue;
+      const input = safeJson(node.input);
+      items.push({ classType, input });
+    }
+    return { items, stale: false, fetchedAt: now(), error: null };
+  }
+
   watchComfyProgress(task) {
     if (typeof WebSocket !== 'function' || !task.providerTaskId) return () => {};
     const wsBase = this.settings.comfyUrl.replace(/^http/i, (value) => value.toLowerCase() === 'https' ? 'wss' : 'ws');
@@ -799,6 +871,7 @@ export class WindowsWorker {
       temperature: this.settings.temperature,
       concurrency: 1,
       capabilities: this.settings.capabilities,
+      supportedFeatures: ['discovery'],
       queueDepth: this.queue.length,
       runningTaskId: this.runningTaskId,
       modelDirectoryReady: disk.modelDirectoryReady,

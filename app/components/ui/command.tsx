@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, CornerDownLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useOverlayAccessibility } from './overlay';
 
 export interface CommandItem {
   id: string;
@@ -26,7 +27,12 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
+  useOverlayAccessibility({
+    open,
+    onRequestClose: () => onOpenChange(false),
+    containerRef: dialogRef,
+    initialFocusRef: inputRef,
+  });
 
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -43,50 +49,14 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
   useEffect(() => {
     if (!open) return;
 
-    previousFocus.current = document.activeElement as HTMLElement;
     const focusTimer = window.setTimeout(() => {
       setQuery('');
       setSelectedIndex(0);
-      inputRef.current?.focus();
-    }, 50);
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onOpenChange(false);
-        return;
-      }
-
-      if (event.key !== 'Tab') return;
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button, input, [href], [tabindex]:not([tabindex="-1"])'
-        ) ?? []
-      ).filter((element) => !element.hasAttribute('disabled'));
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialogRef.current?.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
+    }, 0);
     return () => {
       window.clearTimeout(focusTimer);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-      previousFocus.current?.focus();
-      previousFocus.current = null;
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'ArrowDown') {
