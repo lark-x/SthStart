@@ -25,6 +25,9 @@ import { applyCreativeWhenReady, registerRuntimeRoutes } from './runtime-routes.
 import { ensureCreativeApp, registerCreativeRoutes } from './creative.js';
 import { ensureGenerationConsumerApps } from './generation/consumers.js';
 import { registerActivityRoutes } from './activities/routes.js';
+import { registerCalendarRoutes } from './calendar.js';
+import { registerPlanningRoutes } from './activities/planning.js';
+import { ActivityStore } from './activities/store.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -187,6 +190,8 @@ export async function createService(options: ServiceOptions = {}) {
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
   registerActivityRoutes(app, config, database, secrets, options.fetcher);
+  registerCalendarRoutes(app, config, database);
+  registerPlanningRoutes(app, { config, database, secrets, store: new ActivityStore(database), fetcher: options.fetcher });
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 

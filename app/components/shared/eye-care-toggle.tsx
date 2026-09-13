@@ -18,7 +18,7 @@ export function EyeCareToggle({ className }: { className?: string }) {
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
         eyeCare
           ? 'bg-accent/12 text-accent-dark border border-accent/30 shadow-2xs font-semibold'
-          : 'bg-surface hover:bg-white text-muted hover:text-ink border border-[rgb(24_32_29/14%)] shadow-2xs',
+          : 'bg-surface hover:bg-surface-raised text-muted hover:text-ink border border-border-default shadow-2xs',
         className
       )}
       title={eyeCare ? '关闭暖杏护眼模式' : '开启暖杏护眼模式'}

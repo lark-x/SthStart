@@ -4,15 +4,25 @@ import { copyFile, mkdir, unlink, writeFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
 import type {
   CharacterCardCompatibility,
+  CharacterDraft,
+  CharacterDraftAny,
+  CharacterDraftV2,
   CharacterImportCandidate,
   CharacterImportSession,
 } from '@sthstart/contracts';
+import { applyV1PatchToV2 } from '@sthstart/contracts';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { canonicalWork, normalizeOrganization } from './organization.js';
 import { list } from './draft.js';
-import { normalizeCharacterDraft } from './draft.js';
+import { isV2Draft, normalizeCharacterDraft, toAuthorityDraft, toV1View } from './draft.js';
+
+/** 导入预览与字段映射沿用 V1 细分字段口径；这里把任意草稿收敛到该口径。 */
+function v1Shape(draft: CharacterDraftAny): CharacterDraft {
+  return isV2Draft(draft) ? toV1View(draft) : draft;
+}
+import { upsertCharacterBirthday } from './birthday.js';
 import { parseCharacterCard, CARD_PARSER_VERSION } from './card-parser.js';
 import { mapCharacterCard, mapCharacterImage } from './card-mapper.js';
 import { removeArtifact, streamUploadArtifact } from '../artifacts.js';
@@ -197,16 +207,18 @@ export function updateCharacterImportSession(
   const candidate = JSON.parse(JSON.stringify(session.candidate)) as CharacterImportCandidate;
   const patch = input.candidatePatch || {};
   if (patch.draft && typeof patch.draft === 'object' && !Array.isArray(patch.draft)) {
-    const before = candidate.draft;
+    const before = v1Shape(candidate.draft);
     const draftPatch = patch.draft as Record<string, unknown>;
     candidate.draft = normalizeCharacterDraft({ ...before, ...draftPatch,
       appearance: { ...before.appearance, ...(draftPatch.appearance as object ?? {}) },
       speech: { ...before.speech, ...(draftPatch.speech as object ?? {}) },
     });
-    if (typeof draftPatch.work === 'string') candidate.draft.work = canonicalWork(database, candidate.draft.work);
-    for (const [key, value] of Object.entries(candidate.draft)) {
+    const patched = v1Shape(candidate.draft);
+    if (typeof draftPatch.work === 'string') patched.work = canonicalWork(database, patched.work);
+    candidate.draft = patched;
+    for (const [key, value] of Object.entries(patched)) {
       const fields = key === 'appearance' || key === 'speech'
-        ? Object.entries(value as Record<string, unknown>).map(([child, childValue]) => ({ path: `/${key}/${child}`, value: childValue, old: (before[key] as unknown as Record<string, unknown>)[child] }))
+        ? Object.entries(value as Record<string, unknown>).map(([child, childValue]) => ({ path: `/${key}/${child}`, value: childValue, old: (before[key as 'appearance' | 'speech'] as unknown as Record<string, unknown>)[child] }))
         : [{ path: `/${key}`, value, old: before[key as keyof typeof before] }];
       for (const field of fields) {
         if (digest(field.value) === digest(field.old ?? null)) continue;
@@ -297,16 +309,24 @@ export async function commitCharacterImportSession(
   const newDraftRevision = targetId ? Number(profile?.draft_revision ?? 1) + 1 : 1;
   // Updating an existing character only replaces fields supplied by this card
   // or explicitly edited in the preview, preserving unrelated detailed settings.
-  const merged = profile ? normalizeCharacterDraft(JSON.parse(String(profile.draft_json))) : candidate.draft;
-  if (profile) for (const mapping of candidate.mappings) {
-    const parts = mapping.fieldPath.split('/').filter(Boolean);
-    if (parts.length === 1 && Object.hasOwn(candidate.draft, parts[0])) {
-      (merged as unknown as Record<string, unknown>)[parts[0]] = (candidate.draft as unknown as Record<string, unknown>)[parts[0]];
-    } else if (parts.length === 2 && (parts[0] === 'appearance' || parts[0] === 'speech') && Object.hasOwn(candidate.draft[parts[0]], parts[1])) {
-      (merged[parts[0]] as unknown as Record<string, unknown>)[parts[1]] = (candidate.draft[parts[0]] as unknown as Record<string, unknown>)[parts[1]];
+  const cardDraft = v1Shape(candidate.draft);
+  let draft: CharacterDraftV2;
+  if (profile) {
+    // 已有角色：只把卡片提供的字段合并进权威 V2 草稿，按人设小节替换，其余段落原样保留。
+    const patch: Record<string, unknown> = {};
+    for (const mapping of candidate.mappings) {
+      const parts = mapping.fieldPath.split('/').filter(Boolean);
+      if (parts.length === 1 && Object.hasOwn(cardDraft, parts[0])) {
+        patch[parts[0]] = (cardDraft as unknown as Record<string, unknown>)[parts[0]];
+      } else if (parts.length === 2 && (parts[0] === 'appearance' || parts[0] === 'speech') && Object.hasOwn(cardDraft[parts[0]], parts[1])) {
+        const bucket = (patch[parts[0]] ??= {}) as Record<string, unknown>;
+        bucket[parts[1]] = (cardDraft[parts[0]] as unknown as Record<string, unknown>)[parts[1]];
+      }
     }
+    draft = applyV1PatchToV2(normalizeCharacterDraft(JSON.parse(String(profile.draft_json))), patch);
+  } else {
+    draft = toAuthorityDraft(candidate.draft);
   }
-  const draft = normalizeCharacterDraft(merged);
   if (!draft.displayName) throw new Error('display_name_required');
   const assetId = (candidate.cover.selectedForAvatar || candidate.cover.selectedForReference) && isImage ? randomUUID() : null;
   const avatarAssetId = candidate.cover.selectedForAvatar ? assetId : null;
@@ -321,8 +341,6 @@ export async function commitCharacterImportSession(
   const providerId = typeof session.source.providerId === 'string' ? session.source.providerId : 'local';
   const externalId = typeof session.source.externalId === 'string' ? session.source.externalId : null;
   let assetArtifactId: string | null = null;
-  let assetArtifactPath: string | null = null;
-  let assetByteSize = 0;
   let formalSourceCopied = false;
   try {
     if (formalSourcePath && stagedPath && formalSourcePath !== stagedPath) {
@@ -338,8 +356,6 @@ export async function commitCharacterImportSession(
         metadata: { characterId, kind: assetKind, sourceSnapshotId: snapshotId },
       });
       assetArtifactId = artifact.id;
-      assetByteSize = artifact.byteSize;
-      assetArtifactPath = (database.connection.prepare('SELECT local_path FROM artifacts WHERE id=?').get(artifact.id) as { local_path: string | null } | undefined)?.local_path ?? null;
     }
 
     const result = database.transaction(() => {
@@ -349,11 +365,12 @@ export async function commitCharacterImportSession(
       }
       if (!targetId) {
         database.connection.prepare(`INSERT INTO character_profiles
-          (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,default_outfit_id)
-          VALUES (?,?,?,?,?,NULL,NULL,0,?,?,?,NULL)`).run(characterId, `character-${characterId.slice(0, 8)}`, draft.displayName, JSON.stringify(draft), '[]', now, now, newDraftRevision);
+          (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision)
+          VALUES (?,?,?,?,?,NULL,NULL,0,?,?,?)`).run(characterId, `character-${characterId.slice(0, 8)}`, draft.displayName, JSON.stringify(draft), '[]', now, now, newDraftRevision);
       }
       database.connection.prepare(`UPDATE character_profiles SET display_name=?,draft_json=?,updated_at=?,draft_revision=?${avatarAssetId ? ',avatar_asset_id=?' : ''} WHERE id=?`)
         .run(...(avatarAssetId ? [draft.displayName, JSON.stringify(draft), now, newDraftRevision, avatarAssetId, characterId] : [draft.displayName, JSON.stringify(draft), now, newDraftRevision, characterId]));
+      upsertCharacterBirthday(database, characterId, draft);
       if (candidate.tags) {
         const previousTags = profile ? JSON.parse(String(database.connection.prepare('SELECT tags_json FROM character_profiles WHERE id=?').get(characterId)!.tags_json)) as string[] : [];
         database.connection.prepare('UPDATE character_profiles SET tags_json=? WHERE id=?').run(JSON.stringify([...new Set([...previousTags, ...candidate.tags])].slice(0, 50)), characterId);
@@ -370,17 +387,15 @@ export async function commitCharacterImportSession(
       }
       if (assetId && stagedPath && assetArtifactId) {
         database.connection.prepare(`INSERT INTO character_assets
-          (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id,sha256,width,height,source_page,source_url,author_note,user_note,purposes_json,outfit_id,enabled,crop_json)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-          assetId, characterId, assetKind, assetArtifactPath || '', mediaMeta.mimeType, assetByteSize, `character-card-${characterId}${extname(stagedPath!) || '.png'}`, now,
-          assetArtifactId, assetArtifactId ? (database.connection.prepare('SELECT sha256 FROM artifacts WHERE id=?').get(assetArtifactId) as { sha256: string | null } | undefined)?.sha256 ?? sourcePayloadHash : sourcePayloadHash,
-          mediaMeta.width, mediaMeta.height, sourceUrl, sourceUrl, '', '', JSON.stringify([...(candidate.cover.selectedForAvatar ? ['avatar'] : []), ...(candidate.cover.selectedForReference ? ['identity'] : [])]), null, 1, null,
+          (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note)
+          VALUES (?,?,?,?,?,?,?,?,?)`).run(
+          assetId, characterId, assetKind, now, assetArtifactId, sourceUrl, sourceUrl, '', '',
         );
         if (candidate.cover.selectedForReference) {
           database.connection.prepare(`INSERT INTO character_visual_references
-            (id,character_id,asset_id,artifact_id,sha256,purposes_json,outfit_id,source_page,original_url,author_note,user_note,enabled,crop_json,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-            randomUUID(), characterId, assetId, assetArtifactId, assetArtifactId ? (database.connection.prepare('SELECT sha256 FROM artifacts WHERE id=?').get(assetArtifactId) as { sha256: string | null } | undefined)?.sha256 ?? sourcePayloadHash : sourcePayloadHash, JSON.stringify(['identity']), null, sourceUrl, sourceUrl, '', '', 1, null, now, now,
+            (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)
+            VALUES (?,?,?,?,1,NULL,?,?)`).run(
+            randomUUID(), characterId, assetId, JSON.stringify(['identity']), now, now,
           );
         }
       }
@@ -388,7 +403,7 @@ export async function commitCharacterImportSession(
       database.connection.prepare(`INSERT INTO character_sources
         (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
-        sourceId, characterId, `角色卡：${draft.displayName}`, sourceUrl, draft.identity.slice(0, 12_000), providerId === 'local' ? 'tavern-card' : 'character-tavern', now,
+        sourceId, characterId, `角色卡：${draft.displayName}`, sourceUrl, toV1View(draft).identity.slice(0, 12_000), providerId === 'local' ? 'tavern-card' : 'character-tavern', now,
         providerId, externalId, sourcePayloadHash, snapshotId,
       );
       for (const mapping of candidate.mappings) {

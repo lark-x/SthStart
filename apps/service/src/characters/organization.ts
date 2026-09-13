@@ -2,6 +2,7 @@ import type { CharacterBrowseQuery, CharacterOrganization, CharacterWork } from 
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { list, text } from './draft.js';
+import { upsertCharacterBirthday } from './birthday.js';
 
 export function normalizeOrganization(value: unknown): CharacterOrganization {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
@@ -56,12 +57,15 @@ export function browseCharacters(database: ServiceDatabase, query: CharacterBrow
   else if (query.source) add('EXISTS(SELECT 1 FROM character_sources s WHERE s.character_id=p.id AND coalesce(s.provider_id,s.source_type)=?)', query.source);
   if (query.unclassified === 'work') add("coalesce(json_extract(p.draft_json,'$.work'),'')=''");
   if (query.unclassified === 'tags') add('json_array_length(p.tags_json)=0');
+  if (query.birthdayStatus) add("coalesce(b.status,'unset')=?", query.birthdayStatus);
+  if (query.birthdayMonth) add("b.status='known' AND b.month=?", Math.max(1, Math.min(12, Math.floor(Number(query.birthdayMonth)))));
   if (query.excludeIds?.length) inValues('p.id', query.excludeIds, true);
   const where = clauses.join(' AND ');
+  const joins = 'LEFT JOIN character_birthdays b ON b.character_id=p.id';
   const page = Math.max(1, Math.floor(Number(query.page) || 1));
   const pageSize = Math.max(1, Math.min(100, Math.floor(Number(query.pageSize) || 24)));
-  const total = Number(database.connection.prepare(`SELECT count(*) count FROM character_profiles p WHERE ${where}`).get(...params)!.count);
-  const rows = database.connection.prepare(`SELECT p.* FROM character_profiles p WHERE ${where} ORDER BY ${query.sort === 'name' ? 'p.display_name COLLATE NOCASE' : 'p.updated_at DESC'},p.id LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
+  const total = Number(database.connection.prepare(`SELECT count(*) count FROM character_profiles p ${joins} WHERE ${where}`).get(...params)!.count);
+  const rows = database.connection.prepare(`SELECT p.* FROM character_profiles p ${joins} WHERE ${where} ORDER BY ${query.sort === 'name' ? 'p.display_name COLLATE NOCASE' : 'p.updated_at DESC'},p.id LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
   // Facets are built from the entire library (never just the current page). Tags narrow by work.
   const scopedNames = query.works?.length ? expandWorks(query.works) : [];
   const tagRows = database.connection.prepare(`SELECT DISTINCT j.value value FROM character_profiles p,json_each(p.tags_json) j WHERE p.archived=0 ${scopedNames.length ? `AND json_extract(p.draft_json,'$.work') COLLATE NOCASE IN (${scopedNames.map(() => '?').join(',')})` : ''} ORDER BY value`).all(...scopedNames);
@@ -69,7 +73,15 @@ export function browseCharacters(database: ServiceDatabase, query: CharacterBrow
   const interpretations = database.connection.prepare("SELECT DISTINCT json_extract(organization_json,'$.interpretation') value FROM character_profiles WHERE archived=0 ORDER BY value").all();
   const sources = database.connection.prepare('SELECT DISTINCT coalesce(s.provider_id,s.source_type) value FROM character_sources s JOIN character_profiles p ON p.id=s.character_id WHERE p.archived=0 ORDER BY value').all();
   const strings = (items: { value?: unknown }[]) => items.map(r => String(r.value || '')).filter(Boolean);
-  return { rows, total, page, pageSize, facets: { works, tags: strings(tagRows), groups: strings(groups), interpretations: strings(interpretations), sources: [...new Set(['manual', ...strings(sources)])] } };
+  const birthdayMonths = database.connection.prepare("SELECT DISTINCT month value FROM character_birthdays WHERE status='known' AND month IS NOT NULL ORDER BY month").all();
+  return {
+    rows, total, page, pageSize,
+    facets: {
+      works, tags: strings(tagRows), groups: strings(groups), interpretations: strings(interpretations),
+      sources: [...new Set(['manual', ...strings(sources)])],
+      birthdayMonths: birthdayMonths.map(r => Number(r.value)).filter(m => Number.isInteger(m) && m >= 1 && m <= 12),
+    },
+  };
 }
 export type OrganizationEdit = { ids: string[]; work?: string; originType?: 'ip' | 'original'; tags?: string[]; groups?: string[]; interpretation?: string; favorite?: boolean; fillEmpty?: boolean; replaceTags?: boolean; replaceGroups?: boolean };
 export function editCharacterOrganization(database: ServiceDatabase, input: OrganizationEdit) {
@@ -90,6 +102,7 @@ export function editCharacterOrganization(database: ServiceDatabase, input: Orga
       const tags = input.tags ? [...new Set([...(input.replaceTags ? [] : JSON.parse(String(row.tags_json)) as string[]), ...list(input.tags, 50)])].slice(0, 50) : JSON.parse(String(row.tags_json));
       const changedDraft = JSON.stringify(draft) !== String(row.draft_json);
       database.connection.prepare('UPDATE character_profiles SET draft_json=?,tags_json=?,organization_json=?,draft_revision=draft_revision+?,updated_at=? WHERE id=?').run(JSON.stringify(draft), JSON.stringify(tags), JSON.stringify(organization), changedDraft ? 1 : 0, nowIso(), id);
+      if (changedDraft) upsertCharacterBirthday(database, id, draft);
     }
     return { updated: ids.length };
   });

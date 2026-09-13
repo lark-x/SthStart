@@ -5,7 +5,14 @@ import { Plus } from 'lucide-react';
 import type { NarrativeStoryNode, NarrativeWork } from '@sthstart/contracts';
 import { Select } from '@/app/components/ui/select';
 import { Button } from '@/app/components/ui/button';
+import { cn } from '@/app/lib/cn';
 
+/**
+ * 目录树（§8.9）：作品选择 + 章节/任务目录 + 导入入口。
+ *
+ * 宽屏由工作区渲染为常驻左栏；窄屏默认收起，由页头「目录」按钮单独打开，
+ * 避免树、正文与详情顺序堆成极长页面。
+ */
 export function NarrativeTree({
   works,
   selectedWorkId,
@@ -59,11 +66,11 @@ export function NarrativeTree({
   }, [nodes]);
 
   return (
-    <aside className="w-full md:w-64 flex flex-col bg-surface-muted border-r border-[rgb(32_38_49/13%)] max-h-[45dvh] md:max-h-none md:min-h-[calc(100dvh-68px)]">
-      <div className="p-4 border-b border-[rgb(32_38_49/11%)] space-y-1.5">
+    <aside className="flex max-h-[45dvh] w-full flex-col bg-surface-muted md:max-h-none md:h-full md:w-64 md:flex-none md:border-r md:border-border-subtle">
+      <div className="shrink-0 space-y-1.5 border-b border-border-subtle p-3">
         <label
           htmlFor="narrative-work-select"
-          className="block text-sm font-bold uppercase tracking-wider text-[#777b7f]"
+          className="block text-xs font-semibold text-fg-subtle"
         >
           当前作品
         </label>
@@ -71,7 +78,7 @@ export function NarrativeTree({
           id="narrative-work-select"
           value={selectedWorkId}
           onChange={(e) => onSelectWork(e.target.value)}
-          className="bg-surface text-sm h-9"
+          className="h-9 bg-surface text-sm"
         >
           <option value="">尚未选择作品</option>
           {works.map((w) => (
@@ -82,7 +89,10 @@ export function NarrativeTree({
         </Select>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2 space-y-0.5">
+      <nav className="min-h-0 flex-1 overflow-y-auto py-1" aria-label="剧情目录">
+        {orderedNodes.length === 0 && (
+          <p className="px-3 py-6 text-center text-sm text-fg-subtle">这部作品还没有导入章节。</p>
+        )}
         {orderedNodes.map(({ node, depth }) => {
           const isActive = node.id === selectedNodeId;
 
@@ -92,29 +102,26 @@ export function NarrativeTree({
               type="button"
               onClick={() => onSelectNode(node.id)}
               style={{ paddingLeft: `${12 + depth * 14}px` }}
-              className={`flex flex-col w-full text-left py-2 pr-3 border-l-3 transition-colors cursor-pointer ${
+              aria-current={isActive ? 'true' : undefined}
+              className={cn(
+                'flex w-full flex-col items-start gap-0.5 border-l-2 py-1.5 pr-3 text-left transition-colors',
                 isActive
-                  ? 'border-[#b08a4b] bg-surface/90 text-ink font-semibold'
-                  : 'border-transparent text-[#343a43] hover:bg-surface/50'
-              }`}
+                  ? 'border-accent bg-surface'
+                  : 'border-transparent hover:bg-surface-hover',
+              )}
             >
-              <span className="text-sm uppercase font-bold tracking-widest text-[#898b8d]">
-                {node.kind}
+              <span className="text-xs text-fg-subtle">{node.kind}</span>
+              <span className={cn('w-full truncate text-sm', isActive ? 'font-semibold text-ink' : 'text-muted')}>
+                {node.title}
               </span>
-              <span className="text-sm truncate">{node.title}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="p-3 border-t border-[rgb(32_38_49/11%)]">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-center bg-transparent border-[rgb(32_38_49/18%)]"
-          onClick={onOpenImport}
-        >
-          <Plus className="h-3.5 w-3.5" />
+      <div className="shrink-0 border-t border-border-subtle p-3">
+        <Button variant="outline" size="sm" className="w-full justify-center" onClick={onOpenImport}>
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           <span>导入任务链</span>
         </Button>
       </div>

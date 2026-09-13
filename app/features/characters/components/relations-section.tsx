@@ -54,15 +54,15 @@ export function RelationsSection({
 
   return (
     <div className="space-y-6">
-      <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
-        <h3 className="font-serif text-2xl font-medium text-ink">关系与资料来源</h3>
+      <div className="pb-3 border-b border-border-subtle">
+        <h3 className="text-xl font-medium text-ink">关系与资料来源</h3>
         <p className="text-sm text-muted mt-1 leading-relaxed">
           关系是有方向的；“A 如何看待 B” 与 “B 如何看待 A” 可以具有不同的态度与描述。
         </p>
       </div>
 
       {/* Relationship Creator */}
-      <div className="p-4 rounded-[4px_16px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface space-y-3">
+      <div className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3">
         <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
           添加人物关系
         </h4>
@@ -135,7 +135,7 @@ export function RelationsSection({
             return (
               <div
                 key={rel.id}
-                className="flex items-start justify-between gap-3 p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface"
+                className="flex items-start justify-between gap-3 p-3.5 rounded border border-border-subtle bg-surface"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -159,7 +159,7 @@ export function RelationsSection({
                 <button
                   type="button"
                   onClick={() => onRemoveRelationship(rel.id)}
-                  className="p-1 text-muted hover:text-[#c9674a] transition-colors"
+                  className="p-1 text-muted hover:text-danger transition-colors"
                   title="移除关系"
                   aria-label="移除关系"
                 >
@@ -170,7 +170,7 @@ export function RelationsSection({
           })}
 
           {(!detail?.relationships || detail.relationships.length === 0) && (
-            <div className="p-6 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded">
+            <div className="p-6 text-center text-sm text-muted border border-dashed border-border-default rounded">
               尚未建立任何角色关系。
             </div>
           )}
@@ -178,7 +178,7 @@ export function RelationsSection({
       </div>
 
       {/* Sources List */}
-      <div className="pt-4 border-t border-[rgb(24_32_29/10%)] space-y-3">
+      <div className="pt-4 border-t border-border-subtle space-y-3">
         <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
           参考资料来源 ({detail?.sources.length ?? 0})
         </h4>
@@ -187,7 +187,7 @@ export function RelationsSection({
           {detail?.sources.map((source) => (
             <div
               key={source.id}
-              className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface space-y-1"
+              className="p-3.5 rounded border border-border-subtle bg-surface space-y-1"
             >
               <div className="flex items-center justify-between">
                 <strong className="text-sm font-semibold text-ink">{source.title}</strong>
@@ -223,7 +223,7 @@ export function RelationsSection({
           ))}
 
           {(!detail?.sources || detail.sources.length === 0) && (
-            <div className="p-6 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded">
+            <div className="p-6 text-center text-sm text-muted border border-dashed border-border-default rounded">
               暂无参考来源。使用 AI 智能草稿生成或导入 Tavern 卡片时会自动记录。
             </div>
           )}

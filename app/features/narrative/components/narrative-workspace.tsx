@@ -1,8 +1,6 @@
 'use client';
-import { AppSwitcher } from '@/app/components/shared/app-switcher';
 
 import React, { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import {
@@ -19,11 +17,16 @@ import { NarrativeInspector } from './narrative-inspector';
 import { NarrativeImport } from './narrative-import';
 import { narrativeKeys } from '@/app/lib/query-keys';
 import { useToast } from '@/app/providers/ui-provider';
-import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
+import { PageContainer } from '@/app/components/shared/page-layout';
+import { PageHeader } from '@/app/components/shared/page-header';
+import { PageTabs } from '@/app/components/ui/page-tabs';
+import { cn } from '@/app/lib/cn';
 
 export function NarrativeWorkspace() {
   const toast = useToast();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // 窄屏下目录默认收起：正文优先，目录与检索各自单独打开（§8.9）。
+  const [treeOpen, setTreeOpen] = useState(false);
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'read' | 'import'>('read');
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
@@ -154,87 +157,81 @@ export function NarrativeWorkspace() {
   };
 
   return (
-    <main className="min-h-screen md:h-dvh md:overflow-hidden w-full bg-paper text-ink flex flex-col">
-      {/* Header */}
-      <header className="sticky md:static top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-3 bg-surface border-b border-[rgb(32_38_49/15%)]">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-serif text-lg font-medium text-ink"
-          >
-            <span className="h-8 w-8 rounded-full bg-[#283548] text-[#f6ebd2] font-serif flex items-center justify-center text-sm">
-              叙
-            </span>
-            <h1 className="text-lg font-medium">叙事档案</h1>
-          </Link>
-        </div>
+    <div className="flex min-h-0 w-full flex-col md:h-dvh">
+      {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
+      <div className="shrink-0 border-b border-border-subtle bg-surface">
+        <PageContainer className="pt-4">
+          <PageHeader
+            compact
+            title="叙事档案"
+            description="任务链阅读、多作品追溯与原文检索。"
+          />
 
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <AppSwitcher />
-          <EyeCareToggle />
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 pt-1">
+            <PageTabs
+              ariaLabel="叙事工作模式"
+              value={mode}
+              onChange={(id) => setMode(id as 'read' | 'import')}
+              tabs={[
+                { id: 'read', label: '阅读' },
+                { id: 'import', label: '数据源与导入' },
+              ]}
+            />
 
-          <button
-            type="button"
-            aria-expanded={inspectorOpen}
-            onClick={() => setInspectorOpen(!inspectorOpen)}
-            className={`inline-flex items-center h-8 px-2.5 text-sm font-medium rounded-md border transition-colors cursor-pointer select-none ${
-              inspectorOpen
-                ? 'bg-accent/12 text-accent-dark border-accent/30 font-semibold shadow-2xs'
-                : 'bg-surface hover:bg-white text-muted hover:text-ink border-[rgb(24_32_29/14%)] shadow-2xs'
-            }`}
-          >
-            <span className="hidden sm:inline">检索原文</span>
-            <span className="sm:hidden">检索</span>
-          </button>
+            {mode === 'read' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  aria-expanded={treeOpen}
+                  onClick={() => setTreeOpen((open) => !open)}
+                  className="inline-flex h-9 items-center rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
+                >
+                  目录
+                </button>
 
-          <div className="flex items-center rounded-md border border-[rgb(24_32_29/14%)] bg-surface p-0.5 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setMode('read')}
-              className={`h-7 px-2.5 sm:px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                mode === 'read'
-                  ? 'bg-ink text-paper shadow-2xs font-semibold'
-                  : 'text-muted hover:text-ink'
-              }`}
-            >
-              阅读模式
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('import')}
-              className={`h-7 px-2.5 sm:px-3 rounded text-xs sm:text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                mode === 'import'
-                  ? 'bg-ink text-paper shadow-2xs font-semibold'
-                  : 'text-muted hover:text-ink'
-              }`}
-            >
-              <span className="hidden sm:inline">数据源与导入</span>
-              <span className="sm:hidden">导入</span>
-            </button>
+                <button
+                  type="button"
+                  aria-expanded={inspectorOpen}
+                  onClick={() => setInspectorOpen((open) => !open)}
+                  className={cn(
+                    'inline-flex h-9 items-center rounded-[var(--radius-control)] border px-3 text-sm font-medium transition-colors',
+                    inspectorOpen
+                      ? 'border-accent/30 bg-accent/12 font-semibold text-accent-dark'
+                      : 'border-border-default bg-surface text-muted hover:text-ink',
+                  )}
+                >
+                  检索原文
+                </button>
+              </div>
+            )}
           </div>
-        </div>
-      </header>
+        </PageContainer>
+      </div>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col md:flex-row min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {mode === 'read' ? (
           <>
-            <NarrativeTree
-              works={works}
-              selectedWorkId={activeWorkId}
-              onSelectWork={(workId) => {
-                setConceptTaskId(null);
-                setSelectedWorkId(workId);
-                setSelectedNodeId('');
-              }}
-              nodes={nodes}
-              selectedNodeId={activeNodeId}
-              onSelectNode={(nodeId) => {
-                setConceptTaskId(null);
-                setSelectedNodeId(nodeId);
-              }}
-              onOpenImport={() => setMode('import')}
-            />
+            {/* 宽屏常驻左栏；窄屏默认隐藏，由页头「目录」按钮单独打开。 */}
+            <div className={cn('min-h-0 md:flex md:w-64 md:flex-none', treeOpen ? 'flex' : 'hidden')}>
+              <NarrativeTree
+                works={works}
+                selectedWorkId={activeWorkId}
+                onSelectWork={(workId) => {
+                  setConceptTaskId(null);
+                  setSelectedWorkId(workId);
+                  setSelectedNodeId('');
+                }}
+                nodes={nodes}
+                selectedNodeId={activeNodeId}
+                onSelectNode={(nodeId) => {
+                  setConceptTaskId(null);
+                  setSelectedNodeId(nodeId);
+                  setTreeOpen(false);
+                }}
+                onOpenImport={() => setMode('import')}
+              />
+            </div>
 
             <NarrativeReader
               reading={readingData ?? null}
@@ -259,6 +256,6 @@ export function NarrativeWorkspace() {
           />
         )}
       </div>
-    </main>
+    </div>
   );
 }

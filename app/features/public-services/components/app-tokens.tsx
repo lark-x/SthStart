@@ -36,9 +36,6 @@ export function AppTokens({
   return (
     <Card>
       <CardHeader>
-        <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
-          APPLICATION TOKENS
-        </span>
         <CardTitle>已接入应用与令牌</CardTitle>
         <CardDescription>
           应用通过分配的令牌访问公共 LLM、向量与图片能力。
@@ -49,7 +46,7 @@ export function AppTokens({
           {overview?.apps.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between p-3 rounded border border-[rgb(24_32_29/10%)] bg-surface"
+              className="flex items-center justify-between p-3 rounded border border-border-subtle bg-surface"
             >
               <div>
                 <strong className="text-sm font-semibold text-ink">
@@ -68,13 +65,13 @@ export function AppTokens({
         {issuedToken && (
           <div className="p-3.5 rounded bg-accent/10 border border-accent/30 text-sm text-accent-dark space-y-1 one-time-token">
             <strong className="block font-bold">仅显示一次，请立即保存：</strong>
-            <code className="block font-mono bg-white p-2 rounded select-all break-all text-ink">
+            <code className="block font-mono bg-surface-raised p-2 rounded select-all break-all text-ink">
               {issuedToken}
             </code>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-[rgb(24_32_29/10%)]">
+        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border-subtle">
           <Input
             value={appId}
             onChange={(e) => setAppId(e.target.value)}

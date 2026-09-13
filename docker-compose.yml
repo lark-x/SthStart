@@ -3,11 +3,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
     image: sthstart:latest
     container_name: sthstart
     restart: unless-stopped
     ports:
       - "${PORTAL_PORT:-4173}:4173"
+      # 邻舍核心：提供已构建的邻舍界面与 API。只绑定宿主机回环，与门户一致，
+      # 禁止把 3099 暴露到局域网或公网（远程访问请用 Cloudflare Tunnel + Access）。
+      - "127.0.0.1:${LINSHE_PORT:-3099}:3099"
     environment:
       # 核心运行端口
       - PORTAL_PORT=4173
@@ -34,14 +40,34 @@ services:
       - STHSTART_AKASHA_MCP_KEY=${STHSTART_AKASHA_MCP_KEY:-}
       - STHSTART_MCP_TIMEOUT_MS=${STHSTART_MCP_TIMEOUT_MS:-45000}
 
+      # 容器内凭据存储：容器没有系统密钥环（D-Bus / Secret Service），管理端保存供应商
+      # 密钥时会启用 cross-keychain 的加密文件后端，凭据加密后写入挂载的 ./data 目录。
+      # 生成主密钥：node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+      # 留空则不启用文件后端，此时只能通过 STHSTART_SECRET_<PROFILE_ID> 环境变量提供密钥。
+      - KEYRING_FILE_MASTER_KEY=${KEYRING_FILE_MASTER_KEY:-}
+      - XDG_DATA_HOME=/app/data
+
       # 容器内数据持久化目录
       - STHSTART_DATABASE_PATH=/app/data/sthstart.db
       - STHSTART_NARRATIVE_DATABASE_PATH=/app/data/narrative.db
       - STHSTART_ARTIFACT_DIR=/app/data/artifacts
       - STHSTART_LOG_DIR=/app/data/logs
+
+      # 向量服务的 Chroma 数据持久化在宿主机 ./data/linshe-vector 中
+      - CHROMA_PERSIST_DIR=/app/data/linshe-vector/chroma_data
+
+      # 邻舍内嵌应用
+      # 门户 iframe 与“新窗口打开”使用的地址，由浏览器解析；本机访问保持回环即可
+      - LINSHE_APP_URL=${LINSHE_APP_URL:-http://127.0.0.1:3099}
+      # 邻舍 Agent 的监听端口（与上面的端口映射保持一致）
+      - LINSHE_AGENT_PORT=3099
+      # 容器内的 localhost 指向容器自身，宿主机 ComfyUI 必须显式指向 host.docker.internal
+      - COMFYUI_URL=${COMFYUI_URL:-http://host.docker.internal:8188}
     volumes:
       # 挂载宿主机 ./data 目录，持久化 SQLite 数据库、多媒体制品和日志
       - ./data:/app/data
+      # 邻舍自己的数据库、生成图片与头像（agent-core/data），独立于 SthStart 数据
+      - ./data/linshe:/app/upstream/linshe/agent-core/data
     extra_hosts:
       # 允许容器通过 host.docker.internal 访问宿主机上运行的 ComfyUI (8188)、Worker 或邻舍
       - "host.docker.internal:host-gateway"

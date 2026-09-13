@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { CharacterDraft } from '@sthstart/contracts';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
 import test from 'node:test';
@@ -47,7 +48,8 @@ test('character card parser validates PNG metadata, supports V2 mapping, and rej
   assert.equal(parsed.width, 1);
   const mapped = mapCharacterCard(parsed);
   assert.equal(mapped.candidate.draft.displayName, 'PNG 角色');
-  assert.deepEqual(mapped.candidate.draft.personality, ['冷静', '观察']);
+  // 卡片映射产物是 V1 细分字段预览形态（契约类型为 V1/V2 联合，这里收窄断言）。
+  assert.deepEqual((mapped.candidate.draft as CharacterDraft).personality, ['冷静', '观察']);
   assert.equal(mapped.compatibility.supported, true);
   const corrupted = Buffer.from(bytes); corrupted[corrupted.length - 1] ^= 1;
   assert.throws(() => parseCharacterCard({ bytes: corrupted, mimeType: 'image/png' }), /invalid_png_crc|invalid_png_end/);

@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import { EventEmitter } from 'node:events';
 import { appendFile, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, isAbsolute, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
 import type {
@@ -253,6 +253,17 @@ interface RuntimeManagerOptions {
   fetcher?: typeof fetch;
 }
 
+/**
+ * 在 Windows 上 spawn('npm.cmd', …) 会直接抛 EINVAL（Node 对 .cmd/.bat 不允许无 shell 执行），
+ * 于是「启动邻舍 Web」永远起不来。这里改为用当前 Node 执行 npm 的 JS 入口，
+ * 既绕开 .cmd 限制，也避免 shell:true 带来的引号问题。
+ */
+function npmLaunch(): { command: string; prefix: string[] } {
+  if (process.platform !== 'win32') return { command: 'npm', prefix: [] };
+  const cli = resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
+  return existsSync(cli) ? { command: process.execPath, prefix: [cli] } : { command: 'npm.cmd', prefix: [] };
+}
+
 export class RuntimeManager {
   private managed = new Map<string, Managed>();
   private readonly fetcher: typeof fetch;
@@ -262,7 +273,7 @@ export class RuntimeManager {
   }
 
   private definitions(): Definition[] {
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const npm = npmLaunch();
     const python = process.platform === 'win32'
       ? resolve(this.config.linsheRoot, 'vector-service/venv/Scripts/python.exe')
       : resolve(this.config.linsheRoot, 'vector-service/venv/bin/python');
@@ -279,7 +290,7 @@ export class RuntimeManager {
       // management must always probe the local Vite listener. A remote URL
       // can require an Access cookie and would otherwise make a healthy local
       // process look stopped to the Mac-side runtime manager.
-      { id: 'linshe-web', name: '邻舍 Web', port: this.config.linsheWebPort, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm, args: ['run', 'dev', '--', '--host', this.config.lanAccess ? '0.0.0.0' : '127.0.0.1', '--port', String(this.config.linsheWebPort)], health: `http://127.0.0.1:${this.config.linsheWebPort}`, installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
+      { id: 'linshe-web', name: '邻舍 Web', port: this.config.linsheWebPort, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm.command, args: [...npm.prefix, 'run', 'dev', '--', '--host', this.config.lanAccess ? '0.0.0.0' : '127.0.0.1', '--port', String(this.config.linsheWebPort)], health: `http://127.0.0.1:${this.config.linsheWebPort}`, installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
       { id: 'maibot', name: 'MaiBot', port: 8001, optional: true, cwd: resolve(maibotRoot, 'MaiBot'), command: maibotPython, args: ['bot.py'], health: 'http://127.0.0.1:8001', installed: existsSync(resolve(maibotRoot, 'MaiBot/bot.py')) && Boolean(maibotPython) },
       { id: 'snowluma', name: 'SnowLuma', port: 5099, optional: true, cwd: resolve(maibotRoot, 'Snowluma'), command: snowNode, args: ['index.mjs'], health: 'http://127.0.0.1:5099', installed: existsSync(resolve(maibotRoot, 'Snowluma/index.mjs')) },
     ];
@@ -443,7 +454,9 @@ export class RuntimeManager {
         const script = `$p=(Get-NetTCPConnection -State Listen -LocalPort ${definition.port} -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if($p){$w=Get-CimInstance Win32_Process -Filter \"ProcessId=$p\"; Write-Output $p; Write-Output $w.CommandLine}`;
         const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-Command', script], { timeout: 2_000 });
         const [pidText, ...commandParts] = stdout.trim().split(/\r?\n/); const pid = Number(pidText);
-        if (!Number.isInteger(pid)) return null;
+        // 端口空闲时 PowerShell 没有任何输出，Number('') 会得到 0。若不排除它，
+        // 就会被当成「别的进程占着端口」，服务永远无法在空闲端口上启动。
+        if (!Number.isInteger(pid) || pid <= 0) return null;
         const command = commandParts.join(' ');
         return { pid, processGroup: null, cwd: null, belongsToProject: command.includes(this.config.linsheRoot) || command.includes(definition.cwd) };
       } catch { return null; }
@@ -451,7 +464,7 @@ export class RuntimeManager {
     try {
       const { stdout } = await execFileAsync('lsof', ['-nP', `-iTCP:${definition.port}`, '-sTCP:LISTEN', '-t'], { timeout: 2_000 });
       const pid = Number(stdout.trim().split(/\s+/)[0]);
-      if (!Number.isInteger(pid)) return null;
+      if (!Number.isInteger(pid) || pid <= 0) return null;
       const [{ stdout: cwdOutput }, { stdout: groupOutput }] = await Promise.all([
         execFileAsync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { timeout: 2_000 }).catch(() => ({ stdout: '', stderr: '' })),
         execFileAsync('ps', ['-o', 'pgid=', '-p', String(pid)], { timeout: 2_000 }).catch(() => ({ stdout: '', stderr: '' })),

@@ -111,6 +111,31 @@ docker run -d \
 | `/app/data/narrative.db` | `./data/narrative.db` | 叙事档案 SQLite 数据库 |
 | `/app/data/artifacts/` | `./data/artifacts/` | 多媒体存储库（AI 生图、视频剪辑、音频片段） |
 | `/app/data/logs/` | `./data/logs/` | 运行排查与脱敏诊断日志 |
+| `/app/data/keyring/secrets.json` | `./data/keyring/secrets.json` | 供应商密钥的加密文件（启用文件凭据后端时生成，权限 0600） |
+| `/app/upstream/linshe/agent-core/data/` | `./data/linshe/` | 邻舍自己的数据库、生成图片与头像（与 SthStart 数据相互独立） |
+
+### 容器内的供应商密钥存储
+
+容器基础镜像（Debian）里没有 D-Bus 与系统密钥环，而 cross-keychain 的 Linux 后端只检查“平台是 Linux 且原生模块可加载”，不会真正连接 Secret Service。因此未做配置时，在「公共服务 → LLM 模板」保存 API Key 会提示 `Native secret service error: Couldn't access platform storage: PermissionDenied`。
+
+推荐做法：在 `.env` 中固定一个主密钥，容器改用 cross-keychain 的加密文件后端，把凭据以 AES-256-GCM 加密写入挂载的 `./data/keyring/secrets.json`：
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+```dotenv
+KEYRING_FILE_MASTER_KEY=<上面生成的 64 位十六进制>
+```
+
+`docker-compose.yml` 已将该变量传入容器，并把 `XDG_DATA_HOME` 指向 `/app/data`，密钥会随 `./data` 一起持久化与备份；「公共服务」页面的“安全存储”会显示 `已连接 容器内加密文件存储`。
+
+> **注意**：更换或丢失主密钥后，已保存的供应商密钥无法解密，需要在设置页重新填写。
+
+其他选择：
+
+- 给容器安装真正的 Secret Service（`dbus` + `gnome-keyring`），并在启动脚本里用 `dbus-run-session` 拉起 `gnome-keyring-daemon --unlock`；系统密钥环可用时会优先生效，代价是镜像体积与进程数增加。
+- 完全依赖环境变量 `STHSTART_SECRET_<配置ID大写>`（如 `STHSTART_SECRET_DFS`）：模板仍可正常保存，只是页面会提示 API Key 未写入凭据库，模型调用由环境变量提供密钥。
 
 ### 数据库更新与迁移
 容器启动脚本 `scripts/start-docker.mjs` 会在每次服务就绪前自动执行 `npm run db:migrate`，保障数据库 schema 始终与最新版本匹配。
@@ -189,7 +214,6 @@ npm run db:integrity
 ---
 
 ## 外部算力与 AI 节点桥接
-
 容器内已预先配置 `host.docker.internal` 解析：
 
 1. **连接宿主机 ComfyUI**：
@@ -202,6 +226,26 @@ npm run db:integrity
 
 3. **内置 FFmpeg 多媒体管线**：
    - 镜像内部已预装完整版 `ffmpeg` 与 `ffprobe`。进入设置页的“媒体诊断”，视频预处理与自动缩略图生成默认处于就绪状态，无需宿主机额外配置。
+
+## 邻舍（内嵌应用）
+
+邻舍（`upstream/linshe`）随镜像一起安装：构建阶段在 `upstream/linshe/agent-core` 与 `upstream/linshe/web-ui` 内各自执行 `npm ci`（Submodule 不属于根 npm workspace，根目录的 `npm ci` 不会覆盖它）。
+
+```text
+浏览器 ──iframe──▶ 邻舍核心 127.0.0.1:3099（已构建界面 + API）
+                        │
+                        ├─▶ SthStart 公共服务 http://127.0.0.1:4100（容器内）
+                        └─▶ 宿主机 ComfyUI http://host.docker.internal:8188
+```
+
+- 端口：容器内邻舍核心监听 `3099`，`docker-compose.yml` 只把它发布到宿主机回环（`127.0.0.1:3099`），与 `4100` 一样不进入局域网；远程访问请沿用 Cloudflare Tunnel + Access。改动宿主机端口时同步调整 `LINSHE_PORT`。
+- 地址：门户的 iframe 与“新窗口打开”使用 `LINSHE_APP_URL`，由浏览器解析。改用域名或 Tunnel 时把它改成对外地址，并与 `LINSHE_PORT` 一起调整。
+- 数据：邻舍的数据库、生成图片和头像写入 `agent-core/data`，已映射到宿主机 `./data/linshe`；备份 `./data` 即可覆盖。
+- 算力：容器内的 `localhost` 指向容器自身，宿主机 ComfyUI 必须通过 `COMFYUI_URL=http://host.docker.internal:8188` 指定。
+- 向量服务：镜像会随同 Python 运行时、向量依赖和 Jina 本地模型一起构建；Chroma 数据持久化在宿主机 `./data/linshe-vector`。首次构建会额外下载约 155 MB 模型并安装 Python 依赖。
+- 启动：可在「控制中心」点击启动，或开启“启动 SthStart 时自动拉起邻舍服务”。邻舍的模型连接沿用 SthStart 公共服务配置，无需重复填写地址与密钥。
+
+> **提示**：如果升级前的旧镜像仍显示 `spawn python3 ENOENT`，请执行 `docker compose up -d --build` 重建镜像；新镜像会提供容器内 Python 和向量运行环境。
 
 ---
 

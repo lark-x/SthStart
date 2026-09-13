@@ -7,6 +7,9 @@ import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contrac
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
+import { SplitPanes } from '@/app/components/shared/split-panes';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   cancelCreativeTask,
@@ -53,6 +56,7 @@ export function CreativeClient() {
   const artifactsQuery = useCreativeArtifacts();
   const [mode, setMode] = useState<CreativeMode>('text-to-image');
   const [form, setForm] = useState<CreativeFormState>(EMPTY_CREATIVE_FORM);
+  const [resultView, setResultView] = useState<'media' | 'tasks'>('media');
   const [sourceArtifact, setSourceArtifact] = useState<ArtifactDescriptor | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
   const [lastFrameArtifact, setLastFrameArtifact] = useState<ArtifactDescriptor | null>(null);
@@ -236,6 +240,7 @@ export function CreativeClient() {
         sourceArtifactId: mode === 'image-to-image' ? sourceArtifact?.id : undefined,
       };
       await createCreativeTask(payload);
+      setResultView('tasks');
       toast.success('创作任务已提交，将在后台执行');
       void statusQuery.refetch();
       void tasksQuery.refetch();
@@ -328,14 +333,10 @@ export function CreativeClient() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-paper px-4 py-6 text-ink sm:px-8 md:px-12">
-      <div className="mx-auto max-w-7xl space-y-5">
+    <PageContainer className="space-y-4 py-6">
         <PageHeader
-          backHref="/"
-          backLabel="返回门户首页"
-          eyebrow="CREATIVE CENTER"
           title="创作中心"
-          description="把提示词变成可复用的图片与视频素材。所有任务都通过 SthStart 公共生成核心执行并保存在本地媒体库。"
+          description="把灵感变成图片与视频，保存到你的媒体库。"
           actions={<Button size="sm" variant="outline" onClick={() => { void statusQuery.refetch(); void tasksQuery.refetch(); void artifactsQuery.refetch(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>}
         />
         {(pageError || serviceError) && (
@@ -347,26 +348,38 @@ export function CreativeClient() {
             {pageError || (serviceError instanceof Error ? serviceError.message : String(serviceError))}
           </Alert>
         )}
-        <details className="rounded-lg border border-border-default bg-surface p-3">
+        <div className="flex flex-wrap items-center gap-3">
+        <details className="flex-1 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
           <summary className="cursor-pointer text-sm font-medium">生成服务 · {ready ? '当前模式已就绪' : '当前模式待配置'} · 查看连接详情</summary>
           <div className="mt-3"><CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} /></div>
         </details>
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,.85fr)_minmax(0,1.3fr)]">
+        {!ready && <a href="/settings/generation" className="text-sm font-semibold text-accent hover:underline">配置生成工作流 →</a>}
+        </div>
+        {/*
+         * 宽屏左参数区 320–400px，右侧结果/预览（§8.6）。
+         * 两栏各自滚动：参数区内容多时自己滚，结果区不会把参数区拉长（§4.4）。
+         */}
+        <SplitPanes
+          className="gap-5 xl:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]"
+          from="xl"
+          labels={{ left: '生成参数', right: '生成结果' }}
+          left={
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 rounded-lg bg-paper p-1" role="tablist" aria-label="生成模式">
-              {[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === value}
-                  onClick={() => handleModeChange(value)}
-                  className={`flex min-w-[104px] flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-xs font-semibold transition-colors ${mode === value ? 'bg-ink text-paper shadow-sm' : 'text-muted hover:bg-surface hover:text-ink'}`}
-                >
-                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}
-                </button>
-              ))}
-            </div>
+            <PageTabs
+              ariaLabel="生成模式"
+              value={mode}
+              onChange={(id) => handleModeChange(id as CreativeMode)}
+              tabs={[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => ({
+                id: value,
+                panelId: `creative-panel-${value}`,
+                label: (
+                  <>
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {label}
+                  </>
+                ),
+              }))}
+            />
             {isVideoMode ? (
               <VideoGenerator
                 form={form}
@@ -401,8 +414,14 @@ export function CreativeClient() {
               />
             )}
           </div>
-          <div className="min-w-0 space-y-4">
-        <MediaGallery
+          }
+          right={
+          <div className="min-w-0 space-y-3">
+            <div className="flex gap-2" aria-label="创作结果视图">
+              <Button size="sm" variant={resultView === 'media' ? 'primary' : 'outline'} aria-pressed={resultView === 'media'} onClick={() => setResultView('media')}>媒体库（{artifactsTotal}）</Button>
+              <Button size="sm" variant={resultView === 'tasks' ? 'primary' : 'outline'} aria-pressed={resultView === 'tasks'} onClick={() => setResultView('tasks')}>生成任务（{sortedTasks.length}）</Button>
+            </div>
+        {resultView === 'media' ? <MediaGallery
           artifacts={artifacts}
           total={artifactsTotal}
           isLoading={artifactsQuery.isLoading}
@@ -411,12 +430,10 @@ export function CreativeClient() {
           onLoadMore={() => { void artifactsQuery.fetchNextPage(); }}
           onPin={handlePin}
           onDelete={handleDelete}
-        />
+        /> : <TaskList tasks={sortedTasks} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />}
           </div>
-        </div>
-        <TaskList tasks={sortedTasks} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />
-
-      </div>
-    </main>
+          }
+        />
+    </PageContainer>
   );
 }

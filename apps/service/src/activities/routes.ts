@@ -23,7 +23,7 @@ import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { errorConfigurationPath, resolveAppLlmBindingStatus } from '../llm-status.js';
 import { ActivityStore } from './store.js';
 import { createActorSnapshotFromCharacter, transferCharacterReferenceToActivity, materializeCharacterAvatars } from './characters.js';
 import {
@@ -82,6 +82,8 @@ export function registerActivityRoutes(
 ) {
   const store = new ActivityStore(database);
   store.recoverDanglingJobs();
+  // 排期投影可以随时重建，启动时同步以覆盖旧数据。
+  store.rebuildSchedules();
 
   function checkAdmin(request: FastifyRequest, reply: FastifyReply): boolean {
     if (config.adminToken && !authenticateAdmin(config.adminToken, request)) {
@@ -578,8 +580,9 @@ export function registerActivityRoutes(
       return result;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('conflict')) {
-        return reply.code(409).send({ error: 'revision_conflict', message: msg });
+      // 冲突既可能来自版本比较，也可能来自候选引用失效，统一按 409 返回。
+      if (msg.includes('conflict') || (err as { code?: string }).code === 'candidate_stale') {
+        return reply.code(409).send({ error: (err as { code?: string }).code || 'revision_conflict', message: msg });
       }
       return reply.code(400).send({ error: 'adopt_failed', message: msg });
     }
@@ -588,13 +591,14 @@ export function registerActivityRoutes(
   // 15. Capabilities
   app.get('/api/v1/admin/activities/capabilities', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
-    const llmProfile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
+    const llmStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
     const textToImage = resolveImageCapabilityDescriptor(database, 'activity_image_text', 'activity_media_slot');
     const imageToImage = resolveImageCapabilityDescriptor(database, 'activity_image_edit', 'activity_media_slot');
 
     return {
-      llm: Boolean(llmProfile),
-      llmProfile: llmProfile ? { id: llmProfile.id, name: llmProfile.id } : null,
+      llm: llmStatus.ready,
+      llmProfile: llmStatus.profile ? { id: llmStatus.profile.id, name: llmStatus.profile.name } : null,
+      llmStatus,
       media: true,
       images: {
         textToImage,
@@ -654,9 +658,12 @@ export function registerActivityRoutes(
     request: FastifyRequest<{
       Params: { id: string };
       Body: {
-        mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text';
+        mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot';
         targetRevisionId?: string;
-        scope?: { stageId?: string; recordIds?: string[] };
+        scope?: {
+          stageId?: string; recordIds?: string[]; speakerActorId?: string;
+          authorActorId?: string; actorIds?: string[]; birthdayActorIds?: string[];
+        };
         stageId?: string;
         userInstruction?: string;
         idempotencyKey?: string;
@@ -668,6 +675,14 @@ export function registerActivityRoutes(
     const body = request.body || {};
     const idempotencyKey = (request.headers['idempotency-key'] as string | undefined) || body.idempotencyKey;
     const scope = body.scope || (body.stageId ? { stageId: body.stageId } : undefined);
+    const snippetModes = ['invite', 'wish', 'moment', 'shot'];
+    // 快捷文案必须明确目标阶段，后台才能限制生成范围。
+    if (snippetModes.includes(body.mode) && !scope?.stageId) {
+      return reply.code(400).send({ error: 'stage_required', message: '请先选择要生成内容的目标阶段。' });
+    }
+    if (body.mode === 'rewrite-records' && !scope?.recordIds?.length) {
+      return reply.code(400).send({ error: 'records_required', message: '请先选择要重写的消息或动态。' });
+    }
 
     try {
       const job = await runTextGenerationJob(
@@ -687,6 +702,10 @@ export function registerActivityRoutes(
       return reply.code(202).send(job);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      const configurationPath = errorConfigurationPath(err);
+      if ((err as { code?: string }).code === 'llm_not_ready') {
+        return reply.code(409).send({ error: 'llm_not_ready', message: msg, ...(configurationPath ? { configurationPath } : {}) });
+      }
       if (msg.includes('idempotency_conflict')) {
         return reply.code(409).send({ error: 'idempotency_conflict', message: msg });
       }

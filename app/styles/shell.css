@@ -1,0 +1,507 @@
+/*
+ * 应用外框（AppShell）与四类页面模板的样式。
+ *
+ * 独立于 globals.css：globals 逐步收缩为基础 reset 与共享基础规则，
+ * 外框与模板规则以 .shell-* / .tpl-* 明确根标识，避免与旧 .portal-* / .studio-* 规则交叉命中。
+ */
+
+/* ==================== 外框骨架 ==================== */
+
+.shell-root {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg-app);
+}
+
+/* ---------- 左侧导航 ---------- */
+
+.shell-sidebar {
+  display: flex;
+  width: var(--shell-sidebar);
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-3);
+  /* 仅纵向滚动：收起态视觉隐藏的标签会以绝对定位存在，不能让它撑出横向滚动条。 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg-nav);
+  border-right: 1px solid var(--border-subtle);
+  transition: width var(--motion-base) var(--motion-ease);
+}
+
+.shell-sidebar[data-collapsed='true'] {
+  width: var(--shell-sidebar-collapsed);
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 40px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--fg-default);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.shell-brand:hover {
+  background: var(--surface-hover);
+}
+
+.shell-brand-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.shell-nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.shell-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shell-nav-label {
+  padding: 0 var(--space-3) var(--space-1);
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.shell-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.shell-nav-link:hover {
+  background: var(--surface-hover);
+  color: var(--fg-default);
+}
+
+.shell-nav-link[aria-current='page'],
+.shell-nav-link[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.shell-nav-link[aria-current='page'] .shell-nav-icon,
+.shell-nav-link[data-active='true'] .shell-nav-icon {
+  color: var(--accent);
+}
+
+.shell-nav-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.shell-sidebar[data-collapsed='true'] .shell-nav-link {
+  justify-content: center;
+  padding: 0;
+  width: var(--control-h-sm);
+}
+
+.shell-sidebar[data-collapsed='true'] .shell-nav-label,
+.shell-sidebar[data-collapsed='true'] .shell-brand-text {
+  display: none;
+}
+
+/*
+ * 收起时保留链接的可访问名称：文字视觉隐藏但仍留在无障碍树中，
+ * 避免图标栏状态下每个链接都变成无名可点击区域。
+ */
+.shell-sidebar[data-collapsed='true'] .shell-nav-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shell-sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.shell-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.shell-collapse-btn:hover {
+  background: var(--surface-hover);
+  color: var(--fg-default);
+}
+
+/*
+ * 侧栏底部的主题切换按整行呈现：覆盖紧凑尺寸按钮的固定宽度，
+ * 并始终显示文字标签。shell.css 未置于 @layer 中，因此优先于工具类。
+ */
+.shell-sidebar-foot button[aria-pressed] {
+  width: 100%;
+  height: var(--control-h-sm);
+  padding-inline: var(--space-3);
+  justify-content: flex-start;
+}
+
+.shell-sidebar-foot button[aria-pressed] span {
+  display: inline;
+}
+
+.shell-sidebar[data-collapsed='true'] .shell-sidebar-foot button[aria-pressed] {
+  width: var(--control-h-sm);
+  padding-inline: 0;
+  justify-content: center;
+}
+
+.shell-sidebar[data-collapsed='true'] .shell-sidebar-foot button[aria-pressed] span {
+  display: none;
+}
+
+.shell-sidebar[data-collapsed='true'] .shell-collapse-btn {
+  justify-content: center;
+  padding: 0;
+  width: var(--control-h-sm);
+}
+
+/* ---------- 主区域 ---------- */
+
+.shell-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.shell-mobilebar {
+  display: none;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--shell-topbar-mobile);
+  padding: 0 var(--shell-gutter-sm);
+  background: var(--bg-nav);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shell-mobilebar-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-content {
+  min-width: 0;
+  flex: 1;
+}
+
+/* 移动端抽屉 */
+
+.shell-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-menu);
+  background: rgb(23 33 46 / 42%);
+}
+
+.shell-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  width: min(84vw, var(--shell-sidebar));
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-3);
+  overflow-y: auto;
+  background: var(--bg-nav);
+  border-right: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-dialog);
+}
+
+/* ==================== 页面模板 ==================== */
+
+/*
+ * 工作台主区栅格（首页）。
+ * 轨道使用 minmax(0, …) 且子项 min-width:0：宽屏两栏、窄屏单栏都不会被
+ * 子内容的最小内容宽度撑破容器，避免移动端出现横向滚动。
+ */
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.dash-grid > * {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.tpl-container {
+  width: 100%;
+  max-width: var(--shell-content-max);
+  margin-inline: auto;
+  padding-inline: var(--shell-gutter-sm);
+}
+
+.tpl-settings {
+  max-width: var(--shell-settings-max);
+}
+
+/* ---------- 双栏工作区：两栏各自独立滚动 ---------- */
+
+/*
+ * align-items: start 是关键：Grid 默认 stretch 会把并排两列拉成同高，
+ * 右侧内容一长，左侧面板就被拽出一大片空白、甚至被推出视口。
+ * 这里让两栏各自决定高度，但共用同一个高度边界并各自滚动：
+ *   - 内容短的一栏（通常左侧）保持自然高度，不会凭空出现滚动条；
+ *   - 内容长的一栏只在自己的区域内滚动，不影响另一栏，也不把页面撑长。
+ *
+ * --split-available 由 SplitPanes 组件测量实际位置后写入；
+ * 这里的 calc 只是首帧（脚本尚未执行）的兜底估值，随后会被实测值覆盖。
+ */
+.split-panes {
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .split-panes[data-from='lg'] > * {
+    max-height: var(--split-available, calc(100dvh - 15rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (min-width: 1280px) {
+  .split-panes[data-from='lg'] > *,
+  .split-panes[data-from='xl'] > * {
+    max-height: var(--split-available, calc(100dvh - 15rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+.tpl-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block: var(--space-4) 0;
+}
+
+.tpl-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tpl-title {
+  margin: 0;
+  color: var(--fg-default);
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.tpl-description {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.tpl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tpl-section-title {
+  margin: 0;
+  color: var(--fg-default);
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tpl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tpl-panel {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+@media (min-width: 640px) {
+  .tpl-container {
+    padding-inline: var(--shell-gutter);
+  }
+
+  .tpl-header-main {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .tpl-actions {
+    flex-wrap: nowrap;
+    flex: none;
+  }
+}
+
+@media (min-width: 1536px) {
+  .tpl-container {
+    padding-inline: var(--shell-gutter-lg);
+  }
+}
+
+/* ==================== 响应式外框 ==================== */
+
+/*
+ * 滚动条自动隐藏：静止时把滑块调成透明，滚动时再显形。
+ *
+ * 只声明 `scrollbar-color`、不声明宽度，是刻意的取舍：一旦给滚动条宽度，
+ * 浏览器就从 overlay 滚动条切换到占位滚动条，所有滚动容器会多出约十几像素
+ * 的沟槽，页面版式整体位移。这里只换颜色，沟槽宽度维持平台默认值，布局不变。
+ *
+ * 触发由 `AutoHideScrollbars` 负责：它给正在滚动的那个元素打上 `data-scrolling`，
+ * 停止约 800ms 后摘掉。滑块颜色不是可过渡属性，所以是直接显隐、没有淡出。
+ */
+html,
+.shell-sidebar,
+.shell-drawer,
+.split-panes > *,
+[data-autohide-scroll] {
+  scrollbar-color: transparent transparent;
+}
+
+html[data-scrolling],
+.shell-sidebar[data-scrolling],
+.shell-drawer[data-scrolling],
+.split-panes > *[data-scrolling],
+[data-autohide-scroll][data-scrolling] {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/*
+ * 指针悬停在容器上时也显形：否则滑块平时不可见，用户没有可以抓住的目标。
+ * 页面级滚动条不在此列——鼠标几乎总在页面上，那样等于始终可见。
+ */
+.shell-sidebar:hover,
+.shell-drawer:hover,
+.split-panes > *:hover,
+[data-autohide-scroll]:hover {
+  scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+}
+
+/* 深色表面（控制中心日志）需要浅色滑块，否则在深底上等于隐形。 */
+[data-autohide-scroll][data-scroll-dark] {
+  --scrollbar-thumb: rgb(233 240 236 / 30%);
+  --scrollbar-thumb-hover: rgb(233 240 236 / 48%);
+}
+
+/*
+ * ≥1024px：左侧导航钉在视口高度内，成为自己的滚动区域。
+ *
+ * 外框是 grid，align-items 默认 stretch 会把导航列拉到与页面内容同高：
+ * 页面一变长，导航就跟着变长（高度 = 整页高度），滚动时整列移出视口，
+ * 右侧内容越长这个现象越明显。钉住后导航高度恒等于窗口高度、不随内容变化，
+ * 只有自身条目真的放不下时才滚动。
+ */
+@media (min-width: 1024px) {
+  .shell-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
+/* <1024px：侧栏改为移动页头与抽屉。 */
+@media (max-width: 1023px) {
+  .shell-root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell-sidebar {
+    display: none;
+  }
+
+  .shell-mobilebar {
+    display: flex;
+  }
+}
+
+/* 邻舍嵌入：精简外框，不占用常规导航列。 */
+.shell-root[data-embed='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shell-root[data-embed='true'] .shell-sidebar {
+  display: none;
+}

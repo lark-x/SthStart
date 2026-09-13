@@ -1,6 +1,4 @@
 'use client';
-import { AppSwitcher } from '@/app/components/shared/app-switcher';
-import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -39,6 +37,9 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
+import { PageContainer, WorkbenchColumns } from '@/app/components/shared/page-layout';
+import { PageHeader } from '@/app/components/shared/page-header';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 
 interface ActivityStudioWorkspaceProps {
   activityId: string;
@@ -95,18 +96,18 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
   if (activityLoading || draftLoading) {
     return (
-      <main className="min-h-screen w-full bg-paper flex items-center justify-center p-8">
+      <div className="w-full bg-paper flex items-center justify-center p-8">
         <div className="flex flex-col items-center gap-3">
           <Spinner className="h-8 w-8 text-accent animate-spin" />
           <p className="text-sm text-ink font-semibold">正在载入活动工作区…</p>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (activityError || !activity || !document) {
     return (
-      <main className="min-h-screen w-full bg-paper p-8">
+      <div className="w-full bg-paper p-8">
         <div className="max-w-md mx-auto space-y-4">
           <Alert variant="danger" title="无法进入活动工作室">
             {activityError ? (activityError as Error).message : '活动不存在或已被删除'}
@@ -119,90 +120,86 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             返回活动列表
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen w-full bg-paper text-ink px-3 sm:px-6 md:px-10 py-5">
-      <div className="max-w-7xl mx-auto space-y-4">
-        {/* Studio Top Navigation Bar */}
-        <header className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] shadow-xs">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <Link
-              href="/apps/activities"
-              className="p-1.5 rounded hover:bg-stone-100 text-muted hover:text-ink transition-colors shrink-0"
-              title="返回活动列表"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-
-            <div className="min-w-0 space-y-0.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="break-words text-lg font-bold text-ink">{document.activity.title}</h1>
-                <Badge variant="outline" className="text-sm font-mono bg-stone-100 text-stone-700">
-                  版本 {activity.headVersion}
+    <div className="w-full bg-paper text-ink py-5">
+      <PageContainer className="space-y-4">
+        {/* 对象页头（§8.5）：活动名、保存/版本状态与当前主要动作固定在页头。 */}
+        <PageHeader
+          backHref="/apps/activities"
+          backLabel="返回活动列表"
+          title={document.activity.title}
+          status={
+            <>
+              <Badge variant="outline" className="bg-surface-muted font-mono text-xs text-ink">
+                版本 {activity.headVersion}
+              </Badge>
+              {activity.theme && (
+                <Badge variant="outline" className="bg-surface text-xs text-muted">
+                  {activity.theme}
                 </Badge>
-                {activity.theme && (
-                  <Badge variant="outline" className="text-sm text-stone-600 bg-stone-50 border-stone-200">
-                    {activity.theme}
-                  </Badge>
-                )}
-              </div>
-
-              {/* Auto-save & CAS Draft Indicator */}
+              )}
               <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-sm">
                 {saveStatus === 'saving' && (
-                  <span className="text-amber-600 flex items-center gap-1">
+                  <span className="flex items-center gap-1 text-warning-fg">
                     <Spinner className="h-3 w-3 animate-spin" />
                     自动保存草稿中…
                   </span>
                 )}
                 {saveStatus === 'saved' && (
-                  <span className="text-emerald-600 flex items-center gap-1 font-medium">
+                  <span className="flex items-center gap-1 font-medium text-success-fg">
                     <Check className="h-3 w-3" />
                     已保存
                   </span>
                 )}
                 {saveStatus === 'unsaved' && (
-                  <span className="text-stone-500 flex items-center gap-1">
+                  <span className="flex items-center gap-1 text-muted">
                     <Clock className="h-3 w-3" />
                     正在编辑…
                   </span>
                 )}
                 {saveStatus === 'conflict' && (
-                  <div className="flex items-center gap-1 text-rose-600">
+                  <div className="flex items-center gap-1 text-danger-fg">
                     <AlertCircle className="h-3 w-3" />
                     <span>草稿版本冲突</span>
                     <button
                       type="button"
                       onClick={handleReloadConflict}
-                      className="underline font-semibold ml-1 cursor-pointer"
+                      className="ml-1 cursor-pointer font-semibold underline"
                     >
                       比较与恢复
                     </button>
                   </div>
                 )}
                 {saveStatus === 'error' && (
-                  <span className="text-rose-600 flex items-center gap-1">
+                  <span className="flex items-center gap-1 text-danger-fg">
                     <AlertCircle className="h-3 w-3" />
                     保存失败
                   </span>
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
-            <AppSwitcher />
-            <EyeCareToggle />
+            </>
+          }
+          actions={
+            <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => { if (await draft.flush()) setGenerationModalOpen(true); }}
+              className="flex h-8 items-center gap-1.5 text-sm"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              <span>AI 生成</span>
+            </Button>
 
             <Button
               variant="outline"
               size="sm"
               onClick={() => setHistoryDrawerOpen(true)}
-              className="text-sm h-8 flex items-center gap-1.5"
+              className="flex h-8 items-center gap-1.5 text-sm"
             >
               <History className="h-3.5 w-3.5 text-muted" />
               <span className="hidden sm:inline">版本回溯</span>
@@ -213,7 +210,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               variant="outline"
               size="sm"
               onClick={() => setExportModalOpen(true)}
-              className="text-sm h-8 flex items-center gap-1.5"
+              className="flex h-8 items-center gap-1.5 text-sm"
             >
               <Download className="h-3.5 w-3.5 text-muted" />
               <span className="hidden sm:inline">导出工程</span>
@@ -224,13 +221,14 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               size="sm"
               onClick={handleCommitDraft}
               disabled={committing || saveStatus === 'conflict' || saveStatus === 'error'}
-              className="text-sm h-8 px-3 bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs shrink-0"
+              className="flex h-8 shrink-0 items-center gap-1.5 px-3 text-sm"
             >
               <Save className="h-3.5 w-3.5" />
               <span>{committing ? '保存中…' : '保存新版本'}</span>
             </Button>
-          </div>
-        </header>
+            </>
+          }
+        />
 
         {(errorMessage || draft.error) && (
           <Alert variant="danger" title="系统提示">
@@ -250,84 +248,97 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             <Button onClick={() => { draft.resolve(serverDraft, false); setServerDraft(null); }}>改用服务器草稿</Button>
           </div>
         </section>}
-        {/* 4 Main Workspace Tabs */}
-        <div className="studio-tabs flex items-center gap-1.5 border-b border-[rgb(24_32_29/14%)] pb-1">
-          {[
+        {/* 工作模式：设定 / 记录 / 素材 / 回放，使用页级 tab 语义（§7.4）。 */}
+        <PageTabs
+          ariaLabel="活动工作模式"
+          value={activeTab}
+          onChange={(id) => setActiveTab(id as 'settings' | 'records' | 'media' | 'playback')}
+          tabs={([
             { id: 'records', label: '记录', icon: MessageSquare },
             { id: 'settings', label: '设定', icon: Settings2 },
             { id: 'media', label: '素材', icon: Camera },
             { id: 'playback', label: '回放', icon: PlaySquare },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isCurrent = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                aria-pressed={isCurrent}
-                type="button"
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-t-[4px_10px_0_0] text-sm font-semibold transition-all cursor-pointer ${
-                  isCurrent
-                    ? 'bg-surface text-accent border-t-2 border-x border-accent -mb-1.5 shadow-xs'
-                    : 'text-muted hover:text-ink'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
+          ] as const).map((tab) => ({
+            id: tab.id,
+            panelId: `activity-panel-${tab.id}`,
+            label: (
+              <>
+                <tab.icon className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+              </>
+            ),
+          }))}
+        />
 
         {/* Workstation Content View */}
         <fieldset disabled={committing} className="min-w-0 border-0 p-0 py-1">
-          {/* TAB 1: Settings & Stages */}
+          {/* TAB 1: Settings & Stages：基本信息与角色在左，阶段编辑在右 */}
           {activeTab === 'settings' && (
-            <div className="space-y-5">
-              {/* Basic info metadata editor */}
-              <div className="p-5 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-3">
-                <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-                  <Compass className="h-4 w-4 text-accent" />
-                  活动基本属性
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1 sm:col-span-2">
-                    <label className="text-sm font-medium text-ink">活动标题</label>
-                    <Input
-                      aria-label="活动标题"
-                      value={document.activity.title}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, title: e.target.value } })}
-                      className="h-8 text-sm bg-transparent"
-                    />
+            <WorkbenchColumns
+              left={(
+                <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
+                  <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                    <Compass className="h-4 w-4 text-accent" />
+                    活动基本属性
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-ink">活动标题</label>
+                      <Input
+                        aria-label="活动标题"
+                        value={document.activity.title}
+                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, title: e.target.value } })}
+                        className="h-8 text-sm bg-transparent"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-ink">活动主题</label>
+                      <Input
+                        aria-label="活动主题"
+                        value={document.activity.theme || ''}
+                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, theme: e.target.value } })}
+                        className="h-8 text-sm bg-transparent"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-ink">活动地点</label>
+                      <Input
+                        aria-label="活动地点"
+                        value={document.activity.location || ''}
+                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, location: e.target.value } })}
+                        className="h-8 text-sm bg-transparent"
+                      />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="text-sm font-medium text-ink">活动日期（可选，写入后出现在角色日历）</label>
+                      <Input
+                        aria-label="活动日期"
+                        type="date"
+                        value={document.activity.scheduledDate || ''}
+                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, scheduledDate: e.target.value || null } })}
+                        className="h-8 text-sm bg-transparent"
+                      />
+                      <p className="text-xs text-muted">
+                        {saveStatus === 'saved' ? '当前日期已保存。' : '日期修改会随草稿自动保存，保存完成后才会同步到日历。'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-ink">活动主题</label>
-                    <Input
-                      aria-label="活动主题"
-                      value={document.activity.theme || ''}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, theme: e.target.value } })}
-                      className="h-8 text-sm bg-transparent"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-ink">活动地点</label>
-                    <Input
-                      aria-label="活动地点"
-                      value={document.activity.location || ''}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, location: e.target.value } })}
-                      className="h-8 text-sm bg-transparent"
-                    />
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-subtle pt-2">
+                    <span className="text-xs text-muted">参与角色：</span>
+                    {actors.map((actor) => (
+                      <Badge key={actor.id} variant="outline" className="text-xs bg-surface">{actor.displayName}</Badge>
+                    ))}
                   </div>
                 </div>
-              </div>
-
-              {/* Stages editor */}
-              <StagesEditor
-                stages={stages}
-                actors={actors}
-                onChange={(newStages) => handleUpdateDocument({ ...document, stages: newStages })}
-              />
-            </div>
+              )}
+              right={(
+                <StagesEditor
+                  stages={stages}
+                  actors={actors}
+                  onChange={(newStages) => handleUpdateDocument({ ...document, stages: newStages })}
+                />
+              )}
+            />
           )}
 
           {/* TAB 2: Records (Chat & Moments) */}
@@ -408,7 +419,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             currentMediaRevision={activityData.currentMediaRevision}
           />
         )}
-      </div>
-    </main>
+      </PageContainer>
+    </div>
   );
 }

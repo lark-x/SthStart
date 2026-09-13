@@ -1,66 +1,64 @@
-import { AppSwitcher } from '@/app/components/shared/app-switcher';
 import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { EyeCareToggle } from './eye-care-toggle';
 
 export interface PageHeaderProps {
-  eyebrow?: string;
   title: string;
   description?: string;
   backHref?: string;
   backLabel?: string;
+  /** 当前对象的额外交付状态（如草稿/已发布/保存失败）。 */
+  status?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
+  /** compact：工具栏式标题区，减少工作台页面的首屏占用。 */
+  compact?: boolean;
 }
 
+/**
+ * 页面标题区：只负责标题、返回、当前对象状态与页面动作。
+ *
+ * 全局应用切换与主题开关已上移到 AppShell；页面内不再重复放置全局工具。
+ */
 export function PageHeader({
-  eyebrow,
   title,
   description,
   backHref,
   backLabel = '返回',
+  status,
   actions,
   className,
+  compact = false,
 }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-2.5 pb-4 pt-1', className)}>
+    <header className={cn('tpl-header', compact ? 'pb-1' : 'pb-2', className)}>
       {backHref && (
-        <div>
-          <Link
-            href={backHref}
-            className="inline-flex min-h-7 items-center gap-1.5 text-sm text-muted hover:text-accent transition-colors font-medium"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{backLabel}</span>
-          </Link>
-        </div>
+        <Link
+          href={backHref}
+          className="inline-flex min-h-7 items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-accent"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{backLabel}</span>
+        </Link>
       )}
 
-      <div className="page-header-main flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div>
-          {eyebrow && (
-            <p className="page-header-eyebrow hidden text-xs font-bold tracking-[0.16em] uppercase text-accent-dark mb-0.5">
-              {eyebrow}
-            </p>
-          )}
-          <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-ink">
-            {title}
-          </h1>
+      <div className="tpl-header-main">
+        <div className="min-w-0">
+          <h1 className={cn('tpl-title', compact && 'text-xl')}>{title}</h1>
           {description && (
-            <p className="page-header-description mt-1 max-w-2xl text-sm sm:text-sm text-muted leading-relaxed">
+            <p className={cn('tpl-description mt-1', compact && 'line-clamp-2')}>
               {description}
             </p>
           )}
         </div>
 
-        <div className="page-header-actions flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap shrink-0 self-start sm:self-auto">
-          <AppSwitcher />
-          <EyeCareToggle />
+        {/* page-header-actions 保留为兼容类名：既有测试与样式仍按它定位动作区。 */}
+        <div className="tpl-actions page-header-actions">
+          {status}
           {actions}
         </div>
       </div>
-    </div>
+    </header>
   );
 }

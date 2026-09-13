@@ -124,9 +124,9 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
         ref={dialogRef}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface shadow-2xl animate-in zoom-in-95"
+        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-2xl animate-in zoom-in-95"
       >
-        <div className="flex items-center gap-3 border-b border-[rgb(24_32_29/12%)] px-4 py-3 bg-surface">
+        <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3 bg-surface">
           <Search className="h-5 w-5 text-muted" aria-hidden="true" />
           <input
             ref={inputRef}
@@ -152,7 +152,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
               <X className="h-4 w-4" />
             </button>
           )}
-          <span className="text-sm uppercase font-bold tracking-widest text-muted bg-[rgb(24_32_29/6%)] px-2 py-0.5 rounded">
+          <span className="text-sm uppercase font-bold tracking-widest text-muted bg-ink/6 px-2 py-0.5 rounded">
             ESC
           </span>
         </div>
@@ -179,7 +179,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                       'flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors cursor-pointer',
                       isSelected
                         ? 'bg-ink text-paper'
-                        : 'text-ink hover:bg-[rgb(24_32_29/6%)]'
+                        : 'text-ink hover:bg-ink/6'
                     )}
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -189,7 +189,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                             'flex h-7 w-7 items-center justify-center rounded',
                             isSelected
                               ? 'bg-paper/15 text-paper'
-                              : 'bg-[rgb(24_32_29/8%)] text-muted'
+                              : 'bg-ink/8 text-muted'
                           )}
                         >
                           {item.icon}
@@ -216,7 +216,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
                           'text-sm tracking-wider uppercase font-semibold px-2 py-0.5 rounded',
                           isSelected
                             ? 'bg-paper/20 text-paper'
-                            : 'bg-[rgb(24_32_29/6%)] text-muted'
+                            : 'bg-ink/6 text-muted'
                         )}
                       >
                         {item.category}

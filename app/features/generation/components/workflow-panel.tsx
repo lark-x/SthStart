@@ -43,10 +43,10 @@ export function WorkflowPanel({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-accent-dark"><span className="text-sm font-bold tracking-[0.16em] uppercase">WORKFLOW VERSIONS</span></div>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>版本化工作流</CardTitle>
           {onImport && (
-            <div>
+            <div className="flex-none">
               <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" aria-label="导入工作流 JSON 文件" onChange={handleFileChange} />
               <Button type="button" size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} loading={busy === 'workflow-import'}>
                 <Upload className="h-3.5 w-3.5" aria-hidden="true" />导入工作流 JSON
@@ -54,7 +54,6 @@ export function WorkflowPanel({
             </div>
           )}
         </div>
-        <CardTitle>版本化工作流</CardTitle>
         <CardDescription>创建或导入工作流，发布经过校验的 ComfyUI API JSON 版本。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -73,16 +72,16 @@ export function WorkflowPanel({
         {workflows.length ? (
           <div className="space-y-2">
             {workflows.map((workflow) => (
-              <button type="button" key={workflow.id} onClick={() => onSelect(workflow.id)} className={`flex w-full items-center justify-between rounded border p-3 text-left ${selectedWorkflowId === workflow.id ? 'border-accent bg-accent/6' : 'border-[rgb(24_32_29/12%)] bg-surface'}`}>
+              <button type="button" key={workflow.id} onClick={() => onSelect(workflow.id)} aria-current={selectedWorkflowId === workflow.id ? 'true' : undefined} className={`flex w-full items-center justify-between rounded-[var(--radius-control)] border p-3 text-left ${selectedWorkflowId === workflow.id ? 'border-accent bg-accent-soft' : 'border-border-subtle bg-surface'}`}>
                 <span>
                   <strong className="text-sm">{workflow.name}</strong>
                   <code className="mt-0.5 block text-sm text-muted">{workflow.id} · {workflow.versions.length} 个版本</code>
                 </span>
-                <ChevronRight className="h-4 w-4 text-[#89908a]" aria-hidden="true" />
+                <ChevronRight className="h-4 w-4 text-fg-subtle" aria-hidden="true" />
               </button>
             ))}
           </div>
-        ) : <p className="text-sm text-[#89908a]">创建第一个工作流后，它会出现在这里。</p>}
+        ) : <p className="text-sm text-fg-subtle">创建第一个工作流后，它会出现在这里。</p>}
       </CardContent>
     </Card>
   );

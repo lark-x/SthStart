@@ -193,7 +193,7 @@ export function MediaWorkstation({
       />
 
       {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
         <div>
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Camera className="h-4 w-4 text-accent" />
@@ -244,8 +244,8 @@ export function MediaWorkstation({
 
       {/* Slots List */}
       {slots.length === 0 ? (
-        <div className="p-12 text-center text-sm text-muted bg-[#faf8f2] rounded-lg border border-[rgb(24_32_29/14%)] space-y-2">
-          <Film className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
+        <div className="p-12 text-center text-sm text-muted bg-surface rounded-lg border border-border-default space-y-2">
+          <Film className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
           <p>当前活动还没有图片或视频镜头</p>
           <p className="text-sm">可在上方点击“新增镜头”，或由 AI 生成对白与动态时自动创建。</p>
         </div>
@@ -258,7 +258,7 @@ export function MediaWorkstation({
             return (
               <div
                 key={slot.id}
-                className="p-4 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-3 shadow-2xs"
+                className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3 shadow-2xs"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -272,7 +272,7 @@ export function MediaWorkstation({
                     type="button"
                     onClick={() => handleDeleteSlot(slot.id)}
                     disabled={disabled}
-                    className="text-stone-400 hover:text-red-500 transition-colors p-1"
+                    className="text-fg-subtle hover:text-danger-fg transition-colors p-1"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -283,7 +283,7 @@ export function MediaWorkstation({
                 </p>
 
                 {/* Bound Asset Preview or Placeholder */}
-                <div className="p-2.5 rounded-lg bg-[#faf8f2] border border-stone-200/80 space-y-2">
+                <div className="p-2.5 rounded-lg bg-surface border border-border-subtle space-y-2">
                   <div className="text-sm font-medium text-ink flex items-center justify-between">
                     <span>当前采用素材：</span>
                     {boundKey ? (
@@ -299,24 +299,24 @@ export function MediaWorkstation({
 
                   {boundKey ? (
                     <div className="flex items-center gap-3">
-                      <div className="relative h-14 w-20 rounded bg-stone-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-sm text-stone-500">
+                      <div className="relative h-14 w-20 rounded bg-surface-hover overflow-hidden flex-shrink-0 flex items-center justify-center text-sm text-muted">
                         {slot.kind === 'video' ? (
-                          <Video className="h-5 w-5 text-stone-600" />
+                          <Video className="h-5 w-5 text-muted" />
                         ) : (
-                          <Camera className="h-5 w-5 text-stone-600" />
+                          <Camera className="h-5 w-5 text-muted" />
                         )}
                       </div>
                       <div className="text-sm space-y-0.5 min-w-0">
                         <div className="font-mono text-ink truncate">{boundKey}</div>
                         {slot.kind === 'video' && boundAsset?.durationMs && (
-                          <div className="text-stone-500">
+                          <div className="text-muted">
                             时长: {Math.round(boundAsset.durationMs / 1000)}s
                           </div>
                         )}
                       </div>
                     </div>
                   ) : (
-                    <div className="text-sm text-stone-500 py-3 text-center">
+                    <div className="text-sm text-muted py-3 text-center">
                       尚未绑定素材。可从本地上传或从活动资产库挑选。
                     </div>
                   )}
@@ -388,9 +388,9 @@ export function MediaWorkstation({
       >
         <div className="max-h-80 overflow-y-auto space-y-2 py-2 pr-1">
           {assetsLoading ? (
-            <div className="text-sm text-stone-500 py-8 text-center">加载素材列表中…</div>
+            <div className="text-sm text-muted py-8 text-center">加载素材列表中…</div>
           ) : assets.length === 0 ? (
-            <div className="text-sm text-stone-500 py-8 text-center">
+            <div className="text-sm text-muted py-8 text-center">
               活动资产库为空。请先通过“本地上传”上传文件。
             </div>
           ) : (
@@ -404,15 +404,15 @@ export function MediaWorkstation({
                   className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all cursor-pointer ${
                     isSelected
                       ? 'border-accent bg-accent/5 ring-1 ring-accent'
-                      : 'border-stone-200 hover:border-stone-300 bg-white'
+                      : 'border-border-default hover:border-border-strong bg-surface-raised'
                   }`}
                 >
-                  <div className="h-10 w-14 rounded bg-stone-200 flex items-center justify-center text-sm text-stone-600 flex-shrink-0">
+                  <div className="h-10 w-14 rounded bg-surface-hover flex items-center justify-center text-sm text-muted flex-shrink-0">
                     {asset.type === 'video' ? <Video className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-mono text-sm text-ink truncate">{asset.assetKey}</div>
-                    <div className="text-sm text-stone-500">
+                    <div className="text-sm text-muted">
                       类型: {asset.type} | 尺寸: {asset.width || '?'}x{asset.height || '?'}
                       {asset.durationMs ? ` | 时长: ${Math.round(asset.durationMs / 1000)}s` : ''}
                     </div>

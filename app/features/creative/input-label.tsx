@@ -2,7 +2,7 @@ export function InputLabel({ htmlFor, children, hint }: { htmlFor: string; child
   return (
     <label htmlFor={htmlFor} className="block text-sm font-semibold text-ink">
       <span>{children}</span>
-      {hint && <span className="ml-1 font-normal text-[#89908a]">{hint}</span>}
+      {hint && <span className="ml-1 font-normal text-fg-subtle">{hint}</span>}
     </label>
   );
 }

@@ -24,9 +24,6 @@ export function ModelSettingsPanel({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
-            PUBLIC LLM ROUTING
-          </span>
           <Badge variant={isReady ? 'online' : isEnabled ? 'warning' : 'stopped'}>
             {isReady ? '模型路由已就绪' : isEnabled ? '缺少模型指定' : '公共模型未启用'}
           </Badge>
@@ -38,7 +35,7 @@ export function ModelSettingsPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface">
+          <div className="p-3.5 rounded border border-border-subtle bg-surface">
             <span className="text-sm font-bold text-muted uppercase tracking-wider block">
               生效文本模型
             </span>
@@ -47,7 +44,7 @@ export function ModelSettingsPanel({
             </div>
           </div>
 
-          <div className="p-3.5 rounded border border-[rgb(24_32_29/12%)] bg-surface">
+          <div className="p-3.5 rounded border border-border-subtle bg-surface">
             <span className="text-sm font-bold text-muted uppercase tracking-wider block">
               生效多模态模型
             </span>
@@ -57,7 +54,7 @@ export function ModelSettingsPanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[rgb(24_32_29/10%)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border-subtle">
           <Link
             href="/settings/public-services"
             className="inline-flex items-center gap-1.5 text-sm text-ink font-semibold hover:text-accent transition-colors"

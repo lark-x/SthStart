@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
 import { CharacterDetailSchema, CharacterVersionSchema } from '@sthstart/contracts';
+import type { CharacterDraft } from '@sthstart/contracts';
+import { toCharacterRuntime } from '@sthstart/contracts';
 import { buildCharacterVisualPrompt } from './characters/persona-compiler.js';
 import { normalizeCharacterDraft } from './characters/draft.js';
 import { readFile } from 'node:fs/promises';
@@ -96,9 +98,10 @@ test('activity snapshots select exact character_versions and reference transfer 
   const snapshot = createActorSnapshotFromCharacter(database, characterId, { sourceVersion: 1 });
   assert.ok(snapshot);
   assert.equal(snapshot.sourceVersionStatus, 'published');
-  assert.equal((snapshot.persona as Record<string, unknown>).identity, 'v1 身份');
-  assert.equal(((snapshot.persona as Record<string, unknown>).appearance as Record<string, unknown>).description, 'v1 外观');
-  assert.equal(extractCharacterPersonaDraft(database, characterId, 1)?.identity, 'v1 身份');
+  // 已发布版本冻结的是发布时的 V1 草稿，快照投影会按统一运行时视图给出 V2 字段。
+  assert.match(String((snapshot.persona as Record<string, unknown>).personaText), /v1 身份/);
+  assert.match(String(((snapshot.persona as Record<string, unknown>).appearance as Record<string, unknown>).baseText), /v1 外观/);
+  assert.match(String(toCharacterRuntime(extractCharacterPersonaDraft(database, characterId, 1)).personaText), /v1 身份/);
   assert.equal(createActorSnapshotFromCharacter(database, characterId, { sourceVersion: 99 }), null);
 
   const png = await readFile(defaultAvatarPath);
@@ -143,7 +146,8 @@ test('ordinary image imports become character-owned artifacts before activity tr
   assert.equal(profile.avatar_asset_id, null);
   const asset = database.connection.prepare('SELECT artifact_id FROM character_assets WHERE character_id=? AND kind=?').get(characterId, 'reference') as { artifact_id: string | null };
   assert.ok(asset.artifact_id);
-  const reference = database.connection.prepare('SELECT id,artifact_id FROM character_visual_references WHERE character_id=?').get(characterId) as { id: string; artifact_id: string | null };
+  // 参考图只保存「作为参考的配置」；artifact 归属由它指向的角色资产承载。
+  const reference = database.connection.prepare('SELECT r.id,a.artifact_id FROM character_visual_references r JOIN character_assets a ON a.id=r.asset_id WHERE r.character_id=?').get(characterId) as { id: string; artifact_id: string | null };
   assert.equal(reference.artifact_id, asset.artifact_id);
   const activity = await app.inject({ method: 'POST', url: '/api/v1/admin/activities', headers: adminHeaders, payload: { title: '普通图片活动', stageTitles: ['一', '二'] } });
   const transfer = await app.inject({ method: 'POST', url: `/api/v1/admin/activities/${activity.json().activity.id}/character-references`, headers: { ...adminHeaders, 'idempotency-key': 'transfer-ordinary-image-1' }, payload: { characterId, referenceId: reference.id } });
@@ -167,11 +171,13 @@ test('preview edits preserve unrelated character fields, record user provenance 
     const committed = await app.inject({ method: 'POST', url: `/api/v1/admin/characters/import-sessions/${preview.id}/commit`, headers: { ...adminHeaders, 'idempotency-key': 'edited-preview' }, payload: { expectedPreviewRevision: patch.json().previewRevision, previewHash: patch.json().previewHash } });
     assert.equal(committed.statusCode, 201, committed.body);
     const detail = (await app.inject({ method: 'GET', url: `/api/v1/admin/characters/${characterId}`, headers: adminHeaders })).json();
-    assert.equal(detail.draft.identity, '我修改后的身份');
-    assert.equal(detail.draft.background, '保留的背景');
-    assert.deepEqual(detail.draft.likes, ['红茶']);
-    assert.equal(detail.draft.appearance.hair, '银发');
-    assert.equal(detail.draft.appearance.description, '确认的外貌');
+    // 导入合并后草稿是 V2：卡片提供的字段按人设小节替换，未提供的段落保持原样。
+    const mergedRuntime = toCharacterRuntime(detail.draft);
+    assert.match(mergedRuntime.personaText, /我修改后的身份/);
+    assert.match(mergedRuntime.personaText, /保留的背景/);
+    assert.match(mergedRuntime.personaText, /红茶/);
+    assert.match(mergedRuntime.appearance.baseText, /银发/);
+    assert.match(mergedRuntime.appearance.baseText, /确认的外貌/);
     const provenance = database.connection.prepare('SELECT source_kind,value_hash FROM character_field_provenance WHERE character_id=? AND field_path=?').get(characterId, '/identity') as { source_kind: string; value_hash: string };
     assert.equal(provenance.source_kind, 'user_edit');
     assert.equal(provenance.value_hash, createHash('sha256').update('我修改后的身份').digest('hex'));
@@ -207,7 +213,7 @@ test('visual prompts select one outfit and retain legacy descriptions and long d
   assert.match(selected, /晚礼服/); assert.doesNotMatch(selected, /旅行装/);
   const override = buildCharacterVisualPrompt(visual, '生日会围裙');
   assert.match(override, /生日会围裙/); assert.doesNotMatch(override, /晚礼服|旅行装/);
-  const draft = normalizeCharacterDraft({ appearance: '旧格式蓝发', speech: { examples: ['对话'.repeat(900)] } });
+  const draft = normalizeCharacterDraft({ appearance: '旧格式蓝发', speech: { examples: ['对话'.repeat(900)] } }) as CharacterDraft;
   assert.equal(draft.appearance.description, '旧格式蓝发');
   assert.equal(draft.speech.examples[0].length, 1800);
 });
@@ -224,7 +230,8 @@ test('published avatars stay frozen and enter the activity package when adding t
     const snapshotResponse = await app.inject({ method: 'GET', url: `/api/v1/admin/activities/characters/${created.id}/snapshot?version=1`, headers: adminHeaders });
     assert.equal(snapshotResponse.statusCode, 200, snapshotResponse.body);
     const actor = snapshotResponse.json();
-    assert.equal(actor.persona.identity, '完整人设');
+    // 人设统一进 V2 正文；活动快照不再保留 identity 细分字段。
+    assert.match(actor.persona.personaText, /完整人设/);
     assert.equal(actor.avatarAssetId, firstAvatar.id);
     const createdActivity = (await app.inject({ method: 'POST', url: '/api/v1/admin/activities', headers: adminHeaders, payload: { title: '已有活动' } })).json();
     const activityId = createdActivity.activity.id;

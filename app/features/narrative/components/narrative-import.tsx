@@ -20,6 +20,7 @@ import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
 import { useToast } from '@/app/providers/ui-provider';
+import { PageContainer } from '@/app/components/shared/page-layout';
 
 const sampleJson = JSON.stringify(
   {
@@ -143,38 +144,37 @@ export function NarrativeImport({
   };
 
   return (
-    <div className="flex-1 bg-paper p-6 sm:p-12 space-y-8 overflow-y-auto">
-      <div>
-        <span className="text-sm font-bold uppercase tracking-[0.16em] text-[#8a6a35]">
-          SOURCE CONNECTORS
-        </span>
-        <h2 className="font-serif text-3xl sm:text-4xl font-medium text-ink mt-1">
-          把来源变成可追溯的本地档案
-        </h2>
-        <p className="text-sm text-[#6e737a] leading-relaxed max-w-2xl mt-1">
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <PageContainer className="space-y-6 py-6">
+      <div className="max-w-2xl">
+        <h2 className="tpl-section-title">把来源变成可追溯的本地档案</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted">
           MCP 与文件均为上游数据来源。确认差异后，剧情将永久固化为本地版本，不依赖外部服务器持续在线。
         </p>
       </div>
 
-      {/* Connectors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/*
+       * Connectors 由查询异步填充，初始为空数组。
+       * data-testid 供视觉回归等待“连接器已就绪”，避免截到半加载画面。
+       */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="narrative-connectors">
         {connectors.map((c) => (
           <div
             key={c.id}
-            className="p-5 rounded-[4px_18px_4px_4px] bg-[#f8f4ec] border border-[rgb(32_38_49/14%)] space-y-2"
+            className="p-5 rounded-[var(--radius-panel)] bg-surface-muted border border-border-default space-y-2"
           >
             <div className="flex items-center justify-between">
               <strong className="text-sm font-semibold text-ink">{c.name}</strong>
               <span
                 className={`text-sm font-semibold ${
-                  c.status === 'ready' ? 'text-[#487157]' : 'text-[#a06736]'
+                  c.status === 'ready' ? 'text-success-fg' : 'text-warning-fg'
                 }`}
               >
                 {c.status === 'ready' ? '就绪可用' : '待配置'}
               </span>
             </div>
-            <p className="text-sm text-[#6e737a] leading-relaxed">{c.message}</p>
-            <small className="text-sm text-[#8a6a35] block">
+            <p className="text-sm text-muted leading-relaxed">{c.message}</p>
+            <small className="block text-xs text-fg-subtle">
               {c.capabilities.join(' · ') || '未声明能力'}
             </small>
           </div>
@@ -182,13 +182,10 @@ export function NarrativeImport({
       </div>
 
       {/* Akasha MCP Research Section */}
-      <div className="p-6 rounded-[4px_22px_4px_4px] bg-[#f8f4ec] border border-[rgb(32_38_49/16%)] space-y-4">
+      <div className="p-6 rounded-[var(--radius-panel)] bg-surface-muted border border-border-default space-y-4">
         <div>
-          <span className="text-sm font-bold uppercase tracking-wider text-[#8a6a35]">
-            ONLINE RESEARCH · MANUAL ONLY
-          </span>
-          <h3 className="font-serif text-2xl font-medium text-ink mt-0.5">虚空终端检索</h3>
-          <p className="text-sm text-[#74787e] leading-relaxed">
+          <h3 className="tpl-section-title">虚空终端检索</h3>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
             不会自动触发网络请求。仅在点击搜索、读取或收藏时按需访问 MCP。
           </p>
         </div>
@@ -236,14 +233,14 @@ export function NarrativeImport({
             {remoteResults.map((r) => (
               <div
                 key={r.pathHash}
-                className="p-4 rounded border border-[rgb(32_38_49/12%)] bg-surface space-y-2"
+                className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-4"
               >
                 <div className="flex items-center justify-between text-sm">
                   <span
                     className={`px-2 py-0.5 rounded font-semibold ${
                       r.sourceTier === 'primary'
-                        ? 'bg-[#dce9df] text-[#487157]'
-                        : 'bg-[#eee0c9] text-[#906733]'
+                        ? 'bg-success-bg text-success-fg'
+                        : 'bg-warning-bg text-warning-fg'
                     }`}
                   >
                     {r.sourceTier === 'primary' ? '原始任务资料' : '二级整理'}
@@ -251,14 +248,14 @@ export function NarrativeImport({
                   <span className="text-muted">{r.totalLines} 行</span>
                 </div>
 
-                <h4 className="font-serif text-lg font-medium text-ink truncate">
+                <h4 className="text-lg font-medium text-ink truncate">
                   {r.fileName}
                 </h4>
-                <p className="text-sm text-[#6d7278] line-clamp-2">
+                <p className="text-sm text-muted line-clamp-2">
                   {r.hits[0]?.snippet || '无命中摘要'}
                 </p>
 
-                <div className="flex gap-2 pt-2 border-t border-[rgb(32_38_49/8%)]">
+                <div className="flex gap-2 border-t border-border-subtle pt-2">
                   <Button size="sm" variant="outline" onClick={() => handleReadRemote(r)}>
                     读取原文
                   </Button>
@@ -272,14 +269,14 @@ export function NarrativeImport({
         )}
 
         {remoteDoc && (
-          <div className="p-4 rounded bg-ink text-[#e8e2d7] space-y-2">
+          <div className="space-y-2 rounded-[var(--radius-control)] bg-surface-dark p-4 text-[#dae2de]">
             <div className="flex justify-between text-sm">
               <strong>{remoteDoc.fileName}</strong>
               <span>
                 {remoteDoc.lineRange} / 共 {remoteDoc.totalLines} 行
               </span>
             </div>
-            <pre className="p-3 bg-[#171c24] rounded font-mono text-sm max-h-60 overflow-y-auto whitespace-pre-wrap">
+            <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded bg-black/25 p-3 font-mono text-sm">
               {remoteDoc.content}
             </pre>
           </div>
@@ -287,9 +284,10 @@ export function NarrativeImport({
       </div>
 
       {/* JSON Import Workbench */}
-      <div className="p-6 rounded-[4px_22px_4px_4px] bg-ink text-[#e7e1d5] space-y-4">
+      {/* 专用深色代码面板（§8.9）：仅 JSON 原文查看使用深色，正文与表单沿用全站主题。 */}
+      <div className="space-y-4 rounded-[var(--radius-panel)] bg-surface-dark p-5 text-[#dae2de]">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-bold uppercase tracking-wider text-[#c49a54]">
+          <span className="text-sm font-semibold">
             规范化剧情 JSON 工作台
           </span>
           <Button variant="accent" size="sm" onClick={handleValidateJson} loading={busy}>
@@ -305,17 +303,17 @@ export function NarrativeImport({
             setJsonText(e.target.value);
             setPreview(null);
           }}
-          className="w-full rounded bg-[#171c24] p-4 text-sm font-mono text-[#d6deca] border border-white/10 outline-none leading-relaxed"
+          className="w-full rounded bg-black/25 p-4 font-mono text-sm leading-relaxed text-[#dae2de] border border-white/10 outline-none"
           spellCheck={false}
         />
 
         {preview && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded bg-[#f8f4ec] text-ink">
+          <div className="flex flex-col items-start justify-between gap-4 rounded bg-surface p-4 text-ink sm:flex-row sm:items-center">
             <div>
-              <strong className="font-serif text-lg block">
+              <strong className="text-lg block">
                 {preview.report.workExists ? '增量更新现有作品' : '全新作品导入'}
               </strong>
-              <p className="text-sm text-[#73777c] mt-0.5">{preview.report.note}</p>
+              <p className="text-sm text-muted mt-0.5">{preview.report.note}</p>
             </div>
 
             <Button variant="primary" size="md" onClick={handleCommit} loading={busy}>
@@ -324,6 +322,7 @@ export function NarrativeImport({
           </div>
         )}
       </div>
+      </PageContainer>
     </div>
   );
 }

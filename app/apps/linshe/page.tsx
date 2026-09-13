@@ -76,9 +76,9 @@ export default function LinshePage() {
     <main className="embed-shell" data-app="linshe">
       <header className="embed-toolbar">
         <div className="embed-toolbar-main">
-          <Link className="back-link" href="/" aria-label="返回 SthStart 首页">←</Link>
+          {/* 恢复全站导航的动作（§8.13）：精简外框下仍保留明确的返回入口。 */}
+          <Link className="back-link" href="/" aria-label="返回 SthStart 工作台">←</Link>
           <div>
-            <p>STHSTART / APPLICATION</p>
             <h1>邻舍.EXE</h1>
           </div>
         </div>
@@ -103,7 +103,6 @@ export default function LinshePage() {
         ) : (
           <div className="embed-empty">
             <span className="empty-symbol" aria-hidden="true">邻</span>
-            <p className="eyebrow">{localOnlyLaunch ? 'REMOTE APP NOT EXPOSED' : state === 'loading' ? 'CONNECTING' : 'LOCAL SERVICE OFFLINE'}</p>
             <h2>{localOnlyLaunch ? '邻舍需要单独的远程入口' : state === 'loading' ? '正在寻找邻舍…' : '邻舍还没有启动'}</h2>
             <p>
               {localOnlyLaunch

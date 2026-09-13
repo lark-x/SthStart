@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import type { CharacterDraft } from '@sthstart/contracts';
+import type { CharacterDraftV2 } from '@sthstart/contracts';
 import type { Control, UseFormRegister } from 'react-hook-form';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -11,10 +11,30 @@ import {
   StringListField,
   type CharacterFormValues,
 } from './character-form';
+import { BirthdayField } from './birthday-field';
+
+const PERSONA_PLACEHOLDER = [
+  '### 身份',
+  '她的社会身份、对外形象与职责。',
+  '',
+  '### 关键经历',
+  '哪些事塑就了现在的她。',
+  '',
+  '### 性格',
+  '- 表层的语气与处世方式',
+  '- 话语与行动的反差',
+  '',
+  '### 好恶',
+  '- 喜欢：…',
+  '- 不喜欢：…',
+  '- 害怕：…',
+  '',
+  '### 内心隐情',
+  '不轻易主动说出的事。',
+].join('\n');
 
 export function IdentitySection({
   draft,
-  simple = false,
   tags,
   onChange,
   onTagsChange,
@@ -22,10 +42,9 @@ export function IdentitySection({
   register,
   displayNameError,
 }: {
-  draft: CharacterDraft;
-  simple?: boolean;
+  draft: CharacterDraftV2;
   tags: string[];
-  onChange: (patch: Partial<CharacterDraft>) => void;
+  onChange: (patch: Partial<CharacterDraftV2>) => void;
   onTagsChange: (tags: string[]) => void;
   control: Control<CharacterFormValues>;
   register: UseFormRegister<CharacterFormValues>;
@@ -33,17 +52,18 @@ export function IdentitySection({
 }) {
   return (
     <div className="space-y-5">
-      <div className="pb-3 border-b border-[rgb(24_32_29/10%)]">
-        <h3 className="font-serif text-2xl font-medium text-ink">身份与经历</h3>
+      <div className="pb-3 border-b border-border-subtle">
+        <h3 className="text-xl font-medium text-ink">身份与人设</h3>
         <p className="text-sm text-muted mt-1 leading-relaxed">
-          {simple ? '先填名字和一段描述即可保存；详细经历可以稍后展开。' : '先写清楚她是怎样的一个人，再写她为什么会成为现在的样子。'}
+          先填名字和一段人设正文即可保存。身份、经历、性格、好恶与内心的矛盾都可以写进正文，
+          用「### 小标题」分段即可，不必拆成许多字段。
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="block text-sm font-semibold text-ink">
           <span>
-            角色名称 <span className="text-[#c9674a]">*</span>
+            角色名称 <span className="text-danger">*</span>
           </span>
           <Input
             value={draft.displayName}
@@ -55,25 +75,23 @@ export function IdentitySection({
             className="mt-1.5"
           />
           {displayNameError && (
-            <p id="character-display-name-error" role="alert" className="mt-1 text-sm text-[#c9674a]">
+            <p id="character-display-name-error" role="alert" className="mt-1 text-sm text-danger">
               {displayNameError}
             </p>
           )}
         </label>
 
-        {!simple && <label className="block text-sm font-semibold text-ink">
-          <span>
-            英文名 / 拼音
-          </span>
+        <label className="block text-sm font-semibold text-ink">
+          <span>英文名 / 拼音</span>
           <Input
             value={draft.englishName}
             onChange={(e) => onChange({ englishName: e.target.value })}
             placeholder="Furina"
             className="mt-1.5"
           />
-        </label>}
+        </label>
 
-        {!simple && <label className="block text-sm font-semibold text-ink">
+        <label className="block text-sm font-semibold text-ink">
           <span>来源类型</span>
           <Select
             value={draft.originType}
@@ -83,7 +101,7 @@ export function IdentitySection({
             <option value="original">原创角色</option>
             <option value="ip">已有作品角色 (IP)</option>
           </Select>
-        </label>}
+        </label>
 
         <label className="block text-sm font-semibold text-ink">
           <span>所属作品</span>
@@ -95,27 +113,24 @@ export function IdentitySection({
           />
         </label>
 
-        {!simple && <label className="block text-sm font-semibold text-ink">
-          <span>所属世界 / 舞台</span>
-          <Input
-            value={draft.world}
-            onChange={(e) => onChange({ world: e.target.value })}
-            placeholder="例如：提瓦特 / 枫丹"
-            className="mt-1.5"
+        <div className="sm:col-span-2">
+          <BirthdayField
+            value={draft.birthday}
+            onChange={(birthday) => onChange({ birthday })}
           />
-        </label>}
+        </div>
 
-        {!simple && <StringListField
+        <StringListField
           control={control}
           register={register}
           name="aliases"
           label="别名 / 称号"
           placeholder="例如：芙芙"
-        />}
+        />
       </div>
 
       <label className="block text-sm font-semibold text-ink">
-        <span>一句话人物摘要</span>
+        <span>一句话人物摘要（列表与卡片显示用，可留空）</span>
         <Textarea
           rows={2}
           value={draft.summary}
@@ -126,42 +141,18 @@ export function IdentitySection({
       </label>
 
       <label className="block text-sm font-semibold text-ink">
-        <span>身份与定位</span>
+        <span>人设正文</span>
         <Textarea
-          rows={4}
-          value={draft.identity}
-          onChange={(e) => onChange({ identity: e.target.value })}
-          placeholder="她的社会身份、对外形象、扮演的职责与他人眼中的她。"
+          rows={18}
+          value={draft.personaText}
+          onChange={(e) => onChange({ personaText: e.target.value })}
+          placeholder={PERSONA_PLACEHOLDER}
           className="mt-1.5"
         />
       </label>
 
-      {!simple && <label className="block text-sm font-semibold text-ink">
-        <span>关键过往经历</span>
-        <Textarea
-          rows={6}
-          value={draft.background}
-          onChange={(e) => onChange({ background: e.target.value })}
-          placeholder="经历过哪些决定性的事件？哪些记忆塑就了现在的她？"
-          className="mt-1.5"
-        />
-      </label>}
-
-      {!simple && <label className="block text-sm font-semibold text-ink">
-        <span>当前处境与心境</span>
-        <Textarea
-          rows={3}
-          value={draft.currentSituation}
-          onChange={(e) => onChange({ currentSituation: e.target.value })}
-          placeholder="故事起点时她正在面对什么？有哪些待解决的心事？"
-          className="mt-1.5"
-        />
-      </label>}
-
       <label className="block text-sm font-semibold text-ink">
-        <span>
-          标签分类（逗号分隔）
-        </span>
+        <span>标签分类（逗号分隔）</span>
         <TagsInput
           value={tags}
           onChange={onTagsChange}

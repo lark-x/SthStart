@@ -6,18 +6,20 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { CharacterDraft, CharacterProfile, CharacterRelationship, CharacterSource, CharacterVersion } from '@sthstart/contracts';
-import { compileLinshePrompt } from '@sthstart/contracts';
+import type { CharacterDraftV2, CharacterMigrationReview, CharacterProfile, CharacterRelationship, CharacterSource, CharacterVersion } from '@sthstart/contracts';
+import { CHARACTER_PERSONA_COMPILER_VERSION, compileLinshePrompt, migrateCharacterDraftToV2 } from '@sthstart/contracts';
 import { authenticateApp, hasCapability } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { resolveAssignedLlmProfile, upstreamHeaders } from './providers.js';
+import { errorConfigurationPath, llmNotReadyError, resolveAppLlmBindingStatus, resolveCharacterLlmBindingStatus } from './llm-status.js';
 import type { SecretStore } from './security.js';
 import { createArtifactReadStream, createArtifactReference, readArtifact, removeArtifactReference, streamUploadArtifact } from './artifacts.js';
 import { createGenerationTask, getGenerationTask } from './generation.js';
 import { sanitizeErrorMessage } from './generation.js';
-import { normalizeCharacterDraft, text, list } from './characters/draft.js';
+import { isV2Draft, normalizeCharacterDraft, text, list, toAuthorityDraft } from './characters/draft.js';
+import { effectiveBirthday, rebuildCharacterBirthdays, upsertCharacterBirthday } from './characters/birthday.js';
 export { normalizeCharacterDraft } from './characters/draft.js';
 import { CharacterCardProviderRegistry } from './characters/source-providers/registry.js';
 import { CharacterCardProviderError } from './characters/source-providers/types.js';
@@ -31,6 +33,7 @@ import {
 } from './characters/import-sessions.js';
 import { listCharacterLlmAssignments, resolveCharacterLlmProfile, setCharacterLlmAssignment } from './characters/model-assignments.js';
 import { buildAuditionPrompt, normalizeCharacterAppearance } from './characters/persona-compiler.js';
+import { buildCharacterVisualContext, previewAppearanceCandidateApplication, toCharacterRuntime } from '@sthstart/contracts';
 
 function hash(value: unknown) { return createHash('sha256').update(value instanceof Uint8Array || typeof value === 'string' ? value : JSON.stringify(value)).digest('hex'); }
 
@@ -43,14 +46,17 @@ function avatarUrl(database: ServiceDatabase, assetId: unknown, assetPath: strin
 }
 
 function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, assetPath = '/api/admin/characters/assets'): CharacterProfile {
+  const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
   return {
     organization: normalizeOrganization(JSON.parse(String(row.organization_json || '{}'))),
+    birthday: effectiveBirthday(draft),
     id: String(row.id), slug: String(row.slug), displayName: String(row.display_name),
-    draft: normalizeCharacterDraft(JSON.parse(String(row.draft_json))), tags: JSON.parse(String(row.tags_json)) as string[],
+    // draft 即权威存储形态（V2；未迁移的历史数据仍为 V1）。
+    draft,
+    tags: JSON.parse(String(row.tags_json)) as string[],
     avatarUrl: avatarUrl(database, row.avatar_asset_id, assetPath), latestVersion: row.latest_version == null ? null : Number(row.latest_version),
     archived: Boolean(row.archived), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     ...(row.draft_revision != null ? { draftRevision: Number(row.draft_revision) } : {}),
-    ...(row.default_outfit_id != null ? { defaultOutfitId: String(row.default_outfit_id) } : {}),
   };
 }
 
@@ -62,6 +68,7 @@ function mapVersion(row: Record<string, unknown>): CharacterVersion {
     characterId: String(row.character_id), version: Number(row.version), data: normalizeCharacterDraft(JSON.parse(String(row.data_json))),
     compiledLinshePrompt: String(row.compiled_linshe_prompt), relationships: JSON.parse(String(row.relationships_json ?? '[]')) as CharacterRelationship[], createdAt: String(row.created_at),
     ...(row.draft_revision != null ? { draftRevision: Number(row.draft_revision) } : {}),
+    ...(row.compiler_version != null ? { compilerVersion: String(row.compiler_version) } : {}),
     ...(appearanceSnapshot ? { appearanceSnapshot } : {}), ...(provenance ? { provenance } : {}),
   };
 }
@@ -88,19 +95,19 @@ export function migrateLegacyPersonas(database: ServiceDatabase) {
     const avatarAssetId = legacyAvatar ? randomUUID() : null;
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO character_profiles
-        (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,default_outfit_id)
-        VALUES (?,?,?,?,?,?,?,0,?,?,?,NULL)`).run(personaId, uniqueSlug(database, personaId), String(persona.display_name), JSON.stringify(draft), String(persona.tags_json), avatarAssetId, versions.length ? Number(persona.latest_version) : null, String(persona.created_at), String(persona.updated_at), 1);
+        (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision)
+        VALUES (?,?,?,?,?,?,?,0,?,?,?)`).run(personaId, uniqueSlug(database, personaId), String(persona.display_name), JSON.stringify(draft), String(persona.tags_json), avatarAssetId, versions.length ? Number(persona.latest_version) : null, String(persona.created_at), String(persona.updated_at), 1);
       if (avatarAssetId && legacyAvatar && avatarArtifactId) {
         database.connection.prepare(`INSERT INTO character_assets
-          (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id,sha256,width,height)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-          avatarAssetId, personaId, 'avatar', String(legacyAvatar.local_path ?? ''), String(legacyAvatar.content_type ?? 'image/png'), Number(legacyAvatar.byte_size ?? 0), legacyAvatar.original_name ? String(legacyAvatar.original_name) : `legacy-avatar-${personaId}.png`, String(persona.created_at), avatarArtifactId,
-          legacyAvatar.sha256 == null ? null : String(legacyAvatar.sha256), legacyAvatar.width == null ? null : Number(legacyAvatar.width), legacyAvatar.height == null ? null : Number(legacyAvatar.height),
+          (id,character_id,kind,created_at,artifact_id)
+          VALUES (?,?,?,?,?)`).run(
+          avatarAssetId, personaId, 'avatar', String(persona.created_at), avatarArtifactId,
         );
       }
       for (const version of versions) database.connection.prepare(`INSERT INTO character_versions
         (character_id,version,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json)
         VALUES (?,?,?,?,?,'[]',1,?,?)`).run(personaId, Number(version.version), JSON.stringify({ ...draft, displayName: String(version.display_name), appearance: { ...draft.appearance, description: String(version.appearance_prompt ?? '') }, legacyPrompt: String(version.persona_prompt) }), String(version.persona_prompt), String(version.created_at), JSON.stringify({ ...draft.appearance, description: String(version.appearance_prompt ?? '') }), JSON.stringify({ legacy: true }));
+      upsertCharacterBirthday(database, personaId, draft);
     });
   }
 }
@@ -123,12 +130,47 @@ function sourceRows(database: ServiceDatabase, characterId: string): CharacterSo
   }));
 }
 
+/**
+ * 迁移复核：从归档原文现场重算冲突，不另存一份可能漂移的复核状态。
+ *
+ * 归档是当初不可变的 V1 载荷，migrateCharacterDraftToV2 是确定性纯函数，
+ * 因此这里的结论与迁移当时一致，且不需要新增表或列。
+ */
+const MIGRATION_PROVIDER_ID = 'sthstart-draft-migration';
+
+function migrationReview(database: ServiceDatabase, characterId: string, displayName: string, draft: unknown, draftRevision: number): CharacterMigrationReview {
+  const archived = database.connection.prepare(`SELECT s.raw_payload_json,s.fetched_at
+    FROM character_source_snapshots s JOIN character_sources c ON c.source_snapshot_id=s.id
+    WHERE c.character_id=? AND s.provider_id=? AND s.format='sthstart-draft-json-v1'
+    ORDER BY s.fetched_at DESC LIMIT 1`).get(characterId, MIGRATION_PROVIDER_ID) as { raw_payload_json: string; fetched_at: string } | undefined;
+  const runtime = toCharacterRuntime(draft);
+  const current = { baseText: runtime.appearance.baseText, defaultOutfitText: runtime.appearance.defaultOutfitText };
+  if (!archived) {
+    return { characterId, displayName, hasArchive: false, archivedAt: null, conflicts: [], archivedOutfits: [], current, draftRevision };
+  }
+  let original: Record<string, unknown> | null = null;
+  try { original = JSON.parse(String(archived.raw_payload_json)) as Record<string, unknown>; } catch { original = null; }
+  const migrated = original === null ? null : migrateCharacterDraftToV2(original);
+  const legacyAppearance = normalizeCharacterAppearance(original?.appearance);
+  return {
+    characterId, displayName, hasArchive: true, archivedAt: String(archived.fetched_at),
+    conflicts: (migrated?.conflicts ?? []).map((conflict) => ({ kind: conflict.kind, detail: conflict.detail })),
+    // 旧多套服装只是「未生效的备选」，不搬回草稿；但要在复核入口里看得到、能选用。
+    archivedOutfits: [...new Set(legacyAppearance.outfits.filter(Boolean))],
+    current,
+    draftRevision,
+  };
+}
+
 function sourceSnapshotContentType(format: unknown, rawPayloadJson: unknown) {
   try {
     const payload = rawPayloadJson ? JSON.parse(String(rawPayloadJson)) as { mimeType?: unknown } : null;
     if (typeof payload?.mimeType === 'string' && payload.mimeType.startsWith('image/')) return payload.mimeType;
   } catch { /* fall through to the format mapping */ }
-  return format === 'json' ? 'application/json; charset=utf-8' : format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : format === 'gif' ? 'image/gif' : format === 'avif' ? 'image/avif' : 'application/octet-stream';
+  const normalized = String(format ?? '');
+  // 卡片的格式名带前缀（json / v1-json / v2-json / sthstart-draft-json-v1），都应按 JSON 返回。
+  if (normalized.includes('json')) return 'application/json; charset=utf-8';
+  return normalized === 'png' ? 'image/png' : normalized === 'jpeg' ? 'image/jpeg' : normalized === 'webp' ? 'image/webp' : normalized === 'gif' ? 'image/gif' : normalized === 'avif' ? 'image/avif' : 'application/octet-stream';
 }
 
 async function researchCharacter(query: string, fetcher: typeof fetch) {
@@ -149,8 +191,10 @@ async function researchCharacter(query: string, fetcher: typeof fetch) {
 }
 
 async function generateDraft(database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch, description: string, sources: Array<{ title: string; url: string; excerpt: string; sourceType: string }>) {
+  const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'characters', 'text');
+  if (!bindingStatus.ready) throw llmNotReadyError(bindingStatus);
   const profile = await resolveAssignedLlmProfile(database, secrets, 'characters', 'text');
-  if (!profile?.model) throw new Error('llm_profile_not_assigned');
+  if (!profile?.model) throw llmNotReadyError(bindingStatus);
   const prompt = `请根据用户描述和参考资料生成结构化角色草稿。不得编造与资料冲突的事实；没有可靠证据的字段请留空或使用空数组。只输出 JSON，不要 Markdown。严格遵守以下完整格式，不新增字段：
 {
   "displayName": "角色名",
@@ -212,54 +256,56 @@ function characterGenerationTask(database: ServiceDatabase, taskId: string, char
   }
 }
 
-function characterAvatarPrompt(draft: CharacterDraft) {
+/**
+ * 头像提示词。走与活动生图相同的统一视觉编译，稳定辨识特征与默认穿着口径一致，
+ * 只追加头像任务的取景要求，不再单独拼一套外观文本。
+ */
+function characterAvatarPrompt(draft: unknown) {
+  const runtime = toCharacterRuntime(draft);
+  const visual = buildCharacterVisualContext(runtime);
   return [
-    `角色：${draft.displayName || '未命名角色'}`,
-    draft.identity,
-    draft.summary,
-    draft.appearance.description,
-    draft.appearance.hair && `发型与发色：${draft.appearance.hair}`,
-    draft.appearance.eyes && `眼睛：${draft.appearance.eyes}`,
-    draft.appearance.build && `体态：${draft.appearance.build}`,
-    draft.appearance.outfits.length && `服装：${draft.appearance.outfits.join('；')}`,
-    draft.appearance.accessories.length && `饰品：${draft.appearance.accessories.join('；')}`,
+    `角色：${runtime.displayName || '未命名角色'}`,
+    runtime.personaText,
+    runtime.summary,
+    visual.text,
     '角色头像，半身肖像，清晰面部，正面或略微侧身，干净背景。',
   ].filter(Boolean).join('\n').slice(0, 4_000);
 }
 
 async function sendCharacterAsset(database: ServiceDatabase, assetId: string, reply: FastifyReply) {
-  const asset = database.connection.prepare('SELECT local_path,content_type,artifact_id FROM character_assets WHERE id=?').get(assetId) as { local_path: string; content_type: string; artifact_id: string | null } | undefined;
+  // 角色资产只指向 artifacts 中的文件；没有 artifact 关联就无法提供内容。
+  const asset = database.connection.prepare('SELECT artifact_id FROM character_assets WHERE id=?').get(assetId) as { artifact_id: string | null } | undefined;
   if (!asset) return reply.code(404).send({ error: 'not_found' });
-  if (asset.artifact_id) {
-    const artifact = await readArtifact(database, asset.artifact_id);
-    if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'file_not_found' });
-    reply.type(artifact.contentType || asset.content_type).header('content-length', String(artifact.byteSize));
-    return reply.send(createArtifactReadStream(artifact.localPath));
-  }
-  try { return reply.type(asset.content_type).send(await readFile(asset.local_path)); } catch { return reply.code(404).send({ error: 'file_not_found' }); }
+  if (!asset.artifact_id) return reply.code(404).send({ error: 'artifact_missing' });
+  const artifact = await readArtifact(database, asset.artifact_id);
+  if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'file_not_found' });
+  reply.type(artifact.contentType || 'application/octet-stream').header('content-length', String(artifact.byteSize));
+  return reply.send(createArtifactReadStream(artifact.localPath));
 }
 
 function visualReferenceRows(database: ServiceDatabase, characterId: string) {
-  return (database.connection.prepare(`SELECT r.*,a.content_type,a.local_path,a.byte_size,a.width AS asset_width,a.height AS asset_height
-    FROM character_visual_references r JOIN character_assets a ON a.id=r.asset_id
+  // 参考图只保存「作为生成参考的配置」（用途/启用/裁剪）；来源、备注、哈希与尺寸
+  // 属于该角色对文件的资产记录，统一从这里 JOIN 读取。
+  return (database.connection.prepare(`SELECT r.id,r.character_id,r.asset_id,r.purposes_json,r.enabled,r.crop_json,r.created_at,
+      a.artifact_id,art.sha256,art.width,art.height,art.content_type,art.original_name,a.source_page,a.source_url,a.author_note,a.user_note
+    FROM character_visual_references r
+    JOIN character_assets a ON a.id=r.asset_id
+    LEFT JOIN artifacts art ON art.id=a.artifact_id
     WHERE r.character_id=? ORDER BY r.created_at DESC`).all(characterId) as Record<string, unknown>[]).map((row) => ({
     id: String(row.id), characterId: String(row.character_id), assetId: String(row.asset_id), artifactId: row.artifact_id ? String(row.artifact_id) : null,
-    sha256: String(row.sha256), width: row.asset_width == null ? null : Number(row.asset_width), height: row.asset_height == null ? null : Number(row.asset_height),
-    purposes: JSON.parse(String(row.purposes_json ?? '[]')) as string[], outfitId: row.outfit_id ? String(row.outfit_id) : null,
-    sourcePage: row.source_page ? String(row.source_page) : null, originalUrl: row.original_url ? String(row.original_url) : null,
+    sha256: String(row.sha256 ?? ''), width: row.width == null ? null : Number(row.width), height: row.height == null ? null : Number(row.height),
+    purposes: JSON.parse(String(row.purposes_json ?? '[]')) as string[], outfitId: null,
+    sourcePage: row.source_page ? String(row.source_page) : null, originalUrl: row.source_url ? String(row.source_url) : null,
     authorNote: String(row.author_note ?? ''), userNote: String(row.user_note ?? ''), enabled: Boolean(row.enabled), crop: row.crop_json ? JSON.parse(String(row.crop_json)) as Record<string, unknown> : null,
     url: `/api/admin/characters/assets/${row.asset_id}`, createdAt: String(row.created_at),
   }));
 }
 
 async function referenceBytes(database: ServiceDatabase, row: Record<string, unknown>) {
-  if (row.artifact_id) {
-    const artifact = await readArtifact(database, String(row.artifact_id));
-    if (artifact?.localPath && existsSync(artifact.localPath)) return { bytes: await readFile(artifact.localPath), contentType: artifact.contentType || String(row.content_type || 'image/png') };
-  }
-  const path = row.local_path ? String(row.local_path) : '';
-  if (!path || !existsSync(path)) throw new Error('reference_file_not_found');
-  return { bytes: await readFile(path), contentType: String(row.content_type || 'image/png') };
+  if (!row.artifact_id) throw new Error('reference_artifact_missing');
+  const artifact = await readArtifact(database, String(row.artifact_id));
+  if (!artifact?.localPath || !existsSync(artifact.localPath)) throw new Error('reference_file_not_found');
+  return { bytes: await readFile(artifact.localPath), contentType: artifact.contentType || 'image/png' };
 }
 
 function modelJson(content: unknown): Record<string, unknown> {
@@ -284,6 +330,14 @@ function characterImportError(reply: FastifyReply, error: unknown) {
     const status = error.code === 'provider_rate_limited' ? 429 : error.code === 'provider_auth_required' ? 403 : error.code === 'provider_unavailable' ? 503 : 400;
     return reply.code(status).send({ error: error.code, message: error.message, retryAfterSeconds: error.retryAfterSeconds });
   }
+  // 结构化错误（如模型未就绪）携带明确的 HTTP 状态与配置路径，原样透出给前端。
+  const structuredStatus = (error as { statusCode?: unknown }).statusCode;
+  if (typeof structuredStatus === 'number' && structuredStatus >= 400) {
+    const code = (error as { code?: string }).code || 'generation_failed';
+    const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+    const configurationPath = errorConfigurationPath(error);
+    return reply.code(structuredStatus).send({ error: code, message, ...(configurationPath ? { configurationPath } : {}) });
+  }
   const code = error instanceof Error ? error.message : String(error);
   const status = code.includes('conflict') || code === 'base_draft_revision_required' || code.startsWith('import_session_') ? 409 : code === 'not_found' || code.endsWith('_not_found') ? 404 : 400;
   return reply.code(status).send({ error: code });
@@ -291,6 +345,8 @@ function characterImportError(reply: FastifyReply, error: unknown) {
 
 export function registerCharacterRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
   migrateLegacyPersonas(database);
+  // 生日投影完全由角色草稿推导，启动时重建可以覆盖旧数据并保持筛选、日历一致。
+  rebuildCharacterBirthdays(database);
   const cardProviders = new CharacterCardProviderRegistry(fetcher);
 
   app.get('/api/v1/admin/characters/card-providers', async () => ({
@@ -420,13 +476,37 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   });
 
   app.post<{ Body: { slug?: string; displayName?: string; draft?: unknown; tags?: string[] } }>('/api/v1/admin/characters', async (request, reply) => {
-    const draft = normalizeCharacterDraft({ ...(request.body?.draft as object ?? {}), displayName: request.body?.displayName ?? (request.body?.draft as CharacterDraft | undefined)?.displayName });
+    const body = request.body ?? {};
+    const incoming: Record<string, unknown> = { ...(body.draft as object ?? {}) };
+    if (body.displayName != null || !incoming.displayName) incoming.displayName = body.displayName ?? incoming.displayName ?? '';
+    const draft = toAuthorityDraft(incoming);
     if (!draft.displayName) return reply.code(400).send({ error: 'display_name_required' });
     const id = randomUUID(); const now = nowIso(); const slug = uniqueSlug(database, request.body?.slug || draft.englishName || draft.displayName);
     database.connection.prepare(`INSERT INTO character_profiles
-      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,default_outfit_id)
-      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,NULL)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now);
+      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision)
+      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now);
+    upsertCharacterBirthday(database, id, draft);
     return reply.code(201).send(mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(id) as Record<string, unknown>));
+  });
+
+  // 迁移复核入口（规划第 7 节）：把「哪些角色还有待确认的迁移冲突、旧服装是什么」变成可查、可处理的接口。
+  app.get('/api/v1/admin/character-migration-reviews', async () => {
+    const rows = database.connection.prepare(`SELECT p.id,p.display_name,p.draft_json,p.draft_revision
+      FROM character_profiles p
+      WHERE EXISTS (SELECT 1 FROM character_sources c JOIN character_source_snapshots s ON s.id=c.source_snapshot_id
+        WHERE c.character_id=p.id AND s.provider_id=? AND s.format='sthstart-draft-json-v1')
+      ORDER BY p.display_name`).all(MIGRATION_PROVIDER_ID) as Record<string, unknown>[];
+    const items = rows
+      .map((row) => migrationReview(database, String(row.id), String(row.display_name), JSON.parse(String(row.draft_json)), Number(row.draft_revision ?? 1)))
+      // 列表只列真正还有复核项的角色；旧服装备选单独看详情。
+      .filter((review) => review.conflicts.length > 0);
+    return { items, total: items.length };
+  });
+
+  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/migration-review', async (request, reply) => {
+    const row = database.connection.prepare('SELECT id,display_name,draft_json,draft_revision FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    return migrationReview(database, String(row.id), String(row.display_name), JSON.parse(String(row.draft_json)), Number(row.draft_revision ?? 1));
   });
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id', async (request, reply) => {
@@ -442,7 +522,14 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       FROM character_source_snapshots s JOIN character_sources c ON c.source_snapshot_id=s.id
       WHERE c.character_id=? AND s.id=? LIMIT 1`).get(request.params.id, request.params.snapshotId) as { raw_file_path: string | null; format: string; raw_payload_json: string } | undefined;
     if (!snapshot) return reply.code(404).send({ error: 'not_found' });
-    if (!snapshot.raw_file_path || !existsSync(snapshot.raw_file_path)) return reply.code(404).send({ error: 'source_snapshot_file_not_found' });
+    // 结构迁移的原文归档只存库内 JSON（raw_file_path 为空），没有磁盘文件。
+    // 它本身就是原始载荷，直接返回即可；这不同于「文件丢失」——那种情况仍明确报缺失，不伪造内容。
+    if (!snapshot.raw_file_path) {
+      const inline = String(snapshot.raw_payload_json ?? '');
+      if (!inline) return reply.code(404).send({ error: 'source_snapshot_file_not_found' });
+      return reply.type('application/json; charset=utf-8').send(inline);
+    }
+    if (!existsSync(snapshot.raw_file_path)) return reply.code(404).send({ error: 'source_snapshot_file_not_found' });
     try {
       const bytes = await readFile(snapshot.raw_file_path);
       return reply.type(sourceSnapshotContentType(snapshot.format, snapshot.raw_payload_json)).send(bytes);
@@ -454,7 +541,14 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!current) return reply.code(404).send({ error: 'not_found' });
     const currentRevision = Number(current.draft_revision ?? 1);
     if (request.body?.expectedDraftRevision != null && Number(request.body.expectedDraftRevision) !== currentRevision) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
-    const draft = normalizeCharacterDraft(request.body?.draft ?? JSON.parse(String(current.draft_json)));
+    // V1 细分字段无法无损还原 V2 正文结构：用旧载荷覆盖已升级角色会持续套叠小标题，
+    // 因此明确拒绝，而不是静默降级或破坏结构。
+    if (request.body?.draft !== undefined && isV2Draft(JSON.parse(String(current.draft_json))) && !isV2Draft(request.body.draft)) {
+      return reply.code(409).send({ error: 'draft_schema_upgrade_required', message: '该角色已使用新版人设结构，请用新版编辑器保存；旧格式载荷不会被自动写回。' });
+    }
+    const draft = request.body?.draft === undefined
+      ? normalizeCharacterDraft(JSON.parse(String(current.draft_json)))
+      : toAuthorityDraft(request.body.draft);
     if (!draft.displayName) return reply.code(400).send({ error: 'display_name_required' });
     const slug = request.body?.slug ? uniqueSlug(database, request.body.slug, request.params.id) : String(current.slug);
     const tags = request.body?.tags ? list(request.body.tags, 50) : JSON.parse(String(current.tags_json));
@@ -467,6 +561,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       ? statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), request.params.id, currentRevision)
       : statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), request.params.id);
     if (Number(result.changes) !== 1) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
+    upsertCharacterBirthday(database, request.params.id, draft);
     return mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>);
   });
 
@@ -475,24 +570,26 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!row) return reply.code(404).send({ error: 'not_found' });
     if (request.body?.expectedDraftRevision != null && Number(request.body.expectedDraftRevision) !== Number(row.draft_revision ?? 1)) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: Number(row.draft_revision ?? 1) });
     const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
-    if (!draft.displayName || (!draft.identity && !draft.summary && !draft.legacyPrompt)) return reply.code(400).send({ error: 'character_incomplete', message: '发布前至少需要角色名称，以及身份、摘要或兼容提示词。' });
+    const runtime = toCharacterRuntime(draft);
+    if (!runtime.displayName || (!runtime.personaText.trim() && !runtime.summary.trim())) return reply.code(400).send({ error: 'character_incomplete', message: '发布前至少需要角色名称，以及人设正文或摘要。' });
     const version = Number(row.latest_version ?? 0) + 1; const prompt = compileLinshePrompt(draft); const now = nowIso();
-    const appearance = normalizeCharacterAppearance(draft.appearance);
+    const appearance = normalizeCharacterAppearance(runtime.appearance.legacy);
+    appearance.description = runtime.appearance.baseText;
     const publishedReferences = database.connection.prepare('SELECT id FROM character_visual_references WHERE character_id=? AND enabled=1 ORDER BY created_at ASC').all(request.params.id) as Array<{ id: string }>;
     appearance.referenceIds = [...new Set([...(appearance.referenceIds ?? []), ...publishedReferences.map((reference) => reference.id)])];
     const appearanceSnapshot = JSON.stringify({ ...appearance, avatarAssetId: row.avatar_asset_id ?? null, references: visualReferenceRows(database, request.params.id).filter((reference) => reference.enabled) });
     const provenance = JSON.stringify(database.connection.prepare('SELECT field_path,value_hash,source_kind,source_snapshot_id,source_pointer,evidence_json,confirmed FROM character_field_provenance WHERE character_id=? ORDER BY created_at DESC').all(request.params.id));
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO character_versions
-        (character_id,version,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json)
-        VALUES (?,?,?,?,?,?,?,?,?)`).run(request.params.id, version, JSON.stringify(draft), prompt, now, JSON.stringify(relationshipRows(database, request.params.id)), Number(row.draft_revision ?? 1), appearanceSnapshot, provenance);
+        (character_id,version,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json,compiler_version)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(request.params.id, version, JSON.stringify(draft), prompt, now, JSON.stringify(relationshipRows(database, request.params.id)), Number(row.draft_revision ?? 1), appearanceSnapshot, provenance, CHARACTER_PERSONA_COMPILER_VERSION);
       const frozenAssets = database.connection.prepare(`SELECT DISTINCT a.artifact_id FROM character_assets a
         WHERE a.character_id=? AND a.artifact_id IS NOT NULL AND (a.id=? OR a.id IN (SELECT asset_id FROM character_visual_references WHERE character_id=? AND enabled=1))`).all(request.params.id, row.avatar_asset_id ? String(row.avatar_asset_id) : null, request.params.id) as Array<{ artifact_id: string }>;
       for (const asset of frozenAssets) createArtifactReference(database, { artifactId: asset.artifact_id, appId: 'characters', refType: 'character-version', refId: `${request.params.id}:${version}` });
       database.connection.prepare('UPDATE character_profiles SET latest_version=?,updated_at=? WHERE id=?').run(version, now, request.params.id);
       database.connection.prepare(`INSERT INTO personas(id,display_name,tags_json,source,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?)
-        ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,tags_json=excluded.tags_json,latest_version=excluded.latest_version,updated_at=excluded.updated_at`).run(request.params.id, draft.displayName, String(row.tags_json), 'character-library', version, String(row.created_at), now);
-      database.connection.prepare('INSERT OR REPLACE INTO persona_versions VALUES (?,?,?,?,?,?,?,?)').run(request.params.id, version, draft.displayName, prompt, draft.appearance.description || null, row.avatar_asset_id ? String(row.avatar_asset_id) : null, JSON.stringify({ characterData: draft }), now);
+        ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,tags_json=excluded.tags_json,latest_version=excluded.latest_version,updated_at=excluded.updated_at`).run(request.params.id, runtime.displayName, String(row.tags_json), 'character-library', version, String(row.created_at), now);
+      database.connection.prepare('INSERT OR REPLACE INTO persona_versions VALUES (?,?,?,?,?,?,?,?)').run(request.params.id, version, runtime.displayName, prompt, runtime.appearance.baseText || null, row.avatar_asset_id ? String(row.avatar_asset_id) : null, JSON.stringify({ characterData: draft }), now);
     });
     return reply.code(201).send(mapVersion(database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(request.params.id, version) as Record<string, unknown>));
   });
@@ -505,6 +602,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       const draft = await generateDraft(database, secrets, fetcher, description, found);
       const now = nowIso(); database.transaction(() => {
         database.connection.prepare('UPDATE character_profiles SET display_name=?,draft_json=?,draft_revision=?,updated_at=? WHERE id=?').run(draft.displayName, JSON.stringify(draft), Number(row.draft_revision ?? 1) + 1, now, request.params.id);
+        upsertCharacterBirthday(database, request.params.id, draft);
         for (const source of found) database.connection.prepare(`INSERT INTO character_sources
           (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
           VALUES (?,?,?,?,?,?,?,?,?,?,NULL)`).run(randomUUID(), request.params.id, source.title, source.url, source.excerpt, source.sourceType, now, null, null, null);
@@ -556,8 +654,8 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     try {
       database.transaction(() => {
         database.connection.prepare(`INSERT INTO character_assets
-          (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id)
-          VALUES (?,?,?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', artifact.localPath, artifact.contentType || 'image/png', artifact.byteSize, artifact.originalName || `avatar-${assetId}.png`, now, artifact.id);
+          (id,character_id,kind,created_at,artifact_id)
+          VALUES (?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id);
         database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
         createArtifactReference(database, { artifactId: artifact.id, appId: 'characters', refType: 'character-avatar', refId: request.params.id });
         if (oldAsset?.artifact_id && oldAsset.artifact_id !== artifact.id) removeArtifactReference(database, { artifactId: oldAsset.artifact_id, appId: 'characters', refId: request.params.id });
@@ -582,7 +680,12 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/export-tavern', async (request, reply) => {
     const row = database.connection.prepare('SELECT draft_json FROM character_profiles WHERE id=?').get(request.params.id) as { draft_json: string } | undefined; if (!row) return reply.code(404).send({ error: 'not_found' });
     const draft = normalizeCharacterDraft(JSON.parse(row.draft_json));
-    return { spec: 'chara_card_v2', spec_version: '2.0', data: { name: draft.displayName, description: [draft.identity, draft.background].filter(Boolean).join('\n\n'), personality: draft.personality.join('\n'), scenario: draft.currentSituation, first_mes: '', mes_example: draft.speech.examples.join('\n'), creator_notes: draft.extraRules, system_prompt: compileLinshePrompt(draft), post_history_instructions: '', alternate_greetings: [], tags: [], creator: 'SthStart', character_version: '1.0' } };
+    // 结构化生日写在本应用的扩展命名空间，不向标准格式杜撰顶层必填字段。
+    // 酒馆卡没有 V2 的新字段，用运行时视图映射：人设正文与行为约束合并进 description，
+    // 说话方式与边界不重复塞进 personality 以外的位置，示例保持完整轮次。
+    const runtime = toCharacterRuntime(draft);
+    const description = [runtime.personaText, runtime.behaviorRules].filter((part) => part.trim()).join('\n\n');
+    return { spec: 'chara_card_v2', spec_version: '2.0', data: { name: runtime.displayName, description, personality: runtime.speechText, scenario: '', first_mes: '', mes_example: runtime.dialogueExamples.join('\n'), creator_notes: '', system_prompt: compileLinshePrompt(draft), post_history_instructions: '', alternate_greetings: [], tags: [], creator: 'SthStart', character_version: '1.0', extensions: { sthstart: { birthday: effectiveBirthday(draft) } } } };
   });
 
   app.put<{ Params: { id: string }; Body: { toCharacterId?: string; relationType?: string; description?: string } }>('/api/v1/admin/characters/:id/relationship', async (request, reply) => {
@@ -603,16 +706,15 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const bytes = Buffer.from(match[2], 'base64'); if (bytes.length > 8 * 1024 * 1024) return reply.code(413).send({ error: 'image_too_large' });
     const id = randomUUID(); const now = nowIso(); const originalName = request.body.filename?.slice(0, 255) || `${id}.${match[1].split('/')[1].replace('jpeg', 'jpg')}`;
     const artifact = await streamUploadArtifact(config, database, { appId: 'characters', stream: Readable.from([bytes]), contentType: match[1], originalName, refType: 'character-asset', refId: id, metadata: { characterId: request.params.id, kind: request.body.kind === 'reference' ? 'reference' : 'avatar' } });
-    const artifactRow = database.connection.prepare('SELECT local_path FROM artifacts WHERE id=?').get(artifact.id) as { local_path: string | null } | undefined;
     const purposes = Array.isArray(request.body.purposes) ? [...new Set(request.body.purposes.filter((purpose): purpose is string => ['avatar', 'identity', 'outfit', 'pose', 'style', 'init_image'].includes(purpose)))].slice(0, 10) : (request.body.kind === 'reference' ? ['identity'] : ['avatar']);
     try {
       database.connection.prepare(`INSERT INTO character_assets
-        (id,character_id,kind,local_path,content_type,byte_size,original_name,created_at,artifact_id,sha256,width,height,source_page,source_url,author_note,user_note,purposes_json,outfit_id,enabled,crop_json)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, request.body.kind === 'reference' ? 'reference' : 'avatar', artifactRow?.local_path || '', match[1], bytes.length, originalName, now, artifact.id, artifact.sha256, artifact.width, artifact.height, request.body.sourcePage?.slice(0, 2_000) || null, request.body.originalUrl?.slice(0, 2_000) || null, request.body.authorNote?.slice(0, 4_000) || '', request.body.userNote?.slice(0, 4_000) || '', JSON.stringify(purposes), request.body.outfitId ?? null, 1, null);
+        (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note)
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, request.body.kind === 'reference' ? 'reference' : 'avatar', now, artifact.id, request.body.sourcePage?.slice(0, 2_000) || null, request.body.originalUrl?.slice(0, 2_000) || null, request.body.authorNote?.slice(0, 4_000) || '', request.body.userNote?.slice(0, 4_000) || '');
       if (request.body.kind === 'reference') {
         database.connection.prepare(`INSERT INTO character_visual_references
-          (id,character_id,asset_id,artifact_id,sha256,purposes_json,outfit_id,source_page,original_url,author_note,user_note,enabled,crop_json,created_at,updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(), request.params.id, id, artifact.id, artifact.sha256, JSON.stringify(purposes), request.body.outfitId ?? null, request.body.sourcePage?.slice(0, 2_000) || null, request.body.originalUrl?.slice(0, 2_000) || null, request.body.authorNote?.slice(0, 4_000) || '', request.body.userNote?.slice(0, 4_000) || '', 1, null, now, now);
+          (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)
+          VALUES (?,?,?,?,1,NULL,?,?)`).run(randomUUID(), request.params.id, id, JSON.stringify(purposes), now, now);
       }
     } catch (error) { throw error; }
     if (request.body.kind !== 'reference') database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(id, now, request.params.id);
@@ -646,14 +748,17 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!profile) return reply.code(404).send({ error: 'not_found' });
     const referenceId = text(request.body?.referenceId, 200);
     if (!referenceId) return reply.code(400).send({ error: 'reference_id_required' });
-    const reference = database.connection.prepare(`SELECT r.*,a.local_path,a.content_type,a.artifact_id
+    const reference = database.connection.prepare(`SELECT r.id,r.asset_id,r.enabled,a.local_path,a.content_type,a.artifact_id
       FROM character_visual_references r JOIN character_assets a ON a.id=r.asset_id
       WHERE r.id=? AND r.character_id=? AND r.enabled=1`).get(referenceId, request.params.id) as Record<string, unknown> | undefined;
     if (!reference) return reply.code(404).send({ error: 'reference_not_found' });
     if (request.body?.expectedDraftRevision != null && Number(request.body.expectedDraftRevision) !== Number(profile.draft_revision ?? 1)) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: Number(profile.draft_revision ?? 1) });
     try {
       const model = await resolveCharacterLlmProfile(database, secrets, request.params.id, 'multimodal');
-      if (!model?.model) throw new Error('multimodal_profile_not_assigned');
+      if (!model?.model) {
+        const status = await resolveCharacterLlmBindingStatus(database, secrets, request.params.id, 'multimodal');
+        throw llmNotReadyError(status);
+      }
       const media = await referenceBytes(database, reference);
       const prompt = `请观察这张角色参考图，只输出 JSON，不要 Markdown。不要从画面推断未观察到的身份、作品或性格；不确定项放入 unknowns，视觉与已有人设冲突放入 conflicts。严格使用此格式：
 {"description":"观察到的整体外观","hair":"发型发色","eyes":"眼睛","build":"体态","accessories":[],"observedOutfit":"本图服装","unknowns":[],"conflicts":[],"evidence":["可见证据"]}
@@ -678,23 +783,37 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const extraction = appearanceExtraction(JSON.parse(String(candidate.output_json)) as Record<string, unknown>);
     const selected = new Set(Array.isArray(request.body?.fieldPaths) ? request.body.fieldPaths : ['/appearance/description', '/appearance/hair', '/appearance/eyes', '/appearance/build', '/appearance/accessories']);
     const draft = normalizeCharacterDraft(JSON.parse(profile.draft_json));
-    const appearance = normalizeCharacterAppearance(draft.appearance);
-    if (selected.has('/appearance/description') && extraction.description) appearance.description = extraction.description;
-    if (selected.has('/appearance/hair') && extraction.hair) appearance.hair = extraction.hair;
-    if (selected.has('/appearance/eyes') && extraction.eyes) appearance.eyes = extraction.eyes;
-    if (selected.has('/appearance/build') && extraction.build) appearance.build = extraction.build;
-    if (selected.has('/appearance/accessories') && extraction.accessories.length) appearance.accessories = extraction.accessories;
-    if (selected.has('/appearance/outfits') && extraction.observedOutfit) appearance.outfits = [...new Set([...appearance.outfits, extraction.observedOutfit])];
-    const nextDraft = normalizeCharacterDraft({ ...draft, appearance });
+    const authority = toAuthorityDraft(draft);
+    const previous = toCharacterRuntime(authority);
+    // 识图候选仍是细项（发色/瞳色/体态/配饰/本图服装）；采用时按细项重建基础外貌与默认穿着，
+    // 只覆盖用户勾选的项，未勾选的原正文保留。这里与前端差异预览共用同一个纯函数，
+    // 避免「预览看到的」和「实际写入的」两套逻辑各自漂移。
+    const preview = previewAppearanceCandidateApplication(
+      { baseText: previous.appearance.baseText, defaultOutfitText: previous.appearance.defaultOutfitText },
+      extraction,
+      [...selected],
+    );
+    const nextDraft: CharacterDraftV2 = {
+      ...authority,
+      appearance: {
+        baseText: preview.baseText,
+        defaultOutfitText: preview.defaultOutfitText,
+      },
+    };
     const nextRevision = Number(profile.draft_revision ?? 1) + 1; const now = nowIso();
     database.transaction(() => {
       const update = database.connection.prepare('UPDATE character_profiles SET draft_json=?,draft_revision=?,updated_at=? WHERE id=? AND draft_revision=?').run(JSON.stringify(nextDraft), nextRevision, now, request.params.id, profile.draft_revision ?? 1);
       if (Number(update.changes) !== 1) throw new Error('draft_revision_conflict');
+      upsertCharacterBirthday(database, request.params.id, nextDraft);
       for (const fieldPath of selected) {
         if (!['/appearance/description', '/appearance/hair', '/appearance/eyes', '/appearance/build', '/appearance/accessories', '/appearance/outfits'].includes(fieldPath)) continue;
-        const field = fieldPath.split('/').at(-1)!;
-        if (JSON.stringify((draft.appearance as unknown as Record<string, unknown>)[field]) === JSON.stringify((appearance as unknown as Record<string, unknown>)[field])) continue;
-        const value = fieldPath === '/appearance/description' ? appearance.description : fieldPath === '/appearance/hair' ? appearance.hair : fieldPath === '/appearance/eyes' ? appearance.eyes : fieldPath === '/appearance/build' ? appearance.build : fieldPath === '/appearance/accessories' ? appearance.accessories : appearance.outfits;
+        const value = fieldPath === '/appearance/description' ? extraction.description
+          : fieldPath === '/appearance/hair' ? extraction.hair
+          : fieldPath === '/appearance/eyes' ? extraction.eyes
+          : fieldPath === '/appearance/build' ? extraction.build
+          : fieldPath === '/appearance/accessories' ? extraction.accessories
+          : extraction.observedOutfit;
+        if (!value || (Array.isArray(value) && value.length === 0)) continue;
         database.connection.prepare(`INSERT INTO character_field_provenance
           (id,character_id,version,field_path,value_hash,source_kind,source_snapshot_id,source_pointer,evidence_json,derived_from_json,confirmed,created_at)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(), request.params.id, null, fieldPath, hash(value), 'image_observed', null, `/character-ai-candidates/${request.params.taskId}`, JSON.stringify({ evidence: extraction.evidence, conflicts: extraction.conflicts }), '[]', 1, now);
@@ -711,7 +830,10 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const scenario = text(request.body?.scenario, 8_000); if (!scenario) return reply.code(400).send({ error: 'scenario_required' });
     try {
       const model = await resolveCharacterLlmProfile(database, secrets, request.params.id, 'text');
-      if (!model?.model) throw new Error('text_profile_not_assigned');
+      if (!model?.model) {
+        const status = await resolveCharacterLlmBindingStatus(database, secrets, request.params.id, 'text');
+        throw llmNotReadyError(status);
+      }
       const draft = normalizeCharacterDraft(JSON.parse(profile.draft_json));
       const prompt = buildAuditionPrompt(draft, scenario, text(request.body?.feedback, 4_000));
       const response = await fetcher(`${model.baseUrl}/chat/completions`, { method: 'POST', headers: { ...model.headers, ...upstreamHeaders(model.secret) }, body: JSON.stringify({ ...model.extraBody, model: model.model, temperature: 0.7, messages: [{ role: 'system', content: '你是严格遵循已保存角色资料的试演助手，只输出有效 JSON。' }, { role: 'user', content: prompt }] }), signal: AbortSignal.timeout(180_000) });
@@ -727,9 +849,20 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       const id = randomUUID();
       database.connection.prepare(`INSERT INTO character_auditions
         (id,character_id,draft_revision,scenario,output,feedback,suggestions_json,compiler_version,model_profile_id,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, Number(profile.draft_revision ?? 1), scenario, output, text(request.body?.feedback, 4_000) || null, JSON.stringify(suggestions), 'character-persona-v1', model.id, nowIso());
-      return { id, scenario, output, ...(request.body?.feedback ? { feedback: text(request.body.feedback, 4_000) } : {}), suggestions, draftRevision: Number(profile.draft_revision ?? 1), compilerVersion: 'character-persona-v1', profileId: model.id };
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, Number(profile.draft_revision ?? 1), scenario, output, text(request.body?.feedback, 4_000) || null, JSON.stringify(suggestions), CHARACTER_PERSONA_COMPILER_VERSION, model.id, nowIso());
+      return { id, scenario, output, ...(request.body?.feedback ? { feedback: text(request.body.feedback, 4_000) } : {}), suggestions, draftRevision: Number(profile.draft_revision ?? 1), compilerVersion: CHARACTER_PERSONA_COMPILER_VERSION, profileId: model.id };
     } catch (error) { return characterImportError(reply, error); }
+  });
+
+  // 角色实际生效的模型状态：专属绑定优先，失效时如实报错而不是静默回退。
+  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/llm-status', async (request, reply) => {
+    const profile = database.connection.prepare('SELECT id FROM character_profiles WHERE id=? AND archived=0').get(request.params.id);
+    if (!profile) return reply.code(404).send({ error: 'not_found' });
+    const [text, multimodal] = await Promise.all([
+      resolveCharacterLlmBindingStatus(database, secrets, request.params.id, 'text'),
+      resolveCharacterLlmBindingStatus(database, secrets, request.params.id, 'multimodal'),
+    ]);
+    return { characterId: request.params.id, text, multimodal };
   });
 
   app.get('/api/v1/characters', async (request, reply) => {

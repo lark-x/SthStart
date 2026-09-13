@@ -1,9 +1,9 @@
 'use client';
 
 import type { ArtifactDescriptor, CreativeWorkflowBinding } from '@sthstart/contracts';
-import { ImagePlus, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { InputLabel } from '../input-label';
@@ -52,11 +52,9 @@ export function VideoGenerator({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2 text-accent-dark">{needsFirst ? <ImagePlus className="h-4 w-4" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}<span className="text-sm font-bold tracking-[0.16em] uppercase">MAKE A VIDEO</span></div>
-        <CardTitle>开始一次视频创作</CardTitle>
-        <CardDescription>视频任务由 SthStart 公共生成核心异步执行；Worker 与工作流由管理端绑定。</CardDescription>
+        <CardTitle>视频创作</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className="space-y-3">
         <div>
           <InputLabel htmlFor="video-prompt">正向提示词</InputLabel>
           <Textarea id="video-prompt" className="mt-1.5 min-h-[112px]" value={form.prompt} onChange={(event) => onFormChange('prompt', event.target.value)} placeholder="描述镜头、主体动作与氛围…" maxLength={10000} />
@@ -94,8 +92,8 @@ export function VideoGenerator({
         </div>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-        <div className="flex-1 text-sm text-muted">{binding ? <><span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${ready ? 'bg-[#4e9b6b]' : 'bg-[#d0a731]'}`} />{ready ? `${binding.workflow?.name ?? '已配置'} · ${binding.engine?.name ?? 'Worker'}` : '当前视频模式尚未就绪'}</> : '正在检查公共生成状态…'}</div>
-        <Button variant="accent" size="lg" onClick={onSubmit} loading={submitting} disabled={!ready || uploading}><Sparkles className="h-4 w-4" aria-hidden="true" />开始生成</Button>
+        <div className="flex-1 text-sm text-muted">{binding ? <><span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} />{ready ? `${binding.workflow?.name ?? '已配置'} · ${binding.engine?.name ?? 'Worker'}` : '当前视频模式尚未就绪'}</> : '正在检查公共生成状态…'}</div>
+        <Button variant="accent" size="md" onClick={onSubmit} loading={submitting} disabled={!ready || uploading}><Sparkles className="h-4 w-4" aria-hidden="true" />开始生成</Button>
       </CardFooter>
     </Card>
   );

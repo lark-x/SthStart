@@ -7,17 +7,23 @@ import {
   CharacterListResponseSchema,
   CharacterProfileSchema,
   CharacterVersionSchema,
+  CharacterMigrationReviewListSchema,
+  CharacterMigrationReviewSchema,
   CharacterImportSessionSchema,
+  CharacterLlmStatusResponseSchema,
 } from '@sthstart/contracts';
 import type {
-  CharacterDraft,
+  CharacterDraftAny,
   CharacterProfile,
   CharacterRelationship,
   CharacterSource,
+  CharacterMigrationReview,
+  CharacterMigrationReviewList,
   CharacterVersion,
   GenerationTaskDescriptor,
   CharacterImportSession,
   CharacterCardSearchResponse,
+  CharacterLlmStatusResponse,
 } from '@sthstart/contracts';
 
 export type CharacterDetail = CharacterProfile & {
@@ -40,9 +46,19 @@ export async function fetchCharacterDetail(id: string): Promise<CharacterDetail>
   return getJson<CharacterDetail>(`characters/${id}`, undefined, CharacterDetailSchema);
 }
 
+/** 结构迁移复核项：哪些内容在升级时无法自动归类，需要人确认。 */
+export async function fetchCharacterMigrationReview(id: string): Promise<CharacterMigrationReview> {
+  return getJson<CharacterMigrationReview>(`characters/${id}/migration-review`, undefined, CharacterMigrationReviewSchema);
+}
+
+/** 仍有复核项的角色清单。 */
+export async function fetchCharacterMigrationReviews(): Promise<CharacterMigrationReviewList> {
+  return getJson<CharacterMigrationReviewList>('character-migration-reviews', undefined, CharacterMigrationReviewListSchema);
+}
+
 export async function createCharacter(payload: {
   displayName: string;
-  draft: CharacterDraft;
+  draft: CharacterDraftAny;
   tags: string[];
 }): Promise<CharacterProfile> {
   return postJson<CharacterProfile>('characters', payload, undefined, CharacterProfileSchema);
@@ -50,7 +66,7 @@ export async function createCharacter(payload: {
 
 export async function updateCharacter(
   id: string,
-  payload: { draft: CharacterDraft; tags: string[]; expectedDraftRevision?: number }
+  payload: { draft: CharacterDraftAny; tags: string[]; expectedDraftRevision?: number }
 ): Promise<CharacterProfile> {
   return putJson<CharacterProfile>(`characters/${id}`, payload, undefined, CharacterProfileSchema);
 }
@@ -59,7 +75,7 @@ export async function generateCharacterDraft(
   id: string,
   description: string,
   useWeb = true,
-): Promise<{ draft: CharacterDraft; sources: CharacterSource[] }> {
+): Promise<{ draft: CharacterDraftAny; sources: CharacterSource[] }> {
   return postJson(`characters/${id}/generate`, { description, useWeb }, undefined, CharacterGenerateResponseSchema);
 }
 
@@ -100,7 +116,7 @@ export async function extractCharacterAppearance(id: string, referenceId: string
   return postJson(`characters/${id}/appearance-extractions`, { referenceId, ...(expectedDraftRevision == null ? {} : { expectedDraftRevision }) });
 }
 
-export async function applyCharacterAppearanceExtraction(id: string, taskId: string, expectedDraftRevision: number, fieldPaths: string[]): Promise<{ draft: CharacterDraft; draftRevision: number; candidateId: string }> {
+export async function applyCharacterAppearanceExtraction(id: string, taskId: string, expectedDraftRevision: number, fieldPaths: string[]): Promise<{ draft: CharacterDraftAny; draftRevision: number; candidateId: string }> {
   return postJson(`characters/${id}/appearance-extractions/${taskId}/apply`, { expectedDraftRevision, fieldPaths });
 }
 
@@ -124,6 +140,10 @@ export async function auditionCharacter(
 
 export async function fetchCharacterModelAssignments(id: string): Promise<{ items: Array<{ role: 'text' | 'multimodal'; profile_id: string; updated_at: string }> }> {
   return getJson(`characters/${id}/model-assignments`);
+}
+
+export async function fetchCharacterLlmStatus(id: string): Promise<CharacterLlmStatusResponse> {
+  return getJson(`characters/${id}/llm-status`, undefined, CharacterLlmStatusResponseSchema);
 }
 
 export async function updateCharacterModelAssignments(id: string, input: { textProfileId?: string | null; multimodalProfileId?: string | null }) {

@@ -52,7 +52,7 @@ export function LocalNoteImage({
     <div className="relative h-full w-full">
       {(!resolvedSrc || loadedSrc !== resolvedSrc || imageFailed) && (
         <div
-          className="absolute inset-0 flex items-center justify-center bg-[#e6e4dc] px-4 text-center text-sm text-muted"
+          className="absolute inset-0 flex items-center justify-center bg-surface-muted px-4 text-center text-sm text-muted"
           role={imageFailed ? 'alert' : 'status'}
         >
           {imageFailed ? '图片读取失败，请重新打开或重新上传。' : assetId ? '正在读取本机图片…' : '正在加载图片…'}

@@ -64,13 +64,10 @@ export function NotebookList() {
   const worldNotes = notes.filter((n) => n.kind === 'world').slice(0, 4);
 
   return (
-    <main className="notebook-list-page min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6">
-      <div className="max-w-7xl mx-auto space-y-5">
+    <div className="notebook-list-page w-full bg-paper text-ink px-4 sm:px-6 py-6">
+      <div className="mx-auto w-full max-w-[1920px] space-y-4">
       <PageHeader
         className="notebook-list-header"
-        backHref="/"
-        backLabel="返回门户首页"
-        eyebrow="CAPTURE · CONNECT · CREATE"
         title="创作笔记"
         description="把散落的念头留在故事发生之前。记录日常、灵感和设定，成熟片段可标记为剧情候选，流转给剧本与交互体验。"
         actions={
@@ -91,14 +88,14 @@ export function NotebookList() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="notebook-list-filters flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] shadow-sm">
+      <div className="notebook-list-filters flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-sm">
         <div className="relative w-full sm:max-w-md">
           <Search className="h-4 w-4 absolute left-3 top-3 text-muted" aria-hidden="true" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索标题、正文或标签…"
-            className="pl-9 bg-transparent border-[rgb(24_32_29/12%)]"
+            className="pl-9 border-border-control"
           />
         </div>
 
@@ -120,7 +117,7 @@ export function NotebookList() {
                 className={`px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-ink text-paper'
-                    : 'text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)]'
+                    : 'text-muted hover:text-ink hover:bg-ink/6'
                 }`}
               >
                 {opt.label}
@@ -136,7 +133,7 @@ export function NotebookList() {
           {[1, 2, 3, 4, 5, 6].map((n) => (
             <div
               key={n}
-              className="p-5 rounded-[3px_22px_3px_3px] border border-[rgb(24_32_29/14%)] bg-surface space-y-3"
+              className="p-5 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3"
             >
               <Skeleton className="h-4 w-1/4" />
               <Skeleton className="h-6 w-3/4" />
@@ -148,12 +145,12 @@ export function NotebookList() {
       ) : visibleNotes.length > 0 ? (
         <div className="notebook-list-results space-y-10">
           <section className="notebook-recent-section space-y-4">
-            <div className="notebook-section-heading flex items-center justify-between pb-2 border-b border-[rgb(24_32_29/10%)]">
+            <div className="notebook-section-heading flex items-center justify-between pb-2 border-b border-border-subtle">
               <div>
                 <span className="text-sm font-bold uppercase tracking-wider text-accent-dark">
                   RECENT NOTES
                 </span>
-                <h3 className="font-serif text-2xl font-medium text-ink">
+                <h3 className="text-xl font-medium text-ink">
                   {selectedFilter === 'all' ? '最近记录' : kindLabels[selectedFilter]}
                 </h3>
               </div>
@@ -167,7 +164,7 @@ export function NotebookList() {
                 <Link
                   key={note.id}
                   href={`/apps/notebook/${note.id}`}
-                  className={`notebook-list-item group relative flex flex-col justify-between p-5 min-h-[220px] rounded-[3px_22px_3px_3px] border border-[rgb(24_32_29/14%)] bg-surface hover:border-accent/60 hover:shadow-md transition-all duration-200 note-card note-kind-${note.kind}`}
+                  className={`notebook-list-item group relative flex flex-col justify-between p-5 min-h-[220px] rounded-[var(--radius-panel)] border border-border-default bg-surface hover:border-accent/60 hover:shadow-md transition-all duration-200 note-card note-kind-${note.kind}`}
                 >
                   <div>
                     <div className="flex items-center justify-between text-sm text-muted mb-2 font-medium">
@@ -175,7 +172,7 @@ export function NotebookList() {
                       <time>{formatDate(note.updatedAt)}</time>
                     </div>
 
-                    <h4 className="font-serif text-xl font-medium text-ink group-hover:text-accent transition-colors line-clamp-2">
+                    <h4 className="text-xl font-medium text-ink group-hover:text-accent transition-colors line-clamp-2">
                       {note.title || '未命名笔记'}
                     </h4>
 
@@ -184,14 +181,14 @@ export function NotebookList() {
                     </p>
                   </div>
 
-                  <div className="notebook-list-item-meta flex items-center justify-between pt-3 mt-4 border-t border-[rgb(24_32_29/8%)] text-sm text-muted">
+                  <div className="notebook-list-item-meta flex items-center justify-between pt-3 mt-4 border-t border-border-subtle text-sm text-muted">
                     <span className="font-medium">{stageLabels[note.stage]}</span>
                     <div className="flex items-center gap-2">
                       <span className="truncate max-w-[120px]">
                         {note.tags.slice(0, 2).map((t) => `#${t}`).join(' ')}
                       </span>
                       {note.favorite && (
-                        <Star className="h-3.5 w-3.5 fill-[#d0a731] text-[#d0a731]" aria-hidden="true" />
+                        <Star className="h-3.5 w-3.5 fill-warning text-warning" aria-hidden="true" />
                       )}
                     </div>
                   </div>
@@ -201,10 +198,10 @@ export function NotebookList() {
           </section>
 
           {/* Lore Shelves */}
-          <section className="notebook-lore-section grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[rgb(24_32_29/12%)]">
-            <div className="notebook-lore-shelf p-5 rounded-[4px_18px_4px_4px] bg-surface border border-[rgb(24_32_29/12%)] space-y-3">
+          <section className="notebook-lore-section grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border-subtle">
+            <div className="notebook-lore-shelf p-5 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="font-serif text-xl font-medium text-ink">角色人设</h4>
+                <h4 className="text-xl font-medium text-ink">角色人设</h4>
                 <button
                   type="button"
                   onClick={() => setSelectedFilter('character')}
@@ -219,7 +216,7 @@ export function NotebookList() {
                   <Link
                     key={item.id}
                     href={`/apps/notebook/${item.id}`}
-                    className="flex items-center justify-between p-2.5 rounded hover:bg-[rgb(24_32_29/4%)] transition-colors border-b border-[rgb(24_32_29/8%)]"
+                    className="flex items-center justify-between p-2.5 rounded hover:bg-ink/4 transition-colors border-b border-border-subtle"
                   >
                     <span className="font-medium text-sm text-ink truncate">{item.title}</span>
                     <span className="text-sm text-muted flex-shrink-0">
@@ -230,7 +227,7 @@ export function NotebookList() {
                 {characterNotes.length === 0 && (
                   <Link
                     href="/apps/notebook/new?kind=character"
-                    className="block p-4 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded hover:border-accent"
+                    className="block p-4 text-center text-sm text-muted border border-dashed border-border-default rounded hover:border-accent"
                   >
                     ＋ 建立第一份角色人设笔记
                   </Link>
@@ -238,9 +235,9 @@ export function NotebookList() {
               </div>
             </div>
 
-            <div className="notebook-lore-shelf p-5 rounded-[4px_18px_4px_4px] bg-surface border border-[rgb(24_32_29/12%)] space-y-3">
+            <div className="notebook-lore-shelf p-5 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="font-serif text-xl font-medium text-ink">世界故事</h4>
+                <h4 className="text-xl font-medium text-ink">世界故事</h4>
                 <button
                   type="button"
                   onClick={() => setSelectedFilter('world')}
@@ -255,7 +252,7 @@ export function NotebookList() {
                   <Link
                     key={item.id}
                     href={`/apps/notebook/${item.id}`}
-                    className="flex items-center justify-between p-2.5 rounded hover:bg-[rgb(24_32_29/4%)] transition-colors border-b border-[rgb(24_32_29/8%)]"
+                    className="flex items-center justify-between p-2.5 rounded hover:bg-ink/4 transition-colors border-b border-border-subtle"
                   >
                     <span className="font-medium text-sm text-ink truncate">{item.title}</span>
                     <span className="text-sm text-muted flex-shrink-0">
@@ -266,7 +263,7 @@ export function NotebookList() {
                 {worldNotes.length === 0 && (
                   <Link
                     href="/apps/notebook/new?kind=world"
-                    className="block p-4 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded hover:border-accent"
+                    className="block p-4 text-center text-sm text-muted border border-dashed border-border-default rounded hover:border-accent"
                   >
                     ＋ 记录第一份世界观设定
                   </Link>
@@ -288,7 +285,7 @@ export function NotebookList() {
             <div className="flex gap-2">
               <Link
                 href="/apps/notebook/new"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[3px_14px_3px_3px] bg-accent text-white font-semibold text-sm hover:bg-accent-dark transition-colors shadow-xs"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[var(--radius-panel)] bg-accent text-white font-semibold text-sm hover:bg-accent-dark transition-colors shadow-xs"
               >
                 <Plus className="h-4 w-4" />
                 <span>写下第一篇笔记</span>
@@ -298,6 +295,6 @@ export function NotebookList() {
         />
       )}
       </div>
-    </main>
+    </div>
   );
 }

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Value } from '@sinclair/typebox/value';
+import { PublicServiceOverviewSchema } from '@sthstart/contracts';
 import { createService } from './server.js';
 import { ServiceDatabase } from './database.js';
 import { readConfig } from './config.js';
@@ -49,6 +51,37 @@ test('model management discovers, clones independently, assigns, and protects ac
   await app.inject({ method: 'PUT', url: '/api/v1/admin/apps/writer-app/llm-assignments', headers: adminHeaders, payload: { textProfileId: null, multimodalProfileId: 'primary-model' } });
   const removed = await app.inject({ method: 'DELETE', url: '/api/v1/admin/profiles/secondary-model', headers: adminHeaders });
   assert.equal(removed.statusCode, 200); assert.equal(secrets.values.has('profile:secondary-model'), false);
+  await app.close(); database.close();
+});
+
+/**
+ * 凭据库不可用时也必须把配置本身保存下来：用户填写的 Base URL、模型 ID 等内容
+ * 不能因为密钥写不进去就整批丢失。
+ */
+test('profile save keeps the configuration when the credential store is unavailable', async () => {
+  class UnavailableSecrets extends SecretStore {
+    override async status() { return { available: false, backend: null, envFallback: true }; }
+    override async get() { return { value: null, source: 'none' as const }; }
+    override async set() { throw new Error('系统安全凭据库不可用'); }
+    override async delete() { throw new Error('系统安全凭据库不可用'); }
+  }
+  const database = new ServiceDatabase();
+  const { app } = await createService({ config: readConfig({ STHSTART_ADMIN_TOKEN: adminToken }), database, secrets: new UnavailableSecrets() });
+  const saved = await app.inject({ method: 'POST', url: '/api/v1/admin/profiles', headers: adminHeaders, payload: {
+    id: 'fallback-model', name: 'Fallback', kind: 'llm', baseUrl: 'https://llm.test/v1', model: 'model-a', secret: 'sk-plain-must-not-be-lost', capabilities: ['text'],
+  } });
+  assert.equal(saved.statusCode, 201);
+  assert.equal(saved.json().id, 'fallback-model');
+  assert.equal(saved.json().secretStored, false);
+  assert.match(String(saved.json().warning), /STHSTART_SECRET_FALLBACK_MODEL/);
+  const overview = await app.inject({ method: 'GET', url: '/api/v1/admin/overview', headers: adminHeaders });
+  assert.equal(Value.Check(PublicServiceOverviewSchema, overview.json()), true,
+    JSON.stringify([...Value.Errors(PublicServiceOverviewSchema, overview.json())].map(({ path, message }) => ({ path, message }))));
+  const profile = overview.json().profiles.find((item: { id: string }) => item.id === 'fallback-model');
+  assert.equal(profile.baseUrl, 'https://llm.test/v1');
+  assert.equal(profile.model, 'model-a');
+  assert.deepEqual(profile.capabilities, ['text']);
+  assert.equal(profile.hasCredential, false);
   await app.close(); database.close();
 });
 

@@ -32,9 +32,7 @@ export function RuntimeOverviewPanel({
         <Card className="bg-ink text-paper border-none md:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent">
-                RUNTIME ENVIRONMENT
-              </span>
+              <span className="text-xs font-medium text-paper/60">运行栈状态</span>
               <Badge variant={allRunning ? 'running' : anyRunning ? 'warning' : 'stopped'}>
                 {allRunning ? '全部就绪' : anyRunning ? '部分运行' : '已停止'}
               </Badge>
@@ -60,7 +58,7 @@ export function RuntimeOverviewPanel({
               <Button
                 variant="secondary"
                 size="md"
-                className="border-white/20 text-paper hover:bg-white/10"
+                className="border-white/20 text-paper hover:bg-surface-raised/10"
                 disabled={Boolean(busy) || !anyRunning}
                 onClick={onStopAll}
                 loading={busy === 'stop-all'}
@@ -73,7 +71,7 @@ export function RuntimeOverviewPanel({
                 href={launchUrl}
                 target={isLinsheRunning ? '_blank' : undefined}
                 rel="noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-[3px_12px_3px_3px] border border-white/20 text-paper hover:bg-white/10 transition-colors ml-auto"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-[var(--radius-control)] border border-white/20 text-paper hover:bg-surface-raised/10 transition-colors ml-auto"
               >
                 <span>打开邻舍界面</span>
                 <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -94,20 +92,18 @@ export function RuntimeOverviewPanel({
 
         <Card className="flex flex-col justify-between">
           <div>
-            <span className="text-sm font-bold tracking-[0.16em] uppercase text-muted">
-              SERVICE HEALTH
-            </span>
-            <div className="mt-3 font-serif text-5xl font-medium text-ink">
+            <span className="text-xs font-medium text-fg-subtle">服务健康度</span>
+            <div className="mt-3 text-5xl font-medium text-ink">
               {runningServices.length}
               <span className="text-xl text-muted font-sans font-normal"> / {services.length}</span>
             </div>
             <p className="mt-1 text-sm text-muted">当前运行中服务</p>
           </div>
 
-          <div className="pt-4 border-t border-[rgb(24_32_29/10%)] text-sm text-muted space-y-1">
+          <div className="pt-4 border-t border-border-subtle text-sm text-muted space-y-1">
             <div className="flex justify-between">
               <span>最近异常:</span>
-              <strong className={overview?.recentErrors ? 'text-[#c9674a]' : 'text-[#4e9b6b]'}>
+              <strong className={overview?.recentErrors ? 'text-danger' : 'text-success'}>
                 {overview?.recentErrors ?? 0}
               </strong>
             </div>

@@ -35,6 +35,7 @@
     "test:windows-worker": "npm --prefix workers/windows-worker test",
     "test:e2e": "npm run build && playwright test",
     "test:portal": "node --import tsx/esm --test app/lib/*.test.ts",
+    "test:contracts": "npm run test --workspace @sthstart/contracts",
     "test:linshe-contract": "node --import tsx/esm --test apps/service/src/linshe-contract.test.ts",
     "ci:core": "npm run typecheck && npm run test:portal && npm run test --workspace @sthstart/service && npm run build",
     "verify": "npm run typecheck && npm run test && npm run build && npm run lint",

@@ -27,6 +27,8 @@ import { ModelSettingsPanel } from '@/app/features/runtime/components/model-sett
 import { LogViewer } from '@/app/features/runtime/components/log-viewer';
 import { ImportConfigDialog } from '@/app/features/runtime/components/import-config-dialog';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Button } from '@/app/components/ui/button';
 import { buttonVariants } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
@@ -189,12 +191,8 @@ export function ControlCenter() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6">
-      <div className="max-w-7xl mx-auto space-y-5">
+    <PageContainer width="settings" className="space-y-4 py-6">
       <PageHeader
-        backHref="/"
-        backLabel="返回门户首页"
-        eyebrow="LOCAL SERVICE CONTROL"
         title="邻舍运行控制中心"
         description="统一管理邻舍主服务、ComfyUI、向量数据库与生图依赖，掌控实时日志与自启状态。"
         actions={
@@ -226,54 +224,42 @@ export function ControlCenter() {
         </Alert>
       )}
 
-      {/* Tabs */}
-      <div
-        className="control-center-tabs sticky top-0 z-20 flex gap-1.5 overflow-x-auto pb-2 pt-2 bg-paper/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]"
-        role="tablist"
-        aria-label="控制中心分区"
-      >
-        {[
+      {/* 分区导航与其它设置页共用页级 tab（§8.12），移动端热区由 .page-tabs 统一保证。 */}
+      <PageTabs
+        ariaLabel="控制中心分区"
+        value={tab}
+        onChange={(id) => setTab(id as Tab)}
+        tabs={[
           { id: 'overview', label: '运行总览', icon: Activity },
           { id: 'runtime', label: '自启与服务', icon: Server },
           { id: 'creative', label: '创作扩展', icon: Sliders },
           { id: 'models', label: '模型接入', icon: Cpu },
           { id: 'logs', label: '实时日志', icon: Terminal },
-        ].map((item) => {
-          const Icon = item.icon;
-          const isActive = tab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setTab(item.id as Tab)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                isActive
-                  ? 'bg-ink text-paper'
-                  : 'text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)]'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        ].map((item) => ({
+          id: item.id,
+          panelId: `control-panel-${item.id}`,
+          label: (
+            <>
+              <item.icon className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
+            </>
+          ),
+        }))}
+      />
 
       {isLoading && !overview && (
         <div className="space-y-4" aria-label="正在加载运行控制中心">
-          <Skeleton className="h-40 w-full rounded-[4px_20px_4px_4px]" />
+          <Skeleton className="h-40 w-full rounded-[var(--radius-panel)]" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Skeleton className="h-28 w-full rounded-[3px_14px_3px_3px]" />
-            <Skeleton className="h-28 w-full rounded-[3px_14px_3px_3px]" />
+            <Skeleton className="h-28 w-full rounded-[var(--radius-panel)]" />
+            <Skeleton className="h-28 w-full rounded-[var(--radius-panel)]" />
           </div>
         </div>
       )}
 
       {/* Tab Panels */}
       {tab === 'overview' && (
-        <div className="space-y-6 animate-in fade-in" data-visual-dynamic="true">
+        <div id="control-panel-overview" role="tabpanel" className="space-y-6 animate-in fade-in" data-visual-dynamic="true">
           <RuntimeOverviewPanel
             overview={overview}
             launchUrl={launchUrl}
@@ -283,7 +269,7 @@ export function ControlCenter() {
           />
           <RemotePerformancePanel />
           <div>
-            <h3 className="font-serif text-xl font-medium text-ink mb-3">
+            <h3 className="tpl-section-title mb-3">
               已注册服务组件
             </h3>
             <RuntimeServiceList
@@ -298,14 +284,14 @@ export function ControlCenter() {
       )}
 
       {tab === 'runtime' && (
-        <div className="space-y-6 animate-in fade-in">
+        <div id="control-panel-runtime" role="tabpanel" className="space-y-6 animate-in fade-in">
           <RuntimeSettingsForm
             initialValues={overview?.settings}
             onSubmit={handleSaveSettings}
             loading={settingsMutation.isPending}
           />
           <div>
-            <h3 className="font-serif text-xl font-medium text-ink mb-3">
+            <h3 className="tpl-section-title mb-3">
               服务启停调度
             </h3>
             <RuntimeServiceList
@@ -320,7 +306,7 @@ export function ControlCenter() {
       )}
 
       {tab === 'creative' && (
-        <div className="animate-in fade-in">
+        <div id="control-panel-creative" role="tabpanel" className="animate-in fade-in">
           <CreativeSettingsForm
             creative={overview?.settings?.creative}
             onSubmit={handleSaveCreative}
@@ -331,7 +317,7 @@ export function ControlCenter() {
       )}
 
       {tab === 'models' && (
-        <div className="animate-in fade-in">
+        <div id="control-panel-models" role="tabpanel" className="animate-in fade-in">
           <ModelSettingsPanel
             linsheLlm={overview?.linsheLlm}
             onSync={handleSyncPublicModel}
@@ -341,7 +327,7 @@ export function ControlCenter() {
       )}
 
       {tab === 'logs' && (
-        <div className="animate-in fade-in">
+        <div id="control-panel-logs" role="tabpanel" className="animate-in fade-in">
           <LogViewer
             logs={logs}
             paused={paused}
@@ -363,7 +349,6 @@ export function ControlCenter() {
         onCommit={handleCommitImport}
         loading={importMutation.isPending}
       />
-      </div>
-    </main>
+    </PageContainer>
   );
 }

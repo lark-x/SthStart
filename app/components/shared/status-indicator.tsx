@@ -20,9 +20,10 @@ export function StatusIndicator({
       <span
         className={cn(
           'h-2 w-2 rounded-full',
-          isOnline && 'bg-[#4e9b6b] shadow-[0_0_0_4px_rgb(78_155_107/15%)]',
-          isWarning && 'bg-[#d0a731] shadow-[0_0_0_4px_rgb(208_167_49/15%)]',
-          isError && 'bg-[#c9674a] shadow-[0_0_0_4px_rgb(201_103_74/15%)]'
+          isOnline && 'bg-success shadow-[0_0_0_4px_rgb(78_155_107/15%)]',
+          isWarning && 'bg-warning shadow-[0_0_0_4px_rgb(208_167_49/15%)]',
+          isError && 'bg-danger shadow-[0_0_0_4px_rgb(201_103_74/15%)]',
+          !isOnline && !isWarning && !isError && 'bg-muted'
         )}
         aria-hidden="true"
       />
@@ -30,4 +31,3 @@ export function StatusIndicator({
     </span>
   );
 }
-

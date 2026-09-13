@@ -3,24 +3,29 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
+/**
+ * 按钮规范（计划 §3.3/§3.4）：圆角统一 8px 且与尺寸无关；
+ * 默认 40px，紧凑 32/36px，大按钮 48px，图标按钮 36px（触摸场景用 icon-lg 44px）。
+ */
 export const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none',
   {
     variants: {
       variant: {
         primary: 'bg-accent text-white hover:bg-accent-dark active:scale-[0.99] font-bold shadow-xs',
         accent: 'bg-accent text-white hover:bg-accent-dark active:scale-[0.99] font-bold shadow-xs',
-        secondary: 'border border-[rgb(24_32_29/18%)] bg-transparent text-ink hover:bg-[rgb(24_32_29/6%)]',
-        outline: 'border border-[rgb(24_32_29/18%)] bg-surface text-ink hover:bg-[rgb(24_32_29/4%)]',
-        ghost: 'bg-transparent text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)]',
-        danger: 'bg-[#c9674a] text-white hover:bg-accent-dark',
-        'danger-ghost': 'bg-transparent text-[#c9674a] hover:bg-[#c9674a]/10',
+        secondary: 'border border-border-default bg-transparent text-ink hover:bg-surface-hover',
+        outline: 'border border-border-default bg-surface text-ink hover:bg-surface-hover',
+        ghost: 'bg-transparent text-muted hover:text-ink hover:bg-surface-hover',
+        danger: 'bg-danger-solid text-danger-on-solid hover:bg-danger-fg',
+        'danger-ghost': 'bg-transparent text-danger-fg hover:bg-danger/12',
       },
       size: {
-        sm: 'h-8 px-3 text-sm rounded',
-        md: 'min-h-[40px] px-4 py-2 text-sm rounded-[3px_12px_3px_3px]',
-        lg: 'min-h-[48px] px-6 py-3 text-base rounded-[3px_14px_3px_3px]',
-        icon: 'h-11 w-11 min-h-[44px] min-w-[44px] p-0 rounded-md',
+        sm: 'h-8 px-3 text-sm',
+        md: 'h-10 px-4 py-2 text-sm',
+        lg: 'h-12 px-6 py-3 text-base',
+        icon: 'h-9 w-9 p-0',
+        'icon-lg': 'h-11 w-11 p-0',
       },
     },
     defaultVariants: {
@@ -42,6 +47,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || loading}
+        aria-busy={loading || undefined}
         className={cn(buttonVariants({ variant, size, className }))}
         {...props}
       >

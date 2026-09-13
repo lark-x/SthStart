@@ -13,6 +13,7 @@ import type {
   PlaybackRevision,
 } from '@sthstart/contracts';
 import { nowIso, type ServiceDatabase } from '../database.js';
+import { clearActivitySchedule, normalizeScheduledDate, rebuildActivitySchedules, syncActivitySchedule } from './schedule.js';
 
 export function hashDocument(doc: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(doc)).digest('hex');
@@ -35,6 +36,8 @@ export class ActivityStore {
     relationships?: ContentDocument['relationships'];
     stages?: ContentDocument['stages'];
     initialDocument?: ContentDocument;
+    /** 由外层事务调用时跳过内层事务，避免嵌套 BEGIN。 */
+    skipTransaction?: boolean;
   }): { activity: Activity; draft: ActivityDraft } {
     const id = crypto.randomUUID();
     const now = nowIso();
@@ -111,7 +114,7 @@ export class ActivityStore {
           stageResults: [],
         };
 
-    return this.db.transaction(() => {
+    const applyCreate = () => {
       const initialRevId = `rev_content_${crypto.randomUUID().replace(/-/g, '')}`;
       const initialMediaRevId = `rev_media_${crypto.randomUUID().replace(/-/g, '')}`;
       const docJson = JSON.stringify(initialDoc);
@@ -153,6 +156,7 @@ export class ActivityStore {
         `INSERT INTO activity_drafts(activity_id, draft_version, document_json, base_content_revision_id, updated_at)
          VALUES (?, 1, ?, ?, ?)`
       ).run(id, docJson, initialRevId, now);
+      syncActivitySchedule(this.connection, id, initialDoc);
 
       // 6. Insert initial checkpoint
       const checkpointId = crypto.randomUUID();
@@ -173,6 +177,7 @@ export class ActivityStore {
         currentContentRevisionId: initialRevId,
         currentMediaRevisionId: initialMediaRevId,
         currentPlaybackRevisionId: null,
+        scheduledDate: normalizeScheduledDate(initialDoc.activity.scheduledDate),
         createdAt: now,
         updatedAt: now,
       };
@@ -186,14 +191,16 @@ export class ActivityStore {
       };
 
       return { activity, draft };
-    });
+    };
+    // 企划会话在同一个外层事务里创建活动并标记会话，需要跳过内层事务。
+    return input.skipTransaction ? applyCreate() : this.db.transaction(applyCreate);
   }
 
   getActivity(id: string): Activity | null {
     const row = this.connection.prepare(
       `SELECT id, title, type, theme, location, rules, archived, head_version,
-              current_content_revision_id, current_media_revision_id, current_playback_revision_id,
-              created_at, updated_at
+      current_content_revision_id, current_media_revision_id, current_playback_revision_id,
+              scheduled_date, created_at, updated_at
        FROM activities WHERE id = ?`
     ).get(id) as Record<string, unknown> | undefined;
 
@@ -210,6 +217,7 @@ export class ActivityStore {
       currentContentRevisionId: row.current_content_revision_id ? String(row.current_content_revision_id) : null,
       currentMediaRevisionId: row.current_media_revision_id ? String(row.current_media_revision_id) : null,
       currentPlaybackRevisionId: row.current_playback_revision_id ? String(row.current_playback_revision_id) : null,
+      scheduledDate: row.scheduled_date ? String(row.scheduled_date) : null,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     };
@@ -326,6 +334,8 @@ export class ActivityStore {
     // Clone content document with new activity title
     const newDoc: ContentDocument = JSON.parse(JSON.stringify(draft.document));
     newDoc.activity.title = title;
+    // 复制活动默认清空排期，避免副本立刻占用原日期。
+    newDoc.activity.scheduledDate = null;
 
     if (options.scope === 'settings') {
       // Keep only actors and stages; reset messages/posts
@@ -348,6 +358,7 @@ export class ActivityStore {
         `INSERT INTO activity_drafts(activity_id, draft_version, document_json, base_content_revision_id, updated_at)
          VALUES (?, 1, ?, NULL, ?)`
       ).run(newId, JSON.stringify(newDoc), now);
+      clearActivitySchedule(this.connection, newId);
 
       return this.getActivity(newId);
     });
@@ -402,7 +413,8 @@ export class ActivityStore {
   commitDraft(
     activityId: string,
     expectedHeadVersion: number,
-    expectedDraftVersion: number
+    expectedDraftVersion: number,
+    options: { skipTransaction?: boolean } = {}
   ): { activity: Activity; contentRevisionId: string; mediaRevisionId: string } {
     const act = this.getActivity(activityId);
     if (!act) throw new Error('Activity not found');
@@ -459,7 +471,7 @@ export class ActivityStore {
     const mediaDoc: MediaRevisionDocument = { schemaVersion: 1, slotBindings: migratedBindings };
     const mediaHash = hashDocument(mediaDoc);
 
-    return this.db.transaction(() => {
+    const applyCommit = () => {
       // 1. Write ContentRevision
       this.connection.prepare(
         `INSERT INTO activity_content_revisions(id, activity_id, parent_id, document_json, schema_version, hash, created_source, created_at)
@@ -494,13 +506,16 @@ export class ActivityStore {
          WHERE activity_id = ?`
       ).run(contentRevId, now, activityId);
 
+      syncActivitySchedule(this.connection, activityId, draft.document);
       const updatedAct = this.getActivity(activityId)!;
       return {
         activity: updatedAct,
         contentRevisionId: contentRevId,
         mediaRevisionId: mediaRevId,
       };
-    });
+    };
+    // 候选采用需要在同一个外层事务中完成，此时跳过内层事务避免嵌套 BEGIN。
+    return options.skipTransaction ? applyCommit() : this.db.transaction(applyCommit);
   }
 
   listContentRevisions(activityId: string, limit = 100): Array<{
@@ -662,6 +677,8 @@ export class ActivityStore {
          SET draft_version = draft_version + 1, document_json = ?, base_content_revision_id = ?, updated_at = ?
          WHERE activity_id = ?`
       ).run(JSON.stringify(contentRev.document), String(cp.content_revision_id), now, activityId);
+      // 恢复旧版本时同步排期投影：文档里没有日期即视为未排期。
+      syncActivitySchedule(this.connection, activityId, contentRev.document);
 
       // 3. Restore image config draft if checkpoint has image_config_revision_id
       if (cp.image_config_revision_id) {
@@ -1018,6 +1035,8 @@ export class ActivityStore {
     requestHash: string;
     idempotencyKey?: string | null;
     targetRevisionId?: string | null;
+    /** 原始请求快照：重试时必须按原样恢复，不能用当前草稿替代。 */
+    request?: Record<string, unknown> | null;
   }): { job: ActivityJob; isExisting: boolean } {
     const now = nowIso();
 
@@ -1045,8 +1064,8 @@ export class ActivityStore {
 
     const id = crypto.randomUUID();
     this.connection.prepare(
-      `INSERT INTO activity_jobs(id, activity_id, kind, mode, status, request_hash, idempotency_key, target_revision_id, result_candidate_ids_json, error_message, model_metadata_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, '[]', NULL, '{}', ?, ?)`
+      `INSERT INTO activity_jobs(id, activity_id, kind, mode, status, request_hash, idempotency_key, target_revision_id, request_json, result_candidate_ids_json, error_message, model_metadata_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, '[]', NULL, '{}', ?, ?)`
     ).run(
       id,
       job.activityId,
@@ -1055,6 +1074,7 @@ export class ActivityStore {
       job.requestHash,
       job.idempotencyKey || null,
       job.targetRevisionId || null,
+      JSON.stringify(job.request || {}),
       now,
       now
     );
@@ -1069,6 +1089,7 @@ export class ActivityStore {
       idempotencyKey: job.idempotencyKey || null,
       targetRevisionId: job.targetRevisionId || null,
       resultCandidateIds: [],
+      replayable: Boolean(job.request && Object.keys(job.request).length > 0),
       errorMessage: null,
       modelMetadata: {},
       createdAt: now,
@@ -1080,13 +1101,23 @@ export class ActivityStore {
 
   getJob(activityId: string, jobId: string): ActivityJob | null {
     const row = this.connection.prepare(
-      `SELECT id, activity_id, kind, mode, status, request_hash, idempotency_key, target_revision_id,
+      `SELECT id, activity_id, kind, mode, status, request_hash, idempotency_key, target_revision_id, request_json,
               result_candidate_ids_json, error_message, model_metadata_json, created_at, updated_at
        FROM activity_jobs WHERE activity_id = ? AND id = ?`
     ).get(activityId, jobId) as Record<string, unknown> | undefined;
 
     if (!row) return null;
     return this.mapJobRow(row);
+  }
+
+  /** 任务原始请求快照：只有保存过快照的任务才能原样重试。 */
+  getJobRequest(jobId: string): Record<string, unknown> | null {
+    const row = this.connection.prepare('SELECT request_json FROM activity_jobs WHERE id = ?').get(jobId) as { request_json?: string } | undefined;
+    if (!row?.request_json) return null;
+    try {
+      const parsed = JSON.parse(String(row.request_json)) as Record<string, unknown>;
+      return Object.keys(parsed).length ? parsed : null;
+    } catch { return null; }
   }
 
   updateJob(
@@ -1164,6 +1195,11 @@ export class ActivityStore {
     return Number(res.changes);
   }
 
+  /** 活动排期与参与者投影可以随时从已采用的内容版本重建。 */
+  rebuildSchedules(): number {
+    return rebuildActivitySchedules(this.connection);
+  }
+
   cancelJob(activityId: string, jobId: string): ActivityJob | null {
     const job = this.getJob(activityId, jobId);
     if (!job) return null;
@@ -1194,6 +1230,7 @@ export class ActivityStore {
       idempotencyKey: r.idempotency_key ? String(r.idempotency_key) : null,
       targetRevisionId: r.target_revision_id ? String(r.target_revision_id) : null,
       resultCandidateIds: JSON.parse(String(r.result_candidate_ids_json || '[]')),
+      replayable: Boolean(String(r.request_json || '') && String(r.request_json) !== '{}'),
       errorMessage: r.error_message ? String(r.error_message) : null,
       modelMetadata: JSON.parse(String(r.model_metadata_json || '{}')),
       createdAt: String(r.created_at),

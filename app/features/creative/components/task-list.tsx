@@ -24,11 +24,10 @@ export function TaskList({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">TASKS</span>
             <CardTitle className="mt-1">生成任务</CardTitle>
-            <CardDescription>任务状态由公共生成核心持续更新；失败会保留明确错误，不会静默换模型。</CardDescription>
+            <CardDescription>查看生成进度，重试失败任务或复用创作参数。</CardDescription>
           </div>
-          <span className="text-sm text-[#89908a]">共 {tasks.length} 条</span>
+          <span className="text-sm text-fg-subtle">共 {tasks.length} 条</span>
         </div>
       </CardHeader>
       <CardContent>
@@ -37,7 +36,7 @@ export function TaskList({
         ) : tasks.length ? (
           <div className="space-y-3">{tasks.map((task) => <TaskCard key={task.id} task={task} onCancel={onCancel} onRetry={onRetry} onReplay={onReplay} />)}</div>
         ) : (
-          <EmptyState className="min-h-[220px]" icon={Clock3} title="还没有生成任务" description="完成上方参数后，第一张图片会出现在这里。" />
+          <EmptyState className="min-h-[140px] py-4" icon={Clock3} title="还没有生成任务" description="提交创作后，在这里查看生成进度。" />
         )}
       </CardContent>
     </Card>

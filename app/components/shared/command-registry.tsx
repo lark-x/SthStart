@@ -1,72 +1,49 @@
-import {
-  BookOpen,
-  Compass,
-  FileText,
-  Plus,
-  Server,
-  Settings,
-  Sparkles,
-  Terminal,
-  Users,
-  Eye,
-} from 'lucide-react';
+import React from 'react';
+import { Eye, Plus, Terminal } from 'lucide-react';
 import type { CommandItem } from '../ui/command';
+import { NAV_APPS, NAV_PORTAL } from './navigation';
 
+/**
+ * 命令面板注册表：应用入口全部由统一导航注册表生成（§4.1），
+ * 保证与应用切换器名称、覆盖范围一致；这里只补充偏好与快捷操作。
+ */
 export function createCommandRegistry(push: (href: string) => void, toggleEyeCare?: () => void): CommandItem[] {
-  return [
+  const groupCategory: Record<string, string> = {
+    '创作': '应用',
+    '应用': '应用',
+    '管理': '设置',
+  };
+
+  const appItems: CommandItem[] = [
+    {
+      id: 'app-portal',
+      title: '返回门户',
+      description: NAV_PORTAL.description,
+      category: '应用',
+      keywords: NAV_PORTAL.keywords,
+      icon: <NAV_PORTAL.icon className="h-4 w-4" />,
+      action: () => push(NAV_PORTAL.href),
+    },
+    ...NAV_APPS.map((app) => ({
+      id: `app-${app.id}`,
+      title: app.title,
+      description: app.description,
+      category: groupCategory[app.group] ?? '应用',
+      keywords: app.keywords,
+      icon: <app.icon className="h-4 w-4" />,
+      action: () => push(app.href),
+    })),
+  ];
+
+  const quickActions: CommandItem[] = [
     {
       id: 'action-toggle-eyecare',
       title: '切换暖杏护眼模式',
-      description: '开启或关闭全局低蓝光温润羊皮纸色调',
+      description: '开启或关闭全局温润羊皮纸暖色显示',
       category: '偏好',
       keywords: ['eyecare', '护眼', '暖杏', '羊皮纸', 'theme', '模式'],
-      icon: <Eye className="h-4 w-4 text-[#d35832]" />,
+      icon: <Eye className="h-4 w-4 text-accent" />,
       action: () => toggleEyeCare?.(),
-    },
-    {
-      id: 'app-linshe',
-      title: '邻舍.EXE',
-      description: '进入邻舍应用延续角色生活与交互',
-      category: '应用',
-      keywords: ['linshe', '邻舍', 'agent'],
-      icon: <Compass className="h-4 w-4" />,
-      action: () => push('/apps/linshe'),
-    },
-    {
-      id: 'app-characters',
-      title: '角色资料库',
-      description: '管理角色设定、外貌、关系与发布版本',
-      category: '应用',
-      keywords: ['characters', '角色', '人物', 'dossier'],
-      icon: <Users className="h-4 w-4" />,
-      action: () => push('/apps/characters'),
-    },
-    {
-      id: 'app-creative',
-      title: '创作中心',
-      description: '文本生图、图生图与中央图片媒体库',
-      category: '应用',
-      keywords: ['creative', '创作', '生图', '图片', 'artifact'],
-      icon: <Sparkles className="h-4 w-4" />,
-      action: () => push('/apps/creative'),
-    },
-    {
-      id: 'app-notebook',
-      title: '创作笔记',
-      description: '日记、灵感、世界设定与剧情素材',
-      category: '应用',
-      keywords: ['notebook', '笔记', '灵感', '日记'],
-      icon: <BookOpen className="h-4 w-4" />,
-      action: () => push('/apps/notebook'),
-    },
-    {
-      id: 'app-narrative',
-      title: '叙事档案',
-      description: '任务链阅读、多作品追溯与原文检索',
-      category: '应用',
-      keywords: ['narrative', '叙事', '剧情', '档案'],
-      icon: <FileText className="h-4 w-4" />,
-      action: () => push('/apps/narrative'),
     },
     {
       id: 'action-new-character',
@@ -87,24 +64,6 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
       action: () => push('/apps/notebook/new'),
     },
     {
-      id: 'settings-control-center',
-      title: '运行控制中心',
-      description: '管理邻舍后端运行栈、服务启停与运行日志',
-      category: '设置',
-      keywords: ['control center', '控制中心', '运行', '服务', 'runtime'],
-      icon: <Server className="h-4 w-4" />,
-      action: () => push('/settings/control-center'),
-    },
-    {
-      id: 'settings-public-services',
-      title: '公共模型与服务',
-      description: '配置 LLM 模型、向量与应用生效模型',
-      category: '设置',
-      keywords: ['public services', '公共服务', '模型', 'llm', 'provider'],
-      icon: <Settings className="h-4 w-4" />,
-      action: () => push('/settings/public-services'),
-    },
-    {
       id: 'action-logs',
       title: '实时日志流',
       description: '查看邻舍与各服务实时输出日志',
@@ -114,4 +73,6 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
       action: () => push('/settings/control-center?tab=logs'),
     },
   ];
+
+  return [...quickActions, ...appItems];
 }

@@ -11,6 +11,7 @@ import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVer
 import { defaultWorkerSettings, workerHealth } from './worker.js';
 import { getH3Status, readH3Settings } from './h3.js';
 import { getMediaDiagnostics } from './media-diagnostics.js';
+import { resolveAppLlmBindingStatus } from './llm-status.js';
 
 function appRows(database: ServiceDatabase): ManagedApp[] {
   const rows = database.connection.prepare('SELECT * FROM managed_apps ORDER BY created_at').all() as Record<string, unknown>[];
@@ -31,6 +32,26 @@ async function configuredH3WorkerToken(database: ServiceDatabase, secrets: Secre
   `).get(workerUrl) as { credential_account: string | null } | undefined;
   if (!row?.credential_account) return null;
   return (await secrets.get(row.credential_account)).value;
+}
+
+/** Profile ID 对应的环境变量回退名，与 providers.ts 的读取逻辑保持一致。 */
+function profileSecretEnvironment(profileId: string) {
+  return `STHSTART_SECRET_${profileId.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+}
+
+/**
+ * 凭据写入失败时的用户提示。配置本身已经保存成功，这里只说明密钥该放到哪里，
+ * 不把整个保存动作判为失败。
+ */
+function credentialWarning(profileId: string, error: unknown) {
+  const reason = error instanceof Error ? error.message : String(error);
+  return `模型配置已保存，但 API Key 未写入凭据库（${reason}）请在 .env 配置 KEYRING_FILE_MASTER_KEY 后重新保存，或改用环境变量 ${profileSecretEnvironment(profileId)} 提供密钥。`;
+}
+
+/** 引擎与 Worker 令牌必须真实存入凭据库才能使用，因此这类保存仍然整体失败。 */
+function credentialFailureMessage(error: unknown) {
+  const reason = error instanceof Error ? error.message : String(error);
+  return `${reason}请在 .env 配置 KEYRING_FILE_MASTER_KEY 后重试。`;
 }
 
 async function profileRows(database: ServiceDatabase, secrets: SecretStore): Promise<ProviderProfile[]> {
@@ -193,6 +214,18 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   }));
 
   app.get('/api/v1/admin/apps', async () => ({ items: appRows(database) }));
+
+  app.get<{ Params: { appId: string } }>('/api/v1/admin/apps/:appId/llm-status', async (request, reply) => {
+    if (!database.connection.prepare('SELECT 1 FROM managed_apps WHERE id=?').get(request.params.appId)) {
+      return reply.code(404).send({ error: 'app_not_found' });
+    }
+    const [text, multimodal] = await Promise.all([
+      resolveAppLlmBindingStatus(database, secrets, request.params.appId, 'text'),
+      resolveAppLlmBindingStatus(database, secrets, request.params.appId, 'multimodal'),
+    ]);
+    return { appId: request.params.appId, text, multimodal };
+  });
+
   app.post<{ Body: { id?: string; name?: string; capabilities?: PublicCapability[] } }>('/api/v1/admin/apps', async (request, reply) => {
     const id = request.body?.id?.trim();
     const name = request.body?.name?.trim();
@@ -237,8 +270,12 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     let normalizedUrl: string;
     try { normalizedUrl = new URL(baseUrl ?? '').toString().replace(/\/$/, ''); } catch { return reply.code(400).send({ error: 'invalid_url' }); }
     const account = `profile:${id}`;
+    // 凭据库不可用时也要先把配置本身保存下来：否则用户填写的全部内容会随请求一起丢失。
+    // 密钥单独报告，界面据此提示改用环境变量或补上主密钥。
+    let secretWarning: string | null = null;
     if (secret) {
-      try { await secrets.set(account, secret); } catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(error) }); }
+      try { await secrets.set(account, secret); }
+      catch (error) { secretWarning = credentialWarning(id, error); }
     }
     const now = nowIso();
     const filteredHeaders = safeHeaders(headers);
@@ -252,7 +289,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         ON CONFLICT(profile_id) DO UPDATE SET thinking_mode=excluded.thinking_mode,headers_json=excluded.headers_json,extra_body_json=excluded.extra_body_json,capabilities_json=excluded.capabilities_json`)
         .run(id, thinkingMode, JSON.stringify(filteredHeaders), JSON.stringify(extraBody), JSON.stringify(capabilities));
     });
-    return reply.code(201).send({ id });
+    return reply.code(201).send({ id, secretStored: secretWarning === null, warning: secretWarning });
   });
 
   app.post<{ Body: { profileId?: string; baseUrl?: string; secret?: string; headers?: Record<string, string> } }>('/api/v1/admin/llm/models/discover', async (request, reply) => {
@@ -308,9 +345,10 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const sourceAccount = source.credential_account ? String(source.credential_account) : '';
     const credential = sourceAccount ? await secrets.get(sourceAccount, `STHSTART_SECRET_${request.params.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`) : { value: null };
     const targetAccount = `profile:${targetId}`;
+    let secretWarning: string | null = null;
     if (credential.value) {
       try { await secrets.set(targetAccount, credential.value); }
-      catch { return reply.code(503).send({ error: 'independent_credential_unavailable', message: '系统凭据库不可用，无法创建独立的 API Key 副本。' }); }
+      catch (error) { secretWarning = credentialWarning(targetId, error); }
     }
     const now = nowIso();
     try {
@@ -320,10 +358,10 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
           .run(targetId, String(source.thinking_mode ?? 'omit'), String(source.headers_json ?? '{}'), String(source.extra_body_json ?? '{}'), JSON.stringify(capabilities));
       });
     } catch (error) {
-      if (credential.value) await secrets.delete(targetAccount).catch(() => undefined);
+      if (credential.value && secretWarning === null) await secrets.delete(targetAccount).catch(() => undefined);
       throw error;
     }
-    return reply.code(201).send({ id: targetId });
+    return reply.code(201).send({ id: targetId, secretStored: secretWarning === null, warning: secretWarning });
   });
 
   app.delete<{ Params: { id: string } }>('/api/v1/admin/profiles/:id', async (request, reply) => {
@@ -484,7 +522,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const existingEngine = database.connection.prepare('SELECT credential_account FROM generation_engines WHERE id=?').get(id) as { credential_account: string | null } | undefined;
     if (secret) {
       try { await secrets.set(account, secret); }
-      catch (err) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(err) }); }
+      catch (err) { return reply.code(503).send({ error: 'keyring_unavailable', message: credentialFailureMessage(err) }); }
     }
 
     const now = nowIso();
@@ -555,7 +593,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const token = requestedToken || currentCredential.value || issueToken('sth_worker');
     if (requestedToken || !currentCredential.value) {
       try { await secrets.set(account, token); }
-      catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(error) }); }
+      catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: credentialFailureMessage(error) }); }
       returnedToken = token;
     }
 
@@ -588,7 +626,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (!row) return reply.code(404).send({ error: 'worker_not_found' });
     const token = issueToken('sth_worker');
     try { await secrets.set(`engine:${request.params.id}`, token); }
-    catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: String(error) }); }
+    catch (error) { return reply.code(503).send({ error: 'keyring_unavailable', message: credentialFailureMessage(error) }); }
     database.connection.prepare('UPDATE generation_engines SET credential_account=?,updated_at=? WHERE id=?').run(`engine:${request.params.id}`, nowIso(), request.params.id);
     return { workerId: request.params.id, token };
   });

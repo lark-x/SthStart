@@ -19,16 +19,16 @@ export function TaskCard({
 }) {
   const canRetry = ['failed', 'abandoned', 'cancelled'].includes(task.status);
   return (
-    <article className="rounded-[3px_16px_3px_3px] border border-[rgb(24_32_29/12%)] bg-surface p-4">
+    <article className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={CREATIVE_STATUS_VARIANTS[task.status] ?? 'default'} dot>{CREATIVE_STATUS_LABELS[task.status] ?? task.status}</Badge>
             <span className="text-sm font-semibold text-muted">{taskModeLabel(task)}</span>
-            <span className="text-sm text-[#89908a]">种子 {task.actualSeed ?? '随机'}</span>
+            <span className="text-sm text-fg-subtle">种子 {task.actualSeed ?? '随机'}</span>
           </div>
           <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-ink">{String(task.replay.inputs.prompt ?? '未记录提示词')}</p>
-          <p className="mt-1 text-sm text-[#89908a]">{formatDate(task.createdAt)} · 工作流 v{task.workflowVersion}</p>
+          <p className="mt-1 text-sm text-fg-subtle">{formatDate(task.createdAt)} · 工作流 v{task.workflowVersion}</p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {isActiveTask(task.status) && (
@@ -48,7 +48,7 @@ export function TaskCard({
           </Button>
         </div>
       </div>
-      {Boolean(task.errorMessage) && <p className="mt-3 rounded border border-[#c9674a]/25 bg-[#c9674a]/8 px-3 py-2 text-sm leading-relaxed text-[#a84427]">{task.errorMessage}</p>}
+      {Boolean(task.errorMessage) && <p className="mt-3 rounded border border-danger/25 bg-danger/8 px-3 py-2 text-sm leading-relaxed text-danger-fg">{task.errorMessage}</p>}
       {task.progress && isActiveTask(task.status) && (
         <div className="mt-3" aria-label="生成进度">
           <div className="mb-1 flex items-center justify-between gap-2 text-sm text-muted"><span>{task.progress.message || task.progress.stage}</span><span>{typeof task.progress.value === 'number' ? `${Math.round(task.progress.value * 100)}%` : '处理中'}</span></div>
@@ -58,7 +58,7 @@ export function TaskCard({
       {task.artifacts.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {task.artifacts.map((artifact) => (
-            <a key={artifact.artifactId} href={artifact.url} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded border border-[rgb(24_32_29/12%)] bg-paper" aria-label={`打开生成结果 ${artifact.outputName}`}>
+            <a key={artifact.artifactId} href={artifact.url} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden rounded border border-border-subtle bg-paper" aria-label={`打开生成结果 ${artifact.outputName}`}>
               {artifact.mediaKind === 'video' || artifact.contentType?.startsWith('video/') ? (
                 <img src={artifact.thumbnailArtifactId ? `/api/admin/creative/artifacts/${encodeURIComponent(artifact.thumbnailArtifactId)}` : `${artifact.url}${artifact.url.includes('?') ? '&' : '?'}thumbnail=true`} alt={`生成结果 ${artifact.outputName}`} className="h-full w-full object-cover" />
               ) : artifact.mediaKind === 'audio' || artifact.contentType?.startsWith('audio/') ? (

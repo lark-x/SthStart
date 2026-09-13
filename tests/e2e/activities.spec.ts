@@ -32,25 +32,32 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
   await expect(page).toHaveURL(/\/apps\/activities\/new/);
   await expect(page.getByRole('heading', { name: '新建活动' })).toBeVisible();
 
-  // 3. Fill creation wizard form
-  await page.fill('input[placeholder*="海边营地烧烤"]', '海边露营自动化测试');
-  await page.fill('input[placeholder*="夏日傍晚"]', '海风与晚餐合照');
+  // 3. Fill the creation form: templates are applied by default, and participants come from the library or manual entries.
+  await page.getByLabel('活动标题').fill('海边露营自动化测试');
+  await page.getByLabel('活动主题与梗概').fill('海风与晚餐合照');
+  await page.getByRole('button', { name: '添加自定义参与者' }).click();
 
-  // Verify at least 2 stages are present
-  await expect(page.getByRole('textbox', { name: '阶段名称（如：海边营地布置）' }).nth(0)).toBeVisible();
-  await expect(page.getByRole('textbox', { name: '阶段名称（如：海边营地布置）' }).nth(1)).toBeVisible();
+  // 阶段一次只展开一个：先确认两个阶段条目存在，再展开第二个核对字段。
+  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
+  await expect(page.getByRole('button', { name: /02.*第二阶段|02.*未命名阶段/ })).toBeVisible();
+  await page.getByRole('button', { name: /02.*第二阶段|02.*未命名阶段/ }).click();
+  await expect(page.getByLabel('阶段 2 标题')).toBeVisible();
 
-  // Verify actor snapshot exists
+  // Verify the participant snapshot exists
   await expect(page.getByText('旅行者')).toBeVisible();
 
   // Submit and enter workspace
-  await page.click('button:has-text("创建并进入工作室")');
+  await page.getByRole('button', { name: '直接创建活动' }).click();
 
+  /*
+   * 创建活动会在服务端落库并做角色快照，全量并发跑时明显变慢。
+   * 这里只放宽导航等待时间，仍然断言进入了新建活动的详情路由。
+   */
   // 4. Verify Studio Workspace Shell
-  await expect(page).toHaveURL(/\/apps\/activities\/[a-f0-9-]+/);
+  await expect(page).toHaveURL(/\/apps\/activities\/[a-f0-9-]+/, { timeout: 20_000 });
   await expect(page.getByText('海边露营自动化测试')).toBeVisible();
   await expect(page.getByText(/版本 1/)).toBeVisible();
-  await expect(page.getByText(/草稿已就绪/)).toBeVisible();
+  await expect(page.getByRole('status').getByText('已保存')).toBeVisible();
 
   // 5. Test 4 Workstation Tabs
   // Tab 1: Records (Chat & Moments)
@@ -58,18 +65,64 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
   await expect(page.getByRole('button', { name: /朋友圈动态/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /本阶段发生的事/ })).toBeVisible();
 
+  /*
+   * 记录详情（计划 §8.5）：内容模式右栏「当前记录详情按需显示」，
+   * 1280px 及以下改为页级详情抽屉。这里自己发一条群聊记录，
+   * 保证不依赖测试库里是否恰好存在带消息的活动。
+   */
+  await page.getByPlaceholder('在此输入群聊内容，按回车添加…').fill('记录详情用例消息');
+  await page.getByRole('button', { name: '发送' }).click();
+  await expect(page.getByText('记录详情用例消息')).toBeVisible();
+
+  const detailTrigger = page.getByRole('button', { name: '查看第 1 条记录的详情' });
+
+  // 宽屏：右侧固定详情栏
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await detailTrigger.click();
+  const detailAside = page.getByRole('complementary', { name: '当前记录详情' });
+  await expect(detailAside).toBeVisible();
+  await expect(detailAside.getByText('说话人')).toBeVisible();
+  await expect(detailAside.getByText('叙事顺序')).toBeVisible();
+  await detailAside.getByRole('button', { name: '关闭记录详情' }).click();
+  await expect(detailAside).toBeHidden();
+
+  // 1280px 及以下：底部详情抽屉
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await detailTrigger.click();
+  const detailDrawer = page.getByRole('dialog', { name: '当前记录详情' });
+  await expect(detailDrawer).toBeVisible();
+  await expect(detailDrawer.getByText('说话人')).toBeVisible();
+  /* 抽屉是浮层，打开后不应把页面撑出横向滚动。 */
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)
+  ).toBeTruthy();
+  await page.keyboard.press('Escape');
+  await expect(detailDrawer).toBeHidden();
+
+  // 窄屏同样走抽屉，并保持无横向溢出。
+  await page.setViewportSize({ width: 390, height: 844 });
+  await detailTrigger.click();
+  await expect(page.getByRole('dialog', { name: '当前记录详情' })).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)
+  ).toBeTruthy();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '当前记录详情' })).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 720 });
+
   // Tab 2: Settings & Stages
-  await page.click('button:has-text("设定")');
+  // 工作模式改为页级 tab 语义（§8.5）。
+  await page.getByRole('tab', { name: '设定' }).click();
   await expect(page.getByText('活动基本属性')).toBeVisible();
   await expect(page.getByText('活动阶段设定')).toBeVisible();
 
   // Tab 3: Media Workstation
-  await page.click('button:has-text("素材")');
-  await expect(page.getByText('图片与视频')).toBeVisible();
+  await page.getByRole('tab', { name: '素材' }).click();
+  await expect(page.getByRole('heading', { name: '图片与视频' })).toBeVisible();
   await expect(page.getByRole('button', { name: '新增镜头' })).toBeVisible();
 
   // Tab 4: Playback & Preview
-  await page.click('button:has-text("回放")');
+  await page.getByRole('tab', { name: '回放' }).click();
   await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
   await expect(page.getByText('观众视角：')).toBeVisible();
   await expect(page.getByRole('button', { name: '自动生成编排' })).toBeVisible();
@@ -163,7 +216,7 @@ test('Activity Studio: device preview loads the same compiled video and audio as
   const saved = await request.post(base + '/playback-revisions', { headers, data: { contentRevisionId: activity.currentContentRevisionId, mediaRevisionId: mediaId, document: playback } });
   expect(saved.ok()).toBeTruthy();
   await page.goto('/apps/activities/' + activity.id);
-  await page.getByRole('button', { name: '回放' }).click();
+  await page.getByRole('tab', { name: '回放' }).click();
   const frame = page.frameLocator('iframe[title="活动真实回放预览"]');
   await expect(frame.locator('video[src]').first()).toBeAttached();
   await expect(frame.locator('audio[id][src]').first()).toBeAttached();

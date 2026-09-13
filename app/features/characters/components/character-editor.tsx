@@ -1,5 +1,4 @@
 'use client';
-import { AppSwitcher } from '@/app/components/shared/app-switcher';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -18,8 +17,13 @@ import {
   Palette,
   Users,
   Layers,
+  IdCard,
 } from 'lucide-react';
-import type { CharacterDraft } from '@sthstart/contracts';
+import type { CharacterDraftV2 } from '@sthstart/contracts';
+import { PageContainer } from '@/app/components/shared/page-layout';
+import { PageHeader } from '@/app/components/shared/page-header';
+import { Drawer } from '@/app/components/ui/drawer';
+import { useInlinePreviewColumn } from '@/app/lib/use-wide-detail-column';
 import { useCharacterDetail, useCharacters } from '../queries';
 import {
   useCreateCharacter,
@@ -33,7 +37,7 @@ import {
   useDeleteRelationship,
 } from '../mutations';
 import { applyCharacterAppearanceExtraction, extractCharacterAppearance, exportTavernCard, fetchCharacterGenerationTask, fetchCharacterVisualReferences, uploadCharacterReference } from '../api';
-import { EMPTY_DRAFT } from '../schemas';
+import { EMPTY_DRAFT_V2, splitLines } from '../schemas';
 import {
   characterDraftToFormValues,
   characterFormValuesToDraft,
@@ -43,20 +47,21 @@ import { IdentitySection } from './identity-section';
 import { PersonalitySection } from './personality-section';
 import { AppearanceSection } from './appearance-section';
 import { RelationsSection } from './relations-section';
+import { MigrationReviewPanel } from './migration-review-panel';
 import { PublishSection } from './publish-section';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
-import { EyeCareToggle } from '@/app/components/shared/eye-care-toggle';
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterAuditionPanel } from './character-audition-panel';
 import { CharacterModelRoutingPanel } from './character-model-routing-panel';
 
 type Section = 'identity' | 'personality' | 'appearance' | 'relations' | 'publish';
-type EditorMode = 'simple' | 'detailed';
+/** 角色只有一套编辑结构；这个开关只决定「关系与来源」这类高级分区是否展开。 */
+type EditorMode = 'core' | 'more';
 
-const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT);
+const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT_V2);
 
 export function CharacterEditor({ characterId }: { characterId?: string }) {
   const router = useRouter();
@@ -65,7 +70,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const referenceInputRef = useRef<HTMLInputElement>(null);
 
   const [activeSection, setActiveSection] = useState<Section>('identity');
-  const [editorMode, setEditorMode] = useState<EditorMode>('simple');
+  const [editorMode, setEditorMode] = useState<EditorMode>('core');
   const [tags, setTags] = useState<string[]>([]);
   const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
   const [aiPrompt, setAiPrompt] = useState('');
@@ -113,6 +118,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const saveRelMutation = useSaveRelationship();
   const deleteRelMutation = useDeleteRelationship();
   const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
+  /* §8.3：宽屏右侧内联预览，小屏改用抽屉。 */
+  const [previewDrawerOpen, setPreviewDrawerOpen] = useState(false);
+  const inlinePreviewColumn = useInlinePreviewColumn();
 
   const handleSave = useCallback(async (quiet = false) => {
     const currentDraft = characterFormValuesToDraft(getValues());
@@ -245,15 +253,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     return () => clearTimeout(timer);
   }, [status]);
 
-  const handleDraftChange = (patch: Partial<CharacterDraft>) => {
+  const handleDraftChange = (patch: Partial<CharacterDraftV2>) => {
     for (const [key, value] of Object.entries(patch) as Array<[
-      keyof CharacterDraft,
-      CharacterDraft[keyof CharacterDraft]
+      keyof CharacterDraftV2,
+      CharacterDraftV2[keyof CharacterDraftV2]
     ]>) {
-      if ((key === 'speech' || key === 'appearance') && value && typeof value === 'object') {
-        const values = characterDraftToFormValues({ ...characterFormValuesToDraft(getValues()), [key]: value });
-        if (key === 'speech') setValue('speech', values.speech, { shouldDirty: true, shouldTouch: true });
-        else setValue('appearance', values.appearance, { shouldDirty: true, shouldTouch: true });
+      if (key === 'appearance' && value && typeof value === 'object') {
+        const current = characterFormValuesToDraft(getValues());
+        const values = characterDraftToFormValues({ ...current, appearance: value as CharacterDraftV2['appearance'] });
+        setValue('appearance', values.appearance, { shouldDirty: true, shouldTouch: true });
         continue;
       }
       setValue(key as never, value as never, { shouldDirty: true, shouldTouch: true });
@@ -382,11 +390,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         reset(characterDraftToFormValues(result.draft));
         setStatus('saved');
       } else {
-        const appearance = { ...characterFormValuesToDraft(getValues()).appearance };
-        for (const path of fieldPaths) {
-          const field = path.split('/').at(-1)!;
-          if (Object.hasOwn(result.draft.appearance, field)) (appearance as unknown as Record<string, unknown>)[field] = (result.draft.appearance as unknown as Record<string, unknown>)[field];
-        }
+        // 服务端已按勾选的细项重建 V2 基础外貌与默认穿着，这里取回结果覆盖本地草稿，
+        // 同时保留用户其他未保存的编辑。
+        const appearance: CharacterDraftV2['appearance'] = { ...characterFormValuesToDraft(getValues()).appearance };
+        const applied = (result.draft as { appearance?: Partial<CharacterDraftV2['appearance']> }).appearance;
+        if (typeof applied?.baseText === 'string') appearance.baseText = applied.baseText;
+        if (typeof applied?.defaultOutfitText === 'string') appearance.defaultOutfitText = applied.defaultOutfitText;
         handleDraftChange({ appearance });
       }
       setAppearanceCandidate(null);
@@ -505,23 +514,73 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }
   };
 
-  const navItems: Array<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }>; detailed?: boolean }> = [
+  const navItems: Array<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }>; advanced?: boolean }> = [
     { id: 'identity', label: '身份与经历', icon: User },
     { id: 'personality', label: '性格与表达', icon: Heart },
     { id: 'appearance', label: '外观与素材', icon: Palette },
-    { id: 'relations', label: '关系与来源', icon: Users, detailed: true },
+    { id: 'relations', label: '关系与来源', icon: Users, advanced: true },
     { id: 'publish', label: '应用与版本', icon: Layers },
   ];
-  const visibleNavItems = navItems.filter((item) => editorMode === 'detailed' || !item.detailed);
+  const visibleNavItems = navItems.filter((item) => editorMode === 'more' || !item.advanced);
+  /*
+   * 角色卡片预览与资料检查。宽屏作为右栏内联，小屏放进抽屉（§8.3），
+   * 两种形态共用这一份内容，避免出现两套不同步的预览。
+   */
+  const previewPanel = (
+    <div className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-sm space-y-3">
+            <div className="relative aspect-4/5 w-full rounded-[var(--radius-panel)] overflow-hidden bg-[#777865] flex items-center justify-center text-white text-5xl shadow-inner">
+              {detailData?.avatarUrl ? (
+                <Image
+                  src={detailData.avatarUrl}
+                  alt={draft.displayName}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                <span>{draft.displayName.slice(0, 1) || '角'}</span>
+              )}
+            </div>
+
+            <div className="rounded bg-surface-muted p-3 text-sm space-y-2">
+              <strong>资料检查</strong>
+              {[['名字', draft.displayName, 'identity'], ['摘要', draft.summary, 'identity'], ['人设正文', draft.personaText, 'identity'], ['基础外貌', draft.appearance.baseText, 'appearance'], ['说话方式', draft.speechText, 'personality']].map(([label, value, section]) =>
+                !value?.trim() && <button type="button" key={label} onClick={() => setActiveSection(section as Section)} className="block text-accent-dark underline">补充{label}</button>)}
+            </div>
+            <div>
+              <span className="text-sm uppercase font-bold tracking-widest text-muted block truncate">
+                {draft.work || '原创世界'}
+              </span>
+              <h3 className="text-xl font-medium text-ink truncate mt-0.5">
+                {draft.displayName || '未命名角色'}
+              </h3>
+              <p className="text-sm text-muted line-clamp-3 leading-relaxed mt-1">
+                {draft.summary || draft.personaText || '此处将实时展示角色卡片预览。'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-1 pt-2 border-t border-border-subtle">
+              {draft.aliases.slice(0, 4).map((alias) => (
+                <span
+                  key={alias}
+                  className="text-sm bg-ink/6 text-muted px-2 py-0.5 rounded"
+                >
+                  {alias.slice(0, 10)}
+                </span>
+              ))}
+            </div>
+          </div>
+  );
 
   // 编辑既有角色前必须等详情加载完成：空表单若允许交互，用户先打的字会
   // 阻断数据水合，随后自动保存用近乎空白的草稿整体覆盖服务端数据。
   if (characterId && !detailData) {
     if (detailError) {
+
       return (
-        <main className="min-h-screen bg-paper text-ink">
+        <div className="bg-paper text-ink">
           <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="font-serif text-lg font-semibold">角色加载失败</p>
+            <p className="text-lg font-semibold">角色加载失败</p>
             <p className="max-w-sm text-sm text-muted">
               {detailError instanceof Error ? detailError.message : '无法加载该角色，请稍后重试。'}
             </p>
@@ -536,51 +595,66 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               </Link>
             </div>
           </div>
-        </main>
+        </div>
       );
     }
     return (
-      <main className="min-h-screen bg-paper text-ink">
+      <div className="bg-paper text-ink">
         <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 sm:px-8">
           <Skeleton className="h-8 w-1/3" />
           <Skeleton className="h-40 w-full" />
           <Skeleton className="h-64 w-full" />
         </div>
-      </main>
+      </div>
     );
   }
 
   const saving = status === 'saving';
 
   return (
-    <main className="min-h-screen bg-paper text-ink">
-      {/* Sticky Header */}
-      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 sm:px-8 py-3.5 bg-paper/90 backdrop-blur-md border-b border-[rgb(24_32_29/12%)]">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link
-            href="/apps/characters"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            <span>资料库</span>
-          </Link>
-          <span className="text-sm text-muted">|</span>
-          <span className="min-w-0 truncate text-sm text-muted">
-            {status === 'saving'
-              ? '正在自动保存…'
-              : status === 'dirty'
-              ? '等待保存修改…'
-              : status === 'saved'
-              ? '已保存'
-              : detailData?.latestVersion
-              ? `已发布 v${detailData.latestVersion}`
-              : '未发布草稿'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap shrink-0">
-          <AppSwitcher />
-          <EyeCareToggle />
+    <PageContainer className="pb-10">
+      {/*
+       * 对象页头（§8.3）：头像／角色名、草稿与发布状态、保存并使用、更多操作集中在这里；
+       * 左侧栏只保留分区导航，不再重复一份名字与头像。
+       */}
+      <PageHeader
+        backHref="/apps/characters"
+        backLabel="资料库"
+        title={draft.displayName || '新角色草稿'}
+        status={
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => characterId && avatarInputRef.current?.click()}
+              disabled={!characterId}
+              className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-full bg-surface-muted text-lg text-ink disabled:cursor-not-allowed"
+              title={characterId ? '点击更换头像' : '保存后设置头像'}
+              aria-label={characterId ? '更换角色头像' : '保存后设置头像'}
+            >
+              {detailData?.avatarUrl ? (
+                <Image src={detailData.avatarUrl} alt="" fill unoptimized className="object-cover" />
+              ) : (
+                <span>{draft.displayName.slice(0, 1) || '角'}</span>
+              )}
+            </button>
+            <div className="min-w-0 text-sm text-muted">
+              <p className="truncate">{draft.work || '尚未设置作品'}</p>
+              <p className="truncate text-xs text-fg-subtle" role="status" aria-live="polite">
+                {status === 'saving'
+                  ? '正在自动保存…'
+                  : status === 'dirty'
+                  ? '等待保存修改…'
+                  : status === 'saved'
+                  ? '已保存'
+                  : detailData?.latestVersion
+                  ? `已发布 v${detailData.latestVersion}`
+                  : '未发布草稿'}
+              </p>
+            </div>
+          </div>
+        }
+        actions={
+          <>
           <Button
             size="sm"
             variant="outline"
@@ -595,11 +669,11 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setEditorMode((current) => current === 'simple' ? 'detailed' : 'simple')}
-            title={editorMode === 'simple' ? '展开关系、背景和详细字段' : '收起不常用的详细字段'}
-          >
-            <span className="hidden sm:inline">{editorMode === 'simple' ? '详细模式' : '简洁模式'}</span>
-            <span className="sm:hidden">{editorMode === 'simple' ? '详细' : '简洁'}</span>
+            onClick={() => setEditorMode((current) => current === 'core' ? 'more' : 'core')}
+            title={editorMode === 'core' ? '显示关系、来源与历史版本' : '隐藏关系、来源与历史版本'}
+            >
+            <span className="hidden sm:inline">{editorMode === 'core' ? '更多设置' : '收起设置'}</span>
+            <span className="sm:hidden">{editorMode === 'core' ? '更多' : '收起'}</span>
           </Button>
 
           <Button
@@ -613,6 +687,19 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             <span className="hidden sm:inline">导出</span>
           </Button>
 
+          {/* §8.3：小屏没有内联预览栏，用一个明确入口打开预览抽屉。 */}
+          {!inlinePreviewColumn && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPreviewDrawerOpen(true)}
+              title="查看角色卡片预览与资料检查"
+            >
+              <IdCard className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>预览</span>
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="accent"
@@ -624,11 +711,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             <Send className="h-3.5 w-3.5" aria-hidden="true" />
             <span>保存并使用</span>
           </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {errorMessage && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-4">
+        <div className="mx-auto w-full max-w-[1920px] px-4 sm:px-6 pt-4">
           <Alert variant="danger" onDismiss={() => setErrorMessage('')}>
             {errorMessage}
           </Alert>
@@ -636,34 +724,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       )}
 
       {/* Editor Body */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 items-start gap-8 pt-4 lg:grid-cols-12">
         {/* Left Navigation */}
-        <aside className="lg:col-span-3 space-y-5 lg:sticky lg:top-20">
-          <div className="flex items-center gap-3.5 p-3.5 rounded-[4px_16px_4px_4px] bg-surface border border-[rgb(24_32_29/12%)]">
-            <button
-              type="button"
-              onClick={() => characterId && avatarInputRef.current?.click()}
-              disabled={!characterId}
-              className="relative h-14 w-14 rounded-full overflow-hidden bg-[#777865] flex items-center justify-center text-white font-serif text-2xl flex-shrink-0 cursor-pointer shadow-inner disabled:cursor-not-allowed"
-              title={characterId ? '点击更换头像' : '保存后设置头像'}
-              aria-label={characterId ? '更换角色头像' : '保存后设置头像'}
-            >
-              {detailData?.avatarUrl ? (
-                <Image src={detailData.avatarUrl} alt="" fill unoptimized className="object-cover" />
-              ) : (
-                <span>{draft.displayName.slice(0, 1) || '角'}</span>
-              )}
-            </button>
-            <div className="min-w-0">
-              <h1 className="font-serif text-lg font-medium text-ink truncate">
-                {draft.displayName || '新角色草稿'}
-              </h1>
-              <p className="text-sm text-muted truncate">
-                {draft.work || draft.world || '尚未设置作品'}
-              </p>
-            </div>
-          </div>
-
+        <aside className="space-y-5 lg:sticky lg:top-20 lg:col-span-3">
           <nav
             className="character-editor-tabs flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0"
             role="tablist"
@@ -682,7 +745,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
                     isActive
                       ? 'bg-ink text-paper'
-                      : 'text-muted hover:bg-[rgb(24_32_29/6%)] hover:text-ink'
+                      : 'text-muted hover:bg-ink/6 hover:text-ink'
                   }`}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
@@ -696,7 +759,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         {/* Center Main Editor */}
         <div className="lg:col-span-6 space-y-6">
           {/* AI Extraction Assist */}
-          <details className="p-4 rounded-[4px_18px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface space-y-3">
+          <details className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3">
             <summary className="flex cursor-pointer items-center gap-2 text-accent">
               <Sparkles className="h-4 w-4" />
               <strong className="text-sm font-bold uppercase tracking-wider">
@@ -711,7 +774,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 placeholder="例如：芙宁娜（原神），保留她表面戏剧化、内心敏感的反差"
-                className="flex-1 min-h-[38px] rounded border border-[rgb(24_32_29/18%)] bg-surface px-3 py-1 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-accent"
+                className="flex-1 min-h-[38px] rounded border border-border-control bg-surface px-3 py-1 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-accent"
               />
               <Button
                 size="sm"
@@ -730,11 +793,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </details>
 
           {/* Section Panels */}
-          <div className="p-6 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface shadow-sm">
+          <div className="p-6 rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-sm">
             {activeSection === 'identity' && (
               <IdentitySection
                 draft={draft}
-                simple={editorMode === 'simple'}
                 tags={tags}
                 onChange={handleDraftChange}
                 onTagsChange={handleTagsChange}
@@ -748,12 +810,24 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               <div className="space-y-6">
                 <PersonalitySection
                   draft={draft}
-                  simple={editorMode === 'simple'}
                   onChange={handleDraftChange}
                   control={control}
                   register={register}
                 />
-                <CharacterAuditionPanel characterId={characterId} draftRevision={detailData?.draftRevision} />
+                <CharacterAuditionPanel
+                  characterId={characterId}
+                  draftRevision={detailData?.draftRevision}
+                  onAdoptSuggestion={(fieldPath, after) => {
+                    // 建议先写进当前草稿，仍需用户显式保存；采用时不直接发布。
+                    if (fieldPath === '/appearance/baseText') handleDraftChange({ appearance: { ...draft.appearance, baseText: after } });
+                    else if (fieldPath === '/appearance/defaultOutfitText') handleDraftChange({ appearance: { ...draft.appearance, defaultOutfitText: after } });
+                    else if (fieldPath === '/personaText') handleDraftChange({ personaText: after });
+                    else if (fieldPath === '/speechText') handleDraftChange({ speechText: after });
+                    else if (fieldPath === '/behaviorRules') handleDraftChange({ behaviorRules: after });
+                    else if (fieldPath === '/summary') handleDraftChange({ summary: after });
+                    else if (fieldPath === '/dialogueExamples') handleDraftChange({ dialogueExamples: splitLines(after) });
+                  }}
+                />
               </div>
             )}
 
@@ -761,15 +835,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               <div id="character-source-focus-panel" className={sourceFocusActive ? 'rounded-lg ring-2 ring-accent/50 ring-offset-4 transition' : ''}>
                 <AppearanceSection
                   draft={draft}
-                  simple={editorMode === 'simple'}
                   avatarUrl={detailData?.avatarUrl}
                   canUpload={Boolean(characterId)}
                   onUploadClick={() => avatarInputRef.current?.click()}
                   onGenerateAvatar={() => void handleGenerateAvatar()}
                   generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending || saving}
                   onChange={handleDraftChange}
-                  control={control}
-                  register={register}
                   references={visualReferences}
                   onUploadReference={() => referenceInputRef.current?.click()}
                   referencePurpose={referencePurpose}
@@ -785,7 +856,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             )}
 
             {activeSection === 'relations' && (
-              <RelationsSection
+              <div className="space-y-6">
+                <MigrationReviewPanel characterId={characterId} />
+                <RelationsSection
                 detail={detailData}
                 library={library}
                 canEdit={Boolean(characterId)}
@@ -816,7 +889,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                     toast.error('移除关系失败', err instanceof Error ? err.message : String(err));
                   }
                 }}
-              />
+                />
+              </div>
             )}
 
             {activeSection === 'publish' && (
@@ -831,7 +905,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               </div>
             )}
 
-            <div className="mt-8 pt-4 border-t border-[rgb(24_32_29/10%)] flex justify-end">
+            <div className="mt-8 pt-4 border-t border-border-subtle flex justify-end">
               <Button
                 variant="primary"
                 onClick={() => void handleSave()}
@@ -844,53 +918,22 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
         </div>
 
-        {/* Right Preview Card */}
-        <aside className="lg:col-span-3 lg:sticky lg:top-20 self-start">
-          <div className="p-4 rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/14%)] bg-surface shadow-sm space-y-3">
-            <div className="relative aspect-4/5 w-full rounded-[3px_14px_3px_3px] overflow-hidden bg-[#777865] flex items-center justify-center text-white font-serif text-5xl shadow-inner">
-              {detailData?.avatarUrl ? (
-                <Image
-                  src={detailData.avatarUrl}
-                  alt={draft.displayName}
-                  fill
-                  unoptimized
-                  className="object-cover"
-                />
-              ) : (
-                <span>{draft.displayName.slice(0, 1) || '角'}</span>
-              )}
-            </div>
-
-            <div className="rounded bg-surface-muted p-3 text-sm space-y-2">
-              <strong>资料检查</strong>
-              {[['名字', draft.displayName, 'identity'], ['简介', draft.summary, 'identity'], ['外貌', draft.appearance.description, 'appearance'], ['说话语气', draft.speech.tone, 'personality']].map(([label, value, section]) =>
-                !value?.trim() && <button type="button" key={label} onClick={() => setActiveSection(section as Section)} className="block text-accent-dark underline">补充{label}</button>)}
-            </div>
-            <div>
-              <span className="text-sm uppercase font-bold tracking-widest text-muted block truncate">
-                {draft.work || draft.world || '原创世界'}
-              </span>
-              <h3 className="font-serif text-xl font-medium text-ink truncate mt-0.5">
-                {draft.displayName || '未命名角色'}
-              </h3>
-              <p className="text-sm text-muted line-clamp-3 leading-relaxed mt-1">
-                {draft.summary || draft.identity || '此处将实时展示角色卡片预览。'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-1 pt-2 border-t border-[rgb(24_32_29/10%)]">
-              {draft.personality.slice(0, 4).map((trait) => (
-                <span
-                  key={trait}
-                  className="text-sm bg-[rgb(24_32_29/6%)] text-muted px-2 py-0.5 rounded"
-                >
-                  {trait.slice(0, 10)}
-                </span>
-              ))}
-            </div>
-          </div>
+        {/* Right Preview Card：≥1024px 内联右栏（§8.3） */}
+        <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-20 self-start">
+          {previewPanel}
         </aside>
       </div>
+
+      {/* 小屏：同一份预览内容放进抽屉（§8.3「小屏改抽屉」） */}
+      <Drawer
+        open={!inlinePreviewColumn && previewDrawerOpen}
+        onOpenChange={setPreviewDrawerOpen}
+        position="bottom"
+        title="角色卡片预览"
+        description="内容随左侧编辑实时更新。"
+      >
+        {previewPanel}
+      </Drawer>
 
       {/* Hidden File Inputs */}
       <input
@@ -927,6 +970,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           toast.success('角色卡已确认导入');
         }}
       />
-    </main>
+    </PageContainer>
   );
 }

@@ -5,6 +5,10 @@ import { Search } from 'lucide-react';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
 
+/**
+ * 原文检索详情栏（§8.9）：按需打开，宽屏为右栏、窄屏在主区之后单独展开。
+ * 输入使用 300ms 防抖后才上抛，避免中文 IME 组合期间逐键打爆检索接口。
+ */
 export function NarrativeInspector({
   query,
   onQueryChange,
@@ -16,8 +20,6 @@ export function NarrativeInspector({
   results: NarrativeSearchResult[];
   onSelectResult: (res: NarrativeSearchResult) => void;
 }) {
-  // 搜索直接驱动网络请求，逐键请求会打爆 FTS 查询（中文 IME 组合期间
-  // 尤甚）；本地持有输入文本，300ms 防抖后才上抛。
   const [draft, setDraft] = useState(query);
 
   useEffect(() => {
@@ -27,79 +29,76 @@ export function NarrativeInspector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
-  // 父组件可能绕过输入框直接修改 query（如程序化重置）；此时把内部
-  // draft 同步回外部值。防抖上抛后 query 会追平 draft，这里不会成环。
-  useEffect(() => {
-    setDraft((current) => (current === query ? current : query));
-  }, [query]);
+  // 父组件可能绕过输入框直接修改 query（如程序化重置）；此时在渲染期把
+  // draft 同步回外部值。用“记录上一次 query”的方式比较，而不是在 effect 里
+  // setState：后者会多渲染一帧，也被 react-hooks/set-state-in-effect 禁止。
+  const [lastQuery, setLastQuery] = useState(query);
+  if (query !== lastQuery) {
+    setLastQuery(query);
+    setDraft(query);
+  }
 
   return (
-    <aside className="w-full md:w-72 bg-surface-muted border-l border-[rgb(32_38_49/13%)] p-5 space-y-6">
-      <div className="relative">
-        <Search className="h-4 w-4 absolute left-3 top-3 text-[#777b7f]" aria-hidden="true" />
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="搜索当前作品原文…"
-          className="pl-9 bg-surface text-sm h-9 border-[rgb(32_38_49/15%)]"
-        />
+    <aside className="flex max-h-[50dvh] w-full flex-col bg-surface-muted md:max-h-none md:h-full md:w-72 md:flex-none md:border-l md:border-border-subtle">
+      <div className="shrink-0 border-b border-border-subtle p-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-fg-subtle" aria-hidden="true" />
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="搜索当前作品原文…"
+            aria-label="搜索当前作品原文"
+            className="h-9 bg-surface pl-9 text-sm"
+          />
+        </div>
       </div>
 
-      {query ? (
-        <div className="space-y-3">
-          <span className="text-sm font-bold uppercase tracking-wider text-[#85888c] block">
-            SEARCH RESULTS · {results.length}
-          </span>
-          <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {query ? (
+          <div className="space-y-2">
+            <p className="text-xs text-fg-subtle">检索结果 · {results.length} 条</p>
             {results.map((r) => (
               <button
                 key={`${r.kind}-${r.refId}`}
                 type="button"
                 onClick={() => onSelectResult(r)}
-                className="w-full text-left p-2.5 rounded bg-surface hover:bg-white transition-colors border-b border-[rgb(32_38_49/10%)] cursor-pointer space-y-1"
+                className="w-full space-y-1 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-2.5 text-left transition-colors hover:bg-surface-hover"
               >
-                <strong className="text-sm font-semibold text-ink block">
+                <strong className="block text-sm font-semibold text-ink">
                   {r.title || r.kind}
                 </strong>
-                <p className="text-sm text-[#6d7278] line-clamp-2 leading-relaxed">
+                <p className="line-clamp-2 text-sm leading-relaxed text-muted">
                   {r.excerpt.replace(/<\/?mark>/g, '')}
                 </p>
               </button>
             ))}
             {results.length === 0 && (
-              <p className="text-sm text-[#777b7f] text-center py-6">未找到相关原文片段</p>
+              <p className="py-6 text-center text-sm text-fg-subtle">未找到相关原文片段</p>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <span className="text-sm font-bold uppercase tracking-[0.16em] text-[#8a6a35] block">
-              CONTEXT
-            </span>
-            <h3 className="font-serif text-xl font-medium text-ink mt-1">研究侧栏</h3>
-            <p className="text-sm text-[#70747a] leading-relaxed mt-1">
-              实体、事件和已确认结论将在这里随当前场景联动。
+        ) : (
+          <div className="space-y-3">
+            <h3 className="tpl-section-title text-base">来源与关联</h3>
+            <p className="text-sm leading-relaxed text-muted">
+              输入关键词可检索当前作品的原文片段，选中结果会跳回对应剧情节点。
             </p>
+            <dl className="space-y-2 border-t border-border-subtle pt-3 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted">原始资料</dt>
+                <dd className="font-medium text-ink">只读出处</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted">AI 提取</dt>
+                <dd className="font-medium text-ink">需人工复核</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted">笔记引用</dt>
+                <dd className="font-medium text-ink">保留快照</dd>
+              </div>
+            </dl>
           </div>
-
-          <div className="pt-3 border-t border-[rgb(32_38_49/10%)] space-y-2 text-sm">
-            <div className="flex justify-between py-1 border-b border-[rgb(32_38_49/8%)]">
-              <span className="text-[#70747a]">原始资料</span>
-              <strong className="text-[#7e5e30]">只读出处</strong>
-            </div>
-            <div className="flex justify-between py-1 border-b border-[rgb(32_38_49/8%)]">
-              <span className="text-[#70747a]">AI 提取</span>
-              <strong className="text-[#7e5e30]">需人工复核</strong>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-[#70747a]">笔记引用</span>
-              <strong className="text-[#7e5e30]">保留快照</strong>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </aside>
   );
 }
-

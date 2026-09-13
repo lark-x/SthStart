@@ -1,83 +1,228 @@
+/*
+ * SthStart 设计变量（唯一语义定义源）
+ *
+ * 两套主题：
+ *   - 默认（无属性）：中性浅色创作桌面。背景、内容表面、输入表面分三层，
+ *     强调色只用于主动作与当前位置，不铺满整块面板。
+ *   - 暖色：html[data-eye-care="true"] 时启用，保留原有暖杏偏好，通过变量整体切换，
+ *     不使用全屏滤镜或透明度叠加。
+ *
+ * 兼容说明：--paper / --ink / --muted / --accent / --accent-dark 等旧变量名继续保留，
+ * 值由新语义变量派生，避免一次性改动全部业务类名。
+ */
+
 :root {
-  /* Core Brand Tokens */
-  --ink: #18201d;
-  --muted: #68716d;
-  --paper: #f4f0e7;
-  --accent: #c04c28;
-  --accent-dark: #b83b1b;
+  /* ---------- 品牌基色 ---------- */
+  --accent: #b84420;
+  --accent-dark: #963517;
+  --accent-soft: #fff1eb;
+  --accent-ring: rgb(184 68 32 / 32%);
 
-  /* Surfaces & Backgrounds */
-  --bg-app: var(--paper);
-  --surface: #fffdf8;
+  /* ---------- 应用背景三层 ---------- */
+  --bg-app: #f5f6f8;
+  --bg-nav: #eceff3;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-muted: rgb(244 240 231 / 62%);
-  --surface-hover: rgb(244 240 231 / 90%);
-  --surface-dark: #1b211f;
+  --surface-sunken: #f0f3f7;
+  --surface-muted: rgb(240 243 247 / 78%);
+  --surface-hover: rgb(23 33 46 / 5%);
+  --surface-input: #ffffff;
+  --surface-dark: #161d27;
 
-  /* Text & Foreground */
-  --fg-default: var(--ink);
-  --fg-muted: var(--muted);
-  --fg-subtle: #89908a;
-  --fg-inverse: var(--paper);
+  /* ---------- 文字 ---------- */
+  --fg-default: #17212e;
+  --fg-muted: #566273;
+  /*
+   * 辅助元信息在 12px 下属于普通文字，必须满足 4.5:1（计划 §11.3）。
+   * 原值 #6f7b8a 在 surface-sunken 上仅 3.87:1，逐级加深到实测最差 4.65:1，
+   * 仍比 --fg-muted 浅，保持“正文 > 次要 > 辅助”的层级。
+   */
+  --fg-subtle: #606c78;
+  --fg-inverse: #f7f9fb;
+  --fg-on-accent: #ffffff;
 
-  /* Borders */
-  --border-subtle: rgb(24 32 29 / 10%);
-  --border-default: rgb(24 32 29 / 16%);
-  --border-strong: rgb(24 32 29 / 24%);
+  /* ---------- 边框 ---------- */
+  --border-subtle: #e2e7ed;
+  --border-default: #cfd6df;
+  --border-strong: #8994a3;
+  /*
+   * 表单控件的填充色与面板底色相同，边框是唯一能识别控件的信息，
+   * 因此按 WCAG 1.4.11 需要 ≥3:1；实测最差 3.01:1（surface-sunken）。
+   * 纯装饰分隔线继续用 --border-subtle，不套用该要求。
+   */
+  --border-control: #848d9b;
 
-  /* State Colors */
-  --color-success: #4e9b6b;
-  --color-success-bg: rgb(78 155 107 / 10%);
-  --color-warning: #d0a731;
-  --color-warning-bg: rgb(208 167 49 / 12%);
-  --color-danger: #c9674a;
-  --color-danger-bg: rgb(201 103 74 / 12%);
-  --color-info: #4d6684;
-  --color-info-bg: rgb(77 102 132 / 12%);
+  /* ---------- 状态色 ---------- */
+  --success: #3f8a5c;
+  --success-fg: #2f6d47;
+  --success-bg: rgb(63 138 92 / 10%);
+  --success-border: rgb(63 138 92 / 32%);
+  --success-solid: #3f8a5c;
+  --success-on-solid: #ffffff;
 
-  /* Radius Tokens */
+  --warning: #b8871f;
+  --warning-fg: #7a5e10;
+  --warning-bg: rgb(184 135 31 / 12%);
+  --warning-border: rgb(184 135 31 / 40%);
+  --warning-solid: #b8871f;
+  --warning-on-solid: #241d04;
+
+  --danger: #bb4530;
+  --danger-fg: #9c3a26;
+  --danger-bg: rgb(187 69 48 / 10%);
+  --danger-border: rgb(187 69 48 / 38%);
+  --danger-solid: #a83c28;
+  --danger-on-solid: #ffffff;
+
+  --info: #3f5f8a;
+  --info-fg: #33496b;
+  --info-bg: rgb(63 95 138 / 10%);
+  --info-border: rgb(63 95 138 / 30%);
+  --info-solid: #3f5f8a;
+  --info-on-solid: #ffffff;
+
+  /* 旧状态变量名，供既有引用继续工作 */
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+
+  /* ---------- 焦点 ---------- */
+  --focus-ring: #315dce;
+  --focus-ring-offset: 2px;
+
+  /* ---------- 形状 ---------- */
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+  --radius-chip: 9999px;
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 14px;
+  --radius-lg: 12px;
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* Shadow Tokens */
-  --shadow-sm: 0 1px 3px rgb(24 32 29 / 6%);
-  --shadow-panel: 0 8px 24px rgb(62 50 33 / 6%);
-  --shadow-floating: 0 16px 40px rgb(62 50 33 / 10%);
-  --shadow-dialog: 0 24px 64px rgb(24 32 29 / 18%);
+  /* ---------- 阴影：内容面板默认无重投影 ---------- */
+  --shadow-sm: 0 1px 2px rgb(23 33 46 / 6%);
+  --shadow-panel: 0 1px 2px rgb(23 33 46 / 5%);
+  --shadow-floating: 0 8px 24px rgb(23 33 46 / 12%);
+  --shadow-dialog: 0 24px 64px rgb(23 33 46 / 22%);
+
+  /* ---------- 外框尺寸 ---------- */
+  --shell-sidebar: 224px;
+  --shell-sidebar-collapsed: 72px;
+  --shell-topbar: 64px;
+  --shell-topbar-mobile: 56px;
+  --shell-gutter: 24px;
+  --shell-gutter-lg: 32px;
+  --shell-gutter-sm: 16px;
+  --shell-reading: 720px;
+  --shell-content-max: 1600px;
+  --shell-settings-max: 1120px;
+  --shell-aside: 300px;
+  --z-page: 0;
+  --z-sticky: 30;
+  --z-menu: 40;
+  --z-overlay: 50;
+
+  /* ---------- 控件尺寸 ---------- */
+  --control-h-sm: 36px;
+  --control-h: 40px;
+  --control-h-lg: 48px;
+  --control-h-touch: 44px;
+
+  /* ---------- 间距序列 ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* ---------- 过渡 ---------- */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /*
+   * ---------- 滚动条 ----------
+   *
+   * 只改颜色，不改宽度：显式给滚动条设宽度会让浏览器从 overlay 切到占位滚动条，
+   * 所有滚动容器会凭空多出十几像素的沟槽，页面版式随之位移。
+   * 所以这里靠 `scrollbar-color` 把滑块调成透明来实现「不滑动时看不见」。
+   */
+  --scrollbar-thumb: rgb(23 33 46 / 30%);
+  --scrollbar-thumb-hover: rgb(23 33 46 / 48%);
+
+  /* ---------- 旧变量兼容别名 ---------- */
+  --ink: var(--fg-default);
+  --muted: var(--fg-muted);
+  --paper: var(--bg-app);
 }
 
-/* Warm Parchment Eye-Care Mode */
+/* 暖色主题：保留原有暖杏偏好，作为可选主题而非默认。 */
 html[data-eye-care="true"]:not([data-app="linshe"]) {
-  --ink: #27302c;
-  --muted: #6b736e;
-  --paper: #ebe3d3;
-  --accent: #b94b2a;
-  --accent-dark: #a8391b;
+  --accent: #ae421f;
+  --accent-dark: #923619;
+  --accent-soft: #fbeadf;
+  --accent-ring: rgb(174 66 31 / 32%);
 
-  --bg-app: #ebe3d3;
-  --surface: #f5efe1;
-  --surface-raised: #faf5ea;
-  --surface-muted: rgb(235 227 211 / 65%);
-  --surface-hover: rgb(235 227 211 / 90%);
-  --surface-dark: #1e2522;
+  --bg-app: #f1ece2;
+  --bg-nav: #eae4d9;
+  --surface: #fffcf5;
+  --surface-raised: #fffdf8;
+  --surface-sunken: #f3ede2;
+  --surface-muted: rgb(243 237 226 / 80%);
+  --surface-hover: rgb(36 41 35 / 5%);
+  --surface-input: #fffefa;
+  --surface-dark: #1b211e;
 
-  --fg-default: #27302c;
-  --fg-muted: #6b736e;
-  --fg-subtle: #878f8a;
-  --fg-inverse: #ebe3d3;
+  --fg-default: #242923;
+  /* 同样满足 4.5:1；暖底比中性底更暗，需要一并下调并保持层级。 */
+  --fg-muted: #575f57;
+  --fg-subtle: #60675d;
+  --fg-inverse: #f4efe4;
 
-  --border-subtle: rgb(39 48 44 / 8%);
-  --border-default: rgb(39 48 44 / 14%);
-  --border-strong: rgb(39 48 44 / 22%);
+  --border-subtle: #e6ded2;
+  --border-default: #d6cbbb;
+  --border-strong: #8c9186;
+  --border-control: #848a80;
 
-  --color-success: #448f60;
-  --color-warning: #c2992b;
-  --color-danger: #be593e;
-  --color-info: #465f7c;
+  --success: #3f8558;
+  --success-fg: #2c6642;
+  --success-bg: rgb(63 133 88 / 10%);
+  --success-border: rgb(63 133 88 / 36%);
+  --success-solid: #3f8558;
+
+  --warning: #a8801d;
+  --warning-fg: #6f5610;
+  --warning-bg: rgb(168 128 29 / 12%);
+  --warning-border: rgb(168 128 29 / 44%);
+  --warning-solid: #a8801d;
+
+  --danger: #b04a2f;
+  --danger-fg: #963d22;
+  --danger-bg: rgb(176 74 47 / 10%);
+  --danger-border: rgb(176 74 47 / 42%);
+  --danger-solid: #9c3d22;
+
+  --info: #3f5c7f;
+  --info-fg: #35485e;
+  --info-bg: rgb(63 92 127 / 10%);
+  --info-border: rgb(63 92 127 / 36%);
+  --info-solid: #3f5c7f;
+
+  --focus-ring: #315dce;
+
+  /* 暖底更吃深色，滑块同比例压深以保持可见度。 */
+  --scrollbar-thumb: rgb(36 41 35 / 32%);
+  --scrollbar-thumb-hover: rgb(36 41 35 / 50%);
 }
 
 @theme {
@@ -86,20 +231,64 @@ html[data-eye-care="true"]:not([data-app="linshe"]) {
   --color-paper: var(--paper);
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-fg-default: var(--fg-default);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-inverse: var(--fg-inverse);
 
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
   --color-surface-muted: var(--surface-muted);
   --color-surface-hover: var(--surface-hover);
+  --color-surface-input: var(--surface-input);
   --color-surface-dark: var(--surface-dark);
+  --color-bg-app: var(--bg-app);
+  --color-bg-nav: var(--bg-nav);
 
   --color-border-subtle: var(--border-subtle);
   --color-border-default: var(--border-default);
   --color-border-strong: var(--border-strong);
+  --color-border-control: var(--border-control);
 
-  --color-status-online: #4e9b6b;
-  --color-status-offline: #c9674a;
-  --color-status-unknown: #d0a731;
+  --color-status-online: var(--success);
+  --color-status-offline: var(--danger);
+  --color-status-unknown: var(--warning);
+
+  --color-success: var(--success);
+  --color-success-fg: var(--success-fg);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+  --color-success-solid: var(--success-solid);
+  --color-success-on-solid: var(--success-on-solid);
+
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
+  --color-warning-solid: var(--warning-solid);
+  --color-warning-on-solid: var(--warning-on-solid);
+
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-on-solid: var(--danger-on-solid);
+
+  --color-info: var(--info);
+  --color-info-fg: var(--info-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-border: var(--info-border);
+  --color-info-solid: var(--info-solid);
+  --color-info-on-solid: var(--info-on-solid);
+
+  --shadow-sm: 0 1px 2px rgb(23 33 46 / 6%);
+  --shadow-panel: 0 1px 2px rgb(23 33 46 / 5%);
+  --shadow-floating: 0 8px 24px rgb(23 33 46 / 12%);
+  --shadow-dialog: 0 24px 64px rgb(23 33 46 / 22%);
 
   --font-serif: Georgia, "Songti SC", "STSong", "SimSun", serif;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;

@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import './styles/theme.css';
 import './globals.css';
+import './styles/shell.css';
 import { QueryProvider } from './providers/query-provider';
 import { UIProvider } from './providers/ui-provider';
+import { AppShell } from './components/shared/app-shell';
 import { GlobalCommandPalette } from './components/shared/command-palette';
 import { RoutePreloader } from './components/shared/route-preloader';
 import { NotebookSyncManager } from './features/notebook/components/notebook-sync-manager';
@@ -32,7 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <QueryProvider>
           <UIProvider>
-            {children}
+            <AppShell>{children}</AppShell>
             <NotebookSyncManager />
             <NotebookOfflineRegistrar />
             <RoutePreloader />

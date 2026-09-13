@@ -5,7 +5,7 @@ export function Card({ className, children, ...props }: React.HTMLAttributes<HTM
   return (
     <div
       className={cn(
-        'rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/16%)] bg-surface p-6 shadow-sm transition-all',
+        'rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-5 transition-colors',
         className
       )}
       {...props}
@@ -23,11 +23,12 @@ export function CardHeader({ className, children, ...props }: React.HTMLAttribut
   );
 }
 
+/** 面板标题规范（§3.2）：无衬线 18px/600；页面级 H1 才使用衬线。 */
 export function CardTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
       className={cn(
-        'font-serif text-xl font-medium tracking-tight text-ink',
+        'text-lg font-semibold tracking-tight text-ink',
         className
       )}
       {...props}
@@ -55,9 +56,8 @@ export function CardContent({ className, children, ...props }: React.HTMLAttribu
 
 export function CardFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex items-center justify-between pt-4 mt-4 border-t border-[rgb(24_32_29/10%)]', className)} {...props}>
+    <div className={cn('flex items-center justify-between pt-4 mt-4 border-t border-border-subtle', className)} {...props}>
       {children}
     </div>
   );
 }
-

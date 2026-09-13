@@ -69,22 +69,22 @@ export function RemotePerformancePanel() {
         </div>
       </CardHeader>
       <CardContent>
-        {error && <p className="text-sm text-[#c9674a]">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
         {result && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-            <div className="rounded border border-[rgb(24_32_29/10%)] p-3">
+            <div className="rounded border border-border-subtle p-3">
               <span className="text-muted">会话往返</span>
               <strong className="mt-1 block text-lg text-ink">{milliseconds(result.sessionMs)}</strong>
             </div>
-            <div className="rounded border border-[rgb(24_32_29/10%)] p-3">
+            <div className="rounded border border-border-subtle p-3">
               <span className="text-muted">完整 API 往返</span>
               <strong className="mt-1 block text-lg text-ink">{milliseconds(result.requestMs)}</strong>
             </div>
-            <div className="rounded border border-[rgb(24_32_29/10%)] p-3">
+            <div className="rounded border border-border-subtle p-3">
               <span className="text-muted">Portal 内部分段</span>
               <strong className="mt-1 block break-words text-ink">{result.serverTiming || '未返回'}</strong>
             </div>
-            <p className={`sm:col-span-3 ${slow ? 'text-accent-dark' : 'text-[#4e7659]'}`}>
+            <p className={`sm:col-span-3 ${slow ? 'text-accent-dark' : 'text-success-fg'}`}>
               {slow
                 ? '远程链路明显慢于本机处理。请优先让 SthStart 域名和 Cloudflare Access 域名绕过代理/VPN，再比较结果。'
                 : '当前动态链路处于可用范围。若页面仍慢，可继续检查首次静态资源缓存和具体页面请求数量。'}

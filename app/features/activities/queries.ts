@@ -129,7 +129,9 @@ export function useActivityCapabilities() {
   return useQuery({
     queryKey: activityKeys.capabilities(),
     queryFn: () => fetchCapabilities(),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    // 从「公共服务」配置页回到本页时立即确认最新模型状态。
+    refetchOnWindowFocus: 'always',
   });
 }
 

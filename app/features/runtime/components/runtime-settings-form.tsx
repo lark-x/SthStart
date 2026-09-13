@@ -90,9 +90,6 @@ export function RuntimeSettingsForm({
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
       <Card>
         <CardHeader>
-          <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
-            STARTUP & NETWORK
-          </span>
           <CardTitle>运行参数与自启配置</CardTitle>
           <CardDescription>
             控制 SthStart 启动时是否自动拉起邻舍核心服务，以及镜像下载和公共模型接入模式。
@@ -122,7 +119,7 @@ export function RuntimeSettingsForm({
             />
           </div>
 
-          <div className="pt-4 border-t border-[rgb(24_32_29/10%)] space-y-4">
+          <div className="pt-4 border-t border-border-subtle space-y-4">
             <div>
               <label htmlFor="runtime-comfyui-executable" className="block text-sm font-semibold text-ink mb-1.5">
                 ComfyUI 独立执行路径
@@ -151,7 +148,7 @@ export function RuntimeSettingsForm({
             </div>
           </div>
 
-          <div className="pt-4 border-t border-[rgb(24_32_29/10%)] space-y-3">
+          <div className="pt-4 border-t border-border-subtle space-y-3">
             <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
               MAIBOT 辅助生态
             </h4>

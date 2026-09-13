@@ -20,3 +20,7 @@ pelican-bike-animation.html
 upstream/linshe/**/node_modules
 upstream/linshe/**/.git
 upstream/linshe/**/dist
+upstream/linshe/**/venv
+upstream/linshe/**/.venv
+upstream/linshe/**/models
+upstream/linshe/**/chroma_data

@@ -389,7 +389,7 @@ export function ImageWorkbench({
             <select
               value={activeSlot?.id || ''}
               onChange={(e) => setActiveSlotId(e.target.value)}
-              className="bg-paper border border-border-default text-ink text-sm rounded px-2.5 py-1.5 focus:border-sky-500 outline-none"
+              className="bg-paper border border-border-control text-ink text-sm rounded px-2.5 py-1.5 focus:border-sky-500 outline-none"
             >
               {mediaSlots.map((slot) => {
                 const stage = stageMap.get(slot.stageId);
@@ -711,7 +711,7 @@ export function ImageWorkbench({
               </div>
             </div>
 
-            <select aria-label="选择已有参考图片" value={selectedReferenceKey || ''} onChange={(e) => setSelectedReferenceKey(e.target.value || null)} className="w-full bg-surface border border-border-default rounded p-2 text-sm">
+            <select aria-label="选择已有参考图片" value={selectedReferenceKey || ''} onChange={(e) => setSelectedReferenceKey(e.target.value || null)} className="w-full bg-surface border border-border-control rounded p-2 text-sm">
               <option value="">不使用参考图</option>
               {(assetsData?.items || []).filter((asset) => asset.type === 'image').map((asset) => <option key={asset.assetKey} value={asset.assetKey}>{asset.assetKey}</option>)}
             </select>

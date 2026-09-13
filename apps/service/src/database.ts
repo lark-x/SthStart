@@ -6,6 +6,17 @@ export interface DatabaseMigration {
   version: number;
   name: string;
   statements: readonly string[];
+  /**
+   * 需要重建表结构（例如删除被外键引用的列）时置为 true：
+   * SQLite 的 DROP COLUMN 不能用于外键列，只能在关闭外键约束后重建表。
+   * 迁移器会在事务外切换 PRAGMA foreign_keys，并在结束后恢复。
+   */
+  foreignKeysOff?: boolean;
+  /**
+   * 破坏性迁移的前置检查：在事务开始前执行，抛错即中止本次迁移（规划 9.4）。
+   * 用于「必须先归档、否则不许删」的场景。
+   */
+  guard?: (connection: DatabaseSync) => void;
 }
 
 const initialSchema = [
@@ -94,6 +105,21 @@ const initialSchema = [
   'CREATE INDEX IF NOT EXISTS idx_notes_stage_updated ON creative_notes(stage, updated_at DESC)',
   'CREATE INDEX IF NOT EXISTS idx_note_assets_note ON note_assets(note_id)',
 ];
+
+/**
+ * 迁移 20 会删除 character_outfits。本项目从不写入这张表，但别人升级过来的库里可能有行；
+ * 直接 DROP 就是静默的数据丢失，所以先在事务外中止并指向归档入口（规划 7.5 / 9.4）。
+ */
+function guardCharacterOutfitsArchived(connection: DatabaseSync) {
+  const table = connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_outfits'").get();
+  if (!table) return;
+  const row = connection.prepare('SELECT COUNT(*) AS count FROM character_outfits').get() as { count: number };
+  if (row.count <= 0) return;
+  throw new Error(
+    `character_outfits 还有 ${row.count} 行数据，迁移 20 会删除该表。`
+    + ' 请先运行 node scripts/character-model-migration.mjs apply 归档这些服装行（写入角色来源的迁移归档），再启动服务。',
+  );
+}
 
 export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
   { version: 1, name: 'initial', statements: initialSchema },
@@ -717,6 +743,119 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX idx_character_browse_updated ON character_profiles(archived,updated_at DESC,id)',
     "CREATE INDEX idx_character_browse_work ON character_profiles(json_extract(draft_json,'$.work'))",
   ] },
+  { version: 19, name: 'birthday-calendar-and-planning', statements: [
+    `CREATE TABLE character_birthdays(
+      character_id TEXT PRIMARY KEY REFERENCES character_profiles(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'unset',
+      calendar TEXT NOT NULL DEFAULT 'unknown',
+      month INTEGER,
+      day INTEGER,
+      raw_text TEXT,
+      source TEXT,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX idx_character_birthdays_date ON character_birthdays(status,month,day)',
+    'ALTER TABLE activities ADD COLUMN scheduled_date TEXT',
+    'CREATE INDEX idx_activities_scheduled ON activities(archived,scheduled_date)',
+    `CREATE TABLE activity_actor_characters(
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      actor_id TEXT NOT NULL,
+      source_character_id TEXT NOT NULL,
+      PRIMARY KEY(activity_id,actor_id)
+    )`,
+    'CREATE INDEX idx_activity_actor_characters_character ON activity_actor_characters(source_character_id,activity_id)',
+    "ALTER TABLE activity_jobs ADD COLUMN request_json TEXT NOT NULL DEFAULT '{}'",
+    `CREATE TABLE activity_planning_sessions(
+      id TEXT PRIMARY KEY,
+      version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'draft',
+      form_json TEXT NOT NULL DEFAULT '{}',
+      snapshot_json TEXT NOT NULL DEFAULT '{}',
+      document_json TEXT,
+      activity_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX idx_activity_planning_sessions_activity ON activity_planning_sessions(activity_id)',
+    `CREATE TABLE activity_planning_jobs(
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES activity_planning_sessions(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      idempotency_key TEXT,
+      request_json TEXT NOT NULL DEFAULT '{}',
+      result_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      error_message TEXT,
+      model_metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX idx_activity_planning_jobs_session ON activity_planning_jobs(session_id,created_at DESC)',
+    `CREATE TABLE activity_planning_candidates(
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES activity_planning_sessions(id) ON DELETE CASCADE,
+      session_version INTEGER,
+      payload_json TEXT NOT NULL,
+      validation_json TEXT NOT NULL DEFAULT '{}',
+      adopted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX idx_activity_planning_candidates_session ON activity_planning_candidates(session_id,created_at DESC)',
+  ] },
+  { version: 20, name: 'character-media-column-convergence', foreignKeysOff: true, guard: guardCharacterOutfitsArchived, statements: [
+    // 角色媒体元数据的权威位置收敛（规划第 7 节）：
+    //   artifacts        —— 文件本身（路径、MIME、字节数、哈希、尺寸、原文件名）
+    //   character_assets —— 某角色对一份文件的使用与来源（来源页面/URL、作者/用户备注）
+    //   character_visual_references —— 作为生成参考的配置（用途、启用、裁剪）
+    // 迁移 16 把同一批元数据同时写进 assets 与 references；这里删除 references 侧的副本，
+    // 读取统一改为 JOIN character_assets。
+    'CREATE TABLE character_visual_references_v2 ('
+      + ' id TEXT PRIMARY KEY,'
+      + ' character_id TEXT NOT NULL REFERENCES character_profiles(id) ON DELETE CASCADE,'
+      + ' asset_id TEXT NOT NULL REFERENCES character_assets(id) ON DELETE RESTRICT,'
+      + " purposes_json TEXT NOT NULL DEFAULT '[]',"
+      + ' enabled INTEGER NOT NULL DEFAULT 1,'
+      + ' crop_json TEXT,'
+      + ' created_at TEXT NOT NULL,'
+      + ' updated_at TEXT NOT NULL'
+      + ')',
+    'INSERT INTO character_visual_references_v2 (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)'
+      + ' SELECT id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at FROM character_visual_references',
+    // 参考图上的来源与备注统一由 character_assets 承载；资产侧为空时回填，避免信息丢失。
+    "UPDATE character_assets SET source_page = COALESCE(NULLIF(source_page,''), (SELECT r.source_page FROM character_visual_references r WHERE r.asset_id = character_assets.id AND r.source_page IS NOT NULL LIMIT 1)), source_url = COALESCE(NULLIF(source_url,''), (SELECT r.original_url FROM character_visual_references r WHERE r.asset_id = character_assets.id AND r.original_url IS NOT NULL LIMIT 1)) WHERE id IN (SELECT asset_id FROM character_visual_references)",
+    "UPDATE character_assets SET author_note = CASE WHEN author_note = '' THEN COALESCE((SELECT r.author_note FROM character_visual_references r WHERE r.asset_id = character_assets.id AND r.author_note <> '' LIMIT 1), '') ELSE author_note END, user_note = CASE WHEN user_note = '' THEN COALESCE((SELECT r.user_note FROM character_visual_references r WHERE r.asset_id = character_assets.id AND r.user_note <> '' LIMIT 1), '') ELSE user_note END WHERE id IN (SELECT asset_id FROM character_visual_references)",
+    // 双写的哈希与 artifact 归属以 artifacts 为准；资产侧缺失时用参考图侧补齐线索。
+    "UPDATE character_assets SET artifact_id = COALESCE(artifact_id, (SELECT r.artifact_id FROM character_visual_references r WHERE r.asset_id = character_assets.id AND r.artifact_id IS NOT NULL LIMIT 1)) WHERE artifact_id IS NULL",
+    'DROP TABLE character_visual_references',
+    'ALTER TABLE character_visual_references_v2 RENAME TO character_visual_references',
+    'CREATE INDEX idx_character_visual_refs_character ON character_visual_references(character_id, enabled, created_at DESC)',
+    // 资产表的参考配置与文件镜像列同样收敛：用途/启用/裁剪属于参考配置，哈希与尺寸属于 artifacts。
+    'ALTER TABLE character_assets DROP COLUMN purposes_json',
+    'ALTER TABLE character_assets DROP COLUMN enabled',
+    'ALTER TABLE character_assets DROP COLUMN crop_json',
+    'ALTER TABLE character_assets DROP COLUMN sha256',
+    'ALTER TABLE character_assets DROP COLUMN width',
+    'ALTER TABLE character_assets DROP COLUMN height',
+    'ALTER TABLE character_assets DROP COLUMN outfit_id',
+    // 本项目没有命名服装库业务；旧表为空壳，归档后移除。邻舍自身的换装表不在这个数据库。
+    'DROP INDEX IF EXISTS idx_character_outfits_character',
+    'DROP TABLE IF EXISTS character_outfits',
+  ] },
+  { version: 21, name: 'character-asset-file-mirror-cleanup', statements: [
+    // 角色资产不再镜像文件信息：文件本身（路径、MIME、字节数、原文件名）只登记在 artifacts，
+    // 读取统一走 artifact_id。迁移前实测 character_assets 为 0 行，旧文件也早已接入 artifacts。
+    'ALTER TABLE character_assets DROP COLUMN local_path',
+    'ALTER TABLE character_assets DROP COLUMN content_type',
+    'ALTER TABLE character_assets DROP COLUMN byte_size',
+    'ALTER TABLE character_assets DROP COLUMN original_name',
+    // 默认穿着由 V2 的 appearance.defaultOutfitText 表达；这里的伪 ID 列数据全为 NULL。
+    'ALTER TABLE character_profiles DROP COLUMN default_outfit_id',
+  ] },
+  { version: 22, name: 'character-version-compiler-version', statements: [
+    // 发布版本记录生成提示词的编译器版本（规划 4.1 / 6.3）。
+    // 历史版本留空：它们由旧编译器生成，不能回填成新版本号去冒充新产物。
+    'ALTER TABLE character_versions ADD COLUMN compiler_version TEXT',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {
@@ -744,6 +883,9 @@ export function migrateDatabase(connection: DatabaseSync, migrations: readonly D
   }
   for (const migration of migrations) {
     if (applied.some((row) => row.version === migration.version)) continue;
+    migration.guard?.(connection);
+    // PRAGMA foreign_keys 在事务内无效，必须在 BEGIN 之前切换。
+    if (migration.foreignKeysOff) connection.exec('PRAGMA foreign_keys = OFF');
     connection.exec('BEGIN IMMEDIATE');
     try {
       for (const statement of migration.statements) connection.exec(statement);
@@ -753,7 +895,13 @@ export function migrateDatabase(connection: DatabaseSync, migrations: readonly D
     } catch (error) {
       connection.exec('ROLLBACK');
       throw error;
+    } finally {
+      if (migration.foreignKeysOff) connection.exec('PRAGMA foreign_keys = ON');
     }
+  }
+  if (migrations.some((migration) => migration.foreignKeysOff)) {
+    const violations = connection.prepare('PRAGMA foreign_key_check').all();
+    if (violations.length) throw new Error(`${label} database has ${violations.length} foreign key violation(s) after migration`);
   }
   const check = connection.prepare('PRAGMA quick_check').get() as { quick_check: string } | undefined;
   if (check?.quick_check !== 'ok') throw new Error(`${label} database quick_check failed: ${check?.quick_check ?? 'unknown'}`);

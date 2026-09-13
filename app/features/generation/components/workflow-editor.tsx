@@ -49,7 +49,6 @@ export function WorkflowEditor({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2 text-accent-dark"><span className="text-sm font-bold tracking-[0.16em] uppercase">PUBLISH A VERSION</span></div>
         <CardTitle>发布工作流版本</CardTitle>
         <CardDescription>{selectedWorkflow ? `当前选择：${selectedWorkflow.name}。发布后版本不可变，应用绑定始终指向明确的版本。` : '请先创建并选择一个工作流。'}</CardDescription>
       </CardHeader>
@@ -79,7 +78,7 @@ export function WorkflowEditor({
         </form>
       </CardContent>
       <CardFooter>
-        <span className="text-sm text-[#89908a]">只接受 API 格式工作流，不接受带 nodes 数组的画布导出。</span>
+        <span className="text-sm text-fg-subtle">只接受 API 格式工作流，不接受带 nodes 数组的画布导出。</span>
         <Button variant="primary" type="submit" form="workflow-version-form" loading={busy === 'version'} disabled={!selectedWorkflowId}><Save className="h-3.5 w-3.5" aria-hidden="true" />发布版本</Button>
       </CardFooter>
     </Card>

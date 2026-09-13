@@ -10,6 +10,8 @@ export const characterKeys = {
   all: ['characters'] as const,
   list: (filters?: { query?: string }) => [...characterKeys.all, 'list', filters] as const,
   detail: (id: string) => [...characterKeys.all, 'detail', id] as const,
+  migrationReview: (id: string) => [...characterKeys.all, 'migration-review', id] as const,
+  llmStatus: (id: string) => [...characterKeys.all, 'llmStatus', id] as const,
 };
 
 export const notebookKeys = {
@@ -41,6 +43,7 @@ export const creativeKeys = {
 export const providerKeys = {
   all: ['providers'] as const,
   overview: () => [...providerKeys.all, 'overview'] as const,
+  llmStatus: (appId: string) => [...providerKeys.all, 'llmStatus', appId] as const,
   discover: (params: Record<string, unknown>) =>
     [...providerKeys.all, 'discover', params] as const,
 };

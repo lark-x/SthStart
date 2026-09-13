@@ -8,6 +8,7 @@ export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
   onDismiss?: () => void;
 }
 
+/** 页面内持久提示（§7.4）：关键错误必须留在页面内，Toast 只作补充。 */
 export function Alert({
   variant = 'default',
   title,
@@ -29,19 +30,19 @@ export function Alert({
     <div
       role={variant === 'danger' ? 'alert' : 'status'}
       className={cn(
-        'relative flex items-start gap-3 rounded-md border p-4 text-sm leading-relaxed',
-        variant === 'success' && 'border-[#4e9b6b]/30 bg-[#4e9b6b]/9 text-[#335c3f]',
-        variant === 'warning' && 'border-[#d0a731]/40 bg-[#d0a731]/10 text-[#856515]',
-        variant === 'danger' && 'border-[#c9674a]/40 bg-[#c9674a]/10 text-[#a83a1b]',
-        variant === 'info' && 'border-[#4d6684]/30 bg-[#4d6684]/10 text-[#304b69]',
-        variant === 'default' && 'border-[rgb(24_32_29/18%)] bg-surface text-ink',
+        'relative flex items-start gap-3 rounded-lg border p-4 text-sm leading-relaxed',
+        variant === 'success' && 'border-success-border bg-success-bg text-success-fg',
+        variant === 'warning' && 'border-warning-border bg-warning-bg text-warning-fg',
+        variant === 'danger' && 'border-danger-border bg-danger-bg text-danger-fg',
+        variant === 'info' && 'border-info-border bg-info-bg text-info-fg',
+        variant === 'default' && 'border-border-default bg-surface text-ink',
         className
       )}
       {...props}
     >
       <Icon className="h-5 w-5 flex-shrink-0 mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
-        {title && <h5 className="font-semibold mb-1">{title}</h5>}
+        {title && <p className="font-semibold mb-1">{title}</p>}
         <div className="text-sm leading-relaxed">{children}</div>
       </div>
       {onDismiss && (
@@ -57,4 +58,3 @@ export function Alert({
     </div>
   );
 }
-

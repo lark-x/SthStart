@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useId, useRef } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useOverlayAccessibility } from './overlay';
 
 export interface DrawerProps {
   open: boolean;
@@ -26,60 +27,15 @@ export function Drawer({
   className,
 }: DrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
 
-  useEffect(() => {
-    if (open) {
-      previousFocus.current = document.activeElement as HTMLElement;
-      const firstFocusable = drawerRef.current?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      firstFocusable?.focus();
-
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          onOpenChange(false);
-          return;
-        }
-
-        if (event.key === 'Tab') {
-          const focusable = Array.from(
-            drawerRef.current?.querySelectorAll<HTMLElement>(
-              'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            ) ?? []
-          ).filter((element) => !element.hasAttribute('disabled'));
-          if (focusable.length === 0) {
-            event.preventDefault();
-            drawerRef.current?.focus();
-            return;
-          }
-
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }
-      };
-
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-
-      return () => {
-        document.removeEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = '';
-        previousFocus.current?.focus();
-        previousFocus.current = null;
-      };
-    }
-  }, [open, onOpenChange]);
+  // 与 Dialog 共用焦点、滚动锁与关闭行为（§7.1/§7.3）；回调经 ref 稳定化，父级重渲染不重置弹层。
+  useOverlayAccessibility({
+    open,
+    onRequestClose: () => onOpenChange(false),
+    containerRef: drawerRef,
+  });
 
   if (!open) return null;
 
@@ -101,17 +57,17 @@ export function Drawer({
         ref={drawerRef}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex flex-col bg-surface shadow-2xl transition-transform',
+          'relative z-50 flex flex-col bg-surface shadow-floating transition-transform',
           position === 'right' &&
-            'ml-auto h-full w-full max-w-md border-l border-[rgb(24_32_29/16%)] p-6 animate-in slide-in-from-right',
+            'ml-auto h-full w-full max-w-md border-l border-border-default p-6 animate-in slide-in-from-right',
           position === 'bottom' &&
-            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-[rgb(24_32_29/16%)] p-6 safe-area-bottom animate-in slide-in-from-bottom',
+            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-default p-6 safe-area-bottom animate-in slide-in-from-bottom',
           className
         )}
       >
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <h3 id={titleId} className="font-serif text-2xl font-medium text-ink">
+            <h3 id={titleId} className="text-lg font-semibold text-ink">
               {title}
             </h3>
             {description && (
@@ -121,17 +77,18 @@ export function Drawer({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md p-1.5 text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="rounded-lg p-1.5 text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭抽屉"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-2">{children}</div>
+        {/* 抽屉同样在 portal 中，需显式声明滚动条自动隐藏。 */}
+        <div className="flex-1 overflow-y-auto py-2" data-autohide-scroll>{children}</div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-3 pt-4 mt-auto border-t border-[rgb(24_32_29/10%)]">
+          <div className="flex items-center justify-end gap-3 pt-4 mt-auto border-t border-border-subtle">
             {footer}
           </div>
         )}

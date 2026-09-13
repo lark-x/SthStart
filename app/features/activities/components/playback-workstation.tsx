@@ -30,6 +30,7 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Input } from '@/app/components/ui/input';
+import { SplitPanes } from '@/app/components/shared/split-panes';
 
 const actionLabels: Record<string, string> = { open_view: '切换视图', scroll_to: '滚动记录', open_media: '展开媒体', close_media: '关闭媒体', reveal_message: '显示消息', reveal_comments: '显示评论', typing: '正在输入', wait: '停留阅读', stage_card: '阶段说明' };
 
@@ -209,7 +210,7 @@ export function PlaybackWorkstation({
   return (
     <div className="space-y-4">
       {/* Header toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
         <div>
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Smartphone className="h-4 w-4 text-accent" />
@@ -259,7 +260,7 @@ export function PlaybackWorkstation({
       )}
 
       {/* Settings Row: Viewer Persona & Speed */}
-      <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg bg-[#faf8f2] border border-[rgb(24_32_29/10%)]">
+      <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg bg-surface border border-border-subtle">
         <div className="flex items-center gap-2">
           <Eye className="h-4 w-4 text-muted" />
           <span className="text-sm font-semibold text-ink">观众视角：</span>
@@ -268,7 +269,7 @@ export function PlaybackWorkstation({
               value={viewerActorId}
               onChange={(e) => setViewerActorId(e.target.value)}
               disabled={disabled}
-              className="h-8 text-sm bg-white min-h-0"
+              className="h-8 text-sm bg-surface-raised min-h-0"
             >
               {actors.map((actor) => (
                 <option key={actor.id} value={actor.id}>
@@ -291,7 +292,7 @@ export function PlaybackWorkstation({
                 className={`px-2 py-1 rounded text-sm font-mono font-medium transition-colors ${
                   speed === s
                     ? 'bg-accent text-white'
-                    : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
+                    : 'bg-surface-raised text-ink hover:bg-surface-hover border border-border-default'
                 }`}
               >
                 {s}x
@@ -305,15 +306,19 @@ export function PlaybackWorkstation({
         </div>
       </div>
 
-      {/* Main Grid: Device Simulator & Actions Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Phone Mockup Preview (5 cols) */}
-        <div className="lg:col-span-5 flex flex-col items-center">
+      {/* Main Grid: Device Simulator & Actions Timeline（两栏各自滚动，§4.4） */}
+      <SplitPanes
+        className="lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
+        from="lg"
+        labels={{ left: '设备模拟预览', right: '回放动作序列' }}
+        left={
+        /* Phone Mockup Preview (5 cols) */
+        <div className="flex flex-col items-center">
           <div className="w-[300px] h-[580px] bg-stone-900 rounded-[36px] p-3 shadow-2xl border-4 border-stone-800 flex flex-col relative overflow-hidden">
             {/* Phone notch */}
             <div className="w-28 h-4 bg-stone-800 rounded-full mx-auto mb-2 flex-shrink-0" />
 
-            <div className="flex-1 rounded-[24px] overflow-hidden relative bg-stone-100">
+            <div className="flex-1 rounded-[24px] overflow-hidden relative bg-surface-muted">
               {previewHtml ? <iframe ref={iframeRef} title="活动真实回放预览" srcDoc={previewHtml}
                 sandbox="allow-scripts allow-same-origin" onLoad={() => { setTimeout(syncPreview, 100); }}
                 style={{ border: 0, width: playbackDoc?.output.width || 1080, height: playbackDoc?.output.height || 1920,
@@ -370,18 +375,20 @@ export function PlaybackWorkstation({
             </div>
           </div>
         </div>
-
-        {/* Actions Timeline Inspector (7 cols) */}
-        <div className="lg:col-span-7 space-y-3">
+        }
+        right={
+        /* Actions Timeline Inspector (7 cols) */
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-ink">回放动作序列 ({actions.length})</span>
             <span className="text-sm text-muted">按时间顺序单向执行</span>
           </div>
 
-          <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-3 max-h-[560px] overflow-y-auto space-y-2">
+          {/* 外层右栏已经独立滚动，这里不再叠加第二层 max-height，避免出现嵌套滚动条。 */}
+          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-3 space-y-2">
             {actions.length === 0 ? (
               <div className="py-16 text-center text-sm text-muted space-y-2">
-                <Clock className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
+                <Clock className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
                 <p>当前尚无回放动作序列</p>
                 <p className="text-sm">点击顶部“自动生成编排”，系统将计算最适阅读节奏与镜头切换。</p>
               </div>
@@ -395,7 +402,7 @@ export function PlaybackWorkstation({
                     className={`p-2.5 rounded-lg border text-sm transition-all ${
                       isActive
                         ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
-                        : 'border-stone-200/80 bg-white'
+                        : 'border-border-subtle bg-surface-raised'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -405,7 +412,7 @@ export function PlaybackWorkstation({
                         </Badge>
                         <span className="font-semibold text-ink font-mono">{actionLabels[act.type] || act.type}</span>
                         {act.view && (
-                          <Badge variant="outline" className="text-sm bg-stone-100">
+                          <Badge variant="outline" className="text-sm bg-surface-muted">
                             {act.view === 'chat' ? '群聊' : '朋友圈'}
                           </Badge>
                         )}
@@ -417,7 +424,7 @@ export function PlaybackWorkstation({
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        <span className="text-sm text-stone-500 font-mono">
+                        <span className="text-sm text-muted font-mono">
                           {formatTime(act.atMs)}
                         </span>
                         <div className="flex items-center gap-1">
@@ -428,9 +435,9 @@ export function PlaybackWorkstation({
                             step={200}
                             min={200}
                             disabled={disabled}
-                            className="h-6 w-20 text-sm text-right font-mono bg-stone-50"
+                            className="h-6 w-20 text-sm text-right font-mono bg-surface"
                           />
-                          <span className="text-sm text-stone-500">ms</span>
+                          <span className="text-sm text-muted">ms</span>
                         </div>
                       </div>
                     </div>
@@ -446,7 +453,8 @@ export function PlaybackWorkstation({
             )}
           </div>
         </div>
-      </div>
+        }
+      />
     </div>
   );
 }

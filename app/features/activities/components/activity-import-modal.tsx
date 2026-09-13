@@ -109,7 +109,7 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
         {!stagedResult && (
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-[rgb(24_32_29/20%)] hover:border-accent/60 bg-[#faf8f2] rounded-xl p-8 text-center cursor-pointer transition-colors space-y-3"
+            className="border-2 border-dashed border-ink/20 hover:border-accent/60 bg-surface rounded-xl p-8 text-center cursor-pointer transition-colors space-y-3"
           >
             {stageMutation.isPending ? (
               <div className="space-y-2">
@@ -118,7 +118,7 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
               </div>
             ) : (
               <>
-                <UploadCloud className="h-10 w-10 mx-auto text-stone-400" />
+                <UploadCloud className="h-10 w-10 mx-auto text-fg-subtle" />
                 <div className="text-sm font-semibold text-ink">
                   点击选择活动 ZIP 文件，或拖入此处
                 </div>
@@ -132,7 +132,7 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
 
         {/* Staged Preview */}
         {stagedResult && (
-          <div className="p-4 rounded-lg bg-[#faf8f2] border border-[rgb(24_32_29/14%)] space-y-3">
+          <div className="p-4 rounded-lg bg-surface border border-border-default space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-ink">
                 {stagedResult.preview.activity?.title || stagedResult.preview.title || '活动工程'}
@@ -143,21 +143,21 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pt-1">
-              <div className="p-2 rounded bg-white border border-stone-200">
+              <div className="p-2 rounded bg-surface-raised border border-border-default">
                 <div className="text-sm font-bold text-ink">{stagedResult.preview.stageCount}</div>
                 <div className="text-sm text-muted">阶段数量</div>
               </div>
-              <div className="p-2 rounded bg-white border border-stone-200">
+              <div className="p-2 rounded bg-surface-raised border border-border-default">
                 <div className="text-sm font-bold text-ink">{stagedResult.preview.actorCount}</div>
                 <div className="text-sm text-muted">角色数量</div>
               </div>
-              <div className="p-2 rounded bg-white border border-stone-200">
+              <div className="p-2 rounded bg-surface-raised border border-border-default">
                 <div className="text-sm font-bold text-ink">
                   {stagedResult.preview.messageCount + stagedResult.preview.postCount}
                 </div>
                 <div className="text-sm text-muted">记录总数</div>
               </div>
-              <div className="p-2 rounded bg-white border border-stone-200">
+              <div className="p-2 rounded bg-surface-raised border border-border-default">
                 <div className="text-sm font-bold text-ink">
                   {stagedResult.preview.assetCount ?? stagedResult.preview.mediaCount}
                 </div>
@@ -174,7 +174,7 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
                   setStagedResult(null);
                   setFile(null);
                 }}
-                className="text-sm text-stone-500 hover:text-stone-800"
+                className="text-sm text-muted hover:text-ink"
               >
                 重新选择文件
               </Button>

@@ -109,8 +109,11 @@ export async function transferCharacterReferenceToActivity(
   const selected = characterVersionRow(database, input.characterId, input.version);
   if (!selected) throw new Error('character_version_not_found');
   if (selected.appearanceSnapshot && Array.isArray(selected.appearanceSnapshot.referenceIds) && !selected.appearanceSnapshot.referenceIds.includes(input.referenceId)) throw new Error('reference_not_in_character_version');
-  const row = database.connection.prepare(`SELECT r.id,r.asset_id,r.artifact_id,r.sha256,a.local_path,a.content_type,a.artifact_id AS asset_artifact_id
-    FROM character_visual_references r JOIN character_assets a ON a.id=r.asset_id
+  // 文件信息只存在 artifacts；参考图自身只有参考配置。
+  const row = database.connection.prepare(`SELECT r.id,r.asset_id,a.artifact_id,art.sha256,art.local_path AS source_local_path,art.content_type AS source_content_type,a.artifact_id AS asset_artifact_id
+    FROM character_visual_references r
+    JOIN character_assets a ON a.id=r.asset_id
+    LEFT JOIN artifacts art ON art.id=a.artifact_id
     WHERE r.id=? AND r.character_id=? AND r.enabled=1`).get(input.referenceId, input.characterId) as Record<string, unknown> | undefined;
   if (!row) throw new Error('reference_not_found');
 
@@ -139,9 +142,9 @@ export async function transferCharacterReferenceToActivity(
   const sourceArtifact = sourceArtifactId ? database.connection.prepare("SELECT app_id,local_path,content_type,original_name,file_status FROM artifacts WHERE id=?").get(sourceArtifactId) as Record<string, unknown> | undefined : undefined;
   if (sourceArtifact && String(sourceArtifact.app_id) !== 'characters') throw new Error('reference_artifact_owner_mismatch');
   if (sourceArtifact && String(sourceArtifact.file_status) !== 'ready') throw new Error('reference_artifact_unavailable');
-  const sourceContentType = String(sourceArtifact?.content_type ?? row.content_type ?? 'image/png').split(';')[0].trim().toLowerCase();
+  const sourceContentType = String(sourceArtifact?.content_type ?? row.source_content_type ?? 'image/png').split(';')[0].trim().toLowerCase();
   if (!sourceContentType.startsWith('image/')) throw new Error('reference_media_type_unsupported');
-  const sourcePath = sourceArtifact?.local_path ? String(sourceArtifact.local_path) : row.local_path ? String(row.local_path) : null;
+  const sourcePath = sourceArtifact?.local_path ? String(sourceArtifact.local_path) : row.source_local_path ? String(row.source_local_path) : null;
   if (!sourcePath || !existsSync(sourcePath)) throw new Error('reference_file_not_found');
   const artifact = await streamUploadArtifact(config, database, {
     appId: 'activities', stream: createReadStream(sourcePath), contentType: sourceContentType,
@@ -172,14 +175,15 @@ export async function materializeCharacterAvatars(config: ServiceConfig, databas
   const actors: ActorSnapshot[] = [];
   for (const actor of document.actors) {
     if (actor.avatarAssetKey || !actor.avatarAssetId || !actor.sourceCharacterId) { actors.push(actor); continue; }
-    const source = database.connection.prepare(`SELECT a.local_path,a.content_type,a.artifact_id,art.file_status,art.local_path AS artifact_path
+    // 角色资产只指向 artifacts 中的文件；文件路径与 MIME 一律从 artifacts 读取。
+    const source = database.connection.prepare(`SELECT a.artifact_id,art.file_status,art.local_path AS artifact_path,art.content_type
       FROM character_assets a LEFT JOIN artifacts art ON art.id=a.artifact_id WHERE a.id=? AND a.character_id=?`).get(actor.avatarAssetId, actor.sourceCharacterId) as Record<string, unknown> | undefined;
-    const path = source?.artifact_id ? source.artifact_path : source?.local_path;
-    if (!source || typeof path !== 'string' || !existsSync(path) || (source.artifact_id && source.file_status !== 'ready')) { actors.push(actor); continue; }
+    const path = source?.artifact_path;
+    if (!source || !source.artifact_id || typeof path !== 'string' || !existsSync(path) || source.file_status !== 'ready') { actors.push(actor); continue; }
     const assetKey = `character_avatar_${actor.avatarAssetId}`;
     const existing = database.connection.prepare('SELECT artifact_id FROM activity_assets WHERE activity_id=? AND asset_key=?').get(activityId, assetKey);
     if (!existing) {
-      const artifact = await streamUploadArtifact(config, database, { appId: 'activities', stream: createReadStream(path), contentType: String(source.content_type), originalName: `${assetKey}.png`, metadata: { sourceCharacterId: actor.sourceCharacterId, sourceVersion: actor.sourceVersion, sourceAssetId: actor.avatarAssetId } });
+      const artifact = await streamUploadArtifact(config, database, { appId: 'activities', stream: createReadStream(path), contentType: String(source.content_type || 'image/png'), originalName: `${assetKey}.png`, metadata: { sourceCharacterId: actor.sourceCharacterId, sourceVersion: actor.sourceVersion, sourceAssetId: actor.avatarAssetId } });
       database.transaction(() => {
         database.connection.prepare(`INSERT INTO activity_assets (activity_id,asset_key,artifact_id,source,type,width,height,duration_ms,hash,created_at)
           VALUES (?,?,?,'link','image',?,?,NULL,?,?)`).run(activityId, assetKey, artifact.id, artifact.width ?? null, artifact.height ?? null, artifact.sha256 ?? null, nowIso());

@@ -32,7 +32,7 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(
           />
           <div
             className={cn(
-              "w-10 h-6 bg-[rgb(24_32_29/18%)] peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent",
+              "w-10 h-6 bg-ink/18 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-raised after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-raised after:border-border-default after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent",
               disabled && 'opacity-50 cursor-not-allowed',
               className
             )}

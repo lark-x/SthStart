@@ -41,8 +41,8 @@ export function ProviderForm({
   const capabilities = useWatch({ control, name: 'capabilities' }) ?? [];
 
   useEffect(() => {
-    if (!isDirty) reset(draft);
-  }, [draft, isDirty, reset]);
+    reset(draft);
+  }, [draft, reset]);
 
   const toggleCapability = (cap: LlmModelCapability) => {
     const next = capabilities.includes(cap)
@@ -76,14 +76,11 @@ export function ProviderForm({
   };
 
   return (
-    <Card className="border-[rgb(24_32_29/14%)] bg-surface">
+    <Card className="border-0 bg-surface p-0 shadow-none">
       <form onSubmit={handleSubmit(onSubmit)} className="settings-form llm-editor space-y-4">
-        <div className="editor-title flex items-start justify-between gap-4">
+        <div className="editor-title hidden">
           <div>
-            <p className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark eyebrow">
-              {cloneSourceId ? 'CLONE TEMPLATE' : editingId ? 'EDIT TEMPLATE' : 'NEW TEMPLATE'}
-            </p>
-            <h3 className="font-serif text-2xl font-medium text-ink">
+            <h3 className="tpl-section-title">
               {cloneSourceId ? '复制为独立模板' : editingId ? '编辑 LLM 模板' : '添加 LLM 模板'}
             </h3>
           </div>
@@ -104,14 +101,14 @@ export function ProviderForm({
                 maxLength: { value: 63, message: '配置 ID 不能超过 63 个字符' },
                 setValueAs: (value: string) => value.toLowerCase().replace(/[_\s]+/g, '-').replace(/[^a-z0-9-]/g, ''),
               })}
-              disabled={Boolean(editingId)}
+              readOnly={Boolean(editingId)}
               placeholder="例如 deepseek-chat"
               aria-invalid={Boolean(errors.id)}
               aria-describedby={errors.id ? 'provider-id-error' : undefined}
               error={errors.id?.message}
               className="mt-1"
             />
-            {errors.id?.message && <small id="provider-id-error" role="alert" className="text-sm text-[#c9674a]">{errors.id.message}</small>}
+            {errors.id?.message && <small id="provider-id-error" role="alert" className="text-sm text-danger">{errors.id.message}</small>}
             <small className="text-sm text-muted block mt-0.5 font-normal">
               以小写字母开头，只能使用小写字母、数字和连字符。
             </small>
@@ -127,10 +124,10 @@ export function ProviderForm({
               error={errors.name?.message}
               className="mt-1"
             />
-            {errors.name?.message && <small id="provider-name-error" role="alert" className="text-sm text-[#c9674a]">{errors.name.message}</small>}
+            {errors.name?.message && <small id="provider-name-error" role="alert" className="text-sm text-danger">{errors.name.message}</small>}
           </label>
 
-          <label className="span-two col-span-full block text-sm font-semibold text-ink">
+          <label className="block text-sm font-semibold text-ink">
             <span>API Base URL</span>
             <Input
               {...register('baseUrl', { required: '请输入 API Base URL', pattern: { value: /^https?:\/\//, message: '请输入有效的 HTTP(S) 地址' } })}
@@ -141,11 +138,11 @@ export function ProviderForm({
               error={errors.baseUrl?.message}
               className="mt-1"
             />
-            {errors.baseUrl?.message && <small id="provider-base-url-error" role="alert" className="text-sm text-[#c9674a]">{errors.baseUrl.message}</small>}
+            {errors.baseUrl?.message && <small id="provider-base-url-error" role="alert" className="text-sm text-danger">{errors.baseUrl.message}</small>}
           </label>
 
           {!cloneSourceId && (
-            <label className="span-two col-span-full block text-sm font-semibold text-ink">
+            <label className="block text-sm font-semibold text-ink">
               <span>API Key</span>
               <Input
                 {...register('secret')}
@@ -170,7 +167,7 @@ export function ProviderForm({
                 className="flex-1"
               />
               {errors.model?.message && (
-                <small id="provider-model-error" role="alert" className="text-sm text-[#c9674a]">
+                <small id="provider-model-error" role="alert" className="text-sm text-danger">
                   {errors.model.message}
                 </small>
               )}
@@ -178,7 +175,7 @@ export function ProviderForm({
                 type="button"
                 onClick={handleDiscover}
                 disabled={discovering}
-                className="min-h-[42px] px-4 rounded-[3px_12px_3px_3px] border border-[rgb(24_32_29/18%)] bg-surface hover:bg-[rgb(24_32_29/6%)] text-sm font-medium text-ink cursor-pointer transition-colors"
+                className="min-h-[42px] px-4 rounded-[var(--radius-control)] border border-border-default bg-surface hover:bg-ink/6 text-sm font-medium text-ink cursor-pointer transition-colors"
               >
                 {discovering ? '正在获取…' : '获取模型'}
               </button>
@@ -207,14 +204,14 @@ export function ProviderForm({
               <input
                 {...register('enabled')}
                 type="checkbox"
-                className="h-4 w-4 rounded border-[rgb(24_32_29/24%)] text-accent accent-accent"
+                className="h-4 w-4 rounded border-border-strong text-accent accent-accent"
               />
               <span>启用此配置</span>
             </label>
           </div>
         </div>
 
-        <fieldset className="capability-picker p-3.5 rounded border border-[rgb(24_32_29/12%)] space-y-2">
+        <fieldset className="capability-picker p-3.5 rounded border border-border-subtle space-y-2">
           <legend className="text-sm font-bold text-muted px-1">模型能力</legend>
           <div className="flex gap-6">
             <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
@@ -264,7 +261,8 @@ export function ProviderForm({
           </details>
         )}
 
-        <div className="flex justify-end pt-2">
+        <div className="sticky bottom-0 flex justify-end gap-2 bg-surface py-2">
+          <Button variant="ghost" type="button" disabled={loading} onClick={onReset}>取消</Button>
           <Button variant="primary" type="submit" loading={loading}>
             {cloneSourceId ? '创建独立副本' : editingId ? '保存修改' : '保存模板配置'}
           </Button>

@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
-import type { ProviderProfile } from '@sthstart/contracts';
+import type { ProviderProfile, SavedProfileResponse } from '@sthstart/contracts';
 import { usePublicOverview } from '../queries';
 import {
   useCreateProfile,
@@ -19,11 +19,50 @@ import { AppModelRouting } from './app-model-routing';
 import { AppTokens } from './app-tokens';
 import { OtherProviders } from './other-providers';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
 import { Button } from '@/app/components/ui/button';
 import { buttonVariants } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
+import { Dialog } from '@/app/components/ui/dialog';
+import { Input } from '@/app/components/ui/input';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
+
+const SECTION_IDS = ['models', 'routing', 'access'] as const;
+type SectionId = (typeof SECTION_IDS)[number];
+const DEFAULT_SECTION: SectionId = 'models';
+
+function isSectionId(value: string | null): value is SectionId {
+  return value !== null && (SECTION_IDS as readonly string[]).includes(value);
+}
+
+/**
+ * 分类与目标应用完全以 URL 为唯一数据源（useSyncExternalStore）。
+ * 不能用 useState 初始化器直接读 window：SSR 与客户端水合结果不一致会让
+ * vinext 的水合恢复流程卡住，之后所有 setState 都不再提交。
+ */
+const locationListeners = new Set<() => void>();
+function notifyLocationListeners() {
+  for (const listener of locationListeners) listener();
+}
+function subscribeToLocation(callback: () => void) {
+  locationListeners.add(callback);
+  window.addEventListener('popstate', callback);
+  return () => {
+    locationListeners.delete(callback);
+    window.removeEventListener('popstate', callback);
+  };
+}
+function readSectionFromUrl(): SectionId {
+  if (isSectionId(new URLSearchParams(window.location.search).get('section'))) {
+    return new URLSearchParams(window.location.search).get('section') as SectionId;
+  }
+  if (window.location.hash === '#app-model-routing') return 'routing';
+  return DEFAULT_SECTION;
+}
+function readTargetAppFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get('app');
+}
 
 function cloneProfileId(sourceId: string, existingIds: string[]) {
   const suffix = '-copy';
@@ -34,6 +73,24 @@ function cloneProfileId(sourceId: string, existingIds: string[]) {
     if (!existingIds.includes(candidate)) return candidate;
   }
   return `${sourceId.slice(0, 54)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * 后端 ID 来自 cross-keychain，直接显示对运维没有意义；这里给出可读名称，
+ * 便于区分“系统凭据库”和容器内使用的加密文件存储。
+ */
+const keyringBackendLabels: Record<string, string> = {
+  'native-windows': '系统凭据管理器 (Windows)',
+  'native-macos': '系统钥匙串 (macOS)',
+  'native-linux': '系统密钥环 (Linux)',
+  'secret-service': '系统密钥环 (Secret Service)',
+  windows: 'Windows 凭据管理器',
+  macos: 'macOS 钥匙串',
+  file: '容器内加密文件存储',
+};
+
+function keyringLabel(backend: string | null | undefined) {
+  return (backend && keyringBackendLabels[backend]) || backend || '未知后端';
 }
 
 function profileDraft(profile: ProviderProfile): LlmDraft {
@@ -55,11 +112,54 @@ export function PublicServicesSettings() {
   const toast = useToast();
   const { data: overview, isLoading, error: queryError, refetch } = usePublicOverview();
 
+  // 深链接约定：/settings/public-services?section=routing&app=activities；
+  // 旧锚点 #app-model-routing 自动打开应用路由分类。服务端渲染固定返回默认分类，
+  // 客户端挂载后立即切换到 URL 指定的分类，避免水合不一致。
+  const section = useSyncExternalStore(subscribeToLocation, readSectionFromUrl, () => DEFAULT_SECTION);
+  const targetApp = useSyncExternalStore(subscribeToLocation, readTargetAppFromUrl, () => null);
+
+  const setSection = useCallback((next: SectionId, options: { app?: string | null } = {}) => {
+    const params = new URLSearchParams(window.location.search);
+    if (next === DEFAULT_SECTION && !options.app) params.delete('section');
+    else params.set('section', next);
+    if (next === 'routing' && options.app) params.set('app', options.app);
+    else params.delete('app');
+    const query = params.toString();
+    window.history.pushState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${next === 'routing' ? '#app-model-routing' : ''}`);
+    notifyLocationListeners();
+  }, []);
+
+  /** 不产生历史记录的分类切换：用于编辑器打开/保存后的归类恢复。 */
+  const replaceSection = useCallback((next: SectionId) => {
+    const params = new URLSearchParams(window.location.search);
+    if (next === DEFAULT_SECTION) params.delete('section');
+    else params.set('section', next);
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    notifyLocationListeners();
+  }, []);
+
+  // 路由分类挂载后定位目标应用行；不存在时保留路由分类并提示未找到。
+  useEffect(() => {
+    if (section !== 'routing' || !targetApp || !overview) return;
+    if (!overview.apps.some((app) => app.id === targetApp)) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`app-row-${targetApp}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [section, targetApp, overview]);
+
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(EMPTY_LLM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cloneSourceId, setCloneSourceId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [section, setSection] = useState('models');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // 目标应用不存在时提示未找到；由 overview 与 targetApp 派生，无需额外状态。
+  const appNotFound = Boolean(
+    section === 'routing' && targetApp && overview && !overview.apps.some((app) => app.id === targetApp)
+  );
 
   const createProfileMutation = useCreateProfile();
   const cloneProfileMutation = useCloneProfile();
@@ -75,7 +175,9 @@ export function PublicServicesSettings() {
   const handleBeginNew = () => {
     setEditingId(null);
     setCloneSourceId(null);
-    setLlmDraft(EMPTY_LLM);
+    setLlmDraft({ ...EMPTY_LLM });
+    replaceSection(DEFAULT_SECTION);
+    setEditorOpen(true);
     setErrorMessage('');
   };
 
@@ -83,12 +185,14 @@ export function PublicServicesSettings() {
     setEditingId(p.id);
     setCloneSourceId(null);
     setLlmDraft(profileDraft(p));
+    setEditorOpen(true);
     setErrorMessage('');
   };
 
   const handleBeginClone = (p: ProviderProfile) => {
     setEditingId(null);
     setCloneSourceId(p.id);
+    setEditorOpen(true);
     setLlmDraft({
       ...profileDraft(p),
       id: cloneProfileId(
@@ -103,6 +207,17 @@ export function PublicServicesSettings() {
   };
 
   const handleSaveLlm = async (draft: LlmDraft) => {
+    /**
+     * 配置已经保存成功，只有 API Key 没能写入凭据库时给出警告，
+     * 不要让用户以为整次保存都失败了。
+     */
+    const reportSaveResult = (result: SavedProfileResponse, successMessage: string) => {
+      if (result.secretStored) { toast.success(successMessage); return; }
+      const message = result.warning ?? 'API Key 未保存，请改用环境变量提供密钥。';
+      setErrorMessage(message);
+      toast.warning('配置已保存，但 API Key 未保存', message);
+    };
+
     setErrorMessage('');
     if (!draft.capabilities.length) {
       setErrorMessage('请至少选择一个模型能力标签。');
@@ -119,16 +234,27 @@ export function PublicServicesSettings() {
         kind: 'llm',
       };
 
+      let savedResult: SavedProfileResponse;
+      let successMessage: string;
       if (cloneSourceId) {
-        await cloneProfileMutation.mutateAsync({ sourceId: cloneSourceId, payload });
-        const successMsg = '模型配置已复制为独立副本。';
-        toast.success(successMsg);
+        const result = await cloneProfileMutation.mutateAsync({ sourceId: cloneSourceId, payload });
+        savedResult = result;
+        successMessage = '模型配置已复制为独立副本。';
       } else {
-        await createProfileMutation.mutateAsync(payload);
-        const successMsg = editingId ? '模型配置已更新。' : '模型配置已创建。';
-        toast.success(successMsg);
+        const result = await createProfileMutation.mutateAsync(payload);
+        savedResult = result;
+        successMessage = editingId ? '模型配置已更新。' : '模型配置已创建。';
       }
-      handleBeginNew();
+      setEditorOpen(false);
+      setSearch('');
+      replaceSection(DEFAULT_SECTION);
+      reportSaveResult(savedResult, successMessage);
+      const refreshed = await refetch();
+      if (refreshed.error || !refreshed.data?.profiles.some((profile) => profile.id === savedResult.id)) {
+        const message = '配置已保存，但列表未能确认最新结果。请刷新数据，不要重复添加。';
+        setErrorMessage([savedResult.warning, message].filter(Boolean).join(' '));
+        toast.warning('列表更新未完成', message);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
@@ -173,175 +299,67 @@ export function PublicServicesSettings() {
     }
   };
 
+  const filteredProfiles = llmProfiles.filter((profile) =>
+    [profile.name, profile.model, profile.id, profile.baseUrl].some((value) => value?.toLowerCase().includes(search.trim().toLowerCase()))
+  );
+  const saving = createProfileMutation.isPending || cloneProfileMutation.isPending;
+
   return (
-    <main className="min-h-screen w-full bg-paper text-ink px-4 sm:px-8 md:px-12 py-6 public-services-layout">
-      <div className="max-w-7xl mx-auto space-y-5">
-      <PageHeader
-        backHref="/"
-        backLabel="返回门户首页"
-        eyebrow="GLOBAL AI FOUNDATION"
-        title="公共服务底座"
-        description="管理全局大语言模型模板库、应用角色绑定与系统凭据。遵循「LLM 模板 → 应用角色绑定 → 应用调用」模型：修改模板配置即时对所有绑定应用生效，密钥由系统安全凭据库管理。"
-        actions={
-          <div className="flex items-center gap-2">
-            <Link
-              href="/settings/control-center"
-              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-            >
-              控制中心
-            </Link>
-            <Button size="sm" variant="outline" onClick={() => void refetch()}>
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span>刷新数据</span>
-            </Button>
-            <Button size="sm" variant="primary" onClick={handleBeginNew}>
-              <span>新建模板</span>
-            </Button>
+    <PageContainer width="settings" className="py-5 public-services-layout">
+        <div className="space-y-4">
+        <PageHeader
+          title="模型与公共服务"
+          description="管理模型模板与应用路由，配置修改后对绑定应用生效。"
+        />
+        <section aria-label="服务概况" className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm">
+          <span><strong>{overview ? llmProfiles.length : '—'}</strong> 个模型</span>
+          <span><strong>{overview?.apps.length ?? '—'}</strong> 个应用</span>
+          <span className="text-muted">安全存储：{!overview ? '状态未知' : overview.keyring.available ? keyringLabel(overview.keyring.backend) : '未连接'}</span>
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            <Link href="/apps/characters" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>角色资料库</Link>
+            <Link href="/settings/control-center" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>控制中心</Link>
+            <Button size="sm" variant="ghost" onClick={() => void refetch()}><RefreshCw className="h-3.5 w-3.5" />刷新数据</Button>
           </div>
-        }
-      />
-
-      {queryError && (
-        <Alert variant="danger" title="公共服务加载失败">
-          {queryError instanceof Error ? queryError.message : String(queryError)}
-        </Alert>
-      )}
-
-      {isLoading && !overview && (
-        <div className="space-y-4" aria-label="正在加载公共服务">
-          <Skeleton className="h-36 w-full rounded-[4px_20px_4px_4px]" />
-          <Skeleton className="h-56 w-full rounded-[4px_20px_4px_4px]" />
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="settings-alert" role="alert">
-          {errorMessage}
-        </div>
-      )}
-
-      {/* Overview Status Card */}
-      <section className="settings-panel settings-summary rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 shadow-sm">
-        <p className="eyebrow text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
-          SERVICE STATUS
-        </p>
-        <h2 className="font-serif text-2xl font-medium text-ink mt-1">公共服务底座</h2>
-        <div className="metric-row flex gap-8 sm:gap-16 py-4 my-2 border-y border-[rgb(24_32_29/12%)]">
-          <span>
-            <strong className="font-serif text-3xl text-ink">
-              {overview?.apps.length ?? '—'}
-            </strong>{' '}
-            应用
-          </span>
-          <span>
-            <strong className="font-serif text-3xl text-ink">
-              {llmProfiles.length || '—'}
-            </strong>{' '}
-            LLM 模型
-          </span>
-          <span>
-            <strong className="font-serif text-3xl text-ink">
-              {overview?.personas.length ?? '—'}
-            </strong>{' '}
-            角色模板
-          </span>
-        </div>
-        <p className="settings-note text-sm text-muted mt-2">
-          安全存储：{overview?.keyring.available ? `已连接 ${overview.keyring.backend}` : '不可用，仅允许环境变量回退；无法独立复制带密钥的配置'}
-        </p>
-      </section>
-
-      <nav className="flex flex-wrap gap-2" aria-label="公共服务分类">
-        {[['models','模型模板'], ['routing','应用路由'], ['access','访问与其他能力']].map(([id, label]) =>
-          <button type="button" key={id} aria-pressed={section === id} onClick={() => setSection(id)} className={`min-h-10 rounded-md px-4 text-sm font-medium ${section === id ? 'bg-accent text-white' : 'border border-border-default bg-surface'}`}>{label}</button>)}
-      </nav>
-      <div hidden={section !== 'models'}>
-      {/* LLM Model Library */}
-      <section className="settings-panel settings-wide rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 space-y-4">
-        <div className="settings-heading-row flex items-center justify-between pb-2 border-b border-[rgb(24_32_29/10%)]">
-          <div>
-            <p className="eyebrow text-sm font-bold uppercase tracking-wider text-accent-dark">
-              LLM TEMPLATE LIBRARY
-            </p>
-            <h2 className="font-serif text-2xl font-medium text-ink">公共 LLM 模板库</h2>
+        </section>
+        {queryError && <Alert variant="danger" title="公共服务加载失败">{queryError instanceof Error ? queryError.message : String(queryError)}。请刷新重试；已有配置不会因此删除。</Alert>}
+        {errorMessage && !editorOpen && <Alert variant="warning" title="配置提示">{errorMessage}</Alert>}
+        <nav className="flex flex-wrap gap-2 border-b border-border-default pb-2" aria-label="公共服务分类">
+          {([['models', '模型模板'], ['routing', '应用路由'], ['access', '访问与其他能力']] as Array<[SectionId, string]>).map(([id, label]) =>
+            <button type="button" key={id} aria-pressed={section === id} onClick={() => setSection(id)} className={`min-h-10 rounded-md px-4 text-sm font-medium ${section === id ? 'bg-accent text-white' : 'hover:bg-surface text-muted'}`}>{label}</button>)}
+        </nav>
+        <div hidden={section !== 'models'} className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">模型模板 <span className="text-sm font-sans text-muted">{overview ? llmProfiles.length : '—'}</span></h2>
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Input aria-label="搜索模型模板" placeholder="搜索名称、模型或地址" value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 sm:w-64" />
+              <Button size="sm" variant="primary" onClick={handleBeginNew}>新建模板</Button>
+            </div>
           </div>
-          <button
-            type="button"
-            className="min-h-[34px] px-3.5 bg-accent text-white hover:bg-accent-dark rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer"
-            onClick={handleBeginNew}
-          >
-            新建模板
-          </button>
+          {isLoading && !overview ? <Skeleton className="h-48 w-full rounded-lg" /> : !overview ?
+            <p className="rounded-lg border border-dashed border-border-default p-6 text-sm text-muted">模型列表尚未加载，暂时无法确认已有配置。请先刷新数据。</p> :
+            <ProviderList profiles={filteredProfiles} overview={overview} searching={Boolean(search.trim())} onEdit={handleBeginEdit} onClone={handleBeginClone} onDelete={handleDeleteProfile} onAssignToApps={() => setSection('routing')} />}
         </div>
-        <p className="settings-note text-sm text-muted">
-          LLM 模板包含地址、密钥、模型 ID、思考模式与自定义参数。修改模板后，所有绑定该模板的应用发起的新请求即时生效。
-        </p>
-
-        <div className="grid gap-6 xl:grid-cols-2 items-start">
-        <ProviderList
-          profiles={llmProfiles}
-          overview={overview}
-          onEdit={handleBeginEdit}
-          onClone={handleBeginClone}
-          onDelete={handleDeleteProfile}
-        />
-
-        <ProviderForm
-          draft={llmDraft}
-          onReset={handleBeginNew}
-          onSubmit={handleSaveLlm}
-          editingId={editingId}
-          cloneSourceId={cloneSourceId}
-          loading={createProfileMutation.isPending || cloneProfileMutation.isPending}
-        />
+        <div hidden={section !== 'routing'}>
+          <AppModelRouting
+            overview={overview}
+            profiles={llmProfiles}
+            onSaveAssignment={handleSaveAssignment}
+            highlightAppId={targetApp}
+            appNotFound={appNotFound}
+          />
         </div>
-      </section>
-
-      </div>
-      <div hidden={section !== 'routing'}>
-      {/* App Model Routing */}
-      <AppModelRouting
-        overview={overview}
-        profiles={llmProfiles}
-        onSaveAssignment={handleSaveAssignment}
-      />
-
-      </div>
-      <div hidden={section !== 'access'}>
-      {/* App Tokens & Other Providers */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppTokens overview={overview} onCreateApp={handleCreateApp} />
-        <OtherProviders
-          overview={overview}
-          onSaveOther={async (payload) => {
-            await createProfileMutation.mutateAsync(payload);
-            toast.success('能力配置已保存。');
-          }}
-        />
-      </div>
-
-      </div>
-      {/* Character Library Entry Link */}
-      <section className="settings-panel settings-wide character-service-entry rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-        <div className="md:col-span-2 space-y-1">
-          <p className="eyebrow text-sm font-bold uppercase tracking-wider text-accent-dark">
-            CHARACTER LIBRARY
-          </p>
-          <h2 className="font-serif text-2xl font-medium text-ink">公共角色资料</h2>
-          <p className="settings-note text-sm text-muted">
-            角色创作、资料来源、关系与发布版本已经迁移到独立资料库。这里仅展示公共服务状态，不再用一段人格提示词代替完整角色资料。
-          </p>
+        <div hidden={section !== 'access'} className="space-y-3">
+          {overview && !overview.keyring.available && <Alert variant="warning" title="安全存储未连接">配置 KEYRING_FILE_MASTER_KEY 可启用容器内加密存储，或使用环境变量提供模型密钥。</Alert>}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <AppTokens overview={overview} onCreateApp={handleCreateApp} />
+            <OtherProviders overview={overview} onSaveOther={async (payload) => { await createProfileMutation.mutateAsync(payload); toast.success('能力配置已保存。'); }} />
+          </div>
         </div>
-        <div className="flex justify-end">
-          <Link
-            className="character-service-link inline-flex items-center gap-1.5 px-4 py-2.5 rounded-[3px_14px_3px_3px] bg-accent text-white font-semibold text-sm hover:bg-accent-dark transition-colors shadow-xs"
-            href="/apps/characters"
-          >
-            <span>打开角色资料库 →</span>
-          </Link>
+        <Dialog open={editorOpen} onOpenChange={(open) => { if (!saving) setEditorOpen(open); }} title={cloneSourceId ? '复制模型模板' : editingId ? '编辑模型模板' : '新建模型模板'} className="max-w-2xl">
+          {errorMessage && <Alert variant="danger" title="配置提示">{errorMessage}</Alert>}
+          <ProviderForm draft={llmDraft} onReset={() => setEditorOpen(false)} onSubmit={handleSaveLlm} editingId={editingId} cloneSourceId={cloneSourceId} loading={saving} />
+        </Dialog>
         </div>
-      </section>
-      </div>
-    </main>
+    </PageContainer>
   );
 }

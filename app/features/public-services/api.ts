@@ -1,17 +1,20 @@
 import { getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
 import {
   AppLlmAssignmentSchema,
+  AppLlmStatusResponseSchema,
   CreatedAppSchema,
-  IdResponseSchema,
   ModelDiscoveryResponseSchema,
   PublicServiceOverviewSchema,
+  SavedProfileResponseSchema,
 } from '@sthstart/contracts';
 import type {
   AppLlmAssignment,
+  AppLlmStatusResponse,
   CreatedApp,
   LlmModelCapability,
   ProviderProfile,
   PublicServiceOverview,
+  SavedProfileResponse,
 } from '@sthstart/contracts';
 
 export type LlmDraft = {
@@ -44,15 +47,15 @@ export async function fetchPublicOverview(): Promise<PublicServiceOverview> {
   return getJson<PublicServiceOverview>('overview', undefined, PublicServiceOverviewSchema);
 }
 
-export async function createProviderProfile(payload: unknown): Promise<{ id: string }> {
-  return postJson<{ id: string }>('profiles', payload, undefined, IdResponseSchema);
+export async function createProviderProfile(payload: unknown): Promise<SavedProfileResponse> {
+  return postJson<SavedProfileResponse>('profiles', payload, undefined, SavedProfileResponseSchema);
 }
 
 export async function cloneProviderProfile(
   sourceId: string,
   payload: unknown
-): Promise<{ id: string }> {
-  return postJson<{ id: string }>(`profiles/${sourceId}/clone`, payload, undefined, IdResponseSchema);
+): Promise<SavedProfileResponse> {
+  return postJson<SavedProfileResponse>(`profiles/${sourceId}/clone`, payload, undefined, SavedProfileResponseSchema);
 }
 
 export async function deleteProviderProfile(id: string): Promise<Record<string, unknown>> {
@@ -86,4 +89,8 @@ export async function updateLlmAssignments(
     undefined,
     AppLlmAssignmentSchema
   );
+}
+
+export async function fetchAppLlmStatus(appId: string): Promise<AppLlmStatusResponse> {
+  return getJson<AppLlmStatusResponse>(`apps/${appId}/llm-status`, undefined, AppLlmStatusResponseSchema);
 }

@@ -74,13 +74,13 @@ export function LogViewer({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[4px_20px_4px_4px] border border-[rgb(24_32_29/18%)] bg-ink text-[#dae2de] overflow-hidden shadow-lg">
+      <div className="rounded-[var(--radius-panel)] border border-border-default bg-ink text-[#dae2de] overflow-hidden shadow-lg">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-white/10 bg-[#1f2925]">
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
-                connected ? 'bg-[#4e9b6b]' : 'bg-[#c9674a]'
+                connected ? 'bg-success' : 'bg-danger'
               }`}
               title={connected ? 'SSE 实时已连接' : '未连接'}
             />
@@ -91,7 +91,8 @@ export function LogViewer({
             <select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value)}
-              className="h-8 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
+              aria-label="日志级别筛选"
+              className="h-8 w-36 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
             >
               <option value="all">所有日志级别</option>
               <option value="error">ERROR</option>
@@ -103,7 +104,8 @@ export function LogViewer({
             <select
               value={serviceFilter}
               onChange={(e) => setServiceFilter(e.target.value)}
-              className="h-8 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
+              aria-label="服务筛选"
+              className="h-8 w-40 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
             >
               <option value="all">所有服务</option>
               {services.map((s) => (
@@ -120,7 +122,7 @@ export function LogViewer({
                 onChange={(event) => {
                   void onUpdatePolicy({ globalLevel: event.target.value as LogLevel });
                 }}
-                className="h-8 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
+                className="h-8 w-32 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
               >
                 <option value="off">OFF</option>
                 <option value="error">ERROR 起</option>
@@ -152,12 +154,12 @@ export function LogViewer({
             >
               {paused ? (
                 <>
-                  <Play className="h-3.5 w-3.5 fill-current text-[#4e9b6b]" />
+                  <Play className="h-3.5 w-3.5 fill-current text-success" />
                   <span>恢复</span>
                 </>
               ) : (
                 <>
-                  <Pause className="h-3.5 w-3.5 fill-current text-[#d0a731]" />
+                  <Pause className="h-3.5 w-3.5 fill-current text-warning" />
                   <span>暂停</span>
                 </>
               )}
@@ -198,7 +200,7 @@ export function LogViewer({
             <button
               type="button"
               onClick={onClear}
-              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#c9674a]/20 text-[#c9674a] border border-white/10 transition-colors"
+              className="p-1.5 rounded bg-[#2a3732] hover:bg-danger/20 text-danger border border-white/10 transition-colors"
               title="清空控制台"
               aria-label="清空控制台"
             >
@@ -207,10 +209,12 @@ export function LogViewer({
           </div>
         </div>
 
-        {/* Console Box */}
+        {/* Console Box：深色表面，滑块必须用浅色，否则自动隐藏后即使显形也在深底上看不见。 */}
         <div
           ref={logContainerRef}
           data-visual-dynamic="true"
+          data-autohide-scroll
+          data-scroll-dark
           className="h-[520px] overflow-y-auto p-3 font-mono text-sm leading-relaxed space-y-1 select-text"
         >
           {filteredLogs.length === 0 ? (
@@ -226,11 +230,11 @@ export function LogViewer({
               return (
                 <div
                   key={log.id}
-                  className={`flex items-start gap-2.5 py-0.5 px-1.5 rounded hover:bg-white/5 ${
+                  className={`flex items-start gap-2.5 py-0.5 px-1.5 rounded hover:bg-surface-raised/5 ${
                     isError
-                      ? 'text-[#ff9b8b] bg-[#c9674a]/10'
+                      ? 'text-[#ff9b8b] bg-danger/10'
                       : isWarn
-                      ? 'text-[#e9c676] bg-[#d0a731]/10'
+                      ? 'text-[#e9c676] bg-warning/10'
                       : isDebug
                       ? 'text-[#dae2de]/60'
                       : 'text-[#dae2de]'

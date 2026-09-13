@@ -105,14 +105,14 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
         {stages.map((stage, index) => (
           <div
             key={stage.id}
-            className={`p-4 rounded-[4px_14px_4px_4px] border transition-all ${
+            className={`p-4 rounded-[var(--radius-panel)] border transition-all ${
               stage.locked
                 ? 'bg-amber-50/40 border-amber-300/60'
-                : 'bg-surface border-[rgb(24_32_29/14%)]'
+                : 'bg-surface border-border-default'
             }`}
           >
             {/* Header: Title, order, lock toggle, delete */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-[rgb(24_32_29/10%)]">
+            <div className="flex items-center justify-between gap-3 pb-3 border-b border-border-subtle">
               <div className="flex items-center gap-2 flex-1">
                 <Badge variant="outline" className="text-sm font-mono">
                   #{index + 1}
@@ -140,7 +140,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   onClick={() => handleUpdateStage(index, { locked: !stage.locked })}
                   disabled={disabled}
                   title={stage.locked ? '解锁此阶段' : '锁定此阶段（防止AI生成覆盖）'}
-                  className="h-7 w-7 p-0 text-stone-500 hover:text-stone-800"
+                  className="h-7 w-7 p-0 text-muted hover:text-ink"
                 >
                   {stage.locked ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5" />}
                 </Button>
@@ -150,7 +150,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   size="sm"
                   onClick={() => handleMoveStage(index, 'up')}
                   disabled={disabled || index === 0}
-                  className="h-7 w-7 p-0 text-stone-500 hover:text-stone-800"
+                  className="h-7 w-7 p-0 text-muted hover:text-ink"
                 >
                   <ChevronUp className="h-3.5 w-3.5" />
                 </Button>
@@ -160,7 +160,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   size="sm"
                   onClick={() => handleMoveStage(index, 'down')}
                   disabled={disabled || index === stages.length - 1}
-                  className="h-7 w-7 p-0 text-stone-500 hover:text-stone-800"
+                  className="h-7 w-7 p-0 text-muted hover:text-ink"
                 >
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>

@@ -1,10 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   createWorkflowConfig,
@@ -237,39 +239,44 @@ export function GenerationSettingsFeature() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-paper px-4 py-6 text-ink sm:px-8 md:px-12">
-      <div className="mx-auto max-w-7xl space-y-5">
+    <PageContainer width="settings" className="space-y-4 py-6">
         <PageHeader
           backHref="/apps/creative"
           backLabel="返回创作中心"
-          eyebrow="GENERATION ADMINISTRATION"
           title="生成工作流配置"
           description="这里管理引擎、版本化 ComfyUI API 工作流、媒体能力和应用绑定。普通创作页面只会看到安全连接状态，不会看到原始凭据。"
           actions={(
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>
-              <a href="/apps/creative" className="inline-flex h-8 items-center gap-1.5 rounded border border-[rgb(24_32_29/18%)] bg-surface px-3 text-sm font-semibold text-ink hover:bg-ink/5">创作中心<ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a>
-            </div>
+            <Button size="sm" variant="outline" onClick={() => void load()}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新
+            </Button>
           )}
         />
         {error && <Alert variant="danger" title="生成配置操作失败" onDismiss={() => setError('')}>{error}</Alert>}
-        <nav className="flex flex-wrap gap-2" aria-label="生成配置分类">
-          {[['workflows','工作流'], ['engines','引擎与执行器'], ['bindings','应用绑定'], ['diagnostics','诊断']].map(([id, label]) =>
-            <Button key={id} variant={section === id ? 'primary' : 'outline'} aria-pressed={section === id} onClick={() => setSection(id)}>{label}</Button>)}
-        </nav>
+        {/* 分区导航使用页级 tab 语义，与活动/角色等工作台的模式切换保持一致（§8.11）。 */}
+        <PageTabs
+          ariaLabel="生成配置分类"
+          value={section}
+          onChange={setSection}
+          tabs={[
+            { id: 'workflows', label: '工作流', panelId: 'generation-panel-workflows' },
+            { id: 'engines', label: '引擎与执行器', panelId: 'generation-panel-engines' },
+            { id: 'bindings', label: '应用绑定', panelId: 'generation-panel-bindings' },
+            { id: 'diagnostics', label: '诊断', panelId: 'generation-panel-diagnostics' },
+          ]}
+        />
         {loading ? (
-          <div className="rounded border border-dashed border-[rgb(24_32_29/18%)] bg-surface/70 p-12 text-center text-sm text-muted">正在读取生成配置…</div>
+          <div className="tpl-panel p-12 text-center text-sm text-muted" role="status">正在读取生成配置…</div>
         ) : (
           <>
             <div className="space-y-5">
-              <div hidden={section !== 'engines'}><EnginePanel engines={engines} busy={busy} onSubmit={(event) => { void saveEngine(event); }} /></div>
-              <div hidden={section !== 'workflows'}><WorkflowPanel workflows={workflows} selectedWorkflowId={versionWorkflowId} busy={busy} onSelect={setVersionWorkflowId} onCreate={(event) => { void createWorkflow(event); }} onImport={(json) => { void importWorkflow(json); }} onImportError={(message) => handleError('导入工作流失败', message)} /></div>
+              <div id="generation-panel-engines" role="tabpanel" hidden={section !== 'engines'}><EnginePanel engines={engines} busy={busy} onSubmit={(event) => { void saveEngine(event); }} /></div>
+              <div id="generation-panel-workflows" role="tabpanel" hidden={section !== 'workflows'}><WorkflowPanel workflows={workflows} selectedWorkflowId={versionWorkflowId} busy={busy} onSelect={setVersionWorkflowId} onCreate={(event) => { void createWorkflow(event); }} onImport={(json) => { void importWorkflow(json); }} onImportError={(message) => handleError('导入工作流失败', message)} /></div>
             </div>
             {workerToken && <Alert variant="warning" title="请立即保存 Worker token" onDismiss={() => setWorkerToken('')}>这是本次创建或轮换后唯一一次显示的 token：<code className="mt-1 block break-all rounded bg-black/5 p-2 text-sm">{workerToken}</code>请将它写入 Windows Worker 的安全环境变量，之后不会在列表中再次显示。</Alert>}
-            <div hidden={section !== 'engines'}><WorkerPanel workers={workers} busy={busy} onSubmit={(event) => { void saveWorker(event); }} /></div>
-            <div hidden={section !== 'diagnostics'}><DiagnosticsPanel diagnostics={diagnostics} /></div>
-            <div hidden={section !== 'workflows'}><WorkflowEditor workflows={workflows} engines={engines} selectedWorkflowId={versionWorkflowId} busy={busy} onSelectWorkflow={setVersionWorkflowId} onPublish={(input) => { void publishVersion(input); }} /></div>
-            <div hidden={section !== 'bindings'}><AssignmentPanel
+            <div role="tabpanel" hidden={section !== 'engines'}><WorkerPanel workers={workers} busy={busy} onSubmit={(event) => { void saveWorker(event); }} /></div>
+            <div id="generation-panel-diagnostics" role="tabpanel" hidden={section !== 'diagnostics'}><DiagnosticsPanel diagnostics={diagnostics} /></div>
+            <div role="tabpanel" hidden={section !== 'workflows'}><WorkflowEditor workflows={workflows} engines={engines} selectedWorkflowId={versionWorkflowId} busy={busy} onSelectWorkflow={setVersionWorkflowId} onPublish={(input) => { void publishVersion(input); }} /></div>
+            <div id="generation-panel-bindings" role="tabpanel" hidden={section !== 'bindings'}><AssignmentPanel
               workflows={workflows}
               engines={engines}
               bindings={creativeBindings}
@@ -279,7 +286,6 @@ export function GenerationSettingsFeature() {
             /></div>
           </>
         )}
-      </div>
-    </main>
+    </PageContainer>
   );
 }

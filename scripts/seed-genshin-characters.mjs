@@ -576,8 +576,8 @@ for (const { tags, draft } of GENSHIN_CHARACTERS) {
     db.prepare(`
       INSERT INTO character_profiles
         (id, slug, display_name, draft_json, tags_json, avatar_asset_id,
-         latest_version, archived, created_at, updated_at, draft_revision, default_outfit_id)
-      VALUES (?, ?, ?, ?, ?, NULL, 1, 0, ?, ?, 1, NULL)
+         latest_version, archived, created_at, updated_at, draft_revision)
+      VALUES (?, ?, ?, ?, ?, NULL, 1, 0, ?, ?, 1)
     `).run(id, finalSlug, draft.displayName, draftJson, tagsJson, now, now);
 
     db.prepare(`

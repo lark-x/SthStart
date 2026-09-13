@@ -94,13 +94,13 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
         {/* Create new checkpoint form */}
         <form
           onSubmit={handleCreateCheckpoint}
-          className="flex items-center gap-2 p-2.5 rounded-lg bg-[#faf8f2] border border-[rgb(24_32_29/10%)]"
+          className="flex items-center gap-2 p-2.5 rounded-lg bg-surface border border-border-subtle"
         >
           <Input
             value={newCheckpointName}
             onChange={(e) => setNewCheckpointName(e.target.value)}
             placeholder="命名新检查点（如：第一幕初版、晚餐合照已选片）…"
-            className="h-8 text-sm bg-white"
+            className="h-8 text-sm bg-surface-raised"
           />
           <Button
             type="submit"
@@ -120,19 +120,19 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
           {checkpointsLoading ? (
             <div className="text-sm text-muted py-6 text-center">加载检查点列表中…</div>
           ) : checkpoints.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted bg-stone-50 rounded border border-stone-200">
+            <div className="py-8 text-center text-sm text-muted bg-surface rounded border border-border-default">
               尚未创建任何检查点。建议在重要节点保存快照。
             </div>
           ) : (
             checkpoints.map((cp) => (
               <div
                 key={cp.id}
-                className="p-3 rounded-lg bg-white border border-stone-200 text-sm space-y-2 shadow-2xs"
+                className="p-3 rounded-lg bg-surface-raised border border-border-default text-sm space-y-2 shadow-2xs"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-ink">{cp.name}</span>
-                    <Badge variant="outline" className="text-sm bg-stone-100 font-mono">
+                    <Badge variant="outline" className="text-sm bg-surface-muted font-mono">
                       v{cp.headVersion}
                     </Badge>
                   </div>
@@ -150,7 +150,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
                   </Button>
                 </div>
 
-                <div className="text-sm text-stone-500 font-mono flex flex-wrap gap-x-3 gap-y-0.5">
+                <div className="text-sm text-muted font-mono flex flex-wrap gap-x-3 gap-y-0.5">
                   <span>内容: {cp.contentRevisionId.slice(0, 10)}…</span>
                   <span>媒体: {cp.mediaRevisionId ? cp.mediaRevisionId.slice(0, 10) + '…' : '无'}</span>
                   <span>回放: {cp.playbackRevisionId ? cp.playbackRevisionId.slice(0, 10) + '…' : '无'}</span>
@@ -161,7 +161,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
         </div>
 
         {/* Content revisions history */}
-        <div className="space-y-2 pt-2 border-t border-[rgb(24_32_29/10%)]">
+        <div className="space-y-2 pt-2 border-t border-border-subtle">
           <span className="text-sm font-semibold text-ink">内容版本历史 ({revisions.length})</span>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {revisions.map((rev) => {
@@ -170,7 +170,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
                 <div
                   key={rev.id}
                   className={`flex items-center justify-between p-2 rounded text-sm border ${
-                    isCurrent ? 'bg-accent/5 border-accent/40' : 'bg-white border-stone-200'
+                    isCurrent ? 'bg-accent/5 border-accent/40' : 'bg-surface-raised border-border-default'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
                       </Badge>
                     )}
                   </div>
-                  <span className="text-sm text-stone-500">
+                  <span className="text-sm text-muted">
                     {new Date(rev.createdAt).toLocaleString('zh-CN')}
                   </span>
                 </div>

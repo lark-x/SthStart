@@ -99,7 +99,7 @@ export function ExportModal({ open, onOpenChange, activity }: ExportModalProps) 
             className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
               mode === 'full'
                 ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
-                : 'border-[rgb(24_32_29/10%)] hover:border-accent/40 bg-[#faf8f2]'
+                : 'border-border-subtle hover:border-accent/40 bg-surface'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ export function ExportModal({ open, onOpenChange, activity }: ExportModalProps) 
               </span>
             </div>
             <p className="text-sm text-muted mt-1 pl-6 leading-relaxed">
-              包含全部采用群聊/朋友圈文本、真实音视频媒体、HTML compositions 与 package.json 渲染脚本。解压后可直接在终端执行 <code className="text-sm bg-stone-100 px-1 rounded">npx hyperframes render</code> 渲染为最终 MP4 视频。
+              包含全部采用群聊/朋友圈文本、真实音视频媒体、HTML compositions 与 package.json 渲染脚本。解压后可直接在终端执行 <code className="text-sm bg-surface-muted px-1 rounded">npx hyperframes render</code> 渲染为最终 MP4 视频。
             </p>
           </div>
 
@@ -118,7 +118,7 @@ export function ExportModal({ open, onOpenChange, activity }: ExportModalProps) 
             className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
               mode === 'reader'
                 ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
-                : 'border-[rgb(24_32_29/10%)] hover:border-accent/40 bg-[#faf8f2]'
+                : 'border-border-subtle hover:border-accent/40 bg-surface'
             }`}
           >
             <div className="flex items-center gap-2">

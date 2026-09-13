@@ -11,7 +11,7 @@ export function GalleryCard({ artifact, onPin, onDelete }: { artifact: ArtifactD
     ? `/api/admin/creative/artifacts/${encodeURIComponent(artifact.thumbnailArtifactId)}`
     : `${artifact.url}${artifact.url.includes('?') ? '&' : '?'}thumbnail=true`;
   return (
-    <article className="group overflow-hidden rounded-[3px_14px_3px_3px] border border-[rgb(24_32_29/12%)] bg-surface">
+    <article className="group overflow-hidden rounded-[var(--radius-panel)] border border-border-subtle bg-surface">
       <a href={artifact.url} target="_blank" rel="noreferrer" className="relative block aspect-square overflow-hidden bg-paper" aria-label={`查看${artifact.originalName ?? '创作素材'}`}>
         {isVideo ? (
           <img src={thumbnailUrl} alt={artifact.originalName ?? '创作素材'} loading="lazy" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
@@ -25,13 +25,13 @@ export function GalleryCard({ artifact, onPin, onDelete }: { artifact: ArtifactD
       <div className="flex items-center justify-between gap-2 p-2.5">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink">{artifact.originalName ?? (isVideo ? '生成视频' : isAudio ? '生成音频' : '生成图片')}</p>
-          <p className="mt-0.5 text-sm text-[#89908a]">{formatDate(artifact.createdAt)}</p>
+          <p className="mt-0.5 text-sm text-fg-subtle">{formatDate(artifact.createdAt)}</p>
         </div>
         <div className="flex flex-none items-center gap-0.5">
           <button type="button" onClick={() => void onPin(artifact)} className="flex h-8 w-8 items-center justify-center rounded text-muted hover:bg-ink/6 hover:text-ink active:bg-ink/12" aria-label={artifact.pinned ? '取消固定' : isVideo ? '固定视频' : '固定图片'}>
             <Pin className={`h-3.5 w-3.5 ${artifact.pinned ? 'fill-current text-accent' : ''}`} aria-hidden="true" />
           </button>
-          <button type="button" onClick={() => void onDelete(artifact)} className="flex h-8 w-8 items-center justify-center rounded text-muted hover:bg-[#c9674a]/10 hover:text-accent-dark active:bg-[#c9674a]/14" aria-label={isVideo ? '删除视频' : '删除图片'}>
+          <button type="button" onClick={() => void onDelete(artifact)} className="flex h-8 w-8 items-center justify-center rounded text-muted hover:bg-danger/10 hover:text-accent-dark active:bg-danger/14" aria-label={isVideo ? '删除视频' : '删除图片'}>
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>

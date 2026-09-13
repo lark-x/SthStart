@@ -58,16 +58,13 @@ export function CreativeSettingsForm({
     <form onSubmit={handleSubmit(handleSave)}>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
-              CREATIVE WORKFLOW CONFIG
-            </span>
-            {onSyncPublicModel && (
+          {onSyncPublicModel && (
+            <div className="flex items-center justify-end">
               <Button type="button" size="sm" variant="outline" onClick={onSyncPublicModel}>
                 同步公共模型到邻舍
               </Button>
-            )}
-          </div>
+            </div>
+          )}
           <CardTitle>创作扩展与生图参数</CardTitle>
           <CardDescription>
             管理 ComfyUI 工作流映射、提示词前后缀及各生图管线参数。
@@ -88,7 +85,7 @@ export function CreativeSettingsForm({
               spellCheck={false}
             />
             {errors.jsonText?.message && (
-              <p id="creative-json-error" role="alert" className="mt-1.5 text-sm text-[#c9674a] font-medium">
+              <p id="creative-json-error" role="alert" className="mt-1.5 text-sm text-danger font-medium">
                 {errors.jsonText.message}
               </p>
             )}

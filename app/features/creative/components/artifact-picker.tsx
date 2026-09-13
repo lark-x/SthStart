@@ -28,12 +28,12 @@ export function ArtifactPicker({
   onRemove: () => void;
 }) {
   return (
-    <div className="rounded-[3px_14px_3px_3px] border border-dashed border-[rgb(24_32_29/24%)] bg-paper/60 p-4">
+    <div className="rounded-[var(--radius-panel)] border border-dashed border-border-strong bg-paper/60 p-4">
       <InputLabel htmlFor={id}>{label}</InputLabel>
       <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
         {previewUrl ? <img src={previewUrl} alt={`${label}预览`} className="h-20 w-20 rounded object-cover" /> : <div className="flex h-20 w-20 items-center justify-center rounded bg-ink/8 text-muted"><Upload className="h-5 w-5" aria-hidden="true" /></div>}
         <div className="flex-1">
-          <label htmlFor={id} className="inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded border border-[rgb(24_32_29/18%)] bg-surface px-3 text-sm font-semibold text-ink hover:bg-ink/5 active:bg-ink/10">
+          <label htmlFor={id} className="inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded border border-border-default bg-surface px-3 text-sm font-semibold text-ink hover:bg-ink/5 active:bg-ink/10">
             {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
             {uploading ? '正在加入媒体库…' : artifact ? `更换${label}` : `选择并上传${label}`}
             <input id={id} type="file" accept={accept ?? 'image/png,image/jpeg,image/webp,image/gif,image/avif'} className="sr-only" disabled={disabled || uploading} onChange={(event) => { onSelect(event.target.files?.[0]); event.currentTarget.value = ''; }} />
@@ -41,7 +41,7 @@ export function ArtifactPicker({
           <p className="mt-1.5 text-sm leading-relaxed text-muted">{hint} 浏览器不会发送 Base64。</p>
         </div>
         {artifact && (
-          <button type="button" onClick={onRemove} className="flex h-8 w-8 flex-none items-center justify-center self-start rounded text-muted hover:bg-[#c9674a]/10 hover:text-accent-dark" aria-label={`移除${label}`}>
+          <button type="button" onClick={onRemove} className="flex h-8 w-8 flex-none items-center justify-center self-start rounded text-muted hover:bg-danger/10 hover:text-accent-dark" aria-label={`移除${label}`}>
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         )}

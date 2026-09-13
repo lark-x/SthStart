@@ -11,7 +11,9 @@
 - 应用请求：`Authorization: Bearer <app-token>`。令牌为 256 位随机值，SQLite 只保存 SHA-256 摘要；明文只在创建或轮换时返回一次。
 - 管理请求：`X-SthStart-Admin-Token`。门户通过 `/api/admin/*` 服务端 BFF 注入，客户端 bundle 和浏览器响应不会包含它。
 - 供应商密钥：保存到操作系统凭据库。Profile ID `deepseek-main` 对应的环境变量回退名为 `STHSTART_SECRET_DEEPSEEK_MAIN`。
-- `cross-keychain` 的 `file` 与 `null` 后端被明确排除；没有安全后端时，设置页会显示只能使用环境变量。
+- `cross-keychain` 的 `null` 后端（不存储任何内容）被明确排除；`file` 后端（AES-256-GCM 加密文件）仅在显式提供 `KEYRING_FILE_MASTER_KEY` 时启用，用于没有系统密钥环的容器环境。
+- 选定 Linux 原生后端（`native-linux` / `secret-service`）后会做一次真实读取探测，因为 cross-keychain 只检查平台与原生模块，容器里缺少 D-Bus 时会被误判为可用。探测失败会退回加密文件后端（若已配置主密钥），否则标记为不可用并退回环境变量。
+- 保存模板时凭据写入失败不会丢弃配置：模板正常入库并返回 `secretStored: false` 与 `warning`，设置页提示 API Key 未保存并给出环境变量替代名；密钥来源（`credentialSource`）在模板列表中可见。
 
 ## API
 

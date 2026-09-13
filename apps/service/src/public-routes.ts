@@ -29,6 +29,7 @@ import {
 } from './generation.js';
 import { createLegacyImageTask, legacyImageTaskDescriptor } from './generation/legacy-image.js';
 import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } from './providers.js';
+import { resolveAppLlmBindingStatus } from './llm-status.js';
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
 
@@ -277,7 +278,16 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     const role = requestedLlmRole(request, body);
     if (!role) return reply.code(400).send({ error: 'invalid_model_role', message: 'X-SthStart-Model-Role 只支持 text 或 multimodal。' });
     const profile = await resolveAssignedLlmProfile(database, secrets, identity.id, role);
-    if (!profile?.model) return reply.code(503).send({ error: 'llm_profile_not_assigned', role, message: `请先为应用 ${identity.name} 配置${role === 'text' ? '文本' : '多模态'}模型。` });
+    if (!profile?.model) {
+      // 兼容旧契约：错误码与状态码保持 llm_profile_not_assigned/503，但说明具体缺什么。
+      const status = await resolveAppLlmBindingStatus(database, secrets, identity.id, role);
+      return reply.code(503).send({
+        error: 'llm_profile_not_assigned',
+        role,
+        configurationPath: status.configurationPath,
+        message: status.message || `请先为应用 ${identity.name} 配置${role === 'text' ? '文本' : '多模态'}模型。`,
+      });
+    }
     const upstreamBody: Record<string, unknown> = { ...profile.extraBody, ...body, model: profile.model };
     if (profile.thinkingMode === 'enabled') upstreamBody.thinking = { type: 'enabled' };
     else if (profile.thinkingMode === 'disabled') upstreamBody.thinking = { type: 'disabled' };

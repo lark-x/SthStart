@@ -42,7 +42,7 @@ export function RuntimeServiceList({
         return (
           <div
             key={service.id}
-            className="flex items-center justify-between gap-4 p-4 rounded-[3px_14px_3px_3px] border border-[rgb(24_32_29/13%)] bg-surface"
+            className="flex items-center justify-between gap-4 p-4 rounded-[var(--radius-panel)] border border-ink/13 bg-surface"
           >
             <div className="flex items-center gap-3.5 min-w-0">
               <StatusIndicator status={service.state} />
@@ -68,7 +68,7 @@ export function RuntimeServiceList({
                 <div className="mt-0.5 text-sm text-muted flex items-center gap-2">
                   <span>端口 :{service.port}</span>
                   {service.pid && <span>· PID {service.pid}</span>}
-                  {service.message && <span className="text-[#c9674a] truncate">· {service.message}</span>}
+                  {service.message && <span className="text-danger truncate">· {service.message}</span>}
                 </div>
               </div>
             </div>
@@ -89,7 +89,7 @@ export function RuntimeServiceList({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-[#c9674a] hover:bg-[#c9674a]/10"
+                    className="text-danger hover:bg-danger/10"
                     onClick={() => onStop(service.id)}
                     disabled={Boolean(busy)}
                     title="停止服务"

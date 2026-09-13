@@ -6,6 +6,7 @@ import type {
   CharacterImportCandidate,
 } from '@sthstart/contracts';
 import type { ParsedCharacterCard } from './card-parser.js';
+import { findLabeledBirthdayText, parseBirthdayText } from './birthday.js';
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -50,6 +51,26 @@ function exampleBlocks(value: unknown): string[] {
 
 function firstParagraph(value: string) {
   return value.split(/\n\s*\n/)[0]?.trim().slice(0, 2_000) || value.slice(0, 2_000);
+}
+
+/**
+ * 只从明确标注了生日的位置识别：优先原卡专用生日字段，其次人设文本中带“生日/Birthday”标签的条目。
+ * 不从年龄、剧情日期或其他人的生日推断。
+ */
+function cardBirthday(source: Record<string, unknown>): CharacterDraft['birthday'] {
+  const extensions = record(source.extensions);
+  const explicit = source.birthday ?? source.birth_date ?? source.birthDate ?? source.birthday_date
+    ?? extensions.birthday ?? extensions.birthday_date ?? extensions.birthDate;
+  if (explicit !== undefined && explicit !== null && String(explicit).trim()) {
+    return parseBirthdayText(String(explicit).trim(), 'card_field');
+  }
+  const labeled = findLabeledBirthdayText([
+    stringValue(source.description),
+    lineStrings(source.personality),
+    stringValue(source.scenario),
+    stringValue(source.creator_notes),
+  ]);
+  return labeled ? parseBirthdayText(labeled.raw, 'card_text') : { status: 'unset', calendar: 'unknown' };
 }
 
 export function mapCharacterCard(parsed: ParsedCharacterCard): {
@@ -108,6 +129,7 @@ export function mapCharacterCard(parsed: ParsedCharacterCard): {
     },
     extraRules: '',
   };
+  draft.birthday = cardBirthday(source);
 
   const mappings: CharacterFieldMapping[] = [];
   const map = (fieldPath: string, sourceField: string, value: unknown, status: CharacterFieldMapping['status'] = 'card_author', note?: string) => {
@@ -125,6 +147,7 @@ export function mapCharacterCard(parsed: ParsedCharacterCard): {
   map('/appearance/build', 'appearance/build', build);
   map('/appearance/outfits', 'appearance/outfits', outfits);
   map('/appearance/accessories', 'appearance/accessories', accessories);
+  if (draft.birthday && draft.birthday.status !== 'unset') map('/birthday', 'birthday', draft.birthday, 'card_author', draft.birthday.status === 'known' ? '按原卡明确生日字段识别。' : '生日原文保留，等待人工确认。');
 
   const knownFields = ['name', 'description', 'personality', 'mes_example', 'scenario', 'first_mes', 'alternate_greetings', 'creator', 'creator_notes', 'tags', 'character_version', 'system_prompt', 'post_history_instructions', 'character_book', 'extensions', 'appearance', 'appearance_description', 'hair', 'eyes', 'build', 'body', 'outfit', 'accessories'];
   const ignoredFields = Object.keys(source).filter((key) => !knownFields.includes(key));

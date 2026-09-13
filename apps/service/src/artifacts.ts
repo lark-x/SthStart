@@ -781,12 +781,19 @@ export async function reconcileArtifacts(
 }> {
   await mkdir(config.artifactDirectory, { recursive: true });
   const knownPaths = new Set<string>();
+  // 导入会话的暂存文件按设计不登记在 artifacts：它们在会话提交时才成为来源快照或资产。
+  // 巡检必须整块跳过这个目录，否则「整理中」的导入会被删掉，提交时报 ENOENT。
+  const stagingDirectory = resolve(config.artifactDirectory, 'characters', 'import-sessions');
   let dbRows: Array<{ id: string; local_path: string | null; file_status: string }> = [];
   try {
     dbRows = database.connection.prepare('SELECT id, local_path, file_status FROM artifacts').all() as Array<{ id: string; local_path: string | null; file_status: string }>;
+    // 除 artifacts 外还有两类文件按设计不登记在这里，必须一起纳入已知路径，
+    // 否则每次服务启动的巡检都会把它们当孤儿删掉：
+    //   note_assets —— 尚未迁移到 Artifact 2.0 的笔记资产；
+    //   character_source_snapshots.raw_file_path —— 角色卡原文快照，是「旧文字可恢复」的依据。
     const otherAssets = [
-      ...(database.connection.prepare('SELECT local_path FROM character_assets').all() as Array<{ local_path: string }>),
-      ...(database.connection.prepare('SELECT local_path FROM note_assets').all() as Array<{ local_path: string }>),
+      ...(database.connection.prepare('SELECT local_path FROM note_assets').all() as Array<{ local_path: string | null }>),
+      ...(database.connection.prepare('SELECT raw_file_path AS local_path FROM character_source_snapshots').all() as Array<{ local_path: string | null }>),
     ];
     for (const row of otherAssets) if (row.local_path) knownPaths.add(resolve(row.local_path));
   } catch (error) {
@@ -825,6 +832,8 @@ export async function reconcileArtifacts(
   let scannedFiles = 0;
 
   async function scanDir(dir: string) {
+    // 导入暂存区整体豁免：这里的文件本来就还没登记，巡检无权清理。
+    if (resolve(dir) === stagingDirectory) return;
     let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }> = [];
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -844,14 +853,13 @@ export async function reconcileArtifacts(
             tempFilesCleaned++;
           }
         } else if (!knownPaths.has(fullPath)) {
-          // Uploads outside Artifact 2.0 (legacy notebook/character assets) may
-          // finish after the initial path snapshot. Re-check immediately before
-          // deletion so a concurrently registered file is never treated as an
-          // orphan.
+          // Uploads outside Artifact 2.0 (legacy notebook assets) may finish after
+          // the initial path snapshot. Re-check immediately before deletion so a
+          // concurrently registered file is never treated as an orphan.
           const registered = database.connection.prepare(`
             SELECT 1 FROM artifacts WHERE local_path=?
-            UNION ALL SELECT 1 FROM character_assets WHERE local_path=?
             UNION ALL SELECT 1 FROM note_assets WHERE local_path=?
+            UNION ALL SELECT 1 FROM character_source_snapshots WHERE raw_file_path=?
             LIMIT 1
           `).get(fullPath, fullPath, fullPath);
           if (!registered) {

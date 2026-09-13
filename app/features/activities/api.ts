@@ -22,11 +22,16 @@ import type {
   SourceRef,
   AssetLineageEdge,
   ActivityCapabilitiesResponse,
+  ActivityPlanningForm,
+  ActivityPlanningSessionResponse,
+  ActivityPlanningJob,
+  ActivityPlanningCandidate,
 } from '@sthstart/contracts';
 
 export interface ActivityCapabilities {
   llm: boolean;
   llmProfile: { id: string; name: string } | null;
+  llmStatus?: import('@sthstart/contracts').LlmBindingStatus;
   media: boolean;
   images?: {
     textToImage: import('@sthstart/contracts').ImageCapabilityDescriptor;
@@ -298,7 +303,7 @@ export async function syncMediaGenerationOutputs(
 export async function triggerTextGeneration(
   id: string,
   input: {
-    mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text';
+    mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot';
     targetRevisionId?: string;
     scope?: Record<string, unknown>;
     userInstruction?: string;
@@ -321,6 +326,43 @@ export async function fetchActivityJob(id: string, jobId: string): Promise<{
 
 export async function fetchCandidate(id: string, candidateId: string): Promise<ActivityCandidate> {
   return getJson(`/api/admin/activities/${encodeURIComponent(id)}/candidates/${encodeURIComponent(candidateId)}`);
+}
+
+// 创建前企划：会话与生成任务独立于正式活动。
+export async function createPlanningSession(form: ActivityPlanningForm): Promise<ActivityPlanningSessionResponse> {
+  return postJson('/api/admin/activity-planning-sessions', { form });
+}
+
+export async function fetchPlanningSession(id: string): Promise<ActivityPlanningSessionResponse> {
+  return getJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}`);
+}
+
+export async function updatePlanningSession(id: string, form: ActivityPlanningForm, expectedVersion: number): Promise<ActivityPlanningSessionResponse> {
+  return putJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}`, { form, expectedVersion });
+}
+
+export async function discardPlanningSession(id: string): Promise<{ ok: boolean }> {
+  return deleteJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}`);
+}
+
+export async function triggerPlanningJob(id: string, input: { instruction?: string; idempotencyKey?: string } = {}): Promise<ActivityPlanningJob> {
+  return postJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}/jobs`, input);
+}
+
+export async function fetchPlanningJob(id: string, jobId: string): Promise<{ job: ActivityPlanningJob; candidates: ActivityPlanningCandidate[] }> {
+  return getJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function cancelPlanningJob(id: string, jobId: string): Promise<ActivityPlanningJob> {
+  return postJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}/jobs/${encodeURIComponent(jobId)}/cancel`, {});
+}
+
+export async function retryPlanningJob(id: string, jobId: string): Promise<ActivityPlanningJob> {
+  return postJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}/jobs/${encodeURIComponent(jobId)}/retry`, {});
+}
+
+export async function createActivityFromPlanningSession(id: string, document: ContentDocument, idempotencyKey?: string): Promise<{ activity: Activity; created: boolean }> {
+  return postJson(`/api/admin/activity-planning-sessions/${encodeURIComponent(id)}/create-activity`, { document, ...(idempotencyKey ? { idempotencyKey } : {}) });
 }
 
 export async function adoptCandidate(

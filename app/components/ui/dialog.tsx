@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useId, useRef } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useOverlayAccessibility } from './overlay';
 
 export interface DialogProps {
   open: boolean;
@@ -11,8 +12,18 @@ export interface DialogProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** 宽度由显式 variant 控制（§7.1）：sm 适合短确认，md 默认，lg 适合复杂表单。 */
+  size?: 'sm' | 'md' | 'lg';
+  /** 危险确认等场景把首焦点交给特定控件（如取消按钮）；默认聚焦首个输入或容器。 */
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
   className?: string;
 }
+
+const sizeClassName: Record<NonNullable<DialogProps['size']>, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+};
 
 export function Dialog({
   open,
@@ -21,70 +32,20 @@ export function Dialog({
   description,
   children,
   footer,
+  size = 'md',
+  initialFocusRef,
   className,
 }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
-  const onOpenChangeRef = useRef(onOpenChange);
-  useEffect(() => { onOpenChangeRef.current = onOpenChange; }, [onOpenChange]);
   const titleId = useId();
   const descriptionId = useId();
 
-  useEffect(() => {
-    if (open) {
-      previousFocus.current = document.activeElement as HTMLElement;
-      // Focus first focusable element or dialog
-      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      if (firstFocusable) {
-        firstFocusable.focus();
-      } else {
-        dialogRef.current?.focus();
-      }
-
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          onOpenChangeRef.current(false);
-          return;
-        }
-
-        if (event.key === 'Tab') {
-          const focusable = Array.from(
-            dialogRef.current?.querySelectorAll<HTMLElement>(
-              'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            ) ?? []
-          ).filter((element) => !element.hasAttribute('disabled'));
-          if (focusable.length === 0) {
-            event.preventDefault();
-            dialogRef.current?.focus();
-            return;
-          }
-
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }
-      };
-
-      document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-
-      return () => {
-        document.removeEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = '';
-        previousFocus.current?.focus();
-        previousFocus.current = null;
-      };
-    }
-  }, [open]);
+  useOverlayAccessibility({
+    open,
+    onRequestClose: () => onOpenChange(false),
+    containerRef: dialogRef,
+    initialFocusRef,
+  });
 
   if (!open) return null;
 
@@ -108,13 +69,14 @@ export function Dialog({
         ref={dialogRef}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col rounded-[4px_24px_4px_4px] border border-[rgb(24_32_29/18%)] bg-surface p-6 shadow-2xl transition-all focus:outline-none animate-in zoom-in-95',
+          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-[var(--radius-dialog)] border border-border-default bg-surface p-6 shadow-floating transition-colors focus:outline-none animate-in zoom-in-95',
+          sizeClassName[size],
           className
         )}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 mb-4">
           <div>
-            <h2 id={titleId} className="font-serif text-2xl font-medium text-ink">
+            <h2 id={titleId} className="text-lg font-semibold text-ink">
               {title}
             </h2>
             {description && (
@@ -126,17 +88,18 @@ export function Dialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md p-1.5 text-muted hover:text-ink hover:bg-[rgb(24_32_29/6%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="rounded-lg p-1.5 text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭对话框"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="my-4 min-h-0 overflow-y-auto pr-1">{children}</div>
+        {/* 对话框渲染在 portal 里，不在外框作用域内，需要自己声明滚动条自动隐藏。 */}
+        <div className="my-4 min-h-0 overflow-y-auto pr-1" data-autohide-scroll>{children}</div>
 
         {footer && (
-          <div className="flex shrink-0 items-center justify-end gap-3 mt-6 pt-4 border-t border-[rgb(24_32_29/10%)]">
+          <div className="flex shrink-0 items-center justify-end gap-3 mt-6 pt-4 border-t border-border-subtle">
             {footer}
           </div>
         )}

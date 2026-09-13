@@ -31,7 +31,7 @@ export function AssignmentPanel({
   ] as const;
   return (
     <Card>
-      <CardHeader><span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">CREATIVE CENTER ROUTING</span><CardTitle>绑定创作中心</CardTitle><CardDescription>按应用用途选择已发布的媒体工作流版本。留空表示该模式未配置，创作页面会明确提示。</CardDescription></CardHeader>
+      <CardHeader><CardTitle>绑定创作中心</CardTitle><CardDescription>按应用用途选择已发布的媒体工作流版本。留空表示该模式未配置，创作页面会明确提示。</CardDescription></CardHeader>
       <CardContent className="space-y-3">
         {purposes.map(([purpose, label, category, engineKind]) => (
           <label key={purpose} className="flex flex-col gap-1 text-sm font-semibold sm:flex-row sm:items-center">
@@ -46,10 +46,10 @@ export function AssignmentPanel({
             </Select>
           </label>
         ))}
-        {engines.length === 0 && <p className="text-sm text-[#89908a]">还没有可用引擎，保存绑定前请先创建。</p>}
+        {engines.length === 0 && <p className="text-sm text-fg-subtle">还没有可用引擎，保存绑定前请先创建。</p>}
       </CardContent>
       <CardFooter>
-        <span className="text-sm text-[#89908a]">应用 ID：creative-center</span>
+        <span className="text-sm text-fg-subtle">应用 ID：creative-center</span>
         <Button variant="primary" onClick={onSave} loading={busy === 'assignment'}><Save className="h-3.5 w-3.5" aria-hidden="true" />保存绑定</Button>
       </CardFooter>
     </Card>

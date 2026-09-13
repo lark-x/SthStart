@@ -51,9 +51,6 @@ export function OtherProviders({
   return (
     <Card>
       <CardHeader>
-        <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">
-          OTHER CAPABILITIES
-        </span>
         <CardTitle>向量与图片能力</CardTitle>
         <CardDescription>
           接入向量检索嵌入模型与 ComfyUI / 绘图服务。
@@ -64,7 +61,7 @@ export function OtherProviders({
           {otherProfiles.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between p-3 rounded border border-[rgb(24_32_29/10%)] bg-surface"
+              className="flex items-center justify-between p-3 rounded border border-border-subtle bg-surface"
             >
               <div>
                 <strong className="text-sm font-semibold text-ink">{item.name}</strong>
@@ -78,13 +75,13 @@ export function OtherProviders({
             </div>
           ))}
           {otherProfiles.length === 0 && (
-            <div className="p-4 text-center text-sm text-muted border border-dashed border-[rgb(24_32_29/14%)] rounded">
+            <div className="p-4 text-center text-sm text-muted border border-dashed border-border-default rounded">
               暂未配置向量或独立生图 Provider
             </div>
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3 pt-3 border-t border-[rgb(24_32_29/10%)]">
+        <form onSubmit={handleSubmit} className="space-y-3 pt-3 border-t border-border-subtle">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Input
               value={id}

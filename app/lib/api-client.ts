@@ -20,9 +20,11 @@ export class ApiClientError extends Error {
 
 export function validateResponse<T>(value: unknown, schema: TSchema, path: string): T {
   if (!Value.Check(schema, value)) {
+    const details = [...Value.Errors(schema, value)].map((error) => `${error.path || '/'}: ${error.message}`);
     throw new ApiClientError(`服务端响应格式无效：${path}`, {
       status: 502,
       code: 'invalid_response_schema',
+      details,
     });
   }
   return value as T;

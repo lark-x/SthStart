@@ -1,8 +1,9 @@
 import type {
-  CharacterAppearance,
-  CharacterDraft,
-  CharacterSpeech,
+  CharacterBirthday,
+  CharacterDraftAny,
+  CharacterDraftV2,
 } from '@sthstart/contracts';
+import { toCharacterRuntime } from '@sthstart/contracts';
 import type {
   Control,
   FieldArrayPath,
@@ -17,54 +18,27 @@ import { Input } from '@/app/components/ui/input';
 
 export type StringField = { value: string };
 
-export type CharacterArrayName =
-  | 'aliases'
-  | 'personality'
-  | 'motivations'
-  | 'beliefs'
-  | 'secrets'
-  | 'likes'
-  | 'dislikes'
-  | 'fears'
-  | 'boundaries'
-  | 'speech.catchphrases'
-  | 'speech.examples'
-  | 'appearance.stableFeatures'
-  | 'appearance.outfits'
-  | 'appearance.accessories';
+export type CharacterArrayName = 'aliases' | 'dialogueExamples';
 
-export type CharacterFormValues = Omit<
-  CharacterDraft,
-  | 'aliases'
-  | 'personality'
-  | 'motivations'
-  | 'beliefs'
-  | 'secrets'
-  | 'likes'
-  | 'dislikes'
-  | 'fears'
-  | 'boundaries'
-  | 'speech'
-  | 'appearance'
-> & {
+/**
+ * 编辑器表单值：与 V2 草稿一一对应。
+ *
+ * 迁移后的角色无论来源是 V1 还是 V2，都通过 toCharacterRuntime 归一到这套字段；
+ * 日常只维护人设正文、说话方式、基础外貌与默认穿着四块内容。
+ */
+export type CharacterFormValues = {
+  displayName: string;
+  englishName: string;
+  originType: 'original' | 'ip';
+  work: string;
+  summary: string;
+  personaText: string;
+  speechText: string;
+  behaviorRules: string;
   aliases: StringField[];
-  personality: StringField[];
-  motivations: StringField[];
-  beliefs: StringField[];
-  secrets: StringField[];
-  likes: StringField[];
-  dislikes: StringField[];
-  fears: StringField[];
-  boundaries: StringField[];
-  speech: Omit<CharacterSpeech, 'catchphrases' | 'examples'> & {
-    catchphrases: StringField[];
-    examples: StringField[];
-  };
-  appearance: Omit<CharacterAppearance, 'outfits' | 'accessories' | 'stableFeatures'> & {
-    stableFeatures: StringField[];
-    outfits: StringField[];
-    accessories: StringField[];
-  };
+  dialogueExamples: StringField[];
+  appearance: { baseText: string; defaultOutfitText: string };
+  birthday: CharacterBirthday;
 };
 
 function toFields(values: string[] | undefined): StringField[] {
@@ -77,87 +51,46 @@ function fromFields(values: StringField[] | undefined): string[] {
     .filter(Boolean);
 }
 
-export function characterDraftToFormValues(draft: CharacterDraft): CharacterFormValues {
+export function characterDraftToFormValues(draft: CharacterDraftAny): CharacterFormValues {
+  const runtime = toCharacterRuntime(draft);
   return {
-    displayName: draft.displayName,
-    englishName: draft.englishName,
-    originType: draft.originType,
-    work: draft.work,
-    world: draft.world,
-    summary: draft.summary,
-    identity: draft.identity,
-    background: draft.background,
-    currentSituation: draft.currentSituation,
-    extraRules: draft.extraRules,
-    legacyPrompt: draft.legacyPrompt,
-    aliases: toFields(draft.aliases),
-    personality: toFields(draft.personality),
-    motivations: toFields(draft.motivations),
-    beliefs: toFields(draft.beliefs),
-    secrets: toFields(draft.secrets),
-    likes: toFields(draft.likes),
-    dislikes: toFields(draft.dislikes),
-    fears: toFields(draft.fears),
-    boundaries: toFields(draft.boundaries),
-    speech: {
-      tone: draft.speech.tone,
-      habits: draft.speech.habits,
-      catchphrases: toFields(draft.speech.catchphrases),
-      examples: toFields(draft.speech.examples),
-    },
+    displayName: runtime.displayName,
+    englishName: runtime.englishName,
+    originType: runtime.originType,
+    work: runtime.work,
+    summary: runtime.summary,
+    personaText: runtime.personaText,
+    speechText: runtime.speechText,
+    behaviorRules: runtime.behaviorRules,
+    aliases: toFields([...runtime.aliases]),
+    dialogueExamples: toFields([...runtime.dialogueExamples]),
     appearance: {
-      description: draft.appearance.description,
-      hair: draft.appearance.hair,
-      eyes: draft.appearance.eyes,
-      build: draft.appearance.build,
-      stableFeatures: toFields(draft.appearance.stableFeatures),
-      defaultOutfitId: draft.appearance.defaultOutfitId,
-      referenceIds: draft.appearance.referenceIds,
-      outfits: toFields(draft.appearance.outfits),
-      accessories: toFields(draft.appearance.accessories),
+      baseText: runtime.appearance.baseText,
+      defaultOutfitText: runtime.appearance.defaultOutfitText,
     },
+    birthday: ('birthday' in draft && draft.birthday) ? draft.birthday : { status: 'unset', calendar: 'unknown' },
   };
 }
 
-export function characterFormValuesToDraft(values: CharacterFormValues): CharacterDraft {
+/** 表单 → V2 草稿。保存永远提交 V2，避免同一角色存在两套可编辑结构。 */
+export function characterFormValuesToDraft(values: CharacterFormValues): CharacterDraftV2 {
   return {
+    schemaVersion: 2,
     displayName: values.displayName,
     englishName: values.englishName,
     originType: values.originType,
     work: values.work,
-    world: values.world,
     summary: values.summary,
-    identity: values.identity,
-    background: values.background,
-    currentSituation: values.currentSituation,
-    extraRules: values.extraRules,
-    legacyPrompt: values.legacyPrompt,
+    personaText: values.personaText,
+    speechText: values.speechText,
+    dialogueExamples: fromFields(values.dialogueExamples),
+    behaviorRules: values.behaviorRules,
     aliases: fromFields(values.aliases),
-    personality: fromFields(values.personality),
-    motivations: fromFields(values.motivations),
-    beliefs: fromFields(values.beliefs),
-    secrets: fromFields(values.secrets),
-    likes: fromFields(values.likes),
-    dislikes: fromFields(values.dislikes),
-    fears: fromFields(values.fears),
-    boundaries: fromFields(values.boundaries),
-    speech: {
-      tone: values.speech.tone,
-      habits: values.speech.habits,
-      catchphrases: fromFields(values.speech.catchphrases),
-      examples: fromFields(values.speech.examples),
-    },
     appearance: {
-      description: values.appearance.description,
-      hair: values.appearance.hair,
-      eyes: values.appearance.eyes,
-      build: values.appearance.build,
-      stableFeatures: fromFields(values.appearance.stableFeatures),
-      defaultOutfitId: values.appearance.defaultOutfitId,
-      referenceIds: values.appearance.referenceIds,
-      outfits: fromFields(values.appearance.outfits),
-      accessories: fromFields(values.appearance.accessories),
+      baseText: values.appearance.baseText,
+      defaultOutfitText: values.appearance.defaultOutfitText,
     },
+    birthday: values.birthday || { status: 'unset', calendar: 'unknown' },
   };
 }
 
@@ -198,7 +131,7 @@ export function StringListField({
 
       <div className="space-y-2">
         {fields.length === 0 && (
-          <p className="rounded border border-dashed border-[rgb(24_32_29/16%)] px-3 py-2 text-sm text-muted">
+          <p className="rounded border border-dashed border-border-default px-3 py-2 text-sm text-muted">
             暂无条目，点击“添加”开始填写。
           </p>
         )}

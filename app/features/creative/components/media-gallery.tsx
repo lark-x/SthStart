@@ -2,10 +2,9 @@
 
 import { ImagePlus } from 'lucide-react';
 import type { ArtifactDescriptor } from '@sthstart/contracts';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { EmptyState } from '@/app/components/ui/empty-state';
-import { ExternalLink } from 'lucide-react';
 import { GalleryCard } from './gallery-card';
 
 export function MediaGallery({
@@ -32,11 +31,10 @@ export function MediaGallery({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">CENTRAL ARTIFACT LIBRARY</span>
             <CardTitle className="mt-1">媒体库</CardTitle>
-            <CardDescription>生成结果与参考素材统一存储在 Artifact 2.0 中，可以固定、预览或删除。</CardDescription>
+            <CardDescription>保存生成结果与参考素材，随时预览和复用。</CardDescription>
           </div>
-          <span className="text-sm text-[#89908a]">{total} 个作品</span>
+          <span className="text-sm text-fg-subtle">{total} 个作品</span>
         </div>
       </CardHeader>
       <CardContent>
@@ -54,10 +52,9 @@ export function MediaGallery({
             )}
           </>
         ) : (
-          <EmptyState className="min-h-[220px]" icon={ImagePlus} title="媒体库还是空的" description="生成一张图片，或在图生图模式上传参考素材。" />
+          <EmptyState className="min-h-[140px] py-4" icon={ImagePlus} title="媒体库还是空的" description="生成一张图片，或在图生图模式上传参考素材。" />
         )}
       </CardContent>
-      <CardFooter><span className="text-sm text-[#89908a]">媒体文件不会复制到邻舍数据库。</span><a href="/settings/generation" className="inline-flex items-center gap-1 text-sm font-semibold text-accent-dark hover:underline">管理生成工作流<ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a></CardFooter>
     </Card>
   );
 }

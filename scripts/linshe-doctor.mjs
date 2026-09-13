@@ -13,10 +13,24 @@ const fileEnvironment = existsSync(envPath) ? Object.fromEntries(readFileSync(en
 const configured = (name) => String(process.env[name] ?? fileEnvironment[name] ?? '').length >= 32;
 const envValue = (name, fallback) => String(process.env[name] ?? fileEnvironment[name] ?? fallback);
 
-// Keep these values in sync with the migration arrays in the service and
-// narrative database modules. Doctor is an executable .mjs script and cannot
-// import the TypeScript modules without bootstrapping the application.
-const expectedMigrations = { service: 15, narrative: 1 };
+// Doctor is an executable .mjs script and cannot import the TypeScript modules
+// without bootstrapping the application, so it reads the migration versions from
+// the source instead of duplicating them: hardcoded values silently drift and
+// then report a healthy database as out of date.
+function latestMigrationVersion(relativePath) {
+  try {
+    const source = readFileSync(resolve(root, relativePath), 'utf8');
+    const versions = [...source.matchAll(/version:\s*(\d+)\s*,/g)].map((match) => Number(match[1]));
+    return versions.length ? Math.max(...versions) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+const expectedMigrations = {
+  service: latestMigrationVersion('apps/service/src/database.ts'),
+  narrative: latestMigrationVersion('apps/service/src/narrative-database.ts'),
+};
 
 function checkTool(cmd) {
   try {

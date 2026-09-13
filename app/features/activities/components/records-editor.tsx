@@ -11,6 +11,8 @@ import {
   Sparkles,
   Send,
   FileCheck,
+  Info,
+  X,
 } from 'lucide-react';
 import type {
   ActorSnapshot,
@@ -28,6 +30,8 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Select } from '@/app/components/ui/select';
+import { Drawer } from '@/app/components/ui/drawer';
+import { useWideDetailColumn } from '@/app/lib/use-wide-detail-column';
 
 interface RecordsEditorProps {
   document: ContentDocument;
@@ -67,6 +71,14 @@ export function RecordsEditor({
 
   // Fact composer state
   const [factText, setFactText] = useState('');
+
+  /*
+   * 计划 §8.5：内容模式「右当前记录详情按需显示」。
+   * 选中某条群聊记录后，宽屏（≥1440px）在右侧显示详情栏，
+   * 1280px 及以下改用底部详情抽屉，避免辅助栏挤压记录区。
+   */
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const wideDetailColumn = useWideDetailColumn();
 
   // Actor lookup map
   const actorMap = useMemo(() => {
@@ -199,10 +211,122 @@ export function RecordsEditor({
     });
   };
 
+  /* 选中的记录：被删除后自动回到「未选中」，不需要额外的清理 effect。 */
+  const selectedMessageIndex = selectedMessageId
+    ? messages.findIndex((msg) => msg.id === selectedMessageId)
+    : -1;
+  const selectedMessage = selectedMessageIndex >= 0 ? messages[selectedMessageIndex] : null;
+  const selectedSpeaker = selectedMessage?.speakerActorId
+    ? actorMap.get(selectedMessage.speakerActorId)
+    : undefined;
+  const selectedStageTitle = selectedMessage
+    ? stages.find((stage) => stage.id === selectedMessage.stageId)?.title || '未指定阶段'
+    : '';
+
+  const recordDetail = selectedMessage ? (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">第 {selectedMessageIndex + 1} 条记录</h3>
+          {/* 抽屉模式下阶段已作为标题副文案，这里不再重复。 */}
+          {wideDetailColumn && <p className="text-sm text-muted">{selectedStageTitle}</p>}
+        </div>
+        {wideDetailColumn && (
+          <button
+            type="button"
+            onClick={() => setSelectedMessageId(null)}
+            className="rounded-[var(--radius-control)] p-1.5 text-muted hover:bg-surface-hover hover:text-ink"
+            aria-label="关闭记录详情"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      <dl className="space-y-1.5 text-sm">
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted">说话人</dt>
+          <dd className="text-right font-medium text-ink">
+            {selectedSpeaker?.displayName || selectedMessage.speakerActorId || '未指定'}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted">活动角色</dt>
+          <dd className="text-right text-ink">{selectedSpeaker?.activityRole || '未标注'}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted">叙事顺序</dt>
+          <dd className="text-right tabular-nums text-ink">{selectedMessage.storyOrder}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted">形态</dt>
+          <dd className="text-right text-ink">
+            {selectedMessage.kind === 'message' ? '群聊消息' : selectedMessage.kind}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-muted">记录内容</p>
+        <p className="rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-sm leading-relaxed text-ink break-words">
+          {selectedMessage.text}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-muted">
+          关联媒体镜头（{selectedMessage.mediaSlotIds?.length || 0}）
+        </p>
+        {selectedMessage.mediaSlotIds && selectedMessage.mediaSlotIds.length > 0 ? (
+          <ul className="space-y-1.5">
+            {selectedMessage.mediaSlotIds.map((slotId) => (
+              <li key={slotId}>
+                <button
+                  type="button"
+                  onClick={() => onOpenWorkbench?.(slotId)}
+                  className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 py-1.5 text-left text-sm hover:border-border-strong"
+                >
+                  <span className="font-mono">{slotId}</span>
+                  <span className="text-muted">打开工作台</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-fg-subtle">这条记录还没有关联镜头。</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        {selectedMessage.mediaSlotIds?.[0] && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => onOpenWorkbench?.(selectedMessage.mediaSlotIds[0])}
+          >
+            打开素材工作台
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled}
+          onClick={() => {
+            handleDeleteMessage(selectedMessage.id);
+            setSelectedMessageId(null);
+          }}
+        >
+          删除这条记录
+        </Button>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="studio-records">
       {/* Stage Selector Bar */}
-      <div className="studio-stages p-2.5 rounded-[4px_14px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]">
+      <div className="studio-stages p-2.5 rounded-[var(--radius-panel)] bg-surface border border-border-default">
         <div className="studio-stage-list">
           <span className="text-sm font-semibold text-muted px-2 flex-shrink-0">当前阶段：</span>
           {stages.map((stage, idx) => {
@@ -212,10 +336,10 @@ export function RecordsEditor({
                 key={stage.id}
                 type="button"
                 onClick={() => handleSelectStage(stage.id)}
-                className={`px-3 py-1.5 rounded-[3px_10px_3px_3px] text-sm font-medium transition-colors cursor-pointer flex-shrink-0 ${
+                className={`px-3 py-1.5 rounded-[var(--radius-control)] text-sm font-medium transition-colors cursor-pointer flex-shrink-0 ${
                   isSelected
                     ? 'bg-accent text-white shadow-xs'
-                    : 'bg-stone-100 text-ink hover:bg-stone-200'
+                    : 'bg-surface-muted text-ink hover:bg-surface-hover'
                 }`}
               >
                 #{idx + 1} {stage.title}
@@ -245,7 +369,7 @@ export function RecordsEditor({
 
       <div className="studio-records-body space-y-4">
       {/* Mode Subtabs: Chat vs Moments vs Facts */}
-      <div className="flex items-center gap-2 border-b border-[rgb(24_32_29/14%)] pb-2">
+      <div className="flex items-center gap-2 border-b border-border-default pb-2">
         <button
           type="button"
           onClick={() => setActiveTab('chat')}
@@ -286,143 +410,186 @@ export function RecordsEditor({
 
       {/* 1. Chat Tab Content */}
       {activeTab === 'chat' && (
-        <div className="space-y-4">
-          <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-4 min-h-[360px] max-h-[500px] overflow-y-auto space-y-3">
-            {messages.length === 0 ? (
-              <div className="py-16 text-center text-sm text-muted space-y-2">
-                <MessageSquare className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
-                <p>当前活动尚无群聊记录</p>
-                <p className="text-sm">可在下方直接输入对话，或点击右上角使用 AI 自动生成。</p>
-              </div>
-            ) : (
-              messages.map((msg, idx) => {
-                const speaker = msg.speakerActorId ? actorMap.get(msg.speakerActorId) : undefined;
-                const isUser = msg.speakerActorId === actors[0]?.id;
+        <div
+          className={
+            wideDetailColumn && selectedMessage
+              ? 'grid gap-5 grid-cols-[minmax(0,1fr)_320px]'
+              : 'space-y-4'
+          }
+        >
+          <div className="space-y-4">
+            <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[360px] max-h-[500px] overflow-y-auto space-y-3">
+              {messages.length === 0 ? (
+                <div className="py-16 text-center text-sm text-muted space-y-2">
+                  <MessageSquare className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
+                  <p>当前活动尚无群聊记录</p>
+                  <p className="text-sm">可在下方直接输入对话，或点击右上角使用 AI 自动生成。</p>
+                </div>
+              ) : (
+                messages.map((msg, idx) => {
+                  const speaker = msg.speakerActorId ? actorMap.get(msg.speakerActorId) : undefined;
+                  const isUser = msg.speakerActorId === actors[0]?.id;
 
-                return (
-                  <div
-                    key={msg.id}
-                    className={`flex items-start gap-2.5 group ${
-                      isUser ? 'flex-row-reverse' : 'flex-row'
-                    }`}
-                  >
-                    {/* Avatar */}
-                    <div className="h-8 w-8 rounded-full bg-stone-300 overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold text-stone-700">
-                      {(speaker?.avatarUrl || speaker?.appearanceReferenceAssetKeys?.[0]) ? (
-                        <Image
-                          src={speaker.avatarUrl || speaker.appearanceReferenceAssetKeys[0]}
-                          alt={speaker.displayName}
-                          width={32}
-                          height={32}
-                          className="object-cover h-full w-full"
-                        />
-                      ) : (
-                        speaker?.displayName?.slice(0, 1) || '?'
-                      )}
-                    </div>
-
-                    {/* Bubble & Name */}
-                    <div className={`space-y-1 max-w-[75%] ${isUser ? 'items-end text-right' : 'items-start'}`}>
-                      <div className="flex items-center gap-1.5 text-sm text-muted">
-                        <span className="font-medium text-ink">
-                          {speaker?.displayName || msg.speakerActorId || '系统'}
-                        </span>
-                        <span className="text-sm opacity-70">#{idx + 1}</span>
-                      </div>
-                      <div
-                        className={`p-2.5 rounded-[4px_12px_4px_4px] text-sm leading-relaxed break-words shadow-2xs ${
-                          isUser
-                            ? 'bg-accent text-white'
-                            : 'bg-surface text-ink border border-[rgb(24_32_29/12%)]'
-                        }`}
-                      >
-                        {msg.text}
-                      </div>
-
-                      {/* Associated media slots */}
-                      {msg.mediaSlotIds && msg.mediaSlotIds.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {msg.mediaSlotIds.map((slotId) => (
-                            <button
-                              key={slotId}
-                              type="button"
-                              onClick={() => onOpenWorkbench?.(slotId)}
-                              className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 transition cursor-pointer"
-                              title="点击打开 AI 生图 / 提示词溯源工作台"
-                            >
-                              <span>📷 媒体镜头:</span>
-                              <span className="font-mono font-semibold">{slotId}</span>
-                              <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Delete Action on Hover */}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMessage(msg.id)}
-                      disabled={disabled}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-red-500 transition-opacity self-center"
-                      title="删除单条消息"
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex items-start gap-2.5 group ${
+                        isUser ? 'flex-row-reverse' : 'flex-row'
+                      }`}
                     >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                      {/* Avatar */}
+                      <div className="h-8 w-8 rounded-full bg-surface-hover overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold text-ink">
+                        {(speaker?.avatarUrl || speaker?.appearanceReferenceAssetKeys?.[0]) ? (
+                          <Image
+                            src={speaker.avatarUrl || speaker.appearanceReferenceAssetKeys[0]}
+                            alt={speaker.displayName}
+                            width={32}
+                            height={32}
+                            className="object-cover h-full w-full"
+                          />
+                        ) : (
+                          speaker?.displayName?.slice(0, 1) || '?'
+                        )}
+                      </div>
 
-          {/* Chat Message Input Composer */}
-          <form
-            onSubmit={handleSendMessage}
-            className="flex items-center gap-2 p-2 rounded-[4px_12px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)]"
-          >
-            <div className="w-32 flex-shrink-0">
-              <Select
-                value={composerActorId}
-                onChange={(e) => setComposerActorId(e.target.value)}
-                disabled={disabled}
-                className="h-8 text-sm bg-transparent border-0 ring-0 focus:ring-0 min-h-0"
-              >
-                {actors.map((actor) => (
-                  <option key={actor.id} value={actor.id}>
-                    {actor.displayName}
-                  </option>
-                ))}
-              </Select>
+                      {/* Bubble & Name */}
+                      <div className={`space-y-1 max-w-[75%] ${isUser ? 'items-end text-right' : 'items-start'}`}>
+                        <div className="flex items-center gap-1.5 text-sm text-muted">
+                          <span className="font-medium text-ink">
+                            {speaker?.displayName || msg.speakerActorId || '系统'}
+                          </span>
+                          <span className="text-sm opacity-70">#{idx + 1}</span>
+                        </div>
+                        <div
+                          className={`p-2.5 rounded-[var(--radius-panel)] text-sm leading-relaxed break-words shadow-2xs ${
+                            isUser
+                              ? 'bg-accent text-white'
+                              : 'bg-surface text-ink border border-border-subtle'
+                          } ${selectedMessageId === msg.id ? 'ring-2 ring-accent ring-offset-1' : ''}`}
+                        >
+                          {msg.text}
+                        </div>
+
+                        {/* Associated media slots */}
+                        {msg.mediaSlotIds && msg.mediaSlotIds.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {msg.mediaSlotIds.map((slotId) => (
+                              <button
+                                key={slotId}
+                                type="button"
+                                onClick={() => onOpenWorkbench?.(slotId)}
+                                className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 transition cursor-pointer"
+                                title="点击打开 AI 生图 / 提示词溯源工作台"
+                              >
+                                <span>📷 媒体镜头:</span>
+                                <span className="font-mono font-semibold">{slotId}</span>
+                                <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Row Actions: 详情（§8.5 记录详情）与删除 */}
+                      <div className="flex flex-col gap-1 self-center">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMessageId(msg.id)}
+                          aria-pressed={selectedMessageId === msg.id}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 text-fg-subtle hover:text-ink transition-opacity"
+                          title="查看这条记录的详情"
+                          aria-label={`查看第 ${idx + 1} 条记录的详情`}
+                        >
+                          <Info className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          disabled={disabled}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 text-fg-subtle hover:text-danger-fg transition-opacity"
+                          title="删除单条消息"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
-            <Input
-              value={composerText}
-              onChange={(e) => setComposerText(e.target.value)}
-              placeholder="在此输入群聊内容，按回车添加…"
-              disabled={disabled}
-              className="h-8 text-sm flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
-            />
-
-            <Button
-              type="submit"
-              size="sm"
-              disabled={disabled || !composerText.trim()}
-              className="h-8 px-3 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
+            {/* Chat Message Input Composer */}
+            <form
+              onSubmit={handleSendMessage}
+              className="flex items-center gap-2 p-2 rounded-[var(--radius-panel)] bg-surface border border-border-default"
             >
-              <Send className="h-3.5 w-3.5" />
-              发送
-            </Button>
-          </form>
+              <div className="w-32 flex-shrink-0">
+                <Select
+                  value={composerActorId}
+                  onChange={(e) => setComposerActorId(e.target.value)}
+                  disabled={disabled}
+                  className="h-8 text-sm bg-transparent border-0 ring-0 focus:ring-0 min-h-0"
+                >
+                  {actors.map((actor) => (
+                    <option key={actor.id} value={actor.id}>
+                      {actor.displayName}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <Input
+                value={composerText}
+                onChange={(e) => setComposerText(e.target.value)}
+                placeholder="在此输入群聊内容，按回车添加…"
+                disabled={disabled}
+                className="h-8 text-sm flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
+              />
+
+              <Button
+                type="submit"
+                size="sm"
+                disabled={disabled || !composerText.trim()}
+                className="h-8 px-3 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
+              >
+                <Send className="h-3.5 w-3.5" />
+                发送
+              </Button>
+            </form>
+            </div>
+
+          {/* 宽屏：当前记录详情固定右栏（§8.5）。窄屏走下方抽屉。 */}
+          {wideDetailColumn && selectedMessage && (
+            <aside
+              className="sticky top-20 h-fit rounded-[var(--radius-panel)] bg-surface border border-border-default p-4"
+              aria-label="当前记录详情"
+            >
+              {recordDetail}
+            </aside>
+          )}
         </div>
       )}
+
+      {/* 1280px 及以下：详情抽屉（§8.5 移动端详情抽屉）。 */}
+      <Drawer
+        open={!wideDetailColumn && activeTab === 'chat' && Boolean(selectedMessage)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedMessageId(null);
+        }}
+        position="bottom"
+        title="当前记录详情"
+        description={selectedMessage ? selectedStageTitle : undefined}
+      >
+        {recordDetail}
+      </Drawer>
 
       {/* 2. Moments Tab Content */}
       {activeTab === 'moments' && (
         <div className="space-y-4">
-          <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-4 min-h-[360px] space-y-4">
+          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[360px] space-y-4">
             {posts.length === 0 ? (
               <div className="py-16 text-center text-sm text-muted space-y-2">
-                <Share2 className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
+                <Share2 className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
                 <p>当前活动尚无朋友圈动态</p>
                 <p className="text-sm">可使用下方发布新动态，或由 AI 根据群聊及发生事实生成。</p>
               </div>
@@ -435,11 +602,11 @@ export function RecordsEditor({
                 return (
                   <div
                     key={post.id}
-                    className="p-4 rounded-[4px_12px_4px_4px] bg-surface border border-[rgb(24_32_29/12%)] space-y-3"
+                    className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded bg-stone-300 overflow-hidden flex items-center justify-center text-sm font-semibold text-stone-700">
+                        <div className="h-9 w-9 rounded bg-surface-hover overflow-hidden flex items-center justify-center text-sm font-semibold text-ink">
                           {(author?.avatarUrl || author?.appearanceReferenceAssetKeys?.[0]) ? (
                             <Image
                               src={author.avatarUrl || author.appearanceReferenceAssetKeys[0]}
@@ -464,7 +631,7 @@ export function RecordsEditor({
                         type="button"
                         onClick={() => handleDeletePost(post.id)}
                         disabled={disabled}
-                        className="text-stone-400 hover:text-red-500 transition-colors p-1"
+                        className="text-fg-subtle hover:text-danger-fg transition-colors p-1"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -494,7 +661,7 @@ export function RecordsEditor({
                     )}
 
                     {/* Likes & Comments Section */}
-                    <div className="pt-2 border-t border-[rgb(24_32_29/8%)] space-y-2">
+                    <div className="pt-2 border-t border-border-subtle space-y-2">
                       <div className="flex items-center gap-2 text-sm text-muted">
                         <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500" />
                         <span>点赞 ({postLikes.length} 人)：</span>
@@ -510,7 +677,7 @@ export function RecordsEditor({
                                 className={`text-sm px-1.5 py-0.5 rounded transition-colors ${
                                   isLiked
                                     ? 'bg-rose-100 text-rose-700 font-medium'
-                                    : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                                    : 'bg-surface-muted text-muted hover:bg-surface-hover'
                                 }`}
                               >
                                 {act.displayName}
@@ -522,7 +689,7 @@ export function RecordsEditor({
 
                       {/* Comments list */}
                       {postComments.length > 0 && (
-                        <div className="bg-[#faf8f2] p-2.5 rounded text-sm space-y-1.5 border border-stone-200/60">
+                        <div className="bg-surface p-2.5 rounded text-sm space-y-1.5 border border-border-subtle">
                           {postComments.map((comm) => {
                             const commAuthor = actorMap.get(comm.authorActorId);
                             return (
@@ -562,7 +729,7 @@ export function RecordsEditor({
           {/* Create Post Form */}
           <form
             onSubmit={handleCreatePost}
-            className="p-3.5 rounded-[4px_12px_4px_4px] bg-surface border border-[rgb(24_32_29/14%)] space-y-2.5"
+            className="p-3.5 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-2.5"
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-ink">发布新动态</span>
@@ -609,10 +776,10 @@ export function RecordsEditor({
       {/* 3. Facts Tab Content */}
       {activeTab === 'facts' && (
         <div className="space-y-4">
-          <div className="rounded-[4px_14px_4px_4px] bg-[#faf8f2] border border-[rgb(24_32_29/14%)] p-4 min-h-[300px] space-y-2.5">
+          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[300px] space-y-2.5">
             {facts.length === 0 ? (
               <div className="py-16 text-center text-sm text-muted space-y-2">
-                <FileCheck className="h-8 w-8 mx-auto text-stone-400 opacity-60" />
+                <FileCheck className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
                 <p>当前活动尚无确定的阶段事实</p>
                 <p className="text-sm">事实作为前序剧情的依据，供后续阶段或朋友圈引用。</p>
               </div>
@@ -620,7 +787,7 @@ export function RecordsEditor({
               facts.map((fact) => (
                 <div
                   key={fact.id}
-                  className="flex items-center justify-between p-2.5 rounded bg-white border border-stone-200 text-sm"
+                  className="flex items-center justify-between p-2.5 rounded bg-surface-raised border border-border-default text-sm"
                 >
                   <div className="space-y-1">
                     <div className="font-medium text-ink">{fact.text}</div>
@@ -633,7 +800,7 @@ export function RecordsEditor({
                     type="button"
                     onClick={() => handleDeleteFact(fact.id)}
                     disabled={disabled}
-                    className="text-stone-400 hover:text-red-500 transition-colors p-1"
+                    className="text-fg-subtle hover:text-danger-fg transition-colors p-1"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

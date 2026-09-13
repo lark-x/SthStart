@@ -15,7 +15,6 @@ export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeSta
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="text-sm font-bold tracking-[0.16em] uppercase text-accent-dark">GENERATION ROUTING</span>
             <CardTitle className="mt-1">公共生成状态</CardTitle>
           </div>
           <Button size="sm" variant="ghost" onClick={onRefresh} aria-label="刷新生成状态">
@@ -37,9 +36,9 @@ export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeSta
             ] as const).map(([key, label]) => {
               const binding = modes[key];
               return (
-                <div key={key} className="flex items-start justify-between gap-3 rounded-[3px_12px_3px_3px] border border-[rgb(24_32_29/12%)] bg-surface p-3">
+                <div key={key} className="flex items-start justify-between gap-3 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-3">
                   <div className="flex min-w-0 items-start gap-2.5">
-                    <CircleDashed className={`mt-0.5 h-4 w-4 flex-none ${binding.ready ? 'text-[#4e9b6b]' : 'text-[#d0a731]'}`} aria-hidden="true" />
+                    <CircleDashed className={`mt-0.5 h-4 w-4 flex-none ${binding.ready ? 'text-success' : 'text-warning'}`} aria-hidden="true" />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink">{label}</p>
                       <p className="mt-1 truncate text-sm text-muted">{statusCopy(binding)}</p>

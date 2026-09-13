@@ -36,7 +36,7 @@ export function ImportConfigDialog({
       }
     >
       <div className="space-y-3 text-sm text-muted">
-        <div className="p-3 bg-[rgb(24_32_29/6%)] rounded">
+        <div className="p-3 bg-ink/6 rounded">
           <div>
             <strong>启动器路径:</strong> {preview?.launcher.path || '未找到'}
           </div>
@@ -47,7 +47,7 @@ export function ImportConfigDialog({
         </div>
 
         {preview?.businessError && (
-          <div className="p-3 bg-[#c9674a]/10 text-[#c9674a] rounded">
+          <div className="p-3 bg-danger/10 text-danger rounded">
             <strong>业务数据提示:</strong> {preview.businessError}
           </div>
         )}
