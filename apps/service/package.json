@@ -8,10 +8,11 @@
     "build": "npm run build --workspace @sthstart/activity-playback && tsc -p tsconfig.json",
     "start": "node dist/start.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test dist/*.test.js"
+    "test": "npm run build && node --test dist/*.test.js dist/*/*.test.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@sinclair/typebox": "^0.34.41",
     "@sthstart/activity-playback": "0.1.0",
     "@sthstart/contracts": "0.1.0",

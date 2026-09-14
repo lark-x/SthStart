@@ -894,6 +894,154 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     // 未填时完全沿用旧配置，保证迁移后的默认行为不变。
     'ALTER TABLE app_generation_assignments ADD COLUMN default_preset_id TEXT REFERENCES generation_presets(id)',
   ] },
+  { version: 24, name: 'mcp-sources-and-planning-research', statements: [
+    // MCP 资料源：连接配置、凭据引用、适用作品、工具允许列表。
+    // 认证请求头只存 header 名称，值放凭据库（credential_account），不存明文。
+    `CREATE TABLE IF NOT EXISTS mcp_sources (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      auth_mode TEXT NOT NULL DEFAULT 'none' CHECK(auth_mode IN ('none','bearer','header')),
+      auth_header_name TEXT,
+      credential_account TEXT,
+      applicable_works_json TEXT NOT NULL DEFAULT '[]',
+      universal INTEGER NOT NULL DEFAULT 0,
+      purpose TEXT NOT NULL DEFAULT '',
+      allowed_tools_json TEXT NOT NULL DEFAULT '[]',
+      discovered_tools_json TEXT NOT NULL DEFAULT '[]',
+      timeout_ms INTEGER NOT NULL DEFAULT 45000,
+      status TEXT NOT NULL DEFAULT 'enabled' CHECK(status IN ('enabled','disabled')),
+      last_test_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_mcp_sources_status ON mcp_sources(status, updated_at DESC)',
+    // 研究任务：输入快照、进度、证据、人物/地点候选、错误状态。
+    `CREATE TABLE IF NOT EXISTS planning_research_tasks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES activity_planning_sessions(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'queued',
+      input_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      progress_label TEXT,
+      used_tool_calls INTEGER NOT NULL DEFAULT 0,
+      budget_tool_calls INTEGER NOT NULL DEFAULT 12,
+      incomplete_reason TEXT,
+      error_message TEXT,
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      character_candidates_json TEXT NOT NULL DEFAULT '[]',
+      location_candidates_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_planning_research_tasks_session ON planning_research_tasks(session_id, created_at DESC)',
+    // 研究修订：输入快照与用户约束在启动生成时冻结。
+    `CREATE TABLE IF NOT EXISTS planning_research_revisions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES activity_planning_sessions(id) ON DELETE CASCADE,
+      task_id TEXT NOT NULL REFERENCES planning_research_tasks(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL DEFAULT 1,
+      input_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      frozen INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_planning_research_revisions_session ON planning_research_revisions(session_id, version DESC)',
+    // 企划会话表追加：研究修订引用。
+    'ALTER TABLE activity_planning_sessions ADD COLUMN research_revision_id TEXT REFERENCES planning_research_revisions(id)',
+  ] },
+  // 话题素材库与活动点子：定时搜集、素材条目、来源记录、点子批次。
+  // 素材列表分页只读 topics；原始检索结果留在 run 里，可单独清理而不影响素材。
+  { version: 25, name: 'topic-library-and-activity-ideas', statements: [
+    `CREATE TABLE IF NOT EXISTS topic_collection_settings (
+      id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      works_json TEXT NOT NULL DEFAULT '[]',
+      keywords_json TEXT NOT NULL DEFAULT '[]',
+      sources_json TEXT NOT NULL DEFAULT '[]',
+      daily_time TEXT NOT NULL DEFAULT '09:00',
+      timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+      next_run_at TEXT,
+      max_new_topics INTEGER NOT NULL DEFAULT 20,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS topic_collection_runs (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','partial','failed','interrupted')),
+      trigger TEXT NOT NULL DEFAULT 'manual' CHECK(trigger IN ('manual','scheduled','retry')),
+      progress_label TEXT,
+      used_tool_calls INTEGER NOT NULL DEFAULT 0,
+      created_count INTEGER NOT NULL DEFAULT 0,
+      merged_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      settings_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      raw_candidates_json TEXT NOT NULL DEFAULT '[]',
+      started_at TEXT,
+      finished_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_topic_collection_runs_created ON topic_collection_runs(created_at DESC)',
+    `CREATE TABLE IF NOT EXISTS topics (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      works_json TEXT NOT NULL DEFAULT '[]',
+      characters_json TEXT NOT NULL DEFAULT '[]',
+      kind TEXT NOT NULL DEFAULT 'meme' CHECK(kind IN ('meme','character','update','occasion')),
+      info_nature TEXT NOT NULL DEFAULT 'unknown' CHECK(info_nature IN ('official','community','unconfirmed','unknown')),
+      adaptation_tags_json TEXT NOT NULL DEFAULT '[]',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      favorite INTEGER NOT NULL DEFAULT 0,
+      ignored INTEGER NOT NULL DEFAULT 0,
+      ignored_at TEXT,
+      used_activity_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    // 已忽略的素材默认不进列表；收藏与已使用可以同时存在。
+    'CREATE INDEX IF NOT EXISTS idx_topics_seen ON topics(ignored, last_seen_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_topics_used ON topics(used_activity_id)',
+    `CREATE TABLE IF NOT EXISTS topic_sources (
+      id TEXT PRIMARY KEY,
+      topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+      source_id TEXT,
+      source_name TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT '',
+      document_locator TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      published_at TEXT,
+      excerpt TEXT NOT NULL DEFAULT '',
+      content_hash TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_topic_sources_topic ON topic_sources(topic_id)',
+    // 相同标准化 URL 更新已有来源，不新增条目。
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_topic_sources_unique_url ON topic_sources(topic_id, url)',
+    `CREATE TABLE IF NOT EXISTS activity_idea_batches (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'queued',
+      topics_json TEXT NOT NULL DEFAULT '[]',
+      requirement TEXT NOT NULL DEFAULT '',
+      lead_character_id TEXT,
+      lead_character_name TEXT,
+      activity_type TEXT NOT NULL DEFAULT '',
+      ideas_json TEXT NOT NULL DEFAULT '[]',
+      model_metadata_json TEXT NOT NULL DEFAULT '{}',
+      error_message TEXT,
+      session_id TEXT,
+      activity_id TEXT,
+      idempotency_key TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_idea_batches_created ON activity_idea_batches(created_at DESC)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_idea_batches_idempotency ON activity_idea_batches(idempotency_key) WHERE idempotency_key IS NOT NULL',
+    // 企划会话保存灵感来源快照，旧会话缺失该列内容时按原逻辑运行。
+    'ALTER TABLE activity_planning_sessions ADD COLUMN inspiration_json TEXT',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

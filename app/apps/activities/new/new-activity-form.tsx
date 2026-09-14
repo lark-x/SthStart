@@ -342,7 +342,7 @@ export function NewActivityForm() {
     if (!sessionId) { setErrorMsg('请先生成企划，再创建活动。'); return; }
     setBusy(true);
     try {
-      const result = await createActivityFromPlanningSession(sessionId, buildDocument(sessionDocument), `create_${sessionId}`);
+      const result = await createActivityFromPlanningSession(sessionId, buildDocument(sessionDocument), { idempotencyKey: `create_${sessionId}` });
       void queryClient.invalidateQueries({ queryKey: activityKeys.all });
       router.push(`/apps/activities/${result.activity.id}`);
     } catch (error) {

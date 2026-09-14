@@ -134,4 +134,25 @@ export async function deleteJson<T>(path: string, init?: RequestInit, schema?: T
   return parseResponse<T>(response, schema);
 }
 
+/** 局部更新：只提交要改的字段，服务端负责保留其余内容。 */
+export async function patchJson<T, B = unknown>(
+  path: string,
+  body?: B,
+  init?: RequestInit,
+  schema?: TSchema
+): Promise<T> {
+  const response = await adminFetch(path, {
+    method: 'PATCH',
+    ...init,
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      ...init?.headers,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  });
+  return parseResponse<T>(response, schema);
+}
+
 export { adminFetch, ensureAdminSession };

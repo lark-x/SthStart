@@ -28,6 +28,10 @@ import { registerActivityRoutes } from './activities/routes.js';
 import { registerCalendarRoutes } from './calendar.js';
 import { registerPlanningRoutes } from './activities/planning.js';
 import { ActivityStore } from './activities/store.js';
+import { registerMcpSourceRoutes } from './mcp/routes.js';
+import { registerResearchRoutes } from './mcp/research-routes.js';
+import { registerTopicRoutes } from './topics/routes.js';
+import { TopicScheduler } from './topics/scheduler.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -192,6 +196,9 @@ export async function createService(options: ServiceOptions = {}) {
   registerActivityRoutes(app, config, database, secrets, options.fetcher);
   registerCalendarRoutes(app, config, database);
   registerPlanningRoutes(app, { config, database, secrets, store: new ActivityStore(database), fetcher: options.fetcher });
+  registerMcpSourceRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
+  registerResearchRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
+  registerTopicRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 
@@ -210,6 +217,9 @@ export async function createService(options: ServiceOptions = {}) {
   });
   resumeGenerationExecutions(database);
   const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);
+  // 话题搜集调度器：跟随服务进程运行，浏览器关闭不影响执行。
+  const topicScheduler = new TopicScheduler({ config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
+  topicScheduler.start();
   const genReconcilePromise = reconcileGenerationTasks(config, database, secrets, options.fetcher).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (!msg.includes('database is not open')) {
@@ -220,6 +230,7 @@ export async function createService(options: ServiceOptions = {}) {
   app.addHook('onClose', async () => {
     clearInterval(retentionTimer);
     genScheduler.stop();
+    topicScheduler.stop();
     stopGenerationExecutions(database);
     await genReconcilePromise.catch(() => {});
     await Promise.allSettled(Array.from(activeGenerationExecutions));

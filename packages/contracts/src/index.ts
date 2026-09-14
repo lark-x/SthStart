@@ -2643,6 +2643,8 @@ export type ActorPersona = Static<typeof ActorPersonaSchema>;
 export const ActorSnapshotSchema = Type.Object({
   id: Type.String(),
   sourceCharacterId: Type.Optional(Type.String()),
+  candidateRefId: Type.Optional(Type.String()),
+  personaStatus: Type.Optional(Type.Union([Type.Literal('resolved'), Type.Literal('pending'), Type.Literal('removed')])),
   sourceVersion: Type.Optional(Type.Number()),
   sourceVersionStatus: Type.Optional(Type.Union([
     Type.Literal('published'), Type.Literal('draft'), Type.Literal('unknown'), Type.Literal('missing'),
@@ -2759,6 +2761,44 @@ export const StageResultSchema = Type.Object({
 });
 export type StageResult = Static<typeof StageResultSchema>;
 
+/**
+ * 采用点子时冻结的灵感来源快照，随企划表单与活动依据保存。
+ * 只记录文本资料，不含凭据或完整原始检索结果。
+ * 定义在 ContentDocument 之前，因为 planningBasis 会引用它。
+ */
+export const InspirationSourceSnapshotSchema = Type.Object({
+  topicId: Type.String(), sourceName: Type.String(), url: Type.String(),
+  documentLocator: Type.String(), excerpt: Type.String(),
+  publishedAt: Type.Optional(Type.String()), contentHash: Type.String(),
+});
+
+export const ActivityInspirationSnapshotSchema = Type.Object({
+  sources: Type.Optional(Type.Array(InspirationSourceSnapshotSchema)),
+  recommendedCharacters: Type.Optional(Type.Array(Type.Object({ name: Type.String(), work: Type.String(), reason: Type.String(), relationshipNote: Type.String() }))),
+  stages: Type.Optional(Type.Array(Type.Object({ title: Type.String(), outline: Type.String() }))),
+  batchId: Type.String(),
+  ideaId: Type.String(),
+  ideaName: Type.String(),
+  overview: Type.String(),
+  adaptation: Type.String(),
+  location: Type.String(),
+  style: Type.String(),
+  expectedHighlights: Type.Array(Type.String()),
+  assumptions: Type.Array(Type.String()),
+  /** 采用时的素材快照：标题与摘要足以让企划理解灵感出处。 */
+  topics: Type.Array(Type.Object({
+    id: Type.String(),
+    title: Type.String(),
+    summary: Type.String(),
+    works: Type.Array(Type.String()),
+    kind: Type.String(),
+    infoNature: Type.String(),
+  })),
+  requirement: Type.String(),
+  appliedAt: Type.String(),
+});
+export type ActivityInspirationSnapshot = Static<typeof ActivityInspirationSnapshotSchema>;
+
 export const ContentDocumentSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   activity: Type.Object({
@@ -2773,6 +2813,55 @@ export const ContentDocumentSchema = Type.Object({
     templateId: Type.Optional(Type.String()),
     birthdayActorIds: Type.Optional(Type.Array(Type.String())),
     overview: Type.Optional(Type.String()),
+    // 企划依据快照：采用方案时冻结的研究结论与资料摘录。
+    // 随 ContentDocument 一起保存与导出（data/records.json），不包含任何凭据。
+    planningBasis: Type.Optional(Type.Object({
+      sessionId: Type.String(),
+      adoptedCandidateId: Type.Optional(Type.String()),
+      researchRevisionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+      researchTaskId: Type.Optional(Type.String()),
+      selection: Type.Optional(Type.Object({
+        requiredCharacterIds: Type.Array(Type.String()),
+        optionalCharacterIds: Type.Array(Type.String()),
+        excludedCharacterIds: Type.Array(Type.String()),
+        requiredLocationIds: Type.Array(Type.String()),
+        optionalLocationIds: Type.Array(Type.String()),
+        excludedLocationIds: Type.Array(Type.String()),
+        lockedLocationId: Type.Union([Type.String(), Type.Null()]),
+      })),
+      inputSnapshot: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+      evidence: Type.Array(Type.Object({
+        id: Type.String(),
+        sourceId: Type.String(),
+        sourceName: Type.String(),
+        tool: Type.String(),
+        documentLocator: Type.String(),
+        excerpt: Type.String(),
+        retrievedAt: Type.String(),
+        contentHash: Type.String(),
+      })),
+      characterCandidates: Type.Array(Type.Object({
+        id: Type.String(),
+        displayName: Type.String(),
+        work: Type.String(),
+        basis: Type.String(),
+        relationshipToLead: Type.String(),
+        userStatus: Type.String(),
+        localMatchStatus: Type.String(),
+        resolvedCharacterId: Type.Optional(Type.String()),
+      })),
+      locationCandidates: Type.Array(Type.Object({
+        id: Type.String(),
+        name: Type.String(),
+        work: Type.String(),
+        basis: Type.String(),
+        userStatus: Type.String(),
+        locked: Type.Optional(Type.Boolean()),
+      })),
+      // 灵感来源：采用话题点子时冻结的素材摘要与点子文本。
+      inspiration: Type.Optional(ActivityInspirationSnapshotSchema),
+      createdAt: Type.String(),
+    })),
   }),
   actors: Type.Array(ActorSnapshotSchema),
   relationships: Type.Array(
@@ -3577,6 +3666,57 @@ export const ActivityPlanningOutputSchema = Type.Object({
 });
 export type ActivityPlanningOutput = Static<typeof ActivityPlanningOutputSchema>;
 
+/**
+ * 把企划输出应用到活动文档：主题、地点、阶段与角色分工。
+ *
+ * 服务端生成后与前端「采用方案」共用同一份实现，避免两侧对同一份企划输出
+ * 得到不同的阶段结构。日期、寿星与角色身份始终保留用户设定。
+ */
+export function applyPlanningOutput(document: ContentDocument, output: ActivityPlanningOutput): ContentDocument {
+  const updated: ContentDocument = JSON.parse(JSON.stringify(document));
+  const roleByActor = new Map((output.actorRoles || []).map((role) => [role.actorId, role.activityRole]));
+  updated.actors = updated.actors.map((actor) => (roleByActor.has(actor.id) ? { ...actor, activityRole: roleByActor.get(actor.id)! } : actor));
+  updated.activity = {
+    ...updated.activity,
+    title: output.activity.title?.trim() || updated.activity.title,
+    theme: output.activity.theme ?? updated.activity.theme,
+    location: output.activity.location ?? updated.activity.location,
+    rules: output.activity.rules ?? updated.activity.rules,
+    overview: output.activity.overview ?? updated.activity.overview,
+  };
+  const actorIds = new Set(updated.actors.map((actor) => actor.id));
+  updated.stages = (output.stages || []).map((stage, index) => ({
+    id: `stage_${index + 1}`,
+    title: stage.title,
+    order: index + 1,
+    actorIds: (stage.actorIds || []).filter((id) => actorIds.has(id)),
+    location: stage.location || updated.activity.location,
+    instruction: stage.description,
+    requiredBeats: (stage.requiredBeats || []).map((text, beatIndex) => ({ id: `beat_${index + 1}_${beatIndex + 1}`, text, actorIds: (stage.actorIds || []).filter((id) => actorIds.has(id)) })),
+    locked: false,
+    endCondition: stage.endCondition || '',
+  }));
+  // 寿星必须出现在至少一个阶段，否则企划不可用。
+  const birthdayActorIds = updated.activity.birthdayActorIds || [];
+  for (const id of birthdayActorIds) {
+    if (!updated.stages.some((stage) => stage.actorIds.includes(id))) {
+      const target = updated.stages.at(-1);
+      if (target) {
+        target.actorIds = [...target.actorIds, id];
+        target.requiredBeats.push({ id: `beat_${target.order}_birthday`, text: `为${updated.actors.find((actor) => actor.id === id)?.displayName || '寿星'}送上祝福`, actorIds: [id] });
+      }
+    }
+  }
+  updated.conversations = [{ id: 'group_main', kind: 'group', title: updated.activity.title, memberActorIds: [...actorIds] }];
+  return updated;
+}
+
+/** 企划内尚未解析为本地角色快照的 actor（研究候选占位角色）。 */
+export function isUnresolvedPlanningActor(actor: { personaStatus?: string; sourceCharacterId?: string }): boolean {
+  if (actor.personaStatus === 'pending' || actor.personaStatus === 'removed') return true;
+  return !actor.sourceCharacterId;
+}
+
 export interface ActivityPlanningCharacterRef {
   characterId: string;
   displayName: string;
@@ -3606,10 +3746,12 @@ export interface ActivityPlanningSession {
   id: string;
   version: number;
   status: ActivityPlanningSessionStatus;
-  form: ActivityPlanningForm;
+  /** 服务端始终返回归一化后的扩展表单（含主角、联动范围、候选选择等）。 */
+  form: ActivityPlanningFormExtended;
   document: ContentDocument;
   characters: ActivityPlanningCharacterRef[];
   activityId: string | null;
+  researchRevisionId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3640,4 +3782,574 @@ export interface ActivityPlanningSessionResponse {
   session: ActivityPlanningSession;
   jobs: ActivityPlanningJob[];
   candidates: ActivityPlanningCandidate[];
+  /** 待解析角色：研究候选占位角色，采用前必须匹配或补齐为本地角色。 */
+  pendingActors?: ActivityPlanningPendingActor[];
+  /** 各候选方案的页面对比摘要（阶段数、待补人设数、资料提示等）。 */
+  summaries?: PlanningCandidateSummary[];
+  /** 研究输入已过期：表单的主角/联动范围/人数等与研究冻结时的设置不一致。 */
+  researchStale?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// MCP 资料源（公共 MCP 配置层）
+// ---------------------------------------------------------------------------
+
+export const McpAuthModeSchema = Type.Union([
+  Type.Literal('none'),
+  Type.Literal('bearer'),
+  Type.Literal('header'),
+]);
+export type McpAuthMode = Static<typeof McpAuthModeSchema>;
+
+export const McpSourceStatusSchema = Type.Union([
+  Type.Literal('enabled'),
+  Type.Literal('disabled'),
+]);
+export type McpSourceStatus = Static<typeof McpSourceStatusSchema>;
+
+export const McpSourceSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  url: Type.String(),
+  authMode: McpAuthModeSchema,
+  authHeaderName: Type.Optional(Type.String()),
+  // credentialAccount 只用于服务端凭据引用，接口返回不包含明文。
+  credentialAccount: Type.Optional(Type.String()),
+  applicableWorks: Type.Array(Type.String()),
+  universal: Type.Boolean(),
+  purpose: Type.String(),
+  allowedTools: Type.Array(Type.String()),
+  discoveredTools: Type.Optional(Type.Array(Type.Object({
+    name: Type.String(),
+    description: Type.Optional(Type.String()),
+    inputSchema: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  }))),
+  timeoutMs: Type.Optional(Type.Number()),
+  status: McpSourceStatusSchema,
+  hasCredential: Type.Boolean(),
+  credentialSource: Type.Optional(Type.String()),
+  lastTestResult: Type.Optional(Type.Union([Type.Null(), Type.Object({
+    ok: Type.Boolean(),
+    message: Type.String(),
+    testedAt: Type.String(),
+  })])),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type McpSource = Static<typeof McpSourceSchema>;
+
+export const McpSourceListSchema = Type.Object({
+  items: Type.Array(McpSourceSchema),
+});
+export type McpSourceList = Static<typeof McpSourceListSchema>;
+
+export const McpSourceSaveSchema = Type.Object({
+  id: Type.Optional(Type.String()),
+  name: Type.String(),
+  url: Type.String(),
+  authMode: McpAuthModeSchema,
+  authHeaderName: Type.Optional(Type.String()),
+  secret: Type.Optional(Type.String()),
+  applicableWorks: Type.Array(Type.String()),
+  universal: Type.Optional(Type.Boolean()),
+  purpose: Type.Optional(Type.String()),
+  allowedTools: Type.Optional(Type.Array(Type.String())),
+  timeoutMs: Type.Optional(Type.Number()),
+  status: Type.Optional(McpSourceStatusSchema),
+});
+export type McpSourceSave = Static<typeof McpSourceSaveSchema>;
+
+export const McpConnectionTestSchema = Type.Object({
+  ok: Type.Boolean(),
+  message: Type.String(),
+  tools: Type.Optional(Type.Array(Type.Object({
+    name: Type.String(),
+    description: Type.Optional(Type.String()),
+    inputSchema: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  }))),
+  serverInfo: Type.Optional(Type.Object({
+    name: Type.Optional(Type.String()),
+    version: Type.Optional(Type.String()),
+  })),
+  testedAt: Type.String(),
+});
+export type McpConnectionTest = Static<typeof McpConnectionTestSchema>;
+
+// 虚空终端预设：复用既有适配器的检索与读取工具名。
+export const AKASHA_MCP_PRESET_ID = 'akasha-terminal';
+export const AKASHA_MCP_TOOLS = ['akasha_search', 'akasha_read', 'akasha_catalog'];
+
+// ---------------------------------------------------------------------------
+// 企划研究（研究任务、证据、人物/地点候选）
+// ---------------------------------------------------------------------------
+
+export const ResearchEvidenceBasisSchema = Type.Union([
+  Type.Literal('documented'),      // 有资料依据
+  Type.Literal('inferred'),        // 根据资料推测
+  Type.Literal('creative'),        // 联动创作建议
+]);
+export type ResearchEvidenceBasis = Static<typeof ResearchEvidenceBasisSchema>;
+
+export const ResearchCharacterCandidateSchema = Type.Object({
+  id: Type.String(),
+  displayName: Type.String(),
+  work: Type.String(),
+  reason: Type.String(),                          // 推荐原因
+  relationshipToLead: Type.String(),              // 与主角的关系依据或联动理由
+  basis: ResearchEvidenceBasisSchema,
+  localMatchStatus: Type.Union([
+    Type.Literal('unique'),                        // 唯一匹配
+    Type.Literal('multiple'),                      // 多张人设卡
+    Type.Literal('none'),                          // 尚未入库
+  ]),
+  localCharacterIds: Type.Optional(Type.Array(Type.String())),
+  evidenceIds: Type.Array(Type.String()),
+  userStatus: Type.Union([
+    Type.Literal('required'),
+    Type.Literal('optional'),
+    Type.Literal('excluded'),
+    Type.Literal('pending'),
+  ]),
+  avatarUrl: Type.Optional(Type.String()),
+});
+export type ResearchCharacterCandidate = Static<typeof ResearchCharacterCandidateSchema>;
+
+export const ResearchLocationCandidateSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  work: Type.String(),
+  environment: Type.String(),                     // 环境特点
+  reasonForActivity: Type.String(),               // 适合举办本活动的理由
+  originalBasis: Type.String(),                   // 原作地点依据
+  activityArrangement: Type.String(),             // 本次活动安排
+  basis: ResearchEvidenceBasisSchema,
+  evidenceIds: Type.Array(Type.String()),
+  userStatus: Type.Union([
+    Type.Literal('required'),
+    Type.Literal('optional'),
+    Type.Literal('excluded'),
+    Type.Literal('pending'),
+  ]),
+  userProvided: Type.Optional(Type.Boolean()),    // 用户自行填写
+  locked: Type.Optional(Type.Boolean()),          // 锁定为主要地点（最多一个）
+});
+export type ResearchLocationCandidate = Static<typeof ResearchLocationCandidateSchema>;
+
+export const ResearchEvidenceSchema = Type.Object({
+  id: Type.String(),
+  sourceId: Type.String(),
+  sourceName: Type.String(),
+  tool: Type.String(),
+  queryParams: Type.Record(Type.String(), Type.Unknown()),
+  excerpt: Type.String(),
+  documentLocator: Type.String(),                 // 文档定位
+  retrievedAt: Type.String(),
+  contentHash: Type.String(),
+});
+export type ResearchEvidence = Static<typeof ResearchEvidenceSchema>;
+
+export const ResearchTaskStatusSchema = Type.Union([
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled'),
+  Type.Literal('incomplete'),                     // 达到预算返回已有结果
+]);
+export type ResearchTaskStatus = Static<typeof ResearchTaskStatusSchema>;
+
+export const ResearchTaskSchema = Type.Object({
+  id: Type.String(),
+  sessionId: Type.String(),
+  status: ResearchTaskStatusSchema,
+  inputSnapshot: Type.Record(Type.String(), Type.Unknown()),
+  progressLabel: Type.Optional(Type.String()),
+  usedToolCalls: Type.Optional(Type.Number()),
+  budgetToolCalls: Type.Optional(Type.Number()),
+  incompleteReason: Type.Optional(Type.String()),
+  errorMessage: Type.Optional(Type.String()),
+  evidence: Type.Array(ResearchEvidenceSchema),
+  characterCandidates: Type.Array(ResearchCharacterCandidateSchema),
+  locationCandidates: Type.Array(ResearchLocationCandidateSchema),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type ResearchTask = Static<typeof ResearchTaskSchema>;
+
+export const ResearchRevisionSchema = Type.Object({
+  id: Type.String(),
+  sessionId: Type.String(),
+  taskId: Type.String(),
+  version: Type.Number(),
+  inputSnapshot: Type.Record(Type.String(), Type.Unknown()),
+  frozen: Type.Boolean(),
+  createdAt: Type.String(),
+});
+export type ResearchRevision = Static<typeof ResearchRevisionSchema>;
+
+export interface PlanningSelectionState {
+  requiredCharacterIds: string[];
+  optionalCharacterIds: string[];
+  excludedCharacterIds: string[];
+  requiredLocationIds: string[];
+  optionalLocationIds: string[];
+  excludedLocationIds: string[];
+  lockedLocationId: string | null;
+}
+
+export const PlanningSelectionStateSchema = Type.Object({
+  requiredCharacterIds: Type.Array(Type.String()),
+  optionalCharacterIds: Type.Array(Type.String()),
+  excludedCharacterIds: Type.Array(Type.String()),
+  requiredLocationIds: Type.Array(Type.String()),
+  optionalLocationIds: Type.Array(Type.String()),
+  excludedLocationIds: Type.Array(Type.String()),
+  lockedLocationId: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PlanningCandidateSummarySchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  overview: Type.String(),
+  participants: Type.Array(Type.String()),
+  primaryLocation: Type.String(),
+  style: Type.String(),
+  highlights: Type.Array(Type.String()),
+  stageCount: Type.Number(),
+  pendingPersonaCount: Type.Number(),
+  caveats: Type.Array(Type.String()),
+  adopted: Type.Boolean(),
+  /** 基于旧设置生成：企划表单或研究输入在生成之后有改动。 */
+  stale: Type.Optional(Type.Boolean()),
+  createdAt: Type.String(),
+});
+export type PlanningCandidateSummary = Static<typeof PlanningCandidateSummarySchema>;
+
+export interface ActivityPlanningCandidateExtended extends ActivityPlanningCandidate {
+  summary: PlanningCandidateSummary;
+}
+
+export const ActivityPlanningCandidateExtendedSchema = Type.Intersect([
+  Type.Object({
+    id: Type.String(),
+    sessionId: Type.String(),
+    sessionVersion: Type.Union([Type.Number(), Type.Null()]),
+    payload: Type.Record(Type.String(), Type.Unknown()),
+    adopted: Type.Boolean(),
+    createdAt: Type.String(),
+  }),
+  Type.Object({
+    summary: PlanningCandidateSummarySchema,
+  }),
+]);
+
+// 企划表单扩展：主角、联动范围、人物约束、地点约束、研究修订
+export interface ActivityPlanningFormExtended extends ActivityPlanningForm {
+  leadCharacterId?: string;
+  leadRoleLabel?: 'birthday-star' | 'activity-lead';
+  crossoverWorks?: string[];
+  unrestrictedWorks?: boolean;
+  guestCountPreference?: number;
+  researchRevisionId?: string;
+  selection?: PlanningSelectionState;
+  storyScopeNote?: string;
+  /** 采用话题点子时冻结的灵感来源；旧会话缺失该字段时按原逻辑运行。 */
+  inspiration?: ActivityInspirationSnapshot;
+}
+
+/** 已采用企划的依据快照，与 ContentDocument.activity.planningBasis 结构一致。 */
+export type ActivityPlanningBasis = NonNullable<ContentDocument['activity']['planningBasis']>;
+
+/**
+ * 企划内“待补人设”的占位角色。
+ * actorId 是企划文档内的角色 ID（阶段引用使用它），candidateRefId 指向研究候选，
+ * 两者都不是本地角色 ID；解析完成后才写入 sourceCharacterId。
+ */
+export interface ActivityPlanningPendingActor {
+  actorId: string;
+  displayName: string;
+  candidateRefId: string | null;
+  activityRole: string;
+  work?: string;
+  basis?: ResearchEvidenceBasis;
+  relationshipToLead?: string;
+  evidenceIds: string[];
+  affectedStageIds: string[];
+}
+
+/** 待补人设的解析方式：匹配已有角色、写入已确认人设、或从企划中移除。 */
+export type ActivityPlanningActorResolveInput =
+  | { mode: 'match'; characterId: string }
+  | { mode: 'persona'; persona: ActorPersona; displayName?: string; activityRole?: string; sourceNote?: string }
+  | { mode: 'remove' };
+
+/** 依据已保存研究资料生成的简版人设草稿，仅供预览确认，不直接入库。 */
+export interface ActivityPlanningPersonaDraft {
+  actorId: string;
+  displayName: string;
+  persona: ActorPersona;
+  basisNote: string;
+  evidenceIds: string[];
+  hasEvidence: boolean;
+}
+
+/** 待补人设解析后的结果：会话、受影响的阶段、以及剩余的待补角色。 */
+export interface ActivityPlanningActorResolveResult {
+  session: ActivityPlanningSession;
+  affectedStageIds: string[];
+  resolvedCharacterId: string | null;
+  createdCharacterId?: string;
+  pendingActors: ActivityPlanningPendingActor[];
+}
+
+// ---------------------------------------------------------------------------
+// 话题素材库与活动点子
+// ---------------------------------------------------------------------------
+
+/** 内容类型固定四类，页面筛选与模型输出都使用这组取值。 */
+export const TopicKindSchema = Type.Union([
+  Type.Literal('meme'),          // 新梗与趣味讨论
+  Type.Literal('character'),     // 角色相关话题
+  Type.Literal('update'),        // 新剧情与版本动态
+  Type.Literal('occasion'),      // 节日、纪念日与活动契机
+]);
+export type TopicKind = Static<typeof TopicKindSchema>;
+
+/** 信息属性：能判断时才标注，判断不了就用 unknown。 */
+export const TopicInfoNatureSchema = Type.Union([
+  Type.Literal('official'),      // 官方信息
+  Type.Literal('community'),     // 社区讨论
+  Type.Literal('unconfirmed'),   // 未证实消息
+  Type.Literal('unknown'),       // 不明来源
+]);
+export type TopicInfoNature = Static<typeof TopicInfoNatureSchema>;
+
+export const TopicSourceSchema = Type.Object({
+  id: Type.String(),
+  topicId: Type.String(),
+  /** 来源 MCP 配置 ID；手工整理时可能为空。 */
+  sourceId: Type.Optional(Type.String()),
+  sourceName: Type.String(),
+  url: Type.String(),
+  documentLocator: Type.String(),
+  title: Type.String(),
+  /** 发布时间未知时为空，页面显示“发布时间未知”，不假装刚发生。 */
+  publishedAt: Type.Optional(Type.String()),
+  excerpt: Type.String(),
+  contentHash: Type.String(),
+  createdAt: Type.String(),
+});
+export type TopicSource = Static<typeof TopicSourceSchema>;
+
+export const TopicSchema = Type.Object({
+  sourceSnapshot: Type.Optional(Type.Array(InspirationSourceSnapshotSchema)),
+  id: Type.String(),
+  title: Type.String(),
+  /** 约 80～150 字解释，让没见过这个梗的人也能理解。 */
+  summary: Type.String(),
+  works: Type.Array(Type.String()),
+  characters: Type.Array(Type.String()),
+  kind: TopicKindSchema,
+  infoNature: TopicInfoNatureSchema,
+  /** 最多三个改编方向标签。 */
+  adaptationTags: Type.Array(Type.String()),
+  firstSeenAt: Type.String(),
+  lastSeenAt: Type.String(),
+  /**
+   * 来源里能确认的最新发布时间；全都无法确认时为空，
+   * 页面显示“发布时间未知”，不把收集时间当成发布时间。
+   */
+  latestPublishedAt: Type.Optional(Type.String()),
+  favorite: Type.Boolean(),
+  ignored: Type.Boolean(),
+  ignoredAt: Type.Optional(Type.String()),
+  /** 已用于某场正式活动时记录活动 ID；只生成点子不算已使用。 */
+  usedActivityId: Type.Optional(Type.String()),
+  sourceCount: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type Topic = Static<typeof TopicSchema>;
+
+export const TopicDetailSchema = Type.Object({
+  topic: TopicSchema,
+  sources: Type.Array(TopicSourceSchema),
+});
+export type TopicDetail = Static<typeof TopicDetailSchema>;
+
+export const TopicListQuerySchema = Type.Object({
+  q: Type.Optional(Type.String()),
+  works: Type.Optional(Type.Array(Type.String())),
+  kinds: Type.Optional(Type.Array(TopicKindSchema)),
+  /** 时间范围：最近 N 天；收藏视图默认不限时间。 */
+  days: Type.Optional(Type.Number()),
+  view: Type.Optional(Type.Union([
+    Type.Literal('all'),
+    Type.Literal('favorite'),
+    Type.Literal('used'),
+    Type.Literal('ignored'),
+  ])),
+  page: Type.Optional(Type.Number()),
+  pageSize: Type.Optional(Type.Number()),
+});
+export type TopicListQuery = Static<typeof TopicListQuerySchema>;
+
+export const TopicListResponseSchema = Type.Object({
+  items: Type.Array(TopicSchema),
+  total: Type.Number(),
+  page: Type.Number(),
+  pageSize: Type.Number(),
+  facets: Type.Object({
+    works: Type.Array(Type.String()),
+    kinds: Type.Array(Type.Object({ kind: TopicKindSchema, count: Type.Number() })),
+  }),
+});
+export type TopicListResponse = Static<typeof TopicListResponseSchema>;
+
+/** 单个来源的检索/读取工具绑定：工具参数由现有适配器或模型生成，用户不写 JSON。 */
+export const TopicCollectionSourceBindingSchema = Type.Object({
+  sourceId: Type.String(),
+  searchTool: Type.String(),
+  readTool: Type.Optional(Type.String()),
+});
+export type TopicCollectionSourceBinding = Static<typeof TopicCollectionSourceBindingSchema>;
+
+export const TopicCollectionSettingsSchema = Type.Object({
+  enabled: Type.Boolean(),
+  works: Type.Array(Type.String()),
+  keywords: Type.Array(Type.String()),
+  sources: Type.Array(TopicCollectionSourceBindingSchema),
+  /** 每天固定时刻，HH:mm；第一版不支持复杂周期表达式。 */
+  dailyTime: Type.String(),
+  timezone: Type.String(),
+  nextRunAt: Type.Union([Type.String(), Type.Null()]),
+  maxNewTopics: Type.Number(),
+  updatedAt: Type.String(),
+});
+export type TopicCollectionSettings = Static<typeof TopicCollectionSettingsSchema>;
+
+export const TopicCollectionSettingsSaveSchema = Type.Object({
+  enabled: Type.Optional(Type.Boolean()),
+  works: Type.Optional(Type.Array(Type.String())),
+  keywords: Type.Optional(Type.Array(Type.String())),
+  sources: Type.Optional(Type.Array(TopicCollectionSourceBindingSchema)),
+  dailyTime: Type.Optional(Type.String()),
+  timezone: Type.Optional(Type.String()),
+  maxNewTopics: Type.Optional(Type.Number()),
+});
+export type TopicCollectionSettingsSave = Static<typeof TopicCollectionSettingsSaveSchema>;
+
+export const TopicCollectionRunStatusSchema = Type.Union([
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('partial'),       // 部分来源失败：保存其余结果并明确标记
+  Type.Literal('failed'),
+  Type.Literal('interrupted'),   // 进程重启后中断
+]);
+export type TopicCollectionRunStatus = Static<typeof TopicCollectionRunStatusSchema>;
+
+export const TopicCollectionRunSchema = Type.Object({
+  id: Type.String(),
+  status: TopicCollectionRunStatusSchema,
+  trigger: Type.Union([Type.Literal('manual'), Type.Literal('scheduled'), Type.Literal('retry')]),
+  progressLabel: Type.Optional(Type.String()),
+  usedToolCalls: Type.Number(),
+  createdCount: Type.Number(),
+  mergedCount: Type.Number(),
+  failedCount: Type.Number(),
+  /** 来源失败或整理失败时都保留可恢复信息。 */
+  errorMessage: Type.Optional(Type.String()),
+  settingsSnapshot: Type.Record(Type.String(), Type.Unknown()),
+  startedAt: Type.Optional(Type.String()),
+  finishedAt: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type TopicCollectionRun = Static<typeof TopicCollectionRunSchema>;
+
+/** 点子里的推荐人物：只作为候选提示，不自动成为必选，也不立即创建公共角色。 */
+export const ActivityIdeaCharacterSchema = Type.Object({
+  name: Type.String(),
+  work: Type.String(),
+  reason: Type.String(),
+  /** 跨作品联动写成创作安排，不冒充原作事实。 */
+  relationshipNote: Type.String(),
+});
+export type ActivityIdeaCharacter = Static<typeof ActivityIdeaCharacterSchema>;
+
+export const ActivityIdeaStageSchema = Type.Object({
+  title: Type.String(),
+  outline: Type.String(),
+});
+export type ActivityIdeaStage = Static<typeof ActivityIdeaStageSchema>;
+
+export const ActivityIdeaSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  overview: Type.String(),
+  /** 对所选素材的改编方式。 */
+  adaptation: Type.String(),
+  recommendedCharacters: Type.Array(ActivityIdeaCharacterSchema),
+  location: Type.String(),
+  style: Type.String(),
+  /** 两三个阶段的简短构思，作为企划生成参考，不直接成为正式剧本。 */
+  stages: Type.Array(ActivityIdeaStageSchema),
+  /** 预期可留下的聊天、朋友圈或拍照桥段。 */
+  expectedHighlights: Type.Array(Type.String()),
+  /** 素材无法证实的设定标为建议。 */
+  assumptions: Type.Array(Type.String()),
+});
+export type ActivityIdea = Static<typeof ActivityIdeaSchema>;
+
+export const ActivityIdeaBatchSchema = Type.Object({
+  id: Type.String(),
+  status: ActivityJobStatusSchema,
+  /** 生成时冻结的素材快照：不只拼成一段提示词。 */
+  topics: Type.Array(TopicSchema),
+  requirement: Type.String(),
+  leadCharacterId: Type.Optional(Type.String()),
+  leadCharacterName: Type.Optional(Type.String()),
+  activityType: Type.String(),
+  ideas: Type.Array(ActivityIdeaSchema),
+  modelMetadata: Type.Record(Type.String(), Type.Unknown()),
+  errorMessage: Type.Optional(Type.String()),
+  sessionId: Type.Optional(Type.String()),
+  activityId: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type ActivityIdeaBatch = Static<typeof ActivityIdeaBatchSchema>;
+
+export const ActivityIdeaBatchCreateSchema = Type.Object({
+  topicIds: Type.Array(Type.String()),
+  requirement: Type.Optional(Type.String()),
+  leadCharacterId: Type.Optional(Type.String()),
+  activityType: Type.Optional(Type.String()),
+  /** 追加一批候选，保留前一批。 */
+  previousBatchId: Type.Optional(Type.String()),
+});
+export type ActivityIdeaBatchCreate = Static<typeof ActivityIdeaBatchCreateSchema>;
+
+export const ActivityIdeaApplySchema = Type.Object({
+  /** 从素材库进入时新建企划会话；从新建活动向导进入时复用已有会话。 */
+  sessionId: Type.Optional(Type.String()),
+  /** 目标活动的会话表单覆盖项（标题、主题、要求等），只填需要变更的字段。 */
+  overrides: Type.Optional(Type.Object({
+    title: Type.Optional(Type.String()),
+    theme: Type.Optional(Type.String()),
+    location: Type.Optional(Type.String()),
+    instruction: Type.Optional(Type.String()),
+  })),
+  idempotencyKey: Type.Optional(Type.String()),
+});
+export type ActivityIdeaApply = Static<typeof ActivityIdeaApplySchema>;
+
+export const ActivityIdeaApplyResultSchema = Type.Object({
+  batchId: Type.String(),
+  ideaId: Type.String(),
+  sessionId: Type.String(),
+  /** 新建了会话还是更新了已有会话。 */
+  createdSession: Type.Boolean(),
+});
+export type ActivityIdeaApplyResult = Static<typeof ActivityIdeaApplyResultSchema>;

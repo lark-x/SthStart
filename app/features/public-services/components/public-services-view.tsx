@@ -18,6 +18,7 @@ import { ProviderForm } from './provider-form';
 import { AppModelRouting } from './app-model-routing';
 import { AppTokens } from './app-tokens';
 import { OtherProviders } from './other-providers';
+import { McpSourceManager } from '@/app/features/mcp-sources/mcp-source-manager';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { Button } from '@/app/components/ui/button';
@@ -338,6 +339,9 @@ export function PublicServicesSettings() {
           {isLoading && !overview ? <Skeleton className="h-48 w-full rounded-lg" /> : !overview ?
             <p className="rounded-lg border border-dashed border-border-default p-6 text-sm text-muted">模型列表尚未加载，暂时无法确认已有配置。请先刷新数据。</p> :
             <ProviderList profiles={filteredProfiles} overview={overview} searching={Boolean(search.trim())} onEdit={handleBeginEdit} onClone={handleBeginClone} onDelete={handleDeleteProfile} onAssignToApps={() => setSection('routing')} />}
+          <div className="border-t border-border-subtle pt-4">
+            <McpSourceManager />
+          </div>
         </div>
         <div hidden={section !== 'routing'}>
           <AppModelRouting

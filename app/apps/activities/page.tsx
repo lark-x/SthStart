@@ -18,6 +18,7 @@ import {
   Sparkles,
   ExternalLink,
   CalendarDays,
+  Lightbulb,
 } from 'lucide-react';
 import { useActivities } from '@/app/features/activities/queries';
 import {
@@ -120,6 +121,14 @@ export default function ActivitiesPage() {
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>新建活动</span>
+              </Link>
+              <Link
+                href="/apps/inspiration"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border-default bg-surface font-medium text-sm transition-colors cursor-pointer shrink-0"
+                title="先选题材再让模型给出活动点子"
+              >
+                <Lightbulb className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">从话题找灵感</span>
               </Link>
               <Link
                 href="/apps/calendar"

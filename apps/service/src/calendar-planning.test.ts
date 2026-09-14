@@ -129,13 +129,14 @@ test('planning session freezes personas, generates a candidate, and creates an i
   const requests: string[] = [];
   const fetcher: typeof fetch = async (_input, init) => {
     requests.push(String(init?.body || ''));
+    const actorIds = [...new Set([...String(init?.body || '').matchAll(/\[ID: (actor_[^\]]+)\]/g)].map(match => match[1]))];
     return Response.json({ choices: [{ message: { content: JSON.stringify({
       schemaVersion: 1,
       activity: { title: '甲的生日惊喜派对', theme: '为甲准备惊喜生日会', location: '天台', rules: '保密', overview: '大家一起为甲准备惊喜派对。' },
-      actorRoles: [],
+      actorRoles: actorIds.map(actorId => ({ actorId, activityRole: '参与庆祝' })),
       stages: [
-        { clientId: 'plan_s1', title: '准备', actorIds: [], location: '天台', description: '布置场地', requiredBeats: ['完成布置'], endCondition: '准备完成' },
-        { clientId: 'plan_s2', title: '庆祝', actorIds: [], location: '天台', description: '庆祝生日', requiredBeats: ['送上蛋糕'], endCondition: '活动结束' },
+        { clientId: 'plan_s1', title: '准备', actorIds, location: '天台', description: '布置场地', requiredBeats: ['完成布置'], endCondition: '准备完成' },
+        { clientId: 'plan_s2', title: '庆祝', actorIds, location: '天台', description: '庆祝生日', requiredBeats: ['送上蛋糕'], endCondition: '活动结束' },
       ],
     }) } }] });
   };

@@ -127,6 +127,17 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   return (
     <div className="w-full bg-paper text-ink py-5">
       <PageContainer className="space-y-4">
+        {document.activity.planningBasis?.inspiration && (
+          <details className="rounded-lg border border-border-default bg-surface p-3 text-sm">
+            <summary className="cursor-pointer font-semibold">灵感来源 · {document.activity.planningBasis.inspiration.ideaName}</summary>
+            <p className="mt-2">{document.activity.planningBasis.inspiration.adaptation}</p>
+            {document.activity.planningBasis.inspiration.topics.map(topic => <p key={topic.id} className="mt-2"><strong>{topic.title}</strong>：{topic.summary}</p>)}
+            {(document.activity.planningBasis.inspiration.sources ?? []).map((source, index) => <div key={index} className="mt-2 text-muted">
+              {/^(https?:)\/\//.test(source.url) ? <a href={source.url} target="_blank" rel="noreferrer" className="underline">{source.sourceName} · {source.documentLocator || '查看来源'}</a> : <span>{source.sourceName} · {source.documentLocator}</span>}
+              <p>{source.excerpt}</p>
+            </div>)}
+          </details>
+        )}
         {/* 对象页头（§8.5）：活动名、保存/版本状态与当前主要动作固定在页头。 */}
         <PageHeader
           backHref="/apps/activities"
