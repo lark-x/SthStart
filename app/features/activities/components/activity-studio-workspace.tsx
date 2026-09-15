@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   Settings2,
@@ -18,6 +19,7 @@ import {
   Clock,
   Compass,
   FileCheck,
+  Bookmark,
 } from 'lucide-react';
 import type { Activity, ContentDocument } from '@sthstart/contracts';
 import { useActivity, useActivityDraft } from '../queries';
@@ -27,10 +29,14 @@ import { StagesEditor } from './stages-editor';
 import { RecordsEditor } from './records-editor';
 import { MediaWorkstation } from './media-workstation';
 import { PlaybackWorkstation } from './playback-workstation';
+import { ActivityCreationProfile } from './creation-profile-picker';
+import { ReworkPanel } from './rework-panel';
 import { GenerationModal } from './generation-modal';
+import { ProductionOverview } from './production-overview';
 import { HistoryDrawer } from './history-drawer';
 import { ExportModal } from './export-modal';
 import { ImageWorkbench } from './image-workbench';
+import { ActivityPresetsModal } from './activity-presets-modal';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -46,16 +52,25 @@ interface ActivityStudioWorkspaceProps {
 }
 
 export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceProps) {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<'settings' | 'records' | 'media' | 'playback'>('records');
 
   // Modals & Drawers state
   const [generationModalOpen, setGenerationModalOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [reworkOpen,setReworkOpen]=useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [presetsModalOpen, setPresetsModalOpen] = useState(false);
   const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'settings' || tab === 'records' || tab === 'media' || tab === 'playback') setActiveTab(tab);
+    if (searchParams.get('jobId')) setGenerationModalOpen(true);
+  }, [searchParams]);
+
   // Focus stage in records tab
-  const [focusedStageId, setFocusedStageId] = useState<string | undefined>(undefined);
+  const [focusedStageId, setFocusedStageId] = useState<string | undefined>(searchParams.get('stageId')||undefined);
 
   // Queries
   const { data: activityData, isLoading: activityLoading, error: activityError, refetch: refetchActivity } =
@@ -65,6 +80,12 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
   const draft = useStudioDraft(activityId, draftData?.draft);
   const { document, status: saveStatus } = draft;
+  useEffect(()=>{
+    if(!document)return;
+    const record=searchParams.get('recordId');const actor=searchParams.get('actorId');const stage=searchParams.get('stageId');const fact=searchParams.get('factId');
+    const frame=requestAnimationFrame(()=>{const target=window.document.getElementById(record?`record-${record}`:actor?`actor-${actor}`:stage?`stage-${stage}`:fact?`fact-${fact}`:'');if(target instanceof HTMLDetailsElement)target.open=true;target?.scrollIntoView({block:'center',behavior:'smooth'});});
+    return ()=>cancelAnimationFrame(frame);
+  },[searchParams,activeTab,!!document]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [serverDraft, setServerDraft] = useState<{ document: ContentDocument; draftVersion: number } | null>(null);
@@ -229,6 +250,17 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             </Button>
 
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPresetsModalOpen(true)}
+              className="flex h-8 items-center gap-1.5 text-sm"
+            >
+              <Bookmark className="h-3.5 w-3.5 text-muted" />
+              <span className="hidden sm:inline">预设/模板</span>
+              <span className="sm:hidden">预设</span>
+            </Button>
+
+            <Button
               size="sm"
               onClick={handleCommitDraft}
               disabled={committing || saveStatus === 'conflict' || saveStatus === 'error'}
@@ -259,6 +291,22 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             <Button onClick={() => { draft.resolve(serverDraft, false); setServerDraft(null); }}>改用服务器草稿</Button>
           </div>
         </section>}
+
+        {/* 活动生产流水线概览条 (M1) */}
+        <ReworkPanel open={reworkOpen} onOpenChange={setReworkOpen} activityId={activityId} headVersion={activity.headVersion} document={document} onSaved={() => { void refetchActivity(); }} />
+        <ProductionOverview headVersion={activity.headVersion} onReview={()=>setReworkOpen(true)}
+          activityId={activityId}
+          onAction={(action) => {
+            if (action === 'generate_text' || action === 'review_candidates') {
+              setGenerationModalOpen(true);
+            } else if (action === 'preview_export') {
+              setExportModalOpen(true);
+            }
+          }}
+          onOpenBatchCandidates={() => setGenerationModalOpen(true)}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+        />
+
         {/* 工作模式：设定 / 记录 / 素材 / 回放，使用页级 tab 语义（§7.4）。 */}
         <PageTabs
           ariaLabel="活动工作模式"
@@ -337,8 +385,27 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                   <div className="flex flex-wrap gap-1.5 border-t border-border-subtle pt-2">
                     <span className="text-xs text-muted">参与角色：</span>
                     {actors.map((actor) => (
-                      <Badge key={actor.id} variant="outline" className="text-xs bg-surface">{actor.displayName}</Badge>
+                      <details key={actor.id} id={`actor-${actor.id}`} className="w-full rounded border border-border-default p-2"><summary className="cursor-pointer text-sm">{actor.displayName} · 修改本场设定</summary><div className="mt-2 space-y-2">
+                        <label className="block text-xs">服装<Input value={actor.outfitDescription} onChange={e=>handleUpdateDocument({...document,actors:actors.map(a=>a.id===actor.id?{...a,outfitDescription:e.target.value}:a)})}/></label>
+                        <label className="block text-xs">本场职责<Input value={actor.activityRole} onChange={e=>handleUpdateDocument({...document,actors:actors.map(a=>a.id===actor.id?{...a,activityRole:e.target.value}:a)})}/></label>
+                        <label className="block text-xs">身份描述<Input value={String(actor.persona.identity||'')} onChange={e=>handleUpdateDocument({...document,actors:actors.map(a=>a.id===actor.id?{...a,persona:{...a.persona,identity:e.target.value}}:a)})}/></label>
+                        <p className="text-xs text-muted">修改仅用于本场活动；保存新版本后可查看影响清单。外观提示词和参考图可在媒体提示词工作台继续调整。</p>
+                      </div></details>
                     ))}
+                  </div>
+                  <ActivityCreationProfile activityId={activity.id} headVersion={activity.headVersion} value={document.activity.creationProfile} disabled={saveStatus!=='saved'} onApplied={()=>{void refetchActivity();void refetchDraft();}}/>
+                  <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
+                    <span className="text-xs text-muted">复用本场活动设置</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPresetsModalOpen(true)}
+                      className="text-xs flex items-center gap-1.5"
+                    >
+                      <Bookmark className="h-3.5 w-3.5 text-accent" />
+                      另存为模板 / 预设管理
+                    </Button>
                   </div>
                 </div>
               )}
@@ -413,7 +480,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         />
 
         {/* Export Modal */}
-        <ExportModal
+        <ExportModal creationProfile={document.activity.creationProfile}
           open={exportModalOpen}
           onOpenChange={setExportModalOpen}
           activity={activity}
@@ -428,6 +495,16 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             document={document}
             initialSlotId={workbenchSlotId}
             currentMediaRevision={activityData.currentMediaRevision}
+          />
+        )}
+
+        {/* Activity Presets Modal */}
+        {presetsModalOpen && document && (
+          <ActivityPresetsModal
+            isOpen={presetsModalOpen}
+            onClose={() => setPresetsModalOpen(false)}
+            activity={activity}
+            document={document}
           />
         )}
       </PageContainer>

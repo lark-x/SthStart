@@ -16,6 +16,7 @@ import {
   syncMediaGenerationOutputs,
   triggerTextGeneration,
   adoptCandidate,
+  adoptCandidateBatch,
   createCheckpoint,
   restoreCheckpoint,
   stageActivityZip,
@@ -27,9 +28,29 @@ import {
   retryImageAttempt,
   cancelImageAttempt,
   previewImageImpact,
+  prepareMediaBatch,
+  createMediaBatch,
+  cancelMediaBatch,
+  retryFailedBatchItems,
+  createActivityPreset,
+  updateActivityPreset,
+  deleteActivityPreset,
+  instantiateActivityTemplate,
   type CreateActivityInput,
 } from './api';
-import type { Activity, ContentDocument, MediaRevisionDocument, PlaybackDocument, ImageConfigDocument } from '@sthstart/contracts';
+import type {
+  Activity,
+  ContentDocument,
+  MediaRevisionDocument,
+  PlaybackDocument,
+  ImageConfigDocument,
+  AdoptCandidateBatchInput,
+  PrepareMediaBatchInput,
+  CreateMediaBatchInput,
+  CreateActivityPresetInput,
+  UpdateActivityPresetInput,
+  InstantiateTemplateInput,
+} from '@sthstart/contracts';
 
 export function useCreateActivity() {
   const queryClient = useQueryClient();
@@ -179,6 +200,8 @@ export function useGenerateAutoPlayback() {
         viewerActorId?: string;
         speed?: number;
         autoPlay?: boolean;
+        mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
+        expandMedia?: boolean;
       };
     }) => generateAutoPlayback(id, options),
     onSuccess: (_, variables) => {
@@ -297,6 +320,29 @@ export function useAdoptCandidate() {
       queryClient.invalidateQueries({ queryKey: activityKeys.revisions(variables.id) });
       queryClient.invalidateQueries({ queryKey: activityKeys.candidate(variables.id, variables.candidateId) });
       queryClient.invalidateQueries({ queryKey: activityKeys.jobs(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.production(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.list() });
+    },
+  });
+}
+
+export function useAdoptCandidateBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: AdoptCandidateBatchInput;
+    }) => adoptCandidateBatch(id, input),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.draft(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.revisions(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.candidates(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.jobs(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.production(variables.id) });
       queryClient.invalidateQueries({ queryKey: activityKeys.list() });
     },
   });
@@ -453,5 +499,117 @@ export function usePreviewImageImpact() {
         newValue: unknown;
       };
     }) => previewImageImpact(id, input),
+  });
+}
+
+export function usePrepareMediaBatch() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: PrepareMediaBatchInput;
+    }) => prepareMediaBatch(id, input),
+  });
+}
+
+export function useCreateMediaBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: CreateMediaBatchInput;
+    }) => createMediaBatch(id, input),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.mediaBatches(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.production(variables.id) });
+    },
+  });
+}
+
+export function useCancelMediaBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      batchId,
+    }: {
+      id: string;
+      batchId: string;
+    }) => cancelMediaBatch(id, batchId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.mediaBatches(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.mediaBatch(variables.id, variables.batchId) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.production(variables.id) });
+    },
+  });
+}
+
+export function useRetryFailedBatchItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      batchId,
+      itemIds,
+    }: {
+      id: string;
+      batchId: string;
+      itemIds?: string[];
+    }) => retryFailedBatchItems(id, batchId, itemIds),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.mediaBatches(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.mediaBatch(variables.id, variables.batchId) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.production(variables.id) });
+    },
+  });
+}
+
+// 7. Activity Reusable Presets (M5)
+export function useCreateActivityPreset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateActivityPresetInput) => createActivityPreset(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.presets() });
+      queryClient.invalidateQueries({ queryKey: activityKeys.presets(data.kind) });
+    },
+  });
+}
+
+export function useUpdateActivityPreset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateActivityPresetInput }) =>
+      updateActivityPreset(id, input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.presets() });
+      queryClient.invalidateQueries({ queryKey: activityKeys.presets(data.kind) });
+      queryClient.invalidateQueries({ queryKey: activityKeys.preset(data.id) });
+    },
+  });
+}
+
+export function useDeleteActivityPreset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteActivityPreset(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.presets() });
+    },
+  });
+}
+
+export function useInstantiateActivityTemplate() {
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: InstantiateTemplateInput }) =>
+      instantiateActivityTemplate(id, input),
   });
 }

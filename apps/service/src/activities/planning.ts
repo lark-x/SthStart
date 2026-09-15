@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { applySavedActivityTemplate } from './presets.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
   ActorPersona,
@@ -25,7 +26,7 @@ import type {
   ResearchEvidenceBasis,
   ResearchTask,
 } from '@sthstart/contracts';
-import { buildActivityDocument, isUnresolvedPlanningActor } from '@sthstart/contracts';
+import { normalizeRoleMappings, buildActivityDocument, isUnresolvedPlanningActor } from '@sthstart/contracts';
 import { authenticateAdmin } from '../access.js';
 import type { ServiceConfig } from '../config.js';
 import { nowIso, type ServiceDatabase } from '../database.js';
@@ -79,6 +80,8 @@ function normalizeForm(value: unknown): ActivityPlanningFormExtended {
   const unique = new Map(characters.map((item) => [item.characterId, item]));
   return {
     templateId: stringOr('templateId', 'blank') || 'blank',
+    templateActorMappings: source.templateActorMappings ? normalizeRoleMappings(source.templateActorMappings) : undefined,
+    creationProfile: source.creationProfile && typeof source.creationProfile === 'object' ? source.creationProfile as Record<string,unknown> : undefined,
     title: stringOr('title'),
     type: stringOr('type'),
     theme: stringOr('theme'),
@@ -1040,6 +1043,15 @@ export function buildPlanningPersonaDraft(options: PlanningServiceOptions, sessi
   };
 }
 
+function mapFormTemplateRoles(form: ActivityPlanningFormExtended, document: ContentDocument) {
+  if (!form.templateActorMappings) return undefined;
+  return Object.fromEntries(Object.entries(form.templateActorMappings).map(([role,ids]) => [role,ids.map(id => {
+    const actor = document.actors.find(actor => actor.sourceCharacterId === id || actor.id === id);
+    if (!actor) throw badRequest('template_actor_missing', '模板职责中的角色已移除，请重新选择');
+    return actor.id;
+  })]));
+}
+
 export function createPlanningSession(options: PlanningServiceOptions, body: { form: unknown }) {
   const planning = new ActivityPlanningStore(options.database);
   const form = normalizeForm(body?.form);
@@ -1057,6 +1069,8 @@ export function createPlanningSession(options: PlanningServiceOptions, body: { f
     birthdayActorIds,
     scheduledDate: form.scheduledDate,
   });
+  document.activity.creationProfile = form.creationProfile;
+  applySavedActivityTemplate(options.database, document, form.templateId, undefined, mapFormTemplateRoles(form, document));
   const session = planning.createSession({ form, document, characters: refs });
   return buildSessionResponse(options.database, session);
 }
@@ -1223,6 +1237,8 @@ export function registerPlanningRoutes(app: FastifyInstance, options: PlanningSe
         templateId: form.templateId, title: form.title || session.document.activity.title, type: form.type, theme: form.theme,
         location: form.location, rules: form.rules, actors, birthdayActorIds, scheduledDate: form.scheduledDate,
       });
+      document.activity.creationProfile = form.creationProfile;
+      applySavedActivityTemplate(options.database, document, form.templateId, session.document, mapFormTemplateRoles(form, document));
       // 研究候选占位角色与已解析的联动角色不在 form.characters 里；表单改动后必须保住它们，
       // 否则阶段里的角色引用会指向不存在的人物。
       const excludedCandidates = new Set(form.selection?.excludedCharacterIds ?? []);

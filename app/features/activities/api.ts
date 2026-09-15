@@ -31,6 +31,18 @@ import type {
   ActivityPlanningPersonaDraft,
   ResearchTask,
   PlanningSelectionState,
+  ActivityProductionOverview,
+  AdoptCandidateBatchInput,
+  AdoptCandidateBatchOutput,
+  PrepareMediaBatchInput,
+  PrepareMediaBatchOutput,
+  CreateMediaBatchInput,
+  ActivityMediaBatch,
+  ActivityPresetKind,
+  ActivityReusablePreset,
+  CreateActivityPresetInput,
+  InstantiateTemplateInput,
+  UpdateActivityPresetInput,
 } from '@sthstart/contracts';
 
 export interface ActivityCapabilities {
@@ -221,6 +233,8 @@ export async function generateAutoPlayback(
     viewerActorId?: string;
     speed?: number;
     autoPlay?: boolean;
+    mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
+    expandMedia?: boolean;
   }
 ): Promise<{ playbackDocument: PlaybackDocument; savedRevisionId?: string }> {
   return postJson(`/api/admin/activities/${encodeURIComponent(id)}/playback/generate`, options || {});
@@ -316,6 +330,10 @@ export async function triggerTextGeneration(
   }
 ): Promise<ActivityJob> {
   return postJson(`/api/admin/activities/${encodeURIComponent(id)}/text-jobs`, input);
+}
+
+export async function retryActivityTextJob(id: string, jobId: string): Promise<ActivityJob> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/jobs/${encodeURIComponent(jobId)}/retry`, {});
 }
 
 export async function fetchActivityJobs(id: string): Promise<{ items: ActivityJob[] }> {
@@ -434,6 +452,17 @@ export async function adoptCandidate(
   });
 }
 
+export async function adoptCandidateBatch(
+  id: string,
+  input: AdoptCandidateBatchInput
+): Promise<AdoptCandidateBatchOutput> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/candidates/adopt-batch`, input);
+}
+
+export async function fetchActivityProductionOverview(id: string): Promise<ActivityProductionOverview> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/production`);
+}
+
 // 6. Checkpoints
 export async function fetchCheckpoints(id: string): Promise<{ items: ActivityCheckpoint[] }> {
   return getJson(`/api/admin/activities/${encodeURIComponent(id)}/checkpoints`);
@@ -462,7 +491,8 @@ export async function fetchCapabilities(): Promise<ActivityCapabilities> {
 export async function exportActivityPackage(
   id: string,
   options?: {
-    mode?: 'reader' | 'full';
+    mode?: 'reader' | 'project' | 'full' | 'hyperframes-project';
+    format?: 'reader' | 'project' | 'hyperframes-project';
     contentRevisionId?: string;
     mediaRevisionId?: string;
     playbackRevisionId?: string;
@@ -622,4 +652,86 @@ export async function fetchImageExecutionSnapshots(id: string, attemptId: string
 export async function fetchActivityCharacterSnapshot(characterId: string, version?: number): Promise<import('@sthstart/contracts').ActorSnapshot> {
   const query = version == null ? '' : `?version=${version}`;
   return getJson(`/api/admin/activities/characters/${encodeURIComponent(characterId)}/snapshot${query}`);
+}
+
+export async function prepareMediaBatch(
+  activityId: string,
+  input: PrepareMediaBatchInput,
+): Promise<PrepareMediaBatchOutput> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(activityId)}/media-batches/prepare`, input);
+}
+
+export async function createMediaBatch(
+  activityId: string,
+  input: CreateMediaBatchInput,
+): Promise<ActivityMediaBatch> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(activityId)}/media-batches`, input);
+}
+
+export async function fetchMediaBatches(
+  activityId: string,
+): Promise<{ items: ActivityMediaBatch[] }> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(activityId)}/media-batches`);
+}
+
+export async function fetchMediaBatch(
+  activityId: string,
+  batchId: string,
+): Promise<ActivityMediaBatch> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(activityId)}/media-batches/${encodeURIComponent(batchId)}`);
+}
+
+export async function cancelMediaBatch(
+  activityId: string,
+  batchId: string,
+): Promise<ActivityMediaBatch> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(activityId)}/media-batches/${encodeURIComponent(batchId)}/cancel`, {});
+}
+
+export async function retryFailedBatchItems(
+  activityId: string,
+  batchId: string,
+  itemIds?: string[],
+): Promise<ActivityMediaBatch> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(activityId)}/media-batches/${encodeURIComponent(batchId)}/retry-failed`, { itemIds });
+}
+
+// 6. Activity Reusable Presets (M5)
+export async function fetchActivityPresets(
+  kind?: ActivityPresetKind,
+): Promise<{ items: ActivityReusablePreset[] }> {
+  const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  return getJson(`/api/admin/activity-presets${query}`);
+}
+
+export async function fetchActivityPreset(
+  id: string,
+): Promise<ActivityReusablePreset> {
+  return getJson(`/api/admin/activity-presets/${encodeURIComponent(id)}`);
+}
+
+export async function createActivityPreset(
+  input: CreateActivityPresetInput,
+): Promise<ActivityReusablePreset> {
+  return postJson(`/api/admin/activity-presets`, input);
+}
+
+export async function updateActivityPreset(
+  id: string,
+  input: UpdateActivityPresetInput,
+): Promise<ActivityReusablePreset> {
+  return putJson(`/api/admin/activity-presets/${encodeURIComponent(id)}`, input);
+}
+
+export async function deleteActivityPreset(
+  id: string,
+): Promise<{ success: boolean }> {
+  return deleteJson(`/api/admin/activity-presets/${encodeURIComponent(id)}`);
+}
+
+export async function instantiateActivityTemplate(
+  id: string,
+  input: InstantiateTemplateInput,
+): Promise<any> {
+  return postJson(`/api/admin/activity-presets/${encodeURIComponent(id)}/instantiate`, input);
 }

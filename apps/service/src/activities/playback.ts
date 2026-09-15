@@ -11,6 +11,7 @@ export interface AutoPlaybackOptions {
   speed?: number; // 0.5 to 2.0, default 1.0
   expandMedia?: boolean;
   stageCardDurationMs?: number;
+  mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
 }
 
 function clamp(val: number, min: number, max: number): number {
@@ -28,6 +29,7 @@ export function generateAutoPlayback(
   const speed = options.speed && options.speed > 0 ? options.speed : 1.0;
   const expandMedia = options.expandMedia !== false;
   const stageCardMs = options.stageCardDurationMs ?? 1500;
+  const mode = options.mode || 'by_stage';
 
   const actions: PlaybackAction[] = [];
   let currentMs = 0;
@@ -54,6 +56,133 @@ export function generateAutoPlayback(
 
   const slotMap = new Map(content.mediaSlots.map((s) => [s.id, s]));
 
+  // Track active view & conversation to manage smooth transitions
+  let currentView: 'chat' | 'moments' | null = null;
+  let currentConvId: string | null = null;
+
+  const ensureView = (targetView: 'chat' | 'moments', targetConvId?: string) => {
+    if (targetView === 'chat') {
+      if (currentView !== 'chat' || currentConvId !== targetConvId) {
+        currentView = 'chat';
+        currentConvId = targetConvId || null;
+        addAction({
+          type: 'open_view',
+          atMs: currentMs,
+          durationMs: 500,
+          view: 'chat',
+          conversationId: targetConvId,
+        });
+      }
+    } else {
+      if (currentView !== 'moments') {
+        currentView = 'moments';
+        currentConvId = null;
+        addAction({
+          type: 'open_view',
+          atMs: currentMs,
+          durationMs: 600,
+          view: 'moments',
+        });
+      }
+    }
+  };
+
+  const emitMessage = (msg: (typeof content.messages)[0]) => {
+    const charCount = (msg.text || '').length;
+    const readMs = clamp(Math.round((1200 + (charCount / 6) * 1000) / speed), 1500, 10000);
+
+    addAction({
+      type: 'reveal_message',
+      atMs: currentMs,
+      durationMs: readMs,
+      view: 'chat',
+      conversationId: msg.conversationId,
+      visibleThroughOrder: msg.storyOrder,
+      targetType: 'message',
+      targetId: msg.id,
+      actorId: msg.speakerActorId,
+      text: msg.text,
+    });
+
+    if (expandMedia && msg.mediaSlotIds && msg.mediaSlotIds.length > 0) {
+      for (const slotId of msg.mediaSlotIds) {
+        const slot = slotMap.get(slotId);
+        const assetKey = slotAssetMap.get(slotId);
+        if (slot && assetKey) {
+          const modalDurationMs = slot.kind === 'video' ? 5000 : 3000;
+          addAction({
+            type: 'open_media',
+            atMs: currentMs,
+            durationMs: modalDurationMs,
+            slotId,
+            assetKey,
+            kind: slot.kind,
+            sourceInMs: 0,
+            volume: 1.0,
+          });
+
+          addAction({
+            type: 'close_media',
+            atMs: currentMs,
+            durationMs: 400,
+          });
+        }
+      }
+    }
+  };
+
+  const emitPost = (post: (typeof content.posts)[0]) => {
+    const postMs = clamp(Math.round((1500 + (post.text.length / 5) * 1000) / speed), 2000, 8000);
+
+    addAction({
+      type: 'scroll_to',
+      atMs: currentMs,
+      durationMs: postMs,
+      view: 'moments',
+      targetType: 'post',
+      targetId: post.id,
+      throughOrder: post.storyOrder,
+    });
+
+    const postComments = content.comments
+      .filter((c) => c.postId === post.id)
+      .sort((a, b) => a.storyOrder - b.storyOrder);
+
+    if (postComments.length > 0) {
+      addAction({
+        type: 'reveal_comments',
+        atMs: currentMs,
+        durationMs: 1500,
+        view: 'moments',
+        postId: post.id,
+        throughOrder: postComments[postComments.length - 1].storyOrder,
+      });
+    }
+
+    if (expandMedia && post.mediaSlotIds && post.mediaSlotIds.length > 0) {
+      for (const slotId of post.mediaSlotIds) {
+        const slot = slotMap.get(slotId);
+        const assetKey = slotAssetMap.get(slotId);
+        if (slot && assetKey) {
+          const modalMs = slot.kind === 'video' ? 5000 : 3000;
+          addAction({
+            type: 'open_media',
+            atMs: currentMs,
+            durationMs: modalMs,
+            slotId,
+            assetKey,
+            kind: slot.kind,
+          });
+          addAction({
+            type: 'close_media',
+            atMs: currentMs,
+            durationMs: 400,
+          });
+        }
+      }
+    }
+  };
+
   // Sort stages
   const stages = [...content.stages].sort((a, b) => a.order - b.order);
 
@@ -75,123 +204,53 @@ export function generateAutoPlayback(
       .filter((p) => p.stageId === stage.id)
       .sort((a, b) => a.storyOrder - b.storyOrder);
 
-    // 2. Chat messages in stage
-    if (stageMessages.length > 0) {
-      const convId = stageMessages[0].conversationId;
-      addAction({
-        type: 'open_view',
-        atMs: currentMs,
-        durationMs: 500,
-        view: 'chat',
-        conversationId: convId,
+    if (mode === 'chat_only') {
+      for (const msg of stageMessages) {
+        ensureView('chat', msg.conversationId);
+        emitMessage(msg);
+      }
+    } else if (mode === 'moments_only') {
+      for (const post of stagePosts) {
+        ensureView('moments');
+        emitPost(post);
+      }
+    } else if (mode === 'story_order') {
+      // Interleave messages and posts by storyOrder within this stage
+      type CombinedItem =
+        | { kind: 'message'; order: number; id: string; msg: (typeof content.messages)[0] }
+        | { kind: 'post'; order: number; id: string; post: (typeof content.posts)[0] };
+
+      const items: CombinedItem[] = [
+        ...stageMessages.map((m) => ({ kind: 'message' as const, order: m.storyOrder, id: m.id, msg: m })),
+        ...stagePosts.map((p) => ({ kind: 'post' as const, order: p.storyOrder, id: p.id, post: p })),
+      ].sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        if (a.kind !== b.kind) return a.kind === 'message' ? -1 : 1;
+        return a.id.localeCompare(b.id);
       });
 
-      for (const msg of stageMessages) {
-        const charCount = (msg.text || '').length;
-        const readMs = clamp(Math.round((1200 + (charCount / 6) * 1000) / speed), 1500, 10000);
-
-        addAction({
-          type: 'reveal_message',
-          atMs: currentMs,
-          durationMs: readMs,
-          view: 'chat',
-          conversationId: msg.conversationId,
-          visibleThroughOrder: msg.storyOrder,
-          targetType: 'message',
-          targetId: msg.id,
-          actorId: msg.speakerActorId,
-          text: msg.text,
-        });
-
-        // If message has media and expandMedia is enabled
-        if (expandMedia && msg.mediaSlotIds && msg.mediaSlotIds.length > 0) {
-          for (const slotId of msg.mediaSlotIds) {
-            const slot = slotMap.get(slotId);
-            const assetKey = slotAssetMap.get(slotId);
-            if (slot && assetKey) {
-              const modalDurationMs = slot.kind === 'video' ? 5000 : 3000;
-              addAction({
-                type: 'open_media',
-                atMs: currentMs,
-                durationMs: modalDurationMs,
-                slotId,
-                assetKey,
-                kind: slot.kind,
-                sourceInMs: 0,
-                volume: 1.0,
-              });
-
-              addAction({
-                type: 'close_media',
-                atMs: currentMs,
-                durationMs: 400,
-              });
-            }
-          }
+      for (const item of items) {
+        if (item.kind === 'message') {
+          ensureView('chat', item.msg.conversationId);
+          emitMessage(item.msg);
+        } else {
+          ensureView('moments');
+          emitPost(item.post);
         }
       }
-    }
-
-    // 3. Moments posts in stage
-    if (stagePosts.length > 0) {
-      addAction({
-        type: 'open_view',
-        atMs: currentMs,
-        durationMs: 600,
-        view: 'moments',
-      });
-
-      for (const post of stagePosts) {
-        const postMs = clamp(Math.round((1500 + (post.text.length / 5) * 1000) / speed), 2000, 8000);
-
-        addAction({
-          type: 'scroll_to',
-          atMs: currentMs,
-          durationMs: postMs,
-          view: 'moments',
-          targetType: 'post',
-          targetId: post.id,
-          throughOrder: post.storyOrder,
-        });
-
-        // Comments for this post
-        const postComments = content.comments
-          .filter((c) => c.postId === post.id)
-          .sort((a, b) => a.storyOrder - b.storyOrder);
-
-        if (postComments.length > 0) {
-          addAction({
-            type: 'reveal_comments',
-            atMs: currentMs,
-            durationMs: 1500,
-            view: 'moments',
-            postId: post.id,
-            throughOrder: postComments[postComments.length - 1].storyOrder,
-          });
+    } else {
+      // mode === 'by_stage' (default): Chat first, then Moments
+      if (stageMessages.length > 0) {
+        for (const msg of stageMessages) {
+          ensureView('chat', msg.conversationId);
+          emitMessage(msg);
         }
+      }
 
-        // Expand post media if available
-        if (expandMedia && post.mediaSlotIds && post.mediaSlotIds.length > 0) {
-          for (const slotId of post.mediaSlotIds) {
-            const slot = slotMap.get(slotId);
-            const assetKey = slotAssetMap.get(slotId);
-            if (slot && assetKey) {
-              const modalMs = slot.kind === 'video' ? 5000 : 3000;
-              addAction({
-                type: 'open_media',
-                atMs: currentMs,
-                durationMs: modalMs,
-                slotId,
-                assetKey,
-                kind: slot.kind,
-              });
-              addAction({
-                type: 'close_media',
-                atMs: currentMs,
-                durationMs: 400,
-              });
-            }
-          }
+      if (stagePosts.length > 0) {
+        for (const post of stagePosts) {
+          ensureView('moments');
+          emitPost(post);
         }
       }
     }

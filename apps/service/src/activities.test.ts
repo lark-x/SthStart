@@ -416,12 +416,16 @@ test('Activity Studio: media asset upload, range streaming, slot binding, and pl
   });
   const { app } = await createService({ config, database, secrets: new SecretStore({}) });
 
+  // Create an actual slot before selecting media for it.
+  const mediaDocument = createMinimalDocument();
+  mediaDocument.mediaSlots.push({ id: 'slot_1', kind: 'image', stageId: mediaDocument.stages[0].id,
+    caption: '营地照片', shotDescription: '篝火留念', actorIds: ['actor_paimon'], sourceFactIds: [] });
   // Create activity
   const createRes = await app.inject({
     method: 'POST',
     url: '/api/v1/admin/activities',
     headers: adminHeaders,
-    payload: { document: createMinimalDocument() },
+    payload: { document: mediaDocument },
   });
   const activityId = createRes.json().activity.id;
 
@@ -485,7 +489,7 @@ test('Activity Studio: media asset upload, range streaming, slot binding, and pl
       ],
     },
   });
-  assert.equal(mediaRes.statusCode, 201);
+  assert.equal(mediaRes.statusCode, 201, mediaRes.body);
   const mediaRev = mediaRes.json();
   assert.ok(mediaRev.id);
   assert.equal(mediaRev.slotBindings.length, 1);
@@ -1111,7 +1115,13 @@ test('Activity Studio: plan locked stage preservation, downstream needs_review, 
     assert.equal(sr.reviewState, 'needs_review');
   }
 
-  // 2. Downstream stage reviewState marking on stage-level adopt
+  // 2. Downstream stage reviewState marking on stage-level adopt (unlock stage_1 first)
+  const currentDraft = store.getDraft(activityId)!;
+  store.updateDraft(activityId, currentDraft.draftVersion, {
+    ...currentDraft.document,
+    stages: currentDraft.document.stages.map((s) => s.id === 'stage_1' ? { ...s, locked: false } : s),
+  });
+
   const stageCandidate = store.createCandidate({
     activityId,
     baseRevisionId: headRevId,

@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { AlertTriangle, CalendarDays, Compass, ExternalLink, Plus, RefreshCw, Sparkles, Trash2, UserPlus, Wand2 } from 'lucide-react';
-import { ACTIVITY_TEMPLATES, buildActivityDocument, findActivityTemplate } from '@sthstart/contracts';
+import { ACTIVITY_TEMPLATES, buildActivityDocument, findActivityTemplate, instantiateTemplateDocument, suggestRoleMappings, templateRoles } from '@sthstart/contracts';
 import type { ActorSnapshot, ActivityPlanningCandidate, ActivityPlanningJob, ContentDocument, StageDefinition } from '@sthstart/contracts';
+import { TemplateRoleMapping } from '@/app/features/activities/components/template-role-mapping';
+import { CreationProfilePicker } from '@/app/features/activities/components/creation-profile-picker';
 import { CharacterPickerDialog } from '@/app/features/activities/components/character-picker-dialog';
 import { useCreateActivity } from '@/app/features/activities/mutations';
 import { activityKeys } from '@/app/lib/query-keys';
@@ -18,7 +20,7 @@ import {
   triggerPlanningJob,
   updatePlanningSession,
 } from '@/app/features/activities/api';
-import { useActivityCapabilities } from '@/app/features/activities/queries';
+import { useActivityCapabilities, useActivityPresets } from '@/app/features/activities/queries';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer, WorkbenchColumns } from '@/app/components/shared/page-layout';
 import { Input } from '@/app/components/ui/input';
@@ -101,6 +103,8 @@ export function NewActivityForm() {
 
   const template = findActivityTemplate(initialTemplate) || findActivityTemplate('blank')!;
   const [templateId, setTemplateId] = useState(template.id);
+  const [roleMappings, setRoleMappings] = useState<Record<string, Record<string,string[]>>>({});
+  const [creationProfile, setCreationProfile] = useState<Record<string,unknown>>();
   const [title, setTitle] = useState('');
   const [type, setType] = useState(template.type);
   const [theme, setTheme] = useState(template.theme);
@@ -129,6 +133,9 @@ export function NewActivityForm() {
   const queryClient = useQueryClient();
   const characterParam = initialCharacters.join(',');
   const { data: capabilities } = useActivityCapabilities();
+  const { data: userPresetsData } = useActivityPresets('activity_template');
+  const userTemplates = userPresetsData?.items || [];
+  const userTemplateMap = useMemo(() => new Map(userTemplates.map((t) => [t.id, t])), [userTemplates]);
 
   // 模型未就绪（或状态仍在加载）时禁用 AI 生成入口；手动创建不受影响。
   const llmReady = capabilities ? (capabilities.llmStatus ? capabilities.llmStatus.ready : capabilities.llm) : null;
@@ -144,14 +151,14 @@ export function NewActivityForm() {
         for (const id of characterParam.split(',')) snapshots.push(await fetchActivityCharacterSnapshot(id));
         const names = snapshots.map((snapshot) => snapshot.displayName);
         setActors(snapshots);
-        setBirthdayActorIds(snapshots.map((snapshot) => snapshot.id));
-        if (findActivityTemplate(initialTemplate)?.id === 'birthday') setTitle(names.length > 1 ? `${names.join('、')}的生日聚会` : `${names[0]}的生日聚会`);
-        setStages(stageDraftsFromTemplate(initialTemplate, names));
-      } catch (error) {
-        setErrorMsg(error instanceof Error ? error.message : '读取角色快照失败');
+        setBirthdayActorIds(snapshots.map((s) => s.id));
+        setStages(stageDraftsFromTemplate(template.id, template.id === 'birthday' ? names : []));
+        if (names.length) setTitle(`${names.join('、')}的生日会`);
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : '预填角色失败');
       }
     })();
-  }, [characterParam, initialTemplate]);
+  }, [characterParam, template.id]);
 
   // 轮询企划任务直到进入终态。
   useEffect(() => {
@@ -173,12 +180,35 @@ export function NewActivityForm() {
     return () => clearInterval(timer);
   }, [sessionId, job]);
 
-  const birthdayNames = useMemo(
-    () => actors.filter((actor) => birthdayActorIds.includes(actor.id)).map((actor) => actor.displayName),
-    [actors, birthdayActorIds],
-  );
+  const birthdayNames = useMemo(() => {
+    const idSet = new Set(birthdayActorIds);
+    return actors.filter((actor) => idSet.has(actor.id)).map((actor) => actor.displayName);
+  }, [actors, birthdayActorIds]);
 
   const applyTemplate = (nextTemplateId: string) => {
+    const userPreset = userTemplateMap.get(nextTemplateId);
+    if (userPreset) {
+      const payload = (userPreset.payload || {}) as {
+        activityType?: string;
+        theme?: string;
+        location?: string;
+        rules?: string;
+        stages?: Array<{ title: string; instruction?: string; endCondition?: string }>;
+      };
+      setTemplateId(userPreset.id);
+      setType(payload.activityType || '自定义活动');
+      setTheme(payload.theme || '');
+      setLocation(payload.location || '');
+      setRules(payload.rules || '');
+      if (Array.isArray(payload.stages) && payload.stages.length > 0) {
+        setStages(payload.stages.map((s) => ({
+          title: s.title || '阶段',
+          instruction: s.instruction || '',
+          endCondition: s.endCondition || '',
+        })));
+      }
+      return;
+    }
     const next = findActivityTemplate(nextTemplateId) || findActivityTemplate('blank')!;
     setTemplateId(next.id);
     setType(next.type);
@@ -191,6 +221,23 @@ export function NewActivityForm() {
   // 模板切换前先展示会改变的内容，用户确认后才替换。
   const templateChanges = useMemo(() => {
     if (!pendingTemplate) return [];
+    const userPreset = userTemplateMap.get(pendingTemplate);
+    if (userPreset) {
+      const payload = (userPreset.payload || {}) as {
+        activityType?: string;
+        theme?: string;
+        location?: string;
+        rules?: string;
+        stages?: Array<{ title: string }>;
+      };
+      const changes: string[] = [];
+      if (payload.activityType !== type) changes.push(`活动类型 → ${payload.activityType || '（清空）'}`);
+      if (payload.theme !== theme) changes.push(`活动主题 → ${payload.theme || '（清空）'}`);
+      if (payload.location !== location) changes.push(`活动地点 → ${payload.location || '（清空）'}`);
+      if (payload.rules !== rules) changes.push(`规则约束 → ${payload.rules || '（清空）'}`);
+      if (payload.stages?.length) changes.push(`阶段安排 → ${payload.stages.map((s) => s.title).join('、')}`);
+      return changes;
+    }
     const next = findActivityTemplate(pendingTemplate);
     if (!next) return [];
     const changes: string[] = [];
@@ -200,7 +247,7 @@ export function NewActivityForm() {
     if (next.rules !== rules) changes.push(`规则约束 → ${next.rules || '（清空）'}`);
     changes.push(`阶段安排 → ${next.stages.map((stage) => stage.title).join('、')}`);
     return changes;
-  }, [pendingTemplate, type, theme, location, rules]);
+  }, [pendingTemplate, type, theme, location, rules, userTemplateMap]);
 
   const buildDocument = (base?: ContentDocument | null): ContentDocument => {
     const source = base || buildActivityDocument({
@@ -214,23 +261,22 @@ export function NewActivityForm() {
       birthdayActorIds,
       scheduledDate: scheduledDate || null,
     });
-    const localStages: StageDefinition[] = stages.map((stage, index) => {
-      const existing = source.stages[index];
-      return {
-        id: existing?.id || `stage_${index + 1}`,
-        title: stage.title,
-        order: index + 1,
-        actorIds: source.actors.map((actor) => actor.id),
-        location: location || source.activity.location,
-        instruction: stage.instruction,
-        requiredBeats: existing?.requiredBeats || [],
-        locked: false,
-        endCondition: stage.endCondition,
-      };
-    });
+    const savedTemplate = userTemplateMap.get(templateId);
+    const localStages: StageDefinition[] = stages.map((stage,index)=>({...stage,id:source.stages[index]?.id||`stage_${index+1}`,order:index+1,actorIds:source.actors.map(a=>a.id),location,requiredBeats:[],locked:false}));
+    if(savedTemplate) {
+      const originalStages = (savedTemplate.payload.stages || []) as Array<Record<string,unknown>>;
+      const editedPreset = {...savedTemplate,payload:{...savedTemplate.payload,stages:stages.map((stage,index)=>({roleSlotIds:templateRoles(savedTemplate.payload).map(r=>r.id),...originalStages[index],...stage}))}};
+      const mapActorIds=(ids:string[])=>ids.map(id=>source.actors.some(a=>a.id===id)?id:source.actors.find(a=>a.sourceCharacterId&&a.sourceCharacterId===actors.find(original=>original.id===id)?.sourceCharacterId)?.id||id);
+      const mappedBirthdays=mapActorIds(birthdayActorIds);
+      const mappings=roleMappings[templateId]?Object.fromEntries(Object.entries(roleMappings[templateId]).map(([role,ids])=>[role,mapActorIds(ids)])):suggestRoleMappings(savedTemplate.payload,source.actors,mappedBirthdays[0]);
+      const current = {...source,activity:{...source.activity,title:title.trim()||source.activity.title,type,theme,location,rules,scheduledDate:scheduledDate||null,birthdayActorIds:mappedBirthdays,creationProfile}};
+      const result = instantiateTemplateDocument(current,editedPreset,mappings,source);
+      result.activity.templateSnapshot!.payload=structuredClone(savedTemplate.payload);
+      return result;
+    }
     return {
       ...source,
-      activity: { ...source.activity, title: title.trim() || source.activity.title, type, theme, location, rules, scheduledDate: scheduledDate || null, templateId, birthdayActorIds },
+      activity: { ...source.activity, title: title.trim() || source.activity.title, type, theme, location, rules, scheduledDate: scheduledDate || null, templateId, birthdayActorIds, creationProfile },
       stages: localStages,
     };
   };
@@ -260,6 +306,8 @@ export function NewActivityForm() {
    */
   const ensureSession = async (): Promise<{ id: string; document: ContentDocument }> => {
     const form = {
+      creationProfile,
+      ...(userTemplateMap.has(templateId) ? {templateActorMappings:Object.fromEntries(Object.entries(roleMappings[templateId]||suggestRoleMappings(userTemplateMap.get(templateId)!.payload,actors,birthdayActorIds[0])).map(([role,ids])=>[role,ids.map(id=>actors.find(a=>a.id===id)?.sourceCharacterId||id)]))}:{}),
       templateId,
       title: title.trim(),
       type,
@@ -381,9 +429,22 @@ export function NewActivityForm() {
                   onChange={(event) => { if (event.target.value !== templateId) setPendingTemplate(event.target.value); }}
                   className="text-sm"
                 >
-                  {ACTIVITY_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  <optgroup label="内置模板">
+                    {ACTIVITY_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </optgroup>
+                  {userTemplates.length > 0 && (
+                    <optgroup label="我的模板">
+                      {userTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </optgroup>
+                  )}
                 </Select>
-                <p className="text-xs text-muted">{findActivityTemplate(templateId)?.description}</p>
+                <CreationProfilePicker value={creationProfile} onChange={value=>{setCreationProfile(value);setInstruction(current=>current===String((creationProfile?.values as Record<string,unknown>)?.instruction||'')?String((value.values as Record<string,unknown>)?.instruction||''):current);}}/>
+                {userTemplateMap.has(templateId)&&<TemplateRoleMapping payload={userTemplateMap.get(templateId)!.payload} actors={actors} value={roleMappings[templateId]||suggestRoleMappings(userTemplateMap.get(templateId)!.payload,actors,birthdayActorIds[0])} onChange={value=>setRoleMappings({...roleMappings,[templateId]:value})}/>}
+                <p className="text-xs text-muted">
+                  {userTemplateMap.get(templateId)
+                    ? `自定义模板 · ${(userTemplateMap.get(templateId)?.payload as { activityType?: string })?.activityType || '活动'}`
+                    : findActivityTemplate(templateId)?.description}
+                </p>
                 <div className="border-t border-border-subtle pt-3" />
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5 sm:col-span-2">

@@ -1,4 +1,7 @@
 'use client';
+import { suggestRoleMappings } from '@sthstart/contracts';
+import { TemplateRoleMapping } from './template-role-mapping';
+import { CreationProfilePicker } from './creation-profile-picker';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -28,7 +31,7 @@ import {
   fetchPlanningResearchTasks, fetchPlanningSession, resolvePlanningActor, savePlanningResearchSelection,
   startPlanningResearch, triggerPlanningJob, updatePlanningSession, retryPlanningJob,
 } from '@/app/features/activities/api';
-import { useActivityCapabilities } from '@/app/features/activities/queries';
+import { useActivityCapabilities, useActivityPresets } from '@/app/features/activities/queries';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer, WorkbenchColumns } from '@/app/components/shared/page-layout';
 import { Input } from '@/app/components/ui/input';
@@ -59,6 +62,8 @@ interface CastMember { characterId: string; displayName: string; avatarUrl?: str
 interface CustomLocation { id: string; name: string; note: string; status: CandidateStatus; locked: boolean }
 
 interface IntakeForm {
+  templateActorMappings?: Record<string,string[]>;
+  creationProfile?: Record<string,unknown>;
   templateId: string;
   title: string;
   type: string;
@@ -185,6 +190,9 @@ export function PlanningWizard() {
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   const { data: capabilities } = useActivityCapabilities();
+  const { data: userPresetsData } = useActivityPresets('activity_template');
+  const userTemplates = userPresetsData?.items || [];
+  const userTemplateMap = useMemo(() => new Map(userTemplates.map((t) => [t.id, t])), [userTemplates]);
   const maxActors = capabilities?.limits.maxActors ?? 20;
   const llmReady = capabilities ? (capabilities.llmStatus ? capabilities.llmStatus.ready : capabilities.llm) : null;
   const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, staleTime: 30_000 });
@@ -214,6 +222,8 @@ export function PlanningWizard() {
 
   const formPayload = useCallback((selection: PlanningSelectionState | null, researchRevisionId: string | null): ActivityPlanningFormExtended => ({
     templateId: intake.templateId,
+    creationProfile: intake.creationProfile,
+    ...(userTemplateMap.has(intake.templateId)?{templateActorMappings:intake.templateActorMappings||suggestRoleMappings(userTemplateMap.get(intake.templateId)!.payload,intake.cast.map(a=>({id:a.characterId})),intake.leadCharacterId)}:{}),
     title: intake.title,
     type: intake.type,
     theme: intake.theme,
@@ -236,7 +246,7 @@ export function PlanningWizard() {
     ...(selection ? { selection } : {}),
     // 灵感来源已保存在会话里：每次同步表单都要带上，否则会被这次 PUT 覆盖掉。
     ...(session?.session.form.inspiration ? { inspiration: session.session.form.inspiration } : {}),
-  }), [intake, session]);
+  }), [intake, session, userTemplateMap]);
 
   const rememberSession = useCallback((id: string) => {
     resumeRef.current = true;
@@ -333,6 +343,8 @@ export function PlanningWizard() {
         setResearch(latest);
         setIntake((current) => ({
           ...current,
+          templateActorMappings: form.templateActorMappings,
+          creationProfile: form.creationProfile,
           templateId: form.templateId || current.templateId,
           title: form.title || current.title,
           type: form.type || current.type,
@@ -762,11 +774,41 @@ export function PlanningWizard() {
                   <label className="block space-y-1.5">
                     <span className="text-xs text-muted">活动模板</span>
                     <Select aria-label="活动模板" value={intake.templateId} onChange={(event) => {
-                      const next = findActivityTemplate(event.target.value) || findActivityTemplate('blank')!;
+                      const selectedId = event.target.value;
+                      const userPreset = userTemplateMap.get(selectedId);
+                      if (userPreset) {
+                        const payload = (userPreset.payload || {}) as {
+                          activityType?: string;
+                          theme?: string;
+                          location?: string;
+                          rules?: string;
+                        };
+                        setIntake((current) => ({
+                          ...current,
+                          templateActorMappings: undefined,
+                          templateId: userPreset.id,
+                          type: payload.activityType || '自定义活动',
+                          theme: payload.theme || '',
+                          location: payload.location || '',
+                          rules: payload.rules || '',
+                        }));
+                        return;
+                      }
+                      const next = findActivityTemplate(selectedId) || findActivityTemplate('blank')!;
                       setIntake((current) => ({ ...current, templateId: next.id, type: next.type, theme: next.theme, location: next.location, rules: next.rules }));
                     }}>
-                      {ACTIVITY_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      <optgroup label="内置模板">
+                        {ACTIVITY_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      </optgroup>
+                      {userTemplates.length > 0 && (
+                        <optgroup label="我的模板">
+                          {userTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        </optgroup>
+                      )}
                     </Select>
+                    <CreationProfilePicker value={intake.creationProfile} allowDefault={!params.get('session')} onChange={value=>setIntake(current=>({...current,creationProfile:value,instruction:current.instruction===String((current.creationProfile?.values as Record<string,unknown>)?.instruction||'')?String((value.values as Record<string,unknown>)?.instruction||''):current.instruction}))}/>
+                    {userTemplateMap.has(intake.templateId)&&<TemplateRoleMapping payload={userTemplateMap.get(intake.templateId)!.payload} actors={intake.cast.map(a=>({id:a.characterId,displayName:a.displayName}))} value={intake.templateActorMappings||suggestRoleMappings(userTemplateMap.get(intake.templateId)!.payload,intake.cast.map(a=>({id:a.characterId})),intake.leadCharacterId)} onChange={value=>setIntakeField('templateActorMappings',value)}/>}
+
                   </label>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="space-y-1.5 sm:col-span-2">

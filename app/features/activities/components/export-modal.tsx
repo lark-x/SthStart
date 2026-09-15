@@ -1,10 +1,12 @@
 'use client';
+import { normalizeCreationProfile } from '@sthstart/contracts';
 
 import React, { useState } from 'react';
 import {
   Download,
   BookOpen,
   Film,
+  Archive,
 } from 'lucide-react';
 import type { Activity } from '@sthstart/contracts';
 import { exportActivityPackage } from '../api';
@@ -17,10 +19,13 @@ interface ExportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   activity: Activity;
+  creationProfile?: Record<string,unknown>;
 }
 
-export function ExportModal({ open, onOpenChange, activity }: ExportModalProps) {
-  const [mode, setMode] = useState<'full' | 'reader'>('full');
+export function ExportModal({ open, onOpenChange, activity, creationProfile }: ExportModalProps) {
+  const [modeOverride, setMode] = useState<'full'|'project'|'reader'|null>(null);
+  const profileFormat=normalizeCreationProfile((creationProfile?.values||{}) as Record<string,unknown>).exportFormat;
+  const mode=modeOverride??(profileFormat==='hyperframes-project'?'full':profileFormat);
   const [isExporting, setIsExporting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -105,11 +110,30 @@ export function ExportModal({ open, onOpenChange, activity }: ExportModalProps) 
             <div className="flex items-center gap-2">
               <Film className="h-4 w-4 text-accent" />
               <span className="text-sm font-semibold text-ink">
-                完整自包含 HyperFrames 工程包（推荐）
+                视频制作工程 (HyperFrames Project)
               </span>
             </div>
             <p className="text-sm text-muted mt-1 pl-6 leading-relaxed">
               包含全部采用群聊/朋友圈文本、真实音视频媒体、HTML compositions 与 package.json 渲染脚本。解压后可直接在终端执行 <code className="text-sm bg-surface-muted px-1 rounded">npx hyperframes render</code> 渲染为最终 MP4 视频。
+            </p>
+          </div>
+
+          <div
+            onClick={() => setMode('project')}
+            className={`p-3.5 rounded-lg border transition-all cursor-pointer ${
+              mode === 'project'
+                ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
+                : 'border-border-subtle hover:border-accent/40 bg-surface'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Archive className="h-4 w-4 text-accent" />
+              <span className="text-sm font-semibold text-ink">
+                可继续编辑的工作工程 (Project Archive)
+              </span>
+            </div>
+            <p className="text-sm text-muted mt-1 pl-6 leading-relaxed">
+              包含活动完整数据、阶段与记录、锁定策略、角色快照、媒体文件与配方溯源关系。支持在任何环境通过「导入工程」继续编辑创作。
             </p>
           </div>
 
@@ -124,7 +148,7 @@ export function ExportModal({ open, onOpenChange, activity }: ExportModalProps) 
             <div className="flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-accent" />
               <span className="text-sm font-semibold text-ink">
-                纯净离线阅读包 (Reader HTML)
+                阅读分享包 (Reader HTML)
               </span>
             </div>
             <p className="text-sm text-muted mt-1 pl-6 leading-relaxed">

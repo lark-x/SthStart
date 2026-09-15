@@ -123,10 +123,13 @@ test('rewrite candidates only change the selected records and reject stale targe
     // 未选中的记录保持不变。
     assert.equal(adopted.posts.find((post) => post.id === 'post_existing')?.text, '今晚看星星');
     assert.equal(adopted.comments.length, 1);
-    // 记录被删除后候选失效，不能再写入。
+    // 已采用候选重复提交不会再写；另一个尚未采用的候选在目标删除后必须失效。
+    const original = store.getCandidate(activityId, candidateId)!;
+    const pending = store.createCandidate({ activityId, scope: original.scope, payload: original.payload, validation: original.validation });
     const staleDoc = { ...adopted, messages: adopted.messages.filter((message) => message.id !== 'msg_existing') };
     store.updateDraft(activityId, store.getDraft(activityId)!.draftVersion, staleDoc);
-    assert.throws(() => adoptCandidate(database, store, activityId, candidateId, store.getActivity(activityId)!.headVersion), /已被修改/);
+    assert.throws(() => adoptCandidate(database, store, activityId, pending.id, store.getActivity(activityId)!.headVersion), /已修改|已被修改/);
+    assert.doesNotThrow(() => adoptCandidate(database, store, activityId, candidateId, store.getActivity(activityId)!.headVersion));
   } finally { await app.close(); database.close(); }
 });
 
@@ -162,6 +165,7 @@ test('retry replays the original request and refuses jobs without a snapshot', a
 
     // 没有请求快照的旧任务不能被冒充成原请求重试。
     const legacy = store.createJob({ activityId, kind: 'text', mode: 'plan', requestHash: 'legacy-proof' }).job;
+    store.updateJob(legacy.id, { status: 'failed' });
     const retried = await retryTextJob(database, new SecretStore({}), store, activityId, legacy.id, fetcher);
     assert.equal(retried?.status, 'failed');
     assert.match(String(retried?.errorMessage), /原始输入快照/);

@@ -1,3 +1,5 @@
+import { recordConfigImpacts } from './change-impact.js';
+import { normalizeCreationProfile } from '@sthstart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type {
   Activity,
@@ -17,8 +19,8 @@ export function getDefaultImageConfigDocument(): ImageConfigDocument {
   return {
     schemaVersion: 1,
     stylePreset: 'anime_standard',
-    globalStylePrompt: 'anime aesthetic, clean lines, vibrant colors, soft volumetric lighting, detailed environment',
-    globalNegativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, username, blurry',
+    globalStylePrompt: normalizeCreationProfile({}).globalStylePrompt,
+    globalNegativePrompt: normalizeCreationProfile({}).globalNegativePrompt,
     slotConfigs: [],
   };
 }
@@ -48,6 +50,10 @@ export function getImageConfigDraft(
   }
 
   const defaultDoc = getDefaultImageConfigDocument();
+  const content = database.connection.prepare('SELECT document_json FROM activity_drafts WHERE activity_id=?').get(activityId) as {document_json:string}|undefined;
+  const profile = content ? JSON.parse(content.document_json)?.activity?.creationProfile?.values : null;
+  if (profile) { const values=normalizeCreationProfile(profile); defaultDoc.globalStylePrompt=values.globalStylePrompt; defaultDoc.globalNegativePrompt=values.globalNegativePrompt; }
+
   const now = nowIso();
 
   database.connection.prepare(`
@@ -103,6 +109,7 @@ export function commitImageConfigRevision(
   activityId: string,
   expectedDraftVersion: number,
   expectedHeadVersion: number,
+  options: {skipTransaction?:boolean} = {},
 ): { revision: ImageConfigRevision; activity: Activity } {
   const activity = store.getActivity(activityId);
   if (!activity) throw new Error('activity_not_found');
@@ -126,7 +133,7 @@ export function commitImageConfigRevision(
   const now = nowIso();
   const hash = hashImageConfig(draft.document);
 
-  return database.transaction(() => {
+  const operation = () => {
     // 1. Insert image config revision
     database.connection.prepare(`
       INSERT INTO activity_image_config_revisions (id, activity_id, parent_id, document_json, hash, created_at)
@@ -172,6 +179,9 @@ export function commitImageConfigRevision(
       WHERE id = ? AND head_version = ?
     `).run(newHeadVersion, newMediaRevId, now, activityId, expectedHeadVersion);
 
+    const oldConfig=draft.baseRevisionId?getImageConfigRevision(database,activityId,draft.baseRevisionId)?.document:getDefaultImageConfigDocument();
+    const content=activity.currentContentRevisionId?store.getContentRevision(activityId,activity.currentContentRevisionId)?.document:null;
+    if(content)recordConfigImpacts(database.connection,activityId,content,oldConfig as unknown as Record<string,unknown>||{},draft.document as unknown as Record<string,unknown>);
     const updatedActivity = store.getActivity(activityId)!;
 
     return {
@@ -185,7 +195,8 @@ export function commitImageConfigRevision(
       },
       activity: updatedActivity,
     };
-  });
+  };
+  return options.skipTransaction?operation():database.transaction(operation);
 }
 
 export function getImageConfigRevision(

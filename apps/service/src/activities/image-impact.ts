@@ -60,9 +60,13 @@ export function previewSourceImpact(
   const activeAttemptSlotSet = new Set(activeAttempts.map((a) => a.slot_id));
 
   const affectedSlots: AffectedSlotPreview[] = [];
+  const seenSlotIds = new Set<string>();
   let oldValue: unknown = null;
 
   for (const dep of depRows) {
+    if (seenSlotIds.has(dep.slot_id)) continue;
+    seenSlotIds.add(dep.slot_id);
+
     const isChanged = dep.value_hash !== newHash;
     const currentAssetKey = slotBindingsMap.get(dep.slot_id) || null;
 
@@ -96,6 +100,41 @@ export function previewSourceImpact(
       needsReview: isChanged,
       hasActiveAttempt: activeAttemptSlotSet.has(dep.slot_id),
     });
+  }
+
+  // Supplement uncompiled media slots from current document
+  const draft = store.getDraft(activityId);
+  const doc = draft?.document;
+  if (doc?.mediaSlots) {
+    for (const slot of doc.mediaSlots) {
+      if (seenSlotIds.has(slot.id)) continue;
+      let matches = false;
+      let reason = '';
+      if (changedEntityKind === 'actor' && slot.actorIds?.includes(changedEntityId)) {
+        matches = true;
+        reason = '镜头包含该角色（尚未编译生图配方）';
+      } else if (changedEntityKind === 'stage' && slot.stageId === changedEntityId) {
+        matches = true;
+        reason = '镜头所属阶段背景或情节已变更（尚未编译生图配方）';
+      } else if (changedEntityKind === 'shot' && slot.id === changedEntityId) {
+        matches = true;
+        reason = '镜头描述已变更（尚未编译生图配方）';
+      }
+
+      if (matches) {
+        seenSlotIds.add(slot.id);
+        affectedSlots.push({
+          slotId: slot.id,
+          reason,
+          fieldPath,
+          oldValueHash: '',
+          newValueHash: newHash,
+          currentAssetKey: slotBindingsMap.get(slot.id) || null,
+          needsReview: true,
+          hasActiveAttempt: activeAttemptSlotSet.has(slot.id),
+        });
+      }
+    }
   }
 
   return {

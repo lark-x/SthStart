@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { syncImageExecutionSnapshots } from './image-attempts.js';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   Activity,
@@ -54,6 +54,7 @@ export function generateOfflineReaderHtml(
   content: ContentDocument,
   mediaRev: MediaRevisionDocument | null,
   mediaPathPrefix: string = 'media/',
+  assetExtensions: Record<string, string> = {},
 ): string {
   // Build a map of slotId -> media file path
   const slotMediaMap: Record<string, { assetKey: string; ext: string; kind: 'image' | 'video' }> = {};
@@ -65,7 +66,7 @@ export function generateOfflineReaderHtml(
         const slot = slotMap.get(b.slotId);
         const assetKey = b.assets[0].assetKey;
         const kind = slot?.kind || 'image';
-        const ext = kind === 'video' ? '.mp4' : '.png';
+        const ext = assetExtensions[assetKey] || (kind === 'video' ? '.mp4' : '.png');
         slotMediaMap[b.slotId] = { assetKey, ext, kind };
       }
     }
@@ -418,7 +419,13 @@ export async function collectExportEntries(
   const mediaRevId = options.mediaRevisionId || activity.currentMediaRevisionId;
   const mediaRev = mediaRevId ? store.getMediaRevision(activityId, mediaRevId) : null;
 
-  const format: ExportFormat = options.format || 'hyperframes-project';
+  const format: ExportFormat =
+    options.format ||
+    ((options as any).mode === 'reader'
+      ? 'reader'
+      : (options as any).mode === 'project'
+      ? 'project'
+      : 'hyperframes-project');
 
 // Gather media files
   const assets = listActivityAssets(database, activityId);
@@ -427,12 +434,23 @@ export async function collectExportEntries(
   for (const ast of assets) {
     const file = getActivityAssetFile(database, activityId, ast.assetKey);
     if (file && existsSync(file.localPath)) {
-      const ext = ast.type === 'video' ? '.mp4' : (ast.type === 'audio' ? '.mp3' : '.png');
+      const mimeExtensions: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp',
+        'image/gif': '.gif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+        'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/ogg': '.ogg' };
+      const ext = mimeExtensions[file.contentType] || extname(file.localPath) || '.bin';
       const relPath = `media/${ast.assetKey}${ext}`;
       mediaEntries.push({ relativePath: relPath, filePath: file.localPath, assetKey: ast.assetKey });
     }
   }
 
+  const requiredAssets = new Set([
+    ...(mediaRev?.slotBindings || []).flatMap(binding => binding.assets.map(asset => asset.assetKey)),
+    ...contentRev.document.actors.flatMap(actor => [actor.avatarAssetKey, ...actor.appearanceReferenceAssetKeys].filter(Boolean)),
+  ]);
+  const includedAssets = new Set(mediaEntries.map(entry => entry.assetKey));
+  const missing = [...requiredAssets].filter(key => !includedAssets.has(key!));
+  if (missing.length) throw new Error(`export_assets_missing: 请补齐引用的媒体文件后导出：${missing.join(', ')}`);
+  const assetExtensions = Object.fromEntries(mediaEntries.map(entry => [entry.assetKey, extname(entry.relativePath)]));
   const entries: ZipEntryInput[] = [];
 
   // 1. Core Data
@@ -447,7 +465,7 @@ export async function collectExportEntries(
   entries.push(
     { path: 'activity.json', data: activityJson },
     { path: 'project.json', data: JSON.stringify({ name: activity.title, version: '1.0.0', schemaVersion: 1 }, null, 2) },
-    { path: 'reader.html', data: generateOfflineReaderHtml(activity, contentRev.document, mediaDoc, 'assets/media/') },
+    { path: 'reader.html', data: generateOfflineReaderHtml(activity, contentRev.document, mediaDoc, 'assets/media/', assetExtensions) },
     { path: 'data/activity.json', data: activityJson },
     { path: 'data/records.json', data: recordsJson },
     { path: 'data/media.json', data: mediaJson },
@@ -675,6 +693,7 @@ export async function collectExportEntries(
     contentRev.document,
     mediaDoc,
     '../assets/media/',
+    assetExtensions,
   );
   entries.push({
     path: 'reader/index.html',
@@ -707,7 +726,7 @@ export async function collectExportEntries(
           description: `HyperFrames render project for ${activity.title}`,
           scripts: {
             check: 'npx hyperframes check .',
-            inspect: 'npx hyperframes inspect .',
+            inspect: 'npx hyperframes check .',
             render: 'npx hyperframes render . -o output.mp4',
           },
           devDependencies: {
@@ -772,6 +791,12 @@ export async function collectExportEntries(
 `,
     });
   }
+
+  entries.push({path:'data/rework.json',data:JSON.stringify({schemaVersion:1,
+    reviews:database.connection.prepare('SELECT * FROM activity_review_items WHERE activity_id=?').all(activityId),
+    candidates:store.listCandidates(activityId),
+    applications:database.connection.prepare('SELECT * FROM activity_candidate_applications WHERE activity_id=?').all(activityId),
+  },null,2)});
 
   // 6. Manifest with SHA-256
   const manifestFiles: ExportManifest['files'] = await Promise.all(entries.map(async (e) => {

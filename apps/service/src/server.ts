@@ -28,10 +28,12 @@ import { registerActivityRoutes } from './activities/routes.js';
 import { registerCalendarRoutes } from './calendar.js';
 import { registerPlanningRoutes } from './activities/planning.js';
 import { ActivityStore } from './activities/store.js';
+import { reconcileMediaBatchesOnStartup } from './activities/media-batches.js';
 import { registerMcpSourceRoutes } from './mcp/routes.js';
 import { registerResearchRoutes } from './mcp/research-routes.js';
 import { registerTopicRoutes } from './topics/routes.js';
 import { TopicScheduler } from './topics/scheduler.js';
+import { registerTaskRoutes } from './tasks/routes.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -200,6 +202,7 @@ export async function createService(options: ServiceOptions = {}) {
   registerResearchRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerTopicRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
+  registerTaskRoutes(app, { config, database, secrets, fetcher: options.fetcher });
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 
   const retentionFailure = (error: unknown) => runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-retention', stream: 'system', level: 'warn', message: `保留策略执行失败：${String(error)}`, force: true });
@@ -215,6 +218,7 @@ export async function createService(options: ServiceOptions = {}) {
       runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-reconcile', stream: 'system', level: 'warn', message: `媒体库巡检异常：${msg}`, force: true });
     }
   });
+  reconcileMediaBatchesOnStartup(database, config, secrets, new ActivityStore(database), options.fetcher);
   resumeGenerationExecutions(database);
   const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);
   // 话题搜集调度器：跟随服务进程运行，浏览器关闭不影响执行。

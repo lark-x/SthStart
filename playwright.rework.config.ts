@@ -1,0 +1,10 @@
+import base from './playwright.config';
+import { defineConfig } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+const directory = process.env.E2E_REWORK_DIRECTORY || mkdtempSync(join(tmpdir(), 'sthstart-rework-ui-'));
+process.env.E2E_REWORK_DIRECTORY = directory;
+process.env.E2E_REWORK_DATABASE_PATH = join(directory, 'service.db');
+const servers = Array.isArray(base.webServer) ? base.webServer : base.webServer ? [base.webServer] : [];
+export default defineConfig({ ...base, testMatch: 'activity-rework.spec.ts', workers: 1, webServer: servers.map(server => ({ ...server, env: { ...server.env, STHSTART_DATABASE_PATH: process.env.E2E_REWORK_DATABASE_PATH!, STHSTART_NARRATIVE_DATABASE_PATH: join(directory, 'narrative.db'), STHSTART_ARTIFACT_DIR: join(directory, 'artifacts') } })) });

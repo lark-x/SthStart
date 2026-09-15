@@ -1,3 +1,5 @@
+import { recordContentImpacts, recordPlaybackImpact, resolveImageReviews } from './change-impact.js';
+import { assertProtectedContent } from './editing-policy.js';
 import crypto from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
@@ -385,6 +387,8 @@ export class ActivityStore {
     expectedDraftVersion: number,
     document: ContentDocument
   ): ActivityDraft {
+    const previous = this.getDraft(activityId);
+    if (previous) assertProtectedContent(previous.document, document);
     const now = nowIso();
     const newDraftVersion = expectedDraftVersion + 1;
 
@@ -506,6 +510,7 @@ export class ActivityStore {
          WHERE activity_id = ?`
       ).run(contentRevId, now, activityId);
 
+      recordContentImpacts(this.connection, activityId, this.getContentRevision(activityId, act.currentContentRevisionId!)!.document, draft.document);
       syncActivitySchedule(this.connection, activityId, draft.document);
       const updatedAct = this.getActivity(activityId)!;
       return {
@@ -677,6 +682,7 @@ export class ActivityStore {
          SET draft_version = draft_version + 1, document_json = ?, base_content_revision_id = ?, updated_at = ?
          WHERE activity_id = ?`
       ).run(JSON.stringify(contentRev.document), String(cp.content_revision_id), now, activityId);
+      recordContentImpacts(this.connection, activityId, this.getContentRevision(activityId, act.currentContentRevisionId!)!.document, contentRev.document);
       // 恢复旧版本时同步排期投影：文档里没有日期即视为未排期。
       syncActivitySchedule(this.connection, activityId, contentRev.document);
 
@@ -774,6 +780,25 @@ export class ActivityStore {
     };
   }
 
+  listCandidates(activityId: string): ActivityCandidate[] {
+    const rows = this.connection.prepare(
+      `SELECT id, activity_id, base_revision_id, draft_version, scope_json, payload_json, validation_json, adopted, created_at
+       FROM activity_candidates WHERE activity_id = ? ORDER BY created_at DESC`
+    ).all(activityId) as Record<string, unknown>[];
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      activityId: String(row.activity_id),
+      baseRevisionId: row.base_revision_id ? String(row.base_revision_id) : null,
+      draftVersion: row.draft_version ? Number(row.draft_version) : null,
+      scope: JSON.parse(String(row.scope_json)),
+      payload: JSON.parse(String(row.payload_json)),
+      validation: JSON.parse(String(row.validation_json)),
+      adopted: Boolean(row.adopted),
+      createdAt: String(row.created_at),
+    }));
+  }
+
   // --- Media Revisions & Assets ---
   getMediaRevision(activityId: string, mediaRevisionId: string): { id: string; contentRevisionId: string; imageConfigRevisionId?: string; slotBindings: MediaRevisionDocument['slotBindings'] } | null {
     const row = this.connection.prepare(
@@ -841,6 +866,8 @@ export class ActivityStore {
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).run(newMediaRevId, activityId, act.currentContentRevisionId, imageConfigRevId, JSON.stringify(slotBindings), hash, now);
 
+      resolveImageReviews(this.connection,activityId,this.getContentRevision(activityId,act.currentContentRevisionId!)!.document,slotBindings);
+      recordPlaybackImpact(this.connection, activityId, '采用的媒体已改变', newMediaRevId);
       // Invalidate current_playback_revision_id because media revision has changed!
       this.connection.prepare(
         `UPDATE activities
@@ -920,6 +947,7 @@ export class ActivityStore {
          WHERE id = ? AND head_version = ?`
       ).run(newHeadVersion, newPlaybackRevId, now, activityId, expectedHeadVersion);
 
+      this.connection.prepare("UPDATE activity_review_items SET decision='resolved',updated_at=? WHERE activity_id=? AND target_kind='playback' AND decision IN ('pending','rework')").run(now,activityId);
       return {
         activity: this.getActivity(activityId)!,
         playbackRevisionId: newPlaybackRevId,

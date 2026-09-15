@@ -1,4 +1,8 @@
 'use client';
+import { useQuery } from '@tanstack/react-query';
+import { getJson } from '@/app/lib/api-client';
+import type { ActivityReviewItem } from '@sthstart/contracts';
+import { useSearchParams } from 'next/navigation';
 
 import React, { useState, useRef, useMemo } from 'react';
 import {
@@ -12,6 +16,8 @@ import {
   Layers,
   Save,
   Sparkles,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import type {
   Activity,
@@ -32,6 +38,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Dialog } from '@/app/components/ui/dialog';
 import { ImageWorkbench } from './image-workbench';
+import { MediaBatchPanel } from './media-batch-panel';
 
 interface MediaWorkstationProps {
   activity: Activity;
@@ -50,6 +57,9 @@ export function MediaWorkstation({
   onUpdateDocument,
   disabled,
 }: MediaWorkstationProps) {
+  const {data:reviews}=useQuery({queryKey:['activity-review',activity.id,activity.headVersion],queryFn:()=>getJson<{items:ActivityReviewItem[]}>(`/api/admin/activities/${activity.id}/review-items`)});
+  const [reworkOnly,setReworkOnly]=useState(false);
+  const reviewSlots=new Set(reviews?.items.filter(i=>i.targetKind==='image'&&(i.decision==='pending'||i.decision==='rework')).map(i=>i.targetId)||[]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [targetSlotIdForUpload, setTargetSlotIdForUpload] = useState<string | null>(null);
 
@@ -67,29 +77,27 @@ export function MediaWorkstation({
   }, [currentMediaRevision]);
 
   const [bindingsMap, setBindingsMap] = useState<Record<string, string>>(initialBindings);
+  const [lastMediaRevisionId, setLastMediaRevisionId] = useState(currentMediaRevision?.id);
+  if (lastMediaRevisionId !== currentMediaRevision?.id) {
+    setLastMediaRevisionId(currentMediaRevision?.id);
+    setBindingsMap(initialBindings);
+  }
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
-  const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(null);
+  const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(()=>typeof window==='undefined'?null:new URLSearchParams(window.location.search).get('slotId'));
+  const searchParams = useSearchParams();
+  const [isBatchPanelOpen, setIsBatchPanelOpen] = useState(Boolean(searchParams.get('batchId')||searchParams.get('reworkSlots')));
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleAdoptAsset = async (slotId: string, assetKey: string) => {
-    const nextBindings = { ...bindingsMap, [slotId]: assetKey };
-    setBindingsMap(nextBindings);
-
-    const slotBindings: SlotBinding[] = slots.map((s) => ({
-      slotId: s.id,
-      slotFingerprint: `fp_${s.id}_${s.kind}`,
-      assets: nextBindings[s.id]
-        ? [{ assetKey: nextBindings[s.id], order: 10 }]
-        : [],
+  const handleAdoptAssets = async (selected: Record<string, string>) => {
+    const slotBindings: SlotBinding[] = Object.entries(selected).map(([slotId, assetKey]) => ({
+      slotId, slotFingerprint: '', assets: [{ assetKey, order: 1 }],
     }));
-
-    await saveMediaMutation.mutateAsync({
-      id: activity.id,
-      contentRevisionId: activity.currentContentRevisionId || '',
-      slotBindings,
-    });
+    await saveMediaMutation.mutateAsync({ id: activity.id,
+      contentRevisionId: activity.currentContentRevisionId || '', slotBindings });
+    setBindingsMap(current => ({ ...current, ...selected }));
   };
+  const handleAdoptAsset = (slotId: string, assetKey: string) => handleAdoptAssets({ [slotId]: assetKey });
 
   const { data: assetsData, isLoading: assetsLoading } = useActivityAssets(activity.id);
   const uploadMutation = useUploadActivityAsset();
@@ -181,6 +189,21 @@ export function MediaWorkstation({
     setBindingsMap(updatedBindings);
   };
 
+  const handleToggleSlotLock = (slotId: string) => {
+    const currentLocked = document.editingPolicy?.lockedMediaSlotIds || [];
+    const nextLocked = currentLocked.includes(slotId)
+      ? currentLocked.filter((id) => id !== slotId)
+      : [...currentLocked, slotId];
+
+    onUpdateDocument({
+      ...document,
+      editingPolicy: {
+        lockedRecords: document.editingPolicy?.lockedRecords || [],
+        lockedMediaSlotIds: nextLocked,
+      },
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* Hidden file input */}
@@ -192,6 +215,7 @@ export function MediaWorkstation({
         accept="image/*,video/*"
       />
 
+      <label className="text-sm"><input type="checkbox" checked={reworkOnly} onChange={e=>setReworkOnly(e.target.checked)}/> 仅看待复核 / 待返工镜头（{reviewSlots.size}）</label>
       {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
         <div>
@@ -220,6 +244,18 @@ export function MediaWorkstation({
           <Button
             type="button"
             size="sm"
+            variant="outline"
+            onClick={() => setIsBatchPanelOpen(true)}
+            disabled={disabled}
+            className="text-sm flex items-center gap-1.5 border-sky-300 text-sky-700 hover:bg-sky-50"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-sky-500" />
+            批量生图与挑选
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
             onClick={handleSaveMedia}
             disabled={disabled || saveMediaMutation.isPending}
             className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
@@ -243,6 +279,7 @@ export function MediaWorkstation({
       )}
 
       {/* Slots List */}
+      {reworkOnly&&reviewSlots.size===0&&<p className="text-sm text-muted">没有待复核或待返工镜头。</p>}
       {slots.length === 0 ? (
         <div className="p-12 text-center text-sm text-muted bg-surface rounded-lg border border-border-default space-y-2">
           <Film className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
@@ -251,14 +288,17 @@ export function MediaWorkstation({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {slots.map((slot) => {
+          {slots.filter(slot=>!reworkOnly||reviewSlots.has(slot.id)).map((slot) => {
             const boundKey = bindingsMap[slot.id];
             const boundAsset = assets.find((a) => a.assetKey === boundKey);
+            const isSlotLocked = Boolean(document.editingPolicy?.lockedMediaSlotIds?.includes(slot.id));
 
             return (
               <div
                 key={slot.id}
-                className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3 shadow-2xs"
+                className={`p-4 rounded-[var(--radius-panel)] bg-surface border transition-all space-y-3 shadow-2xs ${
+                  isSlotLocked ? 'border-amber-300 ring-1 ring-amber-200' : 'border-border-default'
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -266,22 +306,44 @@ export function MediaWorkstation({
                       {slot.kind === 'video' ? '🎬 视频' : '📷 照片'}
                     </Badge>
                     <span className="text-sm font-semibold text-ink">{slot.caption}</span>
+                    {isSlotLocked && (
+                      <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-0.5">
+                        <Lock className="h-2.5 w-2.5" />
+                        已锁定
+                      </Badge>
+                    )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSlot(slot.id)}
-                    disabled={disabled}
-                    className="text-fg-subtle hover:text-danger-fg transition-colors p-1"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSlotLock(slot.id)}
+                      disabled={disabled}
+                      className={`p-1 rounded transition-colors ${
+                        isSlotLocked ? 'text-amber-600 hover:text-amber-700' : 'text-fg-subtle hover:text-ink'
+                      }`}
+                      title={isSlotLocked ? '镜头已锁定（点击解锁）' : '锁定镜头（防止自动改写或批量替换）'}
+                    >
+                      {isSlotLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSlot(slot.id)}
+                      disabled={disabled || isSlotLocked}
+                      className="text-fg-subtle hover:text-danger-fg transition-colors p-1 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title={isSlotLocked ? '镜头已锁定，需解锁后才可删除' : '删除镜头'}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-sm text-muted leading-relaxed">
                   {slot.shotDescription}
                 </p>
 
+                {reviewSlots.has(slot.id)&&<p className="text-xs text-amber-700">此镜头有待复核变化，当前采用的素材仍会保留；可从活动顶部查看来源与处理方式。</p>}
                 {/* Bound Asset Preview or Placeholder */}
                 <div className="p-2.5 rounded-lg bg-surface border border-border-subtle space-y-2">
                   <div className="text-sm font-medium text-ink flex items-center justify-between">
@@ -327,7 +389,7 @@ export function MediaWorkstation({
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={disabled || uploadMutation.isPending}
+                      disabled={disabled || isSlotLocked || uploadMutation.isPending}
                       onClick={() => {
                         setTargetSlotIdForUpload(slot.id);
                         fileInputRef.current?.click();
@@ -342,6 +404,7 @@ export function MediaWorkstation({
                       type="button"
                       size="sm"
                       variant="outline"
+                      disabled={disabled || isSlotLocked}
                       onClick={() => setActiveSlotId(slot.id)}
                       className="text-sm h-7 flex items-center gap-1"
                     >
@@ -354,6 +417,7 @@ export function MediaWorkstation({
                         type="button"
                         size="sm"
                         variant="outline"
+                        disabled={disabled || isSlotLocked}
                         onClick={() => setWorkbenchSlotId(slot.id)}
                         className="text-sm h-7 flex items-center gap-1 border-sky-300 text-sky-700 hover:bg-sky-50"
                       >
@@ -435,6 +499,21 @@ export function MediaWorkstation({
           initialSlotId={workbenchSlotId}
           currentMediaRevision={currentMediaRevision}
           onAdoptSlotAsset={handleAdoptAsset}
+        />
+      )}
+
+      {/* Media Batch Panel Modal */}
+      {isBatchPanelOpen && (
+        <MediaBatchPanel
+          isOpen={isBatchPanelOpen}
+          onClose={() => setIsBatchPanelOpen(false)}
+          activity={activity}
+          document={document}
+          currentMediaRevision={currentMediaRevision}
+          bindingsMap={bindingsMap}
+          onAdoptAsset={handleAdoptAsset}
+          onAdoptAssets={handleAdoptAssets}
+          disabled={disabled}
         />
       )}
     </div>

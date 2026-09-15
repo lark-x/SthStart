@@ -72,4 +72,15 @@ export const activityKeys = {
   attempt: (id: string, attemptId: string) => [...activityKeys.all, 'attempt', id, attemptId] as const,
   lineage: (id: string, assetKey: string) => [...activityKeys.all, 'lineage', id, assetKey] as const,
   sourceResolve: (id: string, refId: string) => [...activityKeys.all, 'sourceResolve', id, refId] as const,
+  production: (id: string) => [...activityKeys.all, 'production', id] as const,
+  mediaBatches: (id: string) => [...activityKeys.all, 'mediaBatches', id] as const,
+  mediaBatch: (id: string, batchId: string) => [...activityKeys.all, 'mediaBatch', id, batchId] as const,
+  presets: (kind?: string) => [...activityKeys.all, 'presets', kind] as const,
+  preset: (id: string) => [...activityKeys.all, 'preset', id] as const,
+};
+
+export const taskKeys = {
+  all: ['tasks'] as const,
+  list: (filters?: { state?: 'active' | 'recent' | 'all'; domain?: string; limit?: number }) =>
+    [...taskKeys.all, 'list', filters] as const,
 };

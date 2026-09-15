@@ -1,3 +1,6 @@
+import { valueHash, reviewTarget, sourceValue, persistImpacts } from './change-impact.js';
+import type { ActivityReviewItem, ActivityCandidate } from '@sthstart/contracts';
+import { rewriteBaseline } from './candidate-review.js';
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -313,6 +316,12 @@ export async function commitActivityImport(
     factIds: (sr.factIds || []).map((fid) => factIdMap.get(fid) || fid),
   }));
 
+  // Forward references can only be remapped after all IDs have been allocated.
+  for(const slot of newMediaSlots)slot.sourceFactIds=slot.sourceFactIds.map(id=>factIdMap.get(id)||id);
+  for(const post of newPosts)post.sourceFactIds=post.sourceFactIds.map(id=>factIdMap.get(id)||id);
+  for(const message of newMessages)if(message.replyToMessageId)message.replyToMessageId=msgIdMap.get(message.replyToMessageId)||message.replyToMessageId;
+  for(const comment of newComments)if(comment.replyToCommentId)comment.replyToCommentId=commentIdMap.get(comment.replyToCommentId)||comment.replyToCommentId;
+
   // Rebuild ContentDocument
   const newContentDocument: ContentDocument = {
     schemaVersion: 1,
@@ -335,8 +344,20 @@ export async function commitActivityImport(
     mediaSlots: newMediaSlots,
     facts: newFacts,
     stageResults: newStageResults,
+    editingPolicy: contentDoc.editingPolicy ? {
+      lockedRecords: (contentDoc.editingPolicy.lockedRecords || []).map((lr) => ({
+        kind: lr.kind,
+        id: lr.kind === 'message' ? (msgIdMap.get(lr.id) || lr.id) : (postIdMap.get(lr.id) || lr.id),
+      })),
+      lockedMediaSlotIds: (contentDoc.editingPolicy.lockedMediaSlotIds || []).map((sid) => slotIdMap.get(sid) || sid),
+    } : undefined,
   };
 
+  newContentDocument.activity.birthdayActorIds=contentDoc.activity.birthdayActorIds?.map(id=>actorIdMap.get(id)||id);
+  if(newContentDocument.activity.templateSnapshot?.actorMappings) {
+    newContentDocument.activity.templateSnapshot=structuredClone(newContentDocument.activity.templateSnapshot);
+    newContentDocument.activity.templateSnapshot.actorMappings=Object.fromEntries(Object.entries(newContentDocument.activity.templateSnapshot.actorMappings!).map(([role,ids])=>[role,ids.map(id=>actorIdMap.get(id)||id)]));
+  }
   // 9. Process media files & upload to artifacts
   const mediaToInsert: Array<{
     newAssetKey: string;
@@ -885,6 +906,39 @@ export async function commitActivityImport(
       now,
     );
 
+    // Imported rework is dormant. Old executions are history, never restarted automatically.
+    const reworkBytes=files.get('data/rework.json');
+    if(reworkBytes){
+      const rework=JSON.parse(reworkBytes.toString()) as {reviews?:Array<{data_json:string;decision:string}>;candidates?:ActivityCandidate[];applications?:Array<{candidate_id:string;unit_id:string;data_json:string;created_at:string}>};
+      const ids=new Map([...actorIdMap,...stageIdMap,...convIdMap,...msgIdMap,...postIdMap,...commentIdMap,...slotIdMap,...factIdMap]);
+      const remap=(value:unknown):unknown=>typeof value==='string'?(ids.get(value)||value):Array.isArray(value)?value.map(remap):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[ids.get(k)||k,remap(v)])):value;
+      const candidateIds=new Map<string,string>();
+      const importedJobId=randomUUID();
+      for(const candidate of rework.candidates||[]){
+        const scope=remap(candidate.scope) as Record<string,unknown>;
+        scope.jobId=importedJobId;delete scope.inputFingerprint;delete scope.precedingCandidateIds;delete scope.factContext;
+        // Reconstruct the context hash in the new ID space, retaining the immutable original record snapshot.
+        if(scope.reviewBaseline){const old=scope.reviewBaseline as {records:Record<string,unknown>};scope.reviewBaseline={...rewriteBaseline(newContentDocument,scope),records:old.records};if((candidate.scope.reviewBaseline as {contextHash:string}).contextHash!==rewriteBaseline(contentDoc,candidate.scope).contextHash){scope.importedReadOnly=true;scope.dismissed=true;}}
+        else {scope.importedReadOnly=true;scope.dismissed=true;}
+        const imported=store.createCandidate({activityId:newActivityId,baseRevisionId:contentRevId,draftVersion:1,scope,payload:remap(candidate.payload) as Record<string,unknown>,validation:candidate.validation});
+        candidateIds.set(candidate.id,imported.id);
+        if(candidate.adopted)database.connection.prepare('UPDATE activity_candidates SET adopted=1 WHERE id=?').run(imported.id);
+      }
+      if(candidateIds.size)database.connection.prepare("INSERT INTO activity_jobs(id,activity_id,kind,mode,status,request_hash,result_candidate_ids_json,model_metadata_json,created_at,updated_at) VALUES(?,?,'text',?,'succeeded',?,?,?, ?,?)").run(importedJobId,newActivityId,String(rework.candidates?.[0]?.scope.mode||'plan'),valueHash([...candidateIds.values()]),JSON.stringify([...candidateIds.values()]),JSON.stringify({imported:true}),now,now);
+      for(const application of rework.applications||[]){const candidateId=candidateIds.get(application.candidate_id);if(!candidateId)continue;const [kind,...parts]=application.unit_id.split(':');const targetId=parts.join(':');const unitId=targetId?`${kind}:${ids.get(targetId)||targetId}`:kind;
+        database.connection.prepare('INSERT INTO activity_candidate_applications(activity_id,candidate_id,unit_id,request_key,content_revision_id,data_json,created_at) VALUES(?,?,?,?,?,?,?)').run(newActivityId,candidateId,unitId,`import_${randomUUID()}`,contentRevId,JSON.stringify(remap(JSON.parse(application.data_json))),application.created_at||now);
+      }
+      for(const row of rework.reviews||[]){const item=remap(JSON.parse(row.data_json)) as ActivityReviewItem;
+        item.activityId=newActivityId;item.execution=undefined;item.decision='pending';
+        item.sourceValues=item.sourceRefs.map(ref=>ref.kind==='image_config'?(ref.field==='slotConfigs'?latestConfigDoc.slotConfigs.find(s=>s.slotId===ref.id)||null:(latestConfigDoc as unknown as Record<string,unknown>)[ref.field]??null):sourceValue(newContentDocument,ref)??null);
+        item.sourceHash=valueHash(item.sourceValues);item.targetHash=valueHash(reviewTarget(newContentDocument,item.targetKind,item.targetId));
+        item.changeKey=valueHash([newActivityId,item.targetKind,item.targetId,item.sourceRefs,item.sourceHash,item.targetHash]);
+        const exists=item.targetKind==='playback'||!!reviewTarget(newContentDocument,item.targetKind,item.targetId);
+        persistImpacts(database.connection,newActivityId,[item]);
+        const decision=!exists?'superseded':['resolved','superseded'].includes(row.decision)?row.decision:'pending';
+        database.connection.prepare('UPDATE activity_review_items SET decision=? WHERE activity_id=? AND change_key=?').run(decision,newActivityId,item.changeKey);
+      }
+    }
     // 15. Update job to succeeded
     database.connection.prepare(`
       UPDATE activity_jobs

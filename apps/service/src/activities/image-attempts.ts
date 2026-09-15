@@ -252,7 +252,8 @@ export function syncAttemptOutputs(
   const now = nowIso();
 
   // If task status changed
-  if (genTask.status !== attemptRow.status || genTask.status === 'succeeded') {
+  if (genTask.status !== attemptRow.status || genTask.status === 'succeeded'
+    || (genTask.errorCode || null) !== attemptRow.error_code || (genTask.errorMessage || null) !== attemptRow.error_message) {
     database.transaction(() => {
       database.connection.prepare(`
         UPDATE activity_image_attempts

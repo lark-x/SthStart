@@ -420,7 +420,7 @@ test('Activity Images: Lineage DAG Cycle Detection', async () => {
 });
 
 test('Activity Images: Media Selection CAS HeadVersion Check', async () => {
-  const { app } = await setupTestContext();
+  const { app, database } = await setupTestContext();
 
   const createRes = await app.inject({
     method: 'POST',
@@ -429,6 +429,15 @@ test('Activity Images: Media Selection CAS HeadVersion Check', async () => {
     payload: { document: createTestDocument() },
   });
   const { activity } = createRes.json();
+
+  database.connection.prepare(`
+    INSERT INTO artifacts (id, app_id, content_type, byte_size, pinned, created_at)
+    VALUES ('art_cand_1', 'activities', 'image/png', 1024, 0, '2026-09-07T00:00:00Z')
+  `).run();
+  database.connection.prepare(`
+    INSERT INTO activity_assets (activity_id, asset_key, artifact_id, source, type, width, height, duration_ms, hash, created_at)
+    VALUES (?, 'asset_cand_1', 'art_cand_1', 'generated', 'image', 512, 512, NULL, 'hash1', '2026-09-07T00:00:00Z')
+  `).run(activity.id);
 
   // 1. CAS Conflict: pass stale expectedHeadVersion
   const conflictRes = await app.inject({

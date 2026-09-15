@@ -3,11 +3,13 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo } from 'lucide-react';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp } from './navigation';
 import { EyeCareToggle } from './eye-care-toggle';
 import { AutoHideScrollbars } from './auto-hide-scrollbars';
 import { useOverlayAccessibility } from '../ui/overlay';
+import { TaskDrawer } from './task-drawer';
+import { useGlobalTasks } from '@/app/features/tasks/queries';
 
 const COLLAPSE_KEY = 'sthstart_nav_collapsed';
 /** 1024–1439px 默认收窄为图标栏，用户显式选择过则沿用其偏好。 */
@@ -73,6 +75,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const collapsedPref = useSyncExternalStore(subscribeNavPref, readCollapsedPref, serverCollapsedPref);
   const [mobileCollapsed, setMobileCollapsed] = useState<boolean | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
+  const { data: globalTasksData } = useGlobalTasks({ state: 'active' });
+  const activeTasksCount = globalTasksData?.activeCount ?? 0;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -169,6 +174,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="shell-sidebar-foot">
+        <button
+          type="button"
+          className="shell-collapse-btn w-full justify-between"
+          onClick={() => setTaskDrawerOpen(true)}
+          title="全局任务中心"
+          aria-label="全局任务中心"
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <ListTodo className="shell-nav-icon text-accent" aria-hidden="true" />
+            <span className="shell-nav-text">任务中心</span>
+          </span>
+          {activeTasksCount > 0 && (
+            <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              {activeTasksCount}
+            </span>
+          )}
+        </button>
         <EyeCareToggle className="w-full justify-start" />
         <button
           type="button"
@@ -219,17 +242,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu className="h-4 w-4" aria-hidden="true" />
           </button>
           <span className="shell-mobilebar-title">{pageTitle}</span>
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
-            aria-label="搜索与命令"
-            title="搜索与命令（Ctrl/Cmd + K）"
-            onClick={() => {
-              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
-            }}
-          >
-            <Search className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="relative inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-ink"
+              aria-label="打开任务中心"
+              title="全局任务中心"
+              onClick={() => setTaskDrawerOpen(true)}
+            >
+              <ListTodo className="h-4 w-4 text-accent" aria-hidden="true" />
+              {activeTasksCount > 0 && (
+                <span className="absolute top-2 right-2 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+              aria-label="搜索与命令"
+              title="搜索与命令（Ctrl/Cmd + K）"
+              onClick={() => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+              }}
+            >
+              <Search className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <main className="shell-content" id="shell-content">{children}</main>
@@ -252,6 +292,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </>
       )}
+
+      <TaskDrawer isOpen={taskDrawerOpen} onClose={() => setTaskDrawerOpen(false)} />
     </div>
   );
 }

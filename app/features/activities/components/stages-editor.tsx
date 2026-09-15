@@ -104,7 +104,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
       <div className="space-y-3">
         {stages.map((stage, index) => (
           <div
-            key={stage.id}
+            key={stage.id} id={`stage-${stage.id}`}
             className={`p-4 rounded-[var(--radius-panel)] border transition-all ${
               stage.locked
                 ? 'bg-amber-50/40 border-amber-300/60'

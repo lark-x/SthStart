@@ -1,3 +1,4 @@
+import { registerReworkRoutes } from './rework-routes.js';
 import { compileHyperFramesComposition } from '@sthstart/activity-playback';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
@@ -12,9 +13,17 @@ import type {
   ActivityCheckpoint,
   ActivityDraft,
   ActivityJob,
+  ActivityPresetKind,
+  AdoptCandidateBatchInput,
+  CreateActivityPresetInput,
+  CreateMediaBatchInput,
+  InstantiateTemplateInput,
+  PrepareMediaBatchInput,
+  UpdateActivityPresetInput,
   ContentDocument,
   ContentRevision,
   MediaRevision,
+  MediaRevisionDocument,
   PlaybackDocument,
   PlaybackRevision,
 } from '@sthstart/contracts';
@@ -37,6 +46,23 @@ import {
 } from './media.js';
 import { generateAutoPlayback, validatePlaybackDocument } from './playback.js';
 import { adoptCandidate, cancelTextJob, retryTextJob, runTextGenerationJob } from './text-jobs.js';
+import { adoptCandidateBatch, getActivityProductionOverview } from './production.js';
+import {
+  cancelMediaBatch,
+  createMediaBatch,
+  getMediaBatch,
+  listMediaBatches,
+  prepareMediaBatch,
+  retryFailedBatchItems,
+} from './media-batches.js';
+import {
+  createActivityPreset,
+  deleteActivityPreset,
+  getActivityPreset,
+  instantiateActivityTemplate,
+  listActivityPresets,
+  updateActivityPreset,
+} from './presets.js';
 import { buildActivityExportPackage, startExportJob } from './exports.js';
 import { commitActivityImport, stageActivityImport } from './imports.js';
 import {
@@ -80,6 +106,7 @@ export function registerActivityRoutes(
   secrets: SecretStore,
   fetcher: typeof fetch = fetch,
 ) {
+  registerReworkRoutes(app, config, database, secrets, fetcher);
   const store = new ActivityStore(database);
   store.recoverDanglingJobs();
   // 排期投影可以随时重建，启动时同步以覆盖旧数据。
@@ -397,6 +424,68 @@ export function registerActivityRoutes(
     if (!checkAdmin(request, reply)) return;
     const { expectedDraftVersion, document } = request.body;
     try {
+      const currentDraft = store.getDraft(request.params.id);
+      if (currentDraft) {
+        // 1. Check locked stages deletion
+        const currentLockedStages = currentDraft.document.stages.filter((s) => s.locked);
+        const incomingStageIds = new Set(document.stages.map((s) => s.id));
+        for (const lockedStage of currentLockedStages) {
+          if (!incomingStageIds.has(lockedStage.id)) {
+            return reply.code(400).send({
+              error: 'stage_locked',
+              message: `阶段 "${lockedStage.title || lockedStage.id}" 已被锁定，不可直接删除。请先解锁后再删除。`,
+            });
+          }
+        }
+
+        // 2. Check locked records deletion & media slot unlinking
+        const prevLockedRecords = currentDraft.document.editingPolicy?.lockedRecords || [];
+        const incomingMsgMap = new Map(document.messages.map((m) => [m.id, m]));
+        const incomingPostMap = new Map(document.posts.map((p) => [p.id, p]));
+
+        for (const lockedRec of prevLockedRecords) {
+          if (lockedRec.kind === 'message') {
+            const prevMsg = currentDraft.document.messages.find((m) => m.id === lockedRec.id);
+            const incomingMsg = incomingMsgMap.get(lockedRec.id);
+            if (prevMsg && !incomingMsg) {
+              return reply.code(400).send({
+                error: 'record_locked',
+                message: `消息 "${lockedRec.id}" 已被锁定，不可直接删除。请先解锁后再删除。`,
+              });
+            }
+            if (prevMsg && incomingMsg && prevMsg.mediaSlotIds?.length) {
+              const incomingSlots = new Set(incomingMsg.mediaSlotIds || []);
+              const removedSlot = prevMsg.mediaSlotIds.find((s) => !incomingSlots.has(s));
+              if (removedSlot) {
+                return reply.code(400).send({
+                  error: 'record_locked',
+                  message: `消息 "${lockedRec.id}" 已被锁定，不可解除媒体镜头关联。请先解锁后再编辑。`,
+                });
+              }
+            }
+          } else if (lockedRec.kind === 'post') {
+            const prevPost = currentDraft.document.posts.find((p) => p.id === lockedRec.id);
+            const incomingPost = incomingPostMap.get(lockedRec.id);
+            if (prevPost && !incomingPost) {
+              return reply.code(400).send({
+                error: 'record_locked',
+                message: `动态 "${lockedRec.id}" 已被锁定，不可直接删除。请先解锁后再删除。`,
+              });
+            }
+            if (prevPost && incomingPost && prevPost.mediaSlotIds?.length) {
+              const incomingSlots = new Set(incomingPost.mediaSlotIds || []);
+              const removedSlot = prevPost.mediaSlotIds.find((s) => !incomingSlots.has(s));
+              if (removedSlot) {
+                return reply.code(400).send({
+                  error: 'record_locked',
+                  message: `动态 "${lockedRec.id}" 已被锁定，不可解除媒体镜头关联。请先解锁后再编辑。`,
+                });
+              }
+            }
+          }
+        }
+      }
+
       const updatedDraft = store.updateDraft(request.params.id, expectedDraftVersion, document);
       return { draftVersion: updatedDraft.draftVersion };
     } catch (err: unknown) {
@@ -588,6 +677,146 @@ export function registerActivityRoutes(
     }
   });
 
+  // 14b. Adopt Candidate Batch
+  app.post<{
+    Params: { id: string };
+    Body: AdoptCandidateBatchInput;
+  }>('/api/v1/admin/activities/:id/candidates/adopt-batch', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const result = adoptCandidateBatch(
+        database,
+        store,
+        request.params.id,
+        request.body,
+      );
+      return result;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('conflict') ||
+        (err as { code?: string }).code?.includes('conflict') ||
+        (err as { code?: string }).code?.includes('locked')
+      ) {
+        return reply.code(409).send({ error: (err as { code?: string }).code || 'conflict', message: msg });
+      }
+      return reply.code(400).send({ error: 'adopt_batch_failed', message: msg });
+    }
+  });
+
+  // 14c. Production Overview
+  app.get<{
+    Params: { id: string };
+  }>('/api/v1/admin/activities/:id/production', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      return getActivityProductionOverview(database, store, request.params.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'activity_not_found') return reply.code(404).send({ error: 'activity_not_found' });
+      return reply.code(500).send({ error: 'production_overview_failed', message: msg });
+    }
+  });
+
+  // 14d. Media Batches: Prepare
+  app.post<{
+    Params: { id: string };
+    Body: PrepareMediaBatchInput;
+  }>('/api/v1/admin/activities/:id/media-batches/prepare', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      return prepareMediaBatch(database, store, request.params.id, request.body);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'activity_not_found') return reply.code(404).send({ error: 'activity_not_found' });
+      return reply.code(400).send({ error: 'prepare_batch_failed', message: msg });
+    }
+  });
+
+  // 14e. Media Batches: Create
+  app.post<{
+    Params: { id: string };
+    Body: CreateMediaBatchInput;
+  }>('/api/v1/admin/activities/:id/media-batches', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const batch = await createMediaBatch(
+        config,
+        database,
+        secrets,
+        store,
+        request.params.id,
+        request.body,
+        fetcher,
+      );
+      return reply.code(201).send(batch);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if ((err as { code?: string }).code === 'head_version_conflict') {
+        return reply.code(409).send({ error: 'head_version_conflict', message: msg });
+      }
+      if (msg === 'activity_not_found') return reply.code(404).send({ error: 'activity_not_found' });
+      return reply.code(400).send({ error: 'create_batch_failed', message: msg });
+    }
+  });
+
+  // 14f. Media Batches: List
+  app.get<{
+    Params: { id: string };
+  }>('/api/v1/admin/activities/:id/media-batches', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      return { items: listMediaBatches(database, request.params.id) };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'activity_not_found') return reply.code(404).send({ error: 'activity_not_found' });
+      return reply.code(500).send({ error: 'list_batches_failed', message: msg });
+    }
+  });
+
+  // 14g. Media Batches: Get
+  app.get<{
+    Params: { id: string; batchId: string };
+  }>('/api/v1/admin/activities/:id/media-batches/:batchId', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const batch = getMediaBatch(database, request.params.id, request.params.batchId);
+      if (!batch) return reply.code(404).send({ error: 'batch_not_found' });
+      return batch;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({ error: 'get_batch_failed', message: msg });
+    }
+  });
+
+  // 14h. Media Batches: Cancel
+  app.post<{
+    Params: { id: string; batchId: string };
+  }>('/api/v1/admin/activities/:id/media-batches/:batchId/cancel', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      return await cancelMediaBatch(config, database, secrets, store, request.params.id, request.params.batchId, fetcher);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'batch_not_found') return reply.code(404).send({ error: 'batch_not_found' });
+      return reply.code(400).send({ error: 'cancel_batch_failed', message: msg });
+    }
+  });
+
+  // 14i. Media Batches: Retry Failed
+  app.post<{
+    Params: { id: string; batchId: string };
+  }>('/api/v1/admin/activities/:id/media-batches/:batchId/retry-failed', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      return await retryFailedBatchItems(config, database, secrets, store, request.params.id, request.params.batchId, fetcher);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'batch_not_found') return reply.code(404).send({ error: 'batch_not_found' });
+      return reply.code(400).send({ error: 'retry_batch_failed', message: msg });
+    }
+  });
+
   // 15. Capabilities
   app.get('/api/v1/admin/activities/capabilities', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
@@ -705,6 +934,12 @@ export function registerActivityRoutes(
       const configurationPath = errorConfigurationPath(err);
       if ((err as { code?: string }).code === 'llm_not_ready') {
         return reply.code(409).send({ error: 'llm_not_ready', message: msg, ...(configurationPath ? { configurationPath } : {}) });
+      }
+      if ((err as { code?: string }).code === 'stage_locked') {
+        return reply.code(400).send({ error: 'stage_locked', message: msg });
+      }
+      if ((err as { code?: string }).code === 'record_locked') {
+        return reply.code(400).send({ error: 'record_locked', message: msg });
       }
       if (msg.includes('idempotency_conflict')) {
         return reply.code(409).send({ error: 'idempotency_conflict', message: msg });
@@ -1550,6 +1785,7 @@ export function registerActivityRoutes(
         viewerActorId?: string;
         speed?: number;
         expandMedia?: boolean;
+        mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
       };
     }>,
     reply: FastifyReply,
@@ -1577,6 +1813,7 @@ export function registerActivityRoutes(
         viewerActorId: request.body.viewerActorId,
         speed: request.body.speed,
         expandMedia: request.body.expandMedia,
+        mode: request.body.mode,
       },
     );
 
@@ -1845,4 +2082,60 @@ export function registerActivityRoutes(
   };
 
   app.post<{ Params: { importId: string } }>('/api/v1/admin/activities/imports/:importId/commit', handleCommitImport);
+
+  // 36. Activity Reusable Presets (M5)
+  app.get<{ Querystring: { kind?: ActivityPresetKind } }>('/api/v1/admin/activity-presets', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const items = listActivityPresets(database, request.query?.kind);
+    return { items };
+  });
+
+  app.post<{ Body: CreateActivityPresetInput }>('/api/v1/admin/activity-presets', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    if (!request.body?.name?.trim()) {
+      return reply.code(400).send({ error: 'name_required', message: '预设名称不能为空' });
+    }
+    const preset = createActivityPreset(database, request.body);
+    return reply.code(201).send(preset);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/v1/admin/activity-presets/:id', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const preset = getActivityPreset(database, request.params.id);
+    if (!preset) return reply.code(404).send({ error: 'preset_not_found', message: '预设未找到' });
+    return preset;
+  });
+
+  app.patch<{ Params: { id: string }; Body: UpdateActivityPresetInput }>('/api/v1/admin/activity-presets/:id', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const updated = updateActivityPreset(database, request.params.id, request.body);
+      return updated;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if ((err as { code?: string }).code === 'preset_not_found') {
+        return reply.code(404).send({ error: 'preset_not_found', message: msg });
+      }
+      return reply.code(400).send({ error: 'update_failed', message: msg });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/v1/admin/activity-presets/:id', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const deleted = deleteActivityPreset(database, request.params.id);
+    return { success: deleted };
+  });
+
+  app.post<{ Params: { id: string }; Body: InstantiateTemplateInput }>('/api/v1/admin/activity-presets/:id/instantiate', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    const preset = getActivityPreset(database, request.params.id);
+    if (!preset) return reply.code(404).send({ error: 'preset_not_found', message: '预设未找到' });
+    try {
+      const instantiated = instantiateActivityTemplate(preset, request.body);
+      return instantiated;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: 'instantiate_failed', message: msg });
+    }
+  });
 }

@@ -1,4 +1,5 @@
 'use client';
+import { normalizeCreationProfile } from '@sthstart/contracts';
 
 import { postJson } from '@/app/lib/api-client';
 import React, { useState, useEffect, useRef } from 'react';
@@ -13,6 +14,7 @@ import {
   Eye,
   Clock,
   Film,
+  Bookmark,
 } from 'lucide-react';
 import type {
   Activity,
@@ -24,7 +26,9 @@ import type {
 import {
   useGenerateAutoPlayback,
   useSavePlaybackRevision,
+  useCreateActivityPreset,
 } from '../mutations';
+import { useActivityPresets } from '../queries';
 import { Select } from '@/app/components/ui/select';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -56,10 +60,50 @@ export function PlaybackWorkstation({
     currentPlaybackRevision?.document?.viewerActorId || actors[0]?.id || ''
   );
   const [speed, setSpeed] = useState<number>(1);
+  const [playbackMode, setPlaybackMode] = useState<'by_stage' | 'story_order' | 'chat_only' | 'moments_only'>(()=>normalizeCreationProfile((document.activity.creationProfile?.values||{}) as Record<string,unknown>).playbackMode);
+  const [expandMedia, setExpandMedia] = useState<boolean>(()=>normalizeCreationProfile((document.activity.creationProfile?.values||{}) as Record<string,unknown>).expandMedia);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const { data: presetsData } = useActivityPresets('playback_preset');
+  const createPresetMutation = useCreateActivityPreset();
+  const playbackPresets = presetsData?.items || [];
+
+  const handleSelectPreset = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    if (!presetId) return;
+    const preset = playbackPresets.find((p) => p.id === presetId);
+    if (preset?.payload) {
+      const payload = preset.payload as Record<string, unknown>;
+      if (typeof payload.speed === 'number') setSpeed(payload.speed);
+      if (typeof payload.mode === 'string' && ['by_stage', 'story_order', 'chat_only', 'moments_only'].includes(payload.mode)) {
+        setPlaybackMode(payload.mode as any);
+      }
+      if (typeof payload.expandMedia === 'boolean') setExpandMedia(payload.expandMedia);
+    }
+  };
+
+  const handleSavePlaybackPreset = async () => {
+    const name = window.prompt('请输入回放预设名称:', `回放偏好 (${playbackMode} · ${speed}x)`);
+    if (!name?.trim()) return;
+    try {
+      const created = await createPresetMutation.mutateAsync({
+        kind: 'playback_preset',
+        name: name.trim(),
+        payload: {
+          speed,
+          mode: playbackMode,
+          expandMedia,
+        },
+      });
+      setSelectedPresetId(created.id);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : '保存回放预设失败');
+    }
+  };
 
   const autoPlaybackMutation = useGenerateAutoPlayback();
   const savePlaybackMutation = useSavePlaybackRevision();
@@ -149,6 +193,8 @@ export function PlaybackWorkstation({
           mediaRevisionId: activity.currentMediaRevisionId || '',
           viewerActorId,
           speed,
+          mode: playbackMode,
+          expandMedia,
         },
       });
       setPlaybackDoc(result.playbackDocument);
@@ -299,6 +345,62 @@ export function PlaybackWorkstation({
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Film className="h-4 w-4 text-muted" />
+          <span className="text-sm font-semibold text-ink">编排模式：</span>
+          <select
+            value={playbackMode}
+            onChange={(e) => setPlaybackMode(e.target.value as any)}
+            disabled={disabled}
+            aria-label="编排模式"
+            className="h-8 text-xs py-0 px-2 rounded border border-border-default bg-surface-raised text-ink"
+          >
+            <option value="by_stage">按阶段 (聊天→动态)</option>
+            <option value="story_order">故事顺序混排</option>
+            <option value="chat_only">仅看聊天</option>
+            <option value="moments_only">仅看动态</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs text-ink font-medium flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={expandMedia}
+              onChange={(e) => setExpandMedia(e.target.checked)}
+              className="rounded border-border-default text-accent"
+            />
+            展开配图/视频
+          </label>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <Bookmark className="h-4 w-4 text-muted" />
+          <span className="text-sm font-semibold text-ink">回放预设：</span>
+          <select
+            value={selectedPresetId}
+            onChange={(e) => handleSelectPreset(e.target.value)}
+            disabled={disabled}
+            aria-label="回放预设"
+            className="h-8 text-xs py-0 px-2 rounded border border-border-default bg-surface-raised text-ink max-w-[140px]"
+          >
+            <option value="">默认配置</option>
+            {playbackPresets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleSavePlaybackPreset}
+            className="text-2xs text-accent hover:underline flex items-center gap-0.5 ml-1"
+            title="另存为回放预设"
+          >
+            另存
+          </button>
         </div>
 
         <div className="ml-auto text-sm text-muted font-mono">

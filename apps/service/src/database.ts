@@ -1042,6 +1042,84 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     // 企划会话保存灵感来源快照，旧会话缺失该列内容时按原逻辑运行。
     'ALTER TABLE activity_planning_sessions ADD COLUMN inspiration_json TEXT',
   ] },
+  // 活动媒体批次：记录批量生图范围、冻结输入、关联任务与协调状态。
+  { version: 26, name: 'activity-media-batches', statements: [
+    `CREATE TABLE IF NOT EXISTS activity_media_batches (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      content_revision_id TEXT NOT NULL,
+      image_config_revision_id TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      idempotency_key TEXT,
+      stop_requested INTEGER NOT NULL DEFAULT 0,
+      options_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_media_batches_act ON activity_media_batches(activity_id, created_at DESC)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_media_batches_idempotency ON activity_media_batches(activity_id, idempotency_key) WHERE idempotency_key IS NOT NULL',
+    `CREATE TABLE IF NOT EXISTS activity_media_batch_items (
+      id TEXT PRIMARY KEY,
+      batch_id TEXT NOT NULL REFERENCES activity_media_batches(id) ON DELETE CASCADE,
+      slot_id TEXT NOT NULL,
+      candidate_index INTEGER NOT NULL DEFAULT 0,
+      slot_fingerprint TEXT NOT NULL,
+      input_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      recipe_id TEXT REFERENCES activity_prompt_recipes(id) ON DELETE SET NULL,
+      compilation_id TEXT REFERENCES activity_prompt_compilations(id) ON DELETE SET NULL,
+      attempt_id TEXT REFERENCES activity_image_attempts(id) ON DELETE SET NULL,
+      generation_task_id TEXT REFERENCES generation_tasks(id) ON DELETE SET NULL,
+      state TEXT NOT NULL DEFAULT 'waiting' CHECK(state IN ('waiting','preparing','linked','skipped','failed')),
+      error_json TEXT NOT NULL DEFAULT '{}',
+      retry_of_item_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(batch_id, slot_id, candidate_index)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_media_batch_items_batch ON activity_media_batch_items(batch_id, slot_id)',
+    'CREATE INDEX IF NOT EXISTS idx_media_batch_items_attempt ON activity_media_batch_items(attempt_id)',
+    'CREATE INDEX IF NOT EXISTS idx_media_batch_items_task ON activity_media_batch_items(generation_task_id)',
+  ] },
+  // 活动复用预设：活动模板、生产预设与回放预设。
+  { version: 27, name: 'activity-reusable-presets', statements: [
+    `CREATE TABLE IF NOT EXISTS activity_reusable_presets (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK(kind IN ('activity_template','production_preset','playback_preset')),
+      name TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      schema_version INTEGER NOT NULL DEFAULT 1,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_activity_presets_kind ON activity_reusable_presets(kind, updated_at DESC)',
+  ] },
+  { version: 28, name: 'activity-local-rework', statements: [
+    `CREATE TABLE activity_review_items (
+      id TEXT PRIMARY KEY, activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      change_key TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
+      data_json TEXT NOT NULL, decision TEXT NOT NULL DEFAULT 'pending', execution_json TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(activity_id, change_key)
+    )`,
+    'CREATE INDEX idx_activity_review_decisions ON activity_review_items(activity_id,decision)',
+    `CREATE TABLE activity_candidate_applications (
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      candidate_id TEXT NOT NULL, unit_id TEXT NOT NULL, request_key TEXT NOT NULL,
+      content_revision_id TEXT NOT NULL, data_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+      PRIMARY KEY(activity_id,candidate_id,unit_id)
+    )`,
+    'ALTER TABLE activity_reusable_presets RENAME TO activity_reusable_presets_old',
+    `CREATE TABLE activity_reusable_presets (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('activity_template','production_preset','playback_preset','creation_profile')),
+      name TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, schema_version INTEGER NOT NULL DEFAULT 1,
+      payload_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    'INSERT INTO activity_reusable_presets SELECT * FROM activity_reusable_presets_old',
+    'DROP TABLE activity_reusable_presets_old',
+    'CREATE INDEX idx_activity_presets_kind ON activity_reusable_presets(kind,updated_at DESC)',
+  ] },
+
 ];
 
 function userTables(connection: DatabaseSync) {

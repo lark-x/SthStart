@@ -1,6 +1,9 @@
+import { resolveTextReview } from './change-impact.js';
+import { rewriteBaseline, assertCandidateDependencies, recordWholeApplication, candidateFactContext } from './candidate-review.js';
+import { assertCandidateCurrent, assertGenerationUnlocked, candidateInputFingerprint } from './editing-policy.js';
 import crypto from 'node:crypto';
 import { normalizeModelOutput, validateGeneratedOutput } from './generation-validation.js';
-import type { ContentDocument } from '@sthstart/contracts';
+import type { ContentDocument, StageDefinition } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import type { SecretStore } from '../security.js';
 import { resolveAssignedLlmProfile, upstreamHeaders } from '../providers.js';
@@ -17,6 +20,49 @@ import {
   type StageGenerationOutput,
 } from './prompts.js';
 import { validateSnippetOutput } from './generation-validation.js';
+
+function buildExistingStageOutput(
+  stage: StageDefinition,
+  document: ContentDocument,
+  labelPrefix: string,
+): StageGenerationOutput {
+  const existingMessages = document.messages.filter((m) => m.stageId === stage.id);
+  const existingPosts = document.posts.filter((p) => p.stageId === stage.id);
+  const existingSlots = document.mediaSlots.filter((s) => s.stageId === stage.id);
+  return {
+    schemaVersion: 1,
+    stageId: stage.id,
+    summary: `【${labelPrefix}：${stage.title}】`,
+    messages: existingMessages.map((m, idx) => ({
+      clientId: m.id,
+      conversationId: m.conversationId,
+      speakerActorId: m.speakerActorId || '',
+      text: m.text,
+      mediaClientIds: m.mediaSlotIds,
+      order: m.storyOrder || idx + 1,
+      storyTimeLabel: m.storyTimeLabel,
+    })),
+    posts: existingPosts.map((p, idx) => ({
+      clientId: p.id,
+      authorActorId: p.authorActorId,
+      text: p.text,
+      mediaClientIds: p.mediaSlotIds,
+      sourceFactClientIds: [],
+      order: p.storyOrder || idx + 1,
+      storyTimeLabel: p.storyTimeLabel,
+    })),
+    comments: [],
+    facts: [],
+    mediaSlots: existingSlots.map((s) => ({
+      clientId: s.id,
+      kind: s.kind,
+      caption: s.caption,
+      shotDescription: s.shotDescription,
+      actorIds: s.actorIds,
+      sourceFactClientIds: s.sourceFactIds || [],
+    })),
+  };
+}
 
 export interface ExecuteJobOptions {
   store: ActivityStore;
@@ -56,6 +102,8 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     const document = options.inputSnapshot || draft?.document;
     if (!document) throw new Error('活动文档不存在');
 
+    assertGenerationUnlocked(document, mode, scope);
+    document.stages = [...document.stages].sort((a, b) => a.order - b.order);
     let prompt = '';
     let snippetMode: SnippetMode | null = null;
     if (mode === 'plan') {
@@ -64,6 +112,12 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
       const stageId = String(scope.stageId || document.stages[0]?.id);
       const stage = document.stages.find((s) => s.id === stageId);
       if (!stage) throw new Error(`阶段 ${stageId} 未找到`);
+      if (stage.locked) {
+        const err = new Error(`阶段 ${stage.title || stageId} 已被锁定，不可生成新内容。请先解锁该阶段。`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+        (err as unknown as { code: string }).code = 'stage_locked';
+        throw err;
+      }
       prompt = buildStagePrompt(document, stage, instructions);
     } else if (mode === 'invite' || mode === 'wish' || mode === 'moment' || mode === 'shot') {
       const stageId = String(scope.stageId || document.stages[0]?.id);
@@ -73,34 +127,87 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
       prompt = buildSnippetPrompt(document, stage, mode, scope, instructions);
     } else if (mode === 'rewrite-records') {
       const recordIds = (scope.recordIds as string[]) || [];
+      const lockedRecordIds = new Set((document.editingPolicy?.lockedRecords || []).map((r) => r.id));
+      const lockedSelected = recordIds.filter((id) => lockedRecordIds.has(id));
+      if (lockedSelected.length > 0) {
+        const err = new Error(`选中的记录 (${lockedSelected.join(', ')}) 已被锁定，不可自动改写。请先解锁。`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+        (err as unknown as { code: string }).code = 'record_locked';
+        throw err;
+      }
       const reason = instructions || '优化对白';
       prompt = buildRewritePrompt(document, recordIds, reason);
     } else if (mode === 'whole-text') {
       const precedingStages: StageGenerationOutput[] = [];
-      // Whole text sequentially generates each stage
+      const precedingCandidateIds: string[] = [];
+      const stageIdFilter = Array.isArray(scope.stageIds) && scope.stageIds.length > 0
+        ? new Set(scope.stageIds.map(String))
+        : null;
+
+      // Whole text sequentially processes each stage
       for (let i = 0; i < document.stages.length; i++) {
         const check = store.getJob(activityId, jobId);
         if (check?.status === 'cancelled') return;
 
         const currentStage = document.stages[i];
-        store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id });
-        const stPrompt = buildStagePrompt(document, currentStage, instructions) +
-          '\n【本批已生成的前序阶段（尚未采用，后续必须保持事实连续；clientId 仅在各阶段内有效）】\n' + JSON.stringify(precedingStages);
-        const stResp = await callLlm(profile, stPrompt, fetchFn);
-        const stOutput = normalizeModelOutput(parseAiJsonOutput<StageGenerationOutput>(stResp), document, { stageId: currentStage.id });
-        validateGeneratedOutput(stOutput, document, 'stage', currentStage.id);
-        precedingStages.push(stOutput);
-        const candidate = store.createCandidate({
-          activityId,
-          baseRevisionId: draft?.baseContentRevisionId || null,
-          draftVersion: draft?.draftVersion || 1,
-          scope: { stageId: currentStage.id, batchIndex: i, mode: 'stage', batchSize: document.stages.length },
-          payload: stOutput as unknown as Record<string, unknown>,
-          validation: { valid: true },
-        });
-        const currentJob = store.getJob(activityId, jobId);
-        const candidateIds = [...(currentJob?.resultCandidateIds || []), candidate.id];
-        store.updateJob(jobId, { resultCandidateIds: candidateIds });
+        const successful = (store.getJob(activityId, jobId)?.resultCandidateIds || []).map(id => store.getCandidate(activityId, id))
+          .find(c => c?.scope.stageId === currentStage.id);
+        if (successful) {
+          precedingStages.push(successful.payload as unknown as StageGenerationOutput);
+          precedingCandidateIds.push(successful.id);
+          continue;
+        }
+
+        // 1. 如果阶段已锁定，跳过模型生成，但把已有事实/记录作为前序上下文带给后续阶段
+        if (currentStage.locked) {
+          precedingStages.push(buildExistingStageOutput(currentStage, document, '已锁定阶段'));
+          store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id, skipped: true, reason: 'locked' });
+          continue;
+        }
+
+        // 2. 如果指定了 stageIds 范围且本阶段不在范围内，跳过生成并保留现有上下文
+        if (stageIdFilter && !stageIdFilter.has(currentStage.id)) {
+          precedingStages.push(buildExistingStageOutput(currentStage, document, '前序阶段'));
+          store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id, skipped: true, reason: 'unselected' });
+          continue;
+        }
+
+        // 3. 逐阶段生成，具备部分失败保护：单阶段失败不丢失已生成的前序候选
+        try {
+          assertGenerationUnlocked(document, 'stage', { stageId: currentStage.id });
+          store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id });
+          const stPrompt = buildStagePrompt(document, currentStage, instructions) +
+            '\n【本批已生成的前序阶段（尚未采用，后续必须保持事实连续；clientId 仅在各阶段内有效）】\n' + JSON.stringify(precedingStages);
+          const stResp = await callLlm(profile, stPrompt, fetchFn);
+
+          const midCheck = store.getJob(activityId, jobId);
+          if (midCheck?.status === 'cancelled') return;
+
+          const stOutput = normalizeModelOutput(parseAiJsonOutput<StageGenerationOutput>(stResp), document, { stageId: currentStage.id });
+          validateGeneratedOutput(stOutput, document, 'stage', currentStage.id);
+          precedingStages.push(stOutput);
+          const candidate = store.createCandidate({
+            activityId,
+            baseRevisionId: draft?.baseContentRevisionId || null,
+            draftVersion: draft?.draftVersion || 1,
+            scope: { factContext:candidateFactContext(document,currentStage.id,precedingCandidateIds.map(id=>String(store.getCandidate(activityId,id)?.scope.stageId||''))), reviewVersion:1, precedingCandidateIds:[...precedingCandidateIds], stageId: currentStage.id, batchIndex: i, mode: 'stage', batchSize: document.stages.length, jobId, inputFingerprint: candidateInputFingerprint(document, { stageId: currentStage.id, mode: 'stage' }) },
+            payload: stOutput as unknown as Record<string, unknown>,
+            validation: { valid: true },
+          });
+          precedingCandidateIds.push(candidate.id);
+          const currentJob = store.getJob(activityId, jobId);
+          const candidateIds = [...(currentJob?.resultCandidateIds || []), candidate.id];
+          store.updateJob(jobId, { resultCandidateIds: candidateIds });
+        } catch (stageErr: unknown) {
+          if (store.getJob(activityId, jobId)?.status === 'cancelled') return;
+          const msg = stageErr instanceof Error ? stageErr.message : String(stageErr);
+          store.appendJobEvent(jobId, activityId, 'stage_failed', { stageIndex: i, stageId: currentStage.id, error: msg });
+          store.updateJob(jobId, {
+            status: 'failed',
+            errorMessage: `阶段「${currentStage.title}」生成失败: ${msg}`,
+          });
+          return;
+        }
       }
 
       const finalCheck = store.getJob(activityId, jobId);
@@ -152,7 +259,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
       activityId,
       baseRevisionId: draft?.baseContentRevisionId || null,
       draftVersion: draft?.draftVersion || 1,
-      scope: { ...scope, mode },
+      scope: { ...scope, ...(mode==='stage'?{factContext:candidateFactContext(document,String(scope.stageId||document.stages[0]?.id))}:{}), reviewVersion:1, mode, jobId, ...(mode === 'rewrite-records' ? { reviewBaseline: rewriteBaseline(document, scope) } : {}), inputFingerprint: candidateInputFingerprint(document, { ...scope, mode }) },
       payload: parsedPayload,
       validation: { valid: true },
     });
@@ -404,7 +511,7 @@ export function adoptCandidateIntoDocument(
     const currentOrder = currentStage?.order ?? 1;
     updatedDoc.stageResults = updatedDoc.stageResults.map((sr) => {
       const targetStage = updatedDoc.stages.find((s) => s.id === sr.stageId);
-      if (targetStage && (targetStage.order > currentOrder || (appendOnly && targetStage.id === stageId))) {
+      if (!scope.reviewVersion && targetStage && (targetStage.order > currentOrder || (appendOnly && targetStage.id === stageId))) {
         return { ...sr, reviewState: 'needs_review' as const };
       }
       return sr;
@@ -472,6 +579,31 @@ export async function runTextGenerationJob(
       userInstruction: params.userInstruction,
     }))
     .digest('hex');
+
+  // 校验阶段与记录锁定状态，锁定项直接拒绝，不产生无效排队任务
+  if (inputSnapshot) {
+    assertGenerationUnlocked(inputSnapshot, params.mode, params.scope || {});
+    if (params.mode === 'stage') {
+      const stageId = String(params.scope?.stageId || inputSnapshot.stages[0]?.id);
+      const stage = inputSnapshot.stages.find((s) => s.id === stageId);
+      if (stage?.locked) {
+        const err = new Error(`阶段 "${stage.title || stageId}" 已被锁定，不可生成新内容。请先解锁该阶段。`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+        (err as unknown as { code: string }).code = 'stage_locked';
+        throw err;
+      }
+    } else if (params.mode === 'rewrite-records') {
+      const recordIds = (params.scope?.recordIds as string[]) || [];
+      const lockedRecordIds = new Set((inputSnapshot.editingPolicy?.lockedRecords || []).map((r) => r.id));
+      const lockedSelected = recordIds.filter((id) => lockedRecordIds.has(id));
+      if (lockedSelected.length > 0) {
+        const err = new Error(`选中的记录 (${lockedSelected.join(', ')}) 已被锁定，不可自动改写。请先解锁。`);
+        (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+        (err as unknown as { code: string }).code = 'record_locked';
+        throw err;
+      }
+    }
+  }
 
   // 创建任务前结构预检：未就绪直接 409，不产生注定失败的排队任务。
   const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
@@ -541,6 +673,9 @@ export async function retryTextJob(
   jobId: string,
   fetcher?: typeof fetch,
 ) {
+  const previous = store.getJob(activityId, jobId);
+  if (!previous) return null;
+  if (!['failed', 'result_unknown'].includes(previous.status)) throw conflict('job_not_retryable', '该任务不能重试。');
   const job = store.retryJob(activityId, jobId);
   if (!job) return null;
 
@@ -590,6 +725,37 @@ export function adoptCandidate(
   const draft = store.getDraft(activityId);
   if (!draft) throw new Error('draft_not_found');
 
+  if (candidate.adopted) {
+    const activity = store.getActivity(activityId)!;
+    return { activity, contentRevision: store.getContentRevision(activityId, activity.currentContentRevisionId!)!, candidate, headVersion: activity.headVersion };
+  }
+  assertCandidateDependencies(database,store,activityId,candidateId);
+  assertCandidateCurrent(draft.document, candidate);
+  const stageId = String((candidate.scope as Record<string, unknown>)?.stageId || '');
+  const mode = String((candidate.scope as Record<string, unknown>)?.mode || '');
+  const targetStage = draft.document.stages.find((s) => s.id === stageId);
+  if (targetStage?.locked && mode !== 'invite' && mode !== 'wish' && mode !== 'moment' && mode !== 'shot') {
+    throw conflict('stage_locked', `阶段 ${stageId} 已被锁定，不可采用覆写该阶段内容的候选。请先解锁阶段。`);
+  }
+
+  const lockedRecordIds = new Set((draft.document.editingPolicy?.lockedRecords || []).map((r) => r.id));
+  const candPayload = candidate.payload as Record<string, unknown>;
+  if (Array.isArray(candPayload.rewrittenMessages)) {
+    for (const row of candPayload.rewrittenMessages as Record<string, unknown>[]) {
+      if (lockedRecordIds.has(String(row.id))) {
+        throw conflict('record_locked', `选中的消息 ${String(row.id)} 已被锁定，不可自动改写。`);
+      }
+    }
+  }
+  if (Array.isArray(candPayload.rewrittenPosts)) {
+    for (const row of candPayload.rewrittenPosts as Record<string, unknown>[]) {
+      if (lockedRecordIds.has(String(row.id))) {
+        throw conflict('record_locked', `选中的动态 ${String(row.id)} 已被锁定，不可自动改写。`);
+      }
+    }
+  }
+
+  if(candidate.scope.importedReadOnly)throw conflict('candidate_imported_readonly','导入的历史候选请重新生成');
   const updatedDoc = adoptCandidateIntoDocument(
     draft.document,
     candidate.payload,
@@ -614,6 +780,8 @@ export function adoptCandidate(
     database.connection.prepare(
       `UPDATE activity_candidates SET adopted = 1 WHERE id = ? AND activity_id = ?`
     ).run(candidateId, activityId);
+    resolveTextReview(database.connection,activityId,updatedDoc,candidateId);
+    recordWholeApplication(database,activityId,candidateId,updatedDoc,String(candidate.scope.stageId||''),committed.contentRevisionId);
     const contentRevision = store.getContentRevision(activityId, committed.contentRevisionId)!;
     return {
       activity: committed.activity,

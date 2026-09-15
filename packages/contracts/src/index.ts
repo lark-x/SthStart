@@ -2799,6 +2799,17 @@ export const ActivityInspirationSnapshotSchema = Type.Object({
 });
 export type ActivityInspirationSnapshot = Static<typeof ActivityInspirationSnapshotSchema>;
 
+export const EditingPolicySchema = Type.Object({
+  lockedRecords: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal('message'), Type.Literal('post')]),
+      id: Type.String(),
+    })
+  ),
+  lockedMediaSlotIds: Type.Array(Type.String()),
+});
+export type EditingPolicy = Static<typeof EditingPolicySchema>;
+
 export const ContentDocumentSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   activity: Type.Object({
@@ -2811,6 +2822,12 @@ export const ContentDocumentSchema = Type.Object({
     // 可选排期与模板信息：旧文档缺失时视为未排期、无模板。
     scheduledDate: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     templateId: Type.Optional(Type.String()),
+    creationProfile: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    templateSnapshot: Type.Optional(Type.Object({
+      presetId: Type.String(), name: Type.String(), version: Type.Number(),
+      payload: Type.Record(Type.String(), Type.Unknown()),
+      actorMappings: Type.Optional(Type.Record(Type.String(), Type.Array(Type.String()))),
+    })),
     birthdayActorIds: Type.Optional(Type.Array(Type.String())),
     overview: Type.Optional(Type.String()),
     // 企划依据快照：采用方案时冻结的研究结论与资料摘录。
@@ -2880,6 +2897,7 @@ export const ContentDocumentSchema = Type.Object({
   mediaSlots: Type.Array(MediaSlotSchema),
   facts: Type.Array(ActivityFactSchema),
   stageResults: Type.Array(StageResultSchema),
+  editingPolicy: Type.Optional(EditingPolicySchema),
 });
 export type ContentDocument = Static<typeof ContentDocumentSchema>;
 
@@ -3320,6 +3338,8 @@ export const GenerationAttemptStatusSchema = Type.Union([
   Type.Literal('failed'),
   Type.Literal('cancelled'),
   Type.Literal('result_unknown'),
+  Type.Literal('abandoned'),
+  Type.Literal('accepted'),
 ]);
 export type GenerationAttemptStatus = Static<typeof GenerationAttemptStatusSchema>;
 
@@ -3728,6 +3748,8 @@ export interface ActivityPlanningCharacterRef {
 }
 
 export interface ActivityPlanningForm {
+  templateActorMappings?: Record<string, string[]>;
+  creationProfile?: Record<string, unknown>;
   templateId: string;
   title: string;
   type: string;
@@ -4353,3 +4375,391 @@ export const ActivityIdeaApplyResultSchema = Type.Object({
   createdSession: Type.Boolean(),
 });
 export type ActivityIdeaApplyResult = Static<typeof ActivityIdeaApplyResultSchema>;
+
+// ==========================================
+// 活动工作室：生产流程与自动化升级契约 (M1 - M6)
+// ==========================================
+
+export const AdoptCandidateBatchInputSchema = Type.Object({
+  candidateIds: Type.Array(Type.String()),
+  expectedHeadVersion: Type.Number(),
+  expectedDraftVersion: Type.Number(),
+  idempotencyKey: Type.Optional(Type.String()),
+});
+export type AdoptCandidateBatchInput = Static<typeof AdoptCandidateBatchInputSchema>;
+
+export const AdoptCandidateBatchOutputSchema = Type.Object({
+  activity: Type.Any(),
+  contentRevision: Type.Any(),
+  adoptedCandidateIds: Type.Array(Type.String()),
+  headVersion: Type.Number(),
+});
+export type AdoptCandidateBatchOutput = Static<typeof AdoptCandidateBatchOutputSchema>;
+
+export const ActivityProductionStageOverviewSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  order: Type.Number(),
+  locked: Type.Boolean(),
+  hasMessages: Type.Boolean(),
+  hasPosts: Type.Boolean(),
+  unadoptedCandidateCount: Type.Number(),
+  imageSlotCount: Type.Number(),
+  adoptedImageSlotCount: Type.Number(),
+});
+export type ActivityProductionStageOverview = Static<typeof ActivityProductionStageOverviewSchema>;
+
+export const ActivityProductionOverviewSchema = Type.Object({
+  activityId: Type.String(),
+  title: Type.String(),
+  headVersion: Type.Number(),
+  draftVersion: Type.Number(),
+  stages: Type.Array(ActivityProductionStageOverviewSchema),
+  textStatus: Type.Union([
+    Type.Literal('not_started'),
+    Type.Literal('candidates_ready'),
+    Type.Literal('adopted'),
+  ]),
+  mediaStatus: Type.Object({
+    totalSlots: Type.Number(),
+    adoptedSlots: Type.Number(),
+    pendingSlots: Type.Number(),
+    hasFailedBatches: Type.Boolean(),
+  }),
+  playbackStatus: Type.Union([
+    Type.Literal('not_created'),
+    Type.Literal('ready'),
+    Type.Literal('needs_update'),
+  ]),
+  suggestedStep: Type.Union([
+    Type.Literal('generate_text'),
+    Type.Literal('review_candidates'),
+    Type.Literal('generate_media'),
+    Type.Literal('pick_media'),
+    Type.Literal('update_playback'),
+    Type.Literal('preview_export'),
+  ]),
+  unadoptedCandidates: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      stageId: Type.Optional(Type.String()),
+      mode: Type.String(),
+      createdAt: Type.String(),
+      summary: Type.Optional(Type.String()),
+    })
+  ),
+  imagePreflight: Type.Object({
+    ready: Type.Boolean(),
+    reason: Type.Optional(Type.String()),
+    purpose: Type.Optional(Type.String()),
+    engineName: Type.Optional(Type.String()),
+    workflowName: Type.Optional(Type.String()),
+  }),
+});
+export type ActivityProductionOverview = Static<typeof ActivityProductionOverviewSchema>;
+
+export const MediaBatchItemStateSchema = Type.Union([
+  Type.Literal('waiting'),
+  Type.Literal('preparing'),
+  Type.Literal('linked'),
+  Type.Literal('skipped'),
+  Type.Literal('failed'),
+]);
+export type MediaBatchItemState = Static<typeof MediaBatchItemStateSchema>;
+
+export const ActivityMediaBatchItemSchema = Type.Object({
+  id: Type.String(),
+  batchId: Type.String(),
+  slotId: Type.String(),
+  candidateIndex: Type.Number(),
+  slotFingerprint: Type.String(),
+  inputSnapshot: Type.Record(Type.String(), Type.Unknown()),
+  recipeId: Type.Optional(Type.String()),
+  compilationId: Type.Optional(Type.String()),
+  attemptId: Type.Optional(Type.String()),
+  generationTaskId: Type.Optional(Type.String()),
+  state: MediaBatchItemStateSchema,
+  error: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  retryOfItemId: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  attemptOutputs: Type.Optional(Type.Array(AttemptOutputSchema)),
+  actualSeed: Type.Optional(Type.Number()),
+});
+export type ActivityMediaBatchItem = Static<typeof ActivityMediaBatchItemSchema>;
+
+export const ActivityMediaBatchSummarySchema = Type.Object({
+  total: Type.Number(),
+  waiting: Type.Number(),
+  preparing: Type.Number(),
+  running: Type.Number(),
+  succeeded: Type.Number(),
+  failed: Type.Number(),
+  skipped: Type.Number(),
+  displayState: Type.Union([
+    Type.Literal('preparing'),
+    Type.Literal('running'),
+    Type.Literal('partial'),
+    Type.Literal('succeeded'),
+    Type.Literal('stopped'),
+    Type.Literal('failed'),
+    Type.Literal('needs_attention'),
+  ]),
+});
+export type ActivityMediaBatchSummary = Static<typeof ActivityMediaBatchSummarySchema>;
+
+export const ActivityMediaBatchSchema = Type.Object({
+  id: Type.String(),
+  activityId: Type.String(),
+  contentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.String(),
+  requestHash: Type.String(),
+  idempotencyKey: Type.Optional(Type.String()),
+  stopRequested: Type.Boolean(),
+  options: Type.Record(Type.String(), Type.Unknown()),
+  items: Type.Array(ActivityMediaBatchItemSchema),
+  summary: ActivityMediaBatchSummarySchema,
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type ActivityMediaBatch = Static<typeof ActivityMediaBatchSchema>;
+
+export const CreateMediaBatchInputSchema = Type.Object({
+  expectedHeadVersion: Type.Number(),
+  contentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.String(),
+  items: Type.Array(
+    Type.Object({
+      slotId: Type.String(),
+      candidateCount: Type.Union([Type.Literal(1), Type.Literal(2), Type.Literal(3)]),
+    })
+  ),
+  productionPresetId: Type.Optional(Type.String()),
+  idempotencyKey: Type.String(),
+});
+export type CreateMediaBatchInput = Static<typeof CreateMediaBatchInputSchema>;
+
+export const PrepareMediaBatchInputSchema = Type.Object({
+  contentRevisionId: Type.String(),
+  imageConfigRevisionId: Type.String(),
+  slotIds: Type.Array(Type.String()),
+});
+export type PrepareMediaBatchInput = Static<typeof PrepareMediaBatchInputSchema>;
+
+export const PrepareMediaBatchOutputSchema = Type.Object({
+  readyItems: Type.Array(
+    Type.Object({
+      slotId: Type.String(),
+      slotCaption: Type.String(),
+      workflowPurpose: Type.String(),
+      ready: Type.Boolean(),
+      reason: Type.Optional(Type.String()),
+    })
+  ),
+  unreadyItems: Type.Array(
+    Type.Object({
+      slotId: Type.String(),
+      slotCaption: Type.String(),
+      reason: Type.String(),
+    })
+  ),
+  allReady: Type.Boolean(),
+});
+export type PrepareMediaBatchOutput = Static<typeof PrepareMediaBatchOutputSchema>;
+
+export const TaskDomainSchema = Type.Union([
+  Type.Literal('topic_collection'),
+  Type.Literal('idea_generation'),
+  Type.Literal('research'),
+  Type.Literal('planning'),
+  Type.Literal('activity_text'),
+  Type.Literal('activity_media_batch'),
+  Type.Literal('generation'),
+  Type.Literal('export'),
+]);
+export type TaskDomain = Static<typeof TaskDomainSchema>;
+
+export const TaskDisplayStateSchema = Type.Union([
+  Type.Literal('waiting'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('partial'),
+  Type.Literal('failed'),
+  Type.Literal('stopped'),
+  Type.Literal('needs_attention'),
+]);
+export type TaskDisplayState = Static<typeof TaskDisplayStateSchema>;
+
+export const TaskSummarySchema = Type.Object({
+  domain: TaskDomainSchema,
+  taskId: Type.String(),
+  title: Type.String(),
+  activityId: Type.Optional(Type.String()),
+  parentTask: Type.Optional(
+    Type.Object({
+      domain: Type.String(),
+      taskId: Type.String(),
+    })
+  ),
+  displayState: TaskDisplayStateSchema,
+  rawState: Type.String(),
+  progress: Type.Optional(
+    Type.Object({
+      completed: Type.Number(),
+      total: Type.Number(),
+      unit: Type.String(),
+    })
+  ),
+  detail: Type.Optional(Type.String()),
+  targetUrl: Type.String(),
+  capabilities: Type.Object({
+    cancel: Type.Boolean(),
+    retry: Type.Boolean(),
+  }),
+  cancelScope: Type.Optional(
+    Type.Union([
+      Type.Literal('pending_items'),
+      Type.Literal('local_tracking'),
+      Type.Literal('upstream'),
+    ])
+  ),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type TaskSummary = Static<typeof TaskSummarySchema>;
+
+export const TasksResponseSchema = Type.Object({
+  items: Type.Array(TaskSummarySchema),
+  activeCount: Type.Number(),
+});
+export type TasksResponse = Static<typeof TasksResponseSchema>;
+
+export const ActivityPresetKindSchema = Type.Union([
+  Type.Literal('creation_profile'),
+  Type.Literal('activity_template'),
+  Type.Literal('production_preset'),
+  Type.Literal('playback_preset'),
+]);
+export type ActivityPresetKind = Static<typeof ActivityPresetKindSchema>;
+
+export const ActivityReusablePresetSchema = Type.Object({
+  id: Type.String(),
+  kind: ActivityPresetKindSchema,
+  name: Type.String(),
+  version: Type.Number(),
+  schemaVersion: Type.Number(),
+  payload: Type.Record(Type.String(), Type.Unknown()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type ActivityReusablePreset = Static<typeof ActivityReusablePresetSchema>;
+
+export const CreateActivityPresetInputSchema = Type.Object({
+  kind: ActivityPresetKindSchema,
+  name: Type.String({ minLength: 1 }),
+  payload: Type.Record(Type.String(), Type.Unknown()),
+});
+export type CreateActivityPresetInput = Static<typeof CreateActivityPresetInputSchema>;
+
+export const UpdateActivityPresetInputSchema = Type.Object({
+  name: Type.Optional(Type.String({ minLength: 1 })),
+  payload: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+export type UpdateActivityPresetInput = Static<typeof UpdateActivityPresetInputSchema>;
+
+export const ListActivityPresetsResponseSchema = Type.Object({
+  items: Type.Array(ActivityReusablePresetSchema),
+});
+export type ListActivityPresetsResponse = Static<typeof ListActivityPresetsResponseSchema>;
+
+export const InstantiateTemplateInputSchema = Type.Object({
+  title: Type.String({ minLength: 1 }),
+  location: Type.Optional(Type.String()),
+  actorMappings: Type.Record(Type.String(), Type.Union([Type.String(), Type.Array(Type.String())])),
+});
+export type InstantiateTemplateInput = Static<typeof InstantiateTemplateInputSchema>;
+
+
+export interface ActivityReviewItem {
+  id: string;
+  activityId: string;
+  changeKey: string;
+  targetKind: 'message' | 'post' | 'stage' | 'image' | 'playback';
+  targetId: string;
+  title: string;
+  severity: 'invalid_reference' | 'source_changed' | 'possible' | 'playback_outdated';
+  reasons: string[];
+  sourceHash: string;
+  targetHash: string;
+  sourceRefs: Array<{ kind: string; id: string; field: string }>;
+  sourceValues: unknown[];
+  decision: 'pending' | 'keep' | 'rework' | 'resolved' | 'superseded';
+  locked?: boolean;
+  execution?: { kind: 'text' | 'image'; id: string; status?: string };
+  createdAt?: string;
+}
+export interface CandidateReviewUnit {
+  id: string;
+  kind: 'rewrite_message' | 'rewrite_post' | 'replace_stage' | 'append_candidate';
+  targetId: string;
+  title: string;
+  before: string;
+  after: string;
+  applied: boolean;
+  conflict?: string;
+}
+export interface CandidateComparison {
+  candidateId: string;
+  units: CandidateReviewUnit[];
+  legacy: boolean;
+  dismissed: boolean;
+}
+export interface TemplateRoleSlot { id: string; label: string; required: boolean; multiple: boolean }
+export function templateRoles(payload:Record<string,unknown>):TemplateRoleSlot[] {
+  const supplied=payload.roleSlots as Array<Partial<TemplateRoleSlot>>|undefined;
+  const stages=(payload.stages||[]) as Array<{roleSlotIds?:string[]}>;
+  return supplied?.map((r,i)=>({id:String(r.id||`role_${i+1}`),label:String(r.label||r.id||`职责 ${i+1}`),required:r.required===true,multiple:r.multiple===true}))
+    || [...new Set(stages.flatMap(s=>s.roleSlotIds||[]))].map(id=>({id,label:id,required:false,multiple:false}));
+}
+export function normalizeRoleMappings(value: unknown):Record<string,string[]> {
+  if(!value||typeof value!=='object'||Array.isArray(value))return {};
+  return Object.fromEntries(Object.entries(value).map(([key,value])=>[key,[...new Set((Array.isArray(value)?value:[value]).filter((v):v is string=>typeof v==='string'&&!!v))]]));
+}
+export function suggestRoleMappings(payload:Record<string,unknown>,actors:Array<{id:string}>,leadId?:string):Record<string,string[]> {
+  const roles=templateRoles(payload);const lead=actors.find(a=>a.id===leadId)||actors[0];
+  const guests=actors.filter(a=>a.id!==lead?.id);let index=0;
+  return Object.fromEntries(roles.map(role=>{const actor=role.id==='lead'?lead:(roles.some(r=>r.id==='lead')?guests:actors)[index++];return [role.id,role.multiple?(role.id==='lead'?(lead?[lead.id]:[]):(roles.some(r=>r.id==='lead')?guests:actors).map(a=>a.id)):actor?[actor.id]:[]];}));
+}
+export function instantiateTemplateDocument(document:ContentDocument,preset:{id:string;name:string;version:number;payload:Record<string,unknown>},mappings:Record<string,string[]>,previous?:ContentDocument):ContentDocument {
+  const roles=templateRoles(preset.payload);const actorIds=new Set(document.actors.map(a=>a.id));
+  for(const role of roles){const ids=mappings[role.id]||[];if(ids.some(id=>!actorIds.has(id)))throw new Error(`职责「${role.label}」中的角色已不在本场活动`);if(role.required&&!ids.length)throw new Error(`请选择「${role.label}」`);if(!role.multiple&&ids.length>1)throw new Error(`「${role.label}」只能选择一人`);}
+  const render=(value:unknown)=>String(value||'').replace(/\{\{role\.([\w-]+)\}\}/g,(_,id:string)=>{if(!roles.some(r=>r.id===id))throw new Error(`模板引用了不存在的职责：${id}`);return (mappings[id]||[]).map(id=>document.actors.find(a=>a.id===id)!.displayName).join('、')||'（无参与者）';});
+  const stages=(preset.payload.stages||[]) as Array<{title:string;instruction?:string;location?:string;requiredBeats?:string[];roleSlotIds?:string[];endCondition?:string}>;
+  const result=structuredClone(document);
+  result.stages=stages.map((stage,index)=>{
+    let ids=[...new Set((stage.roleSlotIds||[]).flatMap(id=>mappings[id]||[]))];
+    if(!ids.length){if(preset.payload.schemaVersion===2)throw new Error(`阶段「${stage.title}」没有参与者，请调整职责映射`);ids=document.actors.map(a=>a.id);}
+    return {id:previous?.stages[index]?.id||`stage_${index+1}_${crypto.randomUUID().slice(0,8)}`,title:render(stage.title),order:index+1,actorIds:ids,location:render(stage.location)||document.activity.location,instruction:render(stage.instruction),endCondition:render(stage.endCondition),locked:false,requiredBeats:(stage.requiredBeats||[]).map((text,i)=>({id:previous?.stages[index]?.requiredBeats[i]?.id||`beat_${crypto.randomUUID()}`,text:render(text),actorIds:ids}))};
+  });
+  while(result.stages.length<2){const i=result.stages.length;result.stages.push({id:`stage_${i+1}_${crypto.randomUUID().slice(0,8)}`,title:i?'核心环节':'初始准备',order:i+1,actorIds:document.actors.map(a=>a.id),location:document.activity.location,instruction:'',requiredBeats:[],locked:false,endCondition:''});}
+  result.activity.templateId=preset.id;
+  result.activity.templateSnapshot={presetId:preset.id,name:preset.name,version:preset.version,payload:structuredClone(preset.payload),actorMappings:structuredClone(mappings)};
+  result.activity.rules=document.activity.rules||render(preset.payload.rules);
+  return result;
+}
+export interface CreationProfileValues {
+  textMode:'plan'|'stage'|'whole-text';
+  instruction:string;
+  candidateCount:1|2|3;
+  globalStylePrompt:string;
+  globalNegativePrompt:string;
+  playbackMode:'by_stage'|'story_order'|'chat_only'|'moments_only';
+  expandMedia:boolean;
+  exportFormat:'reader'|'project'|'hyperframes-project';
+}
+export function normalizeCreationProfile(value:Record<string,unknown>):CreationProfileValues {
+  return {textMode:value.textMode==='stage'||value.textMode==='whole-text'?value.textMode:'plan',instruction:typeof value.instruction==='string'?value.instruction:'',candidateCount:value.candidateCount===2||value.candidateCount===3?value.candidateCount:1,
+    globalStylePrompt:typeof value.globalStylePrompt==='string'?value.globalStylePrompt:'anime aesthetic, clean lines, vibrant colors, soft volumetric lighting, detailed environment',globalNegativePrompt:typeof value.globalNegativePrompt==='string'?value.globalNegativePrompt:'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, username, blurry',
+    playbackMode:['by_stage','story_order','chat_only','moments_only'].includes(String(value.playbackMode))?value.playbackMode as CreationProfileValues['playbackMode']:'by_stage',expandMedia:value.expandMedia!==false,
+    exportFormat:['reader','project','hyperframes-project'].includes(String(value.exportFormat))?value.exportFormat as CreationProfileValues['exportFormat']:'hyperframes-project'};
+}

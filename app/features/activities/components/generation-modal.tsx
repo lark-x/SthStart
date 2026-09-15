@@ -1,6 +1,11 @@
 'use client';
+import { normalizeCreationProfile } from '@sthstart/contracts';
 
-import React, { useMemo, useState } from 'react';
+import { CandidateReviewPanel } from './candidate-review-panel';
+import { useSearchParams } from 'next/navigation';
+import { fetchActivityJobs, fetchActivityJob, retryActivityTextJob } from '../api';
+import { useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles,
   Check,
@@ -15,7 +20,7 @@ import {
 } from 'lucide-react';
 import type { Activity, StageDefinition } from '@sthstart/contracts';
 import { useActivityJob, useActivityDraft } from '../queries';
-import { useTriggerTextGeneration, useAdoptCandidate } from '../mutations';
+import { useTriggerTextGeneration, useAdoptCandidate, useAdoptCandidateBatch } from '../mutations';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -96,25 +101,56 @@ function describeJobFailure(message: string | null | undefined): { title: string
 }
 
 export function GenerationModal({ open, onOpenChange, activity, stages, currentStageId, onCandidateAdopted }: GenerationModalProps) {
-  const initialMode: GenerationMode = currentStageId ? 'stage' : 'plan';
-  const [mode, setMode] = useState<GenerationMode>(initialMode);
+  const queryClient = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+  const [stageIds, setStageIds] = useState<string[]>(stages.filter(stage => !stage.locked).map(stage => stage.id));
+  const [modeOverride, setMode] = useState<GenerationMode|null>(null);
   const [targetStageId, setTargetStageId] = useState<string>(currentStageId || stages[0]?.id || '');
-  const [instruction, setInstruction] = useState('');
+  const [instructionOverride, setInstruction] = useState<string|null>(null);
   const [speakerActorId, setSpeakerActorId] = useState('');
   const [authorActorId, setAuthorActorId] = useState('');
   const [shotActorIds, setShotActorIds] = useState<string[]>([]);
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [activeJobId, setActiveJobId] = useState<string | null>(searchParams.get('jobId'));
   const [pickedCandidateId, setPickedCandidateId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [candidateSelection,setCandidateSelection]=useState<string[]|null>(null);
   const [batchAdopting, setBatchAdopting] = useState(false);
+
+  useEffect(() => {
+    if (!open || activeJobId) return;
+    let active = true;
+    void fetchActivityJobs(activity.id).then(result => {
+      const latest = result.items.filter(j => j.kind === 'text').sort((a,b) => b.createdAt.localeCompare(a.createdAt))[0];
+      if (active && latest) setActiveJobId(latest.id);
+    }).catch(error => { if (active) setErrorMsg(error instanceof Error ? error.message : "读取历史任务失败"); });
+    return () => { active = false; };
+  }, [open, activity.id, activeJobId]);
 
   const triggerMutation = useTriggerTextGeneration();
   const adoptMutation = useAdoptCandidate();
   const { data: jobData } = useActivityJob(activity.id, activeJobId || undefined);
+  useEffect(() => {
+    if (!open || !activeJobId) return;
+    let active = true;
+    void fetchActivityJob(activity.id, activeJobId).then(result => {
+      if (active && MODE_GROUPS.some(group=>group.items.some(item=>item.id===result.job.mode))) setMode(result.job.mode as GenerationMode);
+    }).catch(error => { if (active) setErrorMsg(error instanceof Error ? error.message : '读取任务失败'); });
+    return () => { active = false; };
+  }, [open, activity.id, activeJobId]);
+  const handleRetry = async () => {
+    if (!activeJobId) return;
+    setRetrying(true);
+    try { await retryActivityTextJob(activity.id, activeJobId); await queryClient.invalidateQueries(); }
+    catch (error) { setErrorMsg(error instanceof Error ? error.message : '继续生成失败'); }
+    finally { setRetrying(false); }
+  };
   const { data: draftData } = useActivityDraft(activity.id);
 
   const document = draftData?.draft.document;
+  const mode:GenerationMode=modeOverride??(currentStageId?'stage':normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).textMode);
+  const instruction = instructionOverride ?? normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).instruction;
   const allActors = document?.actors || [];
   const stageActorIds = useMemo(() => {
     // 阶段里没有参与者时回退到全部角色，避免选择器为空。
@@ -151,6 +187,10 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
       return;
     }
     const scope: Record<string, unknown> = {};
+    if (mode === 'whole-text') {
+      scope.stageIds = stageIds.filter(id => stages.some(stage => stage.id === id && !stage.locked));
+      if (!(scope.stageIds as string[]).length) { setErrorMsg('请至少选择一个未锁定阶段。'); return; }
+    }
     if (STAGE_SCOPED.includes(mode)) scope.stageId = targetStageId;
     if (mode === 'rewrite-records') scope.recordIds = effectiveRecordIds;
     if (mode === 'invite' || mode === 'wish') scope.speakerActorId = effectiveSpeakerActorId;
@@ -203,24 +243,31 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
     });
   }, [candidateList, stages]);
 
-  /** 整批采用：按顺序逐个采用，使用服务端返回的 headVersion 递增，避免中途版本冲突。 */
+  const adoptBatchMutation = useAdoptCandidateBatch();
+
+  /** 整批采用：调用原子批量采用接口，在单事务中按阶段顺序统一提交。 */
   const handleAdoptBatch = async () => {
     if (!orderedCandidates.length) return;
     setBatchAdopting(true);
     setErrorMsg(null);
-    let headVersion = activity.headVersion;
     try {
-      for (const candidate of orderedCandidates) {
-        const result = await adoptMutation.mutateAsync({ id: activity.id, candidateId: candidate.id, expectedHeadVersion: headVersion });
-        headVersion = result.activity.headVersion;
-      }
+      await adoptBatchMutation.mutateAsync({
+        id: activity.id,
+        input: {
+          candidateIds: orderedCandidates.filter(c=>candidateSelection===null||candidateSelection.includes(c.id)).map((c) => c.id),
+          expectedHeadVersion: activity.headVersion,
+          expectedDraftVersion: draftData?.draft.draftVersion ?? 1,
+        },
+      });
       onCandidateAdopted?.();
       onOpenChange(false);
       setActiveJobId(null);
       setPickedCandidateId(null);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : '整批采用失败');
-    } finally { setBatchAdopting(false); }
+    } finally {
+      setBatchAdopting(false);
+    }
   };
 
   const activeCandidate = candidateList.find((candidate) => candidate.id === pickedCandidateId) || candidateList[candidateList.length - 1];
@@ -242,8 +289,10 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>关闭</Button>
           <div className="flex flex-wrap items-center gap-2">
+            {(job?.status === 'failed' || job?.status === 'result_unknown') && <Button size="sm" variant="outline" disabled={retrying}
+              onClick={handleRetry}>{retrying ? '正在恢复…' : '继续原任务（保留成功阶段）'}</Button>}
             {canBatchAdopt && (
-              <Button size="sm" variant="outline" disabled={batchAdopting || adoptMutation.isPending} onClick={() => void handleAdoptBatch()}>
+              <Button size="sm" variant="outline" disabled={batchAdopting || adoptMutation.isPending || candidateSelection?.length===0} onClick={() => void handleAdoptBatch()}>
                 {batchAdopting ? '整批采用中…' : `按阶段顺序采用全部 ${orderedCandidates.length} 份`}
               </Button>
             )}
@@ -256,8 +305,8 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
               <Sparkles className="h-3.5 w-3.5 text-accent" />
               {activeCandidate ? '重新生成' : '开始生成'}
             </Button>
-            {activeCandidate && (
-              <Button size="sm" disabled={adoptMutation.isPending} onClick={() => void handleAdopt(activeCandidate.id)} className="bg-accent text-white hover:bg-accent-dark">
+            {activeCandidate && !activeCandidate.scope.reviewBaseline && (
+              <Button size="sm" disabled={adoptMutation.isPending || !!activeCandidate.scope.reviewBaseline} onClick={() => void handleAdopt(activeCandidate.id)} className="bg-accent text-white hover:bg-accent-dark">
                 <Check className="h-3.5 w-3.5" />采用并更新版本
               </Button>
             )}
@@ -268,6 +317,13 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
       <div className="space-y-4 py-1">
         {errorMsg && <Alert variant="danger" title="生成提示">{errorMsg}</Alert>}
 
+        {mode === 'whole-text' && <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">本次生成的阶段</legend>
+          <div className="flex flex-wrap gap-3">{stages.map(stage => <label key={stage.id} className="text-sm flex items-center gap-1">
+            <input type="checkbox" disabled={stage.locked} checked={!stage.locked && stageIds.includes(stage.id)}
+              onChange={event => setStageIds(current => event.target.checked ? [...current, stage.id] : current.filter(id => id !== stage.id))} />
+            {stage.title}{stage.locked ? '（已锁定）' : ''}</label>)}</div>
+        </fieldset>}
         <div className="space-y-3">
           {MODE_GROUPS.map((group) => (
             <div key={group.title} className="space-y-1.5">
@@ -396,104 +452,191 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
             )}
           </Alert>
         )}
-        {job?.status === 'result_unknown' && <Alert variant="warning" title="任务中断">服务重启导致任务中断，可重新发起生成。</Alert>}
+        {job?.status === 'result_unknown' && <Alert variant="warning" title="任务中断">服务重启导致任务中断，可继续原任务，保留已经生成的成功阶段。</Alert>}
 
-        {activeCandidate && activePayload && (
-          <div className="max-h-72 space-y-2.5 overflow-y-auto rounded-lg border border-border-default bg-surface p-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Badge variant="outline" className="border-green-300 bg-green-50 text-xs text-green-700">生成候选已就绪</Badge>
-              <span className="text-xs text-muted">
-                {candidateList.length > 1 ? `共 ${candidateList.length} 份候选 · ` : ''}候选 ID {activeCandidate.id.slice(0, 8)}…
-              </span>
+        {canBatchAdopt&&<fieldset className="flex flex-wrap gap-3 rounded border border-border-default p-3"><legend className="text-sm">选择采用的阶段</legend>{orderedCandidates.map(candidate=><label key={candidate.id} className="text-sm"><input type="checkbox" checked={candidateSelection===null||candidateSelection.includes(candidate.id)} onChange={e=>setCandidateSelection(current=>e.target.checked?[...(current||[]),candidate.id]:(current||orderedCandidates.map(c=>c.id)).filter(id=>id!==candidate.id))}/>{stages.find(s=>s.id===candidate.scope.stageId)?.title||'阶段候选'}</label>)}</fieldset>}
+        {activeCandidate && <CandidateReviewPanel key={activeCandidate.id} activityId={activity.id} candidateId={activeCandidate.id} onApplied={() => { onCandidateAdopted?.(); }} />}
+        {!!activeCandidate?.scope.reviewBaseline&&orderedCandidates.length>1&&<div className="flex gap-2 flex-wrap">{orderedCandidates.map((candidate,index)=><Button key={candidate.id} size="sm" variant="outline" onClick={()=>setPickedCandidateId(candidate.id)}>候选 {index+1}</Button>)}</div>}
+        {activeCandidate && !activeCandidate.scope.reviewBaseline && activePayload && (
+          <div className="space-y-3 rounded-lg border border-border-default bg-surface p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-2.5">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="border-green-300 bg-green-50 text-xs text-green-700">
+                  生成候选已就绪
+                </Badge>
+                <span className="text-xs text-muted">
+                  候选 ID: {activeCandidate.id.slice(0, 8)}…
+                </span>
+              </div>
+              {canBatchAdopt && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={batchAdopting || adoptMutation.isPending || candidateSelection?.length===0}
+                  onClick={() => void handleAdoptBatch()}
+                  className="h-7 text-xs"
+                >
+                  {batchAdopting ? '整批采用中…' : `采用所选 ${candidateSelection===null?orderedCandidates.length:candidateSelection.length} 个阶段`}
+                </Button>
+              )}
             </div>
+
+            {/* 阶段切换标签页 (当存在多个候选时) */}
             {candidateList.length > 1 && (
-              <Select
-                value={activeCandidate.id}
-                onChange={(event) => setPickedCandidateId(event.target.value)}
-                className="h-8 text-sm"
-              >
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                 {orderedCandidates.map((candidate, index) => {
                   const scopeStageId = String((candidate.scope as Record<string, unknown>)?.stageId || '');
                   const stageTitle = stages.find((stage) => stage.id === scopeStageId)?.title;
-                  return <option key={candidate.id} value={candidate.id}>{index + 1}. {stageTitle || candidate.id.slice(0, 8)}</option>;
+                  const isSelected = candidate.id === activeCandidate.id;
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      onClick={() => setPickedCandidateId(candidate.id)}
+                      className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                        isSelected
+                          ? 'bg-accent text-white shadow-xs'
+                          : 'bg-surface-raised border border-border-subtle text-muted hover:text-ink'
+                      }`}
+                    >
+                      #{index + 1} {stageTitle || candidate.id.slice(0, 6)}
+                    </button>
+                  );
                 })}
-              </Select>
-            )}
-
-            {typeof activePayload.overview === 'string' && (
-              <div className="rounded border border-border-subtle bg-surface-raised p-2 text-sm text-ink">
-                <span className="font-semibold">剧情规划概览：</span>{activePayload.overview}
-              </div>
-            )}
-            {typeof activePayload.summary === 'string' && (
-              <div className="rounded border border-border-subtle bg-surface-raised p-2 text-sm text-ink">
-                <span className="font-semibold">阶段梗概：</span>{activePayload.summary as string}
               </div>
             )}
 
-            {Array.isArray(activePayload.stages) && (
-              <div className="space-y-1.5">
-                <div className="text-sm font-semibold text-ink">规划阶段清单（{(activePayload.stages as unknown[]).length}）</div>
-                {(activePayload.stages as Record<string, unknown>[]).map((stage, index) => (
-                  <div key={index} className="space-y-1 rounded border border-border-subtle bg-surface-raised p-2 text-sm">
-                    <div className="font-medium text-ink">#{index + 1} {String(stage.title)}（{String(stage.location || '无地点')}）</div>
-                    <div className="text-muted">{String(stage.description || stage.instruction || '')}</div>
+            <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+              {typeof activePayload.overview === 'string' && (
+                <div className="rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-sm text-ink">
+                  <span className="font-semibold text-accent">剧情规划概览：</span>
+                  {activePayload.overview}
+                </div>
+              )}
+              {typeof activePayload.summary === 'string' && (
+                <div className="rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-sm text-ink">
+                  <span className="font-semibold text-accent">阶段梗概：</span>
+                  {activePayload.summary as string}
+                </div>
+              )}
+
+              {Array.isArray(activePayload.stages) && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider">
+                    规划阶段清单 ({(activePayload.stages as unknown[]).length})
                   </div>
-                ))}
-              </div>
-            )}
+                  {(activePayload.stages as Record<string, unknown>[]).map((stage, index) => (
+                    <div key={index} className="rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-sm">
+                      <div className="font-medium text-ink">
+                        #{index + 1} {String(stage.title)}（{String(stage.location || '无地点')}）
+                      </div>
+                      <div className="mt-1 text-xs text-muted leading-relaxed">
+                        {String(stage.description || stage.instruction || '')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-            {Array.isArray(activePayload.messages) && (activePayload.messages as unknown[]).length > 0 && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-ink">群聊消息（{(activePayload.messages as unknown[]).length} 条）</div>
-                {(activePayload.messages as Record<string, unknown>[]).slice(0, 6).map((message, index) => (
-                  <div key={index} className="rounded border border-border-default bg-surface-raised p-1.5 text-sm text-ink">
-                    <span className="font-medium text-accent">{nameOf(String(message.speakerActorId || ''))}：</span>{String(message.text)}
+              {/* 群聊消息原生对话气泡样式 */}
+              {Array.isArray(activePayload.messages) && (activePayload.messages as unknown[]).length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider">
+                    群聊对话 ({(activePayload.messages as unknown[]).length} 条)
                   </div>
-                ))}
-                {(activePayload.messages as unknown[]).length > 6 && <div className="pl-1 text-xs text-muted">… 以及另外 {(activePayload.messages as unknown[]).length - 6} 条消息</div>}
-              </div>
-            )}
-
-            {Array.isArray(activePayload.posts) && (activePayload.posts as unknown[]).length > 0 && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-ink">朋友圈动态（{(activePayload.posts as unknown[]).length} 条）</div>
-                {(activePayload.posts as Record<string, unknown>[]).map((post, index) => (
-                  <div key={index} className="rounded border border-border-default bg-surface-raised p-2 text-sm text-ink">
-                    <span className="font-medium text-accent">{nameOf(String(post.authorActorId || ''))}：</span>{String(post.text)}
+                  <div className="space-y-2.5 rounded-lg border border-border-subtle bg-surface-raised/40 p-3">
+                    {(activePayload.messages as Record<string, unknown>[]).map((message, index) => {
+                      const speakerName = nameOf(String(message.speakerActorId || ''));
+                      return (
+                        <div key={index} className="flex items-start gap-2.5">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">
+                            {speakerName.slice(0, 1)}
+                          </div>
+                          <div className="space-y-1 max-w-[85%]">
+                            <div className="text-[11px] font-medium text-muted">
+                              {speakerName}
+                            </div>
+                            <div className="rounded-2xl rounded-tl-xs border border-border-subtle bg-surface px-3 py-2 text-sm text-ink shadow-2xs">
+                              {String(message.text)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              )}
 
-            {Array.isArray(activePayload.mediaSlots) && (activePayload.mediaSlots as unknown[]).length > 0 && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-ink">配图方案（{(activePayload.mediaSlots as unknown[]).length} 条）</div>
-                {(activePayload.mediaSlots as Record<string, unknown>[]).map((slot, index) => (
-                  <div key={index} className="rounded border border-border-default bg-surface-raised p-2 text-sm text-ink">
-                    <div className="font-medium">{String(slot.caption || '配图')}</div>
-                    <div className="text-xs text-muted">{String(slot.shotDescription || '')}</div>
+              {/* 朋友圈动态卡片样式 */}
+              {Array.isArray(activePayload.posts) && (activePayload.posts as unknown[]).length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider">
+                    朋友圈动态 ({(activePayload.posts as unknown[]).length} 条)
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="space-y-2.5">
+                    {(activePayload.posts as Record<string, unknown>[]).map((post, index) => {
+                      const authorName = nameOf(String(post.authorActorId || ''));
+                      return (
+                        <div key={index} className="rounded-xl border border-border-subtle bg-surface-raised p-3 shadow-2xs">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
+                              {authorName.slice(0, 1)}
+                            </div>
+                            <span className="text-xs font-semibold text-ink">{authorName}</span>
+                          </div>
+                          <p className="text-sm text-ink leading-relaxed pl-8">{String(post.text)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-            {Array.isArray(activePayload.rewrittenMessages) && (activePayload.rewrittenMessages as unknown[]).length > 0 && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-ink">重写后的消息</div>
-                {(activePayload.rewrittenMessages as Record<string, unknown>[]).map((row, index) => (
-                  <div key={index} className="rounded border border-border-default bg-surface-raised p-1.5 text-sm text-ink">{String(row.text)}</div>
-                ))}
-              </div>
-            )}
-            {Array.isArray(activePayload.rewrittenPosts) && (activePayload.rewrittenPosts as unknown[]).length > 0 && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-ink">重写后的动态</div>
-                {(activePayload.rewrittenPosts as Record<string, unknown>[]).map((row, index) => (
-                  <div key={index} className="rounded border border-border-default bg-surface-raised p-2 text-sm text-ink">{String(row.text)}</div>
-                ))}
-              </div>
-            )}
+              {/* 配图方案预览卡片 */}
+              {Array.isArray(activePayload.mediaSlots) && (activePayload.mediaSlots as unknown[]).length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider">
+                    配图方案 ({(activePayload.mediaSlots as unknown[]).length} 条)
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(activePayload.mediaSlots as Record<string, unknown>[]).map((slot, index) => (
+                      <div key={index} className="rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-semibold text-ink">
+                          <Camera className="h-3.5 w-3.5 text-accent" />
+                          <span>{String(slot.caption || '待出图')}</span>
+                        </div>
+                        {Boolean(slot.shotDescription) && (
+                          <p className="text-muted text-[11px] leading-relaxed">
+                            {String(slot.shotDescription)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(activePayload.rewrittenMessages) && (activePayload.rewrittenMessages as unknown[]).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider">重写后的消息</div>
+                  {(activePayload.rewrittenMessages as Record<string, unknown>[]).map((row, index) => (
+                    <div key={index} className="rounded border border-border-subtle bg-surface-raised p-2 text-sm text-ink">
+                      {String(row.text)}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {Array.isArray(activePayload.rewrittenPosts) && (activePayload.rewrittenPosts as unknown[]).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider">重写后的动态</div>
+                  {(activePayload.rewrittenPosts as Record<string, unknown>[]).map((row, index) => (
+                    <div key={index} className="rounded border border-border-subtle bg-surface-raised p-2 text-sm text-ink">
+                      {String(row.text)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

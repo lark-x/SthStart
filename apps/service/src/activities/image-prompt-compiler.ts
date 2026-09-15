@@ -544,8 +544,9 @@ export function saveRecipeAndCompilation(
   database: ServiceDatabase,
   recipe: PromptRecipe,
   compilation: PromptCompilation,
+  withinTransaction = false,
 ): void {
-  database.transaction(() => {
+  const save = () => {
     database.connection.prepare(`
       INSERT INTO activity_prompt_recipes (
         id, activity_id, content_revision_id, image_config_revision_id,
@@ -611,7 +612,9 @@ export function saveRecipeAndCompilation(
         now,
       );
     }
-  });
+  };
+  if (withinTransaction) save();
+  else database.transaction(save);
 }
 
 export function getPromptRecipe(

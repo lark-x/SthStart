@@ -135,6 +135,17 @@ export const StageResultSchema = Type.Object({
 });
 export type StageResult = Static<typeof StageResultSchema>;
 
+export const EditingPolicySchema = Type.Object({
+  lockedRecords: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal('message'), Type.Literal('post')]),
+      id: Type.String(),
+    })
+  ),
+  lockedMediaSlotIds: Type.Array(Type.String()),
+});
+export type EditingPolicy = Static<typeof EditingPolicySchema>;
+
 export const ContentDocumentSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   activity: Type.Object({
@@ -162,6 +173,7 @@ export const ContentDocumentSchema = Type.Object({
   mediaSlots: Type.Array(MediaSlotSchema),
   facts: Type.Array(ActivityFactSchema),
   stageResults: Type.Array(StageResultSchema),
+  editingPolicy: Type.Optional(EditingPolicySchema),
 });
 export type ContentDocument = Static<typeof ContentDocumentSchema>;
 

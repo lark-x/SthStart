@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
+import { computeSlotFingerprint } from './image-prompt-compiler.js';
 import type { ActivityAsset, MediaRevisionDocument } from '@sthstart/contracts';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
@@ -498,6 +499,46 @@ export function selectMediaForSlots(
   const contentRev = store.getContentRevision(activityId, contentRevisionId);
   if (!contentRev) throw new Error('content_revision_not_found');
 
+  if (contentRevisionId !== head.currentContentRevisionId) throw Object.assign(new Error('请先切换到当前内容版本再采用媒体。'), { code: 'content_revision_conflict', statusCode: 409 });
+  const previous = head.currentMediaRevisionId ? store.getMediaRevision(activityId, head.currentMediaRevisionId) : null;
+  const suppliedIds = new Set(params.slotBindings.map(b => b.slotId));
+  if (suppliedIds.size !== params.slotBindings.length) throw new Error('duplicate_slot_binding');
+  for (const binding of params.slotBindings) {
+    const slot = contentRev.document.mediaSlots.find(s => s.id === binding.slotId);
+    if (!slot) throw new Error('slot_not_found');
+    const fingerprint = computeSlotFingerprint(slot, contentRev.document);
+    for (const selected of binding.assets) {
+      const provenance = database.connection.prepare(`SELECT a.slot_fingerprint FROM activity_image_attempt_outputs o JOIN activity_image_attempts a ON a.id=o.attempt_id
+        WHERE a.activity_id=? AND a.slot_id=? AND o.asset_key=? ORDER BY a.created_at DESC LIMIT 1`).get(activityId, slot.id, selected.assetKey) as { slot_fingerprint: string } | undefined;
+      const alreadySelected = previous?.slotBindings.find(b => b.slotId === slot.id)?.assets.some(a => a.assetKey === selected.assetKey);
+      if (!alreadySelected && provenance && provenance.slot_fingerprint !== fingerprint) throw Object.assign(new Error('图片按旧来源生成，请核对来源后重新生成。'), { code: 'source_conflict', statusCode: 409 });
+    }
+    binding.slotFingerprint = fingerprint;
+  }
+  // Selection is a patch, so adopting one slot never drops unrelated bindings.
+  params.slotBindings = [...(previous?.slotBindings || []).filter(b => !suppliedIds.has(b.slotId) && contentRev.document.mediaSlots.some(s => s.id === b.slotId)), ...params.slotBindings];
+
+  // Verify locked media slots
+  const lockedSlotIds = new Set((store.getDraft(activityId)?.document || contentRev.document).editingPolicy?.lockedMediaSlotIds || []);
+  if (lockedSlotIds.size > 0 && head.currentMediaRevisionId) {
+    const currentMediaRev = store.getMediaRevision(activityId, head.currentMediaRevisionId);
+    if (currentMediaRev) {
+      const prevMap = new Map((currentMediaRev.slotBindings || []).map((b) => [b.slotId, (b.assets || []).map((a) => a.assetKey).join(',')]));
+      for (const binding of params.slotBindings) {
+        if (lockedSlotIds.has(binding.slotId)) {
+          const prevKey = prevMap.get(binding.slotId) ?? '';
+          const newKey = (binding.assets || []).map((a) => a.assetKey).join(',');
+          if (prevKey !== newKey) {
+            const err = new Error(`镜头 ${binding.slotId} 已被锁定，不可更改绑定素材。请先解锁镜头。`);
+            (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+            (err as unknown as { code: string }).code = 'slot_locked';
+            throw err;
+          }
+        }
+      }
+    }
+  }
+
   const allAssets = listActivityAssets(database, activityId);
   const assetKeySet = new Set(allAssets.map((a) => a.assetKey));
   const now = nowIso();
@@ -505,19 +546,56 @@ export function selectMediaForSlots(
   for (const binding of params.slotBindings) {
     for (const item of binding.assets) {
       if (!assetKeySet.has(item.assetKey)) {
-        const dummyArtifactId = randomUUID();
-        database.connection.prepare(`
-          INSERT INTO artifacts (id, app_id, content_type, byte_size, pinned, created_at)
-          VALUES (?, 'activities', 'image/png', 0, 0, ?)
-        `).run(dummyArtifactId, now);
+        // Check if there is an existing non-empty artifact with id = item.assetKey
+        const existingArtifact = database.connection.prepare(
+          `SELECT id, content_type, byte_size, sha256, width, height, duration_ms, media_type
+           FROM artifacts WHERE id = ? AND byte_size > 0`
+        ).get(item.assetKey) as {
+          id: string;
+          content_type: string | null;
+          byte_size: number;
+          sha256: string | null;
+          width: number | null;
+          height: number | null;
+          duration_ms: number | null;
+          media_type: string | null;
+        } | undefined;
 
-        database.connection.prepare(`
-          INSERT INTO activity_assets (
-            activity_id, asset_key, artifact_id, source, type,
-            width, height, duration_ms, hash, created_at
-          ) VALUES (?, ?, ?, 'generated', 'image', NULL, NULL, NULL, '', ?)
-        `).run(activityId, item.assetKey, dummyArtifactId, now);
-        assetKeySet.add(item.assetKey);
+        if (existingArtifact) {
+          // Link this real artifact as an activity asset
+          const newAssetKey = item.assetKey;
+          database.transaction(() => {
+            database.connection.prepare(`
+              INSERT INTO activity_assets (
+                activity_id, asset_key, artifact_id, source, type,
+                width, height, duration_ms, hash, created_at
+              ) VALUES (?, ?, ?, 'link', ?, ?, ?, ?, ?, ?)
+            `).run(
+              activityId,
+              newAssetKey,
+              existingArtifact.id,
+              existingArtifact.media_type || inferMediaType(existingArtifact.content_type),
+              existingArtifact.width,
+              existingArtifact.height,
+              existingArtifact.duration_ms,
+              existingArtifact.sha256 || '',
+              now,
+            );
+            createArtifactReference(database, {
+              artifactId: existingArtifact.id,
+              appId: 'activities',
+              refType: 'activity_asset',
+              refId: newAssetKey,
+            });
+          });
+          assetKeySet.add(newAssetKey);
+        } else {
+          // Reject non-existent or 0-byte dummy assets
+          const err = new Error(`无法采用图片：素材 ${item.assetKey} 不存在或文件为空。`);
+          (err as unknown as { statusCode: number; code: string }).statusCode = 400;
+          (err as unknown as { code: string }).code = 'invalid_asset';
+          throw err;
+        }
       }
     }
   }

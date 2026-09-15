@@ -14,8 +14,14 @@ import {
   fetchCandidate,
   fetchCheckpoints,
   fetchCapabilities,
+  fetchActivityProductionOverview,
+  fetchMediaBatches,
+  fetchMediaBatch,
+  fetchActivityPresets,
+  fetchActivityPreset,
   type ActivityListFilter,
 } from './api';
+import type { ActivityPresetKind } from '@sthstart/contracts';
 
 export function useActivities(filters?: ActivityListFilter) {
   return useQuery({
@@ -187,5 +193,56 @@ export function useSourceResolve(id?: string, sourceRefId?: string) {
     queryFn: () => import('./api').then(m => m.resolveImageSource(id!, sourceRefId!)),
     enabled: Boolean(id && sourceRefId),
     staleTime: 10_000,
+  });
+}
+
+export function useActivityProductionOverview(id?: string) {
+  return useQuery({
+    queryKey: activityKeys.production(id ?? ''),
+    queryFn: () => fetchActivityProductionOverview(id!),
+    enabled: Boolean(id),
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useMediaBatches(id?: string) {
+  return useQuery({
+    queryKey: activityKeys.mediaBatches(id ?? ''),
+    queryFn: () => fetchMediaBatches(id!),
+    enabled: Boolean(id),
+    refetchInterval: (q) =>
+      q.state.data?.items.some((b) => ['preparing', 'running'].includes(b.summary?.displayState))
+        ? 3_000
+        : 20_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useMediaBatch(id?: string, batchId?: string) {
+  return useQuery({
+    queryKey: activityKeys.mediaBatch(id ?? '', batchId ?? ''),
+    queryFn: () => fetchMediaBatch(id!, batchId!),
+    enabled: Boolean(id && batchId),
+    refetchInterval: (q) =>
+      ['preparing', 'running'].includes(q.state.data?.summary?.displayState ?? '') ? 2_000 : false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useActivityPresets(kind?: ActivityPresetKind) {
+  return useQuery({
+    queryKey: activityKeys.presets(kind),
+    queryFn: () => fetchActivityPresets(kind),
+    staleTime: 10_000,
+  });
+}
+
+export function useActivityPreset(id?: string) {
+  return useQuery({
+    queryKey: activityKeys.preset(id ?? ''),
+    queryFn: () => fetchActivityPreset(id!),
+    enabled: Boolean(id),
+    staleTime: 30_000,
   });
 }

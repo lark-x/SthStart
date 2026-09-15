@@ -1,4 +1,5 @@
 'use client';
+import { useSearchParams } from 'next/navigation';
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
@@ -13,6 +14,8 @@ import {
   FileCheck,
   Info,
   X,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import type {
   ActorSnapshot,
@@ -56,9 +59,11 @@ export function RecordsEditor({
   onOpenWorkbench,
   disabled,
 }: RecordsEditorProps) {
-  const [activeTab, setActiveTab] = useState<'chat' | 'moments' | 'facts'>('chat');
+  const searchParams=useSearchParams();
+  const linkedRecord=[...document.messages,...document.posts].find(r=>r.id===searchParams.get('recordId'));
+  const [activeTab, setActiveTab] = useState<'chat' | 'moments' | 'facts'>(searchParams.get('factId')?'facts':document.posts.some(p=>p.id===searchParams.get('recordId'))?'moments':'chat');
   const [selectedStageId, setSelectedStageId] = useState<string>(
-    currentStageId || stages[0]?.id || ''
+    document.facts.find(f=>f.id===searchParams.get('factId'))?.stageId || linkedRecord?.stageId || searchParams.get('stageId') || currentStageId || stages[0]?.id || ''
   );
 
   // Message composer state
@@ -92,6 +97,30 @@ export function RecordsEditor({
   const facts = document.facts || [];
   const mediaSlots = document.mediaSlots || [];
 
+  const lockedRecordMap = useMemo(() => {
+    const map = new Map<string, 'message' | 'post'>();
+    for (const rec of document.editingPolicy?.lockedRecords || []) {
+      map.set(rec.id, rec.kind);
+    }
+    return map;
+  }, [document.editingPolicy]);
+
+  const handleToggleRecordLock = (kind: 'message' | 'post', id: string) => {
+    const currentLocked = document.editingPolicy?.lockedRecords || [];
+    const isLocked = currentLocked.some((r) => r.id === id);
+    const nextLocked = isLocked
+      ? currentLocked.filter((r) => r.id !== id)
+      : [...currentLocked, { kind, id }];
+
+    onUpdateDocument({
+      ...document,
+      editingPolicy: {
+        lockedRecords: nextLocked,
+        lockedMediaSlotIds: document.editingPolicy?.lockedMediaSlotIds || [],
+      },
+    });
+  };
+
   const handleSelectStage = (id: string) => {
     setSelectedStageId(id);
     onSelectStage?.(id);
@@ -121,6 +150,10 @@ export function RecordsEditor({
   };
 
   const handleDeleteMessage = (msgId: string) => {
+    if (lockedRecordMap.has(msgId)) {
+      alert('此消息已被锁定保护，请先解锁后再删除。');
+      return;
+    }
     onUpdateDocument({
       ...document,
       messages: messages.filter((m) => m.id !== msgId),
@@ -150,6 +183,10 @@ export function RecordsEditor({
   };
 
   const handleDeletePost = (postId: string) => {
+    if (lockedRecordMap.has(postId)) {
+      alert('此动态已被锁定保护，请先解锁后再删除。');
+      return;
+    }
     onUpdateDocument({
       ...document,
       posts: posts.filter((p) => p.id !== postId),
@@ -264,6 +301,18 @@ export function RecordsEditor({
             {selectedMessage.kind === 'message' ? '群聊消息' : selectedMessage.kind}
           </dd>
         </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted">保护状态</dt>
+          <dd className="text-right text-ink">
+            {lockedRecordMap.has(selectedMessage.id) ? (
+              <span className="inline-flex items-center gap-1 font-medium text-amber-700">
+                <Lock className="h-3 w-3" /> 已锁定（防改写）
+              </span>
+            ) : (
+              <span className="text-muted">未锁定</span>
+            )}
+          </dd>
+        </div>
       </dl>
 
       <div className="space-y-1.5">
@@ -310,12 +359,32 @@ export function RecordsEditor({
         )}
         <Button
           size="sm"
-          variant="outline"
+          variant={lockedRecordMap.has(selectedMessage.id) ? 'secondary' : 'outline'}
           disabled={disabled}
+          onClick={() => handleToggleRecordLock('message', selectedMessage.id)}
+          className="flex items-center gap-1.5"
+        >
+          {lockedRecordMap.has(selectedMessage.id) ? (
+            <>
+              <Unlock className="h-3.5 w-3.5" />
+              解锁此记录
+            </>
+          ) : (
+            <>
+              <Lock className="h-3.5 w-3.5 text-amber-600" />
+              锁定此记录
+            </>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || lockedRecordMap.has(selectedMessage.id)}
           onClick={() => {
             handleDeleteMessage(selectedMessage.id);
             setSelectedMessageId(null);
           }}
+          title={lockedRecordMap.has(selectedMessage.id) ? '已锁定保护，需先解锁' : '删除这条记录'}
         >
           删除这条记录
         </Button>
@@ -432,7 +501,7 @@ export function RecordsEditor({
 
                   return (
                     <div
-                      key={msg.id}
+                      key={msg.id} id={`record-${msg.id}`}
                       className={`flex items-start gap-2.5 group ${
                         isUser ? 'flex-row-reverse' : 'flex-row'
                       }`}
@@ -459,6 +528,14 @@ export function RecordsEditor({
                             {speaker?.displayName || msg.speakerActorId || '系统'}
                           </span>
                           <span className="text-sm opacity-70">#{idx + 1}</span>
+                          {lockedRecordMap.has(msg.id) && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[11px] bg-amber-50 text-amber-700 border border-amber-200"
+                              title="此消息已被锁定，防自动/局部改写"
+                            >
+                              <Lock className="h-2.5 w-2.5" /> 已锁定
+                            </span>
+                          )}
                         </div>
                         <div
                           className={`p-2.5 rounded-[var(--radius-panel)] text-sm leading-relaxed break-words shadow-2xs ${
@@ -490,7 +567,7 @@ export function RecordsEditor({
                         )}
                       </div>
 
-                      {/* Row Actions: 详情（§8.5 记录详情）与删除 */}
+                      {/* Row Actions: 详情（§8.5 记录详情）、锁定与删除 */}
                       <div className="flex flex-col gap-1 self-center">
                         <button
                           type="button"
@@ -504,10 +581,31 @@ export function RecordsEditor({
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteMessage(msg.id)}
+                          onClick={() => handleToggleRecordLock('message', msg.id)}
                           disabled={disabled}
-                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 text-fg-subtle hover:text-danger-fg transition-opacity"
-                          title="删除单条消息"
+                          className={`p-1 transition-opacity ${
+                            lockedRecordMap.has(msg.id)
+                              ? 'opacity-100 text-amber-600 hover:text-amber-700'
+                              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-fg-subtle hover:text-ink'
+                          }`}
+                          title={lockedRecordMap.has(msg.id) ? '已锁定：点击解锁此消息' : '未锁定：点击锁定此消息以防被改写'}
+                        >
+                          {lockedRecordMap.has(msg.id) ? (
+                            <Lock className="h-3 w-3" />
+                          ) : (
+                            <Unlock className="h-3 w-3" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          disabled={disabled || lockedRecordMap.has(msg.id)}
+                          className={`p-1 transition-opacity ${
+                            lockedRecordMap.has(msg.id)
+                              ? 'opacity-20 cursor-not-allowed text-fg-subtle'
+                              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-fg-subtle hover:text-danger-fg'
+                          }`}
+                          title={lockedRecordMap.has(msg.id) ? '已锁定保护，如需删除请先解锁' : '删除单条消息'}
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -601,7 +699,7 @@ export function RecordsEditor({
 
                 return (
                   <div
-                    key={post.id}
+                    key={post.id} id={`record-${post.id}`}
                     className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3"
                   >
                     <div className="flex items-center justify-between">
@@ -627,14 +725,43 @@ export function RecordsEditor({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePost(post.id)}
-                        disabled={disabled}
-                        className="text-fg-subtle hover:text-danger-fg transition-colors p-1"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {lockedRecordMap.has(post.id) && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200">
+                            <Lock className="h-3 w-3" /> 已锁定
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRecordLock('post', post.id)}
+                          disabled={disabled}
+                          className={`p-1 transition-colors ${
+                            lockedRecordMap.has(post.id)
+                              ? 'text-amber-600 hover:text-amber-700'
+                              : 'text-fg-subtle hover:text-ink'
+                          }`}
+                          title={lockedRecordMap.has(post.id) ? '已锁定：点击解锁此动态' : '未锁定：点击锁定此动态以防被改写'}
+                        >
+                          {lockedRecordMap.has(post.id) ? (
+                            <Lock className="h-3.5 w-3.5" />
+                          ) : (
+                            <Unlock className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePost(post.id)}
+                          disabled={disabled || lockedRecordMap.has(post.id)}
+                          className={`transition-colors p-1 ${
+                            lockedRecordMap.has(post.id)
+                              ? 'opacity-20 cursor-not-allowed text-fg-subtle'
+                              : 'text-fg-subtle hover:text-danger-fg'
+                          }`}
+                          title={lockedRecordMap.has(post.id) ? '已锁定保护，如需删除请先解锁' : '删除动态'}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap">
@@ -786,7 +913,7 @@ export function RecordsEditor({
             ) : (
               facts.map((fact) => (
                 <div
-                  key={fact.id}
+                  key={fact.id} id={`fact-${fact.id}`}
                   className="flex items-center justify-between p-2.5 rounded bg-surface-raised border border-border-default text-sm"
                 >
                   <div className="space-y-1">
