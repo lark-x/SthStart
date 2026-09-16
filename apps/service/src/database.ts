@@ -1120,6 +1120,353 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX idx_activity_presets_kind ON activity_reusable_presets(kind,updated_at DESC)',
   ] },
 
+  // 创作资料库：资料元数据、来源版本、引用记录，以及搜集任务定义与执行记录。
+  // 元数据单独建表，旧客户端的笔记 PUT 完全不触碰它，不会被同步重置。
+  { version: 29, name: 'creative-knowledge-library', statements: [
+    `CREATE TABLE IF NOT EXISTS note_knowledge (
+      note_id TEXT PRIMARY KEY REFERENCES creative_notes(id) ON DELETE CASCADE,
+      nature TEXT NOT NULL DEFAULT 'unconfirmed' CHECK(nature IN ('canon','community','personal','unconfirmed')),
+      authorship TEXT NOT NULL DEFAULT 'handwritten' CHECK(authorship IN ('handwritten','excerpt','ai-organized','ai-inferred')),
+      usage TEXT NOT NULL DEFAULT 'record' CHECK(usage IN ('record','pending','reference')),
+      category TEXT,
+      works_json TEXT NOT NULL DEFAULT '[]',
+      characters_json TEXT NOT NULL DEFAULT '[]',
+      locations_json TEXT NOT NULL DEFAULT '[]',
+      sources_json TEXT NOT NULL DEFAULT '[]',
+      origin_json TEXT,
+      content_hash TEXT,
+      content_revision INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_note_knowledge_usage ON note_knowledge(usage, updated_at DESC)',
+    // 来源身份：同一身份 + 相同内容只更新最后检查时间，不新增待整理项。
+    `CREATE TABLE IF NOT EXISTS knowledge_sources (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'manual',
+      provider_id TEXT,
+      work TEXT,
+      external_key TEXT,
+      url TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      source_name TEXT NOT NULL DEFAULT '',
+      nature TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    // 表达式索引把 NULL 归一成空串：SQLite 的唯一索引把 NULL 当彼此不同。
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_sources_identity
+      ON knowledge_sources(kind, ifnull(provider_id,''), ifnull(external_key,''), ifnull(url,''))`,
+    // 来源版本：内容变化时保留旧版本，被引用的版本不随运行日志清理删除。
+    `CREATE TABLE IF NOT EXISTS knowledge_source_versions (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+      title TEXT NOT NULL DEFAULT '',
+      excerpt TEXT NOT NULL DEFAULT '',
+      content_hash TEXT NOT NULL,
+      published_at TEXT,
+      retrieved_at TEXT NOT NULL,
+      last_checked_at TEXT NOT NULL,
+      truncated INTEGER NOT NULL DEFAULT 0,
+      organized_text TEXT,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_source_versions_hash
+      ON knowledge_source_versions(source_id, content_hash)`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_source_versions_source ON knowledge_source_versions(source_id, retrieved_at DESC)',
+    // 引用记录：哪篇资料被哪个企划/活动引用过，用于详情页的“查看引用记录”。
+    `CREATE TABLE IF NOT EXISTS knowledge_reference_log (
+      id TEXT PRIMARY KEY,
+      source_kind TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_version TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      session_id TEXT,
+      activity_id TEXT,
+      content_hash TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_reference_log_source ON knowledge_reference_log(source_kind, source_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_reference_log_activity ON knowledge_reference_log(activity_id)',
+    // 搜集任务定义：定义与运行状态分开，“每周搜集”不会一直显示成运行中。
+    `CREATE TABLE IF NOT EXISTS knowledge_collections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      goal TEXT NOT NULL DEFAULT '',
+      works_json TEXT NOT NULL DEFAULT '[]',
+      characters_json TEXT NOT NULL DEFAULT '[]',
+      mode TEXT NOT NULL DEFAULT 'topic' CHECK(mode IN ('topic','recent')),
+      window_days INTEGER NOT NULL DEFAULT 7,
+      sources_json TEXT NOT NULL DEFAULT '[]',
+      target_note_ids_json TEXT NOT NULL DEFAULT '[]',
+      frequency TEXT NOT NULL DEFAULT 'once' CHECK(frequency IN ('once','daily','weekly')),
+      daily_time TEXT NOT NULL DEFAULT '09:00',
+      weekday INTEGER,
+      timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+      next_run_at TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      paused_reason TEXT,
+      session_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_collections_enabled ON knowledge_collections(enabled, next_run_at)',
+    `CREATE TABLE IF NOT EXISTS knowledge_collection_runs (
+      id TEXT PRIMARY KEY,
+      collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+      trigger TEXT NOT NULL DEFAULT 'manual' CHECK(trigger IN ('manual','scheduled','retry')),
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','partial','failed','cancelled','interrupted')),
+      progress_label TEXT,
+      used_tool_calls INTEGER NOT NULL DEFAULT 0,
+      budget_tool_calls INTEGER NOT NULL DEFAULT 12,
+      new_count INTEGER NOT NULL DEFAULT 0,
+      changed_count INTEGER NOT NULL DEFAULT 0,
+      duplicate_count INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      settings_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      started_at TEXT,
+      finished_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_collection_runs_collection ON knowledge_collection_runs(collection_id, created_at DESC)',
+    // 待整理：结果与本次执行的关联不会被去重抹掉，同一资料可被多个任务发现。
+    `CREATE TABLE IF NOT EXISTS knowledge_pending_items (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES knowledge_collection_runs(id) ON DELETE CASCADE,
+      collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+      source_version_id TEXT NOT NULL REFERENCES knowledge_source_versions(id) ON DELETE CASCADE,
+      work TEXT,
+      characters_json TEXT NOT NULL DEFAULT '[]',
+      change_type TEXT NOT NULL DEFAULT 'new' CHECK(change_type IN ('new','changed')),
+      state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','kept','ignored','organized')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_pending_unique
+      ON knowledge_pending_items(run_id, source_version_id)`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_pending_state ON knowledge_pending_items(state, created_at DESC)',
+    // 整理草稿：来源集合与版本随草稿冻结，刷新后可继续采用。
+    `CREATE TABLE IF NOT EXISTS knowledge_organize_drafts (
+      id TEXT PRIMARY KEY,
+      target_note_id TEXT,
+      base_revision INTEGER,
+      target_content_hash TEXT,
+      source_version_ids_json TEXT NOT NULL DEFAULT '[]',
+      source_item_ids_json TEXT NOT NULL DEFAULT '[]',
+      instruction TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'queued',
+      title TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT '',
+      sources_json TEXT NOT NULL DEFAULT '[]',
+      error_message TEXT,
+      adopted_note_id TEXT,
+      model_metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_organize_drafts_created ON knowledge_organize_drafts(created_at DESC)',
+  ] },
+  // 不改正文、不自动判定为原作事实；旧客户端继续正常读写。
+  { version: 30, name: 'note-knowledge-backfill', statements: [
+    `INSERT INTO note_knowledge
+      (note_id,nature,authorship,usage,works_json,characters_json,locations_json,sources_json,created_at,updated_at)
+      SELECT n.id,'unconfirmed','handwritten',
+        CASE WHEN n.stage='reference' AND n.kind<>'diary' THEN 'reference' ELSE 'record' END,
+        '[]','[]','[]','[]',n.created_at,n.updated_at
+      FROM creative_notes n
+      WHERE NOT EXISTS (SELECT 1 FROM note_knowledge k WHERE k.note_id=n.id)`,
+  ] },
+  // 执行结果关联：记录每次执行发现了哪些来源版本（含重复发现），
+  // 使执行详情能如实例出“这次新增/变化/重复了什么”。待整理状态仍在 knowledge_pending_items。
+  { version: 31, name: 'knowledge-run-findings', statements: [
+    `CREATE TABLE IF NOT EXISTS knowledge_run_findings (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES knowledge_collection_runs(id) ON DELETE CASCADE,
+      source_version_id TEXT NOT NULL REFERENCES knowledge_source_versions(id) ON DELETE CASCADE,
+      change_type TEXT NOT NULL DEFAULT 'new' CHECK(change_type IN ('new','changed','duplicate')),
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_run_findings_unique
+      ON knowledge_run_findings(run_id, source_version_id)`,
+    'CREATE INDEX IF NOT EXISTS idx_knowledge_run_findings_run ON knowledge_run_findings(run_id, created_at DESC)',
+  ] },
+  // 旧笔记回填资料元数据：stage=reference 且非日记默认“可参考”，其余默认“仅记录”。
+  // 加密云备份：仓库、目标、计划、运行、版本、对象、每目标状态与恢复记录。
+  // 加密只作用于上传到网盘的副本；本地媒体与数据库保持原样。
+  { version: 32, name: 'encrypted-cloud-backup', statements: [
+    // 仓库：只存可公开的 KDF 参数与「被包裹」的主密钥，不含主密钥明文。
+    `CREATE TABLE IF NOT EXISTS backup_vaults (
+      id TEXT PRIMARY KEY,
+      format_version INTEGER NOT NULL DEFAULT 1,
+      kdf_json TEXT NOT NULL,
+      wrapped_master_key_json TEXT NOT NULL,
+      recovery_wrap_json TEXT,
+      unlock_policy TEXT NOT NULL DEFAULT 'manual' CHECK(unlock_policy IN ('manual','remember')),
+      remembered INTEGER NOT NULL DEFAULT 0,
+      credential_account TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    // 目标：凭据只存 SecretStore 引用（credential_account），不落明文 token。
+    `CREATE TABLE IF NOT EXISTS backup_targets (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL REFERENCES backup_vaults(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('local_test','google_drive','onedrive','quark')),
+      account_label TEXT NOT NULL DEFAULT '',
+      root_path TEXT NOT NULL DEFAULT '',
+      local_directory TEXT,
+      credential_account TEXT,
+      connected INTEGER NOT NULL DEFAULT 1,
+      capabilities_json TEXT NOT NULL DEFAULT '{}',
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_targets_vault ON backup_targets(vault_id)',
+    // 计划：启停与下次时间独立于运行状态。
+    `CREATE TABLE IF NOT EXISTS backup_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('workspace','activities','knowledge')),
+      activity_ids_json TEXT NOT NULL DEFAULT '[]',
+      works_json TEXT NOT NULL DEFAULT '[]',
+      target_ids_json TEXT NOT NULL DEFAULT '[]',
+      frequency TEXT NOT NULL DEFAULT 'manual' CHECK(frequency IN ('manual','daily','weekly')),
+      daily_time TEXT NOT NULL DEFAULT '03:00',
+      weekday INTEGER,
+      timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+      next_run_at TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      retain_count INTEGER NOT NULL DEFAULT 10,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_plans_due ON backup_plans(enabled, next_run_at)',
+    // 版本：清单以对象形式加密保存，这里只记元数据与发布状态。
+    `CREATE TABLE IF NOT EXISTS backup_snapshots (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL REFERENCES backup_vaults(id) ON DELETE CASCADE,
+      scope TEXT NOT NULL,
+      scope_detail_json TEXT NOT NULL DEFAULT '{}',
+      description TEXT NOT NULL DEFAULT '',
+      object_count INTEGER NOT NULL DEFAULT 0,
+      content_bytes INTEGER NOT NULL DEFAULT 0,
+      uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+      missing_count INTEGER NOT NULL DEFAULT 0,
+      retained INTEGER NOT NULL DEFAULT 0,
+      /** 未发布任何目标前不进入可恢复列表。 */
+      manifest_object_id TEXT,
+      staged_directory TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_snapshots_created ON backup_snapshots(vault_id, created_at DESC)',
+    // 对象：同一仓库内相同明文内容复用一个密文对象。
+    `CREATE TABLE IF NOT EXISTS backup_objects (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL REFERENCES backup_vaults(id) ON DELETE CASCADE,
+      content_hash TEXT NOT NULL,
+      cipher_hash TEXT NOT NULL,
+      plaintext_bytes INTEGER NOT NULL DEFAULT 0,
+      cipher_bytes INTEGER NOT NULL DEFAULT 0,
+      local_cipher_path TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_objects_content
+      ON backup_objects(vault_id, content_hash)`,
+    // 每个目标对每个版本的状态独立记录，不能用单一 uploaded 标记表达多目标。
+    `CREATE TABLE IF NOT EXISTS backup_target_runs (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      snapshot_id TEXT NOT NULL REFERENCES backup_snapshots(id) ON DELETE CASCADE,
+      target_id TEXT NOT NULL REFERENCES backup_targets(id) ON DELETE CASCADE,
+      state TEXT NOT NULL DEFAULT 'pending',
+      uploaded_objects INTEGER NOT NULL DEFAULT 0,
+      uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+      total_objects INTEGER NOT NULL DEFAULT 0,
+      total_bytes INTEGER NOT NULL DEFAULT 0,
+      manifest_published INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT,
+      error_message TEXT,
+      updated_at TEXT NOT NULL,
+      UNIQUE(snapshot_id, target_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_target_runs_snapshot ON backup_target_runs(snapshot_id)',
+    // 对象在单个目标上的上传与验证结果；切账号或目录不能继承。
+    `CREATE TABLE IF NOT EXISTS backup_target_objects (
+      id TEXT PRIMARY KEY,
+      target_id TEXT NOT NULL REFERENCES backup_targets(id) ON DELETE CASCADE,
+      object_id TEXT NOT NULL REFERENCES backup_objects(id) ON DELETE CASCADE,
+      vault_id TEXT NOT NULL,
+      remote_key TEXT NOT NULL,
+      uploaded INTEGER NOT NULL DEFAULT 0,
+      verified INTEGER NOT NULL DEFAULT 0,
+      /** 验证方式：remote_checksum 或 downloaded_hash。 */
+      verify_method TEXT,
+      remote_id TEXT,
+      uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      UNIQUE(target_id, vault_id, object_id)
+    )`,
+    // 运行记录：阶段、进度与每目标摘要；结束即离开「运行中」。
+    `CREATE TABLE IF NOT EXISTS backup_runs (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT REFERENCES backup_plans(id) ON DELETE SET NULL,
+      plan_name TEXT NOT NULL DEFAULT '',
+      trigger TEXT NOT NULL CHECK(trigger IN ('manual','scheduled','retry')),
+      status TEXT NOT NULL DEFAULT 'queued',
+      phase TEXT NOT NULL DEFAULT 'waiting',
+      snapshot_id TEXT,
+      scope TEXT NOT NULL,
+      config_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      progress_label TEXT,
+      uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+      content_bytes INTEGER NOT NULL DEFAULT 0,
+      object_count INTEGER NOT NULL DEFAULT 0,
+      reused_object_count INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_runs_created ON backup_runs(created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_backup_runs_plan ON backup_runs(plan_id, created_at DESC)',
+    // 恢复记录：下载验证进度、方式、恢复前备份位置。
+    `CREATE TABLE IF NOT EXISTS backup_restore_runs (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL,
+      snapshot_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      phase TEXT NOT NULL DEFAULT 'waiting',
+      progress_label TEXT,
+      verified_bytes INTEGER NOT NULL DEFAULT 0,
+      total_bytes INTEGER NOT NULL DEFAULT 0,
+      mode TEXT,
+      pre_restore_backup_path TEXT,
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_restore_runs_created ON backup_restore_runs(created_at DESC)',
+  ] },
+  // 每个已发布版本在单个目标上引用的对象集合：清理时用于判断「独占对象」，
+  // 不依赖读取加密清单。与 backup_target_runs 一一对应。
+  { version: 33, name: 'backup-snapshot-objects', statements: [
+    `CREATE TABLE IF NOT EXISTS backup_snapshot_objects (
+      target_id TEXT NOT NULL REFERENCES backup_targets(id) ON DELETE CASCADE,
+      snapshot_id TEXT NOT NULL REFERENCES backup_snapshots(id) ON DELETE CASCADE,
+      vault_id TEXT NOT NULL,
+      object_ids_json TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(target_id, snapshot_id)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_backup_snapshot_objects_object ON backup_snapshot_objects(target_id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

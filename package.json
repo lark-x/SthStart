@@ -21,6 +21,7 @@
     "db:reset": "node --import tsx scripts/database.ts reset",
     "db:backup": "node --import tsx scripts/database.ts backup",
     "db:restore": "node --import tsx scripts/database.ts restore",
+    "backup:apply-restore": "node --import tsx scripts/backup-apply-restore.ts",
     "dev": "concurrently --kill-others-on-fail --names portal,service --prefix-colors cyan,green \"npm run dev:portal\" \"npm run dev:service\"",
     "dev:portal": "vinext dev",
     "dev:service": "npm run dev --workspace @sthstart/service",

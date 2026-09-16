@@ -32,8 +32,16 @@ import { reconcileMediaBatchesOnStartup } from './activities/media-batches.js';
 import { registerMcpSourceRoutes } from './mcp/routes.js';
 import { registerResearchRoutes } from './mcp/research-routes.js';
 import { registerTopicRoutes } from './topics/routes.js';
+import { registerKnowledgeRoutes } from './knowledge/routes.js';
+import { KnowledgeScheduler } from './knowledge/scheduler.js';
 import { TopicScheduler } from './topics/scheduler.js';
 import { registerTaskRoutes } from './tasks/routes.js';
+import { BackupStore } from './backup/store.js';
+import { BackupVaultService } from './backup/vault.js';
+import { BackupRunner } from './backup/runner.js';
+import { BackupRestoreService } from './backup/restore.js';
+import { BackupScheduler } from './backup/scheduler.js';
+import { registerBackupRoutes } from './backup/routes.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -78,6 +86,12 @@ export async function createService(options: ServiceOptions = {}) {
   const runtimeSettings = new RuntimeSettingsStore(database);
   const runtimeLogs = new RuntimeLogService(database, config.logDirectory, !options.database);
   const runtimeManager = new RuntimeManager(config, runtimeSettings, runtimeLogs, { appToken: linsheAppToken, fetcher: options.fetcher });
+  // 云备份：仓库、目标、计划、运行、恢复与定时调度都跟随服务进程。
+  const backupStore = new BackupStore(database);
+  const backupVaults = new BackupVaultService(secrets);
+  const backupRunner = new BackupRunner({ config, database, store: backupStore, vaults: backupVaults, logs: runtimeLogs, secrets, fetcher: options.fetcher });
+  const backupRestores = new BackupRestoreService({ config, database, store: backupStore, vaults: backupVaults, secrets, logs: runtimeLogs, fetcher: options.fetcher });
+  const backupScheduler = new BackupScheduler({ store: backupStore, runner: backupRunner, logs: runtimeLogs });
   const inspectNotebook = (): AppDescriptor => ({
     id: 'notebook', name: '创作笔记', description: '记录日记、灵感、角色与世界故事。',
     launchUrl: `${config.portalOrigins[0]}/apps/notebook`, status: 'online', version: SERVICE_VERSION,
@@ -197,12 +211,17 @@ export async function createService(options: ServiceOptions = {}) {
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
   registerActivityRoutes(app, config, database, secrets, options.fetcher);
   registerCalendarRoutes(app, config, database);
-  registerPlanningRoutes(app, { config, database, secrets, store: new ActivityStore(database), fetcher: options.fetcher });
+  registerPlanningRoutes(app, { config, database, secrets, store: new ActivityStore(database), fetcher: options.fetcher, narrativeDatabase });
   registerMcpSourceRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerResearchRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerTopicRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
+  registerKnowledgeRoutes(app, { config, database, narrativeDatabase, secrets, fetcher: options.fetcher });
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
   registerTaskRoutes(app, { config, database, secrets, fetcher: options.fetcher });
+  registerBackupRoutes(app, {
+    config, database, store: backupStore, vaults: backupVaults, runner: backupRunner,
+    restores: backupRestores, secrets, logs: runtimeLogs, fetcher: options.fetcher,
+  });
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 
   const retentionFailure = (error: unknown) => runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-retention', stream: 'system', level: 'warn', message: `保留策略执行失败：${String(error)}`, force: true });
@@ -224,6 +243,11 @@ export async function createService(options: ServiceOptions = {}) {
   // 话题搜集调度器：跟随服务进程运行，浏览器关闭不影响执行。
   const topicScheduler = new TopicScheduler({ config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   topicScheduler.start();
+  // 资料搜集调度：跟随服务进程运行，每个启用定义最多补跑一次。
+  const knowledgeScheduler = new KnowledgeScheduler({ config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
+  knowledgeScheduler.start();
+  // 云备份调度：每天/每周到时执行，未解锁则记录等待并在解锁后补做一次。
+  backupScheduler.start();
   const genReconcilePromise = reconcileGenerationTasks(config, database, secrets, options.fetcher).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (!msg.includes('database is not open')) {
@@ -235,10 +259,14 @@ export async function createService(options: ServiceOptions = {}) {
     clearInterval(retentionTimer);
     genScheduler.stop();
     topicScheduler.stop();
+    knowledgeScheduler.stop();
+    backupScheduler.stop();
     stopGenerationExecutions(database);
     await genReconcilePromise.catch(() => {});
     await Promise.allSettled(Array.from(activeGenerationExecutions));
     await runtimeManager.close();
+    // 退出前尽量把日志写入队列排空。
+    await runtimeLogs.flush();
     if (!options.database) database.close();
     if (!options.narrativeDatabase) narrativeDatabase.close();
   });

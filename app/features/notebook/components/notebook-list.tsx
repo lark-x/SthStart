@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, Search, Star } from 'lucide-react';
-import type { NoteKind } from '@sthstart/contracts';
+import type { NoteCategory, NoteKind, NoteNature, NoteUsage } from '@sthstart/contracts';
 import { useNotes } from '../queries';
 import { useLocalNotebookNotes } from '../hooks';
-import { kindLabels, stageLabels } from '../schemas';
+import { categoryLabels, kindLabels, natureLabels, stageLabels, usageLabels } from '../schemas';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Input } from '@/app/components/ui/input';
 import { Alert } from '@/app/components/ui/alert';
@@ -35,8 +35,26 @@ function formatDate(iso?: string) {
 export function NotebookList() {
   const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>('all');
   const [query, setQuery] = useState('');
+  const [usageFilter, setUsageFilter] = useState<'' | NoteUsage>('');
+  const [natureFilter, setNatureFilter] = useState<'' | NoteNature>('');
+  const [categoryFilter, setCategoryFilter] = useState<'' | NoteCategory>('');
+  const [workFilter, setWorkFilter] = useState('');
+  // 元数据与关键词筛选走服务端：不在首批 300 条里过滤。
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const { data, isLoading, error } = useNotes();
+  const { data, isLoading, error } = useNotes({
+    ...(debouncedQuery.trim() ? { q: debouncedQuery.trim() } : {}),
+    ...(selectedFilter !== 'all' ? { kind: selectedFilter } : {}),
+    ...(usageFilter ? { usage: usageFilter } : {}),
+    ...(natureFilter ? { nature: natureFilter } : {}),
+    ...(categoryFilter ? { category: categoryFilter } : {}),
+    ...(workFilter ? { works: [workFilter] } : {}),
+    pageSize: 120,
+  });
   const localRecords = useLocalNotebookNotes(data?.items);
   const notes = useMemo(() => {
     const merged = new Map((data?.items ?? []).filter((note) => note.id).map((note) => [note.id!, note]));
@@ -62,21 +80,23 @@ export function NotebookList() {
 
   const characterNotes = notes.filter((n) => n.kind === 'character').slice(0, 4);
   const worldNotes = notes.filter((n) => n.kind === 'world').slice(0, 4);
+  const facets = data?.facets;
+  const metadataFilterActive = Boolean(usageFilter || natureFilter || categoryFilter || workFilter);
 
   return (
     <div className="notebook-list-page w-full bg-paper text-ink px-4 sm:px-6 py-6">
       <div className="mx-auto w-full max-w-[1920px] space-y-4">
       <PageHeader
         className="notebook-list-header"
-        title="创作笔记"
-        description="把散落的念头留在故事发生之前。记录日常、灵感和设定，成熟片段可标记为剧情候选，流转给剧本与交互体验。"
+        title="创作资料库"
+        description="记录日常、灵感与设定，也可以把资料整理成可供企划参考的依据。标记为「可参考」的资料会进入检索范围。"
         actions={
           <Link
             href="/apps/notebook/new"
             className="notebook-new-note-action inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shadow-xs shrink-0"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>新建记录</span>
+          <span>新建资料</span>
           </Link>
         }
       />
@@ -127,7 +147,46 @@ export function NotebookList() {
         </div>
       </div>
 
-      {/* Main Grid */}
+     {/* Main Grid */}
+        {/* 元数据筛选：作品 / 参考状态 / 内容性质 / 资料类型（服务端筛选）。 */}
+        {(facets || metadataFilterActive) && (
+          <div className="flex flex-wrap items-end gap-2 px-4 py-3 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-sm">
+            {!!facets?.works.length && (
+              <label className="space-y-1">
+                <span className="text-xs text-muted">作品</span>
+                <select aria-label="按作品筛选" value={workFilter} onChange={(event) => setWorkFilter(event.target.value)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                  <option value="">全部作品</option>
+                  {facets.works.map((work) => <option key={work} value={work}>{work}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="space-y-1">
+              <span className="text-xs text-muted">参考状态</span>
+              <select aria-label="按参考状态筛选" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value as '' | NoteUsage)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <option value="">不限</option>
+                {Object.entries(usageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted">内容性质</span>
+              <select aria-label="按内容性质筛选" value={natureFilter} onChange={(event) => setNatureFilter(event.target.value as '' | NoteNature)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <option value="">不限</option>
+                {Object.entries(natureLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs text-muted">资料类型</span>
+              <select aria-label="按资料类型筛选" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '' | NoteCategory)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <option value="">不限</option>
+                {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            {metadataFilterActive && (
+              <button type="button" className="h-8 px-3 rounded border border-border-default text-sm text-muted hover:text-ink" onClick={() => { setUsageFilter(''); setNatureFilter(''); setCategoryFilter(''); setWorkFilter(''); }}>清空筛选</button>
+            )}
+            {data?.total !== undefined && <span className="ml-auto text-xs text-muted">共 {data.total} 条资料</span>}
+          </div>
+        )}
       {isLoading && notes.length === 0 ? (
         <div className="notebook-list-skeleton grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
           {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -181,9 +240,15 @@ export function NotebookList() {
                     </p>
                   </div>
 
-                  <div className="notebook-list-item-meta flex items-center justify-between pt-3 mt-4 border-t border-border-subtle text-sm text-muted">
-                    <span className="font-medium">{stageLabels[note.stage]}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="notebook-list-item-meta flex items-center justify-between pt-3 mt-4 border-t border-border-subtle text-sm text-muted">
+                      <span className="font-medium">{stageLabels[note.stage]}</span>
+                      <div className="flex items-center gap-2">
+                        {note.knowledge && (
+                          <>
+                            <span className={note.knowledge.usage === 'reference' ? 'text-accent-dark' : ''}>{usageLabels[note.knowledge.usage]}</span>
+                            <span>{natureLabels[note.knowledge.nature]}</span>
+                          </>
+                        )}
                       <span className="truncate max-w-[120px]">
                         {note.tags.slice(0, 2).map((t) => `#${t}`).join(' ')}
                       </span>

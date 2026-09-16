@@ -148,9 +148,14 @@ test('planning session freezes personas, generates a candidate, and creates an i
     const host = await createCharacter(app, { name: '主角甲', birthday: { status: 'known', calendar: 'gregorian', month: 9, day: 9, source: 'manual' } });
     const guest = await createCharacter(app, { name: '朋友乙' });
 
+    const noteResponse = await app.inject({ method: 'POST', url: '/api/v1/admin/notebook/notes', headers: adminHeaders, payload: {
+      title: '派对参考', kind: 'note', stage: 'reference', summary: '', tags: [], content: [{ id: 'b1', type: 'text', text: '露台可以布置彩灯。' }],
+    } });
+    assert.equal(noteResponse.statusCode, 201);
     const created = await app.inject({
       method: 'POST', url: '/api/v1/admin/activity-planning-sessions', headers: adminHeaders,
       payload: { form: {
+        references: [{ sourceKind: 'note', sourceId: noteResponse.json().id, usage: 'background' }],
         templateId: 'birthday', title: '甲的生日会', type: '生日聚会', theme: '', location: '天台', rules: '', scheduledDate: '2026-09-09',
         characters: [{ characterId: host.id }, { characterId: guest.id }], birthdayCharacterIds: [host.id], instruction: '想要一个天台惊喜',
       } },
@@ -173,6 +178,10 @@ test('planning session freezes personas, generates a candidate, and creates an i
     assert.ok(requests[0].includes('天台惊喜'));
     const candidate = finished.candidates[0];
     assert.equal(candidate.payload.stages.length, 2);
+    const currentSession = (await app.inject({ url: `/api/v1/admin/activity-planning-sessions/${session.id}`, headers: adminHeaders })).json().session;
+    assert.equal(candidate.sessionVersion, currentSession.version, '保存派生引用快照不能使刚生成的候选立即过期');
+    assert.ok(requests[0].includes('露台可以布置彩灯'));
+    assert.equal(currentSession.form.knowledgeSnapshot.references.length, 1);
 
     // 用编辑后的企划创建活动：日期与寿星保持用户设定。
     const edited = JSON.parse(JSON.stringify(session.document));

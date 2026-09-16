@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Ban, BookmarkCheck, BookmarkPlus, Eye } from 'lucide-react';
+import React, { useState } from 'react';
+import { Ban, BookmarkCheck, BookmarkPlus, Eye, Library } from 'lucide-react';
 import type { Topic } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -25,15 +25,23 @@ export function publishedLabel(iso?: string | null): string {
  * 素材卡片：素材库与「从话题素材找灵感」侧栏共用同一呈现，
  * 列表只展示摘要，完整原文放在详情里。
  */
-export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, onToggleIgnore, onOpenDetail, showActions = true }: {
+export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, onToggleIgnore, onOpenDetail, onSaveToLibrary, showActions = true }: {
   topic: Topic;
   selected?: boolean;
   onToggle?: (topic: Topic) => void;
   onToggleFavorite?: (topic: Topic) => void;
   onToggleIgnore?: (topic: Topic) => void;
   onOpenDetail?: (topic: Topic) => void;
+  /** 收藏到资料库：保留话题身份、摘要快照与原有来源。 */
+  onSaveToLibrary?: (topic: Topic) => Promise<void> | void;
   showActions?: boolean;
 }) {
+  const [savingToLibrary, setSavingToLibrary] = useState(false);
+  const save = async () => {
+    if (!onSaveToLibrary) return;
+    setSavingToLibrary(true);
+    try { await onSaveToLibrary(topic); } finally { setSavingToLibrary(false); }
+  };
   return (
     <li className={'space-y-2 rounded-[var(--radius-panel)] border p-3 ' + (selected ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
       <div className="flex items-start gap-3">
@@ -75,6 +83,11 @@ export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, 
           {onToggleFavorite && (
             <Button size="sm" variant="ghost" onClick={() => onToggleFavorite(topic)}>
               {topic.favorite ? <><BookmarkCheck className="h-3.5 w-3.5" />取消收藏</> : <><BookmarkPlus className="h-3.5 w-3.5" />收藏</>}
+            </Button>
+          )}
+          {onSaveToLibrary && (
+            <Button size="sm" variant="ghost" disabled={savingToLibrary} onClick={() => void save()}>
+              <Library className="h-3.5 w-3.5" />{savingToLibrary ? '正在收藏…' : '收藏到资料库'}
             </Button>
           )}
           {onToggleIgnore && (

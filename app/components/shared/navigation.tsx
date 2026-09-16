@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BookOpen,
   CalendarDays,
+  CloudUpload,
   Compass,
   FileText,
   Home,
@@ -110,14 +111,14 @@ export const NAV_APPS: NavApp[] = [
   },
   {
     id: 'notebook',
-    title: '创作笔记',
-    navLabel: '笔记',
+    title: '创作资料库',
+    navLabel: '资料库',
     navSection: '资料',
     href: '/apps/notebook',
     group: '创作',
     icon: BookOpen,
-    description: '日记、灵感、世界设定与剧情素材',
-    keywords: ['notebook', '笔记', '灵感', '日记'],
+    description: '资料、日记、灵感与世界设定；标为可参考后可在企划中引用',
+    keywords: ['notebook', '笔记', '资料库', '资料', '灵感', '日记', '知识'],
   },
   {
     id: 'narrative',
@@ -173,6 +174,17 @@ export const NAV_APPS: NavApp[] = [
     icon: Server,
     description: '管理邻舍后端运行栈、服务启停与运行日志',
     keywords: ['control center', '控制中心', '运行', '服务', 'runtime'],
+  },
+  {
+    id: 'backups',
+    title: '云备份',
+    navLabel: '云备份',
+    navSection: '设置',
+    href: '/settings/backups',
+    group: '管理',
+    icon: CloudUpload,
+    description: '加密备份工作区、活动与创作资料到多个网盘，并按版本恢复',
+    keywords: ['backup', '云备份', '网盘', '加密', '恢复', 'restore'],
   },
 ];
 

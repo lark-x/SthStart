@@ -353,6 +353,11 @@ export async function commitActivityImport(
     } : undefined,
   };
 
+  // 工程来源属于原环境；即使目标库碰巧存在同 ID 也不能自动关联。
+  if (newContentDocument.activity.planningBasis?.knowledge) {
+    newContentDocument.activity.planningBasis = structuredClone(newContentDocument.activity.planningBasis);
+    for (const reference of newContentDocument.activity.planningBasis.knowledge!.references) reference.externalSource = true;
+  }
   newContentDocument.activity.birthdayActorIds=contentDoc.activity.birthdayActorIds?.map(id=>actorIdMap.get(id)||id);
   if(newContentDocument.activity.templateSnapshot?.actorMappings) {
     newContentDocument.activity.templateSnapshot=structuredClone(newContentDocument.activity.templateSnapshot);

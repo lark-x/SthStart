@@ -33,6 +33,7 @@ import { TagsInput } from '@/app/components/shared/tags-input';
 import { useToast } from '@/app/providers/ui-provider';
 import { generateId } from '@/app/lib/uuid';
 import { LocalNoteImage } from './local-note-image';
+import { NoteKnowledgePanel } from './note-knowledge-panel';
 
 const initialNote: CreativeNote = {
   title: '',
@@ -157,6 +158,7 @@ export function NoteEditor({
     }
     if (localRecord) {
       hydratedRef.current = true;
+      /* eslint-disable-next-line react-hooks/set-state-in-effect -- 首次挂载时把本地 IndexedDB 记录水合进编辑器（外部状态）。 */
       setNote(localRecord.note);
       return;
     }
@@ -331,7 +333,7 @@ export function NoteEditor({
   if (detailFailed && localNoteLoaded && !localRecord) {
     return (
       <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
-        {standalone && <h1 className="sr-only">创作笔记编辑器</h1>}
+        {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
           <p className="text-lg font-semibold text-ink">笔记打开失败</p>
           <p className="max-w-sm text-sm text-muted">
@@ -357,7 +359,7 @@ export function NoteEditor({
   if (!editorReady) {
     return (
       <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
-        {standalone && <h1 className="sr-only">创作笔记编辑器</h1>}
+        {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
         <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-surface/95 backdrop-blur-md border-b border-border-subtle">
           {standalone ? (
             <Link
@@ -385,7 +387,7 @@ export function NoteEditor({
 
   return (
     <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
-      {standalone && <h1 className="sr-only">创作笔记编辑器</h1>}
+      {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
       {/* Top sticky action bar */}
       <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-surface/95 backdrop-blur-md border-b border-border-subtle">
         {standalone ? (
@@ -528,7 +530,13 @@ export function NoteEditor({
           </span>
         </section>
 
-        {/* Layer 2: Compact Title & Tags Section */}
+       {/* Layer 2: Compact Title & Tags Section */}
+        {/* 资料属性：默认收起，只在这里显式修改，不会因正文编辑被清空。 */}
+        <NoteKnowledgePanel
+          note={note}
+          knowledge={note.knowledge}
+          onChange={(knowledge) => updateNoteState((prev) => ({ ...prev, knowledge }))}
+        />
         <section className="notebook-heading space-y-1.5" aria-label="标题与标签">
           <div className="flex items-center justify-between">
             <span className="notebook-heading-kicker text-xs font-medium text-fg-subtle">标题与标签</span>

@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { Value } from '@sinclair/typebox/value';
+import { PlanningKnowledgeReferenceSchema } from '@sthstart/contracts';
 import { applySavedActivityTemplate } from './presets.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
@@ -7,6 +9,8 @@ import type {
   ActivityIdea,
   ActivityIdeaBatch,
   ActivityInspirationSnapshot,
+  PlanningKnowledgeSnapshot,
+  PlanningReferenceSelection,
   ActivityPlanningCandidate,
   ActivityPlanningCharacterRef,
   ActivityPlanningForm,
@@ -26,10 +30,11 @@ import type {
   ResearchEvidenceBasis,
   ResearchTask,
 } from '@sthstart/contracts';
-import { normalizeRoleMappings, buildActivityDocument, isUnresolvedPlanningActor } from '@sthstart/contracts';
+import { KNOWLEDGE_MAX_REFERENCES, normalizeRoleMappings, buildActivityDocument, isUnresolvedPlanningActor } from '@sthstart/contracts';
 import { authenticateAdmin } from '../access.js';
 import type { ServiceConfig } from '../config.js';
 import { nowIso, type ServiceDatabase } from '../database.js';
+import type { NarrativeDatabase } from '../narrative-database.js';
 import { toAuthorityDraft } from '../characters/draft.js';
 import { upsertCharacterBirthday } from '../characters/birthday.js';
 import type { CharacterDraftV2 } from '@sthstart/contracts';
@@ -44,6 +49,8 @@ import { normalizeScheduledDate } from './schedule.js';
 import { ResearchStore } from '../mcp/research-store.js';
 import { TopicStore } from '../topics/store.js';
 import { IdeaStore } from '../topics/ideas.js';
+import { compileSnapshot } from '../knowledge/references.js';
+import { referencePromptBlock } from '../knowledge/references.js';
 
 function hash(value: unknown) {
   return crypto.createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
@@ -107,6 +114,25 @@ function normalizeForm(value: unknown): ActivityPlanningFormExtended {
     // 灵感来源：采用话题点子时冻结，旧会话缺失该字段时按原逻辑运行。
     ...(source.inspiration && typeof source.inspiration === 'object' && !Array.isArray(source.inspiration)
       ? { inspiration: source.inspiration as ActivityInspirationSnapshot }
+      : {}),
+    // 资料引用：选择列表与冻结快照都要保留，旧会话缺失时按“不引用资料”运行。
+    ...(Array.isArray(source.references)
+      ? {
+          references: source.references
+            .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
+            .map((item) => ({
+              sourceKind: (['note', 'narrative', 'collection', 'topic'].includes(String(item.sourceKind)) ? String(item.sourceKind) : 'note') as PlanningReferenceSelection['sourceKind'],
+              sourceId: String(item.sourceId ?? ''),
+              usage: item.usage === 'requirement' ? 'requirement' as const : 'background' as const,
+              ...(Value.Check(PlanningKnowledgeReferenceSchema, item.frozenReference) ? { frozenReference: item.frozenReference } : {}),
+              ...(typeof item.excerptOverride === 'string' && item.excerptOverride.trim() ? { excerptOverride: item.excerptOverride.trim().slice(0, 8_000) } : {}),
+            }))
+            .filter((item) => item.sourceId)
+            .slice(0, KNOWLEDGE_MAX_REFERENCES),
+        }
+      : {}),
+    ...(source.knowledgeSnapshot && typeof source.knowledgeSnapshot === 'object' && !Array.isArray(source.knowledgeSnapshot)
+      ? { knowledgeSnapshot: source.knowledgeSnapshot as PlanningKnowledgeSnapshot }
       : {}),
   };
 }
@@ -463,7 +489,7 @@ function uniqueCharacterSlug(database: ServiceDatabase, input: string) {
   return candidate;
 }
 
-export function validatePlanningOutput(output: unknown, document: ContentDocument): ActivityPlanningOutput {
+export function validatePlanningOutput(output: unknown, document: ContentDocument, allowedReferenceIds?: Set<string> | null): ActivityPlanningOutput {
   const fail = (message: string): never => { throw new Error(`invalid_ai_output: ${message}`); };
   const data = output && typeof output === 'object' && !Array.isArray(output) ? (output as Record<string, unknown>) : fail('expected object');
   if (data.schemaVersion !== 1) fail('schemaVersion must be 1');
@@ -492,7 +518,19 @@ export function validatePlanningOutput(output: unknown, document: ContentDocumen
     if (!Array.isArray(row.actorIds) || row.actorIds.some((id) => typeof id !== 'string' || !actorIds.has(id))) fail('invalid stage actor references');
     if (!Array.isArray(row.requiredBeats) || row.requiredBeats.some((beat) => typeof beat !== 'string')) fail('requiredBeats must be text array');
   }
-  return data as unknown as ActivityPlanningOutput;
+  const parsed = data as unknown as ActivityPlanningOutput;
+  if (allowedReferenceIds) {
+    // 只接受本次真实存在的引用 ID；无效 ID 不作为真实引用展示，也不丢弃整份可编辑方案。
+    const keep = (ids: unknown): string[] | undefined => {
+      if (!Array.isArray(ids)) return undefined;
+      const valid = ids.filter((id): id is string => typeof id === 'string' && allowedReferenceIds.has(id));
+      return valid.length ? [...new Set(valid)] : undefined;
+    };
+    parsed.activity = { ...parsed.activity, ...(keep(parsed.activity.referenceIds) ? { referenceIds: keep(parsed.activity.referenceIds) } : { referenceIds: undefined }) };
+    parsed.actorRoles = parsed.actorRoles.map((role) => ({ ...role, ...(keep(role.referenceIds) ? { referenceIds: keep(role.referenceIds) } : { referenceIds: undefined }) }));
+    parsed.stages = parsed.stages.map((stage) => ({ ...stage, ...(keep(stage.referenceIds) ? { referenceIds: keep(stage.referenceIds) } : { referenceIds: undefined }) }));
+  }
+  return parsed;
 }
 
 interface ResearchContext {
@@ -569,9 +607,37 @@ export interface PlanningServiceOptions {
   secrets: SecretStore;
   store: ActivityStore;
   fetcher?: typeof fetch;
+  /** 叙事库只读引用：解析叙事片段引用时需要，缺省时叙事引用按不可用处理。 */
+  narrativeDatabase?: NarrativeDatabase | null;
+}
+
+/**
+ * 编译并冻结本次企划的知识引用快照。
+ *
+ * - 有已保存快照且选择没有变化时直接复用（避免重复读库，也保证候选依据稳定）。
+ * - 选择变化后重新编译，并把新快照写回会话表单。
+ */
+function compilePlanningKnowledge(
+  options: PlanningServiceOptions,
+  session: ActivityPlanningSession,
+): PlanningKnowledgeSnapshot | null {
+  const selections = session.form.references ?? [];
+  const result = compileSnapshot(
+    { database: options.database, narrativeDatabase: options.narrativeDatabase ?? null },
+    selections,
+    { sessionId: session.id },
+  );
+  const snapshot = result.snapshot.references.length ? result.snapshot : null;
+  // 派生快照不改变用户输入版本，否则刚生成的候选立即被判过期。
+  const form = { ...session.form, knowledgeSnapshot: snapshot };
+  const saved = options.database.connection.prepare('UPDATE activity_planning_sessions SET form_json=? WHERE id=? AND version=?')
+    .run(JSON.stringify(form), session.id, session.version);
+  if (!saved.changes) throw conflict('session_version_conflict', '企划已变化，请刷新后重试。');
+  return snapshot;
 }
 
 interface PlanningRequest {
+
   document: ContentDocument;
   sessionVersion: number;
   instruction?: string;
@@ -582,6 +648,8 @@ interface PlanningRequest {
   requiredLocations: string[];
   researchContext: ResearchContext;
   inspiration?: ActivityInspirationSnapshot | null;
+  /** 本次生成冻结的知识引用快照：候选与依据都从这里取，不从当前笔记重算。 */
+  knowledge?: PlanningKnowledgeSnapshot | null;
   selection?: PlanningSelectionState;
   researchRevisionId?: string | null;
 }
@@ -620,17 +688,23 @@ function executePlanningJob(options: PlanningServiceOptions, sessionId: string, 
             }), requiredCharacterIds: snapshot.requiredActorIds,
             excludedCharacterIds: [], lockedLocation: snapshot.lockedLocation,
             researchEvidenceExcerpt: snapshot.researchContext.evidenceExcerpt,
+            knowledgeExcerpt: referencePromptBlock(snapshot.knowledge),
+            referenceIds: (snapshot.knowledge?.references ?? []).map((item) => item.id),
           });
           const response = await callLlm(profile, prompt, options.fetcher ?? fetch);
           if (!active()) return;
-          const parsed = validatePlanningOutput(parseAiJsonOutput<unknown>(response), snapshot.document);
+          const parsed = validatePlanningOutput(
+            parseAiJsonOutput<unknown>(response),
+            snapshot.document,
+            new Set((snapshot.knowledge?.references ?? []).map((item) => item.id)),
+          );
           const roleIds = new Set(parsed.actorRoles.map(role => role.actorId));
           const stageIds = new Set(parsed.stages.flatMap(stage => stage.actorIds));
           if (snapshot.requiredActorIds.some(id => !roleIds.has(id) || !stageIds.has(id))) throw new Error('方案遗漏了必选人物或没有安排其参与阶段。');
           if (snapshot.lockedLocation && parsed.activity.location.trim() !== snapshot.lockedLocation.trim()) throw new Error('方案未遵守锁定的主要地点。');
           if (snapshot.excludedLocations.some(name => [parsed.activity.location, ...parsed.stages.map(stage => stage.location)].some(location => location.trim() === name.trim()))) throw new Error('方案使用了已排除的地点。');
           if (snapshot.requiredLocations.some(name => ![parsed.activity.location, ...parsed.stages.map(stage => stage.location)].some(location => location.trim() === name.trim()))) throw new Error('方案遗漏了必选地点。');
-          const candidate = planning.createCandidate({ sessionId, sessionVersion: snapshot.sessionVersion, payload: parsed, planningInput: { inspiration: snapshot.inspiration ?? null, researchContext: snapshot.researchContext, selection: snapshot.selection, researchRevisionId: snapshot.researchRevisionId } });
+          const candidate = planning.createCandidate({ sessionId, sessionVersion: snapshot.sessionVersion, payload: parsed, planningInput: { inspiration: snapshot.inspiration ?? null, knowledge: snapshot.knowledge ?? null, researchContext: snapshot.researchContext, selection: snapshot.selection, researchRevisionId: snapshot.researchRevisionId } });
           successIds.push(candidate.id);
           previousPlans.push(JSON.stringify({ activity: parsed.activity, stages: parsed.stages }));
           // 每份成功即保存；取消后也能取回已经完成的方案。
@@ -674,6 +748,8 @@ export async function runPlanningJob(options: PlanningServiceOptions, sessionId:
   if (!bindingStatus.ready) throw llmNotReadyError(bindingStatus);
   const researchContext = loadResearchContext(options.database, session);
   const selection = session.form.selection;
+  // 引用资料在生成开始时冻结：候选与依据都从这里取，避免把新依据贴到旧方案上。
+  const knowledge = compilePlanningKnowledge(options, session);
   const { document } = buildVariantDocument(session.document, researchContext);
   const excluded = new Set(selection?.excludedCharacterIds ?? []);
   document.actors = document.actors.filter(actor => !actor.candidateRefId || !excluded.has(actor.candidateRefId));
@@ -694,6 +770,7 @@ export async function runPlanningJob(options: PlanningServiceOptions, sessionId:
     requiredLocations: researchContext.locations.filter(item => selection?.requiredLocationIds.includes(item.id)).map(item => item.name),
     excludedLocations: researchContext.locations.filter(item => selection?.excludedLocationIds.includes(item.id)).map(item => item.name),
     researchContext, inspiration: session.form.inspiration || null, selection, researchRevisionId: session.researchRevisionId,
+    knowledge,
   };
   const { job, isExisting } = planning.createJob({ sessionId, requestHash: hash(snapshot), idempotencyKey: input.idempotencyKey, request: { ...snapshot } });
   if (isExisting) return job;
@@ -824,6 +901,10 @@ function buildPlanningBasis(
     ...(task ? { inputSnapshot: task.inputSnapshot } : {}),
     // 灵感来源随活动依据一起保存与导出；旧会话没有该字段时省略。
     ...((savedRequest && 'inspiration' in savedRequest ? savedRequest.inspiration : session.form.inspiration) ? { inspiration: (savedRequest && 'inspiration' in savedRequest ? savedRequest.inspiration : session.form.inspiration) as ActivityInspirationSnapshot } : {}),
+    // 知识引用快照：优先使用当时任务冻结的版本，取不到时回落到会话里的快照。
+    ...((savedRequest ? savedRequest.knowledge : session.form.knowledgeSnapshot)
+      ? { knowledge: (savedRequest ? savedRequest.knowledge : session.form.knowledgeSnapshot) as PlanningKnowledgeSnapshot }
+      : {}),
     evidence: (task?.evidence ?? []).map((item) => ({
       id: item.id,
       sourceId: item.sourceId,

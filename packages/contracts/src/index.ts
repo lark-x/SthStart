@@ -2394,6 +2394,15 @@ export const LogEventSchema = Type.Object({
     Type.Literal('app'),
   ]),
   sensitive: Type.Boolean(),
+  /** 跨重启唯一的事件 ID（启动会话 + 序号）；旧日志缺少该字段仍可读取。 */
+  eventId: Type.Optional(Type.String()),
+  /** 任务与备份上下文：旧事件没有这些字段，读取逻辑必须容忍缺省。 */
+  taskId: Type.Optional(Type.String()),
+  runId: Type.Optional(Type.String()),
+  snapshotId: Type.Optional(Type.String()),
+  targetId: Type.Optional(Type.String()),
+  phase: Type.Optional(Type.String()),
+  errorCode: Type.Optional(Type.String()),
 });
 export type LogEvent = Static<typeof LogEventSchema>;
 
@@ -2447,6 +2456,460 @@ export const NoteBlockSchema = Type.Union([
 ]);
 export type NoteBlock = Static<typeof NoteBlockSchema>;
 
+// ---------------------------------------------------------------------------
+// 创作资料库：资料元数据、来源、检索与企划引用
+// ---------------------------------------------------------------------------
+
+/** 内容性质：描述内容本身的性质，不表示任何审核结论。 */
+export const NoteNatureSchema = Type.Union([
+  Type.Literal('canon'),         // 原作资料
+  Type.Literal('community'),     // 社区解读
+  Type.Literal('personal'),      // 个人设定
+  Type.Literal('unconfirmed'),   // 未确认
+]);
+export type NoteNature = Static<typeof NoteNatureSchema>;
+
+/** 形成方式：AI 摘要可以引用原作，但推断不能冒充原文。 */
+export const NoteAuthorshipSchema = Type.Union([
+  Type.Literal('handwritten'),   // 手写
+  Type.Literal('excerpt'),       // 原文摘录
+  Type.Literal('ai-organized'),  // AI 整理
+  Type.Literal('ai-inferred'),   // AI 推断
+]);
+export type NoteAuthorship = Static<typeof NoteAuthorshipSchema>;
+
+/** 使用状态：控制默认推荐范围，不做繁琐审批。 */
+export const NoteUsageSchema = Type.Union([
+  Type.Literal('record'),        // 仅记录：不自动检索进提示词
+  Type.Literal('pending'),       // 待整理
+  Type.Literal('reference'),     // 可参考
+]);
+export type NoteUsage = Static<typeof NoteUsageSchema>;
+
+export const NoteCategorySchema = Type.Union([
+  Type.Literal('relation'),
+  Type.Literal('personality'),
+  Type.Literal('preference'),
+  Type.Literal('location'),
+  Type.Literal('plot'),
+  Type.Literal('inspiration'),
+  Type.Literal('other'),
+]);
+export type NoteCategory = Static<typeof NoteCategorySchema>;
+
+export const KnowledgeWorkRefSchema = Type.Object({
+  key: Type.String(),
+  name: Type.String(),
+  aliases: Type.Optional(Type.Array(Type.String())),
+});
+export type KnowledgeWorkRef = Static<typeof KnowledgeWorkRefSchema>;
+
+/** 角色关联：未导入人设库也能关联，characterId 只表示“已关联本地人设”。 */
+export const KnowledgeCharacterRefSchema = Type.Object({
+  characterId: Type.Optional(Type.String()),
+  work: Type.String(),
+  name: Type.String(),
+});
+export type KnowledgeCharacterRef = Static<typeof KnowledgeCharacterRefSchema>;
+
+export const KnowledgeLocationRefSchema = Type.Object({
+  work: Type.String(),
+  name: Type.String(),
+});
+export type KnowledgeLocationRef = Static<typeof KnowledgeLocationRefSchema>;
+
+export const KnowledgeSourceKindSchema = Type.Union([
+  Type.Literal('manual'),      // 手工填写
+  Type.Literal('note'),        // 其他资料
+  Type.Literal('narrative'),   // 叙事档案原文
+  Type.Literal('collection'),  // 搜集任务结果
+  Type.Literal('topic'),       // 话题素材
+  Type.Literal('web'),         // 外部网页
+]);
+export type KnowledgeSourceKind = Static<typeof KnowledgeSourceKindSchema>;
+
+/**
+ * 资料里引用的一个来源。
+ * 保留原始摘录与定位；AI 摘要不能替代或覆盖原文。
+ */
+export const KnowledgeSourceRefSchema = Type.Object({
+  id: Type.String(),
+  kind: KnowledgeSourceKindSchema,
+  providerId: Type.Optional(Type.String()),
+  work: Type.Optional(Type.String()),
+  /** 外部文档键：叙事文档、话题来源、网页标准化 URL 等。 */
+  externalKey: Type.Optional(Type.String()),
+  url: Type.Optional(Type.String()),
+  title: Type.String(),
+  excerpt: Type.String(),
+  locator: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  /** 发布时间；来源没有提供时留空，不用搜集时间伪装。 */
+  publishedAt: Type.Optional(Type.String()),
+  retrievedAt: Type.Optional(Type.String()),
+  nature: Type.Optional(NoteNatureSchema),
+  /** 只读到部分内容时明确标记，不伪装成已获取完整正文。 */
+  truncated: Type.Optional(Type.Boolean()),
+  contentHash: Type.Optional(Type.String()),
+});
+export type KnowledgeSourceRef = Static<typeof KnowledgeSourceRefSchema>;
+
+export const NoteKnowledgeSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  works: Type.Array(KnowledgeWorkRefSchema),
+  characters: Type.Array(KnowledgeCharacterRefSchema),
+  locations: Type.Array(KnowledgeLocationRefSchema),
+  category: Type.Optional(NoteCategorySchema),
+  nature: NoteNatureSchema,
+  authorship: NoteAuthorshipSchema,
+  usage: NoteUsageSchema,
+  sources: Type.Array(KnowledgeSourceRefSchema),
+  /**
+   * 这篇资料的来历：从活动回流、搜集整理或导入产生时记录，
+   * 用于在界面上注明出处与当时版本。
+   */
+  origin: Type.Optional(Type.Object({
+    kind: Type.Union([
+      Type.Literal('activity'),
+      Type.Literal('collection'),
+      Type.Literal('topic'),
+      Type.Literal('import'),
+    ]),
+    refId: Type.String(),
+    label: Type.String(),
+    note: Type.Optional(Type.String()),
+    createdAt: Type.String(),
+  })),
+  /** 与实际可参考内容相关的版本标记。 */
+  contentRevision: Type.Optional(Type.Number()),
+  contentHash: Type.Optional(Type.String()),
+});
+export type NoteKnowledge = Static<typeof NoteKnowledgeSchema>;
+
+/** 资料列表筛选：服务端筛选与分页，不只在首批 300 条里过滤。 */
+export interface NoteListQuery {
+  q?: string;
+  kind?: string;
+  stage?: string;
+  works?: string[];
+  characters?: string[];
+  category?: string;
+  usage?: string;
+  nature?: string;
+  favorite?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export const KnowledgeSearchItemSchema = Type.Object({
+  /** 检索结果类型：资料或叙事片段。 */
+  kind: Type.Union([Type.Literal('note'), Type.Literal('narrative')]),
+  id: Type.String(),
+  title: Type.String(),
+  excerpt: Type.String(),
+  work: Type.Optional(Type.String()),
+  works: Type.Optional(Type.Array(Type.String())),
+  category: Type.Optional(Type.String()),
+  nature: Type.Optional(Type.String()),
+  authorship: Type.Optional(Type.String()),
+  usage: Type.Optional(Type.String()),
+  revision: Type.Optional(Type.Number()),
+  updatedAt: Type.Optional(Type.String()),
+  /** 叙事片段定位：作品、文档、行范围等。 */
+  locator: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  sourceKind: Type.Optional(Type.String()),
+  sourceTitle: Type.Optional(Type.String()),
+  retrievedAt: Type.Optional(Type.String()),
+});
+export type KnowledgeSearchItem = Static<typeof KnowledgeSearchItemSchema>;
+
+export const KnowledgeSearchResponseSchema = Type.Object({
+  items: Type.Array(KnowledgeSearchItemSchema),
+  /** 命中总数与是否被截断，便于界面如实说明“已截取”。 */
+  total: Type.Number(),
+  truncated: Type.Boolean(),
+});
+export type KnowledgeSearchResponse = Static<typeof KnowledgeSearchResponseSchema>;
+
+/** 引用在本次生成里的用途：背景参考或本次要求。 */
+export const PlanningReferenceUsageSchema = Type.Union([
+  Type.Literal('background'),
+  Type.Literal('requirement'),
+]);
+export type PlanningReferenceUsage = Static<typeof PlanningReferenceUsageSchema>;
+
+export const PlanningKnowledgeReferenceSchema = Type.Object({
+  id: Type.String(),
+  sourceKind: Type.Union([
+    Type.Literal('note'),
+    Type.Literal('narrative'),
+    Type.Literal('collection'),
+    Type.Literal('topic'),
+  ]),
+  sourceId: Type.String(),
+  sourceVersion: Type.Optional(Type.String()),
+  contentHash: Type.String(),
+  sourceContentHash: Type.Optional(Type.String()),
+  externalSource: Type.Optional(Type.Boolean()),
+  title: Type.String(),
+  usage: PlanningReferenceUsageSchema,
+  nature: Type.String(),
+  authorship: Type.String(),
+  /** 实际用于生成的内容。 */
+  excerpt: Type.String(),
+  locator: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  /** 检索/截断时如实说明，不假装整篇都已送给模型。 */
+  truncated: Type.Optional(Type.Boolean()),
+  evidence: Type.Array(Type.Object({
+    title: Type.String(),
+    excerpt: Type.String(),
+    url: Type.Optional(Type.String()),
+    locator: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    retrievedAt: Type.Optional(Type.String()),
+  })),
+});
+export type PlanningKnowledgeReference = Static<typeof PlanningKnowledgeReferenceSchema>;
+
+/**
+ * 企划的知识引用快照：冻结实际传给 AI 的内容，不只保存资料 ID。
+ * 保存到企划会话，提交生成时复制进任务请求，采用后进入 activity.planningBasis。
+ */
+export const PlanningKnowledgeSnapshotSchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  capturedAt: Type.String(),
+  references: Type.Array(PlanningKnowledgeReferenceSchema),
+});
+export type PlanningKnowledgeSnapshot = Static<typeof PlanningKnowledgeSnapshotSchema>;
+
+/** 资料的选择项：前端在企划里挑选引用时提交的内容。 */
+export const PlanningReferenceSelectionSchema = Type.Object({
+  sourceKind: Type.Union([
+    Type.Literal('note'),
+    Type.Literal('narrative'),
+    Type.Literal('collection'),
+    Type.Literal('topic'),
+  ]),
+  sourceId: Type.String(),
+  usage: PlanningReferenceUsageSchema,
+  /** 只引用一篇资料里的某个片段时提供；缺省表示引用整篇的可参考正文。 */
+  excerptOverride: Type.Optional(Type.String()),
+  frozenReference: Type.Optional(PlanningKnowledgeReferenceSchema),
+});
+export type PlanningReferenceSelection = Static<typeof PlanningReferenceSelectionSchema>;
+
+/** 来源更新检查：只比较本地 hash / revision，不逐条联网。 */
+export const KnowledgeReferenceStatusSchema = Type.Object({
+  id: Type.String(),
+  sourceKind: Type.String(),
+  sourceId: Type.String(),
+  title: Type.String(),
+  state: Type.Union([
+    Type.Literal('unchanged'),
+    Type.Literal('updated'),
+    Type.Literal('missing'),
+  ]),
+  previousHash: Type.String(),
+  currentHash: Type.Optional(Type.String()),
+  currentSourceId: Type.Optional(Type.String()),
+  previousExcerpt: Type.String(),
+  currentExcerpt: Type.Optional(Type.String()),
+  message: Type.Optional(Type.String()),
+});
+export type KnowledgeReferenceStatus = Static<typeof KnowledgeReferenceStatusSchema>;
+
+export const KnowledgeReferenceCheckResponseSchema = Type.Object({
+  items: Type.Array(KnowledgeReferenceStatusSchema),
+  updatedCount: Type.Number(),
+});
+export type KnowledgeReferenceCheckResponse = Static<typeof KnowledgeReferenceCheckResponseSchema>;
+
+export const KNOWLEDGE_MAX_REFERENCES = 12;
+/** 单条引用的正文预算（字符），超出明确截断。 */
+export const KNOWLEDGE_EXCERPT_BUDGET = 2_400;
+/** 全部引用的正文预算（字符）。 */
+export const KNOWLEDGE_TOTAL_BUDGET = 16_000;
+// ---------------------------------------------------------------------------
+// 资料搜集：任务定义、执行记录、待整理与整理草稿（第二轮）
+// ---------------------------------------------------------------------------
+
+export const KnowledgeCollectionModeSchema = Type.Union([
+  Type.Literal('topic'),    // 专题资料：不限时间
+  Type.Literal('recent'),   // 近期动态：默认最近七天
+]);
+export type KnowledgeCollectionMode = Static<typeof KnowledgeCollectionModeSchema>;
+
+export const KnowledgeCollectionFrequencySchema = Type.Union([
+  Type.Literal('once'),
+  Type.Literal('daily'),
+  Type.Literal('weekly'),
+]);
+export type KnowledgeCollectionFrequency = Static<typeof KnowledgeCollectionFrequencySchema>;
+
+/** 任务定义保持独立：定义与运行状态分开，避免“每周搜集”一直显示为运行中。 */
+export const KnowledgeCollectionSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  goal: Type.String(),
+  works: Type.Array(Type.String()),
+  characters: Type.Array(Type.String()),
+  mode: KnowledgeCollectionModeSchema,
+  windowDays: Type.Number(),
+  sources: Type.Array(Type.Object({ sourceId: Type.String(), searchTool: Type.String(), readTool: Type.Optional(Type.String()) })),
+  targetNoteIds: Type.Array(Type.String()),
+  frequency: KnowledgeCollectionFrequencySchema,
+  dailyTime: Type.String(),
+  weekday: Type.Optional(Type.Number()),
+  timezone: Type.String(),
+  nextRunAt: Type.Optional(Type.String()),
+  enabled: Type.Boolean(),
+  /** 没有可用资料源时允许保存为暂停任务。 */
+  pausedReason: Type.Optional(Type.String()),
+  sessionId: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type KnowledgeCollection = Static<typeof KnowledgeCollectionSchema>;
+
+export const KnowledgeCollectionRunStatusSchema = Type.Union([
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('partial'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled'),
+  Type.Literal('interrupted'),
+]);
+export type KnowledgeCollectionRunStatus = Static<typeof KnowledgeCollectionRunStatusSchema>;
+
+export const KnowledgeCollectionRunSchema = Type.Object({
+  id: Type.String(),
+  collectionId: Type.String(),
+  collectionName: Type.String(),
+  trigger: Type.Union([Type.Literal('manual'), Type.Literal('scheduled'), Type.Literal('retry')]),
+  status: KnowledgeCollectionRunStatusSchema,
+  progressLabel: Type.Optional(Type.String()),
+  usedToolCalls: Type.Number(),
+  budgetToolCalls: Type.Number(),
+  newCount: Type.Number(),
+  changedCount: Type.Number(),
+  duplicateCount: Type.Number(),
+  errorMessage: Type.Optional(Type.String()),
+  startedAt: Type.Optional(Type.String()),
+  finishedAt: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type KnowledgeCollectionRun = Static<typeof KnowledgeCollectionRunSchema>;
+
+/** 待整理条目：来自某次执行的来源版本，带“新增/有变化”标识。 */
+export const KnowledgePendingItemSchema = Type.Object({
+  id: Type.String(),
+  runId: Type.String(),
+  collectionId: Type.String(),
+  collectionName: Type.String(),
+  sourceVersionId: Type.String(),
+  title: Type.String(),
+  excerpt: Type.String(),
+  work: Type.Optional(Type.String()),
+  characters: Type.Array(Type.String()),
+  url: Type.Optional(Type.String()),
+  sourceName: Type.String(),
+  sourceKind: Type.String(),
+  locator: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  publishedAt: Type.Optional(Type.String()),
+  retrievedAt: Type.String(),
+  changeType: Type.Union([Type.Literal('new'), Type.Literal('changed')]),
+  state: Type.Union([
+    Type.Literal('pending'),
+    Type.Literal('kept'),
+    Type.Literal('ignored'),
+    Type.Literal('organized'),
+  ]),
+  truncated: Type.Optional(Type.Boolean()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type KnowledgePendingItem = Static<typeof KnowledgePendingItemSchema>;
+
+/** 来源版本：同一来源身份的内容版本，变化时保留旧版本。 */
+export const KnowledgeSourceVersionSchema = Type.Object({
+  id: Type.String(),
+  sourceId: Type.String(),
+  title: Type.String(),
+  excerpt: Type.String(),
+  contentHash: Type.String(),
+  publishedAt: Type.Optional(Type.String()),
+  retrievedAt: Type.String(),
+  truncated: Type.Optional(Type.Boolean()),
+  /** 模型整理文本与原始内容分开保存。 */
+  organizedText: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+});
+export type KnowledgeSourceVersion = Static<typeof KnowledgeSourceVersionSchema>;
+
+export const KnowledgeOrganizeDraftSchema = Type.Object({
+  id: Type.String(),
+  targetNoteId: Type.Optional(Type.String()),
+  /** 目标笔记在生成时的 revision；目标已被编辑时需要重新预览。 */
+  baseRevision: Type.Optional(Type.Number()),
+  sourceVersionIds: Type.Array(Type.String()),
+  sourceItemIds: Type.Array(Type.String()),
+  instruction: Type.String(),
+  status: Type.Union([
+    Type.Literal('queued'),
+    Type.Literal('running'),
+    Type.Literal('succeeded'),
+    Type.Literal('failed'),
+    Type.Literal('adopted'),
+  ]),
+  title: Type.String(),
+  text: Type.String(),
+  /** 草稿实际使用的来源，采用前展示可查回原文。 */
+  sources: Type.Array(Type.Object({
+    sourceVersionId: Type.String(),
+    title: Type.String(),
+    excerpt: Type.String(),
+    url: Type.Optional(Type.String()),
+  })),
+  errorMessage: Type.Optional(Type.String()),
+  adoptedNoteId: Type.Optional(Type.String()),
+  modelMetadata: Type.Record(Type.String(), Type.Unknown()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type KnowledgeOrganizeDraft = Static<typeof KnowledgeOrganizeDraftSchema>;
+
+/** 采纳草稿：新建资料或追加到已有资料。 */
+export const KnowledgeOrganizeAdoptSchema = Type.Object({
+  mode: Type.Union([Type.Literal('new-note'), Type.Literal('append')]),
+  targetNoteId: Type.Optional(Type.String()),
+  /** 目标当前 revision；与草稿基线不一致时拒绝静默覆盖。 */
+  expectedRevision: Type.Optional(Type.Number()),
+  title: Type.Optional(Type.String()),
+});
+export type KnowledgeOrganizeAdopt = Static<typeof KnowledgeOrganizeAdoptSchema>;
+
+/** 第三轮：本地推荐。 */
+export const KnowledgeRecommendationSchema = Type.Object({
+  noteId: Type.String(),
+  title: Type.String(),
+  excerpt: Type.String(),
+  work: Type.Optional(Type.String()),
+  usage: Type.String(),
+  nature: Type.String(),
+  /** 可理解的原因，不展示虚假概率或权威评分。 */
+  reasons: Type.Array(Type.String()),
+  score: Type.Number(),
+});
+export type KnowledgeRecommendation = Static<typeof KnowledgeRecommendationSchema>;
+
+/** 第三轮：缺失问题补查入口。 */
+export const KnowledgeGapSchema = Type.Object({
+  question: Type.String(),
+  reason: Type.String(),
+});
+export type KnowledgeGap = Static<typeof KnowledgeGapSchema>;
+
+
 export const CreativeNoteSchema = Type.Object({
   id: Type.Optional(Type.String()),
   title: Type.String(),
@@ -2457,6 +2920,8 @@ export const CreativeNoteSchema = Type.Object({
   stage: NoteStageSchema,
   favorite: Type.Boolean(),
   revision: Type.Optional(Type.Integer({ minimum: 1 })),
+  /** 资料库元数据；旧笔记与服务端未提供时缺省，按“仅记录”处理。 */
+  knowledge: Type.Optional(NoteKnowledgeSchema),
   createdAt: Type.Optional(Type.String()),
   updatedAt: Type.Optional(Type.String()),
 });
@@ -2464,6 +2929,17 @@ export type CreativeNote = Static<typeof CreativeNoteSchema>;
 
 export const CreativeNotesResponseSchema = Type.Object({
   items: Type.Array(CreativeNoteSchema),
+  /** 服务端分页信息；旧消费者只读 items 仍然可用。 */
+  total: Type.Optional(Type.Number()),
+  page: Type.Optional(Type.Number()),
+  pageSize: Type.Optional(Type.Number()),
+  facets: Type.Optional(Type.Object({
+    works: Type.Array(Type.String()),
+    characters: Type.Array(Type.String()),
+    categories: Type.Array(Type.String()),
+    usages: Type.Array(Type.String()),
+    natures: Type.Array(Type.String()),
+  })),
 });
 export type CreativeNotesResponse = Static<typeof CreativeNotesResponseSchema>;
 
@@ -2877,6 +3353,8 @@ export const ContentDocumentSchema = Type.Object({
       })),
       // 灵感来源：采用话题点子时冻结的素材摘要与点子文本。
       inspiration: Type.Optional(ActivityInspirationSnapshotSchema),
+      // 知识引用快照：本次生成真实使用的资料内容。
+      knowledge: Type.Optional(PlanningKnowledgeSnapshotSchema),
       createdAt: Type.String(),
     })),
   }),
@@ -3670,6 +4148,8 @@ export const ActivityPlanningOutputStageSchema = Type.Object({
   description: Type.String(),
   requiredBeats: Type.Array(Type.String()),
   endCondition: Type.String(),
+  /** 这一阶段的依据来自哪些本次引用；旧输出没有该字段仍然兼容。 */
+  referenceIds: Type.Optional(Type.Array(Type.String())),
 });
 
 export const ActivityPlanningOutputSchema = Type.Object({
@@ -3680,8 +4160,14 @@ export const ActivityPlanningOutputSchema = Type.Object({
     location: Type.String(),
     rules: Type.String(),
     overview: Type.String(),
+    /** 地点与主题的依据引用。 */
+    referenceIds: Type.Optional(Type.Array(Type.String())),
   }),
-  actorRoles: Type.Array(Type.Object({ actorId: Type.String(), activityRole: Type.String() })),
+  actorRoles: Type.Array(Type.Object({
+    actorId: Type.String(),
+    activityRole: Type.String(),
+    referenceIds: Type.Optional(Type.Array(Type.String())),
+  })),
   stages: Type.Array(ActivityPlanningOutputStageSchema),
 });
 export type ActivityPlanningOutput = Static<typeof ActivityPlanningOutputSchema>;
@@ -4077,6 +4563,10 @@ export interface ActivityPlanningFormExtended extends ActivityPlanningForm {
   storyScopeNote?: string;
   /** 采用话题点子时冻结的灵感来源；旧会话缺失该字段时按原逻辑运行。 */
   inspiration?: ActivityInspirationSnapshot;
+  /** 本次要参考的资料选择；旧会话缺失该字段时按“不引用资料”运行。 */
+  references?: PlanningReferenceSelection[];
+  /** 生成时冻结的引用快照：避免把新依据错误贴到旧方案上。 */
+  knowledgeSnapshot?: PlanningKnowledgeSnapshot;
 }
 
 /** 已采用企划的依据快照，与 ContentDocument.activity.planningBasis 结构一致。 */
@@ -4567,8 +5057,436 @@ export const PrepareMediaBatchOutputSchema = Type.Object({
 });
 export type PrepareMediaBatchOutput = Static<typeof PrepareMediaBatchOutputSchema>;
 
+// ---------------------------------------------------------------------------
+// 加密云备份：仓库、目标、计划、版本、对象与恢复
+// ---------------------------------------------------------------------------
+
+/** 备份范围。workspace 为完整工作区，activities 为指定活动，knowledge 为创作资料。 */
+export const BackupScopeSchema = Type.Union([
+  Type.Literal('workspace'),
+  Type.Literal('activities'),
+  Type.Literal('knowledge'),
+]);
+export type BackupScope = Static<typeof BackupScopeSchema>;
+
+/** 网盘类型。local_test 是本地目录适配器，用于开发与模拟验证。 */
+export const BackupTargetKindSchema = Type.Union([
+  Type.Literal('local_test'),
+  Type.Literal('google_drive'),
+  Type.Literal('onedrive'),
+  Type.Literal('quark'),
+]);
+export type BackupTargetKind = Static<typeof BackupTargetKindSchema>;
+
+export const BackupCapabilitiesSchema = Type.Object({
+  resumableUpload: Type.Boolean(),
+  delete: Type.Boolean(),
+  remoteChecksum: Type.Boolean(),
+  list: Type.Boolean(),
+});
+export type BackupCapabilities = Static<typeof BackupCapabilitiesSchema>;
+
+/** 解锁策略：每次手动解锁，或在本机记住（凭据只存 SecretStore 引用）。 */
+export const BackupUnlockPolicySchema = Type.Union([
+  Type.Literal('manual'),
+  Type.Literal('remember'),
+]);
+export type BackupUnlockPolicy = Static<typeof BackupUnlockPolicySchema>;
+
+/**
+ * 仓库头：可公开保存的部分。
+ * 只包含 KDF 参数与「被包裹」的主密钥；不含主密钥或恢复密钥明文。
+ */
+export const BackupVaultSchema = Type.Object({
+  id: Type.String(),
+  formatVersion: Type.Number(),
+  /** scrypt 参数，随仓库头保存。 */
+  kdf: Type.Object({
+    algorithm: Type.Literal('scrypt'),
+    salt: Type.String(),
+    N: Type.Number(),
+    r: Type.Number(),
+    p: Type.Number(),
+    keyLength: Type.Number(),
+  }),
+  /** 密码包裹的主密钥（密文与 nonce 都是 base64）。 */
+  wrappedMasterKey: Type.Object({
+    algorithm: Type.Literal('aes-256-gcm'),
+    nonce: Type.String(),
+    ciphertext: Type.String(),
+  }),
+  /** 恢复密钥包裹的主密钥；未生成时缺省。 */
+  recoveryWrap: Type.Optional(Type.Object({
+    algorithm: Type.Literal('aes-256-gcm'),
+    nonce: Type.String(),
+    ciphertext: Type.String(),
+    /** 恢复密钥的校验段，用于快速判断输入是否正确。 */
+    verifierSalt: Type.String(),
+    verifierHash: Type.String(),
+  })),
+  unlockPolicy: BackupUnlockPolicySchema,
+  /** 本机是否记住了凭据（只表示存在 SecretStore 引用）。 */
+  rememberedOnDevice: Type.Boolean(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type BackupVault = Static<typeof BackupVaultSchema>;
+
+export const BackupTargetSchema = Type.Object({
+  id: Type.String(),
+  kind: BackupTargetKindSchema,
+  /** 展示用的账号或目录标签；不保存 token 明文。 */
+  accountLabel: Type.String(),
+  /** 远端根目录（逻辑路径或平台目录 ID）。 */
+  rootPath: Type.String(),
+  vaultId: Type.String(),
+  connected: Type.Boolean(),
+  capabilities: BackupCapabilitiesSchema,
+  /** 最近一次错误摘要；连接正常时缺省。 */
+  lastError: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type BackupTarget = Static<typeof BackupTargetSchema>;
+
+export const BackupFrequencySchema = Type.Union([
+  Type.Literal('manual'),
+  Type.Literal('daily'),
+  Type.Literal('weekly'),
+]);
+export type BackupFrequency = Static<typeof BackupFrequencySchema>;
+
+export const BackupPlanSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  scope: BackupScopeSchema,
+  /** 活动范围时选中的活动 ID。 */
+  activityIds: Type.Array(Type.String()),
+  /** 资料范围时按作品筛选；空数组表示全部资料。 */
+  works: Type.Array(Type.String()),
+  targetIds: Type.Array(Type.String()),
+  frequency: BackupFrequencySchema,
+  dailyTime: Type.String(),
+  weekday: Type.Optional(Type.Number()),
+  timezone: Type.String(),
+  nextRunAt: Type.Optional(Type.String()),
+  enabled: Type.Boolean(),
+  /** 每个目标保留最近 N 次成功版本；长期保留的版本不参与淘汰。 */
+  retainCount: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type BackupPlan = Static<typeof BackupPlanSchema>;
+
+/** 运行阶段：与计划本身的启停无关，运行结束即离开「运行中」。 */
+export const BackupRunPhaseSchema = Type.Union([
+  Type.Literal('waiting'),
+  Type.Literal('waiting_unlock'),
+  Type.Literal('waiting_idle'),
+  Type.Literal('capturing'),
+  Type.Literal('encrypting'),
+  Type.Literal('uploading'),
+  Type.Literal('verifying'),
+  Type.Literal('done'),
+]);
+export type BackupRunPhase = Static<typeof BackupRunPhaseSchema>;
+
+export const BackupRunStatusSchema = Type.Union([
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('succeeded'),
+  Type.Literal('partial'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled'),
+  Type.Literal('interrupted'),
+]);
+export type BackupRunStatus = Static<typeof BackupRunStatusSchema>;
+
+export const BackupTargetRunStateSchema = Type.Union([
+  Type.Literal('pending'),
+  Type.Literal('uploading'),
+  Type.Literal('verifying'),
+  Type.Literal('succeeded'),
+  Type.Literal('failed'),
+  Type.Literal('skipped'),
+]);
+export type BackupTargetRunState = Static<typeof BackupTargetRunStateSchema>;
+
+export const BackupTargetRunSchema = Type.Object({
+  targetId: Type.String(),
+  targetLabel: Type.String(),
+  kind: BackupTargetKindSchema,
+  state: BackupTargetRunStateSchema,
+  uploadedObjects: Type.Number(),
+  uploadedBytes: Type.Number(),
+  totalObjects: Type.Number(),
+  totalBytes: Type.Number(),
+  errorCode: Type.Optional(Type.String()),
+  errorMessage: Type.Optional(Type.String()),
+  /** 该目标的清单是否已发布（发布后才可恢复）。 */
+  manifestPublished: Type.Boolean(),
+  updatedAt: Type.String(),
+});
+export type BackupTargetRun = Static<typeof BackupTargetRunSchema>;
+
+export const BackupRunSchema = Type.Object({
+  id: Type.String(),
+  planId: Type.Optional(Type.String()),
+  planName: Type.String(),
+  trigger: Type.Union([Type.Literal('manual'), Type.Literal('scheduled'), Type.Literal('retry')]),
+  status: BackupRunStatusSchema,
+  phase: BackupRunPhaseSchema,
+  snapshotId: Type.Optional(Type.String()),
+  scope: BackupScopeSchema,
+  /** 当前阶段的人话说明。 */
+  progressLabel: Type.Optional(Type.String()),
+  /** 本次实际上传的字节（复用对象不计入）。 */
+  uploadedBytes: Type.Number(),
+  /** 逻辑内容总量。 */
+  contentBytes: Type.Number(),
+  objectCount: Type.Number(),
+  reusedObjectCount: Type.Number(),
+  errorMessage: Type.Optional(Type.String()),
+  targets: Type.Array(BackupTargetRunSchema),
+  startedAt: Type.Optional(Type.String()),
+  finishedAt: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type BackupRun = Static<typeof BackupRunSchema>;
+
+export const BackupSnapshotSchema = Type.Object({
+  id: Type.String(),
+  vaultId: Type.String(),
+  scope: BackupScopeSchema,
+  createdAt: Type.String(),
+  /** 清单里的对象数量与逻辑总量。 */
+  objectCount: Type.Number(),
+  contentBytes: Type.Number(),
+  /** 本次新增上传的字节（复用对象不计）。 */
+  uploadedBytes: Type.Number(),
+  retained: Type.Boolean(),
+  /** 已发布到哪些目标；空表示还没有任何可恢复副本。 */
+  publishedTargetIds: Type.Array(Type.String()),
+  /** 捕获时发现缺失的必要文件，非空则不能声称完整。 */
+  missingCount: Type.Number(),
+  description: Type.String(),
+});
+export type BackupSnapshot = Static<typeof BackupSnapshotSchema>;
+
+export const BackupObjectSchema = Type.Object({
+  id: Type.String(),
+  /** 明文内容 SHA-256：同一内容在一个仓库内只保存一份密文。 */
+  contentHash: Type.String(),
+  /** 密文 SHA-256：用于上传后校验。 */
+  cipherHash: Type.String(),
+  plaintextBytes: Type.Number(),
+  cipherBytes: Type.Number(),
+  /** 本地密文缓存路径；缓存丢失时从远端副本重新获取。 */
+  localCipherPath: Type.Optional(Type.String()),
+  pinned: Type.Boolean(),
+  createdAt: Type.String(),
+});
+export type BackupObject = Static<typeof BackupObjectSchema>;
+
+/** 恢复执行记录。 */
+export const BackupRestoreSchema = Type.Object({
+  id: Type.String(),
+  vaultId: Type.String(),
+  snapshotId: Type.String(),
+  targetId: Type.String(),
+  scope: BackupScopeSchema,
+  status: BackupRunStatusSchema,
+  phase: BackupRunPhaseSchema,
+  progressLabel: Type.Optional(Type.String()),
+  /** 下载并验证通过的字节。 */
+  verifiedBytes: Type.Number(),
+  totalBytes: Type.Number(),
+  /** 恢复方式与结果。活动默认导入为副本，资料默认导入，工作区为整体替换。 */
+  mode: Type.Optional(Type.Union([
+    Type.Literal('activity_copy'),
+    Type.Literal('knowledge_import'),
+    Type.Literal('workspace_replace'),
+    Type.Literal('preview'),
+  ])),
+  /** 恢复前本地备份位置（工作区替换时）。 */
+  preRestoreBackupPath: Type.Optional(Type.String()),
+  errorMessage: Type.Optional(Type.String()),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type BackupRestore = Static<typeof BackupRestoreSchema>;
+
+// ---------------------------------------------------------------- 清单（解密后）
+
+/**
+ * 清单对象条目：恢复所需的全部对象都列在这里，
+ * 不是「比上次多了什么」。真实文件名与标题只存在于加密清单内。
+ */
+export const BackupManifestObjectSchema = Type.Object({
+  /** 逻辑相对路径，恢复时据此重建位置。 */
+  relativePath: Type.String(),
+  /** 资源种类：数据库、活动媒体、笔记附件、角色参考图等。 */
+  kind: Type.String(),
+  /** 业务资源 ID（如果有）。 */
+  resourceId: Type.Optional(Type.String()),
+  /** 归属模块，用于恢复后重建路径与引用。 */
+  storage: Type.Union([
+    Type.Literal('database'),
+    Type.Literal('artifact'),
+    Type.Literal('note_asset'),
+  ]),
+  plaintextSha256: Type.String(),
+  plaintextBytes: Type.Number(),
+  cipherSha256: Type.String(),
+  cipherBytes: Type.Number(),
+  /** 远端不透明对象键。 */
+  remoteKey: Type.String(),
+  /** 引用来源，用于诊断「这个文件是给谁用的」。 */
+  referencedBy: Type.Array(Type.String()),
+  contentType: Type.Optional(Type.String()),
+});
+export type BackupManifestObject = Static<typeof BackupManifestObjectSchema>;
+
+export const BackupManifestSchema = Type.Object({
+  formatVersion: Type.Number(),
+  vaultId: Type.String(),
+  snapshotId: Type.String(),
+  /** 生成该版本的设备标识，仅用于诊断。 */
+  deviceId: Type.String(),
+  createdAt: Type.String(),
+  scope: BackupScopeSchema,
+  scopeDetail: Type.Object({
+    activityIds: Type.Array(Type.String()),
+    works: Type.Array(Type.String()),
+  }),
+  appVersion: Type.String(),
+  serviceSchemaVersion: Type.Number(),
+  narrativeSchemaVersion: Type.Number(),
+  description: Type.String(),
+  objects: Type.Array(BackupManifestObjectSchema),
+  /** 捕获时发现缺失或按范围排除的文件，恢复后需要人工确认。 */
+  excluded: Type.Array(Type.Object({
+    relativePath: Type.String(),
+    reason: Type.String(),
+    referencedBy: Type.Array(Type.String()),
+  })),
+});
+export type BackupManifest = Static<typeof BackupManifestSchema>;
+
+// ---------------------------------------------------------------- 请求
+
+export const BackupVaultCreateSchema = Type.Object({
+  password: Type.String(),
+  /** 是否同时生成恢复密钥；默认生成。 */
+  generateRecoveryKey: Type.Optional(Type.Boolean()),
+});
+export type BackupVaultCreate = Static<typeof BackupVaultCreateSchema>;
+
+export const BackupVaultUnlockSchema = Type.Object({
+  /** 二选一：密码或恢复密钥。 */
+  password: Type.Optional(Type.String()),
+  recoveryKey: Type.Optional(Type.String()),
+  /** 解锁后是否在本机记住。 */
+  remember: Type.Optional(Type.Boolean()),
+});
+export type BackupVaultUnlock = Static<typeof BackupVaultUnlockSchema>;
+
+export const BackupVaultPasswordSchema = Type.Object({
+  currentPassword: Type.String(),
+  newPassword: Type.String(),
+});
+export type BackupVaultPasswordChange = Static<typeof BackupVaultPasswordSchema>;
+
+export const BackupTargetSaveSchema = Type.Object({
+  kind: BackupTargetKindSchema,
+  accountLabel: Type.String(),
+  rootPath: Type.String(),
+  /** local_test 适配器的目录；其它类型不使用。 */
+  localDirectory: Type.Optional(Type.String()),
+  /** 平台授权信息；写入 SecretStore，不落库明文。 */
+  credential: Type.Optional(Type.String()),
+});
+export type BackupTargetSave = Static<typeof BackupTargetSaveSchema>;
+
+export const BackupPlanSaveSchema = Type.Object({
+  name: Type.Optional(Type.String()),
+  scope: BackupScopeSchema,
+  activityIds: Type.Optional(Type.Array(Type.String())),
+  works: Type.Optional(Type.Array(Type.String())),
+  targetIds: Type.Array(Type.String()),
+  frequency: BackupFrequencySchema,
+  dailyTime: Type.Optional(Type.String()),
+  weekday: Type.Optional(Type.Number()),
+  timezone: Type.Optional(Type.String()),
+  enabled: Type.Optional(Type.Boolean()),
+  retainCount: Type.Optional(Type.Number()),
+});
+export type BackupPlanSave = Static<typeof BackupPlanSaveSchema>;
+
+export const BackupRunStartSchema = Type.Object({
+  planId: Type.Optional(Type.String()),
+  scope: Type.Optional(BackupScopeSchema),
+  targetIds: Type.Optional(Type.Array(Type.String())),
+  activityIds: Type.Optional(Type.Array(Type.String())),
+  works: Type.Optional(Type.Array(Type.String())),
+});
+export type BackupRunStart = Static<typeof BackupRunStartSchema>;
+
+/** 恢复预览：不修改当前数据，只报告会恢复哪些内容与缺省项。 */
+export const BackupRestorePreviewSchema = Type.Object({
+  snapshotId: Type.String(),
+  scope: BackupScopeSchema,
+  createdAt: Type.String(),
+  activities: Type.Array(Type.Object({ id: Type.String(), title: Type.String() })),
+  knowledgeNoteCount: Type.Number(),
+  characterCount: Type.Number(),
+  mediaCount: Type.Number(),
+  contentBytes: Type.Number(),
+  schemaVersion: Type.Number(),
+  /** 本应用能否读这个格式；false 表示需要升级应用。 */
+  supported: Type.Boolean(),
+  exclusions: Type.Array(Type.String()),
+  availableTargets: Type.Array(Type.String()),
+});
+export type BackupRestorePreview = Static<typeof BackupRestorePreviewSchema>;
+
+export const BackupRestoreStartSchema = Type.Object({
+  snapshotId: Type.String(),
+  targetId: Type.String(),
+  mode: Type.Union([
+    Type.Literal('activity_copy'),
+    Type.Literal('knowledge_import'),
+    Type.Literal('workspace_replace'),
+  ]),
+  /** 工作区整体替换必须显式确认。 */
+  confirm: Type.Optional(Type.Boolean()),
+});
+export type BackupRestoreStart = Static<typeof BackupRestoreStartSchema>;
+
+/** 保留清理预览：删几个版本、多少独占对象、预计释放空间。 */
+export const BackupCleanupPreviewSchema = Type.Object({
+  targetId: Type.String(),
+  removableSnapshotIds: Type.Array(Type.String()),
+  retainedSnapshotIds: Type.Array(Type.String()),
+  deletableObjectCount: Type.Number(),
+  reclaimableBytes: Type.Number(),
+  /** 无删除能力的目标只能逻辑过期。 */
+  physicalDeleteSupported: Type.Boolean(),
+  notice: Type.String(),
+});
+export type BackupCleanupPreview = Static<typeof BackupCleanupPreviewSchema>;
+
+export const BACKUP_FORMAT_VERSION = 1;
+/** scrypt 参数：默认取 Node 允许内存下的稳健值。 */
+export const BACKUP_SCRYPT_PARAMS = { N: 16_384, r: 8, p: 1, keyLength: 32 };
+/** 单次备份的并发上传上限。 */
+export const BACKUP_UPLOAD_CONCURRENCY = 2;
+
 export const TaskDomainSchema = Type.Union([
+
   Type.Literal('topic_collection'),
+  Type.Literal('knowledge_collection'),
   Type.Literal('idea_generation'),
   Type.Literal('research'),
   Type.Literal('planning'),
@@ -4576,6 +5494,7 @@ export const TaskDomainSchema = Type.Union([
   Type.Literal('activity_media_batch'),
   Type.Literal('generation'),
   Type.Literal('export'),
+  Type.Literal('backup'),
 ]);
 export type TaskDomain = Static<typeof TaskDomainSchema>;
 

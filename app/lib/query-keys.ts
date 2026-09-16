@@ -16,9 +16,16 @@ export const characterKeys = {
 
 export const notebookKeys = {
   all: ['notebook'] as const,
-  list: (filters?: { q?: string; kind?: string; stage?: string }) =>
+  list: (filters?: { q?: string; kind?: string; stage?: string; works?: string[]; characters?: string[]; category?: string; usage?: string; nature?: string; favorite?: boolean; page?: number; pageSize?: number }) =>
     [...notebookKeys.all, 'list', filters] as const,
   detail: (id: string) => [...notebookKeys.all, 'detail', id] as const,
+};
+
+export const knowledgeKeys = {
+  all: ['knowledge'] as const,
+  search: (params: object) => [...knowledgeKeys.all, 'search', params] as const,
+  recommendations: (params: object) => [...knowledgeKeys.all, 'recommendations', params] as const,
+  noteReferences: (id: string) => [...knowledgeKeys.all, 'noteReferences', id] as const,
 };
 
 export const narrativeKeys = {
@@ -83,4 +90,13 @@ export const taskKeys = {
   all: ['tasks'] as const,
   list: (filters?: { state?: 'active' | 'recent' | 'all'; domain?: string; limit?: number }) =>
     [...taskKeys.all, 'list', filters] as const,
+};
+
+export const backupKeys = {
+  all: ['backups'] as const,
+  overview: () => [...backupKeys.all, 'overview'] as const,
+  snapshots: () => [...backupKeys.all, 'snapshots'] as const,
+  restores: () => [...backupKeys.all, 'restores'] as const,
+  restorePreview: (snapshotId: string, targetId: string) => [...backupKeys.all, 'restorePreview', snapshotId, targetId] as const,
+  quark: () => [...backupKeys.all, 'quark'] as const,
 };

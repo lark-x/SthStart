@@ -28,6 +28,7 @@ import {
   fetchCollectionSettings, fetchIdeaBatch, fetchIdeaBatches, fetchTopic, fetchTopics, saveCollectionSettings,
   startCollectionRun, updateTopicFlags, type TopicListParams,
 } from '../api';
+import { saveTopicToKnowledge } from '@/app/features/notebook/api';
 import { TopicSummaryCard, formatTopicTime as formatDateTime, publishedLabel } from './topic-card';
 
 const PAGE_SIZE = 24;
@@ -277,6 +278,17 @@ export function TopicLibraryView() {
                       onOpenDetail={(item) => setDetailId(item.id)}
                       onToggleFavorite={(item) => void patchTopic(item, { favorite: !item.favorite })}
                       onToggleIgnore={(item) => void patchTopic(item, { ignored: !item.ignored })}
+                      onSaveToLibrary={async (item) => {
+                        setError(null);
+                        try {
+                          const result = await saveTopicToKnowledge(item.id);
+                          setNotice(result.created ? '已收藏到创作资料库（默认仅记录，可在资料属性里改成可参考）。' : '这个话题之前已经收藏过，已打开原有资料。');
+                          void client.invalidateQueries({ queryKey: ['notebook'] });
+                          router.push('/apps/notebook/' + result.noteId);
+                        } catch (caught) {
+                          setError(caught instanceof Error ? caught.message : '收藏到资料库失败。');
+                        }
+                      }}
                     />
                   ))}
                 </ul>

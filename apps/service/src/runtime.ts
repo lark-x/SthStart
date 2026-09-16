@@ -1,7 +1,8 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { appendFile, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
@@ -17,6 +18,14 @@ import type {
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
+
+/**
+ * 旧日志没有 eventId（内存数字 ID 重启后会复用），
+ * 这里按「时间 + 序号」合成一个等价游标，保证前端去重与分页对旧日志也成立。
+ */
+function currentEventId(event: LogEvent): string {
+  return 'legacy-' + event.timestamp + '-' + event.id;
+}
 
 const LEVEL_WEIGHT: Record<LogLevel, number> = { off: -1, error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
 const execFileAsync = promisify(execFile);
@@ -112,6 +121,10 @@ export class RuntimeLogService {
   private queuedWrites = 0;
   private readonly maxQueue = 10_000;
   private readonly file: string;
+  /** 启动会话标识：内存里的数字 ID 重启后会复用，eventId 才是跨进程唯一的。 */
+  private readonly sessionId = randomUUID().slice(0, 8);
+  private sequence = 0;
+  private writesSinceRotation = 0;
 
   constructor(private readonly database: ServiceDatabase, private readonly directory: string, private readonly persistence = true) {
     this.file = resolve(directory, 'events.jsonl');
@@ -157,10 +170,13 @@ export class RuntimeLogService {
     if (!input.force && LEVEL_WEIGHT[level] > LEVEL_WEIGHT[this.effectiveLevel(input.serviceId)]) return null;
     const policy = this.getPolicy();
     const allowSensitive = future(policy.sensitiveUntil);
+    const { force: _force, sensitive: inputSensitive, level: _level, ...rest } = input;
     const event: LogEvent = {
+      ...rest,
       id: this.nextId++, timestamp: nowIso(), appId: input.appId, serviceId: input.serviceId, level,
       message: input.sensitive && !allowSensitive ? '[敏感正文已省略]' : redact(input.message).slice(0, 32_000),
       stream: input.stream, sensitive: Boolean(input.sensitive && allowSensitive),
+      eventId: this.sessionId + '-' + (++this.sequence),
     };
     this.events.push(event);
     if (this.events.length > 2_000) this.events.splice(0, this.events.length - 2_000);
@@ -177,6 +193,96 @@ export class RuntimeLogService {
       (!filters.level || filters.level === 'off' || LEVEL_WEIGHT[event.level] <= LEVEL_WEIGHT[filters.level]) &&
       (!query || event.message.toLowerCase().includes(query)));
     return result.slice(-Math.max(1, Math.min(2_000, filters.limit ?? 500)));
+  }
+
+  /**
+   * 磁盘 JSONL 历史查询：分页、按任务/服务/级别/时间筛选。
+   *
+   * 有界读取：每个文件最多读入末尾一小段，命中足够结果就停，
+   * 不把整个日志目录读进内存。游标用跨重启唯一的 eventId，
+   * 旧日志没有 eventId 时按「会话 + 序号」生成等价游标。
+   */
+  async history(filters: {
+    level?: LogLevel;
+    serviceId?: string;
+    taskId?: string;
+    runId?: string;
+    query?: string;
+    afterEventId?: string;
+    since?: string;
+    limit?: number;
+  } = {}): Promise<{ items: LogEvent[]; nextCursor: string | null; truncated: boolean }> {
+    const limit = Math.max(1, Math.min(500, filters.limit ?? 100));
+    const query = filters.query?.toLowerCase();
+    const sinceMs = filters.since ? Date.parse(filters.since) : Number.NaN;
+    const items: LogEvent[] = [];
+    let truncated = false;
+    let skipped = false;
+    if (!this.persistence) return { items: [], nextCursor: null, truncated: false };
+    const directory = this.directory;
+    let files: string[] = [];
+    try {
+      files = (await readdir(directory, { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+        .map((entry) => resolve(directory, entry.name))
+        .sort((left, right) => right.localeCompare(left));
+    } catch {
+      return { items: [], nextCursor: null, truncated: false };
+    }
+    for (const file of files) {
+      let lines: string[] = [];
+      try {
+        const info = await stat(file);
+        const window = 4 * 1024 * 1024;
+        if (info.size <= window) {
+          lines = (await readFile(file, 'utf8')).split('\n');
+        } else {
+          truncated = true;
+          const handle = await open(file, 'r');
+          try {
+            const buffer = Buffer.alloc(window);
+            await handle.read(buffer, 0, window, info.size - window);
+            const tail = buffer.toString('utf8');
+            lines = tail.slice(tail.indexOf('\n') + 1).split('\n');
+          } finally {
+            await handle.close();
+          }
+        }
+      } catch {
+        continue;
+      }
+      for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const line = lines[index];
+        if (!line?.trim()) continue;
+        let event: LogEvent;
+        try {
+          event = JSON.parse(line) as LogEvent;
+        } catch {
+          continue;
+        }
+        const eventId = event.eventId ?? currentEventId(event);
+        if (filters.afterEventId) {
+          if (!skipped) {
+            if (eventId === filters.afterEventId) skipped = true;
+            continue;
+          }
+        }
+        if (filters.serviceId && event.serviceId !== filters.serviceId) continue;
+        if (filters.taskId && (event as LogEvent & { taskId?: string }).taskId !== filters.taskId) continue;
+        if (filters.runId && (event as LogEvent & { runId?: string }).runId !== filters.runId) continue;
+        if (filters.level && filters.level !== 'off' && LEVEL_WEIGHT[event.level] > LEVEL_WEIGHT[filters.level]) continue;
+        if (Number.isFinite(sinceMs) && Date.parse(event.timestamp) < sinceMs) { truncated = true; continue; }
+        if (query && !event.message.toLowerCase().includes(query)) continue;
+        items.push({ ...event, eventId });
+        if (items.length >= limit) return { items, nextCursor: items[items.length - 1]?.eventId ?? null, truncated };
+      }
+    }
+    return { items, nextCursor: items.length >= limit ? items[items.length - 1]?.eventId ?? null : null, truncated };
+  }
+
+  /** 服务退出前尽量把写入队列排空，避免丢日志。 */
+  async flush(): Promise<void> {
+    await this.writeChain.catch(() => undefined);
   }
 
   subscribe(listener: (event: LogEvent) => void) {
@@ -205,7 +311,17 @@ export class RuntimeLogService {
     if (this.queuedWrites >= this.maxQueue && (LEVEL_WEIGHT[event.level] > LEVEL_WEIGHT.warn || this.queuedWrites >= this.maxQueue + 2_000)) { this.dropped++; return; }
     this.queuedWrites++;
     this.writeChain = this.writeChain
-      .then(async () => { await mkdir(this.directory, { recursive: true }); await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8'); })
+      .then(async () => {
+        await mkdir(this.directory, { recursive: true });
+        await appendFile(this.file, `${JSON.stringify(event)}\n`, 'utf8');
+        // 轮转与写入串行，避免删除仍在写入的文件。
+        this.writesSinceRotation += 1;
+        if (this.writesSinceRotation >= 256) {
+          this.writesSinceRotation = 0;
+          const info = await stat(this.file).catch(() => null);
+          if (info && info.size > 10 * 1024 * 1024) await rename(this.file, resolve(this.directory, `events-${Date.now()}.jsonl`));
+        }
+      })
       .catch(() => { this.dropped++; })
       .finally(() => { this.queuedWrites--; });
   }

@@ -22,6 +22,7 @@ import {
   getImageAttempt,
 } from '../activities/image-attempts.js';
 import { ActivityStore } from '../activities/store.js';
+import { KnowledgeCollectionStore } from '../knowledge/collections.js';
 
 export interface ListTasksOptions {
   state?: 'active' | 'recent' | 'all';
@@ -282,6 +283,119 @@ export function listUnifiedTasks(
   }
 
   // 5. Idea Generation Batches
+
+  // 5b. 资料搜集执行（第二轮）：执行记录进统一任务中心，跳转到资料库的搜集任务页。
+  if (!filterDomain || filterDomain === 'knowledge_collection') {
+    const knowledgeRows = safeQuery(() =>
+      database.connection
+        .prepare(
+          `SELECT r.id, r.status, r.progress_label, r.error_message, r.new_count, r.changed_count, r.duplicate_count, r.created_at, r.updated_at, c.name collection_name
+           FROM knowledge_collection_runs r
+           LEFT JOIN knowledge_collections c ON c.id = r.collection_id
+           ORDER BY r.created_at DESC
+           LIMIT ?`,
+        )
+        .all(limit) as Array<{
+          id: string;
+          status: string;
+          progress_label: string | null;
+          error_message: string | null;
+          new_count: number;
+          changed_count: number;
+          duplicate_count: number;
+          created_at: string;
+          updated_at: string;
+          collection_name: string | null;
+        }>,
+    );
+
+    for (const row of knowledgeRows) {
+      let displayState: TaskSummary['displayState'] = 'needs_attention';
+      if (row.status === 'queued') displayState = 'waiting';
+      else if (row.status === 'running') displayState = 'running';
+      else if (row.status === 'succeeded') displayState = 'succeeded';
+      else if (row.status === 'partial') displayState = 'partial';
+      else if (row.status === 'cancelled') displayState = 'stopped';
+      else if (row.status === 'failed' || row.status === 'interrupted') displayState = 'failed';
+      const totalItems = row.new_count + row.changed_count + row.duplicate_count;
+      tasks.push({
+        domain: 'knowledge_collection',
+        taskId: row.id,
+        title: '资料搜集：' + (row.collection_name || '未命名任务'),
+        displayState,
+        rawState: row.status,
+        progress: totalItems > 0 ? { completed: row.new_count + row.changed_count, total: totalItems, unit: '条' } : undefined,
+        detail: row.progress_label || row.error_message || undefined,
+        targetUrl: '/apps/notebook?view=collections',
+        capabilities: {
+          // 只暴露已经实现的取消能力；重试在搜集任务页内按执行记录发起。
+          cancel: row.status === 'queued' || row.status === 'running',
+          retry: false,
+        },
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      });
+    }
+  }
+
+  if (!filterDomain || filterDomain === 'backup') {
+    const backupRows = safeQuery(() =>
+      database.connection
+        .prepare(
+          `SELECT r.id, r.plan_name, r.trigger, r.status, r.phase, r.scope, r.progress_label, r.error_message,
+                  r.object_count, r.reused_object_count, r.created_at, r.updated_at,
+                  (SELECT COALESCE(SUM(t.uploaded_bytes),0) FROM backup_target_runs t WHERE t.run_id=r.id) AS target_uploaded,
+                  (SELECT COALESCE(SUM(t.total_bytes),0) FROM backup_target_runs t WHERE t.run_id=r.id) AS target_total
+           FROM backup_runs r ORDER BY r.created_at DESC LIMIT 20`,
+        )
+        .all() as Array<{
+          id: string;
+          plan_name: string;
+          trigger: string;
+          status: string;
+          phase: string;
+          scope: string;
+          progress_label: string | null;
+          error_message: string | null;
+          object_count: number;
+          reused_object_count: number;
+          target_uploaded: number;
+          target_total: number;
+          created_at: string;
+          updated_at: string;
+        }>,
+    );
+
+    for (const row of backupRows) {
+      let displayState: TaskSummary['displayState'] = 'waiting';
+      if (row.status === 'running') displayState = 'running';
+      else if (row.status === 'succeeded') displayState = 'succeeded';
+      else if (row.status === 'partial') displayState = 'partial';
+      else if (row.status === 'cancelled') displayState = 'stopped';
+      else if (row.status === 'failed' || row.status === 'interrupted') displayState = 'failed';
+      // 等待解锁需要用户处理，单独提示，不算失败也不每轮刷一条错误。
+      if (row.status === 'queued' && row.phase === 'waiting_unlock') displayState = 'needs_attention';
+      const totalBytes = Number(row.target_total ?? 0);
+      tasks.push({
+        domain: 'backup',
+        taskId: row.id,
+        title: '云备份：' + (row.plan_name || '手动备份'),
+        displayState,
+        rawState: row.status + '/' + row.phase,
+        progress: totalBytes > 0 ? { completed: Number(row.target_uploaded ?? 0), total: totalBytes, unit: '字节' } : undefined,
+        detail: row.progress_label || row.error_message || undefined,
+        targetUrl: '/settings/backups?run=' + row.id,
+        capabilities: {
+          // 取消只停止安排新的上传，已成功目标与可续传状态都会保留。
+          cancel: row.status === 'queued' || row.status === 'running',
+          retry: row.status === 'partial' || row.status === 'failed',
+        },
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      });
+    }
+  }
+
   if (!filterDomain || filterDomain === 'idea_generation') {
     const ideaRows = safeQuery(() =>
       database.connection
@@ -514,6 +628,13 @@ export async function cancelUnifiedTask(
     if (!task) throw new Error('task_not_found');
     if (['queued','running'].includes(task.status)) research.updateTask(taskId, { status: 'cancelled' });
     return { success: true, message: '已停止研究' };
+  }
+  if (domain === 'knowledge_collection') {
+    const knowledge = new KnowledgeCollectionStore(database);
+    const run = knowledge.getRun(taskId);
+    if (!run) throw new Error('task_not_found');
+    knowledge.cancelRun(taskId);
+    return { success: true, message: '已取消本次搜集；已完成的结果会保留' };
   }
   if (domain === 'planning') {
     const row = database.connection.prepare('SELECT session_id,status FROM activity_planning_jobs WHERE id=?').get(taskId) as { session_id: string; status: string } | undefined;

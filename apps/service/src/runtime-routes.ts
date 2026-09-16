@@ -177,6 +177,23 @@ export function registerRuntimeRoutes(
   app.get('/api/v1/admin/logging/policy', async () => logs.getPolicy());
   app.put<{ Body: Partial<ReturnType<RuntimeLogService['getPolicy']>> }>('/api/v1/admin/logging/policy', { schema: { body: logPolicyBody } }, async (request) => logs.setPolicy(request.body ?? {}));
   app.get<{ Querystring: { serviceId?: string; level?: LogLevel; query?: string; after?: string; limit?: string } }>('/api/v1/admin/logs', async (request) => ({ items: logs.list({ serviceId: request.query.serviceId, level: request.query.level, query: request.query.query, after: Number(request.query.after || 0), limit: Number(request.query.limit || 500) }), dropped: logs.droppedLogs }));
+  /**
+   * 磁盘 JSONL 历史：可按任务、服务、级别与时间筛选并分页。
+   * 备份历史以数据库为准，这里只解释「当时发生了什么」，日志被清理也不影响恢复。
+   */
+  app.get<{ Querystring: { serviceId?: string; level?: LogLevel; taskId?: string; runId?: string; query?: string; afterEventId?: string; since?: string; limit?: string } }>(
+    '/api/v1/admin/logs/history',
+    async (request) => logs.history({
+      serviceId: request.query.serviceId,
+      level: request.query.level,
+      taskId: request.query.taskId,
+      runId: request.query.runId,
+      query: request.query.query,
+      afterEventId: request.query.afterEventId,
+      since: request.query.since,
+      limit: Number(request.query.limit || 100),
+    }),
+  );
   app.get('/api/v1/admin/logs/stream', async (request, reply) => {
     reply.hijack();
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive' });

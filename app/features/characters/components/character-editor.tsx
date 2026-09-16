@@ -56,6 +56,7 @@ import { useToast } from '@/app/providers/ui-provider';
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterAuditionPanel } from './character-audition-panel';
 import { CharacterModelRoutingPanel } from './character-model-routing-panel';
+import { CharacterKnowledgePanel } from '@/app/features/knowledge/components/character-knowledge-panel';
 
 type Section = 'identity' | 'personality' | 'appearance' | 'relations' | 'publish';
 /** 角色只有一套编辑结构；这个开关只决定「关系与来源」这类高级分区是否展开。 */
@@ -855,9 +856,16 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               </div>
             )}
 
-            {activeSection === 'relations' && (
+           {activeSection === 'relations' && (
               <div className="space-y-6">
                 <MigrationReviewPanel characterId={characterId} />
+                {/* 相关资料：按角色与作品查询资料库；资料不完整也能关联。 */}
+                {characterId && (
+                  <CharacterKnowledgePanel
+                    characterName={detailData?.displayName || draft.displayName || ''}
+                    work={detailData?.draft?.work || draft.work || ''}
+                  />
+                )}
                 <RelationsSection
                 detail={detailData}
                 library={library}

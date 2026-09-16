@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import {
   ArrowLeft, ArrowRight, Check, ChevronDown, Compass, ExternalLink, FileText, Lightbulb, Link2, Lock, MapPin,
-  Plus, RefreshCw, Search, Sparkles, Trash2, UserPlus, Users, Wand2, X,
+  BookOpen, Plus, RefreshCw, Search, Sparkles, Trash2, UserPlus, Users, Wand2, X,
 } from 'lucide-react';
 import { ACTIVITY_TEMPLATES, applyPlanningOutput, findActivityTemplate, isUnresolvedPlanningActor } from '@sthstart/contracts';
 import type {
@@ -18,12 +18,22 @@ import type {
   ActorSnapshot, PlanningCandidateSummary, PlanningSelectionState, ResearchCharacterCandidate, ResearchEvidence,
   ResearchTask, ActivityIdea, ActivityIdeaBatch,
 } from '@sthstart/contracts';
+import type {
+  KnowledgeSearchItem, PlanningKnowledgeSnapshot, PlanningKnowledgeReference, PlanningReferenceSelection, PlanningReferenceUsage,
+} from '@sthstart/contracts';
+import { KNOWLEDGE_MAX_REFERENCES } from '@sthstart/contracts';
 import { CharacterPickerDialog } from './character-picker-dialog';
 import { CharacterImportDialog } from '@/app/features/characters/components/character-import-dialog';
 import { browseCharacters } from '@/app/features/characters/api';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
 import { InspirationPicker } from '@/app/features/topics/components/inspiration-picker';
 import { applyIdea } from '@/app/features/topics/api';
+import { KnowledgePicker } from '@/app/features/knowledge/components/knowledge-picker';
+import {
+  GapCollectionDialog, RecommendationDialog, ReferenceUpdateDialog, type AssistantSelection,
+} from '@/app/features/knowledge/components/reference-assistant';
+import { previewReferences } from '@/app/features/notebook/api';
+import { authorshipLabels, natureLabels } from '@/app/features/notebook/schemas';
 import { activityKeys } from '@/app/lib/query-keys';
 import {
   cancelPlanningJob, cancelPlanningResearch, createActivityFromPlanningSession, createPlanningSession,
@@ -60,6 +70,22 @@ const BASIS_CLASS: Record<string, string> = {
 
 interface CastMember { characterId: string; displayName: string; avatarUrl?: string; activityRole?: string }
 interface CustomLocation { id: string; name: string; note: string; status: CandidateStatus; locked: boolean }
+
+/** 已选的参考资料：保留显示内容与用户确认的冻结引用，刷新后可继续使用同一版本。 */
+interface ReferenceDraft {
+  key: string;
+  sourceKind: PlanningReferenceSelection['sourceKind'];
+  sourceId: string;
+  usage: PlanningReferenceUsage;
+  title: string;
+  excerpt: string;
+  nature?: string;
+  authorship?: string;
+  usageLabel?: string;
+  /** 用户选择继续用旧内容时固定下来的摘要；生成时作为该引用的覆盖内容。 */
+  pinnedExcerpt?: string;
+  frozenReference?: PlanningKnowledgeReference;
+}
 
 interface IntakeForm {
   templateActorMappings?: Record<string,string[]>;
@@ -182,6 +208,16 @@ export function PlanningWizard() {
   const [personaValue, setPersonaValue] = useState({ displayName: '', work: '', summary: '', personaText: '', baseText: '', defaultOutfitText: '' });
   const [customForm, setCustomForm] = useState({ name: '', note: '' });
   const [inspirationOpen, setInspirationOpen] = useState(false);
+  const [references, setReferences] = useState<ReferenceDraft[]>([]);
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [referencePreview, setReferencePreview] = useState<{
+    snapshot: PlanningKnowledgeSnapshot;
+    unresolved: Array<{ sourceKind: string; sourceId: string; reason: string }>;
+    truncated: boolean;
+  } | null>(null);
+  const [recommendOpen, setRecommendOpen] = useState(false);
+  const [updateCheckOpen, setUpdateCheckOpen] = useState(false);
+  const [gapOpen, setGapOpen] = useState(false);
   const [pendingIdea, setPendingIdea] = useState<{ batch: ActivityIdeaBatch; idea: ActivityIdea } | null>(null);
   const [replaceFields, setReplaceFields] = useState(false);
   const mountedRef = useRef(true);
@@ -194,6 +230,51 @@ export function PlanningWizard() {
   const userTemplates = userPresetsData?.items || [];
   const userTemplateMap = useMemo(() => new Map(userTemplates.map((t) => [t.id, t])), [userTemplates]);
   const maxActors = capabilities?.limits.maxActors ?? 20;
+  // 从「待整理」带进来的来源：用返回的快照内容填充参考资料，只引用已保存的内容。
+  const refsSeededRef = useRef(false);
+  useEffect(() => {
+    const raw = params.get('refs');
+    if (!raw || refsSeededRef.current) return;
+    refsSeededRef.current = true;
+    const selections: PlanningReferenceSelection[] = [];
+    for (const entry of raw.split(',')) {
+      const [kind, id] = entry.split(':');
+      if (!id) continue;
+      if (kind === 'collection' || kind === 'note' || kind === 'narrative' || kind === 'topic') {
+        selections.push({ sourceKind: kind, sourceId: id, usage: 'background' });
+      }
+    }
+    if (!selections.length) return;
+    void (async () => {
+      try {
+        const result = await previewReferences(selections);
+        if (!mountedRef.current) return;
+        setReferences((current) => {
+          const next = [...current];
+          for (const reference of result.snapshot.references) {
+            const key = reference.sourceKind + ':' + reference.sourceId;
+            if (next.some((item) => item.key === key)) continue;
+            next.push({
+              key,
+              sourceKind: reference.sourceKind,
+              sourceId: reference.sourceId,
+              usage: reference.usage,
+              title: reference.title,
+              excerpt: reference.excerpt,
+              nature: reference.nature,
+              authorship: reference.authorship,
+              frozenReference: reference,
+            });
+          }
+          return next.slice(0, KNOWLEDGE_MAX_REFERENCES);
+        });
+        setNotice('已把选中的来源加入参考资料；生成时会以它们为依据。');
+      } catch {
+        if (mountedRef.current) setError('来源内容读取失败，可以在参考资料里手动搜索添加。');
+      }
+    })();
+  }, [params]);
+
   const llmReady = capabilities ? (capabilities.llmStatus ? capabilities.llmStatus.ready : capabilities.llm) : null;
   const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, staleTime: 30_000 });
   const worksQuery = useQuery({
@@ -246,7 +327,20 @@ export function PlanningWizard() {
     ...(selection ? { selection } : {}),
     // 灵感来源已保存在会话里：每次同步表单都要带上，否则会被这次 PUT 覆盖掉。
     ...(session?.session.form.inspiration ? { inspiration: session.session.form.inspiration } : {}),
-  }), [intake, session, userTemplateMap]);
+    // 参考资料：提交选中的冻结版本；新选择由服务端预览解析后再用于生成。
+    ...(references.length
+      ? {
+          references: references.map((item) => ({
+            sourceKind: item.sourceKind,
+            sourceId: item.sourceId,
+            usage: item.usage,
+            // 固定旧内容的引用带上覆盖摘要，服务端按它冻结快照。
+            ...(item.pinnedExcerpt ? { excerptOverride: item.pinnedExcerpt } : {}),
+            ...(item.frozenReference ? { frozenReference: item.frozenReference } : {}),
+          })),
+        }
+      : {}),
+  }), [intake, references, session, userTemplateMap]);
 
   const rememberSession = useCallback((id: string) => {
     resumeRef.current = true;
@@ -337,6 +431,16 @@ export function PlanningWizard() {
             activityRole: actor.activityRole,
           }));
         const form = response.session.form;
+        setReferences((form.references ?? []).map(selection => {
+          const frozen = selection.frozenReference ?? form.knowledgeSnapshot?.references.find(ref => ref.sourceKind === selection.sourceKind && ref.sourceId === selection.sourceId);
+          return {
+            key: selection.sourceKind + ':' + selection.sourceId,
+            sourceKind: selection.sourceKind, sourceId: selection.sourceId, usage: selection.usage,
+            title: frozen?.title ?? '已选资料', excerpt: selection.excerptOverride ?? frozen?.excerpt ?? '',
+            nature: frozen?.nature, authorship: frozen?.authorship,
+            pinnedExcerpt: selection.excerptOverride, frozenReference: frozen,
+          };
+        }));
         applySession(response);
         setPlans(response.candidates ?? []);
         setJob(response.jobs[0] ?? null);
@@ -653,6 +757,78 @@ export function PlanningWizard() {
     } finally { setBusy(false); }
   };
 
+  /** 预览实际会送给模型的引用内容：截断情况如实显示。 */
+  const previewSelectedReferences = async () => {
+    if (!references.length) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await previewReferences(references.map((item) => ({ sourceKind: item.sourceKind, sourceId: item.sourceId, usage: item.usage, excerptOverride: item.pinnedExcerpt, frozenReference: item.frozenReference })));
+      setReferencePreview(result);
+      setReferences(current => current.map(item => {
+        const frozen = result.snapshot.references.find(ref => ref.sourceKind === item.sourceKind && ref.sourceId === item.sourceId);
+        return frozen ? { ...item, frozenReference: frozen, excerpt: frozen.excerpt } : item;
+      }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '读取引用内容失败。');
+    } finally { setBusy(false); }
+  };
+
+  /** 加入参考资料：同一来源只保留一条，重复添加不产生第二份。 */
+  const addReferences = async (items: Array<{ item: KnowledgeSearchItem; usage: PlanningReferenceUsage }>) => {
+    try {
+      const result = await previewReferences(items.map(({ item, usage }) => ({ sourceKind: (item.kind === 'note' ? 'note' : 'narrative'), sourceId: item.id, usage })));
+      addAssistantReferences(result.snapshot.references.map(reference => ({ ...reference, frozenReference: reference })));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : '读取引用内容失败。'); }
+
+  };
+
+  /** 把助手解析出来的引用草稿加入参考资料：同一来源只保留一条。 */
+  const addAssistantReferences = (items: AssistantSelection[]) => {
+    setReferences((current) => {
+      const next = [...current];
+      for (const item of items) {
+        const key = item.sourceKind + ':' + item.sourceId;
+        if (next.some((entry) => entry.key === key)) continue;
+        next.push({
+          key,
+          sourceKind: item.sourceKind,
+          sourceId: item.sourceId,
+          usage: item.usage,
+          title: item.title,
+          excerpt: item.excerpt,
+          ...(item.nature ? { nature: item.nature } : {}),
+          ...(item.authorship ? { authorship: item.authorship } : {}),
+          frozenReference: item.frozenReference,
+        });
+      }
+      return next.slice(0, KNOWLEDGE_MAX_REFERENCES);
+    });
+    setNotice('已加入参考资料；生成时会以它们为依据。');
+  };
+
+  /** 继续使用旧内容：把生成时用的旧摘要固定成引用覆盖内容。 */
+  const pinOldReference = (referenceId: string, excerpt: string) => {
+    const reference = session?.session.form.knowledgeSnapshot?.references.find((item) => item.id === referenceId);
+    if (!reference) return;
+    setReferences((current) => current.map((entry) => (
+      entry.sourceKind === reference.sourceKind && entry.sourceId === reference.sourceId
+        ? { ...entry, pinnedExcerpt: excerpt, frozenReference: reference }
+        : entry
+    )));
+    setNotice('已固定为旧内容；下次生成会使用这份摘要。');
+  };
+
+  const refreshReference = async (referenceId: string, currentSourceId?: string) => {
+    const reference = session?.session.form.knowledgeSnapshot?.references.find(item => item.id === referenceId);
+    if (!reference || reference.externalSource) return;
+    const result = await previewReferences([{ sourceKind: reference.sourceKind, sourceId: currentSourceId ?? reference.sourceId, usage: reference.usage }]);
+    const fresh = result.snapshot.references[0];
+    if (!fresh) throw new Error('来源已不可用，可以继续使用旧内容。');
+    setReferences(current => current.map(entry => entry.sourceKind === reference.sourceKind && entry.sourceId === reference.sourceId
+      ? { ...entry, key: fresh.sourceKind + ':' + fresh.sourceId, sourceId: fresh.sourceId, frozenReference: fresh, pinnedExcerpt: undefined, excerpt: fresh.excerpt, title: fresh.title } : entry));
+    setNotice('已选择更新这一条参考；重新生成后生效。');
+  };
+
   const createActivity = async () => {
     if (!session || !selectedCandidate || !activePayload) return;
     setBusy(true); setError(null);
@@ -724,6 +900,18 @@ export function PlanningWizard() {
 
   const summaryFor = (candidate: ActivityPlanningCandidate): PlanningCandidateSummary | null => summaries.find((summary) => summary.id === candidate.id) ?? null;
   const actorName = (actorId: string) => session?.session.document.actors.find((actor) => actor.id === actorId)?.displayName ?? actorId;
+
+  /** 本次生成冻结的引用快照：方案依据从这里取，不从当前笔记重算。 */
+  const snapshotReferences = session?.session.form.knowledgeSnapshot?.references ?? [];
+  /** 一份方案实际标注的依据。 */
+  const basisFor = (payload: ActivityPlanningOutput) => {
+    const ids = new Set<string>([
+      ...(payload.activity.referenceIds ?? []),
+      ...payload.actorRoles.flatMap((role) => role.referenceIds ?? []),
+      ...payload.stages.flatMap((stage) => stage.referenceIds ?? []),
+    ]);
+    return snapshotReferences.filter((item) => ids.has(item.id));
+  };
   const stepsDone = (index: StepIndex) => index === 0 ? Boolean(sessionId) : index === 1 ? plans.length > 0 : index === 2 ? Boolean(selectedPlanId) : false;
 
   return (
@@ -891,7 +1079,52 @@ export function PlanningWizard() {
               <>
                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
                  <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Sparkles className="h-4 w-4 text-accent" />补充要求</h3>
-                {/* 从话题素材找灵感：复用素材库筛选，采用后把灵感来源写进企划。 */}
+               {/* 从话题素材找灵感：复用素材库筛选，采用后把灵感来源写进企划。 */}
+                {/* 参考资料：手动检索选择，不触发联网；正文由服务端在生成时冻结。 */}
+                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><BookOpen className="h-4 w-4 text-accent" />参考资料（{references.length}）</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setReferencePickerOpen(true)}><Plus className="h-3.5 w-3.5" />添加资料</Button>
+                      <Button size="sm" variant="outline" onClick={() => setRecommendOpen(true)} disabled={!intake.cast.length}>推荐资料</Button>
+                      <Button size="sm" variant="outline" onClick={() => setGapOpen(true)} disabled={!sessionId}>补充搜集</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setUpdateCheckOpen(true)} disabled={!session?.session.form.knowledgeSnapshot}>检查资料更新</Button>
+                      {!!references.length && (
+                        <Button size="sm" variant="ghost" onClick={() => void previewSelectedReferences()}>查看本次引用</Button>
+                      )}
+                    </div>
+                  </div>
+                  {!references.length && (
+                    <p className="text-xs text-muted">还没有选择资料。可以只写要求交给模型，也可以先挑几篇资料作为依据。</p>
+                  )}
+                  <ul className="space-y-1.5">
+                    {references.map((item) => (
+                      <li key={item.key} className="space-y-1 rounded-lg border border-border-subtle p-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{item.title}</span>
+                          <Badge variant="outline" className="text-xs">{item.sourceKind === 'note' ? '资料' : item.sourceKind === 'narrative' ? '叙事档案' : item.sourceKind === 'topic' ? '话题素材' : '搜集来源'}</Badge>
+                          {item.nature && <Badge variant="secondary" className="text-xs">{natureLabels[item.nature as keyof typeof natureLabels] ?? item.nature}</Badge>}
+                          {item.pinnedExcerpt && <Badge variant="warning" className="text-xs">已固定旧内容</Badge>}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Select
+                            aria-label={'引用用途 ' + item.title}
+                            value={item.usage}
+                            className="h-7 text-xs"
+                            onChange={(event) => setReferences((current) => current.map((entry) => entry.key === item.key ? { ...entry, usage: event.target.value as PlanningReferenceUsage } : entry))}
+                          >
+                            <option value="background">背景参考</option>
+                            <option value="requirement">本次要求</option>
+                          </Select>
+                          <button type="button" aria-label={'移除 ' + item.title} className="text-fg-subtle hover:text-danger-fg" onClick={() => setReferences((current) => current.filter((entry) => entry.key !== item.key))}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted">背景参考按原作资料与未确认解释分开提交；「本次要求」优先于资料内容。未选择的资料不会被悄悄加入。</p>
+                </section>
                 <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
                   <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Lightbulb className="h-4 w-4 text-accent" />从话题素材找灵感</h3>
                   <p className="text-xs text-muted">
@@ -1241,6 +1474,26 @@ export function PlanningWizard() {
                         {summary.highlights.map((highlight) => <li key={highlight}>· {highlight}</li>)}
                       </ul>
                     )}
+                    {/* 主要依据：只展示本次真实存在且被方案引用的资料。 */}
+                    {(() => {
+                      const basis = basisFor(payload);
+                      if (!basis.length) {
+                        return snapshotReferences.length
+                          ? <p className="text-xs text-muted">这份方案没有标注具体依据。</p>
+                          : null;
+                      }
+                      return (
+                        <div className="space-y-0.5 text-xs text-muted">
+                          <p className="font-medium text-ink">主要依据</p>
+                          {basis.map((item) => (
+                            <p key={item.id} className="truncate">
+                              · {item.title}
+                              <span className="ml-1">{natureLabels[item.nature as keyof typeof natureLabels] ?? item.nature}</span>
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {!!summary?.caveats?.length && (
                       <ul className="space-y-0.5 text-xs text-amber-700">
                         {summary.caveats.map((caveat) => <li key={caveat}>· {caveat}</li>)}
@@ -1392,6 +1645,75 @@ export function PlanningWizard() {
         <div className="h-2" aria-hidden="true" />
       </PageContainer>
 
+      <RecommendationDialog
+        open={recommendOpen}
+        onOpenChange={setRecommendOpen}
+        works={session?.session.form.crossoverWorks ?? []}
+        characters={intake.cast.map((member) => member.displayName)}
+        theme={intake.theme}
+        onAdd={addAssistantReferences}
+      />
+
+      <ReferenceUpdateDialog
+        open={updateCheckOpen}
+        onOpenChange={setUpdateCheckOpen}
+        snapshot={session?.session.form.knowledgeSnapshot ?? null}
+        onPinOld={pinOldReference}
+        onRefresh={refreshReference}
+      />
+
+      <GapCollectionDialog
+        open={gapOpen}
+        onOpenChange={setGapOpen}
+        sessionId={sessionId ?? ''}
+        works={session?.session.form.crossoverWorks ?? []}
+        characters={intake.cast.map((member) => member.displayName)}
+        theme={intake.theme}
+        onAdd={addAssistantReferences}
+      />
+      <KnowledgePicker
+        open={referencePickerOpen}
+        onOpenChange={setReferencePickerOpen}
+        onAdd={addReferences}
+      />
+
+      <Dialog
+        open={Boolean(referencePreview)}
+        onOpenChange={(open) => { if (!open) setReferencePreview(null); }}
+        title="本次引用"
+        description="下面就是生成时会送给模型的内容；超出预算的部分已截断。"
+        className="max-w-3xl"
+        footer={<Button variant="outline" onClick={() => setReferencePreview(null)}>关闭</Button>}
+      >
+        {referencePreview && (
+          <div className="space-y-3 text-sm">
+            {referencePreview.truncated && <Alert variant="warning" title="内容已截取">部分引用超出长度预算，已按预算截断；如需完整内容请减少引用条数。</Alert>}
+            {!!referencePreview.unresolved.length && (
+              <Alert variant="warning" title="部分来源未匹配">
+                {referencePreview.unresolved.map((item) => item.reason).join('；')}。这些来源不会进入本次生成。
+              </Alert>
+            )}
+            {!referencePreview.snapshot.references.length && <p className="text-muted">没有任何可用的引用内容。</p>}
+            <ul className="space-y-2">
+              {referencePreview.snapshot.references.map((item) => (
+                <li key={item.id} className="space-y-1 rounded-lg border border-border-subtle p-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <strong className="text-sm text-ink">{item.title}</strong>
+                    <Badge variant="outline" className="text-xs">{item.usage === 'requirement' ? '本次要求' : '背景参考'}</Badge>
+                    <Badge variant="secondary" className="text-xs">{natureLabels[item.nature as keyof typeof natureLabels] ?? item.nature}</Badge>
+                    <span className="text-xs text-muted">{authorshipLabels[item.authorship as keyof typeof authorshipLabels] ?? item.authorship}</span>
+                    {item.truncated && <Badge variant="warning" className="text-xs">已截取</Badge>}
+                  </div>
+                  <p className="whitespace-pre-wrap text-xs text-muted">{item.excerpt.slice(0, 600)}{item.excerpt.length > 600 ? '…' : ''}</p>
+                  {!!item.evidence.length && (
+                    <p className="text-xs text-muted">来源：{item.evidence.map((evidence) => evidence.title).join('、')}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Dialog>
       <InspirationPicker
         open={inspirationOpen}
         onOpenChange={setInspirationOpen}

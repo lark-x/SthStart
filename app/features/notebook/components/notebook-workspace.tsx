@@ -14,8 +14,10 @@ import {
 import type { NoteKind } from '@sthstart/contracts';
 import { useNotes } from '../queries';
 import { useLocalNotebookNotes } from '../hooks';
-import { kindLabels, stageLabels } from '../schemas';
+import { kindLabels, stageLabels, usageLabels, natureLabels, categoryLabels } from '../schemas';
 import { NoteEditor } from './note-editor';
+import { CollectionManager } from '@/app/features/knowledge/components/collection-manager';
+import { PendingInbox } from '@/app/features/knowledge/components/pending-inbox';
 import { Input } from '@/app/components/ui/input';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Skeleton } from '@/app/components/ui/skeleton';
@@ -79,17 +81,30 @@ export function NotebookWorkspace({
 
   const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>('all');
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({ work: '', character: '', usage: '', nature: '', category: '' });
   const [activeId, setActiveId] = useState<string | null>(initialNoteId ?? null);
   const [isCreating, setIsCreating] = useState<boolean>(isNew);
   // 用户在移动端点过“返回笔记列表”后不再被 initialNoteId 自动拉回编辑器：
   // initialNoteId 是固定 prop，若不加此标记，返回会被 effect 立即撤销，
   // 列表永远隐藏（表现为“列表无法选择”）。
   const [exitedToMobileList, setExitedToMobileList] = useState(false);
+  // 资料库顶栏三个视图：资料 / 搜集任务 / 待整理。
+  // 视图由 URL 参数推导（任务中心用 ?view=collections 深链进来）；
+  // 用户点过标签后以本地选择为准，不用 effect 回写，避免多余的级联渲染。
+  const viewParam = searchParams?.get('view');
+  const [manualView, setManualView] = useState<'notes' | 'collections' | 'pending' | null>(null);
+  const view: 'notes' | 'collections' | 'pending' = manualView
+    ?? (viewParam === 'collections' || viewParam === 'pending' ? viewParam : 'notes');
+  const setView = setManualView;
+
   const [createKind, setCreateKind] = useState<NoteKind>(
     (searchParams?.get('kind') as NoteKind) || initialKind
   );
 
-  const { data, isLoading } = useNotes();
+  const { data, isLoading } = useNotes({ q: query, kind: selectedFilter, page, pageSize: 50,
+    works: filters.work ? [filters.work] : [], characters: filters.character ? [filters.character] : [],
+    usage: filters.usage, nature: filters.nature, category: filters.category });
   const localRecords = useLocalNotebookNotes(data?.items);
 
   const notes = useMemo(() => {
@@ -98,7 +113,7 @@ export function NotebookWorkspace({
     );
     for (const record of localRecords) {
       if (record.status === 'deleted') merged.delete(record.noteId);
-      else merged.set(record.noteId, record.note);
+      else if (!data || record.status !== 'synced') merged.set(record.noteId, record.note);
     }
     return [...merged.values()].sort((left, right) =>
       String(right.updatedAt ?? '').localeCompare(String(left.updatedAt ?? ''))
@@ -108,15 +123,16 @@ export function NotebookWorkspace({
   const visibleNotes = useMemo(() => {
     return notes.filter((item) => {
       if (selectedFilter !== 'all' && item.kind !== selectedFilter) return false;
+      const knowledge = item.knowledge;
+      if (filters.work && !knowledge?.works.some((work) => work.name === filters.work || work.key === filters.work)) return false;
+      if (filters.character && !knowledge?.characters.some((character) => character.name === filters.character)) return false;
+      if (filters.usage && (knowledge?.usage ?? 'record') !== filters.usage) return false;
+      if (filters.nature && (knowledge?.nature ?? 'unconfirmed') !== filters.nature) return false;
+      if (filters.category && knowledge?.category !== filters.category) return false;
       const needle = query.trim().toLowerCase();
-      if (!needle) return true;
-      return (
-        item.title.toLowerCase().includes(needle) ||
-        item.summary.toLowerCase().includes(needle) ||
-        item.tags.some((t) => t.toLowerCase().includes(needle))
-      );
+      return !needle || JSON.stringify([item.title, item.summary, item.tags, item.content, knowledge]).toLowerCase().includes(needle);
     });
-  }, [notes, selectedFilter, query]);
+  }, [notes, selectedFilter, query, filters]);
 
   const toggleCollapsed = useCallback(() => {
     const next = !readCollapsed();
@@ -147,6 +163,7 @@ export function NotebookWorkspace({
       }
     } else if (notes.length > 0 && !activeId && !isCreating) {
       if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+        /* eslint-disable-next-line react-hooks/set-state-in-effect -- 桌面端未选中时自动打开第一条资料，属于路由/列表外部状态同步。 */
         setActiveId(notes[0].id ?? null);
       }
     }
@@ -203,7 +220,7 @@ export function NotebookWorkspace({
       <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
         <PageHeader
           compact
-          title="创作笔记"
+          title="创作资料库"
           actions={
             <>
               <button
@@ -227,7 +244,7 @@ export function NotebookWorkspace({
             className="notebook-new-note-action inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors shadow-xs cursor-pointer shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">新建记录</span>
+            <span className="hidden sm:inline">新建资料</span>
             <span className="sm:hidden">新建</span>
           </Link>
             </>
@@ -235,8 +252,33 @@ export function NotebookWorkspace({
         />
       </header>
 
+      {/* 资料库视图切换：资料 / 搜集任务 / 待整理 */}
+      <nav className="flex flex-wrap gap-1.5 border-b border-border-subtle px-4 py-2 sm:px-6" aria-label="资料库视图">
+        {([['notes', '资料'], ['collections', '搜集任务'], ['pending', '待整理']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={view === id}
+            onClick={() => setView(id)}
+            className={'rounded-full px-3 py-1 text-sm font-medium transition-colors ' + (view === id ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5 hover:text-ink')}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {view !== 'notes' && (
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="mx-auto w-full max-w-[1400px]">
+            {view === 'collections'
+              ? <CollectionManager onOpenPending={() => setView('pending')} />
+              : <PendingInbox />}
+          </div>
+        </div>
+      )}
+
       {/* 2-Column Master-Detail Workspace Body */}
-      <div className="notebook-workspace-body flex flex-1 min-h-0 overflow-hidden">
+      <div className={"notebook-workspace-body min-h-0 overflow-hidden " + (view === 'notes' ? 'flex flex-1' : 'hidden')}>
         {/* Left Column: Master List Pane (Collapsible Drawer) */}
         <aside
           className={
@@ -253,7 +295,7 @@ export function NotebookWorkspace({
               />
               <Input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                 placeholder="搜索标题、正文或标签…"
                 className="pl-7.5 h-8 border-border-control text-sm placeholder:text-muted/50"
               />
@@ -272,7 +314,7 @@ export function NotebookWorkspace({
                     key={opt.value}
                     type="button"
                     aria-pressed={isActive}
-                    onClick={() => setSelectedFilter(opt.value)}
+                    onClick={() => { setSelectedFilter(opt.value); setPage(1); }}
                     className={"px-2.5 py-1 rounded-full text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer " + (
                       isActive
                         ? 'bg-ink text-paper'
@@ -284,6 +326,23 @@ export function NotebookWorkspace({
                 );
               })}
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+            {([
+              ['work', '作品', (data?.facets?.works ?? []).map((v) => [v, v])],
+              ['character', '角色', (data?.facets?.characters ?? []).map((v) => [v, v])],
+              ['usage', '用途', Object.entries(usageLabels)],
+              ['nature', '资料性质', Object.entries(natureLabels)],
+              ['category', '内容分类', Object.entries(categoryLabels)],
+            ] as [keyof typeof filters, string, string[][]][]).map(([key, label, options]) => (
+              <select key={key} aria-label={label} value={filters[key]}
+                className="min-w-0 rounded border border-border-control bg-surface px-2 py-1 text-sm"
+                onChange={(event) => { setFilters((current) => ({ ...current, [key]: event.target.value })); setPage(1); }}>
+                <option value="">全部{label}</option>
+                {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+              </select>
+            ))}
           </div>
 
           {/* Note Items List Stream */}
@@ -368,11 +427,16 @@ export function NotebookWorkspace({
                   onClick={() => handleStartNew(selectedFilter === 'all' ? 'diary' : selectedFilter)}
                   className="text-accent font-semibold hover:underline cursor-pointer"
                 >
-                  ＋ 新建记录
+                  ＋ 新建资料
                 </button>
               </div>
             )}
           </div>
+          {data && <div className="flex items-center justify-between gap-2 border-t p-2 text-sm">
+            <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</Button>
+            <span>{page} 页 · 共 {data.total ?? data.items.length} 条</span>
+            <Button size="sm" variant="ghost" disabled={page * 50 >= (data.total ?? data.items.length)} onClick={() => setPage((value) => value + 1)}>下一页</Button>
+          </div>}
         </aside>
 
         {/* Right Column: Detail Canvas Pane */}
@@ -416,7 +480,7 @@ export function NotebookWorkspace({
               <EmptyState
                 symbol="拾"
                 title="笔记工作台"
-                description="从左侧选择一篇笔记开始回顾，或点击右上角「新建记录」随手写下一段灵感。"
+                description="从左侧选择一篇资料开始回顾，或点击右上角「新建资料」随手写下一段灵感。"
                 actions={
                   <Button
                     size="sm"

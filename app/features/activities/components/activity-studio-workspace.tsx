@@ -26,6 +26,7 @@ import { useActivity, useActivityDraft } from '../queries';
 import { useCommitDraft } from '../mutations';
 import { useStudioDraft } from '../hooks/use-studio-draft';
 import { StagesEditor } from './stages-editor';
+import { ActivityReflectDialog } from '@/app/features/knowledge/components/activity-reflect-dialog';
 import { RecordsEditor } from './records-editor';
 import { MediaWorkstation } from './media-workstation';
 import { PlaybackWorkstation } from './playback-workstation';
@@ -65,6 +66,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
   useEffect(() => {
     const tab = searchParams.get('tab');
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- URL 查询参数是外部状态：按 ?tab / ?jobId 深链打开对应面板。 */
     if (tab === 'settings' || tab === 'records' || tab === 'media' || tab === 'playback') setActiveTab(tab);
     if (searchParams.get('jobId')) setGenerationModalOpen(true);
   }, [searchParams]);
@@ -113,6 +115,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
   const activity = activityData?.activity;
   const stages = document?.stages || [];
+  const [reflectOpen, setReflectOpen] = useState(false);
   const actors = document?.actors || [];
 
   if (activityLoading || draftLoading) {
@@ -330,16 +333,30 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         />
 
         {/* Workstation Content View */}
+
+        {reflectOpen && (
+          <ActivityReflectDialog
+            open={reflectOpen}
+            onOpenChange={setReflectOpen}
+            activityId={activityId}
+            activityTitle={document?.activity.title || '未命名活动'}
+            version={draft.version()}
+            stages={stages.map((stage) => ({ id: stage.id, title: stage.title, instruction: stage.instruction }))}
+          />
+        )}
         <fieldset disabled={committing} className="min-w-0 border-0 p-0 py-1">
           {/* TAB 1: Settings & Stages：基本信息与角色在左，阶段编辑在右 */}
           {activeTab === 'settings' && (
             <WorkbenchColumns
               left={(
                 <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
-                  <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-                    <Compass className="h-4 w-4 text-accent" />
-                    活动基本属性
-                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                      <Compass className="h-4 w-4 text-accent" />
+                      活动基本属性
+                    </h3>
+                    <Button size="sm" variant="ghost" onClick={() => setReflectOpen(true)}>整理为个人设定</Button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1 sm:col-span-2">
                       <label className="text-sm font-medium text-ink">活动标题</label>
