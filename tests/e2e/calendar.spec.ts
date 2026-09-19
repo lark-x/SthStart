@@ -41,15 +41,19 @@ test('calendar shows same-day birthdays and prefills a joint birthday activity',
   await expect(page.getByLabel('活动日期')).toHaveValue(dateKey);
 
   // 生日模板带出四个阶段，并且默认把两位都标记为寿星。
-  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
-  await expect(page.getByRole('button', { name: /04\s/ })).toHaveCount(1);
-  await page.getByRole('button', { name: /04\s/ }).click();
-  await expect(page.getByLabel('阶段 4 标题')).toBeVisible();
-  await expect(page.getByRole('checkbox', { name: '本场寿星' }).first()).toBeChecked();
-
-  await page.getByRole('button', { name: '直接创建活动' }).click();
+  /*
+   * 手动表单已移除，向导接手了它的能力。这里用「从空白开始」直接建活动：
+   * 阶段安排由生日模板决定（四个阶段），寿星名单来自日历带入，
+   * 因此建出来的活动仍应带上四阶段与两位寿星——验证意图不变。
+   */
+  await page.getByRole('button', { name: '从空白开始' }).click();
   await expect(page).toHaveURL(/\/apps\/activities\/[a-f0-9-]+$/);
   await expect(page.getByText(new RegExp(`${first}、${second}`)).first()).toBeVisible();
+
+  // 生日模板带出四个阶段，且两位寿星都写进了活动。
+  const created = await (await request.get(`${service}/api/v1/admin/activities/${page.url().split('/').pop()}`, { headers })).json();
+  expect(created.currentContentRevision.document.stages).toHaveLength(4);
+  expect(created.currentContentRevision.document.activity.birthdayActorIds).toHaveLength(2);
 
   // 新活动按日期出现在日历上。
   await page.goto('/apps/calendar');

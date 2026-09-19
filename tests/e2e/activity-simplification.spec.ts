@@ -1,0 +1,63 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+const service = `http://127.0.0.1:${process.env.E2E_SERVICE_PORT || 4200}`;
+const headers = { 'x-sthstart-admin-token': 'sthstart-e2e-secret-0123456789abcdef' };
+
+test('activity starts with one next action, optional settings, and a simple writing choice', async ({ page, request }, testInfo) => {
+  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  document.activity.title = '简明流程验收活动';
+  for (const key of ['messages', 'posts', 'comments', 'likes', 'facts', 'mediaSlots', 'stageResults']) document[key] = [];
+  const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
+  expect(response.ok()).toBeTruthy();
+  const { activity } = await response.json();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/apps/activities/${activity.id}`);
+  const next = page.getByRole('region', { name: '接下来做什么' });
+  await expect(next.getByRole('button', { name: '生成活动内容', exact: true })).toBeVisible();
+  await expect(page.getByText('not_configured', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/待复核 \/ 待处理 0/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '保存新版本' })).not.toBeVisible();
+  await expect(page.getByRole('button', { name: '补充本阶段内容' })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('activity-desktop.png'), fullPage: true });
+  await next.getByRole('button', { name: '生成活动内容', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'AI 活动内容生成' });
+  await expect(dialog.getByLabel('这次写什么')).toHaveValue('whole-text');
+  await expect(dialog.getByRole('button', { name: /生成邀请/ })).not.toBeVisible();
+  await dialog.getByText('更多写作方式：邀请、祝福、重写、阶段规划').click();
+  await expect(dialog.getByRole('button', { name: /生成邀请/ })).toBeVisible();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  // 设定并入「内容」tab：先进内容，再切到设定视图。
+  await page.getByRole('tab', { name: '内容', exact: true }).click();
+  await page.getByRole('tab', { name: '设定', exact: true }).click();
+  await expect(page.getByLabel('创作配置', { exact: true })).not.toBeVisible();
+  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
+  await expect(page.getByLabel('阶段 2 标题')).not.toBeVisible();
+  await page.getByText('高级选项：创作偏好与模板（可选）').click();
+  await expect(page.getByLabel('创作配置', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '群聊', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(next.getByRole('button', { name: '生成活动内容', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath('activity-mobile.png'), fullPage: true });
+});
+
+test('moving from editing to preview prepares the latest content once without a manual version step', async ({ page, request }) => {
+  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
+  expect(response.ok()).toBeTruthy();
+  const { activity } = await response.json();
+  await page.goto(`/apps/activities/${activity.id}`);
+  const message = '进入回放前自动准备这条新内容';
+  await page.getByPlaceholder('在此输入群聊内容，按回车添加…').fill(message);
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await page.getByRole('tab', { name: '回放', exact: true }).click();
+  await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
+  const read = async () => (await (await request.get(`${service}/api/v1/admin/activities/${activity.id}`, { headers })).json());
+  const published = await read();
+  expect(published.currentContentRevision.document.messages.some((item: { text: string }) => item.text === message)).toBeTruthy();
+  const version = published.activity.headVersion;
+  await page.getByRole('tab', { name: '内容', exact: true }).click();
+  await page.getByRole('tab', { name: '回放', exact: true }).click();
+  await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
+  expect((await read()).activity.headVersion).toBe(version);
+});

@@ -76,7 +76,7 @@ export function ReworkPanel({ activityId, headVersion, document, onSaved, open, 
     finally {
         setBusy(false);
     } };
-    return <><Button variant="outline" size="sm" onClick={() => setOpen(true)}>待复核 / 待处理 {pending.length}</Button>
+    return <>
     <Dialog open={open} onOpenChange={setOpen} title="本场活动的修改影响与待处理项" size="lg">
       <div className="space-y-4 py-3">
         <p className="text-sm text-muted">保存新版本后产生复核项。生成、采用与确认保留分别进行；锁定内容不会自动替换。</p>

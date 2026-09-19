@@ -80,7 +80,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
         <div>
           <h3 className="text-sm font-semibold text-ink">活动阶段设定</h3>
           <p className="text-sm text-muted">
-            活动按阶段推进情节展开。锁定阶段将不会被 AI 全局规划覆盖。至少需要保留 2 个阶段。
+            按顺序安排每一段发生什么，展开需要修改的阶段即可。
           </p>
         </div>
         <Button
@@ -103,7 +103,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
 
       <div className="space-y-3">
         {stages.map((stage, index) => (
-          <div
+          <details open={index === 0}
             key={stage.id} id={`stage-${stage.id}`}
             className={`p-4 rounded-[var(--radius-panel)] border transition-all ${
               stage.locked
@@ -111,6 +111,8 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                 : 'bg-surface border-border-default'
             }`}
           >
+            <summary className="cursor-pointer text-sm font-semibold">{index + 1}. {stage.title || '未命名阶段'}{stage.locked ? '（已锁定）' : ''}</summary>
+            <div className="mt-3">
             {/* Header: Title, order, lock toggle, delete */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-border-subtle">
               <div className="flex items-center gap-2 flex-1">
@@ -118,6 +120,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   #{index + 1}
                 </Badge>
                 <Input
+                  aria-label={`阶段 ${index + 1} 标题`}
                   value={stage.title}
                   onChange={(e) => handleUpdateStage(index, { title: e.target.value })}
                   placeholder="阶段名称（如：海边营地布置）"
@@ -211,9 +214,10 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
               <div className="md:col-span-2 space-y-2">
                 <label className="text-sm font-medium text-muted flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
-                  阶段指引 (Instruction)
+                  这一段发生什么
                 </label>
                 <Textarea
+                  aria-label={`阶段 ${index + 1} 内容安排`}
                   value={stage.instruction || ''}
                   onChange={(e) => handleUpdateStage(index, { instruction: e.target.value })}
                   placeholder="描述此阶段发生的主要事情，指导 AI 生成对白与动态…"
@@ -223,7 +227,8 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                 />
               </div>
             </div>
-          </div>
+            </div>
+          </details>
         ))}
       </div>
     </div>

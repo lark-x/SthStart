@@ -135,7 +135,7 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
     if (!open || !activeJobId) return;
     let active = true;
     void fetchActivityJob(activity.id, activeJobId).then(result => {
-      if (active && MODE_GROUPS.some(group=>group.items.some(item=>item.id===result.job.mode))) setMode(result.job.mode as GenerationMode);
+      if (active && searchParams.get('jobId') === activeJobId && MODE_GROUPS.some(group=>group.items.some(item=>item.id===result.job.mode))) setMode(result.job.mode as GenerationMode);
     }).catch(error => { if (active) setErrorMsg(error instanceof Error ? error.message : '读取任务失败'); });
     return () => { active = false; };
   }, [open, activity.id, activeJobId]);
@@ -149,7 +149,8 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
   const { data: draftData } = useActivityDraft(activity.id);
 
   const document = draftData?.draft.document;
-  const mode:GenerationMode=modeOverride??(currentStageId?'stage':normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).textMode);
+  const profileMode = normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).textMode;
+  const mode: GenerationMode = modeOverride ?? (currentStageId ? 'stage' : stages.length && profileMode === 'plan' ? 'whole-text' : profileMode);
   const instruction = instructionOverride ?? normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).instruction;
   const allActors = document?.actors || [];
   const stageActorIds = useMemo(() => {
@@ -284,7 +285,7 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
       onOpenChange={onOpenChange}
       size="lg"
       title="AI 活动内容生成"
-      description="基于角色快照与剧情约束生成内容。生成结果是候选方案，必须由创作者确认后才会写入采用版本。"
+      description="选择写哪一段，按需补充要求，然后开始生成。先预览，确认满意后再采用。"
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>关闭</Button>
@@ -317,14 +318,27 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
       <div className="space-y-4 py-1">
         {errorMsg && <Alert variant="danger" title="生成提示">{errorMsg}</Alert>}
 
-        {mode === 'whole-text' && <fieldset className="space-y-2">
+        {mode === 'whole-text' && <details className="rounded-lg border border-border-subtle p-3">
+          <summary className="cursor-pointer text-sm text-muted">生成 {stageIds.filter(id => stages.some(stage => stage.id === id && !stage.locked)).length} 个阶段 · 按需调整范围</summary>
+          <p className="mt-2 text-sm text-muted">默认按顺序写完整场活动，已锁定的阶段会保留。</p>
+          <fieldset className="mt-2 space-y-2">
           <legend className="text-sm font-medium">本次生成的阶段</legend>
           <div className="flex flex-wrap gap-3">{stages.map(stage => <label key={stage.id} className="text-sm flex items-center gap-1">
             <input type="checkbox" disabled={stage.locked} checked={!stage.locked && stageIds.includes(stage.id)}
               onChange={event => setStageIds(current => event.target.checked ? [...current, stage.id] : current.filter(id => id !== stage.id))} />
             {stage.title}{stage.locked ? '（已锁定）' : ''}</label>)}</div>
-        </fieldset>}
-        <div className="space-y-3">
+        </fieldset></details>}
+        <label className="block space-y-1.5 text-sm font-medium">
+          <span>这次写什么</span>
+          <Select value={mode} onChange={event => setMode(event.target.value as GenerationMode)}>
+            <option value="whole-text">整场活动内容</option>
+            <option value="stage">一个阶段的内容</option>
+            {!['whole-text', 'stage'].includes(mode) && <option value={mode}>{MODE_GROUPS.flatMap(group => group.items).find(item => item.id === mode)?.label}</option>}
+          </Select>
+        </label>
+        <details className="rounded-lg border border-border-subtle p-3">
+        <summary className="cursor-pointer text-sm text-muted">更多写作方式：邀请、祝福、重写、阶段规划</summary>
+        <div className="mt-3 space-y-3">
           {MODE_GROUPS.map((group) => (
             <div key={group.title} className="space-y-1.5">
               <div className="flex flex-wrap items-baseline gap-2">
@@ -352,6 +366,7 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
             </div>
           ))}
         </div>
+        </details>
 
         {STAGE_SCOPED.includes(mode) && (
           <label className="block space-y-1.5">

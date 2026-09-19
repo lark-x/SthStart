@@ -21,10 +21,14 @@ test('activity merges edits during slow saving and commits the latest title once
     activeWrites--;
   });
   await page.goto('/apps/activities/' + activity.id);
+  // 设定并入内容 tab：先进内容，再切到设定视图。
+  await page.getByRole('tab', { name: '内容', exact: true }).click();
   await page.getByRole('tab', { name: '设定', exact: true }).click();
   await page.getByLabel('活动标题', { exact: true }).fill('正在修改');
   await first;
   await page.getByLabel('活动标题', { exact: true }).fill('最终生日会标题');
+  // 「保存新版本」已收进「更多操作」折叠（默认不可见，见 activity-simplification.spec.ts）。
+  await page.getByText('更多操作', { exact: true }).click();
   await page.getByRole('button', { name: '保存新版本', exact: true }).click();
   await expect(page.getByText('版本 2', { exact: true })).toBeVisible();
   expect(peakWrites).toBe(1);
@@ -38,6 +42,7 @@ test('activity keeps local input on a real version conflict and lets the user co
   const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
   const { activity } = await (await request.post(service + '/api/v1/admin/activities', { headers, data: { document } })).json();
   await page.goto('/apps/activities/' + activity.id);
+  await page.getByRole('tab', { name: '内容', exact: true }).click();
   await page.getByRole('tab', { name: '设定', exact: true }).click();
   await expect(page.getByLabel('活动标题', { exact: true })).toBeVisible();
   document.activity.title = '另一个窗口的标题';
@@ -61,7 +66,8 @@ const ROUTE_NAV_LABEL: Record<string, string> = {
   '/apps/activities': '活动',
   '/apps/creative': '图像与视频',
   '/apps/characters': '角色',
-  '/apps/notebook': '笔记',
+  /* 侧栏标签已随创作资料库改版为「资料库」（navigation.tsx 的 navLabel）。 */
+  '/apps/notebook': '资料库',
   '/apps/narrative': '叙事档案',
   '/settings/public-services': '模型与公共服务',
   '/settings/generation': '生成配置',

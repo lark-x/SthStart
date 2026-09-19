@@ -12,6 +12,7 @@ import {
   History,
   Download,
   Check,
+  Share2,
   AlertCircle,
   RefreshCw,
   Sparkles,
@@ -30,12 +31,12 @@ import { ActivityReflectDialog } from '@/app/features/knowledge/components/activ
 import { RecordsEditor } from './records-editor';
 import { MediaWorkstation } from './media-workstation';
 import { PlaybackWorkstation } from './playback-workstation';
+import { ExportPanel } from './export-panel';
 import { ActivityCreationProfile } from './creation-profile-picker';
 import { ReworkPanel } from './rework-panel';
 import { GenerationModal } from './generation-modal';
 import { ProductionOverview } from './production-overview';
 import { HistoryDrawer } from './history-drawer';
-import { ExportModal } from './export-modal';
 import { ImageWorkbench } from './image-workbench';
 import { ActivityPresetsModal } from './activity-presets-modal';
 import { Button } from '@/app/components/ui/button';
@@ -52,22 +53,53 @@ interface ActivityStudioWorkspaceProps {
   activityId: string;
 }
 
+/**
+ * 工作室的四步：内容 → 素材 → 回放 → 导出。
+ *
+ * 顺序与 activity-guidance 的进度编号、ProductionOverview 的按钮去向共用同一份定义，
+ * 避免出现「提示说第 1 步是设定、界面却停在记录」这类两套坐标系。
+ */
+const STUDIO_TABS = [
+  { id: 'content', label: '内容', icon: MessageSquare },
+  { id: 'media', label: '素材', icon: Camera },
+  { id: 'playback', label: '回放', icon: PlaySquare },
+  { id: 'export', label: '导出', icon: Download },
+] as const;
+type StudioTab = (typeof STUDIO_TABS)[number]['id'];
+
+/** 旧链接兼容：settings 与 records 都并入 content。 */
+const LEGACY_TAB_MAP: Record<string, StudioTab> = {
+  settings: 'content',
+  records: 'content',
+  media: 'media',
+  playback: 'playback',
+  export: 'export',
+};
+
 export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceProps) {
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'settings' | 'records' | 'media' | 'playback'>('records');
+  const [activeTab, setActiveTab] = useState<StudioTab>('content');
 
   // Modals & Drawers state
   const [generationModalOpen, setGenerationModalOpen] = useState(false);
+  const [generationStageId, setGenerationStageId] = useState<string | undefined>(searchParams.get('stageId') || undefined);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [reworkOpen,setReworkOpen]=useState(false);
-  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [presetsModalOpen, setPresetsModalOpen] = useState(false);
   const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(null);
+
+  /** 内容 tab 内的同层视图：设定 / 群聊 / 朋友圈 / 事件。 */
+  const [contentView, setContentView] = useState<'settings' | 'chat' | 'moments' | 'facts'>('chat');
 
   useEffect(() => {
     const tab = searchParams.get('tab');
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- URL 查询参数是外部状态：按 ?tab / ?jobId 深链打开对应面板。 */
-    if (tab === 'settings' || tab === 'records' || tab === 'media' || tab === 'playback') setActiveTab(tab);
+    if (tab && LEGACY_TAB_MAP[tab]) {
+      setActiveTab(LEGACY_TAB_MAP[tab]);
+      // 旧链接带 tab=settings 时直接落到设定视图，带 tab=records 时落到群聊。
+      if (tab === 'settings') setContentView('settings');
+      else if (tab === 'records') setContentView('chat');
+    }
     if (searchParams.get('jobId')) setGenerationModalOpen(true);
   }, [searchParams]);
 
@@ -94,23 +126,41 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   const commitDraftMutation = useCommitDraft();
   const handleUpdateDocument = draft.update;
   const handleCommitDraft = async () => {
-    if (committing) return;
+    if (committing) return false;
     setCommitting(true);
     setErrorMessage(null);
     try {
-      if (!await draft.flush()) return;
+      if (!await draft.flush()) return false;
       const fresh = await refetchActivity();
       if (!fresh.data) throw new Error('无法读取当前版本，请重试');
       await commitDraftMutation.mutateAsync({ id: activityId, expectedHeadVersion: fresh.data.activity.headVersion, expectedDraftVersion: draft.version() });
       const latest = await refetchDraft();
       if (latest.data?.draft) draft.resolve(latest.data.draft, false);
       await refetchActivity();
-    } catch (err) { setErrorMessage(err instanceof Error ? err.message : '保存新版本失败'); }
+      return true;
+    } catch (err) { setErrorMessage(err instanceof Error ? err.message : '保存新版本失败'); return false; }
     finally { setCommitting(false); }
   };
   const handleReloadConflict = async () => {
     const latest = await refetchDraft();
     if (latest.data?.draft) setServerDraft(latest.data.draft);
+  };
+  const prepareContent = async () => {
+    if (committing || !await draft.flush()) return false;
+    try {
+      const latest = await refetchActivity();
+      if (!latest.data) throw new Error('无法读取活动，请重试');
+      if (JSON.stringify(latest.data.currentContentRevision?.document) === JSON.stringify(latest.data.draft.document)) return true;
+      return await handleCommitDraft();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '准备活动内容失败');
+      return false;
+    }
+  };
+  const navigateTab = async (tab: typeof activeTab) => {
+    // 素材、回放、导出都消费已发布内容，进入前先把草稿落成版本。
+    if ((tab === 'media' || tab === 'playback' || tab === 'export') && !await prepareContent()) return;
+    setActiveTab(tab);
   };
 
   const activity = activityData?.activity;
@@ -172,11 +222,6 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               <Badge variant="outline" className="bg-surface-muted font-mono text-xs text-ink">
                 版本 {activity.headVersion}
               </Badge>
-              {activity.theme && (
-                <Badge variant="outline" className="bg-surface text-xs text-muted">
-                  {activity.theme}
-                </Badge>
-              )}
               <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-sm">
                 {saveStatus === 'saving' && (
                   <span className="flex items-center gap-1 text-warning-fg">
@@ -219,17 +264,12 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             </>
           }
           actions={
-            <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => { if (await draft.flush()) setGenerationModalOpen(true); }}
-              className="flex h-8 items-center gap-1.5 text-sm"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              <span>AI 生成</span>
-            </Button>
-
+            <details className="rounded-lg border border-border-default bg-surface p-2">
+            <summary className="cursor-pointer px-2 text-sm font-medium">更多操作</summary>
+            <p className="px-2 pt-2 text-xs text-muted">编辑会自动保存。只有需要保留一个可回溯节点时，才需保存新版本。</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setReworkOpen(true)}>内容变化与处理历史</Button>
+            {/* 导出已升为页级 tab，不再在折叠菜单里重复一份入口。 */}
             <Button
               variant="outline"
               size="sm"
@@ -239,17 +279,6 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               <History className="h-3.5 w-3.5 text-muted" />
               <span className="hidden sm:inline">版本回溯</span>
               <span className="sm:hidden">回溯</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setExportModalOpen(true)}
-              className="flex h-8 items-center gap-1.5 text-sm"
-            >
-              <Download className="h-3.5 w-3.5 text-muted" />
-              <span className="hidden sm:inline">导出工程</span>
-              <span className="sm:hidden">导出</span>
             </Button>
 
             <Button
@@ -272,7 +301,8 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               <Save className="h-3.5 w-3.5" />
               <span>{committing ? '保存中…' : '保存新版本'}</span>
             </Button>
-            </>
+            </div>
+            </details>
           }
         />
 
@@ -297,30 +327,26 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
         {/* 活动生产流水线概览条 (M1) */}
         <ReworkPanel open={reworkOpen} onOpenChange={setReworkOpen} activityId={activityId} headVersion={activity.headVersion} document={document} onSaved={() => { void refetchActivity(); }} />
-        <ProductionOverview headVersion={activity.headVersion} onReview={()=>setReworkOpen(true)}
+        <ProductionOverview document={document} headVersion={activity.headVersion} onReview={()=>setReworkOpen(true)}
           activityId={activityId}
-          onAction={(action) => {
+          onAction={async (action) => {
             if (action === 'generate_text' || action === 'review_candidates') {
-              setGenerationModalOpen(true);
+              if (await draft.flush()) { setGenerationStageId(undefined); setGenerationModalOpen(true); }
             } else if (action === 'preview_export') {
-              setExportModalOpen(true);
+              if (await prepareContent()) void navigateTab('export');
             }
           }}
-          onOpenBatchCandidates={() => setGenerationModalOpen(true)}
-          onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenBatchCandidates={async () => { if (await draft.flush()) setGenerationModalOpen(true); }}
+          onNavigateTab={(tab, view) => { if (view) setContentView(view); void navigateTab(tab); }}
         />
 
         {/* 工作模式：设定 / 记录 / 素材 / 回放，使用页级 tab 语义（§7.4）。 */}
         <PageTabs
+          className="activity-workflow-tabs w-full sm:w-fit"
           ariaLabel="活动工作模式"
           value={activeTab}
-          onChange={(id) => setActiveTab(id as 'settings' | 'records' | 'media' | 'playback')}
-          tabs={([
-            { id: 'records', label: '记录', icon: MessageSquare },
-            { id: 'settings', label: '设定', icon: Settings2 },
-            { id: 'media', label: '素材', icon: Camera },
-            { id: 'playback', label: '回放', icon: PlaySquare },
-          ] as const).map((tab) => ({
+          onChange={(id) => { void navigateTab(id as typeof activeTab); }}
+          tabs={STUDIO_TABS.map((tab) => ({
             id: tab.id,
             panelId: `activity-panel-${tab.id}`,
             label: (
@@ -345,8 +371,37 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           />
         )}
         <fieldset disabled={committing} className="min-w-0 border-0 p-0 py-1">
-          {/* TAB 1: Settings & Stages：基本信息与角色在左，阶段编辑在右 */}
-          {activeTab === 'settings' && (
+          {/* 内容 tab 的同层视图：设定 / 群聊 / 朋友圈 / 事件 */}
+          {activeTab === 'content' && (
+            <div className="mb-4 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="内容视图">
+              {([
+                { id: 'settings' as const, label: '设定', icon: Settings2 },
+                { id: 'chat' as const, label: '群聊', icon: MessageSquare },
+                { id: 'moments' as const, label: '朋友圈', icon: Share2 },
+                { id: 'facts' as const, label: '事件', icon: FileCheck },
+              ]).map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={contentView === view.id}
+                  onClick={() => setContentView(view.id)}
+                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-sm transition-colors ${
+                    contentView === view.id
+                      ? 'border-accent bg-accent/10 font-semibold text-accent-dark'
+                      : 'border-border-subtle text-muted hover:bg-surface-hover'
+                  }`}
+                >
+                  <view.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  {view.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'content' && contentView === 'settings' && (
+            <div className="space-y-4">
+            <div className="text-sm text-muted">只需确认活动内容、参与者和阶段安排。下面的改动会自动保存；服装、创作偏好等都可以稍后调整。</div>
             <WorkbenchColumns
               left={(
                 <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
@@ -410,6 +465,8 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                       </div></details>
                     ))}
                   </div>
+                  <details className="rounded-lg border border-border-subtle p-3">
+                  <summary className="cursor-pointer text-sm font-medium">高级选项：创作偏好与模板（可选）</summary>
                   <ActivityCreationProfile activityId={activity.id} headVersion={activity.headVersion} value={document.activity.creationProfile} disabled={saveStatus!=='saved'} onApplied={()=>{void refetchActivity();void refetchDraft();}}/>
                   <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
                     <span className="text-xs text-muted">复用本场活动设置</span>
@@ -424,6 +481,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                       另存为模板 / 预设管理
                     </Button>
                   </div>
+                  </details>
                 </div>
               )}
               right={(
@@ -434,10 +492,11 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                 />
               )}
             />
+            </div>
           )}
 
-          {/* TAB 2: Records (Chat & Moments) */}
-          {activeTab === 'records' && (
+          {/* 内容 tab：群聊 / 朋友圈 / 事件（由 contentView 决定） */}
+          {activeTab === 'content' && contentView !== 'settings' && (
             <RecordsEditor
               document={document}
               stages={stages}
@@ -445,8 +504,10 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               currentStageId={focusedStageId}
               onSelectStage={setFocusedStageId}
               onUpdateDocument={handleUpdateDocument}
-              onOpenAiGenerator={async () => { if (await draft.flush()) setGenerationModalOpen(true); }}
+              onOpenAiGenerator={async (stageId) => { if (await draft.flush()) { setGenerationStageId(stageId); setGenerationModalOpen(true); } }}
               onOpenWorkbench={(slotId) => setWorkbenchSlotId(slotId)}
+              activeView={contentView}
+              onActiveViewChange={setContentView}
             />
           )}
 
@@ -470,20 +531,28 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               actors={actors}
             />
           )}
+
+          {/* 导出：链路末端，与内容/素材/回放同层 */}
+          {activeTab === 'export' && (
+            <ExportPanel
+              activity={activity}
+              creationProfile={document.activity.creationProfile}
+            />
+          )}
         </fieldset>
 
         {/* AI Generation Modal */}
-        <GenerationModal
+        {generationModalOpen && <GenerationModal
           open={generationModalOpen}
           onOpenChange={setGenerationModalOpen}
           activity={activity}
           stages={stages}
-          currentStageId={focusedStageId}
+          currentStageId={generationStageId}
           onCandidateAdopted={() => {
             refetchActivity();
             refetchDraft();
           }}
-        />
+        />}
 
         {/* History Drawer */}
         <HistoryDrawer
@@ -497,11 +566,6 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         />
 
         {/* Export Modal */}
-        <ExportModal creationProfile={document.activity.creationProfile}
-          open={exportModalOpen}
-          onOpenChange={setExportModalOpen}
-          activity={activity}
-        />
 
         {/* Image Workbench Modal */}
         {workbenchSlotId && document && (

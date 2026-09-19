@@ -85,7 +85,13 @@ test('1280×720 下主生成动作与活动阶段入口可见', async ({ page })
     await page.waitForTimeout(600);
     const stage = page.getByText('当前阶段').first();
     if (!(await stage.isVisible())) failures.push('活动页在 1280×720 下看不到当前阶段');
-    const generate = page.getByRole('button', { name: 'AI 生成内容' }).first();
+    /*
+     * 生成入口已从页头收进「接下来做什么」区域：页头不再常驻一个重复的生成按钮，
+     * 由该区域的主动作承担（文案随草稿状态变化，如「生成活动内容」/「继续写活动内容」）。
+     * 这里断言的是「首屏有可用的生成入口」这一意图，而不是某个具体按钮文案。
+     */
+    const next = page.getByRole('region', { name: '接下来做什么' });
+    const generate = next.getByRole('button').first();
     if ((await generate.count()) === 0) failures.push('活动页找不到生成入口');
     else if (!(await generate.isVisible())) failures.push('活动页生成入口不可见');
   }
@@ -101,20 +107,14 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   await expect(title).toBeVisible();
   await title.fill('保持输入的验证标题');
 
-  // 选一个非默认的下拉值，确认选项不被重置。
-  const template = page.getByLabel('选择活动模板');
-  await template.selectOption({ label: '日常聚会' });
   /*
-   * 切换模板会先弹确认框（「应用模板会替换下面列出的内容」），这是产品为
-   * 防止误覆盖阶段内容做的保护（§7.2 离开与覆盖保护），不是缺陷。
-   * 这里确认它，同时断言已填写的标题没有被覆盖。
+   * 选一个非默认的下拉值，确认选项不被重置。
+   * 手动表单已移除，这里用的是向导第一步的「活动模板」下拉；
+   * 向导切换模板不弹确认框（模板只带出类型/主题/地点/规则，不覆盖已填标题）。
    */
-  const confirm = page.getByRole('dialog');
-  await expect(confirm).toBeVisible();
-  await expect(confirm.getByText('应用模板会替换下面列出的内容')).toBeVisible();
-  await confirm.getByRole('button', { name: '应用模板' }).click();
-  await expect(confirm).toBeHidden();
-  await expect(title, '确认模板后标题不应被覆盖').toHaveValue('保持输入的验证标题');
+  const template = page.getByLabel('活动模板');
+  await template.selectOption({ label: '日常聚会' });
+  await expect(title, '切换模板后标题不应被覆盖').toHaveValue('保持输入的验证标题');
   const chosenTemplate = await template.inputValue();
   expect(chosenTemplate).not.toBe('blank');
 

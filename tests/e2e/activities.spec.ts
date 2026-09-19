@@ -35,19 +35,15 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
   // 3. Fill the creation form: templates are applied by default, and participants come from the library or manual entries.
   await page.getByLabel('活动标题').fill('海边露营自动化测试');
   await page.getByLabel('活动主题与梗概').fill('海风与晚餐合照');
-  await page.getByRole('button', { name: '添加自定义参与者' }).click();
-
-  // 阶段一次只展开一个：先确认两个阶段条目存在，再展开第二个核对字段。
-  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
-  await expect(page.getByRole('button', { name: /02.*第二阶段|02.*未命名阶段/ })).toBeVisible();
-  await page.getByRole('button', { name: /02.*第二阶段|02.*未命名阶段/ }).click();
-  await expect(page.getByLabel('阶段 2 标题')).toBeVisible();
-
-  // Verify the participant snapshot exists
-  await expect(page.getByText('旅行者')).toBeVisible();
-
-  // Submit and enter workspace
-  await page.getByRole('button', { name: '直接创建活动' }).click();
+  /*
+   * 创建流程已合并为向导一条路径：手动表单被移除，它独有的「直接建空活动」
+   * 与「自定义参与者」并入向导。这里用自定义参与者 + 「从空白开始」建活动，
+   * 与手动表单原来的能力等价，且不需要文本模型。
+   */
+  await page.getByRole('button', { name: '自定义参与者' }).first().click();
+  await page.getByLabel('自定义参与者 1 名称').fill('旅行者');
+  await expect(page.getByLabel('自定义参与者 1 身份描述')).toBeVisible();
+  await page.getByRole('button', { name: '从空白开始' }).click();
 
   /*
    * 创建活动会在服务端落库并做角色快照，全量并发跑时明显变慢。
@@ -61,9 +57,10 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
 
   // 5. Test 4 Workstation Tabs
   // Tab 1: Records (Chat & Moments)
-  await expect(page.getByRole('button', { name: /群聊记录/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /朋友圈动态/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /本阶段发生的事/ })).toBeVisible();
+  // 内容 tab 的同层视图：设定 / 群聊 / 朋友圈 / 事件。
+  await expect(page.getByRole('tab', { name: '群聊' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '朋友圈' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '事件' })).toBeVisible();
 
   /*
    * 记录详情（计划 §8.5）：内容模式右栏「当前记录详情按需显示」，
@@ -112,6 +109,8 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
 
   // Tab 2: Settings & Stages
   // 工作模式改为页级 tab 语义（§8.5）。
+  // 设定并入内容 tab：先进内容，再切到设定视图。
+  await page.getByRole('tab', { name: '内容' }).click();
   await page.getByRole('tab', { name: '设定' }).click();
   await expect(page.getByText('活动基本属性')).toBeVisible();
   await expect(page.getByText('活动阶段设定')).toBeVisible();
@@ -129,15 +128,16 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
 
   // 6. Test Drawers & Modals
   // Checkpoints drawer
+  await page.getByText('更多操作', { exact: true }).click();
   await page.click('button:has-text("版本回溯")');
   await expect(page.getByText('版本回溯与检查点快照')).toBeVisible();
   await page.click('button:has-text("关闭")');
 
   // Export modal
-  await page.click('button:has-text("导出工程")');
+  // 导出已从折叠菜单升为页级 tab。
+  await page.getByRole('tab', { name: '导出' }).click();
   await expect(page.getByText('导出离线包与可渲染工程')).toBeVisible();
-  await expect(page.getByText('完整自包含 HyperFrames 工程包')).toBeVisible();
-  await page.click('button:has-text("取消")');
+  await expect(page.getByText('视频制作工程 (HyperFrames Project)')).toBeVisible();
 });
 
 test('Activity Studio: prompt source opens its exact local field and publishes a changed recipe', async ({ page, request }) => {

@@ -85,7 +85,11 @@ export function MediaWorkstation({
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
   const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(()=>typeof window==='undefined'?null:new URLSearchParams(window.location.search).get('slotId'));
   const searchParams = useSearchParams();
-  const [isBatchPanelOpen, setIsBatchPanelOpen] = useState(Boolean(searchParams.get('batchId')||searchParams.get('reworkSlots')));
+  /*
+   * 批量面板是模态框（Dialog），不能默认打开——它会盖住整页、连模式 tab 都点不到。
+   * 它保持由按钮触发；入口的优先级通过按钮样式体现，而不是靠自动弹层。
+   */
+  const [isBatchPanelOpen, setIsBatchPanelOpen] = useState(Boolean(searchParams.get('batchId') || searchParams.get('reworkSlots')));
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -224,11 +228,27 @@ export function MediaWorkstation({
             图片与视频
           </h3>
           <p className="text-sm text-muted">
-            管理活动记录引用的图片与视频。上传或生成素材后，选择要在活动中使用的版本。
+            管理活动记录引用的图片与视频。先批量生成候选，再挑一张采用；单张镜头也可在这里手动新增。
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          {/*
+           * 配图的主路径是「批量生成候选 → 挑选采用」，手动新增单张镜头是次要入口。
+           * 两个按钮并排且样式相同时，用户看不出该走哪条；这里用主次样式和文案区分，
+           * 而不是把批量面板做成默认弹层——它是模态框，默认打开会盖住整页。
+           */}
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setIsBatchPanelOpen(true)}
+            disabled={disabled}
+            className="text-sm flex items-center gap-1.5"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            批量生图与挑选
+          </Button>
+
           <Button
             type="button"
             size="sm"
@@ -239,18 +259,6 @@ export function MediaWorkstation({
           >
             <Plus className="h-3.5 w-3.5" />
             新增镜头
-          </Button>
-
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setIsBatchPanelOpen(true)}
-            disabled={disabled}
-            className="text-sm flex items-center gap-1.5 border-sky-300 text-sky-700 hover:bg-sky-50"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-sky-500" />
-            批量生图与挑选
           </Button>
 
           <Button
@@ -284,7 +292,7 @@ export function MediaWorkstation({
         <div className="p-12 text-center text-sm text-muted bg-surface rounded-lg border border-border-default space-y-2">
           <Film className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
           <p>当前活动还没有图片或视频镜头</p>
-          <p className="text-sm">可在上方点击“新增镜头”，或由 AI 生成对白与动态时自动创建。</p>
+          <p className="text-sm">可点击上方“批量生图与挑选”一次生成多个候选，或“新增镜头”手动补一个；AI 生成对白与动态时也会自动创建。</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

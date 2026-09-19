@@ -43,8 +43,14 @@ interface RecordsEditorProps {
   currentStageId?: string;
   onSelectStage?: (stageId: string) => void;
   onUpdateDocument: (doc: ContentDocument) => void;
-  onOpenAiGenerator?: () => void;
+  onOpenAiGenerator?: (stageId: string) => void;
   onOpenWorkbench?: (slotId: string) => void;
+  /**
+   * 视图由外层工作室控制：群聊 / 朋友圈 / 事件原本是本组件内部的二级标签，
+   * 与「设定」并列在同一个内容 tab 下更符合实际使用（写设定、写记录是一件事）。
+   */
+  activeView?: 'settings' | 'chat' | 'moments' | 'facts';
+  onActiveViewChange?: (view: 'chat' | 'moments' | 'facts') => void;
   disabled?: boolean;
 }
 
@@ -57,11 +63,16 @@ export function RecordsEditor({
   onUpdateDocument,
   onOpenAiGenerator,
   onOpenWorkbench,
+  activeView,
+  onActiveViewChange,
   disabled,
 }: RecordsEditorProps) {
   const searchParams=useSearchParams();
   const linkedRecord=[...document.messages,...document.posts].find(r=>r.id===searchParams.get('recordId'));
-  const [activeTab, setActiveTab] = useState<'chat' | 'moments' | 'facts'>(searchParams.get('factId')?'facts':document.posts.some(p=>p.id===searchParams.get('recordId'))?'moments':'chat');
+  const [internalTab, setActiveTab] = useState<'chat' | 'moments' | 'facts'>(searchParams.get('factId')?'facts':document.posts.some(p=>p.id===searchParams.get('recordId'))?'moments':'chat');
+  // 外层给了视图就用外层的，否则退回组件内部状态，保持单独使用时的行为。
+  const activeTab: 'chat' | 'moments' | 'facts' = activeView && activeView !== 'settings' ? activeView : internalTab;
+  const selectView = (view: 'chat' | 'moments' | 'facts') => { setActiveTab(view); onActiveViewChange?.(view); };
   const [selectedStageId, setSelectedStageId] = useState<string>(
     document.facts.find(f=>f.id===searchParams.get('factId'))?.stageId || linkedRecord?.stageId || searchParams.get('stageId') || currentStageId || stages[0]?.id || ''
   );
@@ -422,26 +433,30 @@ export function RecordsEditor({
             {stages.map((stage, index) => <option key={stage.id} value={stage.id}>{index + 1}. {stage.title}</option>)}
           </Select>
         </label>
-        {onOpenAiGenerator && (
+        {onOpenAiGenerator && (messages.length > 0 || posts.length > 0) && (
           <Button
             type="button"
             size="sm"
-            onClick={onOpenAiGenerator}
+            variant="ghost"
+            onClick={() => onOpenAiGenerator(selectedStageId)}
             disabled={disabled}
-            className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+            className="text-sm flex items-center gap-1.5"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            AI 生成内容
+            补充本阶段内容
           </Button>
         )}
       </div>
 
       <div className="studio-records-body space-y-4">
-      {/* Mode Subtabs: Chat vs Moments vs Facts */}
-      <div className="flex items-center gap-2 border-b border-border-default pb-2">
+      {/*
+       * 视图切换：由外层工作室的同层切换器控制（activeView），
+       * 这里只在被单独使用时渲染自己的切换条，避免出现两排重复的标签。
+       */}
+      <div className={`flex items-center gap-2 border-b border-border-default pb-2 ${onActiveViewChange ? 'hidden' : ''}`}>
         <button
           type="button"
-          onClick={() => setActiveTab('chat')}
+          onClick={() => selectView('chat')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
             activeTab === 'chat'
               ? 'text-accent border-b-2 border-accent'
@@ -449,11 +464,11 @@ export function RecordsEditor({
           }`}
         >
           <MessageSquare className="h-4 w-4" />
-          群聊记录 ({messages.length})
+          <span className="sm:hidden">群聊</span><span className="hidden sm:inline">群聊记录</span>{messages.length > 0 ? ` (${messages.length})` : ''}
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('moments')}
+          onClick={() => selectView('moments')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
             activeTab === 'moments'
               ? 'text-accent border-b-2 border-accent'
@@ -461,11 +476,11 @@ export function RecordsEditor({
           }`}
         >
           <Share2 className="h-4 w-4" />
-          朋友圈动态 ({posts.length})
+          <span className="sm:hidden">朋友圈</span><span className="hidden sm:inline">朋友圈动态</span>{posts.length > 0 ? ` (${posts.length})` : ''}
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('facts')}
+          onClick={() => selectView('facts')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
             activeTab === 'facts'
               ? 'text-accent border-b-2 border-accent'
@@ -473,7 +488,7 @@ export function RecordsEditor({
           }`}
         >
           <FileCheck className="h-4 w-4" />
-          本阶段发生的事 ({facts.length})
+          <span className="sm:hidden">事件</span><span className="hidden sm:inline">本阶段发生的事</span>{facts.length > 0 ? ` (${facts.length})` : ''}
         </button>
       </div>
 
@@ -487,12 +502,12 @@ export function RecordsEditor({
           }
         >
           <div className="space-y-4">
-            <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[360px] max-h-[500px] overflow-y-auto space-y-3">
+            <div className={`rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 ${messages.length ? 'min-h-[360px]' : 'min-h-48'} max-h-[500px] overflow-y-auto space-y-3`}>
               {messages.length === 0 ? (
-                <div className="py-16 text-center text-sm text-muted space-y-2">
+                <div className="py-8 text-center text-sm text-muted space-y-2">
                   <MessageSquare className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
-                  <p>当前活动尚无群聊记录</p>
-                  <p className="text-sm">可在下方直接输入对话，或点击右上角使用 AI 自动生成。</p>
+                  <p>这一阶段还没有对话</p>
+                  <p className="text-sm">在下方选择角色并输入对话，或使用上方“下一步”生成活动内容。</p>
                 </div>
               ) : (
                 messages.map((msg, idx) => {

@@ -11,7 +11,7 @@ import {
   ArrowLeft, ArrowRight, Check, ChevronDown, Compass, ExternalLink, FileText, Lightbulb, Link2, Lock, MapPin,
   BookOpen, Plus, RefreshCw, Search, Sparkles, Trash2, UserPlus, Users, Wand2, X,
 } from 'lucide-react';
-import { ACTIVITY_TEMPLATES, applyPlanningOutput, findActivityTemplate, isUnresolvedPlanningActor } from '@sthstart/contracts';
+import { ACTIVITY_TEMPLATES, applyPlanningOutput, buildActivityDocument, findActivityTemplate, isUnresolvedPlanningActor } from '@sthstart/contracts';
 import type {
   ActivityPlanningActorResolveInput, ActivityPlanningCandidate, ActivityPlanningFormExtended,
   ActivityPlanningJob, ActivityPlanningOutput, ActivityPlanningPersonaDraft, ActivityPlanningSessionResponse,
@@ -42,6 +42,7 @@ import {
   startPlanningResearch, triggerPlanningJob, updatePlanningSession, retryPlanningJob,
 } from '@/app/features/activities/api';
 import { useActivityCapabilities, useActivityPresets } from '@/app/features/activities/queries';
+import { useCreateActivity } from '@/app/features/activities/mutations';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer, WorkbenchColumns } from '@/app/components/shared/page-layout';
 import { Input } from '@/app/components/ui/input';
@@ -69,6 +70,13 @@ const BASIS_CLASS: Record<string, string> = {
 };
 
 interface CastMember { characterId: string; displayName: string; avatarUrl?: string; activityRole?: string }
+/**
+ * 自定义参与者：只在本场活动出现、不来自角色库的临时角色。
+ *
+ * 这类角色没有 sourceCharacterId，服务端无法为它冻结人设快照，
+ * 因此只能走「从空白开始」直接建活动；进入检索或方案生成前必须移除。
+ */
+interface CustomCastMember { key: string; displayName: string; activityRole: string; identity: string; outfitDescription: string }
 interface CustomLocation { id: string; name: string; note: string; status: CandidateStatus; locked: boolean }
 
 /** 已选的参考资料：保留显示内容与用户确认的冻结引用，刷新后可继续使用同一版本。 */
@@ -166,6 +174,66 @@ function BasisBadge({ basis }: { basis: ResearchCharacterCandidate['basis'] }) {
   return <Badge variant="outline" className={'text-xs ' + (BASIS_CLASS[basis] || '')}>{BASIS_LABEL[basis] || basis}</Badge>;
 }
 
+/**
+ * 自定义参与者编辑器。
+ *
+ * 第一步（选模板与角色）与第二步（确认人物）都会用到：
+ * 「从空白开始」是页头动作、任何一步都能点，所以添加自定义参与者的入口
+ * 不能只放在第二步，否则用户在第一步就加不了人。
+ */
+function CustomCastEditor({
+  members,
+  onChange,
+}: {
+  members: CustomCastMember[];
+  onChange: (next: CustomCastMember[]) => void;
+}) {
+  if (!members.length) return null;
+  return (
+    <div className="space-y-2 rounded-lg border border-border-subtle bg-surface-muted/40 p-3">
+      <p className="text-xs text-muted">
+        自定义参与者只在本场活动出现，不会写入角色库。它们没有角色库人设，
+        因此不能用于「查资料并推荐」或「生成方案」，只能配合页头的「从空白开始」创建。
+      </p>
+      {members.map((member, index) => (
+        <div key={member.key} className="space-y-2 rounded-lg border border-border-subtle bg-surface p-2">
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label={`自定义参与者 ${index + 1} 名称`}
+              value={member.displayName}
+              placeholder="角色名称"
+              onChange={(event) => onChange(members.map((item) => item.key === member.key ? { ...item, displayName: event.target.value } : item))}
+              className="h-8 text-sm"
+            />
+            <Input
+              aria-label={`自定义参与者 ${index + 1} 本场职责`}
+              value={member.activityRole}
+              placeholder="本场职责"
+              onChange={(event) => onChange(members.map((item) => item.key === member.key ? { ...item, activityRole: event.target.value } : item))}
+              className="h-8 w-32 text-sm"
+            />
+            <button
+              type="button"
+              aria-label={`移除自定义参与者 ${index + 1}`}
+              className="text-fg-subtle hover:text-danger-fg"
+              onClick={() => onChange(members.filter((item) => item.key !== member.key))}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <Input
+            aria-label={`自定义参与者 ${index + 1} 身份描述`}
+            value={member.identity}
+            placeholder="身份描述（会作为人设交给模型）"
+            onChange={(event) => onChange(members.map((item) => item.key === member.key ? { ...item, identity: event.target.value } : item))}
+            className="h-8 text-sm"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function PlanningWizard() {
   const router = useRouter();
   const params = useSearchParams();
@@ -176,6 +244,14 @@ export function PlanningWizard() {
 
   const [step, setStep] = useState<StepIndex>(0);
   const [intake, setIntake] = useState<IntakeForm>(() => defaultIntake(initialTemplate, initialDate));
+  const [customCast, setCustomCast] = useState<CustomCastMember[]>([]);
+  const [creatingBlank, setCreatingBlank] = useState(false);
+  const createActivityMutation = useCreateActivity();
+  /**
+   * 选人时读到的完整快照（含人设与外观引用），供「从空白开始」直接建活动使用。
+   * IntakeForm.cast 只保留展示需要的字段，不足以构造正式活动文档。
+   */
+  const castSnapshotsRef = useRef(new Map<string, ActorSnapshot>());
   const [session, setSession] = useState<ActivityPlanningSessionResponse | null>(null);
   /**
    * 会话的最新版本号。state 更新是异步的，同一串 await 里读 state 会拿到过期版本，
@@ -383,7 +459,23 @@ export function PlanningWizard() {
       try {
         const actors = await Promise.all(initialCharacterIds.map((id) => fetchActivityCharacterSnapshot(id)));
         if (!mountedRef.current) return;
-        setIntake((current) => ({ ...current, cast: mergeCast(current.cast, actors, maxActors), birthdayIds: current.birthdayIds }));
+        actors.forEach((actor) => { if (actor.sourceCharacterId) castSnapshotsRef.current.set(String(actor.sourceCharacterId), actor); });
+        /*
+         * 从角色日历进入时，除了带入角色，还要补上标题与寿星：
+         * 这两项原本由已移除的手动表单负责，向导接手后必须一并接过来，
+         * 否则「选好寿星 → 建生日活动」会在标题和寿星名单上断掉。
+         */
+        const names = actors.map((actor) => actor.displayName);
+        setIntake((current) => ({
+          ...current,
+          cast: mergeCast(current.cast, actors, maxActors),
+          birthdayIds: current.templateId === 'birthday' ? [...new Set([...current.birthdayIds, ...actors.map((actor) => String(actor.sourceCharacterId))])] : current.birthdayIds,
+          /*
+           * 措辞与内置生日模板的 activity.type（「生日聚会」）保持一致：
+           * 从日历带出的合办活动标题要和模板类型、以及日历上的活动名对得上。
+           */
+          title: current.title || (names.length ? `${names.join('、')}的生日聚会` : current.title),
+        }));
       } catch { /* 带入失败不阻塞：仍可手动选择角色。 */ }
     })();
   }, [initialCharacterIds, maxActors]);
@@ -721,6 +813,7 @@ export function PlanningWizard() {
     try {
       const actor = await fetchActivityCharacterSnapshot(characterId);
       if (!mountedRef.current) return;
+      if (actor.sourceCharacterId) castSnapshotsRef.current.set(String(actor.sourceCharacterId), actor);
       setIntake((current) => ({ ...current, cast: mergeCast(current.cast, [actor], maxActors) }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '读取导入的角色失败。');
@@ -851,6 +944,79 @@ export function PlanningWizard() {
     crossoverWorks: current.crossoverWorks.includes(work) ? current.crossoverWorks.filter((item) => item !== work) : [...current.crossoverWorks, work],
   }));
 
+  /**
+   * 把「角色库角色 + 自定义参与者」合成建活动用的 ActorSnapshot 列表。
+   *
+   * 角色库角色直接用选人时读到的快照（保留人设与外观引用），
+   * 自定义参与者现场构造一份最小人设。两者都要给出稳定 id，
+   * 因为阶段与必达事件的 actorIds 由 buildActivityDocument 按这些 id 生成。
+   */
+  const buildBlankActors = (): ActorSnapshot[] => {
+    const fromLibrary = intake.cast.map((member) => {
+      const snapshot = castSnapshotsRef.current.get(member.characterId);
+      return {
+        ...(snapshot ?? {}),
+        id: snapshot?.id ?? member.characterId,
+        sourceCharacterId: member.characterId,
+        displayName: member.displayName,
+        persona: (snapshot?.persona ?? {}) as Record<string, unknown>,
+        activityRole: member.activityRole || snapshot?.activityRole || '参与者',
+        outfitDescription: snapshot?.outfitDescription ?? '',
+        appearanceReferenceAssetKeys: snapshot?.appearanceReferenceAssetKeys ?? [],
+      } satisfies ActorSnapshot;
+    });
+    const custom = customCast.map((member) => ({
+      id: member.key,
+      displayName: member.displayName.trim() || '自定义角色',
+      persona: { identity: member.identity, speech: { tone: '' } },
+      activityRole: member.activityRole.trim() || '参与者',
+      outfitDescription: member.outfitDescription,
+      appearanceReferenceAssetKeys: [],
+    } satisfies ActorSnapshot));
+    return [...fromLibrary, ...custom];
+  };
+
+  /**
+   * 从空白开始：跳过检索与方案生成，直接用当前模板与参与者建立活动。
+   *
+   * 这条路径不经过企划会话，因此服务端不会校验「提交角色与会话快照一致」，
+   * 自定义参与者才能被带进正式活动。代价是没有方案对比与规划依据。
+   */
+  const createBlankActivity = async () => {
+    setError(null); setNotice(null);
+    const actors = buildBlankActors();
+    if (!actors.length) { setError('请先选择至少一位参与角色，或添加自定义参与者。'); return; }
+    const title = intake.title.trim() || '未命名活动';
+    setCreatingBlank(true);
+    try {
+      /*
+       * birthdayIds 存的是角色 id，而 buildActivityDocument 的 birthdayActorIds
+       * 要的是 actor id；快照的 actor id 由服务端随机生成，两者不能混用，
+       * 否则会被它的 filter 静默丢弃、寿星名单为空。
+       */
+      const actorIdByCharacterId = new Map(actors.filter((actor) => actor.sourceCharacterId).map((actor) => [String(actor.sourceCharacterId), actor.id]));
+      const birthdayActorIds = intake.birthdayIds.flatMap((characterId) => {
+        const actorId = actorIdByCharacterId.get(characterId);
+        return actorId ? [actorId] : [];
+      });
+      const document = buildActivityDocument({
+        templateId: intake.templateId,
+        title,
+        type: intake.type,
+        theme: intake.theme,
+        location: intake.location,
+        rules: intake.rules,
+        actors,
+        birthdayActorIds,
+        scheduledDate: intake.scheduledDate || null,
+      });
+      const result = await createActivityMutation.mutateAsync({ document });
+      router.push('/apps/activities/' + result.activity.id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '创建活动失败。');
+    } finally { setCreatingBlank(false); }
+  };
+
   const handleEvidence = (candidate: ResearchCharacterCandidate) => setEvidenceOpen(candidate);
   const evidenceFor = (ids: string[]): ResearchEvidence[] => (research?.evidence ?? []).filter((item) => ids.includes(item.id));
 
@@ -922,7 +1088,7 @@ export function PlanningWizard() {
           backLabel="返回活动列表"
           title="新建活动"
           description="先确定活动意图，再检索资料、确认人物与地点，最后对比方案并创建。"
-          actions={<Button size="sm" variant="ghost" onClick={() => router.push('/apps/activities/new?mode=manual' + (initialDate ? '&date=' + initialDate : ''))}><Compass className="h-4 w-4" />改用手动创建</Button>}
+          actions={<Button size="sm" variant="outline" disabled={busy || creatingBlank || generating || researching} onClick={() => void createBlankActivity()}>{creatingBlank ? '正在创建…' : '从空白开始'}</Button>}
         />
 
         <nav aria-label="企划步骤" className="flex flex-wrap items-center gap-2">
@@ -1035,6 +1201,18 @@ export function PlanningWizard() {
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="outline" onClick={() => { setPickerTarget('lead'); setPickerOpen(true); }}><Sparkles className="h-3.5 w-3.5" />选择主角</Button>
                       <Button size="sm" variant="ghost" onClick={() => { setPickerTarget('cast'); setPickerOpen(true); }}><Plus className="h-3.5 w-3.5" />添加参与角色</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={intake.cast.length + customCast.length >= maxActors}
+                        onClick={() => setCustomCast((current) => [...current, {
+                          key: `actor_custom_${Date.now().toString(36)}_${current.length + 1}`,
+                          displayName: '',
+                          activityRole: '参与者',
+                          identity: '只在本场活动出现的临时角色',
+                          outfitDescription: '日常便服',
+                        }])}
+                      ><Plus className="h-3.5 w-3.5" />自定义参与者</Button>
                     </div>
                   </div>
                   {!intake.cast.length && <p className="text-sm text-muted">还没有参与角色，请先从角色库选择主角。</p>}
@@ -1072,6 +1250,7 @@ export function PlanningWizard() {
                       </li>
                     ))}
                   </ul>
+                  <CustomCastEditor members={customCast} onChange={setCustomCast} />
                 </section>
               </>
             )}
@@ -1257,7 +1436,21 @@ export function PlanningWizard() {
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-sm font-semibold text-ink">已选参与角色（{intake.cast.length}）</h4>
-                        <Button size="sm" variant="outline" onClick={() => { setPickerTarget('cast'); setPickerOpen(true); }}><UserPlus className="h-3.5 w-3.5" />从角色库添加</Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => { setPickerTarget('cast'); setPickerOpen(true); }}><UserPlus className="h-3.5 w-3.5" />从角色库添加</Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={intake.cast.length + customCast.length >= maxActors}
+                            onClick={() => setCustomCast((current) => [...current, {
+                              key: `actor_custom_${Date.now().toString(36)}_${current.length + 1}`,
+                              displayName: '',
+                              activityRole: '参与者',
+                              identity: '只在本场活动出现的临时角色',
+                              outfitDescription: '日常便服',
+                            }])}
+                          ><Plus className="h-3.5 w-3.5" />添加自定义参与者</Button>
+                        </div>
                       </div>
                       <ul className="space-y-1.5">
                         {intake.cast.map((member) => (
@@ -1274,6 +1467,8 @@ export function PlanningWizard() {
                           </li>
                         ))}
                       </ul>
+
+                      <CustomCastEditor members={customCast} onChange={setCustomCast} />
                     </div>
 
                     <div className="space-y-2 border-t border-border-subtle pt-3">
@@ -1765,6 +1960,7 @@ export function PlanningWizard() {
         existingActorCount={pickerTarget && typeof pickerTarget === 'object' ? 0 : intake.cast.length}
         onSelectCharacter={(actor) => {
           const characterId = String(actor.sourceCharacterId || actor.id);
+          if (actor.sourceCharacterId) castSnapshotsRef.current.set(characterId, actor);
           if (pickerTarget === 'lead') {
             setIntake((current) => ({
               ...current,

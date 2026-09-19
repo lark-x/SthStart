@@ -504,6 +504,10 @@ button.primary-action:hover {
     overflow: visible;
   }
 
+  .page-tabs.activity-workflow-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .character-editor-tabs button,
   .page-tabs button {
     width: 100%;
