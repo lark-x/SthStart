@@ -251,6 +251,41 @@ npm run db:integrity
 
 ## 常用运维命令
 
+### 把本地改动部署进正在运行的容器
+
+```bash
+npm run deploy:docker
+```
+
+脚本会构建 Portal 与 Service、把运行时读到的目录同步进容器、重启并等待健康检查通过。
+失败时会打印容器日志并以非零码退出，不会假装部署成功。
+
+**为什么不能只 `docker cp` 一个 `dist`：**
+
+容器里的进程混着「已编译产物」和「运行时直接读的源码」，只换其中一部分会让两者对不上：
+
+| 位置 | 容器内路径 | 谁在读 |
+| --- | --- | --- |
+| Portal 构建产物 | `/app/dist` | `vinext start` |
+| Service 编译产物 | `/app/apps/service/dist` | `node dist/start.js` |
+| Service 源码 | `/app/apps/service/src` | `db:migrate` 用 tsx 直接执行，import 的是源码 |
+| 契约源码 | `/app/packages/contracts/src` | `@sthstart/contracts` 的 exports 指向 `src/index.ts` |
+| 回放编译产物 | `/app/packages/activity-playback/dist` | 导出与回放编译 |
+| 脚本 | `/app/scripts` | `db:migrate` 等 |
+| 静态资源 | `/app/public` | 离线笔记本 Service Worker 等 |
+
+典型症状：只同步了 `apps/service/dist`，新代码引用了旧 `contracts` 里还不存在的导出，
+容器反复重启、健康检查变成 `unhealthy`，日志里是 `does not provide an export named ...`；
+或者迁移脚本读到的 `src` 比数据库已应用的迁移旧，报 `contains an unknown migration`。
+
+可选参数：`--skip-build` 跳过构建，直接同步现有产物（产物已在本地构建过时更快）。
+
+```bash
+node scripts/deploy-docker.mjs --skip-build
+```
+
+容器名不是 `sthstart` 时用 `STHSTART_CONTAINER` 指定。
+
 ```bash
 # 启动服务并在后台运行
 docker compose up -d
