@@ -162,7 +162,7 @@ export function normalizeKnowledge(value: unknown, options: { fallback?: NoteKno
   const origin = source.origin && typeof source.origin === 'object'
     ? (() => {
         const raw = source.origin as Record<string, unknown>;
-        const kind = ['activity', 'collection', 'topic', 'import'].includes(String(raw.kind)) ? String(raw.kind) as 'activity' | 'collection' | 'topic' | 'import' : null;
+        const kind = ['activity', 'collection', 'topic', 'import', 'research'].includes(String(raw.kind)) ? String(raw.kind) as 'activity' | 'collection' | 'topic' | 'import' | 'research' : null;
         const refId = asText(raw.refId, 80);
         if (!kind || !refId) return fallback?.origin;
         return {

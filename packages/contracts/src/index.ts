@@ -2573,6 +2573,7 @@ export const NoteKnowledgeSchema = Type.Object({
       Type.Literal('collection'),
       Type.Literal('topic'),
       Type.Literal('import'),
+      Type.Literal('research'),
     ]),
     refId: Type.String(),
     label: Type.String(),
@@ -3093,6 +3094,235 @@ export const NarrativeHrefResponseSchema = Type.Object({
   href: Type.String(),
 });
 export type NarrativeHrefResponse = Static<typeof NarrativeHrefResponseSchema>;
+
+// ---------- 剧情研究（叙事档案内的研究专题） ----------
+
+export const ResearchProjectStatusSchema = Type.Union([
+  Type.Literal('draft'),
+  Type.Literal('confirmed'),
+  Type.Literal('researching'),
+  Type.Literal('review'),
+  Type.Literal('published'),
+  Type.Literal('archived'),
+]);
+export type ResearchProjectStatus = Static<typeof ResearchProjectStatusSchema>;
+
+export const ResearchRunStatusSchema = Type.Union([
+  Type.Literal('queued'),
+  Type.Literal('running'),
+  Type.Literal('needs-review'),
+  Type.Literal('succeeded'),
+  Type.Literal('incomplete'),
+  Type.Literal('failed'),
+  Type.Literal('cancelled'),
+  Type.Literal('interrupted'),
+]);
+export type ResearchRunStatus = Static<typeof ResearchRunStatusSchema>;
+
+export const ClaimTypeSchema = Type.Union([
+  Type.Literal('fact'),
+  Type.Literal('inference'),
+  Type.Literal('speculation'),
+  Type.Literal('contradiction'),
+  Type.Literal('open-question'),
+]);
+export type ClaimType = Static<typeof ClaimTypeSchema>;
+
+/** 研究范围：一个专题只属于一个作品，避免同名实体跨作品互相污染。 */
+export const ResearchScopeSchema = Type.Object({
+  workId: Type.String(),
+  nodeIds: Type.Optional(Type.Array(Type.String())),
+  nodeKinds: Type.Optional(Type.Array(Type.String())),
+  entityIds: Type.Optional(Type.Array(Type.String())),
+  keywords: Type.Optional(Type.Array(Type.String())),
+});
+export type ResearchScope = Static<typeof ResearchScopeSchema>;
+
+export const ResearchSeedEvidenceSchema = Type.Object({
+  targetType: Type.String(),
+  targetId: Type.String(),
+  locator: Type.String(),
+  quote: Type.String(),
+});
+export type ResearchSeedEvidence = Static<typeof ResearchSeedEvidenceSchema>;
+
+export const ResearchProjectSchema = Type.Object({
+  id: Type.String(),
+  workId: Type.String(),
+  title: Type.String(),
+  question: Type.String(),
+  scope: ResearchScopeSchema,
+  origin: Type.Union([Type.Literal('ai-suggested'), Type.Literal('user-defined')]),
+  status: ResearchProjectStatusSchema,
+  selectedTopicId: Type.Union([Type.String(), Type.Null()]),
+  latestRunId: Type.Union([Type.String(), Type.Null()]),
+  publishedNoteId: Type.Union([Type.String(), Type.Null()]),
+  revision: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  runCount: Type.Optional(Type.Number()),
+});
+export type ResearchProject = Static<typeof ResearchProjectSchema>;
+
+export const ResearchProjectsResponseSchema = Type.Object({
+  items: Type.Array(ResearchProjectSchema),
+});
+export type ResearchProjectsResponse = Static<typeof ResearchProjectsResponseSchema>;
+
+export const ResearchTopicSuggestionSchema = Type.Object({
+  id: Type.String(),
+  workId: Type.String(),
+  batchId: Type.String(),
+  title: Type.String(),
+  question: Type.String(),
+  reason: Type.String(),
+  scope: ResearchScopeSchema,
+  seedEvidence: Type.Array(ResearchSeedEvidenceSchema),
+  status: Type.Union([Type.Literal('candidate'), Type.Literal('selected'), Type.Literal('dismissed')]),
+  createdAt: Type.String(),
+});
+export type ResearchTopicSuggestion = Static<typeof ResearchTopicSuggestionSchema>;
+
+export const ResearchTopicSuggestionResultSchema = Type.Object({
+  batchId: Type.String(),
+  items: Type.Array(ResearchTopicSuggestionSchema),
+  scanned: Type.Object({
+    nodes: Type.Number(), total: Type.Number(), batches: Type.Number(), modelCalls: Type.Number(),
+  }),
+  discarded: Type.Array(Type.Object({ title: Type.String(), reason: Type.String() })),
+  scopeNote: Type.Union([Type.String(), Type.Null()]),
+  incompleteReason: Type.Union([Type.String(), Type.Null()]),
+});
+export type ResearchTopicSuggestionResult = Static<typeof ResearchTopicSuggestionResultSchema>;
+
+export const NarrativeResearchEvidenceSchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  runId: Type.Union([Type.String(), Type.Null()]),
+  /** 关联到结论后的角色；候选证据还没有关联时为 null。 */
+  claimRole: Type.Union([Type.Literal('support'), Type.Literal('counter'), Type.Null()]),
+  providerId: Type.String(),
+  workId: Type.String(),
+  targetType: Type.Union([Type.Literal('utterance'), Type.Literal('node'), Type.Literal('document')]),
+  targetId: Type.String(),
+  nodeId: Type.Union([Type.String(), Type.Null()]),
+  sceneId: Type.Union([Type.String(), Type.Null()]),
+  locator: Type.String(),
+  quoteSnapshot: Type.String(),
+  contextBefore: Type.String(),
+  contextAfter: Type.String(),
+  contentHash: Type.String(),
+  valid: Type.Boolean(),
+  validationMessage: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  /** 跳回叙事档案的定位链接，本地证据必须能回到原文。 */
+  archiveHref: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+export type NarrativeResearchEvidence = Static<typeof NarrativeResearchEvidenceSchema>;
+
+export const NarrativeResearchClaimSchema = Type.Object({
+  id: Type.String(),
+  workId: Type.String(),
+  projectId: Type.Union([Type.String(), Type.Null()]),
+  runId: Type.Union([Type.String(), Type.Null()]),
+  title: Type.String(),
+  claimType: Type.Union([ClaimTypeSchema, Type.Null()]),
+  body: Type.String(),
+  explanation: Type.String(),
+  uncertainty: Type.String(),
+  status: Type.Union([Type.Literal('pending'), Type.Literal('accepted'), Type.Literal('rejected')]),
+  origin: Type.Union([Type.Literal('human'), Type.Literal('ai')]),
+  revision: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  evidence: Type.Optional(Type.Array(NarrativeResearchEvidenceSchema)),
+});
+export type NarrativeResearchClaim = Static<typeof NarrativeResearchClaimSchema>;
+
+export const NarrativeResearchRunSchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  status: ResearchRunStatusSchema,
+  stage: Type.String(),
+  queryPlan: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+  candidateEvidence: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+  synthesis: Type.Record(Type.String(), Type.Unknown()),
+  progressLabel: Type.Union([Type.String(), Type.Null()]),
+  usedModelCalls: Type.Number(),
+  errorMessage: Type.Union([Type.String(), Type.Null()]),
+  incompleteReason: Type.Union([Type.String(), Type.Null()]),
+  startedAt: Type.Union([Type.String(), Type.Null()]),
+  finishedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  evidenceCount: Type.Optional(Type.Number()),
+});
+export type NarrativeResearchRun = Static<typeof NarrativeResearchRunSchema>;
+
+export const NarrativeResearchDraftSchema = Type.Object({
+  id: Type.String(),
+  projectId: Type.String(),
+  runId: Type.Union([Type.String(), Type.Null()]),
+  title: Type.String(),
+  summary: Type.String(),
+  content: Type.Record(Type.String(), Type.Unknown()),
+  status: Type.Union([Type.Literal('draft'), Type.Literal('approved'), Type.Literal('published')]),
+  contentHash: Type.String(),
+  revision: Type.Number(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type NarrativeResearchDraft = Static<typeof NarrativeResearchDraftSchema>;
+
+export const ResearchProjectDetailSchema = Type.Object({
+  project: ResearchProjectSchema,
+  runs: Type.Array(NarrativeResearchRunSchema),
+  claims: Type.Array(NarrativeResearchClaimSchema),
+  drafts: Type.Array(NarrativeResearchDraftSchema),
+  latestDraft: Type.Union([NarrativeResearchDraftSchema, Type.Null()]),
+  evidence: Type.Array(NarrativeResearchEvidenceSchema),
+});
+export type ResearchProjectDetail = Static<typeof ResearchProjectDetailSchema>;
+
+export const ResearchRunDetailSchema = Type.Object({
+  run: NarrativeResearchRunSchema,
+  claims: Type.Array(NarrativeResearchClaimSchema),
+  evidence: Type.Array(NarrativeResearchEvidenceSchema),
+});
+export type ResearchRunDetail = Static<typeof ResearchRunDetailSchema>;
+
+export const ResearchPublishPreviewSchema = Type.Object({
+  ready: Type.Boolean(),
+  blocked: Type.Array(Type.String()),
+  revision: Type.Number(),
+  draftId: Type.Union([Type.String(), Type.Null()]),
+  draftTitle: Type.Union([Type.String(), Type.Null()]),
+  acceptedClaims: Type.Number(),
+  totalClaims: Type.Number(),
+  evidenceCount: Type.Number(),
+  nature: Type.Union([Type.Literal('canon'), Type.Literal('unconfirmed')]),
+  unresolved: Type.Object({ evidence: Type.Array(Type.String()), claims: Type.Array(Type.String()) }),
+});
+export type ResearchPublishPreview = Static<typeof ResearchPublishPreviewSchema>;
+
+export const ResearchPublishResultSchema = Type.Object({
+  noteId: Type.String(),
+  created: Type.Boolean(),
+  revision: Type.Number(),
+  nature: Type.Union([Type.Literal('canon'), Type.Literal('unconfirmed')]),
+  href: Type.String(),
+});
+export type ResearchPublishResult = Static<typeof ResearchPublishResultSchema>;
+
+export const ResearchProviderStatusSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  kind: Type.Union([Type.Literal('local'), Type.Literal('mcp')]),
+  status: Type.Union([Type.Literal('ready'), Type.Literal('empty'), Type.Literal('unavailable')]),
+  message: Type.String(),
+  workCount: Type.Number(),
+});
+export type ResearchProviderStatus = Static<typeof ResearchProviderStatusSchema>;
 
 export const ModelDiscoveryResponseSchema = Type.Object({
   models: Type.Array(Type.String()),
@@ -5489,6 +5719,7 @@ export const TaskDomainSchema = Type.Union([
   Type.Literal('knowledge_collection'),
   Type.Literal('idea_generation'),
   Type.Literal('research'),
+  Type.Literal('narrative_research'),
   Type.Literal('planning'),
   Type.Literal('activity_text'),
   Type.Literal('activity_media_batch'),

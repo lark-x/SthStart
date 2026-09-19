@@ -23,11 +23,17 @@ import {
 } from '../activities/image-attempts.js';
 import { ActivityStore } from '../activities/store.js';
 import { KnowledgeCollectionStore } from '../knowledge/collections.js';
+import type { NarrativeDatabase } from '../narrative-database.js';
 
 export interface ListTasksOptions {
   state?: 'active' | 'recent' | 'all';
   domain?: TaskDomain;
   limit?: number;
+  /**
+   * 剧情研究运行存在叙事库里，与业务库分开。
+   * 不传时跳过这一类任务，而不是报错。
+   */
+  narrativeDatabase?: NarrativeDatabase | null;
 }
 
 export function listUnifiedTasks(
@@ -501,7 +507,54 @@ export function listUnifiedTasks(
     }
   }
 
-  // 7. Planning Jobs
+  /*
+   * 7. 剧情研究运行（叙事档案）。
+   * 数据在叙事库，所以只有传入了 narrativeDatabase 才查；
+   * 任务抽屉里显示为「剧情研究」，与活动企划的 MCP 研究区分开。
+   */
+  if (options?.narrativeDatabase && (!filterDomain || filterDomain === 'narrative_research')) {
+    const runRows = safeQuery(() =>
+      options.narrativeDatabase!.connection.prepare(
+        `SELECT r.id, r.project_id, p.title project_title, r.status, r.stage, r.progress_label,
+                r.error_message, r.incomplete_reason, r.used_model_calls, r.created_at, r.updated_at
+         FROM narrative_research_runs r
+         LEFT JOIN narrative_research_projects p ON p.id = r.project_id
+         ORDER BY r.created_at DESC LIMIT ?`,
+      ).all(limit) as Array<{
+        id: string; project_id: string; project_title: string | null; status: string; stage: string;
+        progress_label: string | null; error_message: string | null; incomplete_reason: string | null;
+        used_model_calls: number; created_at: string; updated_at: string;
+      }>,
+    );
+    for (const row of runRows) {
+      let displayState: TaskSummary['displayState'] = 'needs_attention';
+      if (row.status === 'queued') displayState = 'waiting';
+      else if (row.status === 'running') displayState = 'running';
+      else if (row.status === 'needs-review') displayState = 'needs_attention';
+      else if (row.status === 'succeeded') displayState = 'succeeded';
+      else if (row.status === 'incomplete' || row.status === 'interrupted') displayState = 'partial';
+      else if (row.status === 'failed') displayState = 'failed';
+      else if (row.status === 'cancelled') displayState = 'stopped';
+      tasks.push({
+        domain: 'narrative_research',
+        taskId: row.id,
+        title: `剧情研究 (${row.project_title || row.project_id})`,
+        displayState,
+        rawState: row.status,
+        detail: row.progress_label || row.incomplete_reason || row.error_message || undefined,
+        targetUrl: `/apps/narrative?project=${encodeURIComponent(row.project_id)}`,
+        capabilities: {
+          cancel: ['queued', 'running'].includes(row.status),
+          retry: ['failed', 'incomplete', 'cancelled', 'interrupted'].includes(row.status),
+        },
+        cancelScope: 'local_tracking',
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      });
+    }
+  }
+
+  // 8. Planning Jobs
   if (!filterDomain || filterDomain === 'planning') {
     const planningRows = safeQuery(() =>
       database.connection
@@ -582,6 +635,28 @@ export function listUnifiedTasks(
     items: filtered.slice(0, limit),
     activeCount,
   };
+}
+
+/**
+ * 剧情研究的取消与重试：数据在叙事库，单独开一对函数，
+ * 不挤进上面那两个以业务库为主的入口，避免给它们加一个只为一种域服务的参数。
+ */
+export function cancelNarrativeResearchRun(narrativeDatabase: NarrativeDatabase, runId: string): { success: boolean; message?: string } {
+  const row = narrativeDatabase.connection.prepare('SELECT status FROM narrative_research_runs WHERE id=?').get(runId) as { status: string } | undefined;
+  if (!row) throw new Error('task_not_found');
+  if (!['queued', 'running'].includes(row.status)) throw new Error('task_not_cancellable');
+  narrativeDatabase.connection.prepare("UPDATE narrative_research_runs SET status='cancelled',progress_label='运行已取消',finished_at=?,updated_at=? WHERE id=?")
+    .run(nowIso(), nowIso(), runId);
+  return { success: true, message: '已取消研究运行' };
+}
+
+export function resetNarrativeResearchRun(narrativeDatabase: NarrativeDatabase, runId: string): { success: boolean; message?: string } {
+  const row = narrativeDatabase.connection.prepare('SELECT status FROM narrative_research_runs WHERE id=?').get(runId) as { status: string } | undefined;
+  if (!row) throw new Error('task_not_found');
+  if (['queued', 'running'].includes(row.status)) throw new Error('task_still_active');
+  narrativeDatabase.connection.prepare("UPDATE narrative_research_runs SET status='queued',error_message=NULL,incomplete_reason=NULL,finished_at=NULL,progress_label='重新运行',updated_at=? WHERE id=?")
+    .run(nowIso(), runId);
+  return { success: true, message: '已重新排队；在叙事档案的研究专题里继续运行' };
 }
 
 export async function cancelUnifiedTask(

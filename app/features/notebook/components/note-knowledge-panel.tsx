@@ -113,6 +113,16 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
 
       {open && (
         <div className="space-y-3 border-t border-border-subtle px-3 py-3 text-sm">
+          {/* 研究发布的资料要能回到研究专题：资料与来源双向可追溯。 */}
+          {current.origin?.kind === 'research' && (
+            <p className="flex flex-wrap items-center gap-1 text-xs text-muted">
+              <span>来自研究专题</span>
+              <Link href={`/apps/narrative?project=${encodeURIComponent(current.origin.refId)}`} className="font-medium text-accent hover:underline">
+                {current.origin.label || '研究专题'}
+              </Link>
+              {current.origin.note && <span>· {current.origin.note}</span>}
+            </p>
+          )}
           <div className="grid gap-2 sm:grid-cols-3">
             <label className="space-y-1">
               <span className="text-xs text-muted">内容性质</span>

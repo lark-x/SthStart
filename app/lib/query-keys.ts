@@ -38,6 +38,10 @@ export const narrativeKeys = {
   connectors: () => [...narrativeKeys.all, 'connectors'] as const,
   remoteSearch: (world: string, keyword: string) =>
     [...narrativeKeys.all, 'remoteSearch', { world, keyword }] as const,
+  researchProvider: () => [...narrativeKeys.all, 'researchProvider'] as const,
+  researchProjects: (workId?: string) => [...narrativeKeys.all, 'researchProjects', workId ?? ''] as const,
+  researchProject: (id: string) => [...narrativeKeys.all, 'researchProject', id] as const,
+  researchRun: (id: string) => [...narrativeKeys.all, 'researchRun', id] as const,
 };
 
 export const creativeKeys = {

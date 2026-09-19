@@ -15,6 +15,7 @@ import { NarrativeTree } from './narrative-tree';
 import { NarrativeReader } from './narrative-reader';
 import { NarrativeInspector } from './narrative-inspector';
 import { NarrativeImport } from './narrative-import';
+import { ResearchWorkspace } from './research-workspace';
 import { narrativeKeys } from '@/app/lib/query-keys';
 import { useToast } from '@/app/providers/ui-provider';
 import { PageContainer } from '@/app/components/shared/page-layout';
@@ -28,7 +29,7 @@ export function NarrativeWorkspace() {
   // 窄屏下目录默认收起：正文优先，目录与检索各自单独打开（§8.9）。
   const [treeOpen, setTreeOpen] = useState(false);
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<'read' | 'import'>('read');
+  const [mode, setMode] = useState<'read' | 'research' | 'import'>('read');
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -171,9 +172,10 @@ export function NarrativeWorkspace() {
             <PageTabs
               ariaLabel="叙事工作模式"
               value={mode}
-              onChange={(id) => setMode(id as 'read' | 'import')}
+              onChange={(id) => setMode(id as 'read' | 'research' | 'import')}
               tabs={[
                 { id: 'read', label: '阅读' },
+                { id: 'research', label: '研究专题' },
                 { id: 'import', label: '数据源与导入' },
               ]}
             />
@@ -249,6 +251,8 @@ export function NarrativeWorkspace() {
               onSelectResult={handleSelectSearchResult}
             />}
           </>
+        ) : mode === 'research' ? (
+          <ResearchWorkspace works={works} />
         ) : (
           <NarrativeImport
             connectors={connectors}

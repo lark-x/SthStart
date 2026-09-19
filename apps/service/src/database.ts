@@ -1467,6 +1467,19 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     )`,
     'CREATE INDEX IF NOT EXISTS idx_backup_snapshot_objects_object ON backup_snapshot_objects(target_id)',
   ] },
+  // 研究总稿发布到创作资料库的去重键：同一专题 + 同一总稿内容只创建一篇资料。
+  { version: 34, name: 'narrative-research-publications', statements: [
+    `CREATE TABLE IF NOT EXISTS research_note_links (
+      publish_key TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      note_id TEXT NOT NULL,
+      run_id TEXT,
+      draft_id TEXT,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_research_note_links_project ON research_note_links(project_id)',
+    'CREATE INDEX IF NOT EXISTS idx_research_note_links_note ON research_note_links(note_id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

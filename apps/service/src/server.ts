@@ -19,6 +19,9 @@ import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
 import { registerNarrativeRoutes } from './narrative.js';
+import { registerResearchRoutes as registerNarrativeResearchRoutes } from './research/routes.js';
+import { LocalNarrativeCorpusProvider } from './research/corpus.js';
+import { ResearchStore } from './research/store.js';
 import { createNarrativeConnectors } from './narrative-connectors.js';
 import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 import { applyCreativeWhenReady, registerRuntimeRoutes } from './runtime-routes.js';
@@ -209,6 +212,15 @@ export async function createService(options: ServiceOptions = {}) {
   registerNotebookRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
+  /*
+   * 研究运行中断恢复：服务重启时把 queued/running 标记为 interrupted，
+   * 已保存的阶段结果保留，用户可以继续或重新运行。
+   */
+  new ResearchStore(narrativeDatabase).markInterruptedRuns();
+  registerNarrativeResearchRoutes(app, {
+    database, narrativeDatabase, secrets, fetcher: options.fetcher ?? fetch,
+    provider: new LocalNarrativeCorpusProvider(narrativeDatabase),
+  });
   registerActivityRoutes(app, config, database, secrets, options.fetcher);
   registerCalendarRoutes(app, config, database);
   registerPlanningRoutes(app, { config, database, secrets, store: new ActivityStore(database), fetcher: options.fetcher, narrativeDatabase });
@@ -217,7 +229,7 @@ export async function createService(options: ServiceOptions = {}) {
   registerTopicRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerKnowledgeRoutes(app, { config, database, narrativeDatabase, secrets, fetcher: options.fetcher });
   registerPublicRoutes(app, config, database, secrets, options.fetcher);
-  registerTaskRoutes(app, { config, database, secrets, fetcher: options.fetcher });
+  registerTaskRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeDatabase });
   registerBackupRoutes(app, {
     config, database, store: backupStore, vaults: backupVaults, runner: backupRunner,
     restores: backupRestores, secrets, logs: runtimeLogs, fetcher: options.fetcher,
