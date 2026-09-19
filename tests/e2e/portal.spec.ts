@@ -232,12 +232,18 @@ test('character library opens, creates a character and edits fields', async ({ p
   await expect(page.getByRole('heading', { name: '身份与人设' })).toBeVisible();
 
   /*
-   * §8.3：宽屏右侧内联预览，小屏改用抽屉。
-   * 宽屏不应出现「预览」按钮（内容已在右栏）；小屏应出现按钮并能打开抽屉。
+   * §8.3：预览是可选辅助栏，不是常驻栏。
+   * 宽屏默认收起（常驻时它比表单矮近 900px，会在右栏留一整片空白），
+   * 由页头「预览」按钮切换内联；小屏同一按钮改开抽屉。
    */
   await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByRole('button', { name: '预览' })).toHaveCount(0);
+  const widePreviewButton = page.getByRole('button', { name: '预览' });
+  await expect(widePreviewButton).toBeVisible();
+  await expect(page.getByText('资料检查')).toHaveCount(0);
+  await widePreviewButton.click();
   await expect(page.getByText('资料检查').first()).toBeVisible();
+  await page.getByRole('button', { name: '收起预览' }).click();
+  await expect(page.getByText('资料检查')).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const previewButton = page.getByRole('button', { name: '预览' });

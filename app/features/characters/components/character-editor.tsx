@@ -122,6 +122,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   /* §8.3：宽屏右侧内联预览，小屏改用抽屉。 */
   const [previewDrawerOpen, setPreviewDrawerOpen] = useState(false);
   const inlinePreviewColumn = useInlinePreviewColumn();
+  /*
+   * 预览默认收起（§8.3 的「宽屏右侧可放预览」是可选能力，不是常驻栏）。
+   * 常驻时它只占 360px 却比中间表单矮近 900px，右栏下方整片空着；
+   * 收起后中间表单从 752px 拿到约 1536px，空白随之消失。
+   */
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleSave = useCallback(async (quiet = false) => {
     const currentDraft = characterFormValuesToDraft(getValues());
@@ -529,7 +535,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
    */
   const previewPanel = (
     <div className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-sm space-y-3">
-            <div className="relative aspect-4/5 w-full rounded-[var(--radius-panel)] overflow-hidden bg-[#777865] flex items-center justify-center text-white text-5xl shadow-inner">
+            {/*
+             * 有头像才按 4:5 立绘比例撑开；没有头像时只留一个矮占位。
+             * 原来无条件用 aspect-4/5，没有头像的角色会留下一块 326×408 的灰底，
+             * 预览卡因此比实际信息高出一大截。
+             */}
+            <div className={`relative w-full rounded-[var(--radius-panel)] overflow-hidden bg-[#777865] flex items-center justify-center text-white shadow-inner ${detailData?.avatarUrl ? 'aspect-4/5 text-5xl' : 'h-24 text-3xl'}`}>
               {detailData?.avatarUrl ? (
                 <Image
                   src={detailData.avatarUrl}
@@ -689,17 +700,20 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </Button>
 
           {/* §8.3：小屏没有内联预览栏，用一个明确入口打开预览抽屉。 */}
-          {!inlinePreviewColumn && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setPreviewDrawerOpen(true)}
-              title="查看角色卡片预览与资料检查"
-            >
-              <IdCard className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>预览</span>
-            </Button>
-          )}
+          {/*
+           * 预览入口：宽屏切换右侧预览栏，窄屏打开抽屉（§8.3）。
+           * 宽屏下预览默认收起，避免它比表单矮近 900px 却在右栏留下一整片空白。
+           */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => (inlinePreviewColumn ? setPreviewOpen((current) => !current) : setPreviewDrawerOpen(true))}
+            aria-pressed={inlinePreviewColumn ? previewOpen : undefined}
+            title={inlinePreviewColumn ? (previewOpen ? "收起角色卡片预览" : "展开角色卡片预览与资料检查") : "查看角色卡片预览与资料检查"}
+          >
+            <IdCard className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{inlinePreviewColumn && previewOpen ? "收起预览" : "预览"}</span>
+          </Button>
 
           <Button
             size="sm"
@@ -724,41 +738,51 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
       )}
 
-      {/* Editor Body */}
-      <div className="grid grid-cols-1 items-start gap-8 pt-4 lg:grid-cols-12">
-        {/* Left Navigation */}
-        <aside className="space-y-5 lg:sticky lg:top-20 lg:col-span-3">
-          <nav
-            className="character-editor-tabs flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0"
-            role="tablist"
-            aria-label="角色编辑分区"
-          >
-            {visibleNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeSection === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveSection(item.id)}
-                  className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
-                    isActive
-                      ? 'bg-ink text-paper'
-                      : 'text-muted hover:bg-ink/6 hover:text-ink'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
+      {/*
+       * 分区导航改为横向条（§8.3 只要求「分区可达」，没要求它占一整栏）。
+       * 原先是 3/12 的竖栏，360px 宽只放 4 个按钮、172px 就到底，
+       * 下方 1334px 全空且随 sticky 一路跟随；横过来后这段空白直接消失，
+       * 中间表单也从 6/12 拿到整行宽度。
+       */}
+      {/*
+       * 编辑区宽度：导航与表单放进同一个宽度容器，二者左边缘才会对齐。
+       * 原先导航铺满外框 1600px、表单居中在 1120px，1920px 下两者左右各差 208px，
+       * 导航像是浮在表单上方而不是它的标题栏。收起预览时整块按配置类页面的
+       * 1120px 居中（§4.2）；展开预览时放开到整行，把宽度让给右栏。
+       */}
+      <div className={`w-full pt-4 ${previewOpen && inlinePreviewColumn ? "" : "mx-auto max-w-[1120px]"}`}>
+        <nav
+          className="character-editor-tabs flex flex-wrap gap-1"
+          role="tablist"
+          aria-label="角色编辑分区"
+        >
+          {visibleNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveSection(item.id)}
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
+                  isActive
+                    ? 'bg-ink text-paper'
+                    : 'text-muted hover:bg-ink/6 hover:text-ink'
+                }`}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-        {/* Center Main Editor */}
-        <div className="lg:col-span-6 space-y-6">
+        {/* Editor Body：预览展开时右栏才出现，否则编辑区独占整行。 */}
+        <div className={`grid grid-cols-1 items-start gap-8 pt-6 ${previewOpen && inlinePreviewColumn ? "lg:grid-cols-[minmax(0,1fr)_360px]" : ""}`}>
+          {/* Center Main Editor */}
+          <div className="min-w-0 space-y-6">
           {/* AI Extraction Assist */}
           <details className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3">
             <summary className="flex cursor-pointer items-center gap-2 text-accent">
@@ -927,9 +951,13 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         {/* Right Preview Card：≥1024px 内联右栏（§8.3） */}
-        <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-20 self-start">
-          {previewPanel}
-        </aside>
+        {/* 右栏预览：仅在用户展开时出现（§8.3 的「宽屏右侧可放预览」是可选能力）。 */}
+        {previewOpen && inlinePreviewColumn && (
+          <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
+            {previewPanel}
+          </aside>
+        )}
+        </div>
       </div>
 
       {/* 小屏：同一份预览内容放进抽屉（§8.3「小屏改抽屉」） */}
