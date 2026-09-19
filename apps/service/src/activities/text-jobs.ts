@@ -119,7 +119,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
         throw err;
       }
       prompt = buildStagePrompt(document, stage, instructions);
-    } else if (mode === 'invite' || mode === 'wish' || mode === 'moment' || mode === 'shot') {
+    } else if (mode === 'invite' || mode === 'wish' || mode === 'moment' || mode === 'shot' || mode === 'continue-chat') {
       const stageId = String(scope.stageId || document.stages[0]?.id);
       const stage = document.stages.find((s) => s.id === stageId);
       if (!stage) throw new Error(`阶段 ${stageId} 未找到`);
@@ -402,8 +402,10 @@ export function adoptCandidateIntoDocument(
     };
 
     // 快捷文案入口（邀请 / 祝福 / 朋友圈 / 配图）是追加写入；阶段生成则替换该阶段内容。
+    // 续聊同样是追加写入：它只往当前阶段补一轮消息，不能删掉已有对话。
     const appendOnly = String(scope.mode || '') === 'invite' || String(scope.mode || '') === 'wish'
-      || String(scope.mode || '') === 'moment' || String(scope.mode || '') === 'shot';
+      || String(scope.mode || '') === 'moment' || String(scope.mode || '') === 'shot'
+      || String(scope.mode || '') === 'continue-chat';
     if (!appendOnly) {
       const removedPostIds = new Set(updatedDoc.posts.filter((p) => p.stageId === stageId).map((p) => p.id));
       updatedDoc.posts = updatedDoc.posts.filter((p) => p.stageId !== stageId);
@@ -551,7 +553,7 @@ export async function runTextGenerationJob(
   store: ActivityStore,
   activityId: string,
   params: {
-    mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot';
+    mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot' | 'continue-chat';
     targetRevisionId?: string;
     scope?: Record<string, unknown>;
     userInstruction?: string;

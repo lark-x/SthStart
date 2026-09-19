@@ -289,7 +289,7 @@ export function useTriggerTextGeneration() {
     }: {
       id: string;
       input: {
-        mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot';
+        mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot' | 'continue-chat';
         targetRevisionId?: string;
         scope?: Record<string, unknown>;
         userInstruction?: string;

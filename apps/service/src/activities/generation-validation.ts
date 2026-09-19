@@ -70,7 +70,7 @@ export function validateSnippetOutput(
   output: unknown,
   document: ContentDocument,
   stageId: string,
-  mode: 'invite' | 'wish' | 'moment' | 'shot',
+  mode: 'invite' | 'wish' | 'moment' | 'shot' | 'continue-chat',
 ): void {
   const fail = (message: string): never => { throw new Error(`invalid_ai_output: ${message}`); };
   const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : fail('expected object');

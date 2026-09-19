@@ -11,6 +11,7 @@ import {
   MapPin,
   CheckCircle2,
   Sparkles,
+  ListChecks,
 } from 'lucide-react';
 import type { StageDefinition, ActorSnapshot } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
@@ -28,6 +29,13 @@ interface StagesEditorProps {
 
 export function StagesEditor({ stages, actors, onChange, disabled }: StagesEditorProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /*
+   * 每个阶段默认只展开字段区，标题与动作常驻。默认只展开第一个阶段，
+   * 避免一屏铺开全部阶段的输入项。
+   */
+  const [expandedIds, setExpandedIds] = useState<string[]>(() => stages.length ? [stages[0].id] : []);
+  const toggleExpanded = (stageId: string) => setExpandedIds((current) =>
+    current.includes(stageId) ? current.filter((id) => id !== stageId) : [...current, stageId]);
 
   const handleAddStage = () => {
     const newStage: StageDefinition = {
@@ -102,21 +110,30 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
       )}
 
       <div className="space-y-3">
-        {stages.map((stage, index) => (
-          <details open={index === 0}
+        {stages.map((stage, index) => {
+          const expanded = expandedIds.includes(stage.id);
+          return (
+          <div
             key={stage.id} id={`stage-${stage.id}`}
-            className={`p-4 rounded-[var(--radius-panel)] border transition-all ${
+            className={`p-3 rounded-[var(--radius-panel)] border transition-all ${
               stage.locked
                 ? 'bg-amber-50/40 border-amber-300/60'
                 : 'bg-surface border-border-default'
             }`}
           >
-            <summary className="cursor-pointer text-sm font-semibold">{index + 1}. {stage.title || '未命名阶段'}{stage.locked ? '（已锁定）' : ''}</summary>
-            <div className="mt-3">
             {/* Header: Title, order, lock toggle, delete */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-border-subtle">
-              <div className="flex items-center gap-2 flex-1">
-                <Badge variant="outline" className="text-sm font-mono">
+            <div className={`flex items-center justify-between gap-3 ${expanded ? "pb-3 border-b border-border-subtle" : ""}`}>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(stage.id)}
+                  aria-expanded={expanded}
+                  aria-label={`${expanded ? "收起" : "展开"}阶段 ${index + 1}`}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted hover:bg-surface-hover hover:text-ink"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                </button>
+                <Badge variant="outline" className="text-sm font-mono shrink-0">
                   #{index + 1}
                 </Badge>
                 <Input
@@ -125,10 +142,10 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   onChange={(e) => handleUpdateStage(index, { title: e.target.value })}
                   placeholder="阶段名称（如：海边营地布置）"
                   disabled={disabled || stage.locked}
-                  className="h-8 text-sm font-semibold max-w-xs bg-transparent"
+                  className="h-8 min-w-0 text-sm font-semibold max-w-xs bg-transparent"
                 />
                 {stage.locked && (
-                  <Badge variant="outline" className="text-sm text-amber-700 border-amber-300 bg-amber-50 flex items-center gap-1">
+                  <Badge variant="outline" className="shrink-0 whitespace-nowrap text-sm text-amber-700 border-amber-300 bg-amber-50 flex items-center gap-1">
                     <Lock className="h-2.5 w-2.5" />
                     已锁定
                   </Badge>
@@ -181,37 +198,14 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
               </div>
             </div>
 
-            {/* Stage Body */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3">
+            {/*
+             * 展开后只默认显示「这一段发生什么」。
+             * 地点、结束条件和必须发生的行动对多数阶段是可选项，收进「更多」里；
+             * 但后端生成提示词会读 requiredBeats，所以它必须可编辑，不能只是只读展示。
+             */}
+            {expanded && (
+            <div className="space-y-3 pt-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  阶段地点
-                </label>
-                <Input
-                  value={stage.location || ''}
-                  onChange={(e) => handleUpdateStage(index, { location: e.target.value })}
-                  placeholder="如：海边沙滩、营地长桌"
-                  disabled={disabled || stage.locked}
-                  className="h-8 text-sm bg-transparent"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3" />
-                  阶段结束条件
-                </label>
-                <Input
-                  value={stage.endCondition || ''}
-                  onChange={(e) => handleUpdateStage(index, { endCondition: e.target.value })}
-                  placeholder="如：营地帐篷搭建完毕，晚餐准备好"
-                  disabled={disabled || stage.locked}
-                  className="h-8 text-sm bg-transparent"
-                />
-              </div>
-
-              <div className="md:col-span-2 space-y-2">
                 <label className="text-sm font-medium text-muted flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   这一段发生什么
@@ -222,14 +216,95 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   onChange={(e) => handleUpdateStage(index, { instruction: e.target.value })}
                   placeholder="描述此阶段发生的主要事情，指导 AI 生成对白与动态…"
                   disabled={disabled || stage.locked}
-                  rows={2}
+                  rows={3}
                   className="text-sm bg-transparent resize-none"
                 />
               </div>
+
+              <details className="rounded-lg border border-border-subtle p-3">
+                <summary className="cursor-pointer text-sm font-medium">更多：地点、结束条件与必须发生的行动</summary>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      阶段地点
+                    </label>
+                    <Input
+                      value={stage.location || ''}
+                      onChange={(e) => handleUpdateStage(index, { location: e.target.value })}
+                      placeholder="如：海边沙滩、营地长桌"
+                      disabled={disabled || stage.locked}
+                      className="h-8 text-sm bg-transparent"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      阶段结束条件
+                    </label>
+                    <Input
+                      value={stage.endCondition || ''}
+                      onChange={(e) => handleUpdateStage(index, { endCondition: e.target.value })}
+                      placeholder="如：营地帐篷搭建完毕，晚餐准备好"
+                      disabled={disabled || stage.locked}
+                      className="h-8 text-sm bg-transparent"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-muted flex items-center gap-1">
+                      <ListChecks className="h-3 w-3" />
+                      必须发生的行动
+                    </label>
+                    {(stage.requiredBeats || []).map((beat, beatIndex) => (
+                      <div key={beat.id} className="flex items-center gap-2">
+                        <Input
+                          aria-label={`阶段 ${index + 1} 必须发生的行动 ${beatIndex + 1}`}
+                          value={beat.text}
+                          onChange={(e) => handleUpdateStage(index, {
+                            requiredBeats: (stage.requiredBeats || []).map((item) => item.id === beat.id ? { ...item, text: e.target.value } : item),
+                          })}
+                          disabled={disabled || stage.locked}
+                          className="h-8 text-sm bg-transparent"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`移除阶段 ${index + 1} 的必须行动 ${beatIndex + 1}`}
+                          onClick={() => handleUpdateStage(index, {
+                            requiredBeats: (stage.requiredBeats || []).filter((item) => item.id !== beat.id),
+                          })}
+                          disabled={disabled || stage.locked}
+                          className="h-7 w-7 shrink-0 p-0 text-muted hover:text-danger-fg"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleUpdateStage(index, {
+                        requiredBeats: [...(stage.requiredBeats || []), { id: `beat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, text: "", actorIds: stage.actorIds }],
+                      })}
+                      disabled={disabled || stage.locked}
+                      className="text-xs flex items-center gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      添加行动
+                    </Button>
+                    <p className="text-xs text-muted">这些是这一阶段必须达成的关键事件，会写进生成提示词。</p>
+                  </div>
+                </div>
+              </details>
             </div>
-            </div>
-          </details>
-        ))}
+            )}
+          </div>
+          );
+        })}
       </div>
     </div>
   );

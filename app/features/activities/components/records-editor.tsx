@@ -44,6 +44,15 @@ interface RecordsEditorProps {
   onSelectStage?: (stageId: string) => void;
   onUpdateDocument: (doc: ContentDocument) => void;
   onOpenAiGenerator?: (stageId: string) => void;
+  /** 视图内一键生成：群聊续写一轮对话。 */
+  onGenerateChatRound?: (stageId: string, conversationId: string) => void;
+  /** 视图内一键生成：为指定角色发一条朋友圈动态。 */
+  onGenerateMoment?: (stageId: string, authorActorId: string) => void;
+  /** 自动续聊开关（默认关闭，由外层持久化）。 */
+  autoContinue?: boolean;
+  onAutoContinueChange?: (next: boolean) => void;
+  /** 自动续聊已预生成候选时的提示。 */
+  autoContinueNotice?: string | null;
   onOpenWorkbench?: (slotId: string) => void;
   /**
    * 视图由外层工作室控制：群聊 / 朋友圈 / 事件原本是本组件内部的二级标签，
@@ -62,6 +71,11 @@ export function RecordsEditor({
   onSelectStage,
   onUpdateDocument,
   onOpenAiGenerator,
+  onGenerateChatRound,
+  onGenerateMoment,
+  autoContinue,
+  onAutoContinueChange,
+  autoContinueNotice,
   onOpenWorkbench,
   activeView,
   onActiveViewChange,
@@ -107,6 +121,11 @@ export function RecordsEditor({
   const likes = document.likes || [];
   const facts = document.facts || [];
   const mediaSlots = document.mediaSlots || [];
+  // 群聊续写要写进哪个会话：本阶段第一条消息所属会话，没有消息时用活动默认会话。
+  const selectedConversationId = useMemo(() => {
+    const first = document.messages.find((message) => message.stageId === selectedStageId);
+    return first?.conversationId || document.conversations[0]?.id || 'group_main';
+  }, [document.messages, document.conversations, selectedStageId]);
 
   const lockedRecordMap = useMemo(() => {
     const map = new Map<string, 'message' | 'post'>();
@@ -631,6 +650,39 @@ export function RecordsEditor({
               )}
             </div>
 
+            {/*
+             * 视图内生成入口。
+             *
+             * 生成能力本来只在生成弹窗里，用户要写群聊得先想起来去开弹窗；
+             * 这里直接把「续写一轮对话」放在对话上方，走同一套候选预览后再采用。
+             */}
+            {onGenerateChatRound && (
+              <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-muted/40 px-3 py-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onGenerateChatRound(selectedStageId, selectedConversationId)}
+                  disabled={disabled}
+                  className="text-sm flex items-center gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  AI 生成一轮对话
+                </Button>
+                {onAutoContinueChange && (
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(autoContinue)}
+                      onChange={(event) => onAutoContinueChange(event.target.checked)}
+                      disabled={disabled}
+                    />
+                    自动续聊（冷场 40 秒后预生成候选）
+                  </label>
+                )}
+                {autoContinueNotice && <span className="text-xs text-accent-dark">{autoContinueNotice}</span>}
+              </div>
+            )}
+
             {/* Chat Message Input Composer */}
             <form
               onSubmit={handleSendMessage}
@@ -699,6 +751,33 @@ export function RecordsEditor({
       {/* 2. Moments Tab Content */}
       {activeTab === 'moments' && (
         <div className="space-y-4">
+          {/* 视图内生成入口：指定角色发一条动态，走候选预览后再采用。 */}
+          {onGenerateMoment && (
+            <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-muted/40 px-3 py-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onGenerateMoment(selectedStageId, composerActorId || actors[0]?.id || '')}
+                disabled={disabled || !(composerActorId || actors[0]?.id)}
+                className="text-sm flex items-center gap-1.5"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                AI 生成一条动态
+              </Button>
+              <label className="flex items-center gap-1.5 text-xs text-muted">
+                发布者
+                <Select
+                  aria-label="动态发布者"
+                  value={composerActorId || actors[0]?.id || ''}
+                  onChange={(event) => setComposerActorId(event.target.value)}
+                  disabled={disabled}
+                  className="h-7 text-xs bg-transparent"
+                >
+                  {actors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
+                </Select>
+              </label>
+            </div>
+          )}
           <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[360px] space-y-4">
             {posts.length === 0 ? (
               <div className="py-16 text-center text-sm text-muted space-y-2">
@@ -918,6 +997,13 @@ export function RecordsEditor({
       {/* 3. Facts Tab Content */}
       {activeTab === 'facts' && (
         <div className="space-y-4">
+          {/*
+           * 这一栏容易被误解成「和群聊、朋友圈并列的第三种内容」，
+           * 所以开头先讲清它是什么、以及它不会出现在成片里。
+           */}
+          <p className="text-sm text-muted">
+            这些是已发生的剧情事实，会作为后续阶段生成的前情提要；不会出现在回放与导出里。
+          </p>
           <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[300px] space-y-2.5">
             {facts.length === 0 ? (
               <div className="py-16 text-center text-sm text-muted space-y-2">

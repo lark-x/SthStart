@@ -81,7 +81,7 @@ export interface SnippetGenerationOutput {
   mediaSlots: StageGenerationOutput['mediaSlots'];
 }
 
-export type SnippetMode = 'invite' | 'wish' | 'moment' | 'shot';
+export type SnippetMode = 'invite' | 'wish' | 'moment' | 'shot' | 'continue-chat';
 
 export function buildPlanPrompt(content: ContentDocument, instructions?: string): string {
   const existingStages = content.stages
@@ -157,10 +157,58 @@ export function buildShotPrompt(content: ContentDocument, stage: StageDefinition
   return `你是一位分镜师。请为当前阶段写一条配图方案的镜头描述与配文（不生成图片本身）。\r\n\r\n${header}\r\n【画面中的角色】\r\n${targetLines}\r\n\r\n【输出要求】\r\n只输出合法 JSON，mediaSlots 之外的分组一律留空数组。\r\n\`\`\`json\r\n{\r\n  \"schemaVersion\": 1,\r\n  \"stageId\": \"${stage.id}\",\r\n  \"messages\": [],\r\n  \"posts\": [],\r\n  \"facts\": [],\r\n  \"mediaSlots\": [\r\n    { \"clientId\": \"s1\", \"kind\": \"image\", \"caption\": \"配文（字符串）\", \"shotDescription\": \"镜头描述（字符串）\", \"actorIds\": [${targetIds.map((id) => `\"${id}\"`).join(', ')}], \"sourceFactClientIds\": [] }\r\n  ]\r\n}\r\n\`\`\``;
 }
 
-export function buildSnippetPrompt(content: ContentDocument, stage: StageDefinition, mode: SnippetMode, scope: { speakerActorId?: string; authorActorId?: string; actorIds?: string[]; birthdayActorIds?: string[] }, instructions?: string): string {
+/**
+ * 续聊：承接当前阶段已有对话再写一轮，只追加消息。
+ *
+ * 与「阶段内容」不同，它不重写整个阶段：把已有对话原文交给模型，
+ * 要求接着往下聊，避免生成内容与上文重复或矛盾。
+ */
+export function buildContinueChatPrompt(content: ContentDocument, stage: StageDefinition, conversationId: string, instructions?: string): string {
+  const { convId, header } = snippetBase(content, stage, instructions);
+  const targetConvId = conversationId || convId;
+  const stageMessages = content.messages
+    .filter((message) => message.stageId === stage.id && message.conversationId === targetConvId)
+    .sort((a, b) => a.storyOrder - b.storyOrder);
+  const existing = stageMessages
+    .map((message) => {
+      const speaker = content.actors.find((actor) => actor.id === message.speakerActorId);
+      const name = speaker?.displayName || message.speakerActorId || '系统';
+      return '- ' + name + '：' + message.text;
+    })
+    .join('\n');
+  const stageActors = content.actors.filter((actor) => stage.actorIds.includes(actor.id));
+  const speakerLines = stageActors.map((actor) => '- ' + actor.displayName + '（ID: ' + actor.id + '）').join('\n');
+  const startOrder = stageMessages.length * 10 + 10;
+  const example = [
+    '{',
+    '  "schemaVersion": 1,',
+    '  "stageId": "' + stage.id + '",',
+    '  "summary": "本轮的简要纪要",',
+    '  "messages": [',
+    '    { "clientId": "m1", "conversationId": "' + targetConvId + '", "speakerActorId": "' + (stageActors[0]?.id || 'actor_1') + '", "text": "接续的对话内容", "order": ' + startOrder + ', "storyTimeLabel": "10:05" }',
+    '  ],',
+    '  "posts": [],',
+    '  "comments": [],',
+    '  "facts": [],',
+    '  "mediaSlots": []',
+    '}',
+  ].join('\n');
+  return '你是一位专业的多角色互动编剧。请接着下面的群聊继续往下写一轮对话（2 至 4 条）。\n\n' + header +
+    '【已有对话（必须承接，不得重复已说过的内容）】\n' + (existing || '（本阶段还没有对话，请自然开场）') +
+    '\n\n【可发言的角色】\n' + (speakerLines || '- 无') +
+    '\n\n【输出要求】\n' +
+    '1. 只输出合法 JSON，messages 之外的分组一律留空数组。\n' +
+    '2. 只写 2 至 4 条新消息，接着上文往下聊；不要复述或改写已有对话。\n' +
+    '3. 发言人必须是上面列出的角色，体现各自的性格差异与说话习惯。\n' +
+    '4. order 从 ' + startOrder + ' 开始递增。\n' +
+    example;
+}
+
+export function buildSnippetPrompt(content: ContentDocument, stage: StageDefinition, mode: SnippetMode, scope: { speakerActorId?: string; authorActorId?: string; actorIds?: string[]; birthdayActorIds?: string[]; conversationId?: string }, instructions?: string): string {
   if (mode === 'invite') return buildInvitePrompt(content, stage, String(scope.speakerActorId || stage.actorIds[0] || ''), instructions);
   if (mode === 'wish') return buildWishPrompt(content, stage, String(scope.speakerActorId || stage.actorIds[0] || ''), scope.birthdayActorIds || [], instructions);
   if (mode === 'moment') return buildMomentPrompt(content, stage, String(scope.authorActorId || scope.speakerActorId || stage.actorIds[0] || ''), instructions);
+  if (mode === 'continue-chat') return buildContinueChatPrompt(content, stage, String(scope.conversationId || ''), instructions);
   return buildShotPrompt(content, stage, scope.actorIds || [], instructions);
 }
 

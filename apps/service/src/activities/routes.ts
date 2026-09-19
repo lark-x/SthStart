@@ -887,11 +887,11 @@ export function registerActivityRoutes(
     request: FastifyRequest<{
       Params: { id: string };
       Body: {
-        mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot';
+        mode: 'plan' | 'stage' | 'rewrite-records' | 'whole-text' | 'invite' | 'wish' | 'moment' | 'shot' | 'continue-chat';
         targetRevisionId?: string;
         scope?: {
           stageId?: string; recordIds?: string[]; speakerActorId?: string;
-          authorActorId?: string; actorIds?: string[]; birthdayActorIds?: string[];
+          authorActorId?: string; actorIds?: string[]; birthdayActorIds?: string[]; conversationId?: string;
         };
         stageId?: string;
         userInstruction?: string;
@@ -904,7 +904,7 @@ export function registerActivityRoutes(
     const body = request.body || {};
     const idempotencyKey = (request.headers['idempotency-key'] as string | undefined) || body.idempotencyKey;
     const scope = body.scope || (body.stageId ? { stageId: body.stageId } : undefined);
-    const snippetModes = ['invite', 'wish', 'moment', 'shot'];
+    const snippetModes = ['invite', 'wish', 'moment', 'shot', 'continue-chat'];
     // 快捷文案必须明确目标阶段，后台才能限制生成范围。
     if (snippetModes.includes(body.mode) && !scope?.stageId) {
       return reply.code(400).send({ error: 'stage_required', message: '请先选择要生成内容的目标阶段。' });

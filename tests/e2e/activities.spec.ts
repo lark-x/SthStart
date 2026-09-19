@@ -60,7 +60,8 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
   // 内容 tab 的同层视图：设定 / 群聊 / 朋友圈 / 事件。
   await expect(page.getByRole('tab', { name: '群聊' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '朋友圈' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '事件' })).toBeVisible();
+  // 「事件」已改名为「剧情事实」，因为它指的是供 AI 参考的阶段事实，不是并列的第三种内容。
+  await expect(page.getByRole('tab', { name: '剧情事实' })).toBeVisible();
 
   /*
    * 记录详情（计划 §8.5）：内容模式右栏「当前记录详情按需显示」，

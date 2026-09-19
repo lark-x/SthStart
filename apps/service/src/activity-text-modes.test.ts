@@ -215,3 +215,64 @@ test('stage generation repairs drifted model output (missing caption, wrong type
     assert.equal(messages[0].text, '42');
   } finally { await app.close(); database.close(); }
 });
+/**
+ * 续聊只往当前阶段追加消息：已有对话必须原样保留，且提示词要带上已有对话，
+ * 否则模型会另起一段与上文脱节的剧情。
+ */
+test('continue-chat appends a new round without wiping existing messages', async () => {
+  const { app, database, store, activityId, created } = await setup();
+  try {
+    const document = store.getDraft(activityId)!.document;
+    const job = store.createJob({ activityId, kind: 'text', mode: 'continue-chat', requestHash: 'continue-chat-proof' }).job;
+    const prompts: string[] = [];
+    await executeTextJob({
+      store, database, secrets: new SecretStore({}), activityId, jobId: job.id, mode: 'continue-chat',
+      scope: { stageId: 'stage_1', conversationId: 'group_main' }, inputSnapshot: document,
+      fetcher: async (_input, init) => {
+        prompts.push(String(init?.body));
+        return Response.json({ choices: [{ message: { content: JSON.stringify({
+          schemaVersion: 1, stageId: 'stage_1', summary: '接续的一轮',
+          messages: [
+            { clientId: 'm1', conversationId: 'group_main', speakerActorId: 'actor_a', text: '东西我来搬，你先歇会儿。', order: 20 },
+            { clientId: 'm2', conversationId: 'group_main', speakerActorId: 'actor_b', text: '那我先把火升上。', order: 30 },
+          ],
+          posts: [], comments: [], facts: [], mediaSlots: [],
+        }) } }] });
+      },
+    });
+    assert.equal(store.getJob(activityId, job.id)?.status, 'succeeded');
+    // 提示词必须带上已有对话，续聊才有承接依据。
+    assert.ok(prompts[0].includes('我先去搬东西了'), prompts[0].slice(0, 300));
+    const candidateId = store.getJob(activityId, job.id)!.resultCandidateIds[0];
+    adoptCandidate(database, store, activityId, candidateId, created.activity.headVersion);
+    const adopted = store.getDraft(activityId)!.document;
+    assert.equal(adopted.messages.some((message) => message.text === '东西我来搬，你先歇会儿。'), true);
+    assert.equal(adopted.messages.some((message) => message.text === '那我先把火升上。'), true);
+    // 追加写入：原有消息、动态、评论都必须保留。
+    assert.equal(adopted.messages.some((message) => message.id === 'msg_existing'), true);
+    assert.equal(adopted.posts.some((post) => post.id === 'post_existing'), true);
+    assert.equal(adopted.comments.some((comment) => comment.id === 'comment_existing'), true);
+  } finally { await app.close(); database.close(); }
+});
+
+test('continue-chat is rejected on a locked stage', async () => {
+  const { app, database, store, activityId } = await setup();
+  try {
+    const locked = structuredClone(store.getDraft(activityId)!.document);
+    locked.stages[0].locked = true;
+    const job = store.createJob({ activityId, kind: 'text', mode: 'continue-chat', requestHash: 'continue-chat-locked' }).job;
+    await executeTextJob({
+      store, database, secrets: new SecretStore({}), activityId, jobId: job.id, mode: 'continue-chat',
+      scope: { stageId: 'stage_1', conversationId: 'group_main' }, inputSnapshot: locked,
+      fetcher: async () => Response.json({ choices: [{ message: { content: '{}' } }] }),
+    });
+    /*
+     * 锁定阶段要在调模型之前就被拦下：任务标记为失败，且不能产出任何候选。
+     * （executeTextJob 内部把异常记在任务上，所以断言的是任务状态而不是抛出。）
+     */
+    const failed = store.getJob(activityId, job.id)!;
+    assert.equal(failed.status, 'failed');
+    assert.match(String(failed.errorMessage || ''), /阶段已锁定|locked/i);
+    assert.equal(failed.resultCandidateIds.length, 0);
+  } finally { await app.close(); database.close(); }
+});

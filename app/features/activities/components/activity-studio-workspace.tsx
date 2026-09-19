@@ -35,6 +35,8 @@ import { ExportPanel } from './export-panel';
 import { ActivityCreationProfile } from './creation-profile-picker';
 import { ReworkPanel } from './rework-panel';
 import { GenerationModal } from './generation-modal';
+import { InlineCandidatePanel } from './inline-candidate-panel';
+import { useActivityGeneration } from '../hooks/use-activity-generation';
 import { ProductionOverview } from './production-overview';
 import { HistoryDrawer } from './history-drawer';
 import { ImageWorkbench } from './image-workbench';
@@ -167,6 +169,67 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   const stages = document?.stages || [];
   const [reflectOpen, setReflectOpen] = useState(false);
   const actors = document?.actors || [];
+
+  /*
+   * 视图内一键生成（群聊续写 / 朋友圈动态）。
+   * 与生成弹窗共用 useActivityGeneration，两处不会各写一套「发起 → 轮询 → 采用」。
+   */
+  const generation = useActivityGeneration(activityId, activity?.headVersion ?? 0);
+  /* 自动续聊默认关闭：开启后只在冷场时预生成候选，不自动写入文档。 */
+  const [autoContinue, setAutoContinue] = useState(false);
+  const [autoContinueNotice, setAutoContinueNotice] = useState<string | null>(null);
+  const autoContinueCountRef = useRef(0);
+  /* 自动续聊的目标（阶段 + 会话）与「上次用户操作时间」，两者变化都会重置计时。 */
+  const [autoContinueTarget, setAutoContinueTarget] = useState<{ stageId: string; conversationId: string } | null>(null);
+  const [autoContinueTick, setAutoContinueTick] = useState(0);
+  /*
+   * 生成函数放进 ref：它每次渲染都是新引用，直接写进依赖会让 40 秒计时器被不断重置，
+   * 自动续聊就永远不会触发。计时只应由「开关 / 目标 / 用户操作」这三件事驱动。
+   */
+  const generationStartRef = useRef(generation.start);
+  generationStartRef.current = generation.start;
+
+  /*
+   * 只要停在群聊视图就登记续聊目标，不必先手动点一次生成。
+   * 有消息的阶段优先（续聊要有上文可接），否则用当前聚焦的阶段。
+   */
+  useEffect(() => {
+    if (!autoContinue || contentView !== 'chat' || !document) return;
+    const withMessages = stages.find((stage) => document.messages.some((message) => message.stageId === stage.id));
+    const stage = withMessages || stages.find((candidate) => candidate.id === focusedStageId) || stages[0];
+    if (!stage) return;
+    const conversationId = document.messages.find((message) => message.stageId === stage.id)?.conversationId
+      || document.conversations[0]?.id || 'group_main';
+    setAutoContinueTarget((current) =>
+      current?.stageId === stage.id && current?.conversationId === conversationId ? current : { stageId: stage.id, conversationId });
+  }, [autoContinue, contentView, document, stages, focusedStageId]);
+
+  /*
+   * 冷场自动续聊。
+   *
+   * 与邻舍的做法一致：停留一段时间没有新消息就补一轮。差别在于这里只预生成候选，
+   * 不直接写进文档——生成结果仍要走「先预览、后采用」，避免模型在用户没看的时候改动内容。
+   * 连续触发上限 2 次，用户任意操作即归零，防止空转消耗模型额度。
+   */
+  useEffect(() => {
+    if (!autoContinue || !autoContinueTarget) return;
+    const { stageId, conversationId } = autoContinueTarget;
+    const timer = window.setTimeout(() => {
+      if (autoContinueCountRef.current >= 2) {
+        return;
+      }
+      autoContinueCountRef.current += 1;
+      setAutoContinueNotice(null);
+      void generationStartRef.current({ mode: 'continue-chat', scope: { stageId, conversationId } });
+    }, 40_000);
+    return () => window.clearTimeout(timer);
+  }, [autoContinue, autoContinueTarget, autoContinueTick]);
+
+  /* 自动续聊的候选就绪后给出提示，与手动生成共用同一套候选面板。 */
+  useEffect(() => {
+    if (!autoContinue || autoContinueCountRef.current === 0) return;
+    if (generation.candidates.length > 0) setAutoContinueNotice(`自动续聊已生成 ${generation.candidates.length} 个候选，确认后才会写入`);
+  }, [autoContinue, generation.candidates.length]);
 
   if (activityLoading || draftLoading) {
     return (
@@ -371,39 +434,44 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           />
         )}
         <fieldset disabled={committing} className="min-w-0 border-0 p-0 py-1">
-          {/* 内容 tab 的同层视图：设定 / 群聊 / 朋友圈 / 事件 */}
+          {/*
+           * 内容视图的分段控件。
+           *
+           * 它和上面的「内容/素材/回放/导出」是两层不同的导航：上面切换工作模式，
+           * 这里切换内容内的视图。之前两层都是同规格的标签栏，第一屏出现两排几乎等重的
+           * 导航按钮，用户看不出主次；这里降为连体分段控件，视觉权重明显低于页级标签。
+           */}
           {activeTab === 'content' && (
-            <div className="mb-4 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="内容视图">
-              {([
-                { id: 'settings' as const, label: '设定', icon: Settings2 },
-                { id: 'chat' as const, label: '群聊', icon: MessageSquare },
-                { id: 'moments' as const, label: '朋友圈', icon: Share2 },
-                { id: 'facts' as const, label: '事件', icon: FileCheck },
-              ]).map((view) => (
-                <button
-                  key={view.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={contentView === view.id}
-                  onClick={() => setContentView(view.id)}
-                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-sm transition-colors ${
-                    contentView === view.id
-                      ? 'border-accent bg-accent/10 font-semibold text-accent-dark'
-                      : 'border-border-subtle text-muted hover:bg-surface-hover'
-                  }`}
-                >
-                  <view.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                  {view.label}
-                </button>
-              ))}
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] bg-surface-muted p-0.5" role="tablist" aria-label="内容视图">
+                {([
+                  { id: 'settings' as const, label: '设定' },
+                  { id: 'chat' as const, label: '群聊' },
+                  { id: 'moments' as const, label: '朋友圈' },
+                  { id: 'facts' as const, label: '剧情事实' },
+                ]).map((view) => (
+                  <button
+                    key={view.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={contentView === view.id}
+                    onClick={() => setContentView(view.id)}
+                    className={`inline-flex min-h-8 items-center rounded-[var(--radius-control)] px-3 text-sm transition-colors ${
+                      contentView === view.id
+                        ? 'bg-surface font-semibold text-ink shadow-2xs'
+                        : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    {view.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {activeTab === 'content' && contentView === 'settings' && (
             <div className="space-y-4">
             <div className="text-sm text-muted">只需确认活动内容、参与者和阶段安排。下面的改动会自动保存；服装、创作偏好等都可以稍后调整。</div>
-            <WorkbenchColumns
-              left={(
                 <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-bold text-ink flex items-center gap-2">
@@ -483,20 +551,33 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                   </div>
                   </details>
                 </div>
-              )}
-              right={(
+                {/*
+                 * 阶段设定独占一行。
+                 *
+                 * 之前是左窄右宽两栏：左栏只有活动信息、很短，右栏阶段列表很长，
+                 * 左栏下方会空出一大片。改成上下堆叠后两栏都占满宽度，也不再留白。
+                 */}
                 <StagesEditor
                   stages={stages}
                   actors={actors}
                   onChange={(newStages) => handleUpdateDocument({ ...document, stages: newStages })}
                 />
-              )}
-            />
             </div>
           )}
 
           {/* 内容 tab：群聊 / 朋友圈 / 事件（由 contentView 决定） */}
           {activeTab === 'content' && contentView !== 'settings' && (
+            <div className="space-y-3">
+            <InlineCandidatePanel
+              candidates={generation.candidates}
+              actors={actors}
+              running={generation.running}
+              failed={generation.failed}
+              errorMsg={generation.errorMsg}
+              adopting={generation.adopting}
+              onAdopt={(candidateId) => void generation.adopt(candidateId)}
+              onDismiss={() => { generation.reset(); setAutoContinueNotice(null); }}
+            />
             <RecordsEditor
               document={document}
               stages={stages}
@@ -505,10 +586,29 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               onSelectStage={setFocusedStageId}
               onUpdateDocument={handleUpdateDocument}
               onOpenAiGenerator={async (stageId) => { if (await draft.flush()) { setGenerationStageId(stageId); setGenerationModalOpen(true); } }}
+              onGenerateChatRound={async (stageId, conversationId) => {
+                // 用户主动操作：自动续聊的连续计数归零。
+                autoContinueCountRef.current = 0;
+                setAutoContinueNotice(null);
+                setAutoContinueTarget({ stageId, conversationId });
+                setAutoContinueTick((current) => current + 1);
+                if (await draft.flush()) void generation.start({ mode: 'continue-chat', scope: { stageId, conversationId } });
+              }}
+              onGenerateMoment={async (stageId, authorActorId) => {
+                if (await draft.flush()) void generation.start({ mode: 'moment', scope: { stageId, authorActorId } });
+              }}
+              autoContinue={autoContinue}
+              onAutoContinueChange={(next) => {
+                autoContinueCountRef.current = 0;
+                setAutoContinueNotice(null);
+                setAutoContinue(next);
+              }}
+              autoContinueNotice={autoContinueNotice}
               onOpenWorkbench={(slotId) => setWorkbenchSlotId(slotId)}
               activeView={contentView}
               onActiveViewChange={setContentView}
             />
+            </div>
           )}
 
           {/* TAB 3: Media Workstation */}

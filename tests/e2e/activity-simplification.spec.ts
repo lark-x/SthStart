@@ -31,7 +31,14 @@ test('activity starts with one next action, optional settings, and a simple writ
   await page.getByRole('tab', { name: '设定', exact: true }).click();
   await expect(page.getByLabel('创作配置', { exact: true })).not.toBeVisible();
   await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
-  await expect(page.getByLabel('阶段 2 标题')).not.toBeVisible();
+  /*
+   * 阶段标题常驻可见（它是折叠态下唯一要认得出的信息），
+   * 但只有展开的那个阶段才显示「这一段发生什么」。
+   */
+  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
+  await expect(page.getByLabel('阶段 2 标题')).toBeVisible();
+  await expect(page.getByLabel('阶段 1 内容安排')).toBeVisible();
+  await expect(page.getByLabel('阶段 2 内容安排')).not.toBeVisible();
   await page.getByText('高级选项：创作偏好与模板（可选）').click();
   await expect(page.getByLabel('创作配置', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '群聊', exact: true }).click();
@@ -60,4 +67,80 @@ test('moving from editing to preview prepares the latest content once without a 
   await page.getByRole('tab', { name: '回放', exact: true }).click();
   await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
   expect((await read()).activity.headVersion).toBe(version);
+});
+
+/**
+* 阶段字段精简：默认只显示标题与「这一段发生什么」，
+* 地点、结束条件、必须发生的行动收进「更多」，展开后仍可编辑。
+*/
+test('stage fields stay compact until the more section is opened', async ({ page, request }) => {
+  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
+  expect(response.ok()).toBeTruthy();
+  const { activity } = await response.json();
+  await page.goto(`/apps/activities/${activity.id}?tab=settings`);
+
+  // 默认展开第一个阶段：标题与内容安排在，地点/结束条件/必须行动不在。
+  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
+  await expect(page.getByLabel('阶段 1 内容安排')).toBeVisible();
+  await expect(page.getByText('阶段地点').first()).not.toBeVisible();
+  await expect(page.getByText('阶段结束条件').first()).not.toBeVisible();
+
+  // 展开「更多」后这些字段才出现。
+  await page.getByText('更多：地点、结束条件与必须发生的行动').first().click();
+  await expect(page.getByText('阶段地点').first()).toBeVisible();
+  await expect(page.getByText('阶段结束条件').first()).toBeVisible();
+  await expect(page.getByText('必须发生的行动').first()).toBeVisible();
+
+  // 必须发生的行动此前没有编辑入口，这里确认能改并落到草稿。
+  await page.getByRole('button', { name: '添加行动' }).first().click();
+  const beat = page.getByLabel('阶段 1 必须发生的行动 1');
+  await beat.fill('确认到场名单');
+  await expect(beat).toHaveValue('确认到场名单');
+  await expect(page.getByRole('status').getByText('已保存')).toBeVisible({ timeout: 15_000 });
+  const saved = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}`, { headers })).json();
+  /*
+   * 编辑先落在草稿上，只有保存新版本才写进内容版本；这里读草稿来验证改动确实被保存了。
+   */
+  const draft = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}/draft`, { headers })).json();
+  const beats = draft.document.stages[0].requiredBeats;
+  expect(beats.some((item: { text: string }) => item.text === '确认到场名单')).toBeTruthy();
+});
+
+/**
+* 群聊与朋友圈的视图内生成入口：按钮存在，自动续聊默认关闭。
+*/
+test('chat and moments expose inline AI generation with auto-continue off by default', async ({ page, request }) => {
+  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
+  expect(response.ok()).toBeTruthy();
+  const { activity } = await response.json();
+  await page.goto(`/apps/activities/${activity.id}`);
+
+  await page.getByRole('tab', { name: '群聊', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'AI 生成一轮对话' })).toBeVisible();
+  const autoContinue = page.getByLabel(/自动续聊/);
+  await expect(autoContinue).not.toBeChecked();
+
+  await page.getByRole('tab', { name: '朋友圈', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'AI 生成一条动态' })).toBeVisible();
+  await expect(page.getByLabel('动态发布者')).toBeVisible();
+
+  // 剧情事实视图讲清用途，避免被当成与群聊并列的第三种内容。
+  await page.getByRole('tab', { name: '剧情事实', exact: true }).click();
+  await expect(page.getByText(/不会出现在回放与导出里/)).toBeVisible();
+
+  /*
+   * 打开自动续聊后不能发生自动写入。这里把等待时间压缩到远小于 40 秒窗口的尺度，
+   * 断言文档仍然不变——真正要守住的是「开关打开也不会替用户改内容」。
+   */
+  const before = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}`, { headers })).json();
+  await page.getByRole('tab', { name: '群聊', exact: true }).click();
+  await autoContinue.check();
+  await expect(autoContinue).toBeChecked();
+  await page.waitForTimeout(2_000);
+  const after = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}`, { headers })).json();
+  expect(after.activity.headVersion).toBe(before.activity.headVersion);
+  expect(after.currentContentRevision.document.messages.length)
+    .toBe(before.currentContentRevision.document.messages.length);
 });

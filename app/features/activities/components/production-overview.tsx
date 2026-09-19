@@ -8,15 +8,6 @@ import { useActivityProductionOverview } from '../queries';
 import { Button } from '@/app/components/ui/button';
 import { activityNextStep, imageSetupMessage } from '@/app/lib/activity-guidance';
 
-/**
- * 步骤文案与工作室的页级 tab 同名同序。
- *
- * 之前这里硬编码「1 确认设定 / 2 写活动内容 / 3 配图 / 4 预览与导出」，
- * 与实际的 tab（记录 / 设定 / 素材 / 回放）对不上，用户第一屏就自相矛盾。
- * 改成一份定义后，两处不会各自漂移。
- */
-export const WORKFLOW_STEPS = ['内容', '素材', '回放', '导出'] as const;
-
 interface ProductionOverviewProps {
   activityId: string;
   document: ContentDocument;
@@ -29,6 +20,11 @@ interface ProductionOverviewProps {
 }
 
 export function ProductionOverview({ activityId, document, headVersion, onReview, onAction, onOpenBatchCandidates, onNavigateTab }: ProductionOverviewProps) {
+  /*
+   * 这里曾经额外渲染一行「1 内容 2 素材 3 回放 4 导出」。
+   * 它和紧邻下方的页级标签栏表达同一件事，第一屏出现两排重复的步骤提示；
+   * 步骤顺序现在只由标签栏承载，这一行已删除。
+   */
   const { data: reviews } = useQuery({
     queryKey: ['activity-review', activityId, headVersion],
     queryFn: () => getJson<{ items: ActivityReviewItem[] }>(`/api/admin/activities/${activityId}/review-items`),
@@ -56,7 +52,6 @@ export function ProductionOverview({ activityId, document, headVersion, onReview
         <Button variant="primary" onClick={act}>{next.button}</Button>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-        {WORKFLOW_STEPS.map((label, index) => <span key={label}>{index + 1} {label}</span>)}
         {reviewCount > 0 && <Button size="sm" variant="outline" onClick={onReview}>查看 {reviewCount} 项内容变化</Button>}
       </div>
       {overview && ['generate_media', 'pick_media'].includes(next.action) && !overview.imagePreflight.ready && (

@@ -40,7 +40,7 @@ export function assertProtectedContent(previous: ContentDocument, next: ContentD
   if (next.editingPolicy?.lockedMediaSlotIds.some(id => !next.mediaSlots.some(s => s.id === id))) conflict('invalid_lock', '锁定槽位不存在。');
 }
 export function assertGenerationUnlocked(doc: ContentDocument, mode: string, scope: Record<string, unknown>) {
-  if (['stage','invite','wish','moment','shot'].includes(mode)) {
+  if (['stage','invite','wish','moment','shot','continue-chat'].includes(mode)) {
     const stage = doc.stages.find(s => s.id === String(scope.stageId || doc.stages[0]?.id));
     if (stage?.locked) conflict('stage_locked', '阶段已锁定，请先解锁。');
     if (mode === 'stage' && stage && (doc.editingPolicy?.lockedRecords || []).some(r =>
