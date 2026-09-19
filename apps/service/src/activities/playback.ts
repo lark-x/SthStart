@@ -12,6 +12,8 @@ export interface AutoPlaybackOptions {
   expandMedia?: boolean;
   stageCardDurationMs?: number;
   mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
+  /** 设备布局：手机竖屏 1080x1920，电脑横屏 1920x1080。默认手机。 */
+  deviceLayout?: 'phone' | 'desktop';
 }
 
 function clamp(val: number, min: number, max: number): number {
@@ -30,6 +32,13 @@ export function generateAutoPlayback(
   const expandMedia = options.expandMedia !== false;
   const stageCardMs = options.stageCardDurationMs ?? 1500;
   const mode = options.mode || 'by_stage';
+  /*
+   * 画布与逻辑视口成对出现：手机 1080x1920 / 360x640（3 倍），
+   * 电脑 1920x1080 / 1280x720（1.5 倍）。编译器按 ratio 换算，
+   * 这里只需给对尺寸，两种布局就都能编译出正确比例。
+   */
+  const deviceLayout = options.deviceLayout === 'desktop' ? 'desktop' : 'phone';
+  const isDesktop = deviceLayout === 'desktop';
 
   const actions: PlaybackAction[] = [];
   let currentMs = 0;
@@ -268,19 +277,16 @@ export function generateAutoPlayback(
     contentRevisionId,
     mediaRevisionId,
     template: {
-      id: 'phone-v1',
+      id: isDesktop ? 'desktop-v1' : 'phone-v1',
       version: '1.0.0',
     },
     viewerActorId,
-    layout: {
-      width: 1080,
-      height: 1920,
-    },
-    output: {
-      width: 1080,
-      height: 1920,
-      fps: 30,
-    },
+    layout: isDesktop
+      ? { width: 1280, height: 720 }
+      : { width: 360, height: 640 },
+    output: isDesktop
+      ? { width: 1920, height: 1080, fps: 30 }
+      : { width: 1080, height: 1920, fps: 30 },
     totalDurationMs: currentMs,
     actions,
   };

@@ -833,7 +833,10 @@ export function registerActivityRoutes(
         textToImage,
         imageToImage,
       },
-      templates: [{ id: 'phone-v1', name: '手机通用竖屏 (1080x1920)', version: '1.0.0' }],
+      templates: [
+        { id: 'phone-v1', name: '手机通用竖屏 (1080x1920)', version: '1.0.0' },
+        { id: 'desktop-v1', name: '电脑横屏 (1920x1080)', version: '1.0.0' },
+      ],
       limits: {
         maxActors: 20,
         maxStages: 50,
@@ -1786,6 +1789,7 @@ export function registerActivityRoutes(
         speed?: number;
         expandMedia?: boolean;
         mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
+        deviceLayout?: 'phone' | 'desktop';
       };
     }>,
     reply: FastifyReply,
@@ -1814,6 +1818,7 @@ export function registerActivityRoutes(
         speed: request.body.speed,
         expandMedia: request.body.expandMedia,
         mode: request.body.mode,
+        deviceLayout: request.body.deviceLayout,
       },
     );
 

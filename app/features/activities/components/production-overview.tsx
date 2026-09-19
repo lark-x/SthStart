@@ -42,20 +42,22 @@ export function ProductionOverview({ activityId, document, headVersion, onReview
   };
 
   return (
-    <section aria-label="接下来做什么" className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-semibold text-accent">下一步</p>
-          <h2 className="text-base font-semibold text-ink">{next.title}</h2>
+    /*
+     * 紧凑单行条：标题、说明与主动作同行。之前用大卡片承载一句提示，
+     * 在页头与标签栏之间又插了一整块，页面显得层数过多。
+     */
+    <section aria-label="接下来做什么" className="rounded-[var(--radius-panel)] border border-border-default bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p className="text-xs font-semibold text-accent shrink-0">下一步</p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-ink">{next.title}</h2>
           <p className="text-sm text-muted">{next.description}</p>
         </div>
+        {reviewCount > 0 && <Button size="sm" variant="outline" onClick={onReview}>查看 {reviewCount} 项内容变化</Button>}
         <Button variant="primary" onClick={act}>{next.button}</Button>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-        {reviewCount > 0 && <Button size="sm" variant="outline" onClick={onReview}>查看 {reviewCount} 项内容变化</Button>}
-      </div>
       {overview && ['generate_media', 'pick_media'].includes(next.action) && !overview.imagePreflight.ready && (
-        <div className="mt-3 border-t border-border-subtle pt-3 text-sm text-muted">
+        <div className="mt-2 border-t border-border-subtle pt-2 text-sm text-muted">
           <p>{imageSetupMessage(overview.imagePreflight.reason)}</p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Link href="/settings/generation" className="font-medium text-accent underline">配置图片生成</Link>

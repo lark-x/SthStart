@@ -235,6 +235,7 @@ export async function generateAutoPlayback(
     autoPlay?: boolean;
     mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
     expandMedia?: boolean;
+    deviceLayout?: 'phone' | 'desktop';
   }
 ): Promise<{ playbackDocument: PlaybackDocument; savedRevisionId?: string }> {
   return postJson(`/api/admin/activities/${encodeURIComponent(id)}/playback/generate`, options || {});

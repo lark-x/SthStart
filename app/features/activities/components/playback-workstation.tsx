@@ -11,6 +11,7 @@ import {
   Save,
   Sliders,
   Smartphone,
+  Monitor,
   Eye,
   Clock,
   Film,
@@ -60,6 +61,16 @@ export function PlaybackWorkstation({
     currentPlaybackRevision?.document?.viewerActorId || actors[0]?.id || ''
   );
   const [speed, setSpeed] = useState<number>(1);
+  /*
+   * 设备布局：手机 9:16 / 电脑 16:9。它同时决定生成时的画布比例与预览外壳，
+   * 切换后只需重新编译预览，不必重新生成动作序列。
+   */
+  const [deviceLayout, setDeviceLayout] = useState<'phone' | 'desktop'>(() =>
+    (currentPlaybackRevision?.document?.output?.width || 1080) >
+    (currentPlaybackRevision?.document?.output?.height || 1920)
+      ? 'desktop'
+      : 'phone'
+  );
   const [playbackMode, setPlaybackMode] = useState<'by_stage' | 'story_order' | 'chat_only' | 'moments_only'>(()=>normalizeCreationProfile((document.activity.creationProfile?.values||{}) as Record<string,unknown>).playbackMode);
   const [expandMedia, setExpandMedia] = useState<boolean>(()=>normalizeCreationProfile((document.activity.creationProfile?.values||{}) as Record<string,unknown>).expandMedia);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('');
@@ -83,6 +94,7 @@ export function PlaybackWorkstation({
         setPlaybackMode(payload.mode as any);
       }
       if (typeof payload.expandMedia === 'boolean') setExpandMedia(payload.expandMedia);
+      if (payload.deviceLayout === 'phone' || payload.deviceLayout === 'desktop') setDeviceLayout(payload.deviceLayout);
     }
   };
 
@@ -97,6 +109,7 @@ export function PlaybackWorkstation({
           speed,
           mode: playbackMode,
           expandMedia,
+          deviceLayout,
         },
       });
       setSelectedPresetId(created.id);
@@ -110,16 +123,41 @@ export function PlaybackWorkstation({
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [previewHtml, setPreviewHtml] = useState('');
+  /*
+   * 预览宽度实测：外壳宽度由左栏决定，写死数值在窄屏或收起侧栏时必然溢出。
+   * ResizeObserver 跟踪容器，scale 再由「容器宽 / 画布宽」实时算出。
+   */
+  const previewBoxRef = useRef<HTMLDivElement>(null);
+  const [previewBoxWidth, setPreviewBoxWidth] = useState(0);
+  useEffect(() => {
+    const el = previewBoxRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      if (box) setPreviewBoxWidth(box.width);
+    });
+    observer.observe(el);
+    setPreviewBoxWidth(el.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, [playbackDoc, deviceLayout]);
+
   useEffect(() => {
     if (!playbackDoc) return;
     let active = true;
+    /*
+     * 设备布局是预览的本地开关：把 layout/output 覆盖成所选设备的成对尺寸，
+     * 编译器据此选版式。动作序列本身与设备无关，因此切换不需要重新生成。
+     */
+    const deviceDoc: PlaybackDocument = deviceLayout === 'desktop'
+      ? { ...playbackDoc, layout: { width: 1280, height: 720 }, output: { ...playbackDoc.output, width: 1920, height: 1080 } }
+      : { ...playbackDoc, layout: { width: 360, height: 640 }, output: { ...playbackDoc.output, width: 1080, height: 1920 } };
     const timer = setTimeout(() => {
-      postJson<{ html: string }>(`/api/admin/activities/${encodeURIComponent(activity.id)}/playback-preview`, { playback: { ...playbackDoc, viewerActorId } })
+      postJson<{ html: string }>(`/api/admin/activities/${encodeURIComponent(activity.id)}/playback-preview`, { playback: { ...deviceDoc, viewerActorId } })
         .then(result => { if (active) setPreviewHtml(result.html); })
         .catch(error => { if (active) { setPreviewHtml(''); setErrorMsg(String(error)); } });
     }, 200);
     return () => { active = false; clearTimeout(timer); };
-  }, [activity.id, playbackDoc, viewerActorId]);
+  }, [activity.id, playbackDoc, viewerActorId, deviceLayout]);
 
   // The host owns live-preview transport; exported composition media remain framework-owned.
   const syncPreview = () => {
@@ -253,21 +291,29 @@ export function PlaybackWorkstation({
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  /*
+   * 预览几何：手机 9:16、电脑 16:9。缩放取实测容器宽，预览因此总是铺满左栏、
+   * 正文可读，也不依赖任何写死的像素值。
+   */
+  const canvasWidth = deviceLayout === 'desktop' ? 1920 : 1080;
+  const canvasHeight = deviceLayout === 'desktop' ? 1080 : 1920;
+  const previewScale = previewBoxWidth > 0 ? previewBoxWidth / canvasWidth : 0;
+  const previewHeight = Math.round(canvasHeight * previewScale);
+
   return (
     <div className="space-y-4">
-      {/* Header toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
-        <div>
+      {/*
+       * 单一工具栏：标题、主动作与全部参数收在一块，不再分成「标题卡 + 设置行」两段，
+       * 页头到预览之间因此只剩一条带子。
+       */}
+      <div className="space-y-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Smartphone className="h-4 w-4 text-accent" />
             回放编排与设备模拟预览
           </h3>
-          <p className="text-sm text-muted">
-            编排拟真手机视角的文字阅读、图片放大、视频播放与朋友圈穿插，生成可直接在外部渲染的 HyperFrames 动作序列。
-          </p>
-        </div>
 
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
           <Button
             type="button"
             size="sm"
@@ -290,23 +336,11 @@ export function PlaybackWorkstation({
             <Save className="h-3.5 w-3.5" />
             {savePlaybackMutation.isPending ? '保存中…' : '保存回放版本'}
           </Button>
+          </div>
         </div>
-      </div>
 
-      {errorMsg && (
-        <Alert variant="danger" title="回放编排提示">
-          {errorMsg}
-        </Alert>
-      )}
-
-      {saveSuccess && (
-        <Alert variant="info" title="已成功保存">
-          回放脚本版本已成功落库，可在导出面板中下载完整可渲染工程。
-        </Alert>
-      )}
-
-      {/* Settings Row: Viewer Persona & Speed */}
-      <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg bg-surface border border-border-subtle">
+        {/* Settings Row: Viewer Persona, Device Layout & Speed */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border-subtle pt-3">
         <div className="flex items-center gap-2">
           <Eye className="h-4 w-4 text-muted" />
           <span className="text-sm font-semibold text-ink">观众视角：</span>
@@ -323,6 +357,33 @@ export function PlaybackWorkstation({
                 </option>
               ))}
             </Select>
+          </div>
+        </div>
+
+        {/* 设备布局：手机 / 电脑，决定预览外壳与生成时的画布比例 */}
+        <div className="flex items-center gap-2">
+          <Monitor className="h-4 w-4 text-muted" />
+          <span className="text-sm font-semibold text-ink">设备布局：</span>
+          <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] bg-surface-muted p-0.5">
+            {([
+              { id: 'phone' as const, label: '手机' },
+              { id: 'desktop' as const, label: '电脑' },
+            ]).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setDeviceLayout(option.id)}
+                disabled={disabled}
+                aria-pressed={deviceLayout === option.id}
+                className={`rounded-[var(--radius-control)] px-2.5 py-1 text-sm font-medium transition-colors ${
+                  deviceLayout === option.id
+                    ? 'bg-surface text-ink shadow-xs'
+                    : 'text-muted hover:text-ink'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -406,7 +467,20 @@ export function PlaybackWorkstation({
         <div className="ml-auto text-sm text-muted font-mono">
           总时长: {formatTime(totalDurationMs)} ({actions.length} 个动作)
         </div>
+        </div>
       </div>
+
+      {errorMsg && (
+        <Alert variant="danger" title="回放编排提示">
+          {errorMsg}
+        </Alert>
+      )}
+
+      {saveSuccess && (
+        <Alert variant="info" title="已成功保存">
+          回放脚本版本已成功落库，可在导出面板中下载完整可渲染工程。
+        </Alert>
+      )}
 
       {/* Main Grid: Device Simulator & Actions Timeline（两栏各自滚动，§4.4） */}
       <SplitPanes
@@ -414,26 +488,39 @@ export function PlaybackWorkstation({
         from="lg"
         labels={{ left: '设备模拟预览', right: '回放动作序列' }}
         left={
-        /* Phone Mockup Preview (5 cols) */
+        /* Device Preview (5 cols)：铺满左栏，手机带外壳、电脑直接宽幅 */
         <div className="flex flex-col items-center">
-          <div className="w-[300px] h-[580px] bg-stone-900 rounded-[36px] p-3 shadow-2xl border-4 border-stone-800 flex flex-col relative overflow-hidden">
-            {/* Phone notch */}
-            <div className="w-28 h-4 bg-stone-800 rounded-full mx-auto mb-2 flex-shrink-0" />
+          <div className="w-full flex justify-center">
+            {deviceLayout === 'phone' ? (
+              <div className="w-full max-w-[320px] bg-stone-900 rounded-[36px] p-2.5 shadow-2xl border-4 border-stone-800 flex flex-col relative overflow-hidden">
+                {/* Phone notch */}
+                <div className="w-24 h-3.5 bg-stone-800 rounded-full mx-auto mb-1.5 flex-shrink-0" />
 
-            <div className="flex-1 rounded-[24px] overflow-hidden relative bg-surface-muted">
-              {previewHtml ? <iframe ref={iframeRef} title="活动真实回放预览" srcDoc={previewHtml}
-                sandbox="allow-scripts allow-same-origin" onLoad={() => { setTimeout(syncPreview, 100); }}
-                style={{ border: 0, width: playbackDoc?.output.width || 1080, height: playbackDoc?.output.height || 1920,
-                  transform: `scale(${268 / (playbackDoc?.output.width || 1080)})`, transformOrigin: 'top left' }} />
-                : <p className="p-4 text-sm">请先生成或保存回放脚本，预览将显示对应版本的真实媒体。</p>}
-            </div>
+                {/* 实测的就是 iframe 的显示宽度：外壳有内边距与边框，量外壳会偏大。 */}
+                <div ref={previewBoxRef} className="rounded-[24px] overflow-hidden relative bg-surface-muted" style={{ height: previewHeight || undefined }}>
+                  {previewHtml ? <iframe ref={iframeRef} title="活动真实回放预览" srcDoc={previewHtml}
+                    sandbox="allow-scripts allow-same-origin" onLoad={() => { setTimeout(syncPreview, 100); }}
+                    style={{ border: 0, width: canvasWidth, height: canvasHeight,
+                      transform: `scale(${previewScale})`, transformOrigin: 'top left' }} />
+                    : <p className="p-4 text-sm">请先生成或保存回放脚本，预览将显示对应版本的真实媒体。</p>}
+                </div>
 
-            {/* Bottom bar indicator */}
-            <div className="w-20 h-1 bg-stone-700 rounded-full mx-auto mt-2 flex-shrink-0" />
+                {/* Bottom bar indicator */}
+                <div className="w-20 h-1 bg-stone-700 rounded-full mx-auto mt-1.5 flex-shrink-0" />
+              </div>
+            ) : (
+              <div ref={previewBoxRef} className="w-full rounded-[var(--radius-panel)] overflow-hidden border border-border-default bg-surface-muted" style={{ height: previewHeight || 240 }}>
+                {previewHtml ? <iframe ref={iframeRef} title="活动真实回放预览" srcDoc={previewHtml}
+                  sandbox="allow-scripts allow-same-origin" onLoad={() => { setTimeout(syncPreview, 100); }}
+                  style={{ border: 0, width: canvasWidth, height: canvasHeight,
+                    transform: `scale(${previewScale})`, transformOrigin: 'top left' }} />
+                  : <p className="p-4 text-sm">请先生成或保存回放脚本，预览将显示对应版本的真实媒体。</p>}
+              </div>
+            )}
           </div>
 
           {/* Scrubber Bar */}
-          <div className="w-[300px] mt-3 space-y-1.5">
+          <div className="w-full mt-3 space-y-1.5">
             <div className="flex items-center justify-between text-sm font-mono text-muted">
               <span>{formatTime(currentTimeMs)}</span>
               <span>{formatTime(totalDurationMs)}</span>

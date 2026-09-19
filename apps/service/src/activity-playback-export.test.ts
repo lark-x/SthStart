@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { generateAutoPlayback } from './activities/playback.js';
+import { compileHyperFramesComposition } from '@sthstart/activity-playback';
 import type { ContentDocument } from '@sthstart/contracts';
 import { createPortableBackup, restorePortableBackup, verifyPortableBackup } from './portable-backup.js';
 import { createService } from './server.js';
@@ -18,8 +19,9 @@ import { stageActivityImport, commitActivityImport } from './activities/imports.
 
 const adminToken = 'activity-m6-token-123456789012345';
 
-test('M6-A: Auto playback multi-conversation and playback modes', async () => {
-  const content: ContentDocument = {
+/** 多会话测试内容：设备布局与编排模式两组用例共用，避免各写一份。 */
+function minimalPlaybackContent(): ContentDocument {
+  return {
     schemaVersion: 1,
     activity: {
       title: '多会话测试活动',
@@ -115,6 +117,10 @@ test('M6-A: Auto playback multi-conversation and playback modes', async () => {
     facts: [],
     stageResults: [],
   };
+}
+
+test('M6-A: Auto playback multi-conversation and playback modes', async () => {
+  const content = minimalPlaybackContent();
 
   // 1. Verify multi-conversation switching within the same stage
   const byStageDoc = generateAutoPlayback('rev_1', content, 'none', null, { mode: 'by_stage' });
@@ -146,6 +152,59 @@ test('M6-A: Auto playback multi-conversation and playback modes', async () => {
   const momentsOnlyDoc = generateAutoPlayback('rev_1', content, 'none', null, { mode: 'moments_only' });
   assert.ok(!momentsOnlyDoc.actions.some((a) => a.type === 'reveal_message'));
   assert.ok(momentsOnlyDoc.actions.some((a) => a.type === 'scroll_to'));
+});
+
+/*
+ * 设备布局决定画布与逻辑视口：手机 1080x1920 / 360x640（3 倍），
+ * 电脑 1920x1080 / 1280x720（1.5 倍）。两者必须成对出现，
+ * 否则编译器按 ratio 换算出来的字号会失真。
+ */
+test('M6-A: Device layout selects paired canvas and logical viewport', () => {
+  const content = minimalPlaybackContent();
+
+  const phoneDoc = generateAutoPlayback('rev_1', content, 'none', null, {});
+  assert.equal(phoneDoc.template.id, 'phone-v1');
+  assert.deepEqual(phoneDoc.layout, { width: 360, height: 640 });
+  assert.equal(phoneDoc.output.width, 1080);
+  assert.equal(phoneDoc.output.height, 1920);
+
+  const desktopDoc = generateAutoPlayback('rev_1', content, 'none', null, { deviceLayout: 'desktop' });
+  assert.equal(desktopDoc.template.id, 'desktop-v1');
+  assert.deepEqual(desktopDoc.layout, { width: 1280, height: 720 });
+  assert.equal(desktopDoc.output.width, 1920);
+  assert.equal(desktopDoc.output.height, 1080);
+
+  // 动作序列与设备无关：切换布局不应改变节奏或内容。
+  assert.deepEqual(
+    desktopDoc.actions.map((a) => a.type),
+    phoneDoc.actions.map((a) => a.type),
+  );
+  assert.equal(desktopDoc.totalDurationMs, phoneDoc.totalDurationMs);
+});
+
+/*
+ * 编译器必须按 ratio 把逻辑 px 换算成画布 px：气泡 14px 在手机（3 倍）
+ * 应渲染成 42px、在电脑（1.5 倍）应渲染成 21px。若两套坐标系被混用，
+ * 这里会立刻暴露（此前 layout 被当成画布，字号缩到 5.5px）。
+ */
+test('M6-A: Compiled canvas follows output size and scales logical px by ratio', () => {
+  const content = minimalPlaybackContent();
+  const phoneDoc = generateAutoPlayback('rev_1', content, 'none', null, {});
+  const desktopDoc = generateAutoPlayback('rev_1', content, 'none', null, { deviceLayout: 'desktop' });
+
+  const phoneHtml = compileHyperFramesComposition(content, { schemaVersion: 1, slotBindings: [] }, phoneDoc).html;
+  assert.match(phoneHtml, /data-width="1080" data-height="1920"/);
+  assert.match(phoneHtml, /class="device-phone"/);
+  assert.match(phoneHtml, /\.bubble\s*\{[^}]*font-size: 42px/);
+
+  const desktopHtml = compileHyperFramesComposition(content, { schemaVersion: 1, slotBindings: [] }, desktopDoc).html;
+  assert.match(desktopHtml, /data-width="1920" data-height="1080"/);
+  assert.match(desktopHtml, /class="device-desktop"/);
+  assert.match(desktopHtml, /\.bubble\s*\{[^}]*font-size: 21px/);
+  // 电脑版式是三栏常驻：阶段导航 + 群聊 + 朋友圈。
+  assert.match(desktopHtml, /id="stage-nav"/);
+  assert.match(desktopHtml, /id="chat-view" class="pane"/);
+  assert.match(desktopHtml, /id="moments-view" class="pane"/);
 });
 
 test('M6-A: Working project export and import restores editing policy and remapped references', async (t) => {

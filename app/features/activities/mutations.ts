@@ -202,6 +202,7 @@ export function useGenerateAutoPlayback() {
         autoPlay?: boolean;
         mode?: 'by_stage' | 'story_order' | 'chat_only' | 'moments_only';
         expandMedia?: boolean;
+        deviceLayout?: 'phone' | 'desktop';
       };
     }) => generateAutoPlayback(id, options),
     onSuccess: (_, variables) => {

@@ -228,3 +228,52 @@ test('Activity Studio: device preview loads the same compiled video and audio as
   await expect(frame.locator('video').first()).toBeVisible();
   await expect.poll(() => frame.locator('video').first().evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(0.9);
 });
+
+/*
+ * 设备布局切换：手机是单列滑动（有状态栏、无阶段导航），电脑是三栏常驻
+ * （无状态栏、有阶段导航）。切换只重编译预览，不需要重新生成动作序列。
+ */
+test('Activity Studio: device layout switch swaps phone and desktop compositions', async ({ page, request }) => {
+  const { readFileSync } = await import('node:fs');
+  const content = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  const service = `http://127.0.0.1:${process.env.E2E_SERVICE_PORT ?? 4200}`;
+  const headers = { 'x-sthstart-admin-token': 'sthstart-e2e-secret-0123456789abcdef' };
+  const create = await request.post(service + '/api/v1/admin/activities', { headers, data: { document: content } });
+  const { activity } = await create.json();
+  const base = service + '/api/v1/admin/activities/' + activity.id;
+
+  // 电脑布局生成：画布 1920x1080、模板 desktop-v1。
+  const desktop = await request.post(base + '/playback/auto', { headers, data: { deviceLayout: 'desktop' } });
+  expect(desktop.ok()).toBeTruthy();
+  const desktopDoc = (await desktop.json()).document;
+  expect(desktopDoc.output).toMatchObject({ width: 1920, height: 1080 });
+  expect(desktopDoc.template.id).toBe('desktop-v1');
+  expect(desktopDoc.layout).toMatchObject({ width: 1280, height: 720 });
+
+  // 手机布局生成：画布 1080x1920、模板 phone-v1。
+  const phone = await request.post(base + '/playback/auto', { headers, data: { deviceLayout: 'phone' } });
+  const phoneDoc = (await phone.json()).document;
+  expect(phoneDoc.output).toMatchObject({ width: 1080, height: 1920 });
+  expect(phoneDoc.template.id).toBe('phone-v1');
+
+  // 预览要求内容与素材版本同时存在；本用例只关心版式，因此绑定空素材集。
+  const media = await request.post(base + '/media-revisions', { headers, data: { contentRevisionId: activity.currentContentRevisionId, slotBindings: [] } });
+  expect(media.ok()).toBeTruthy();
+  const mediaId = (await media.json()).id;
+
+  // 保存手机版本后进入工作台，预览应为手机版式。
+  const saved = await request.post(base + '/playback-revisions', { headers, data: { contentRevisionId: activity.currentContentRevisionId, mediaRevisionId: mediaId, document: phoneDoc } });
+  expect(saved.ok()).toBeTruthy();
+  await page.goto('/apps/activities/' + activity.id);
+  await page.getByRole('tab', { name: '回放' }).click();
+
+  const frame = page.frameLocator('iframe[title="活动真实回放预览"]');
+  await expect(frame.locator('#root.device-phone')).toHaveCount(1);
+
+  // 切到电脑：预览重编译为三栏常驻，动作序列不变。
+  await page.getByRole('button', { name: '电脑', exact: true }).click();
+  await expect(frame.locator('#root.device-desktop')).toHaveCount(1);
+  await expect(frame.locator('#stage-nav')).toHaveCount(1);
+  await expect(frame.locator('#chat-view.pane')).toHaveCount(1);
+  await expect(frame.locator('#moments-view.pane')).toHaveCount(1);
+});
