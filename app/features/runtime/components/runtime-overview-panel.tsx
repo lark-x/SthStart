@@ -78,12 +78,14 @@ export function RuntimeOverviewPanel({
               </a>
             </div>
 
-            {overview?.linsheLlm.enabled && !overview.linsheLlm.ready && (
+            {overview && !overview.linsheHosted.ready && (
               <div className="mt-4 flex items-start gap-2.5 rounded border border-accent/30 bg-accent/15 p-3 text-sm text-paper">
                 <AlertTriangle className="h-4 w-4 text-accent flex-shrink-0 mt-0.5" />
                 <div>
-                  <strong>公共模型未完全就绪：</strong>
-                  <span> 请在公共服务中配置生效文本模型，否则邻舍无法生成对话。</span>
+                  <strong>邻舍托管配置未完全就绪：</strong>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                    {overview.linsheHosted.missing.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
                 </div>
               </div>
             )}

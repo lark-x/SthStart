@@ -699,6 +699,7 @@ export function registerCreativeRoutes(
         seed,
         priority: 'interactive',
         validationMode: 'strict',
+        audit: { feature: 'creative', businessEvent: `creative.${mode}.generate`, objectType: 'creative-task' },
       }, fetcher);
       return reply.code(202).send(safeTask(database, task.id) ?? task);
     } catch (error) {

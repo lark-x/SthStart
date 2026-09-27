@@ -92,7 +92,7 @@ export async function suggestResearchTopics(
       const raw = await callLlm(profile, buildTopicSuggestionPrompt({
         workTitle, scopeLabel: describeScope(scope), scannedNodes: Math.min(offset + batch.length, scannable.length),
         totalNodes: catalog.items.length, batches: excerpts, existingTitles: input.existingTitles,
-      }), fetcher);
+      }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.suggest_topics', objectType: 'narrative-work', objectId: input.workId });
       modelCalls += 1;
       const parsed = parseTopicSuggestionsDetailed(raw);
       collected.push(...parsed.kept);

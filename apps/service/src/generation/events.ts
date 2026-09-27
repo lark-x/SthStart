@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { GenerationEvent } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
+import { syncGenerationAiCall } from '../ai-call-trace.js';
 
 export const generationEventBus = new EventEmitter();
 export const activeGenerationExecutions = new Set<Promise<void>>();
@@ -31,6 +32,7 @@ export function recordGenerationEvent(
     id: Number(result.lastInsertRowid), taskId: input.taskId, appId: input.appId,
     eventType: input.eventType, payload: input.payload, createdAt: now,
   };
+  syncGenerationAiCall(database, input.taskId, input.eventType, input.payload);
   generationEventBus.emit(`event:${input.appId}`, event);
   return event;
 }

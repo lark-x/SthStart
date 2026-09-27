@@ -10,6 +10,7 @@ export const characterKeys = {
   all: ['characters'] as const,
   list: (filters?: { query?: string }) => [...characterKeys.all, 'list', filters] as const,
   detail: (id: string) => [...characterKeys.all, 'detail', id] as const,
+  assets: (id: string) => [...characterKeys.all, 'assets', id] as const,
   migrationReview: (id: string) => [...characterKeys.all, 'migration-review', id] as const,
   llmStatus: (id: string) => [...characterKeys.all, 'llmStatus', id] as const,
 };
@@ -60,6 +61,12 @@ export const providerKeys = {
     [...providerKeys.all, 'discover', params] as const,
 };
 
+export const generationKeys = {
+  all: ['generation'] as const,
+  presets: (filter?: { appId?: string; purpose?: string; workflowId?: string }) =>
+    [...generationKeys.all, 'presets', filter] as const,
+};
+
 export const activityKeys = {
   all: ['activities'] as const,
   list: (filters?: { q?: string; archived?: boolean }) => [...activityKeys.all, 'list', filters] as const,
@@ -69,6 +76,9 @@ export const activityKeys = {
   revision: (id: string, revisionId: string) => [...activityKeys.all, 'revision', id, revisionId] as const,
   mediaRevision: (id: string, mediaRevisionId: string) => [...activityKeys.all, 'mediaRevision', id, mediaRevisionId] as const,
   playbackRevision: (id: string, playbackRevisionId: string) => [...activityKeys.all, 'playbackRevision', id, playbackRevisionId] as const,
+  comicDraft: (id: string) => [...activityKeys.all, 'comic', id, 'draft'] as const,
+  comicRevisions: (id: string) => [...activityKeys.all, 'comic', id, 'revisions'] as const,
+  comicJob: (id: string, jobId: string) => [...activityKeys.all, 'comic', id, 'job', jobId] as const,
   assets: (id: string) => [...activityKeys.all, 'assets', id] as const,
   jobs: (id: string) => [...activityKeys.all, 'jobs', id] as const,
   job: (id: string, jobId: string) => [...activityKeys.all, 'job', id, jobId] as const,

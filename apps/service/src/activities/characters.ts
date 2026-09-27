@@ -15,9 +15,10 @@ export function listAvailableCharacters(database: ServiceDatabase): {
   summary: string;
   latestVersion: number | null;
   avatarAssetId: string | null;
+  portraitAssetId: string | null;
 }[] {
   const rows = database.connection.prepare(
-    `SELECT id, slug, display_name, draft_json, latest_version, avatar_asset_id
+    `SELECT id, slug, display_name, draft_json, latest_version, avatar_asset_id, portrait_asset_id
      FROM character_profiles WHERE archived = 0 ORDER BY updated_at DESC`
   ).all() as Record<string, unknown>[];
 
@@ -29,7 +30,9 @@ export function listAvailableCharacters(database: ServiceDatabase): {
     } catch { /* malformed legacy row */ }
     return {
       id: String(row.id), slug: String(row.slug), displayName: String(row.display_name), summary,
-      latestVersion: row.latest_version == null ? null : Number(row.latest_version), avatarAssetId: row.avatar_asset_id ? String(row.avatar_asset_id) : null,
+      latestVersion: row.latest_version == null ? null : Number(row.latest_version),
+      avatarAssetId: row.avatar_asset_id ? String(row.avatar_asset_id) : null,
+      portraitAssetId: row.portrait_asset_id ? String(row.portrait_asset_id) : null,
     };
   });
 }
@@ -56,7 +59,7 @@ function characterVersionRow(database: ServiceDatabase, characterId: string, ver
 export function createActorSnapshotFromCharacter(
   database: ServiceDatabase,
   characterId: string,
-  overrides: { activityRole?: string; outfitDescription?: string; avatarAssetKey?: string; sourceVersion?: number | null } = {},
+  overrides: { activityRole?: string; outfitDescription?: string; avatarAssetKey?: string; avatarAssetId?: string; portraitAssetId?: string; sourceVersion?: number | null } = {},
 ): ActorSnapshot | null {
   const selected = characterVersionRow(database, characterId, overrides.sourceVersion);
   if (!selected) return null;
@@ -71,8 +74,10 @@ export function createActorSnapshotFromCharacter(
   const referenceById = new Map(referenceRows.map((row) => [row.id, row.asset_id]));
   const orderedReferenceAssetIds = referenceIds ? referenceIds.flatMap((id) => { const assetId = referenceById.get(id); return assetId ? [assetId] : []; }) : referenceRows.map((row) => String(row.asset_id));
   const actorId = `actor_${crypto.randomUUID().slice(0, 8)}`;
-  const frozenAvatar = appearanceSnapshot && Object.hasOwn(appearanceSnapshot, 'avatarAssetId') ? appearanceSnapshot.avatarAssetId : profile.avatar_asset_id;
-  const avatarAssetId = frozenAvatar ? String(frozenAvatar) : undefined;
+  const chosenAvatar = overrides.avatarAssetId || (appearanceSnapshot && Object.hasOwn(appearanceSnapshot, 'avatarAssetId') ? appearanceSnapshot.avatarAssetId : profile.avatar_asset_id);
+  const avatarAssetId = chosenAvatar ? String(chosenAvatar) : undefined;
+  const chosenPortrait = overrides.portraitAssetId || profile.portrait_asset_id;
+  const portraitAssetId = chosenPortrait ? String(chosenPortrait) : undefined;
   const projected = projectCharacterPersona(draft);
   const selectedOutfit = appearance.defaultOutfitId && appearance.outfits.includes(appearance.defaultOutfitId)
     ? appearance.defaultOutfitId
@@ -85,9 +90,12 @@ export function createActorSnapshotFromCharacter(
     characterDraftRevision: draftRevision,
     displayName: draft.displayName || String(profile.display_name || '角色'),
     persona: projected,
+    visualLoras: 'visualLoras' in draft ? [...(draft.visualLoras ?? [])] : [],
     ...(overrides.avatarAssetKey ? { avatarAssetKey: overrides.avatarAssetKey } : {}),
     ...(avatarAssetId ? { avatarAssetId } : {}),
     ...(avatarAssetId ? { avatarUrl: `/api/admin/characters/assets/${avatarAssetId}` } : {}),
+    ...(portraitAssetId ? { portraitAssetId } : {}),
+    ...(portraitAssetId ? { portraitUrl: `/api/admin/characters/assets/${portraitAssetId}` } : {}),
     activityRole: overrides.activityRole?.trim() || '活动参与者',
     outfitDescription: overrides.outfitDescription?.trim() || selectedOutfit,
     appearanceReferenceAssetKeys: [],

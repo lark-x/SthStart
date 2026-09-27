@@ -14,7 +14,6 @@ export interface RuntimeFormValues {
   autoStart: boolean;
   autoOpenBrowser: boolean;
   useMirror: boolean;
-  publicLlmEnabled: boolean;
   comfyuiExecutable: string;
   extraLoraFolders: string;
   maibotAutostart: boolean;
@@ -41,7 +40,6 @@ export function RuntimeSettingsForm({
       autoStart: initialValues?.autoStart ?? true,
       autoOpenBrowser: initialValues?.autoOpenBrowser ?? true,
       useMirror: initialValues?.useMirror ?? true,
-      publicLlmEnabled: initialValues?.publicLlmEnabled ?? false,
       comfyuiExecutable: initialValues?.comfyuiExecutable ?? '',
       extraLoraFolders: initialValues?.extraLoraFolders?.join('\n') ?? '',
       maibotAutostart: initialValues?.maibotAutostart ?? false,
@@ -57,7 +55,6 @@ export function RuntimeSettingsForm({
         autoStart: initialValues.autoStart,
         autoOpenBrowser: initialValues.autoOpenBrowser,
         useMirror: initialValues.useMirror,
-        publicLlmEnabled: initialValues.publicLlmEnabled,
         comfyuiExecutable: initialValues.comfyuiExecutable,
         extraLoraFolders: initialValues.extraLoraFolders?.join('\n') ?? '',
         maibotAutostart: initialValues.maibotAutostart,
@@ -72,7 +69,6 @@ export function RuntimeSettingsForm({
       autoStart: data.autoStart,
       autoOpenBrowser: data.autoOpenBrowser,
       useMirror: data.useMirror,
-      publicLlmEnabled: data.publicLlmEnabled,
       comfyuiExecutable: data.comfyuiExecutable.trim(),
       extraLoraFolders: data.extraLoraFolders
         .split(/\r?\n/)
@@ -92,7 +88,7 @@ export function RuntimeSettingsForm({
         <CardHeader>
           <CardTitle>运行参数与自启配置</CardTitle>
           <CardDescription>
-            控制 SthStart 启动时是否自动拉起邻舍核心服务，以及镜像下载和公共模型接入模式。
+            控制 SthStart 启动时是否自动拉起邻舍核心服务，以及镜像下载和本地辅助服务。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -112,11 +108,10 @@ export function RuntimeSettingsForm({
               description="模型与依赖拉取时优先使用镜像。"
               {...register('useMirror')}
             />
-            <Switch
-              label="启用公共大语言模型服务"
-              description="将请求路由到在公共服务中配置的 LLM 模型。"
-              {...register('publicLlmEnabled')}
-            />
+          </div>
+
+          <div className="rounded border border-accent/25 bg-accent/10 px-3.5 py-3 text-sm text-ink">
+            本项目管理的邻舍始终通过 SthStart 公共网关使用 LLM、图片生成和向量服务。启动前会检查应用令牌、模型路由和图片用途绑定；配置不足时会列出需要补齐的项目。
           </div>
 
           <div className="pt-4 border-t border-border-subtle space-y-4">

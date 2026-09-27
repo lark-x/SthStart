@@ -83,7 +83,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const collapsed = mobileCollapsed ?? collapsedPref;
-  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
+  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio;
 
   const toggleCollapsed = useCallback(() => {
     setMobileCollapsed((prev) => {

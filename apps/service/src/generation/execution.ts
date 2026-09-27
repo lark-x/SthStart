@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { GenerationPriority, GenerationProgress, GenerationTaskDescriptor } from '@sthstart/contracts';
+import type { ActivityLora, GenerationPriority, GenerationProgress, GenerationTaskDescriptor } from '@sthstart/contracts';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
@@ -15,7 +15,7 @@ import {
 } from '../worker.js';
 import { activeGenerationExecutions, generationExecutionsStopped, recordGenerationEvent } from './events.js';
 import { generationError, sanitizeErrorMessage } from './errors.js';
-import { computeRequestHash, renderWorkflowSnapshot } from './workflows.js';
+import { computeRequestHash, injectActivityLoras, renderWorkflowSnapshot } from './workflows.js';
 import { mergeGenerationValues, validateRequiredValues } from './configuration.js';
 import type { InputSchemaMap } from './configuration.js';
 import { resolveDefaultPreset, resolveEnabledPreset } from './configuration-store.js';
@@ -23,6 +23,7 @@ import { normalizeInputArtifacts, parseGenerationRequestParams, prepareInputArti
 import type { GenerationInputArtifact } from './inputs.js';
 import { getGenerationTask, resolveWorkflowAndEngine } from './task-store.js';
 import type { GenerationSelectionMeta } from '@sthstart/contracts';
+import { collectAiCallRedactionSecrets, createAiCallRecord, extractModelNames, syncGenerationAiCall, withAiCallRedactionSecrets, updateAiCallRecord } from '../ai-call-trace.js';
 
 const activeTaskPolls = new WeakMap<ServiceDatabase, Map<string, Promise<void>>>();
 
@@ -42,6 +43,8 @@ export interface CreateTaskOptions {
   presetId?: string | null;
   presetRevision?: number | null;
   inputs?: Record<string, unknown>;
+  /** Activity-only LoRAs are frozen into the task graph, never resolved later from mutable settings. */
+  activityLoras?: ActivityLora[];
   inputArtifacts?: GenerationInputArtifact[];
   seed?: number | null;
   retryOf?: string | null;
@@ -51,8 +54,11 @@ export interface CreateTaskOptions {
   /** 试运行标记：写入选择元信息，供配置页结果核对使用。 */
   testMode?: boolean;
   priority?: GenerationPriority;
+  audit?: { feature?: string; businessEvent?: string; objectType?: string | null; objectId?: string | null; sourceUrl?: string | null;
+    positivePrompt?: string | null; negativePrompt?: string | null; traceId?: string; parentId?: string | null };
   onInsertTask?: (txParams: {
     taskId: string;
+    callId: string;
     actualSeed: number;
     resolvedEngine: { id: string; name: string; kind: string };
     resolvedWorkflow: { id: string; version: number; nodeBindings: Record<string, string[]> };
@@ -191,6 +197,7 @@ export async function createGenerationTask(
   }
 
   const resolved = resolveWorkflowAndEngine(database, options.appId, resolveOptions);
+  const redactionSecrets = await generationAuditRedactionSecrets(database, secrets, resolved.engine.id, resolved.engine.credentialAccount);
   // 试运行也写入选择元信息（presetId 为空、testMode 标记），供配置页核对真实参数（规划 §9.7）。
   if (!selection && options.testMode) {
     selection = {
@@ -231,12 +238,12 @@ export async function createGenerationTask(
   const actualSeed = options.seed ?? Math.floor(Math.random() * 1_000_000_000);
   const renderInputs = { ...mergedInputs };
   for (const input of inputArtifacts) delete renderInputs[input.inputKey];
-  const workflowSnapshot = renderWorkflowSnapshot(
+  const workflowSnapshot = injectActivityLoras(renderWorkflowSnapshot(
     resolved.workflow.definition,
     resolved.workflow.nodeBindings,
     renderInputs,
     actualSeed,
-  );
+  ), resolved.workflow.editorConfig, options.activityLoras);
 
   const canonicalPayload: Record<string, unknown> = {
     purpose,
@@ -244,6 +251,7 @@ export async function createGenerationTask(
     workflowVersion: options.workflowVersion ?? null,
     inputs: mergedInputs,
     inputArtifacts,
+    ...(options.activityLoras?.length ? { activityLoras: options.activityLoras } : {}),
     seed: options.seed ?? null,
     priority: options.priority ?? 'normal',
   };
@@ -290,7 +298,7 @@ export async function createGenerationTask(
       purpose,
       options.idempotencyKey ?? null,
       requestHash,
-      JSON.stringify({ inputs: mergedInputs, inputArtifacts, ...(selection ? { selection } : {}) }),
+      JSON.stringify({ inputs: mergedInputs, inputArtifacts, ...(selection ? { selection } : {}), ...(options.activityLoras?.length ? { activityLoras: options.activityLoras } : {}) }),
       JSON.stringify(workflowSnapshot),
       actualSeed,
       options.retryOf ?? null,
@@ -307,9 +315,83 @@ export async function createGenerationTask(
         refId: id,
       });
     }
+    const inputSchema = resolved.workflow.inputSchema as Record<string, { semantic?: string }>;
+    const resolveTextInput = (nodeId: string, inputName: string, visited = new Set<string>()): string | null => {
+      const visitKey = `${nodeId}:${inputName}`;
+      if (visited.has(visitKey)) return null;
+      visited.add(visitKey);
+      const node = workflowSnapshot[nodeId] as { class_type?: string; inputs?: Record<string, unknown> } | undefined;
+      const value = node?.inputs?.[inputName];
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value) && typeof value[0] === 'string') {
+        const source = workflowSnapshot[value[0]] as { class_type?: string; inputs?: Record<string, unknown> } | undefined;
+        if (source?.class_type === 'StringConcatenate') {
+          const left = resolveTextInput(value[0], 'string_a', new Set(visited)) ?? '';
+          const right = resolveTextInput(value[0], 'string_b', new Set(visited)) ?? '';
+          const delimiter = typeof source.inputs?.delimiter === 'string' ? source.inputs.delimiter : '';
+          return `${left}${delimiter}${right}`;
+        }
+      }
+      return null;
+    };
+    const findConnectedPrompt = (negative: boolean): string | null => {
+      for (const node of Object.values(workflowSnapshot) as Array<{ class_type?: string; inputs?: Record<string, unknown> }>) {
+        if (!/KSampler/.test(node.class_type ?? '')) continue;
+        const link = node.inputs?.[negative ? 'negative' : 'positive'];
+        if (!Array.isArray(link) || typeof link[0] !== 'string') continue;
+        const encoder = workflowSnapshot[link[0]] as { class_type?: string; inputs?: Record<string, unknown> } | undefined;
+        if (encoder?.class_type !== 'CLIPTextEncode') continue;
+        const text = resolveTextInput(link[0], 'text');
+        if (text !== null) return text;
+      }
+      return null;
+    };
+    const findPrompt = (negative: boolean) => {
+      const connected = findConnectedPrompt(negative);
+      if (connected !== null) return connected;
+      for (const [key, field] of Object.entries(inputSchema)) {
+        const semantic = String(field?.semantic ?? '').toLowerCase();
+        const normalized = key.toLowerCase().replaceAll('_', '');
+        if (negative ? semantic === 'negative_prompt' || normalized === 'negativeprompt' : semantic === 'prompt' || normalized === 'prompt' || normalized === 'positiveprompt') {
+          const binding = resolved.workflow.nodeBindings[key];
+          if (!binding || binding.length !== 3) continue;
+          const [nodeId, category, parameter] = binding;
+          const node = workflowSnapshot[nodeId] as { inputs?: Record<string, unknown> } | undefined;
+          const value = category === 'inputs' ? node?.inputs?.[parameter] : undefined;
+          if (typeof value === 'string') return value;
+          return null;
+        }
+      }
+      return null;
+    };
+    const callId = createAiCallRecord(database, {
+      applicationId: options.appId,
+      feature: options.audit?.feature ?? 'generation',
+      businessEvent: options.audit?.businessEvent ?? `${purpose}.generate`,
+      objectType: options.audit?.objectType ?? null,
+      objectId: options.audit?.objectId ?? null,
+      callType: resolved.workflow.category ?? 'image',
+      provider: resolved.engine.kind,
+      workflowId: resolved.workflow.id,
+      workflowVersion: resolved.workflow.version,
+      retryOf: options.retryOf ?? null, traceId: options.audit?.traceId,
+      parentId: options.audit?.parentId ?? (options.retryOf ? (database.connection.prepare('SELECT id FROM ai_call_records WHERE generation_task_id=?').get(options.retryOf) as { id: string } | undefined)?.id ?? null : null),
+      parameters: { purpose, seed: actualSeed, inputs: mergedInputs, inputArtifacts, ...(selection ? { selection } : {}) },
+      positivePrompt: options.audit?.positivePrompt ?? findPrompt(false),
+      negativePrompt: options.audit?.negativePrompt ?? findPrompt(true),
+      requestSnapshot: { workflow: workflowSnapshot, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, inputs: mergedInputs, inputArtifacts },
+      sourceUrl: options.audit?.sourceUrl ?? null,
+      generationTaskId: id,
+      redactionSecrets,
+    });
+    updateAiCallRecord(database, callId, {
+      provider: resolved.engine.kind, models: extractModelNames(workflowSnapshot), workflowId: resolved.workflow.id,
+      workflowVersion: resolved.workflow.version, redactionSecrets,
+    });
     if (options.onInsertTask) {
       options.onInsertTask({
         taskId: id,
+        callId,
         actualSeed,
         resolvedEngine: {
           id: resolved.engine.id,
@@ -350,6 +432,23 @@ export async function createGenerationTask(
 
   return getGenerationTask(database, id, options.appId)!;
 }
+
+async function generationAuditRedactionSecrets(database: ServiceDatabase, secrets: SecretStore, engineId: string, credentialAccount?: string | null): Promise<string[]> {
+  let credential: string | null = null;
+  if (credentialAccount) {
+    try { credential = (await secrets.get(credentialAccount)).value; } catch { /* audit still records the failed credential lookup */ }
+  }
+  let headerValues: string[] = [];
+  try {
+    const row = database.connection.prepare('SELECT headers_json FROM generation_engine_options WHERE engine_id=?').get(engineId) as { headers_json: string } | undefined;
+    const parsed = JSON.parse(row?.headers_json ?? '{}') as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      headerValues = Object.values(parsed as Record<string, unknown>).filter((value): value is string => typeof value === 'string');
+    }
+  } catch { /* invalid optional headers remain visible as a task error */ }
+  return collectAiCallRedactionSecrets({ secret: credential, secrets: headerValues });
+}
+
 
 export async function executeQueuedTask(
   config: ServiceConfig,
@@ -869,7 +968,7 @@ async function pollAndCompleteWorkerTask(
           taskId,
           appId,
           eventType: 'succeeded',
-          payload: { status: 'succeeded', count: persisted.length, source: 'windows-worker', confirmed: false },
+          payload: { status: 'succeeded', count: persisted.length, source: 'windows-worker', confirmed: false, artifactIds: persisted.map((item) => item.artifactId) },
         });
 
         try {
@@ -1143,7 +1242,7 @@ async function pollAndCompleteTaskInternal(
                 taskId,
                 appId,
                 eventType: "succeeded",
-                payload: { status: "succeeded", count: persistedArtifactIds.length },
+                payload: { status: "succeeded", count: persistedArtifactIds.length, artifactIds: persistedArtifactIds.map((item) => item.artifactId) },
               });
             }
             break;
@@ -1234,20 +1333,25 @@ export async function processTaskExecution(
   fetcher: typeof fetch = fetch,
 ): Promise<void> {
   if (generationExecutionsStopped(database)) return;
-  try {
-    const taskRow = database.connection.prepare("SELECT status, provider_task_id FROM generation_tasks WHERE id = ?").get(taskId) as { status: string; provider_task_id: string | null } | undefined;
-    if (!taskRow) return;
+  const engine = database.connection.prepare(`SELECT e.id,e.credential_account FROM generation_tasks t
+    JOIN generation_engines e ON e.id=t.engine_id WHERE t.id=?`).get(taskId) as { id: string; credential_account: string | null } | undefined;
+  const redactionSecrets = engine ? await generationAuditRedactionSecrets(database, secrets, engine.id, engine.credential_account) : [];
+  await withAiCallRedactionSecrets(redactionSecrets, async () => {
+    try {
+      const taskRow = database.connection.prepare("SELECT status, provider_task_id FROM generation_tasks WHERE id = ?").get(taskId) as { status: string; provider_task_id: string | null } | undefined;
+      if (!taskRow) return;
 
-    if (taskRow.status === "queued") {
-      await executeQueuedTask(config, database, secrets, taskId, fetcher);
-    } else if (["accepted", "running"].includes(taskRow.status) || (taskRow.status === "submitting" && taskRow.provider_task_id)) {
-      await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
+      if (taskRow.status === "queued") {
+        await executeQueuedTask(config, database, secrets, taskId, fetcher);
+      } else if (["accepted", "running"].includes(taskRow.status) || (taskRow.status === "submitting" && taskRow.provider_task_id)) {
+        await pollAndCompleteTask(config, database, secrets, taskId, fetcher);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("database is not open")) return;
+      throw err;
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("database is not open")) return;
-    throw err;
-  }
+  });
 }
 
 export async function cancelGenerationTask(

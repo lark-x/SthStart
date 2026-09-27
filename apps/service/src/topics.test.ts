@@ -49,8 +49,8 @@ function topicMcpFetch(options: { fail?: boolean; delayMs?: number } = {}) {
       return Response.json({ jsonrpc: '2.0', id: body.id, result: {
         content: [{ type: 'text', text: '近期讨论：' + keyword + ' 的新版本活动引发大量二创。' }],
         structuredContent: { results: [
-          { url: 'https://community.example.com/post/1?utm_source=share', title: '新版本料理活动引发热议', publishedAt: '2026-09-10', excerpt: '玩家在社区讨论新版本的料理活动，' + keyword + '相关二创数量上升。' },
-          { url: 'https://community.example.com/post/2', title: '新版本料理活动引发热议', publishedAt: '2026-09-11', excerpt: '同一事件的最新报道：料理活动细节补充。' },
+          { url: 'https://community.example.com/post/1?utm_source=share', title: '新版本料理活动引发热议', publishedAt: new Date(Date.now() - 3 * 86400000).toISOString(), excerpt: '玩家在社区讨论新版本的料理活动，' + keyword + '相关二创数量上升。' },
+          { url: 'https://community.example.com/post/2', title: '新版本料理活动引发热议', publishedAt: new Date(Date.now() - 2 * 86400000).toISOString(), excerpt: '同一事件的最新报道：料理活动细节补充。' },
           { url: 'https://community.example.com/post/3', title: '老话题：三年前的旧活动', excerpt: '与本次无关的旧内容。' },
         ] },
       } });

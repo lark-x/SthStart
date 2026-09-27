@@ -1,0 +1,99 @@
+{
+  "format": "sthstart-generation-config@1",
+  "workflow": {
+    "id": "anima-activity",
+    "name": "Anima 活动插画",
+    "description": "基于邻舍 Anima 制图工作流整理的项目配置包。需要另行安装 Anima 文本编码器与 Qwen Image VAE。",
+    "engineKind": "comfyui",
+    "category": "image"
+  },
+  "version": {
+    "version": 1,
+    "engineId": null,
+    "configFormatVersion": 2,
+    "definition": {
+      "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "anima_baseV10.safetensors", "weight_dtype": "default" } },
+      "2": { "class_type": "CLIPLoader", "inputs": { "clip_name": "anima_baseV10_txt.safetensors", "type": "qwen_image", "device": "default" } },
+      "3": { "class_type": "VAELoader", "inputs": { "vae_name": "qwen_image_vae.safetensors" } },
+      "4": { "class_type": "StringConcatenate", "inputs": { "string_a": ["117", 0], "string_b": "high quality, detailed illustration, expressive composition", "delimiter": ", " } },
+      "5": { "class_type": "StringConcatenate", "inputs": { "string_a": ["4", 0], "string_b": "digital illustration", "delimiter": ", " } },
+      "6": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["2", 0], "text": ["5", 0] } },
+      "7": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["2", 0], "text": "score_1, score_2, score_3, bad anatomy, bad proportions, deformed anatomy, deformed face, deformed eyes, text, multiple fingers, watermark, artist name, censor, mosaic" } },
+      "8": { "class_type": "EmptyLatentImage", "inputs": { "width": 768, "height": 512, "batch_size": 1 } },
+      "9": { "class_type": "KSampler", "inputs": { "model": ["1", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["8", 0], "seed": 1, "steps": 31, "cfg": 5, "sampler_name": "er_sde", "scheduler": "beta", "denoise": 1 } },
+      "10": { "class_type": "VAEDecode", "inputs": { "samples": ["9", 0], "vae": ["3", 0] } },
+      "11": { "class_type": "SaveImage", "inputs": { "images": ["10", 0], "filename_prefix": "sthstart/anima_activity" } },
+      "117": { "class_type": "StringConcatenate", "inputs": { "string_a": "", "string_b": "", "delimiter": "" } }
+    },
+    "inputSchema": {
+      "prompt": { "semantic": "prompt", "type": "string", "required": true },
+      "negativePrompt": { "semantic": "negative_prompt", "type": "string", "default": "score_1, score_2, score_3, bad anatomy, bad proportions, deformed anatomy, deformed face, deformed eyes, text, multiple fingers, watermark, artist name, censor, mosaic" },
+      "unet_name": { "semantic": "unet", "type": "model", "default": "anima_baseV10.safetensors" },
+      "seed": { "semantic": "seed", "type": "seed", "minimum": 0, "maximum": 2147483647 },
+      "width": { "semantic": "width", "type": "integer", "minimum": 256, "maximum": 1536, "default": 768 },
+      "height": { "semantic": "height", "type": "integer", "minimum": 256, "maximum": 1536, "default": 512 },
+      "steps": { "semantic": "steps", "type": "integer", "minimum": 1, "maximum": 60, "default": 31 },
+      "cfg": { "semantic": "cfg", "type": "number", "minimum": 0, "maximum": 12, "default": 5 },
+      "sampler_name": { "semantic": "sampler_name", "type": "enum", "enum": ["er_sde", "euler", "euler_ancestral"], "default": "er_sde" },
+      "scheduler": { "semantic": "scheduler", "type": "enum", "enum": ["beta", "simple", "normal"], "default": "beta" }
+    },
+    "inputCapabilities": {},
+    "nodeBindings": {
+      "prompt": ["117", "inputs", "string_a"],
+      "negativePrompt": ["7", "inputs", "text"],
+      "unet_name": ["1", "inputs", "unet_name"],
+      "seed": ["9", "inputs", "seed"],
+      "width": ["8", "inputs", "width"],
+      "height": ["8", "inputs", "height"],
+      "steps": ["9", "inputs", "steps"],
+      "cfg": ["9", "inputs", "cfg"],
+      "sampler_name": ["9", "inputs", "sampler_name"],
+      "scheduler": ["9", "inputs", "scheduler"]
+    },
+    "outputDeclarations": ["11"],
+    "outputMediaTypes": ["image/png"],
+    "outputSchema": {},
+    "editorConfig": {
+      "version": 2,
+      "modelSelection": "preset-locked",
+      "fields": {
+        "prompt": { "key": "prompt", "label": "画面描述", "section": "basic", "order": 1, "type": "long-text" },
+        "negativePrompt": { "key": "negativePrompt", "label": "负向提示词", "section": "advanced", "order": 2, "type": "long-text" },
+        "unet_name": { "key": "unet_name", "label": "Anima 扩散模型", "section": "advanced", "order": 3, "type": "model", "modelCategory": "unet", "allowedModels": ["anima_baseV10.safetensors", "anima_turboV10.safetensors"], "allowIndividualSwitch": false },
+        "seed": { "key": "seed", "label": "随机种子", "section": "advanced", "order": 4, "type": "seed" },
+        "width": { "key": "width", "label": "宽度", "section": "basic", "order": 5, "type": "integer" },
+        "height": { "key": "height", "label": "高度", "section": "basic", "order": 6, "type": "integer" },
+        "steps": { "key": "steps", "label": "采样步数", "section": "basic", "order": 7, "type": "integer" },
+        "cfg": { "key": "cfg", "label": "CFG", "section": "basic", "order": 8, "type": "number" },
+        "sampler_name": { "key": "sampler_name", "label": "采样器", "section": "advanced", "order": 9, "type": "enum" },
+        "scheduler": { "key": "scheduler", "label": "调度器", "section": "advanced", "order": 10, "type": "enum" }
+      },
+      "loraSlots": [],
+      "sizePresets": [{ "label": "横版 3:2", "width": 768, "height": 512 }, { "label": "竖版 2:3", "width": 512, "height": 768 }],
+      "constraints": { "maxPixels": 1179648 }
+    }
+  },
+  "presets": [
+    {
+      "key": "anima-base-activity-image-text",
+      "name": "Anima Base · 邻舍参数",
+      "description": "参考邻舍工作流：Anima Base、31 步、CFG 5、er_sde/beta。",
+      "appId": "activities",
+      "purpose": "activity_image_text",
+      "values": { "unet_name": "anima_baseV10.safetensors", "steps": 31, "cfg": 5, "sampler_name": "er_sde", "scheduler": "beta", "width": 768, "height": 512 }
+    },
+    {
+      "key": "anima-turbo-activity-image-text",
+      "name": "Anima Turbo · 低步数",
+      "description": "Anima Turbo 起始测试参数：8 步、CFG 1；生成质量与速度需在本机实测后调整。",
+      "appId": "activities",
+      "purpose": "activity_image_text",
+      "values": { "unet_name": "anima_turboV10.safetensors", "steps": 8, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "width": 768, "height": 512 }
+    }
+  ],
+  "notes": [
+    "只包含 Anima Base/Turbo 扩散模型与参数的选择模板，不包含或下载权重文件。",
+    "提交前会检查所选 ComfyUI 实例中的扩散模型、文本编码器、VAE 和节点；缺少依赖时会阻止提交并列明缺项。",
+    "发布版本时会为活动文生图用途创建 Base/Turbo 预设；活动镜头和无参考图的活动素材可按次选择，不会替换现有 SD1.5 默认配置。此配置包不声明角色参考图输入。"
+  ]
+}

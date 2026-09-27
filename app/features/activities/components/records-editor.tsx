@@ -1,7 +1,7 @@
 'use client';
-import { useSearchParams } from 'next/navigation';
 
-import React, { useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   MessageSquare,
@@ -16,6 +16,19 @@ import {
   X,
   Lock,
   Unlock,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  Edit3,
+  Check,
+  RefreshCw,
+  Camera,
+  Layers,
+  HelpCircle,
+  Clock,
+  User,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type {
   ActorSnapshot,
@@ -43,23 +56,14 @@ interface RecordsEditorProps {
   currentStageId?: string;
   onSelectStage?: (stageId: string) => void;
   onUpdateDocument: (doc: ContentDocument) => void;
-  onOpenAiGenerator?: (stageId: string) => void;
-  /** 视图内一键生成：群聊续写一轮对话。 */
-  onGenerateChatRound?: (stageId: string, conversationId: string) => void;
-  /** 视图内一键生成：为指定角色发一条朋友圈动态。 */
-  onGenerateMoment?: (stageId: string, authorActorId: string) => void;
-  /** 自动续聊开关（默认关闭，由外层持久化）。 */
-  autoContinue?: boolean;
-  onAutoContinueChange?: (next: boolean) => void;
-  /** 自动续聊已预生成候选时的提示。 */
-  autoContinueNotice?: string | null;
   onOpenWorkbench?: (slotId: string) => void;
   /**
-   * 视图由外层工作室控制：群聊 / 朋友圈 / 事件原本是本组件内部的二级标签，
-   * 与「设定」并列在同一个内容 tab 下更符合实际使用（写设定、写记录是一件事）。
+   * 视图由外层工作室控制：剧本流 / 群聊 / 朋友圈 / 事件
    */
-  activeView?: 'settings' | 'chat' | 'moments' | 'facts';
-  onActiveViewChange?: (view: 'chat' | 'moments' | 'facts') => void;
+  activeView?: 'settings' | 'chat' | 'moments' | 'facts' | 'script';
+  onActiveViewChange?: (view: 'chat' | 'moments' | 'facts' | 'script') => void;
+  hideStageSelector?: boolean;
+  hideViewTabs?: boolean;
   disabled?: boolean;
 }
 
@@ -70,63 +74,89 @@ export function RecordsEditor({
   currentStageId,
   onSelectStage,
   onUpdateDocument,
-  onOpenAiGenerator,
-  onGenerateChatRound,
-  onGenerateMoment,
-  autoContinue,
-  onAutoContinueChange,
-  autoContinueNotice,
   onOpenWorkbench,
   activeView,
   onActiveViewChange,
+  hideStageSelector = false,
+  hideViewTabs = false,
   disabled,
 }: RecordsEditorProps) {
-  const searchParams=useSearchParams();
-  const linkedRecord=[...document.messages,...document.posts].find(r=>r.id===searchParams.get('recordId'));
-  const [internalTab, setActiveTab] = useState<'chat' | 'moments' | 'facts'>(searchParams.get('factId')?'facts':document.posts.some(p=>p.id===searchParams.get('recordId'))?'moments':'chat');
-  // 外层给了视图就用外层的，否则退回组件内部状态，保持单独使用时的行为。
-  const activeTab: 'chat' | 'moments' | 'facts' = activeView && activeView !== 'settings' ? activeView : internalTab;
-  const selectView = (view: 'chat' | 'moments' | 'facts') => { setActiveTab(view); onActiveViewChange?.(view); };
+  const searchParams = useSearchParams();
+  const linkedRecord = [...document.messages, ...document.posts].find((r) => r.id === searchParams.get('recordId'));
+
+  // 阶段选择状态
   const [selectedStageId, setSelectedStageId] = useState<string>(
-    document.facts.find(f=>f.id===searchParams.get('factId'))?.stageId || linkedRecord?.stageId || searchParams.get('stageId') || currentStageId || stages[0]?.id || ''
+    document.facts.find((f) => f.id === searchParams.get('factId'))?.stageId ||
+      linkedRecord?.stageId ||
+      searchParams.get('stageId') ||
+      currentStageId ||
+      stages[0]?.id ||
+      ''
   );
 
-  // Message composer state
-  const [composerActorId, setComposerActorId] = useState<string>(actors[0]?.id || '');
-  const [composerText, setComposerText] = useState('');
+  useEffect(() => {
+    if (currentStageId && currentStageId !== selectedStageId) {
+      setSelectedStageId(currentStageId);
+    }
+  }, [currentStageId, selectedStageId]);
 
-  // Post composer state
-  const [postAuthorId, setPostAuthorId] = useState<string>(actors[0]?.id || '');
-  const [postText, setPostText] = useState('');
+  // 内部视图状态（默认采用剧本故事流）
+  const [internalTab, setActiveTab] = useState<'script' | 'chat' | 'moments' | 'facts'>('script');
+  const activeTab: 'script' | 'chat' | 'moments' | 'facts' =
+    activeView && activeView !== 'settings' ? (activeView as 'script' | 'chat' | 'moments' | 'facts') : internalTab;
 
-  // Fact composer state
-  const [factText, setFactText] = useState('');
+  const selectView = (view: 'script' | 'chat' | 'moments' | 'facts') => {
+    setActiveTab(view);
+    onActiveViewChange?.(view);
+  };
 
-  /*
-   * 计划 §8.5：内容模式「右当前记录详情按需显示」。
-   * 选中某条群聊记录后，宽屏（≥1440px）在右侧显示详情栏，
-   * 1280px 及以下改用底部详情抽屉，避免辅助栏挤压记录区。
-   */
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  const wideDetailColumn = useWideDetailColumn();
+  // 当前阶段对象
+  const currentStage = useMemo(
+    () => stages.find((s) => s.id === selectedStageId) || stages[0],
+    [stages, selectedStageId]
+  );
+  const currentStageIndex = useMemo(
+    () => stages.findIndex((s) => s.id === selectedStageId),
+    [stages, selectedStageId]
+  );
 
-  // Actor lookup map
-  const actorMap = useMemo(() => {
-    return new Map(actors.map((a) => [a.id, a]));
-  }, [actors]);
+  // 严格按当前阶段过滤数据，解决多阶段重复显示问题
+  const stageMessages = useMemo(
+    () => (document.messages || []).filter((m) => m.stageId === selectedStageId),
+    [document.messages, selectedStageId]
+  );
+  const stagePosts = useMemo(
+    () => (document.posts || []).filter((p) => p.stageId === selectedStageId),
+    [document.posts, selectedStageId]
+  );
+  const stagePostIds = useMemo(() => new Set(stagePosts.map((p) => p.id)), [stagePosts]);
+  const stageComments = useMemo(
+    () => (document.comments || []).filter((c) => stagePostIds.has(c.postId)),
+    [document.comments, stagePostIds]
+  );
+  const stageLikes = useMemo(
+    () => (document.likes || []).filter((l) => stagePostIds.has(l.postId)),
+    [document.likes, stagePostIds]
+  );
+  const stageFacts = useMemo(
+    () => (document.facts || []).filter((f) => f.stageId === selectedStageId),
+    [document.facts, selectedStageId]
+  );
+  const stageMediaSlots = useMemo(
+    () => (document.mediaSlots || []).filter((s) => s.stageId === selectedStageId),
+    [document.mediaSlots, selectedStageId]
+  );
 
-  const messages = document.messages || [];
-  const posts = document.posts || [];
-  const comments = document.comments || [];
-  const likes = document.likes || [];
-  const facts = document.facts || [];
-  const mediaSlots = document.mediaSlots || [];
-  // 群聊续写要写进哪个会话：本阶段第一条消息所属会话，没有消息时用活动默认会话。
+  // 角色索引
+  const actorMap = useMemo(() => new Map(actors.map((a) => [a.id, a])), [actors]);
+
+  // 会话 ID
   const selectedConversationId = useMemo(() => {
-    const first = document.messages.find((message) => message.stageId === selectedStageId);
+    const first = stageMessages[0];
     return first?.conversationId || document.conversations[0]?.id || 'group_main';
-  }, [document.messages, document.conversations, selectedStageId]);
+  }, [stageMessages, document.conversations]);
 
+  // 锁定状态映射
   const lockedRecordMap = useMemo(() => {
     const map = new Map<string, 'message' | 'post'>();
     for (const rec of document.editingPolicy?.lockedRecords || []) {
@@ -135,13 +165,42 @@ export function RecordsEditor({
     return map;
   }, [document.editingPolicy]);
 
+  // 仅编辑实际接入文本任务提示词的阶段主旨和系统覆盖；旧 MCP 字段原样保留。
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
+  const [stagePremise, setStagePremise] = useState('');
+  const [stageSystemPromptOverride, setStageSystemPromptOverride] = useState('');
+
+  // 同步阶段配置到本地状态
+  useEffect(() => {
+    if (currentStage) {
+      setStagePremise(currentStage.stagePremise || '');
+      setStageSystemPromptOverride(currentStage.systemPromptOverride || '');
+    }
+  }, [currentStage]);
+
+  // 保存阶段主旨与系统提示词覆盖；对象展开会保留未展示的旧 MCP 字段。
+  const handleSaveStageConfig = useCallback(() => {
+    if (!currentStage) return;
+    const nextStages = stages.map((s) =>
+      s.id === currentStage.id
+        ? {
+            ...s,
+            stagePremise: stagePremise.trim() || undefined,
+            systemPromptOverride: stageSystemPromptOverride.trim() || undefined,
+          }
+        : s
+    );
+    onUpdateDocument({
+      ...document,
+      stages: nextStages,
+    });
+  }, [currentStage, stagePremise, stageSystemPromptOverride, stages, document, onUpdateDocument]);
+
+  // 锁定/解锁单条记录
   const handleToggleRecordLock = (kind: 'message' | 'post', id: string) => {
     const currentLocked = document.editingPolicy?.lockedRecords || [];
     const isLocked = currentLocked.some((r) => r.id === id);
-    const nextLocked = isLocked
-      ? currentLocked.filter((r) => r.id !== id)
-      : [...currentLocked, { kind, id }];
-
+    const nextLocked = isLocked ? currentLocked.filter((r) => r.id !== id) : [...currentLocked, { kind, id }];
     onUpdateDocument({
       ...document,
       editingPolicy: {
@@ -151,32 +210,53 @@ export function RecordsEditor({
     });
   };
 
-  const handleSelectStage = (id: string) => {
-    setSelectedStageId(id);
-    onSelectStage?.(id);
-  };
+  // 快捷追加消息/台词
+  const [composerActorId, setComposerActorId] = useState<string>(actors[0]?.id || '');
+  const [composerText, setComposerText] = useState('');
+  const [composerTime, setComposerTime] = useState('');
 
-  // Add chat message
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!composerText.trim() || !composerActorId) return;
 
     const newMsg: ChatMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      conversationId: document.conversations[0]?.id || 'group_main',
+      conversationId: selectedConversationId,
       stageId: selectedStageId,
       kind: 'message',
       speakerActorId: composerActorId,
       text: composerText.trim(),
       mediaSlotIds: [],
-      storyOrder: (messages.length + 1) * 10,
+      storyOrder: (stageMessages.length + 1) * 10,
+      storyTimeLabel: composerTime.trim() || undefined,
     };
 
     onUpdateDocument({
       ...document,
-      messages: [...messages, newMsg],
+      messages: [...(document.messages || []), newMsg],
     });
     setComposerText('');
+    setComposerTime('');
+  };
+
+  // 行内编辑消息
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editingMsgText, setEditingMsgText] = useState('');
+
+  const handleStartEditMsg = (msg: ChatMessage) => {
+    setEditingMsgId(msg.id);
+    setEditingMsgText(msg.text);
+  };
+
+  const handleSaveEditMsg = (msgId: string) => {
+    if (!editingMsgText.trim()) return;
+    onUpdateDocument({
+      ...document,
+      messages: (document.messages || []).map((m) =>
+        m.id === msgId ? { ...m, text: editingMsgText.trim() } : m
+      ),
+    });
+    setEditingMsgId(null);
   };
 
   const handleDeleteMessage = (msgId: string) => {
@@ -186,11 +266,14 @@ export function RecordsEditor({
     }
     onUpdateDocument({
       ...document,
-      messages: messages.filter((m) => m.id !== msgId),
+      messages: (document.messages || []).filter((m) => m.id !== msgId),
     });
   };
 
-  // Add moments post
+  // 动态操作
+  const [postAuthorId, setPostAuthorId] = useState<string>(actors[0]?.id || '');
+  const [postText, setPostText] = useState('');
+
   const handleCreatePost = (e: React.FormEvent) => {
     e.preventDefault();
     if (!postText.trim() || !postAuthorId) return;
@@ -201,13 +284,13 @@ export function RecordsEditor({
       authorActorId: postAuthorId,
       text: postText.trim(),
       mediaSlotIds: [],
-      storyOrder: (posts.length + 1) * 10,
+      storyOrder: (stagePosts.length + 1) * 10,
       sourceFactIds: [],
     };
 
     onUpdateDocument({
       ...document,
-      posts: [...posts, newPost],
+      posts: [...(document.posts || []), newPost],
     });
     setPostText('');
   };
@@ -219,22 +302,21 @@ export function RecordsEditor({
     }
     onUpdateDocument({
       ...document,
-      posts: posts.filter((p) => p.id !== postId),
-      comments: comments.filter((c) => c.postId !== postId),
-      likes: likes.filter((l) => l.postId !== postId),
+      posts: (document.posts || []).filter((p) => p.id !== postId),
+      comments: (document.comments || []).filter((c) => c.postId !== postId),
+      likes: (document.likes || []).filter((l) => l.postId !== postId),
     });
   };
 
-  // Toggle post like
   const handleToggleLike = (postId: string, actorId: string) => {
-    const hasLiked = likes.some((l) => l.postId === postId && l.actorId === actorId);
+    const currentLikes = document.likes || [];
+    const hasLiked = currentLikes.some((l) => l.postId === postId && l.actorId === actorId);
     const updatedLikes = hasLiked
-      ? likes.filter((l) => !(l.postId === postId && l.actorId === actorId))
-      : [...likes, { postId, actorId }];
+      ? currentLikes.filter((l) => !(l.postId === postId && l.actorId === actorId))
+      : [...currentLikes, { postId, actorId }];
     onUpdateDocument({ ...document, likes: updatedLikes });
   };
 
-  // Add comment to post
   const handleAddComment = (postId: string, actorId: string, text: string) => {
     if (!text.trim()) return;
     const newComment: MomentComment = {
@@ -242,15 +324,16 @@ export function RecordsEditor({
       postId,
       authorActorId: actorId,
       text: text.trim(),
-      storyOrder: (comments.filter((c) => c.postId === postId).length + 1) * 10,
+      storyOrder: ((document.comments || []).filter((c) => c.postId === postId).length + 1) * 10,
     };
     onUpdateDocument({
       ...document,
-      comments: [...comments, newComment],
+      comments: [...(document.comments || []), newComment],
     });
   };
 
-  // Add Fact
+  // 事实操作
+  const [factText, setFactText] = useState('');
   const handleAddFact = (e: React.FormEvent) => {
     e.preventDefault();
     if (!factText.trim()) return;
@@ -266,7 +349,7 @@ export function RecordsEditor({
 
     onUpdateDocument({
       ...document,
-      facts: [...facts, newFact],
+      facts: [...(document.facts || []), newFact],
     });
     setFactText('');
   };
@@ -274,171 +357,34 @@ export function RecordsEditor({
   const handleDeleteFact = (factId: string) => {
     onUpdateDocument({
       ...document,
-      facts: facts.filter((f) => f.id !== factId),
+      facts: (document.facts || []).filter((f) => f.id !== factId),
     });
   };
 
-  /* 选中的记录：被删除后自动回到「未选中」，不需要额外的清理 effect。 */
-  const selectedMessageIndex = selectedMessageId
-    ? messages.findIndex((msg) => msg.id === selectedMessageId)
-    : -1;
-  const selectedMessage = selectedMessageIndex >= 0 ? messages[selectedMessageIndex] : null;
-  const selectedSpeaker = selectedMessage?.speakerActorId
-    ? actorMap.get(selectedMessage.speakerActorId)
-    : undefined;
-  const selectedStageTitle = selectedMessage
-    ? stages.find((stage) => stage.id === selectedMessage.stageId)?.title || '未指定阶段'
-    : '';
-
-  const recordDetail = selectedMessage ? (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-ink">第 {selectedMessageIndex + 1} 条记录</h3>
-          {/* 抽屉模式下阶段已作为标题副文案，这里不再重复。 */}
-          {wideDetailColumn && <p className="text-sm text-muted">{selectedStageTitle}</p>}
-        </div>
-        {wideDetailColumn && (
-          <button
-            type="button"
-            onClick={() => setSelectedMessageId(null)}
-            className="rounded-[var(--radius-control)] p-1.5 text-muted hover:bg-surface-hover hover:text-ink"
-            aria-label="关闭记录详情"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        )}
-      </div>
-
-      <dl className="space-y-1.5 text-sm">
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted">说话人</dt>
-          <dd className="text-right font-medium text-ink">
-            {selectedSpeaker?.displayName || selectedMessage.speakerActorId || '未指定'}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted">活动角色</dt>
-          <dd className="text-right text-ink">{selectedSpeaker?.activityRole || '未标注'}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted">叙事顺序</dt>
-          <dd className="text-right tabular-nums text-ink">{selectedMessage.storyOrder}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted">形态</dt>
-          <dd className="text-right text-ink">
-            {selectedMessage.kind === 'message' ? '群聊消息' : selectedMessage.kind}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted">保护状态</dt>
-          <dd className="text-right text-ink">
-            {lockedRecordMap.has(selectedMessage.id) ? (
-              <span className="inline-flex items-center gap-1 font-medium text-amber-700">
-                <Lock className="h-3 w-3" /> 已锁定（防改写）
-              </span>
-            ) : (
-              <span className="text-muted">未锁定</span>
-            )}
-          </dd>
-        </div>
-      </dl>
-
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-muted">记录内容</p>
-        <p className="rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-sm leading-relaxed text-ink break-words">
-          {selectedMessage.text}
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium text-muted">
-          关联媒体镜头（{selectedMessage.mediaSlotIds?.length || 0}）
-        </p>
-        {selectedMessage.mediaSlotIds && selectedMessage.mediaSlotIds.length > 0 ? (
-          <ul className="space-y-1.5">
-            {selectedMessage.mediaSlotIds.map((slotId) => (
-              <li key={slotId}>
-                <button
-                  type="button"
-                  onClick={() => onOpenWorkbench?.(slotId)}
-                  className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 py-1.5 text-left text-sm hover:border-border-strong"
-                >
-                  <span className="font-mono">{slotId}</span>
-                  <span className="text-muted">打开工作台</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-fg-subtle">这条记录还没有关联镜头。</p>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2 pt-1">
-        {selectedMessage.mediaSlotIds?.[0] && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={disabled}
-            onClick={() => onOpenWorkbench?.(selectedMessage.mediaSlotIds[0])}
-          >
-            打开素材工作台
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant={lockedRecordMap.has(selectedMessage.id) ? 'secondary' : 'outline'}
-          disabled={disabled}
-          onClick={() => handleToggleRecordLock('message', selectedMessage.id)}
-          className="flex items-center gap-1.5"
-        >
-          {lockedRecordMap.has(selectedMessage.id) ? (
-            <>
-              <Unlock className="h-3.5 w-3.5" />
-              解锁此记录
-            </>
-          ) : (
-            <>
-              <Lock className="h-3.5 w-3.5 text-amber-600" />
-              锁定此记录
-            </>
-          )}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={disabled || lockedRecordMap.has(selectedMessage.id)}
-          onClick={() => {
-            handleDeleteMessage(selectedMessage.id);
-            setSelectedMessageId(null);
-          }}
-          title={lockedRecordMap.has(selectedMessage.id) ? '已锁定保护，需先解锁' : '删除这条记录'}
-        >
-          删除这条记录
-        </Button>
-      </div>
-    </div>
-  ) : null;
+  // 详情抽屉/侧栏
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const wideDetailColumn = useWideDetailColumn();
+  const selectedMessage = stageMessages.find((msg) => msg.id === selectedMessageId);
+  const selectedSpeaker = selectedMessage?.speakerActorId ? actorMap.get(selectedMessage.speakerActorId) : undefined;
 
   return (
-    <div className="studio-records">
-      {/* Stage Selector Bar */}
-      <div className="studio-stages p-2.5 rounded-[var(--radius-panel)] bg-surface border border-border-default">
-        <div className="studio-stage-list">
-          <span className="text-sm font-semibold text-muted px-2 flex-shrink-0">当前阶段：</span>
+    <div className="w-full space-y-4">
+      {/* 阶段选择器（仅在独立未由外层托管时显示） */}
+      {!hideStageSelector && (
+        <div className="flex items-center gap-2 p-2.5 rounded-[var(--radius-panel)] bg-surface border border-border-default overflow-x-auto">
+          <span className="text-xs font-semibold text-muted px-2 shrink-0">当前阶段：</span>
           {stages.map((stage, idx) => {
             const isSelected = selectedStageId === stage.id;
             return (
               <button
                 key={stage.id}
                 type="button"
-                onClick={() => handleSelectStage(stage.id)}
-                className={`px-3 py-1.5 rounded-[var(--radius-control)] text-sm font-medium transition-colors cursor-pointer flex-shrink-0 ${
-                  isSelected
-                    ? 'bg-accent text-white shadow-xs'
-                    : 'bg-surface-muted text-ink hover:bg-surface-hover'
+                onClick={() => {
+                  setSelectedStageId(stage.id);
+                  onSelectStage?.(stage.id);
+                }}
+                className={`px-3 py-1.5 rounded-[var(--radius-control)] text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                  isSelected ? 'bg-accent text-white shadow-xs' : 'bg-surface-muted text-ink hover:bg-surface-hover'
                 }`}
               >
                 #{idx + 1} {stage.title}
@@ -446,73 +392,150 @@ export function RecordsEditor({
             );
           })}
         </div>
+      )}
 
-        <label className="studio-stage-mobile text-sm">当前阶段
-          <Select value={selectedStageId} onChange={(e) => handleSelectStage(e.target.value)}>
-            {stages.map((stage, index) => <option key={stage.id} value={stage.id}>{index + 1}. {stage.title}</option>)}
-          </Select>
-        </label>
-        {onOpenAiGenerator && (messages.length > 0 || posts.length > 0) && (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => onOpenAiGenerator(selectedStageId)}
-            disabled={disabled}
-            className="text-sm flex items-center gap-1.5"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            补充本阶段内容
-          </Button>
-        )}
+      {/* 阶段提示词配置 */}
+      <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-xs overflow-hidden">
+        <div className="p-4 space-y-3 bg-linear-to-r from-surface to-surface-raised">
+          {/* 阶段标题与概览 */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="px-2.5 py-1 rounded-md bg-accent/15 text-accent font-bold text-xs shrink-0">
+                第 {currentStageIndex >= 0 ? currentStageIndex + 1 : 1} 幕
+              </span>
+              <h2 className="text-sm font-bold text-ink truncate">
+                {currentStage?.title || '未命名阶段'}
+              </h2>
+              {currentStage?.location && (
+                <span className="text-xs text-muted shrink-0 flex items-center gap-1">
+                  📍 {currentStage.location}
+                </span>
+              )}
+              {currentStage?.stagePremise && (
+                <span className="text-xs text-accent font-medium bg-accent/10 px-2 py-0.5 rounded truncate max-w-[280px]">
+                  主旨：{currentStage.stagePremise}
+                </span>
+              )}
+            </div>
+
+            {/* 控制按钮组 */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowConfigPanel(!showConfigPanel)}
+                className="h-8 text-xs flex items-center gap-1.5 border-border-default hover:bg-surface-hover"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
+                <span>阶段提示词配置</span>
+                {showConfigPanel ? <ChevronUp className="h-3 w-3 text-muted" /> : <ChevronDown className="h-3 w-3 text-muted" />}
+              </Button>
+
+            </div>
+          </div>
+
+          {/* 折叠区域：只保留实际接入文本提示词的字段 */}
+          {showConfigPanel && (
+            <div className="pt-3 mt-1 border-t border-border-subtle grid grid-cols-1 gap-4 text-xs">
+              {/* 阶段主旨与事件目标 */}
+              <div className="space-y-2">
+                <label className="block font-semibold text-ink flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5 text-accent" />
+                  <span>阶段核心主旨与戏剧冲突</span>
+                </label>
+                <Textarea
+                  value={stagePremise}
+                  onChange={(e) => setStagePremise(e.target.value)}
+                  placeholder="设定本阶段的核心事件冲突、角色情感变化与剧情发展目标（大模型将严格围绕该主旨生成）..."
+                  className="h-18 text-xs bg-surface"
+                />
+                <p className="text-[11px] text-muted">
+                  此主旨会与全局活动主题结合，引导大模型产生符合本幕节奏的对话与动态。
+                </p>
+              </div>
+
+              {/* 系统提示词覆盖 */}
+              <div className="space-y-2">
+                <div className="pt-2 space-y-1">
+                  <label className="block font-medium text-muted text-[11px]">
+                    阶段专属系统提示词微调 (System Prompt Override，可选):
+                  </label>
+                  <Input
+                    value={stageSystemPromptOverride}
+                    onChange={(e) => setStageSystemPromptOverride(e.target.value)}
+                    placeholder="未填写时继承策划方案设定的全局系统提示词..."
+                    className="h-7 text-xs bg-surface"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveStageConfig}
+                    className="h-7 text-xs px-3 bg-accent text-white"
+                  >
+                    保存本阶段配置
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 独立入口仍可管理子视图；嵌入工作台时由外层统一提供 */}
+        {!hideViewTabs && <div className="flex flex-wrap items-center justify-between border-t border-border-default px-4 py-2 bg-surface-muted/30 text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => selectView('script')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
+                activeTab === 'script' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+              }`}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              <span>剧本故事流</span>
+              <span className="font-mono">({stageMessages.length + stagePosts.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectView('chat')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
+                activeTab === 'chat' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+              }`}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>对话台词 ({stageMessages.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectView('moments')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
+                activeTab === 'moments' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+              }`}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              <span>朋友圈 ({stagePosts.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectView('facts')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
+                activeTab === 'facts' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+              }`}
+            >
+              <FileCheck className="h-3.5 w-3.5" />
+              <span>剧情事实 ({stageFacts.length})</span>
+            </button>
+          </div>
+
+        </div>}
       </div>
 
-      <div className="studio-records-body space-y-4">
-      {/*
-       * 视图切换：由外层工作室的同层切换器控制（activeView），
-       * 这里只在被单独使用时渲染自己的切换条，避免出现两排重复的标签。
-       */}
-      <div className={`flex items-center gap-2 border-b border-border-default pb-2 ${onActiveViewChange ? 'hidden' : ''}`}>
-        <button
-          type="button"
-          onClick={() => selectView('chat')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
-            activeTab === 'chat'
-              ? 'text-accent border-b-2 border-accent'
-              : 'text-muted hover:text-ink'
-          }`}
-        >
-          <MessageSquare className="h-4 w-4" />
-          <span className="sm:hidden">群聊</span><span className="hidden sm:inline">群聊记录</span>{messages.length > 0 ? ` (${messages.length})` : ''}
-        </button>
-        <button
-          type="button"
-          onClick={() => selectView('moments')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
-            activeTab === 'moments'
-              ? 'text-accent border-b-2 border-accent'
-              : 'text-muted hover:text-ink'
-          }`}
-        >
-          <Share2 className="h-4 w-4" />
-          <span className="sm:hidden">朋友圈</span><span className="hidden sm:inline">朋友圈动态</span>{posts.length > 0 ? ` (${posts.length})` : ''}
-        </button>
-        <button
-          type="button"
-          onClick={() => selectView('facts')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t text-sm font-semibold transition-colors cursor-pointer ${
-            activeTab === 'facts'
-              ? 'text-accent border-b-2 border-accent'
-              : 'text-muted hover:text-ink'
-          }`}
-        >
-          <FileCheck className="h-4 w-4" />
-          <span className="sm:hidden">事件</span><span className="hidden sm:inline">本阶段发生的事</span>{facts.length > 0 ? ` (${facts.length})` : ''}
-        </button>
-      </div>
-
-      {/* 1. Chat Tab Content */}
-      {activeTab === 'chat' && (
+      {/* 2. 主体：根据所选视图展示内容 */}
+      {/* 2.1 剧本故事流视图 (Script View - 默认主界面) */}
+      {(activeTab === 'script' || activeTab === 'chat') && (
         <div
           className={
             wideDetailColumn && selectedMessage
@@ -521,179 +544,177 @@ export function RecordsEditor({
           }
         >
           <div className="space-y-4">
-            <div className={`rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 ${messages.length ? 'min-h-[360px]' : 'min-h-48'} max-h-[500px] overflow-y-auto space-y-3`}>
-              {messages.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted space-y-2">
-                  <MessageSquare className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
-                  <p>这一阶段还没有对话</p>
-                  <p className="text-sm">在下方选择角色并输入对话，或使用上方“下一步”生成活动内容。</p>
+            {/* 剧本流卡片列表 */}
+            <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 sm:p-6 min-h-[400px] space-y-4">
+              {stageMessages.length === 0 && stagePosts.length === 0 ? (
+                <div className="py-16 text-center text-sm text-muted space-y-3">
+                  <Layers className="h-10 w-10 mx-auto text-accent opacity-60" />
+                  <p className="font-semibold text-ink text-base">本阶段暂无剧情内容</p>
+                  <p className="text-xs max-w-md mx-auto leading-relaxed">
+                    可在右侧 AI 面板生成文本候选；候选会先进入审阅，不会自动写入。
+                  </p>
                 </div>
               ) : (
-                messages.map((msg, idx) => {
-                  const speaker = msg.speakerActorId ? actorMap.get(msg.speakerActorId) : undefined;
-                  const isUser = msg.speakerActorId === actors[0]?.id;
+                <div className="space-y-4">
+                  {/* 对话与动态故事流 */}
+                  {stageMessages.map((msg, idx) => {
+                    const speaker = msg.speakerActorId ? actorMap.get(msg.speakerActorId) : undefined;
+                    const isEditing = editingMsgId === msg.id;
 
-                  return (
-                    <div
-                      key={msg.id} id={`record-${msg.id}`}
-                      className={`flex items-start gap-2.5 group ${
-                        isUser ? 'flex-row-reverse' : 'flex-row'
-                      }`}
-                    >
-                      {/* Avatar */}
-                      <div className="h-8 w-8 rounded-full bg-surface-hover overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold text-ink">
-                        {(speaker?.avatarUrl || speaker?.appearanceReferenceAssetKeys?.[0]) ? (
-                          <Image
-                            src={speaker.avatarUrl || speaker.appearanceReferenceAssetKeys[0]}
-                            alt={speaker.displayName}
-                            width={32}
-                            height={32}
-                            className="object-cover h-full w-full"
-                          />
-                        ) : (
-                          speaker?.displayName?.slice(0, 1) || '?'
-                        )}
-                      </div>
-
-                      {/* Bubble & Name */}
-                      <div className={`space-y-1 max-w-[75%] ${isUser ? 'items-end text-right' : 'items-start'}`}>
-                        <div className="flex items-center gap-1.5 text-sm text-muted">
-                          <span className="font-medium text-ink">
-                            {speaker?.displayName || msg.speakerActorId || '系统'}
-                          </span>
-                          <span className="text-sm opacity-70">#{idx + 1}</span>
-                          {lockedRecordMap.has(msg.id) && (
-                            <span
-                              className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[11px] bg-amber-50 text-amber-700 border border-amber-200"
-                              title="此消息已被锁定，防自动/局部改写"
-                            >
-                              <Lock className="h-2.5 w-2.5" /> 已锁定
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className={`p-2.5 rounded-[var(--radius-panel)] text-sm leading-relaxed break-words shadow-2xs ${
-                            isUser
-                              ? 'bg-accent text-white'
-                              : 'bg-surface text-ink border border-border-subtle'
-                          } ${selectedMessageId === msg.id ? 'ring-2 ring-accent ring-offset-1' : ''}`}
-                        >
-                          {msg.text}
-                        </div>
-
-                        {/* Associated media slots */}
-                        {msg.mediaSlotIds && msg.mediaSlotIds.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {msg.mediaSlotIds.map((slotId) => (
-                              <button
-                                key={slotId}
-                                type="button"
-                                onClick={() => onOpenWorkbench?.(slotId)}
-                                className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 transition cursor-pointer"
-                                title="点击打开 AI 生图 / 提示词溯源工作台"
-                              >
-                                <span>📷 媒体镜头:</span>
-                                <span className="font-mono font-semibold">{slotId}</span>
-                                <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Row Actions: 详情（§8.5 记录详情）、锁定与删除 */}
-                      <div className="flex flex-col gap-1 self-center">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedMessageId(msg.id)}
-                          aria-pressed={selectedMessageId === msg.id}
-                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 text-fg-subtle hover:text-ink transition-opacity"
-                          title="查看这条记录的详情"
-                          aria-label={`查看第 ${idx + 1} 条记录的详情`}
-                        >
-                          <Info className="h-3 w-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleRecordLock('message', msg.id)}
-                          disabled={disabled}
-                          className={`p-1 transition-opacity ${
-                            lockedRecordMap.has(msg.id)
-                              ? 'opacity-100 text-amber-600 hover:text-amber-700'
-                              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-fg-subtle hover:text-ink'
-                          }`}
-                          title={lockedRecordMap.has(msg.id) ? '已锁定：点击解锁此消息' : '未锁定：点击锁定此消息以防被改写'}
-                        >
-                          {lockedRecordMap.has(msg.id) ? (
-                            <Lock className="h-3 w-3" />
+                    return (
+                      <div
+                        key={msg.id}
+                        id={`record-${msg.id}`}
+                        className="flex items-start gap-3 group p-2.5 rounded-lg hover:bg-surface-muted/40 transition-colors"
+                      >
+                        {/* 角色立绘头像 */}
+                        <div className="h-9 w-9 rounded-full bg-surface-hover overflow-hidden shrink-0 flex items-center justify-center text-xs font-semibold text-ink border border-border-subtle">
+                          {speaker?.avatarUrl || speaker?.appearanceReferenceAssetKeys?.[0] ? (
+                            <Image
+                              src={speaker.avatarUrl || speaker.appearanceReferenceAssetKeys?.[0] || ''}
+                              alt={speaker.displayName}
+                              width={36}
+                              height={36}
+                              className="object-cover h-full w-full"
+                            />
                           ) : (
-                            <Unlock className="h-3 w-3" />
+                            speaker?.displayName?.slice(0, 1) || '?'
                           )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMessage(msg.id)}
-                          disabled={disabled || lockedRecordMap.has(msg.id)}
-                          className={`p-1 transition-opacity ${
-                            lockedRecordMap.has(msg.id)
-                              ? 'opacity-20 cursor-not-allowed text-fg-subtle'
-                              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-fg-subtle hover:text-danger-fg'
-                          }`}
-                          title={lockedRecordMap.has(msg.id) ? '已锁定保护，如需删除请先解锁' : '删除单条消息'}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        </div>
+
+                        {/* 台词与信息 */}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="font-bold text-ink">{speaker?.displayName || msg.speakerActorId || '系统'}</span>
+                            {speaker?.activityRole && (
+                              <span className="text-[10px] text-muted bg-surface-muted px-1.5 py-0.2 rounded font-normal">
+                                {speaker.activityRole}
+                              </span>
+                            )}
+                            {msg.storyTimeLabel && (
+                              <span className="text-[11px] text-muted font-mono flex items-center gap-0.5">
+                                <Clock className="h-2.5 w-2.5" />
+                                {msg.storyTimeLabel}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted font-mono opacity-60">#{idx + 1}</span>
+
+                            {lockedRecordMap.has(msg.id) && (
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200">
+                                <Lock className="h-2.5 w-2.5" /> 已锁定
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 行内编辑或常规展示 */}
+                          {isEditing ? (
+                            <div className="space-y-2 pt-1">
+                              <Textarea
+                                value={editingMsgText}
+                                onChange={(e) => setEditingMsgText(e.target.value)}
+                                className="text-xs h-16 bg-surface"
+                                autoFocus
+                              />
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleSaveEditMsg(msg.id)}
+                                  className="h-6 text-[11px] px-2.5 bg-accent text-white"
+                                >
+                                  保存
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setEditingMsgId(null)}
+                                  className="h-6 text-[11px] px-2"
+                                >
+                                  取消
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              onClick={() => setSelectedMessageId(msg.id)}
+                              className={`p-3 rounded-lg text-xs leading-relaxed text-ink bg-surface-raised border border-border-subtle cursor-pointer hover:border-accent/40 transition-colors ${
+                                selectedMessageId === msg.id ? 'ring-2 ring-accent ring-offset-1' : ''
+                              }`}
+                            >
+                              {msg.text}
+                            </div>
+                          )}
+
+                          {/* 关联媒体镜头 */}
+                          {msg.mediaSlotIds && msg.mediaSlotIds.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {msg.mediaSlotIds.map((slotId) => (
+                                <button
+                                  key={slotId}
+                                  type="button"
+                                  onClick={() => onOpenWorkbench?.(slotId)}
+                                  className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+                                  title="打开 AI 生图与分镜工作台"
+                                >
+                                  <Camera className="h-3 w-3 text-amber-600" />
+                                  <span>分镜插槽:</span>
+                                  <span className="font-mono font-semibold">{slotId}</span>
+                                  <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 行级快捷操作 */}
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity self-start pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditMsg(msg)}
+                            className="p-1 text-muted hover:text-ink rounded hover:bg-surface-hover"
+                            title="编辑此句台词"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRecordLock('message', msg.id)}
+                            className={`p-1 rounded hover:bg-surface-hover ${
+                              lockedRecordMap.has(msg.id) ? 'text-amber-600' : 'text-muted hover:text-ink'
+                            }`}
+                            title={lockedRecordMap.has(msg.id) ? '解锁此台词' : '锁定此台词（防止大模型重新生成时覆盖）'}
+                          >
+                            {lockedRecordMap.has(msg.id) ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMessage(msg.id)}
+                            disabled={lockedRecordMap.has(msg.id)}
+                            className="p-1 text-muted hover:text-danger-fg rounded hover:bg-surface-hover disabled:opacity-30"
+                            title="删除此台词"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            {/*
-             * 视图内生成入口。
-             *
-             * 生成能力本来只在生成弹窗里，用户要写群聊得先想起来去开弹窗；
-             * 这里直接把「续写一轮对话」放在对话上方，走同一套候选预览后再采用。
-             */}
-            {onGenerateChatRound && (
-              <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-muted/40 px-3 py-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => onGenerateChatRound(selectedStageId, selectedConversationId)}
-                  disabled={disabled}
-                  className="text-sm flex items-center gap-1.5"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  AI 生成一轮对话
-                </Button>
-                {onAutoContinueChange && (
-                  <label className="flex items-center gap-1.5 text-xs text-muted">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(autoContinue)}
-                      onChange={(event) => onAutoContinueChange(event.target.checked)}
-                      disabled={disabled}
-                    />
-                    自动续聊（冷场 40 秒后预生成候选）
-                  </label>
-                )}
-                {autoContinueNotice && <span className="text-xs text-accent-dark">{autoContinueNotice}</span>}
-              </div>
-            )}
-
-            {/* Chat Message Input Composer */}
+            {/* 底部：快捷追加台词/旁白条 */}
             <form
               onSubmit={handleSendMessage}
-              className="flex items-center gap-2 p-2 rounded-[var(--radius-panel)] bg-surface border border-border-default"
+              className="flex items-center gap-2 p-2 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-2xs"
             >
-              <div className="w-32 flex-shrink-0">
+              <div className="w-32 shrink-0">
                 <Select
                   value={composerActorId}
                   onChange={(e) => setComposerActorId(e.target.value)}
                   disabled={disabled}
-                  className="h-8 text-sm bg-transparent border-0 ring-0 focus:ring-0 min-h-0"
+                  className="h-8 text-xs bg-transparent border-0 ring-0 focus:ring-0"
                 >
                   {actors.map((actor) => (
                     <option key={actor.id} value={actor.id}>
@@ -704,241 +725,133 @@ export function RecordsEditor({
               </div>
 
               <Input
+                value={composerTime}
+                onChange={(e) => setComposerTime(e.target.value)}
+                placeholder="时间(如 10:00)"
+                className="w-24 h-8 text-xs bg-transparent border-border-subtle"
+              />
+
+              <Input
                 value={composerText}
                 onChange={(e) => setComposerText(e.target.value)}
-                placeholder="在此输入群聊内容，按回车添加…"
+                placeholder="追加角色台词或剧本旁白，按回车快速添加…"
                 disabled={disabled}
-                className="h-8 text-sm flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
+                className="h-8 text-xs flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
               />
 
               <Button
                 type="submit"
                 size="sm"
                 disabled={disabled || !composerText.trim()}
-                className="h-8 px-3 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
+                className="h-8 px-3 text-xs bg-accent hover:bg-accent-dark text-white flex items-center gap-1 shrink-0"
               >
-                <Send className="h-3.5 w-3.5" />
-                发送
+                <Plus className="h-3.5 w-3.5" />
+                <span>追加</span>
               </Button>
             </form>
-            </div>
+          </div>
 
-          {/* 宽屏：当前记录详情固定右栏（§8.5）。窄屏走下方抽屉。 */}
+          {/* 宽屏右侧记录详情 */}
           {wideDetailColumn && selectedMessage && (
-            <aside
-              className="sticky top-20 h-fit rounded-[var(--radius-panel)] bg-surface border border-border-default p-4"
-              aria-label="当前记录详情"
-            >
-              {recordDetail}
+            <aside className="sticky top-20 h-fit rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-xs font-bold text-ink">记录详情</h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMessageId(null)}
+                  className="text-muted hover:text-ink p-1"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="space-y-2 text-xs">
+                <div>
+                  <span className="text-muted">说话人：</span>
+                  <span className="font-semibold text-ink ml-1">{selectedSpeaker?.displayName || '未指定'}</span>
+                </div>
+                <div>
+                  <span className="text-muted">活动角色：</span>
+                  <span className="text-ink ml-1">{selectedSpeaker?.activityRole || '未标注'}</span>
+                </div>
+                <div>
+                  <span className="text-muted">时间标记：</span>
+                  <span className="text-ink ml-1 font-mono">{selectedMessage.storyTimeLabel || '未设置'}</span>
+                </div>
+                <div>
+                  <span className="text-muted">内容：</span>
+                  <p className="mt-1 p-2 bg-surface-muted rounded text-ink leading-relaxed break-words">
+                    {selectedMessage.text}
+                  </p>
+                </div>
+              </div>
             </aside>
           )}
         </div>
       )}
 
-      {/* 1280px 及以下：详情抽屉（§8.5 移动端详情抽屉）。 */}
-      <Drawer
-        open={!wideDetailColumn && activeTab === 'chat' && Boolean(selectedMessage)}
-        onOpenChange={(open) => {
-          if (!open) setSelectedMessageId(null);
-        }}
-        position="bottom"
-        title="当前记录详情"
-        description={selectedMessage ? selectedStageTitle : undefined}
-      >
-        {recordDetail}
-      </Drawer>
-
-      {/* 2. Moments Tab Content */}
+      {/* 2.2 朋友圈动态视图 */}
       {activeTab === 'moments' && (
         <div className="space-y-4">
-          {/* 视图内生成入口：指定角色发一条动态，走候选预览后再采用。 */}
-          {onGenerateMoment && (
-            <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-muted/40 px-3 py-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onGenerateMoment(selectedStageId, composerActorId || actors[0]?.id || '')}
-                disabled={disabled || !(composerActorId || actors[0]?.id)}
-                className="text-sm flex items-center gap-1.5"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                AI 生成一条动态
-              </Button>
-              <label className="flex items-center gap-1.5 text-xs text-muted">
-                发布者
-                <Select
-                  aria-label="动态发布者"
-                  value={composerActorId || actors[0]?.id || ''}
-                  onChange={(event) => setComposerActorId(event.target.value)}
-                  disabled={disabled}
-                  className="h-7 text-xs bg-transparent"
-                >
-                  {actors.map((actor) => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
-                </Select>
-              </label>
-            </div>
-          )}
-          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[360px] space-y-4">
-            {posts.length === 0 ? (
-              <div className="py-16 text-center text-sm text-muted space-y-2">
-                <Share2 className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
-                <p>当前活动尚无朋友圈动态</p>
-                <p className="text-sm">可使用下方发布新动态，或由 AI 根据群聊及发生事实生成。</p>
+          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-4">
+            {stagePosts.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted space-y-2">
+                <Share2 className="h-8 w-8 mx-auto text-muted opacity-60" />
+                <p>本阶段还没有朋友圈动态</p>
+                <p className="text-xs">可在右侧 AI 面板生成朋友圈候选，审阅确认后再采用。</p>
               </div>
             ) : (
-              posts.map((post) => {
+              stagePosts.map((post) => {
                 const author = actorMap.get(post.authorActorId);
-                const postComments = comments.filter((c) => c.postId === post.id);
-                const postLikes = likes.filter((l) => l.postId === post.id);
+                const postLikes = stageLikes.filter((l) => l.postId === post.id);
+                const postComments = stageComments.filter((c) => c.postId === post.id);
 
                 return (
-                  <div
-                    key={post.id} id={`record-${post.id}`}
-                    className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3"
-                  >
+                  <div key={post.id} className="p-4 rounded-lg bg-surface-raised border border-border-subtle space-y-3">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded bg-surface-hover overflow-hidden flex items-center justify-center text-sm font-semibold text-ink">
-                          {(author?.avatarUrl || author?.appearanceReferenceAssetKeys?.[0]) ? (
-                            <Image
-                              src={author.avatarUrl || author.appearanceReferenceAssetKeys[0]}
-                              alt={author.displayName}
-                              width={36}
-                              height={36}
-                              className="object-cover h-full w-full"
-                            />
-                          ) : (
-                            author?.displayName?.slice(0, 1) || '?'
-                          )}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-surface-hover overflow-hidden flex items-center justify-center text-xs font-semibold text-ink">
+                          {author?.displayName?.slice(0, 1) || '?'}
                         </div>
                         <div>
-                          <div className="text-sm font-bold text-ink">
-                            {author?.displayName || post.authorActorId}
-                          </div>
-                          <div className="text-sm text-muted">动态作者</div>
+                          <p className="text-xs font-bold text-ink">{author?.displayName || '未知角色'}</p>
+                          <p className="text-[10px] text-muted">{author?.activityRole}</p>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {lockedRecordMap.has(post.id) && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200">
-                            <Lock className="h-3 w-3" /> 已锁定
-                          </span>
-                        )}
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => handleToggleRecordLock('post', post.id)}
-                          disabled={disabled}
-                          className={`p-1 transition-colors ${
-                            lockedRecordMap.has(post.id)
-                              ? 'text-amber-600 hover:text-amber-700'
-                              : 'text-fg-subtle hover:text-ink'
-                          }`}
-                          title={lockedRecordMap.has(post.id) ? '已锁定：点击解锁此动态' : '未锁定：点击锁定此动态以防被改写'}
+                          className="p-1 text-muted hover:text-ink"
+                          title={lockedRecordMap.has(post.id) ? '已锁定' : '未锁定'}
                         >
-                          {lockedRecordMap.has(post.id) ? (
-                            <Lock className="h-3.5 w-3.5" />
-                          ) : (
-                            <Unlock className="h-3.5 w-3.5" />
-                          )}
+                          {lockedRecordMap.has(post.id) ? <Lock className="h-3 w-3 text-amber-600" /> : <Unlock className="h-3 w-3" />}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeletePost(post.id)}
-                          disabled={disabled || lockedRecordMap.has(post.id)}
-                          className={`transition-colors p-1 ${
-                            lockedRecordMap.has(post.id)
-                              ? 'opacity-20 cursor-not-allowed text-fg-subtle'
-                              : 'text-fg-subtle hover:text-danger-fg'
-                          }`}
-                          title={lockedRecordMap.has(post.id) ? '已锁定保护，如需删除请先解锁' : '删除动态'}
+                          disabled={lockedRecordMap.has(post.id)}
+                          className="p-1 text-muted hover:text-danger-fg disabled:opacity-30"
+                          title="删除动态"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>
 
-                    <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap">
-                      {post.text}
-                    </p>
+                    <p className="text-xs text-ink leading-relaxed break-words">{post.text}</p>
 
-                    {/* Media slots */}
-                    {post.mediaSlotIds && post.mediaSlotIds.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {post.mediaSlotIds.map((slotId) => (
-                          <button
-                            key={slotId}
-                            type="button"
-                            onClick={() => onOpenWorkbench?.(slotId)}
-                            className="inline-flex items-center gap-1 text-sm px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition cursor-pointer"
-                            title="点击打开 AI 生图 / 提示词溯源工作台"
-                          >
-                            <span>🖼️ 动态配图镜头:</span>
-                            <span className="font-mono font-semibold">{slotId}</span>
-                            <Sparkles className="w-2.5 h-2.5 text-blue-500" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Likes & Comments Section */}
-                    <div className="pt-2 border-t border-border-subtle space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-muted">
-                        <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500" />
-                        <span>点赞 ({postLikes.length} 人)：</span>
-                        <div className="flex items-center gap-1">
-                          {actors.map((act) => {
-                            const isLiked = postLikes.some((l) => l.actorId === act.id);
-                            return (
-                              <button
-                                key={act.id}
-                                type="button"
-                                onClick={() => handleToggleLike(post.id, act.id)}
-                                disabled={disabled}
-                                className={`text-sm px-1.5 py-0.5 rounded transition-colors ${
-                                  isLiked
-                                    ? 'bg-rose-100 text-rose-700 font-medium'
-                                    : 'bg-surface-muted text-muted hover:bg-surface-hover'
-                                }`}
-                              >
-                                {act.displayName}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Comments list */}
-                      {postComments.length > 0 && (
-                        <div className="bg-surface p-2.5 rounded text-sm space-y-1.5 border border-border-subtle">
-                          {postComments.map((comm) => {
-                            const commAuthor = actorMap.get(comm.authorActorId);
-                            return (
-                              <div key={comm.id} className="text-sm">
-                                <span className="font-semibold text-accent">
-                                  {commAuthor?.displayName || comm.authorActorId}:
-                                </span>{' '}
-                                <span className="text-ink">{comm.text}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Quick add comment */}
-                      <div className="flex items-center gap-2 pt-1">
-                        <Input
-                          placeholder="添加对此动态的评论…"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              const target = e.target as HTMLInputElement;
-                              handleAddComment(post.id, actors[0]?.id || '', target.value);
-                              target.value = '';
-                            }
-                          }}
-                          disabled={disabled}
-                          className="h-7 text-sm bg-transparent"
-                        />
+                    {/* 点赞与评论 */}
+                    <div className="pt-2 border-t border-border-subtle flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLike(post.id, actors[0]?.id || '')}
+                          className="flex items-center gap-1 text-muted hover:text-accent cursor-pointer"
+                        >
+                          <Heart className="h-3.5 w-3.5" />
+                          <span>{postLikes.length} 赞</span>
+                        </button>
+                        <span className="text-muted">💬 {postComments.length} 条互动</span>
                       </div>
                     </div>
                   </div>
@@ -946,89 +859,33 @@ export function RecordsEditor({
               })
             )}
           </div>
-
-          {/* Create Post Form */}
-          <form
-            onSubmit={handleCreatePost}
-            className="p-3.5 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-2.5"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-ink">发布新动态</span>
-              <div className="w-36">
-                <Select
-                  value={postAuthorId}
-                  onChange={(e) => setPostAuthorId(e.target.value)}
-                  disabled={disabled}
-                  className="h-7 text-sm min-h-0"
-                >
-                  {actors.map((actor) => (
-                    <option key={actor.id} value={actor.id}>
-                      {actor.displayName}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-
-            <Textarea
-              value={postText}
-              onChange={(e) => setPostText(e.target.value)}
-              placeholder="分享此刻的活动体验…"
-              rows={2}
-              disabled={disabled}
-              className="text-sm bg-transparent resize-none"
-            />
-
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={disabled || !postText.trim()}
-                className="h-7 px-3 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                发布朋友圈
-              </Button>
-            </div>
-          </form>
         </div>
       )}
 
-      {/* 3. Facts Tab Content */}
+      {/* 2.3 剧情事实沉淀视图 */}
       {activeTab === 'facts' && (
         <div className="space-y-4">
-          {/*
-           * 这一栏容易被误解成「和群聊、朋友圈并列的第三种内容」，
-           * 所以开头先讲清它是什么、以及它不会出现在成片里。
-           */}
-          <p className="text-sm text-muted">
-            这些是已发生的剧情事实，会作为后续阶段生成的前情提要；不会出现在回放与导出里。
-          </p>
-          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 min-h-[300px] space-y-2.5">
-            {facts.length === 0 ? (
-              <div className="py-16 text-center text-sm text-muted space-y-2">
-                <FileCheck className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
-                <p>当前活动尚无确定的阶段事实</p>
-                <p className="text-sm">事实作为前序剧情的依据，供后续阶段或朋友圈引用。</p>
+          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-3">
+            {stageFacts.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted space-y-2">
+                <FileCheck className="h-8 w-8 mx-auto text-muted opacity-60" />
+                <p>本阶段暂未沉淀剧情事实</p>
+                <p className="text-xs">大模型生成完整阶段剧情时，会自动将关键对白提炼为本阶段已发生事实。</p>
               </div>
             ) : (
-              facts.map((fact) => (
-                <div
-                  key={fact.id} id={`fact-${fact.id}`}
-                  className="flex items-center justify-between p-2.5 rounded bg-surface-raised border border-border-default text-sm"
-                >
+              stageFacts.map((fact) => (
+                <div key={fact.id} className="p-3 rounded bg-surface-raised border border-border-subtle flex items-start justify-between gap-3 text-xs">
                   <div className="space-y-1">
-                    <div className="font-medium text-ink">{fact.text}</div>
-                    <div className="text-sm text-muted">
-                      状态: {fact.status === 'happened' ? '已发生' : '预定事实'} | 知晓角色:{' '}
-                      {(fact.knownByActorIds || []).map((id) => actorMap.get(id)?.displayName || id).join(', ')}
-                    </div>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-[10px]">
+                      {fact.status === 'happened' ? '✓ 已发生事实' : '○ 规划事实'}
+                    </span>
+                    <p className="text-ink font-medium leading-relaxed">{fact.text}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleDeleteFact(fact.id)}
-                    disabled={disabled}
-                    className="text-fg-subtle hover:text-danger-fg transition-colors p-1"
+                    className="text-muted hover:text-danger-fg p-1 shrink-0"
+                    title="删除事实"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -1036,28 +893,8 @@ export function RecordsEditor({
               ))
             )}
           </div>
-
-          <form onSubmit={handleAddFact} className="flex items-center gap-2">
-            <Input
-              value={factText}
-              onChange={(e) => setFactText(e.target.value)}
-              placeholder="记录本阶段确定的剧情事实（如：岚与澄在海边营地完成了晚餐合照）…"
-              disabled={disabled}
-              className="h-8 text-sm bg-surface"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              disabled={disabled || !factText.trim()}
-              className="h-8 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              添加事实
-            </Button>
-          </form>
         </div>
       )}
     </div>
-      </div>
   );
 }

@@ -65,6 +65,43 @@ test('activity creation keeps the full stage definitions instead of only titles'
   } finally { await app.close(); database.close(); }
 });
 
+test('stage generation includes the configured premise and system-prompt override', async () => {
+  const { app, database, store, activityId } = await setup();
+  try {
+    const document = store.getDraft(activityId)!.document;
+    document.activity.systemPrompt = '全局提示词不应覆盖阶段设置';
+    document.stages[0].stagePremise = '阶段主旨测试：两位好友协作完成准备';
+    document.stages[0].systemPromptOverride = '阶段专属提示词测试：先呈现行动，再自然对话';
+    const job = store.createJob({ activityId, kind: 'text', mode: 'stage', requestHash: 'stage-context-proof' }).job;
+    let requestBody = '';
+
+    await executeTextJob({
+      store,
+      database,
+      secrets: new SecretStore({}),
+      activityId,
+      jobId: job.id,
+      mode: 'stage',
+      scope: { stageId: 'stage_1' },
+      inputSnapshot: document,
+      fetcher: async (_input, init) => {
+        requestBody = String(init?.body);
+        return Response.json({ choices: [{ message: { content: JSON.stringify({
+          schemaVersion: 1,
+          stageId: 'stage_1',
+          summary: '上下文测试',
+          messages: [], posts: [], comments: [], facts: [], mediaSlots: [],
+        }) } }] });
+      },
+    });
+
+    assert.equal(store.getJob(activityId, job.id)?.status, 'succeeded');
+    assert.ok(requestBody.includes('阶段主旨测试：两位好友协作完成准备'));
+    assert.ok(requestBody.includes('阶段专属提示词测试：先呈现行动，再自然对话'));
+    assert.ok(!requestBody.includes('全局提示词不应覆盖阶段设置'));
+  } finally { await app.close(); database.close(); }
+});
+
 test('snippet modes append invitation and wish text without wiping existing stage content', async () => {
   const { app, database, store, activityId, created } = await setup();
   try {

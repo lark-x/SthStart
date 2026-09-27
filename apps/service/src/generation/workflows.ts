@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { ActivityLora, GenerationEditorConfig } from '@sthstart/contracts';
 
 export function assertNoWorkflowSecrets(value: unknown): void {
   if (!value || typeof value !== 'object') return;
@@ -126,6 +127,54 @@ export function renderWorkflowSnapshot(
     }
   }
   return cloned;
+}
+
+/** Insert activity-level ModelOnly LoRAs only at an explicitly declared model-link anchor. */
+export function injectActivityLoras(
+  snapshot: Record<string, unknown>,
+  editorConfig: GenerationEditorConfig | null | undefined,
+  loras: ActivityLora[] = [],
+): Record<string, unknown> {
+  const active = new Map<string, ActivityLora>();
+  for (const lora of loras) if (lora.enabled) active.set(lora.model, lora);
+  if (!active.size) return snapshot;
+  const injection = editorConfig?.activityLoraInjection;
+  if (!injection) throw new Error('当前工作流版本未声明活动 LoRA 插入点。');
+  const target = validateActivityLoraInjection(snapshot, editorConfig);
+  if (!target) throw new Error('当前工作流版本未声明活动 LoRA 插入点。');
+  const targetLink = target.inputs![injection.targetInput] as [string, number];
+
+  let previous = targetLink as [string, number];
+  let nextId = Object.keys(snapshot).reduce((max, id) => /^\d+$/.test(id) ? Math.max(max, Number(id)) : max, 0) + 1;
+  for (const lora of active.values()) {
+    const id = String(nextId++);
+    snapshot[id] = { class_type: 'LoraLoaderModelOnly', inputs: {
+      model: previous, lora_name: lora.model, strength_model: lora.strength,
+    } };
+    previous = [id, 0];
+  }
+  target.inputs![injection.targetInput] = previous;
+  return snapshot;
+}
+
+export function validateActivityLoraInjection(
+  definition: Record<string, unknown>, editorConfig: GenerationEditorConfig | null | undefined,
+): { class_type?: unknown; inputs?: Record<string, unknown> } | null {
+  const injection = editorConfig?.activityLoraInjection;
+  if (!injection) return null;
+  if (injection.targetInput !== 'model') throw new Error('动态 LoRA 插入点只支持名为 model 的模型输入。');
+  if (Object.values(definition).some((raw) => {
+    const node = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    return node.class_type === 'LoraLoader' || node.class_type === 'LoraLoaderModelOnly';
+  })) throw new Error('此工作流已包含固定 LoRA 节点；动态 LoRA 已阻止，以免重复加载。');
+  const targetRaw = definition[injection.targetNodeId];
+  if (!targetRaw || typeof targetRaw !== 'object') throw new Error(`LoRA 插入点节点 ${injection.targetNodeId} 不存在。`);
+  const target = targetRaw as { class_type?: unknown; inputs?: Record<string, unknown> };
+  const link = target.inputs?.[injection.targetInput];
+  if (!Array.isArray(link) || link.length !== 2 || typeof link[0] !== 'string' || typeof link[1] !== 'number' || !definition[link[0]]) {
+    throw new Error(`LoRA 插入点 ${injection.targetNodeId}.${injection.targetInput} 必须连接到工作流中的模型节点。`);
+  }
+  return target;
 }
 
 export function computeRequestHash(data: unknown): string {

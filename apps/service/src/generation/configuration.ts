@@ -13,6 +13,7 @@ import { validateComfyApiJson } from './workflows.js';
  */
 
 export interface SchemaEntry {
+  semantic?: string;
   type?: string;
   title?: string;
   description?: string;
@@ -505,6 +506,11 @@ export function parseEditorConfig(value: unknown): GenerationEditorConfig | null
       ? parsed.loraSlots.filter((slot): slot is { nameKey: string; strengthKey: string } =>
         isRecord(slot) && typeof slot.nameKey === 'string' && typeof slot.strengthKey === 'string')
       : [],
+    activityLoraInjection: isRecord(parsed.activityLoraInjection)
+      && typeof parsed.activityLoraInjection.targetNodeId === 'string'
+      && typeof parsed.activityLoraInjection.targetInput === 'string'
+      ? { targetNodeId: parsed.activityLoraInjection.targetNodeId, targetInput: parsed.activityLoraInjection.targetInput }
+      : undefined,
     sizePresets: Array.isArray(parsed.sizePresets)
       ? parsed.sizePresets.filter((preset): preset is { label: string; width: number; height: number } =>
         isRecord(preset) && typeof preset.label === 'string' && Number.isFinite(Number(preset.width)) && Number.isFinite(Number(preset.height)))

@@ -1,5 +1,6 @@
 import type {
   CharacterBirthday,
+  ActivityLora,
   CharacterDraftAny,
   CharacterDraftV2,
 } from '@sthstart/contracts';
@@ -38,6 +39,7 @@ export type CharacterFormValues = {
   aliases: StringField[];
   dialogueExamples: StringField[];
   appearance: { baseText: string; defaultOutfitText: string };
+  visualLoras: ActivityLora[];
   birthday: CharacterBirthday;
 };
 
@@ -68,6 +70,7 @@ export function characterDraftToFormValues(draft: CharacterDraftAny): CharacterF
       baseText: runtime.appearance.baseText,
       defaultOutfitText: runtime.appearance.defaultOutfitText,
     },
+    visualLoras: 'visualLoras' in draft ? [...(draft.visualLoras ?? [])] : [],
     birthday: ('birthday' in draft && draft.birthday) ? draft.birthday : { status: 'unset', calendar: 'unknown' },
   };
 }
@@ -90,6 +93,7 @@ export function characterFormValuesToDraft(values: CharacterFormValues): Charact
       baseText: values.appearance.baseText,
       defaultOutfitText: values.appearance.defaultOutfitText,
     },
+    visualLoras: values.visualLoras,
     birthday: values.birthday || { status: 'unset', calendar: 'unknown' },
   };
 }
@@ -141,7 +145,6 @@ export function StringListField({
             <div key={field.id} className="flex items-center gap-2">
               <Input
                 {...register(fieldName)}
-                defaultValue={field.value}
                 aria-label={`${label} ${index + 1}`}
                 placeholder={placeholder}
               />

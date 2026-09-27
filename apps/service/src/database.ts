@@ -1480,6 +1480,213 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX IF NOT EXISTS idx_research_note_links_project ON research_note_links(project_id)',
     'CREATE INDEX IF NOT EXISTS idx_research_note_links_note ON research_note_links(note_id)',
   ] },
+  { version: 35, name: 'character-variants', statements: [
+    "ALTER TABLE character_profiles ADD COLUMN variants_json TEXT NOT NULL DEFAULT '[]'",
+  ] },
+  { version: 36, name: 'character-portrait-and-asset-kinds', foreignKeysOff: true, statements: [
+    'ALTER TABLE character_profiles ADD COLUMN portrait_asset_id TEXT',
+    `CREATE TABLE character_assets_v2 (
+      id TEXT PRIMARY KEY,
+      character_id TEXT REFERENCES character_profiles(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('avatar','portrait','reference')),
+      created_at TEXT NOT NULL,
+      artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+      source_page TEXT,
+      source_url TEXT,
+      author_note TEXT NOT NULL DEFAULT '',
+      user_note TEXT NOT NULL DEFAULT ''
+    )`,
+    'INSERT INTO character_assets_v2 SELECT id, character_id, kind, created_at, artifact_id, source_page, source_url, author_note, user_note FROM character_assets',
+    'DROP TABLE character_assets',
+    'ALTER TABLE character_assets_v2 RENAME TO character_assets',
+    'CREATE INDEX IF NOT EXISTS idx_character_assets_character ON character_assets(character_id, kind)',
+  ] },
+  { version: 37, name: 'ai-call-audit-and-beat-render-candidates', statements: [
+    `CREATE TABLE ai_call_records (
+      id TEXT PRIMARY KEY, trace_id TEXT NOT NULL, parent_id TEXT, retry_of TEXT,
+      application_id TEXT NOT NULL, feature TEXT NOT NULL, business_event TEXT NOT NULL,
+      object_type TEXT, object_id TEXT, call_type TEXT NOT NULL, status TEXT NOT NULL,
+      requested_at TEXT NOT NULL, ended_at TEXT, duration_ms INTEGER,
+      provider TEXT, models_json TEXT NOT NULL DEFAULT '[]', workflow_id TEXT, workflow_version INTEGER,
+      upstream_task_id TEXT, parameters_json TEXT NOT NULL DEFAULT '{}',
+      positive_prompt TEXT, negative_prompt TEXT, request_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      response_text TEXT, usage_json TEXT NOT NULL DEFAULT '{}', error_code TEXT, error_message TEXT,
+      source_url TEXT, generation_task_id TEXT, artifact_ids_json TEXT NOT NULL DEFAULT '[]', artifact_details_json TEXT NOT NULL DEFAULT '[]'
+    )`,
+    `CREATE TABLE ai_call_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, call_id TEXT NOT NULL REFERENCES ai_call_records(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL, phase TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}'
+    )`,
+    `CREATE TABLE activity_beat_render_candidates (
+      id TEXT PRIMARY KEY, activity_id TEXT NOT NULL, stage_id TEXT NOT NULL, scene_id TEXT NOT NULL, beat_id TEXT NOT NULL,
+      idempotency_key TEXT,
+      source_fingerprint TEXT NOT NULL, draft_version INTEGER NOT NULL, task_id TEXT, call_id TEXT,
+      artifact_id TEXT, artifact_sha256 TEXT, status TEXT NOT NULL, positive_prompt TEXT NOT NULL, negative_prompt TEXT NOT NULL,
+      media_url TEXT, error_message TEXT, created_at TEXT NOT NULL, adopted_at TEXT
+    )`,
+    'CREATE INDEX idx_ai_call_requested ON ai_call_records(requested_at DESC, id DESC)',
+    'CREATE INDEX idx_ai_call_app_status ON ai_call_records(application_id, status, requested_at DESC)',
+    'CREATE INDEX idx_ai_call_event_trace ON ai_call_records(trace_id, requested_at)',
+    'CREATE UNIQUE INDEX idx_ai_call_generation_task ON ai_call_records(generation_task_id) WHERE generation_task_id IS NOT NULL',
+    'CREATE INDEX idx_ai_call_events_call ON ai_call_events(call_id, id)',
+    'CREATE INDEX idx_beat_candidates_target ON activity_beat_render_candidates(activity_id, stage_id, scene_id, beat_id, created_at DESC)',
+    'CREATE INDEX idx_beat_candidates_task ON activity_beat_render_candidates(task_id)',
+    'CREATE UNIQUE INDEX idx_beat_candidates_idempotency ON activity_beat_render_candidates(activity_id, idempotency_key) WHERE idempotency_key IS NOT NULL',
+  ] },
+  { version: 38, name: 'beat-render-idempotency-fingerprint', statements: [
+    "ALTER TABLE activity_beat_render_candidates ADD COLUMN request_fingerprint TEXT NOT NULL DEFAULT ''",
+  ] },
+  { version: 39, name: 'ai-call-retention-query-indexes', statements: [
+    'CREATE INDEX idx_ai_call_business_event_requested ON ai_call_records(business_event, requested_at DESC, id DESC)',
+    'CREATE INDEX idx_ai_call_workflow_requested ON ai_call_records(workflow_id, requested_at DESC, id DESC) WHERE workflow_id IS NOT NULL',
+    'CREATE INDEX idx_ai_call_object_requested ON ai_call_records(object_type, object_id, requested_at DESC, id DESC) WHERE object_type IS NOT NULL AND object_id IS NOT NULL',
+  ] },
+  { version: 40, name: 'activity-image-prompt-policies-and-runs', statements: [
+    `CREATE TABLE activity_image_prompt_policy_versions (
+      workflow_id TEXT NOT NULL,
+      workflow_version INTEGER NOT NULL,
+      revision INTEGER NOT NULL,
+      enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      instructions TEXT NOT NULL,
+      positive_suffix TEXT NOT NULL DEFAULT '',
+      negative_prompt TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(workflow_id, workflow_version, revision)
+    )`,
+    `CREATE TABLE activity_prompt_optimization_runs (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      idempotency_key TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      trace_id TEXT NOT NULL,
+      workflow_id TEXT NOT NULL,
+      workflow_version INTEGER NOT NULL,
+      policy_revision INTEGER,
+      policy_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      source_prompt TEXT NOT NULL,
+      optimized_prompt TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK(status IN ('preparing','succeeded','skipped','failed')),
+      optimizer_call_id TEXT,
+      generation_task_id TEXT,
+      error_code TEXT,
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(activity_id, idempotency_key)
+    )`,
+    'CREATE INDEX idx_prompt_optimization_trace ON activity_prompt_optimization_runs(trace_id)',
+    'CREATE INDEX idx_prompt_optimization_task ON activity_prompt_optimization_runs(generation_task_id) WHERE generation_task_id IS NOT NULL',
+    "ALTER TABLE activity_beat_render_candidates ADD COLUMN original_prompt TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE activity_beat_render_candidates ADD COLUMN prompt_optimization_status TEXT NOT NULL DEFAULT 'skipped'",
+  ] },
+  { version: 41, name: 'generation-workflow-preset-templates', statements: [
+    `CREATE TABLE generation_workflow_preset_templates (
+      workflow_id TEXT NOT NULL REFERENCES generation_workflows(id) ON DELETE CASCADE,
+      template_key TEXT NOT NULL,
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      purpose TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      values_json TEXT NOT NULL DEFAULT '{}',
+      applied_workflow_version INTEGER,
+      created_preset_id TEXT REFERENCES generation_presets(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(workflow_id, template_key)
+    )`,
+    'CREATE INDEX idx_workflow_preset_templates_pending ON generation_workflow_preset_templates(workflow_id, applied_workflow_version)',
+  ] },
+  { version: 42, name: 'beat-render-history-loras-and-portable-artifact-paths', statements: [
+    'ALTER TABLE artifacts ADD COLUMN storage_key TEXT',
+    'CREATE INDEX idx_artifacts_storage_key ON artifacts(storage_key) WHERE storage_key IS NOT NULL',
+    "ALTER TABLE activity_beat_render_candidates ADD COLUMN auto_apply_state TEXT NOT NULL DEFAULT 'ineligible'",
+    'ALTER TABLE activity_beat_render_candidates ADD COLUMN auto_apply_reason TEXT',
+    'ALTER TABLE activity_beat_render_candidates ADD COLUMN auto_apply_draft_version INTEGER',
+    `CREATE TABLE activity_beat_render_candidate_outputs (
+      candidate_id TEXT NOT NULL REFERENCES activity_beat_render_candidates(id) ON DELETE CASCADE,
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+      sort_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(candidate_id, artifact_id),
+      UNIQUE(candidate_id, sort_order)
+    )`,
+    'CREATE INDEX idx_beat_render_outputs_artifact ON activity_beat_render_candidate_outputs(artifact_id)',
+    `CREATE TABLE activity_lora_policy_versions (
+      workflow_id TEXT NOT NULL,
+      workflow_version INTEGER NOT NULL,
+      revision INTEGER NOT NULL,
+      entries_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(workflow_id, workflow_version, revision)
+    )`,
+    `INSERT INTO generation_workflow_versions
+      (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at,
+       input_capabilities_json,output_media_types_json,output_schema_json,config_format_version,editor_config_json)
+      SELECT workflow_id,2,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,1,
+        strftime('%Y-%m-%dT%H:%M:%fZ','now'),input_capabilities_json,output_media_types_json,output_schema_json,2,
+        json_set(COALESCE(editor_config_json,'{}'),'$.activityLoraInjection',json_object('targetNodeId','9','targetInput','model'))
+      FROM generation_workflow_versions v
+      WHERE workflow_id='anima-activity' AND version=1
+        AND json_extract(definition_json,'$."9".class_type')='KSampler'
+        AND json_extract(definition_json,'$."9".inputs.model[0]')='1'
+        AND NOT EXISTS (SELECT 1 FROM generation_workflow_versions x WHERE x.workflow_id=v.workflow_id AND x.version=2)`,
+    `INSERT INTO generation_presets
+      (id,name,description,app_id,purpose,workflow_id,workflow_version,engine_id,values_json,enabled,revision,created_at,updated_at)
+      SELECT lower(hex(randomblob(16))),p.name,p.description || '（支持角色与镜头 LoRA）',p.app_id,p.purpose,p.workflow_id,2,
+        p.engine_id,p.values_json,p.enabled,1,strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      FROM generation_presets p
+      WHERE p.workflow_id='anima-activity' AND p.workflow_version=1
+        AND EXISTS (SELECT 1 FROM generation_workflow_versions v WHERE v.workflow_id=p.workflow_id AND v.version=2)
+        AND NOT EXISTS (SELECT 1 FROM generation_presets x WHERE x.app_id=p.app_id AND x.purpose=p.purpose AND x.workflow_id=p.workflow_id AND x.workflow_version=2 AND x.name=p.name)`,
+    `UPDATE generation_workflows SET latest_version=2,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE id='anima-activity' AND EXISTS (SELECT 1 FROM generation_workflow_versions v WHERE v.workflow_id='anima-activity' AND v.version=2)`,
+  ] },
+  { version: 43, name: 'activity-comic-drafts-revisions-and-jobs', statements: [
+    `CREATE TABLE activity_comic_drafts (
+      activity_id TEXT PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+      draft_version INTEGER NOT NULL CHECK(draft_version > 0),
+      document_json TEXT NOT NULL,
+      base_revision_id TEXT,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE activity_comic_revisions (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      source_draft_version INTEGER NOT NULL,
+      document_json TEXT NOT NULL,
+      document_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX idx_activity_comic_revisions_activity ON activity_comic_revisions(activity_id, created_at DESC, id DESC)`,
+    `CREATE TABLE activity_comic_jobs (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('storyboard','render')),
+      panel_id TEXT,
+      status TEXT NOT NULL CHECK(status IN ('queued','preparing','running','succeeded','failed','interrupted','unknown')),
+      idempotency_key TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      input_json TEXT NOT NULL,
+      result_json TEXT,
+      generation_task_id TEXT,
+      trace_id TEXT NOT NULL,
+      call_id TEXT,
+      error_code TEXT,
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(activity_id, idempotency_key)
+    )`,
+    `CREATE INDEX idx_activity_comic_jobs_lookup ON activity_comic_jobs(activity_id, panel_id, created_at DESC, id DESC)`,
+    `CREATE TABLE activity_comic_job_outputs (
+      job_id TEXT NOT NULL REFERENCES activity_comic_jobs(id) ON DELETE CASCADE,
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+      sort_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(job_id, artifact_id),
+      UNIQUE(job_id, sort_order)
+    )`,
+    `CREATE INDEX idx_activity_comic_outputs_artifact ON activity_comic_job_outputs(artifact_id)`,
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

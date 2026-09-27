@@ -433,3 +433,63 @@ test('configuration store: preset resolution enforces app/purpose/enablement and
   await updatePreset(database, preset.id, { enabled: false, revision: 1, clearDefault: true });
   assert.equal(resolveDefaultPreset(database, 'creative-center', 'text-to-image'), null, 'disabled default preset falls back to legacy behavior');
 });
+
+test('imported workflow preset templates create version-bound Base/Turbo presets on first connected publish', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const { app } = await createService({ config: readConfig({ STHSTART_ADMIN_TOKEN: adminToken }), database, secrets: new SecretStore({}), fetcher: async () => Response.json({}) });
+  const now = nowIso();
+  database.connection.prepare("INSERT OR IGNORE INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES ('activities','活动','activities-test-hash','[]',1,?,?)").run(now, now);
+  database.connection.prepare("INSERT INTO generation_engines(id,name,kind,base_url,enabled,concurrency_limit,created_at,updated_at) VALUES ('anima-test-engine','测试 ComfyUI','comfyui','http://comfy.test',1,1,?,?)").run(now, now);
+  const graph = {
+    '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+    '2': { class_type: 'UNETLoader', inputs: { unet_name: 'anima_baseV10.safetensors' } },
+    '3': { class_type: 'SaveImage', inputs: {} },
+  };
+  const schema = {
+    prompt: { semantic: 'prompt', type: 'long-text', required: true },
+    unet_name: { semantic: 'unet', type: 'model', default: 'anima_baseV10.safetensors' },
+    steps: { semantic: 'steps', type: 'integer', default: 31, minimum: 1, maximum: 60 },
+  };
+  const bindings = { prompt: ['1', 'inputs', 'text'], unet_name: ['2', 'inputs', 'unet_name'] };
+  const editorConfig = {
+    version: 2,
+    modelSelection: 'preset-locked',
+    fields: {
+      prompt: { key: 'prompt', label: '画面描述', section: 'basic', order: 1, type: 'long-text' },
+      unet_name: { key: 'unet_name', label: 'Anima 扩散模型', section: 'advanced', order: 2, type: 'model', modelCategory: 'unet', allowedModels: ['anima_baseV10.safetensors', 'anima_turboV10.safetensors'], allowIndividualSwitch: false },
+      steps: { key: 'steps', label: '采样步数', section: 'advanced', order: 3, type: 'integer' },
+    },
+    loraSlots: [], sizePresets: [], constraints: {},
+  };
+  const templates = [
+    { key: 'anima-base', appId: 'activities', purpose: 'activity_image_text', name: 'Anima Base', values: { unet_name: 'anima_baseV10.safetensors', steps: 31 } },
+    { key: 'anima-turbo', appId: 'activities', purpose: 'activity_image_text', name: 'Anima Turbo', values: { unet_name: 'anima_turboV10.safetensors', steps: 8 } },
+  ];
+  try {
+    const created = await app.inject({ method: 'POST', url: '/api/v1/admin/generation/workflows', headers: adminHeaders,
+      payload: { name: 'Anima 测试工作流', engineKind: 'comfyui', category: 'image', presetTemplates: templates } });
+    assert.equal(created.statusCode, 201, created.body);
+    const workflowId = created.json().id as string;
+    const publish = (engineId = 'anima-test-engine') => app.inject({ method: 'POST', url: `/api/v1/admin/generation/workflows/${workflowId}/versions`, headers: adminHeaders,
+      payload: { engineId, definition: graph, inputSchema: schema, nodeBindings: bindings, outputDeclarations: ['3'], outputMediaTypes: ['image/png'], editorConfig } });
+    const firstVersion = await publish();
+    assert.equal(firstVersion.statusCode, 201, firstVersion.body);
+    assert.equal(firstVersion.json().createdPresetCount, 2);
+    let listed = await app.inject({ method: 'GET', url: `/api/v1/admin/generation/presets?appId=activities&purpose=activity_image_text&workflowId=${workflowId}`, headers: adminHeaders });
+    assert.equal(listed.json().items.length, 2);
+    const base = listed.json().items.find((item: { name: string }) => item.name === 'Anima Base');
+    const turbo = listed.json().items.find((item: { name: string }) => item.name === 'Anima Turbo');
+    assert.equal(base.values.unet_name, 'anima_baseV10.safetensors');
+    assert.equal(base.values.steps, 31);
+    assert.equal(turbo.values.unet_name, 'anima_turboV10.safetensors');
+    assert.equal(turbo.values.steps, 8);
+    assert.equal(base.workflowVersion, 1);
+    assert.equal(turbo.workflowVersion, 1);
+    assert.equal(base.isDefault, false, 'imported presets are selectable but do not silently become the activity default');
+    const nextVersion = await publish();
+    assert.equal(nextVersion.statusCode, 201, nextVersion.body);
+    assert.equal(nextVersion.json().createdPresetCount, 0, 'publishing a later version does not duplicate previously applied templates');
+    listed = await app.inject({ method: 'GET', url: `/api/v1/admin/generation/presets?appId=activities&purpose=activity_image_text&workflowId=${workflowId}`, headers: adminHeaders });
+    assert.equal(listed.json().items.length, 2);
+  } finally { await app.close(); database.close(); }
+});

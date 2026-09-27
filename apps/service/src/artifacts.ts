@@ -2,13 +2,67 @@ import { generateVideoThumbnail, inspectImageMetadata, inspectVideoMetadata } fr
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, rename, stat, statfs, unlink } from 'node:fs/promises';
-import { dirname, extname, relative, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ArtifactDescriptor, ArtifactFileStatus } from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
+
+function safeArtifactPath(root: string, key: string): string | null {
+  if (!key.trim() || isAbsolute(key)) return null;
+  const base = resolve(root);
+  const candidate = resolve(base, key);
+  const rel = relative(base, candidate);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  return candidate;
+}
+
+function legacyArtifactStorageKey(localPath: string, artifactDirectory: string): string | null {
+  const absolute = resolve(localPath);
+  const fromCurrentRoot = relative(resolve(artifactDirectory), absolute);
+  if (fromCurrentRoot !== '..' && !fromCurrentRoot.startsWith(`..${sep}`) && !isAbsolute(fromCurrentRoot)) return fromCurrentRoot;
+
+  const normalized = localPath.replaceAll('\\', '/').replace(/\/+/g, '/');
+  const lower = normalized.toLowerCase();
+  const markers = ['/app/data/artifacts/', '/data/artifacts/'];
+  let markerIndex = -1;
+  let markerLength = 0;
+  for (const marker of markers) {
+    const index = lower.lastIndexOf(marker);
+    if (index >= 0 && index + marker.length > markerIndex + markerLength) {
+      markerIndex = index;
+      markerLength = marker.length;
+    }
+  }
+  if (markerIndex < 0) return null;
+  const key = normalized.slice(markerIndex + markerLength);
+  return safeArtifactPath(artifactDirectory, key) ? key : null;
+}
+
+/** Resolve portable artifact keys and known Docker-era absolute paths inside the active storage root. */
+export function resolveArtifactStoragePath(database: ServiceDatabase, artifactId: string, artifactDirectory: string): string | null {
+  const row = database.connection.prepare('SELECT local_path,storage_key,file_status FROM artifacts WHERE id=?').get(artifactId) as
+    { local_path: string | null; storage_key: string | null; file_status: string } | undefined;
+  if (!row) return null;
+
+  if (row.local_path && existsSync(row.local_path)) {
+    const key = legacyArtifactStorageKey(row.local_path, artifactDirectory);
+    if (row.file_status !== 'ready' || key && key !== row.storage_key) {
+      database.connection.prepare("UPDATE artifacts SET storage_key=COALESCE(?,storage_key),file_status='ready',updated_at=? WHERE id=?")
+        .run(key?.replaceAll('\\', '/') ?? null, nowIso(), artifactId);
+    }
+    return row.local_path;
+  }
+
+  const key = row.storage_key || (row.local_path ? legacyArtifactStorageKey(row.local_path, artifactDirectory) : null);
+  const candidate = key ? safeArtifactPath(artifactDirectory, key) : null;
+  if (!candidate || !existsSync(candidate)) return null;
+  database.connection.prepare("UPDATE artifacts SET local_path=?,storage_key=?,file_status='ready',updated_at=? WHERE id=?")
+    .run(candidate, key!.replaceAll('\\', '/'), nowIso(), artifactId);
+  return candidate;
+}
 
 export async function computeFileSha256(filePath: string): Promise<string> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -199,6 +253,7 @@ export function mimeToExt(contentType: string | null | undefined): string {
     'image/webp': '.webp',
     'image/gif': '.gif',
     'image/avif': '.avif',
+    'image/svg+xml': '.svg',
     'video/mp4': '.mp4',
     'video/webm': '.webm',
     'audio/mpeg': '.mp3',
@@ -331,14 +386,15 @@ export async function streamUploadArtifact(
     }
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO artifacts
-        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, metadata_json, pinned, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,?,?,?,?,?,?,?,?,0,?,?)`)
+        (id, app_id, task_id, provider_url, local_path, storage_key, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, metadata_json, pinned, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,'ready',?,?,?,?,?,?,?,?,?,?,0,?,?)`)
         .run(
           id,
           input.appId,
           input.taskId ?? null,
           null,
           finalPath,
+          relative(config.artifactDirectory, finalPath).replaceAll('\\', '/'),
           contentType,
           byteSize,
           sha256,
@@ -500,14 +556,15 @@ export async function persistArtifact(
     }
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO artifacts
-        (id, app_id, task_id, provider_url, local_path, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, metadata_json, pinned, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,'ready',?,?,?,?,?,?,?,?,?,?,0,?,?)`)
+        (id, app_id, task_id, provider_url, local_path, storage_key, content_type, byte_size, sha256, file_status, original_name, media_type, width, height, duration_ms, fps, codec, has_audio, thumbnail_artifact_id, metadata_json, pinned, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,'ready',?,?,?,?,?,?,?,?,?,?,0,?,?)`)
         .run(
           id,
           input.appId,
           input.taskId ?? null,
           input.sourceUrl,
           finalPath,
+          relative(config.artifactDirectory, finalPath).replaceAll('\\', '/'),
           contentType,
           byteSize,
           sha256,
@@ -552,16 +609,18 @@ export function createArtifactReadStream(
   return createReadStream(localPath, options);
 }
 
-export async function readArtifact(database: ServiceDatabase, artifactId: string) {
+export async function readArtifact(database: ServiceDatabase, artifactId: string, artifactDirectory?: string) {
   const row = database.connection.prepare('SELECT local_path,content_type FROM artifacts WHERE id=?').get(artifactId) as { local_path: string | null; content_type: string | null } | undefined;
-  if (!row?.local_path) return null;
+  if (!row) return null;
+  const localPath = artifactDirectory ? resolveArtifactStoragePath(database, artifactId, artifactDirectory) : row.local_path;
+  if (!localPath) return null;
   const record = database.connection.prepare('SELECT * FROM artifacts WHERE id=?').get(artifactId) as Record<string, unknown>;
   return {
     id: String(record.id),
     appId: String(record.app_id),
     taskId: record.task_id ? String(record.task_id) : null,
     providerUrl: record.provider_url ? String(record.provider_url) : null,
-    localPath: record.local_path ? String(record.local_path) : null,
+    localPath,
     contentType: record.content_type ? String(record.content_type) : null,
     byteSize: Number(record.byte_size || 0),
     sha256: record.sha256 ? String(record.sha256) : null,
@@ -807,11 +866,13 @@ export async function reconcileArtifacts(
   let readyCount = 0;
   let missingCount = 0;
   for (const row of dbRows) {
-    if (!row.local_path) {
+    const portablePath = resolveArtifactStoragePath(database, row.id, config.artifactDirectory);
+    if (!portablePath) {
       missingCount++;
+      if (row.file_status !== 'missing') database.connection.prepare("UPDATE artifacts SET file_status='missing',updated_at=? WHERE id=?").run(nowIso(), row.id);
       continue;
     }
-    const resolvedPath = resolve(row.local_path);
+    const resolvedPath = resolve(portablePath);
     knownPaths.add(resolvedPath);
     const fileExists = await stat(resolvedPath).then(() => true).catch(() => false);
     if (fileExists) {

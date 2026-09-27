@@ -905,17 +905,30 @@ export class ActivityStore {
       throw err;
     }
 
+    // Every activity content revision has a (possibly empty) media revision. Persist
+    // that revision for text-only playback because the DB column has a foreign key.
+    let persistedDocument = document;
+    if (document.mediaRevisionId === 'none') {
+      const compatibleMedia = act.currentMediaRevisionId
+        ? this.getMediaRevision(activityId, act.currentMediaRevisionId)
+        : null;
+      if (!compatibleMedia || compatibleMedia.contentRevisionId !== document.contentRevisionId || compatibleMedia.slotBindings.some((binding) => binding.assets.length > 0)) {
+        throw new Error('text_playback_media_revision_not_found');
+      }
+      persistedDocument = { ...document, mediaRevisionId: compatibleMedia.id };
+    }
+
     // Consistency check: mediaRevisionId must exist in this activity and be linked to contentRevisionId
-    if (document.mediaRevisionId && document.mediaRevisionId !== 'none') {
-      const mediaRev = this.getMediaRevision(activityId, document.mediaRevisionId);
+    if (persistedDocument.mediaRevisionId) {
+      const mediaRev = this.getMediaRevision(activityId, persistedDocument.mediaRevisionId);
       if (!mediaRev) {
-        const err = new Error(`Media revision '${document.mediaRevisionId}' not found for this activity`);
+        const err = new Error(`Media revision '${persistedDocument.mediaRevisionId}' not found for this activity`);
         (err as unknown as { statusCode: number; code: string }).statusCode = 400;
         (err as unknown as { code: string }).code = 'media_revision_not_found';
         throw err;
       }
-      if (mediaRev.contentRevisionId !== document.contentRevisionId) {
-        const err = new Error(`Media revision '${document.mediaRevisionId}' is linked to content revision '${mediaRev.contentRevisionId}', not '${document.contentRevisionId}'`);
+      if (mediaRev.contentRevisionId !== persistedDocument.contentRevisionId) {
+        const err = new Error(`Media revision '${persistedDocument.mediaRevisionId}' is linked to content revision '${mediaRev.contentRevisionId}', not '${persistedDocument.contentRevisionId}'`);
         (err as unknown as { statusCode: number; code: string }).statusCode = 400;
         (err as unknown as { code: string }).code = 'revision_consistency_mismatch';
         throw err;
@@ -924,7 +937,7 @@ export class ActivityStore {
 
     const newPlaybackRevId = crypto.randomUUID();
     const now = nowIso();
-    const hash = hashDocument(document);
+    const hash = hashDocument(persistedDocument);
     const newHeadVersion = act.headVersion + 1;
 
     return this.db.transaction(() => {
@@ -935,8 +948,8 @@ export class ActivityStore {
         newPlaybackRevId,
         activityId,
         document.contentRevisionId,
-        document.mediaRevisionId,
-        JSON.stringify(document),
+        persistedDocument.mediaRevisionId,
+        JSON.stringify(persistedDocument),
         hash,
         now
       );

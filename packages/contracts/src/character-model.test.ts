@@ -263,6 +263,15 @@ test('统一运行时接受 V1 草稿、V2 草稿与活动快照投影', () => {
   assert.equal(projection.personaText, '投影正文');
   assert.equal(projection.appearance.defaultOutfitText, '投影穿着');
 
+  const versionedProjection = toCharacterRuntime({
+    schemaVersion: 2,
+    displayName: '投影角色',
+    personaText: '投影正文',
+    appearance: { baseText: '投影外貌', defaultOutfitText: '投影穿着', stableFeatures: ['左耳银饰'] },
+  });
+  assert.deepEqual(versionedProjection.appearance.stableFeatures, ['左耳银饰']);
+  assert.match(buildCharacterVisualContext(versionedProjection).text, /左耳银饰/);
+
   const legacySnapshot = toCharacterRuntime({
     displayName: '旧活动角色',
     sourceSnapshot: { identity: '快照身份', appearance: { description: '快照外观' } },

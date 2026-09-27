@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { MemoryStick, Plus, RefreshCw } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -9,9 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
-import { saveGenerationEngine, saveWorkerConfig, testGenerationEngine } from '../api';
+import { saveGenerationEngine, saveWorkerConfig, testGenerationEngine, unloadGenerationEngineModels } from '../api';
 import type { Engine, MediaDiagnostics, Worker } from '../types';
 import { DiagnosticsPanel } from './diagnostics-panel';
+import { useToast } from '@/app/providers/ui-provider';
 
 /**
  * 连接页签（规划 §5）：普通用户主要填名称和地址；ComfyUI 直连为新建默认，
@@ -166,10 +167,14 @@ export function ConnectionsPanel({
   diagnostics: MediaDiagnostics | null;
   onRefresh: () => Promise<void>;
 }) {
+  const toast = useToast();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [unloading, setUnloading] = useState<string | null>(null);
+  const [confirmingUnload, setConfirmingUnload] = useState<Engine | null>(null);
   const [results, setResults] = useState<Record<string, string>>({});
+  const [unloadMessages, setUnloadMessages] = useState<Record<string, string>>({});
 
   const runTest = async (engineId: string) => {
     setTesting(engineId);
@@ -184,6 +189,23 @@ export function ConnectionsPanel({
     }
   };
 
+  const unloadModels = async (engine: Engine) => {
+    setUnloading(engine.id);
+    setUnloadMessages((current) => ({ ...current, [engine.id]: '' }));
+    try {
+      const result = await unloadGenerationEngineModels(engine.id);
+      setUnloadMessages((current) => ({ ...current, [engine.id]: result.message }));
+      toast.success('卸载请求已发送', 'ComfyUI 会处理当前驻留模型与显存缓存；下次生成需要重新加载模型。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUnloadMessages((current) => ({ ...current, [engine.id]: message }));
+      toast.error('模型卸载失败', message);
+    } finally {
+      setUnloading(null);
+      setConfirmingUnload(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -191,7 +213,7 @@ export function ConnectionsPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle>连接</CardTitle>
-              <CardDescription>统一管理 ComfyUI 直连与 Windows Worker。新建连接默认为直连；已有 Worker 继续可用，配置在高级区。</CardDescription>
+              <CardDescription>统一管理 ComfyUI 直连与 Windows Worker。每个 ComfyUI 实例都可单独卸载已载入模型、释放 ComfyUI 显存缓存；不会删除磁盘模型文件或影响其他程序占用的显存。</CardDescription>
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => { void onRefresh(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>
@@ -213,9 +235,11 @@ export function ConnectionsPanel({
                   </div>
                   <code className="mt-0.5 block truncate text-sm text-muted">{engine.base_url} · {engine.id}</code>
                   {results[engine.id] && <p className="mt-1 text-sm text-muted" data-testid={`engine-test-result-${engine.id}`}>{results[engine.id]}</p>}
+                  {unloadMessages[engine.id] && <p className="mt-1 text-sm text-muted" role="status">{unloadMessages[engine.id]}</p>}
                   {engine.lastTest && <p className="text-sm text-fg-subtle">最近检查：{new Date(engine.lastTest.checkedAt).toLocaleString('zh-CN')}</p>}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                  {engine.kind === 'comfyui' && <Button size="sm" variant="outline" disabled={unloading !== null} onClick={() => setConfirmingUnload(engine)}><MemoryStick className="h-3.5 w-3.5" aria-hidden="true" />卸载已载入模型</Button>}
                   <Button size="sm" variant="outline" onClick={() => { void runTest(engine.id); }} loading={testing === engine.id}>测试连接</Button>
                   <Button size="sm" variant="outline" onClick={() => setEditing(engine.id)}>编辑</Button>
                 </div>
@@ -237,6 +261,33 @@ export function ConnectionsPanel({
           onSaved={onRefresh}
           onCancel={() => { setCreating(false); setEditing(null); }}
         />
+      </Dialog>
+
+      <Dialog
+        open={confirmingUnload !== null}
+        onOpenChange={(open) => { if (!open && unloading === null) setConfirmingUnload(null); }}
+        title="卸载已载入模型并释放显存？"
+        description={confirmingUnload ? `目标实例：${confirmingUnload.name}` : undefined}
+        size="sm"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setConfirmingUnload(null)} disabled={unloading !== null}>取消</Button>
+            <Button
+              variant="primary"
+              loading={unloading === confirmingUnload?.id}
+              disabled={!confirmingUnload}
+              onClick={() => { if (confirmingUnload) void unloadModels(confirmingUnload); }}
+            >
+              卸载模型并释放显存
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-2 text-sm leading-relaxed text-muted">
+          <p>将请求此 ComfyUI 实例卸载全部已载入模型并清理显存缓存。模型文件不会被删除。</p>
+          <p>正在运行的生成不会被强制中断；ComfyUI 会在队列可处理时执行。下次生成需要重新加载模型，可能会多等待一会儿。</p>
+          <p>此操作只释放该 ComfyUI 实例管理的资源，不会卸载其他程序加载的模型。</p>
+        </div>
       </Dialog>
     </div>
   );

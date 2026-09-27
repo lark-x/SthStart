@@ -341,6 +341,7 @@ export async function createActivityMediaJob(
       inputArtifacts: params.inputArtifacts,
       seed: params.seed,
       idempotencyKey: scopedIdempotencyKey,
+      audit: { feature: 'activities', businessEvent: 'activity.media_batch.generate', objectType: 'activity', objectId: activityId, sourceUrl: `/apps/activities/${encodeURIComponent(activityId)}` },
       onInsertTask: (txParams) => {
         database.connection.prepare(`
           INSERT INTO activity_media_job_links (

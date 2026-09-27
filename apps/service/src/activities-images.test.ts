@@ -10,6 +10,7 @@ import { createService } from './server.js';
 import { SecretStore } from './security.js';
 import { createZip, readZip } from './activities/zip.js';
 import { recordAssetLineage } from './activities/image-lineage.js';
+import { createPreset, setDefaultPreset, updatePreset } from './generation/configuration-store.js';
 import type { ContentDocument } from '@sthstart/contracts';
 
 const adminToken = 'admin-image-provenance-test-token-12345';
@@ -596,7 +597,14 @@ test('Activity Images: configured generation, automatic seed idempotency, frozen
   const sent: any[] = [];
   const fetcher: typeof fetch = async (input, init) => {
     const url = String(input);
+    if (url.endsWith('/object_info')) return Response.json({
+      CLIPTextEncode: { input: { required: { text: ['STRING', {}] } } },
+      SaveImage: { input: { required: { images: ['IMAGE', {}] } } },
+      LoadImage: { input: { required: { image: [['reference.png'], {}] } } },
+      KSampler: { input: { required: { denoise: ['FLOAT', {}] } } },
+    });
     if (url.endsWith('/upload/image')) return Response.json({ name: 'controlled-reference.png' });
+    if (url.endsWith('/chat/completions')) return Response.json({ choices: [{ message: { content: 'illustrated night market scene with Alice holding a glowing star lantern' } }] });
     if (url.endsWith('/prompt')) { sent.push(JSON.parse(String(init?.body))); return Response.json({ prompt_id: 'activity-proof' }); }
     if (url.includes('/history/')) return Response.json({ 'activity-proof': { status: { status_str: 'success' }, outputs: { '9': { images: [{ filename: 'proof.png', type: 'output' }] } } } });
     if (url.includes('/view')) return new Response(Buffer.from('mock-image-output'), { headers: { 'content-type': 'image/png' } });
@@ -612,7 +620,22 @@ test('Activity Images: configured generation, automatic seed idempotency, frozen
       ['generation/workflows/proof-wf/versions', { engineId: 'proof-engine', inputSchema: { prompt: { type: 'string' } }, nodeBindings: { prompt: ['6', 'inputs', 'text'] }, outputDeclarations: ['9'], definition: { '6': { class_type: 'CLIPTextEncode', inputs: { text: '' } }, '9': { class_type: 'SaveImage', inputs: {} } } }],
     ] as const) assert.equal((await call('POST', path, payload)).statusCode, 201);
     assert.equal((await call('PUT', 'apps/activities/generation-assignments', { assignments: [{ purpose: 'activity_image_text', workflowId: 'proof-wf', engineId: 'proof-engine' }] })).statusCode, 200);
+    const now = new Date().toISOString();
+    database.connection.prepare(`INSERT INTO provider_profiles(id,name,kind,base_url,model,credential_account,enabled,created_at,updated_at)
+      VALUES ('activity-image-text','Mock activity text','llm','http://llm.test/v1','mock-activity-model',NULL,1,?,?)`).run(now, now);
+    database.connection.prepare("INSERT INTO app_llm_assignments(app_id,role,profile_id,updated_at) VALUES ('activities','text','activity-image-text',?)").run(now);
     const base = `activities/${activity.id}`;
+    const selectablePreset = createPreset(database, { appId: 'activities', purpose: 'activity_image_text',
+      name: 'Optional text workflow preset', workflowId: 'proof-wf', workflowVersion: 1, engineId: 'proof-engine', values: {} });
+    const selectedPrepared = await call('POST', base + '/recipes/prepare', {
+      slotId: 'slot_lantern', presetId: selectablePreset.id, presetRevision: selectablePreset.revision,
+    });
+    assert.equal(selectedPrepared.statusCode, 200, selectedPrepared.body);
+    assert.equal(selectedPrepared.json().compilation.executionPlan.presetId, selectablePreset.id);
+    assert.equal(selectedPrepared.json().compilation.executionPlan.presetRevision, selectablePreset.revision);
+    assert.equal((await call('POST', base + '/recipes/prepare', {
+      slotId: 'slot_lantern', presetId: selectablePreset.id, presetRevision: selectablePreset.revision + 1,
+    })).statusCode, 409, 'stale selected preset revisions must be rejected before compiling a recipe');
     const prepared = await call('POST', base + '/recipes/prepare', { slotId: 'slot_lantern' });
     assert.equal(prepared.statusCode, 200, prepared.body);
     const { recipe, compilation } = prepared.json();
@@ -640,7 +663,7 @@ test('Activity Images: configured generation, automatic seed idempotency, frozen
     assert.equal(sent.length, 1);
     const snapshot = database.connection.prepare("SELECT actual_inputs_json FROM activity_image_execution_snapshots WHERE attempt_id = ? AND phase = 'dispatched'").get(first.json().id) as { actual_inputs_json: string };
     assert.deepEqual(JSON.parse(snapshot.actual_inputs_json), sent[0].prompt);
-    assert.equal(sent[0].prompt['6'].inputs.text, compilation.channels.prompt);
+    assert.equal(sent[0].prompt['6'].inputs.text, 'illustrated night market scene with Alice holding a glowing star lantern');
     // A real Artifact must become a controlled uploaded node input for image-to-image.
     const uploaded = await app.inject({ method: 'POST', url: '/api/v1/admin/' + base + '/uploads',
       headers: { ...adminHeaders, 'content-type': 'image/png', 'x-artifact-original-name': 'reference.png' }, payload: Buffer.from('test-input-png') });
@@ -651,11 +674,46 @@ test('Activity Images: configured generation, automatic seed idempotency, frozen
       inputCapabilities: { sourceImage: { required: true, mediaTypes: ['image/png'] } }, outputDeclarations: ['9'],
       definition: { '6': { class_type: 'CLIPTextEncode', inputs: { text: '' } }, '7': { class_type: 'LoadImage', inputs: { image: '' } }, '8': { class_type: 'KSampler', inputs: { denoise: 0.7 } }, '9': { class_type: 'SaveImage', inputs: {} } } })).statusCode, 201);
     assert.equal((await call('PUT', 'apps/activities/generation-assignments', { assignments: [{ purpose: 'activity_image_edit', workflowId: 'proof-wf', engineId: 'proof-engine' }, { purpose: 'activity_image_text', workflowId: 'proof-wf', engineId: 'proof-engine' }] })).statusCode, 200);
+    const editPreset = createPreset(database, { appId: 'activities', purpose: 'activity_image_edit', name: '素材编辑测试预设',
+      workflowId: 'proof-wf', workflowVersion: 2, engineId: 'proof-engine', values: {} });
+    setDefaultPreset(database, editPreset.id);
     const editPrep = await call('POST', base + '/recipes/prepare', { slotId: 'slot_lantern', customParams: { denoise: 0.65 },
       references: [{ referenceId: 'ref-1', assetKey: asset.assetKey, artifactId: 'untrusted-browser-id', sha256: 'untrusted', role: 'init_image', inputKey: 'sourceImage' }] });
     assert.equal(editPrep.statusCode, 200, editPrep.body);
     assert.equal(editPrep.json().recipe.references[0].artifactId, asset.artifactId);
-    const editAttempt = await call('POST', base + '/image-attempts', { recipeId: editPrep.json().recipe.id, idempotencyKey: 'edit-1' });
+    const policyUpdate = await call('PUT', 'generation/activity-image-prompt-policy', {
+      workflowId: 'proof-wf', workflowVersion: editPrep.json().compilation.executionPlan.workflowVersion,
+      revision: 0, enabled: true, instructions: '保留原镜头事实与动作。', positiveSuffix: 'policy-revision-one', negativePrompt: '',
+    });
+    assert.equal(policyUpdate.statusCode, 200, policyUpdate.body);
+    const tasksBeforeStalePolicyAttempt = Number(database.connection.prepare('SELECT COUNT(*) count FROM generation_tasks').get()!.count);
+    const optimizationsBeforeStalePolicyAttempt = Number(database.connection.prepare('SELECT COUNT(*) count FROM activity_prompt_optimization_runs WHERE activity_id=?').get(activity.id)!.count);
+    const stalePolicyAttempt = await call('POST', base + '/image-attempts', { recipeId: editPrep.json().recipe.id, idempotencyKey: 'edit-stale-policy' });
+    assert.equal(stalePolicyAttempt.statusCode, 409, stalePolicyAttempt.body);
+    assert.match(stalePolicyAttempt.json().message, /execution_plan_conflict/);
+    assert.equal(Number(database.connection.prepare('SELECT COUNT(*) count FROM generation_tasks').get()!.count), tasksBeforeStalePolicyAttempt);
+    assert.equal(Number(database.connection.prepare('SELECT COUNT(*) count FROM activity_prompt_optimization_runs WHERE activity_id=?').get(activity.id)!.count), optimizationsBeforeStalePolicyAttempt,
+      'a policy change after recipe compilation must block before optimization and Comfy task creation');
+
+    const policyCurrentEditPrep = await call('POST', base + '/recipes/prepare', { slotId: 'slot_lantern', customParams: { denoise: 0.65 },
+      references: [{ referenceId: 'ref-1', assetKey: asset.assetKey, artifactId: 'untrusted-browser-id', sha256: 'untrusted', role: 'init_image', inputKey: 'sourceImage' }] });
+    assert.equal(policyCurrentEditPrep.statusCode, 200, policyCurrentEditPrep.body);
+    assert.equal(policyCurrentEditPrep.json().compilation.executionPlan.presetRevision, 1);
+    updatePreset(database, editPreset.id, { revision: editPreset.revision, name: '素材编辑测试预设（修订）' });
+    const tasksBeforeStalePresetAttempt = Number(database.connection.prepare('SELECT COUNT(*) count FROM generation_tasks').get()!.count);
+    const optimizationsBeforeStalePresetAttempt = Number(database.connection.prepare('SELECT COUNT(*) count FROM activity_prompt_optimization_runs WHERE activity_id=?').get(activity.id)!.count);
+    const stalePresetAttempt = await call('POST', base + '/image-attempts', { recipeId: policyCurrentEditPrep.json().recipe.id, idempotencyKey: 'edit-stale-preset' });
+    assert.equal(stalePresetAttempt.statusCode, 409, stalePresetAttempt.body);
+    assert.match(stalePresetAttempt.json().message, /已更新|execution_plan_conflict/);
+    assert.equal(Number(database.connection.prepare('SELECT COUNT(*) count FROM generation_tasks').get()!.count), tasksBeforeStalePresetAttempt);
+    assert.equal(Number(database.connection.prepare('SELECT COUNT(*) count FROM activity_prompt_optimization_runs WHERE activity_id=?').get(activity.id)!.count), optimizationsBeforeStalePresetAttempt,
+      'a preset revision change after recipe compilation must block before optimization and Comfy task creation');
+
+    const currentEditPrep = await call('POST', base + '/recipes/prepare', { slotId: 'slot_lantern', customParams: { denoise: 0.65 },
+      references: [{ referenceId: 'ref-1', assetKey: asset.assetKey, artifactId: 'untrusted-browser-id', sha256: 'untrusted', role: 'init_image', inputKey: 'sourceImage' }] });
+    assert.equal(currentEditPrep.statusCode, 200, currentEditPrep.body);
+    assert.equal(currentEditPrep.json().compilation.executionPlan.presetRevision, 2);
+    const editAttempt = await call('POST', base + '/image-attempts', { recipeId: currentEditPrep.json().recipe.id, idempotencyKey: 'edit-1' });
     assert.equal(editAttempt.statusCode, 202, editAttempt.body);
     for (let i = 0; i < 50; i++) {
       const poll = (await call('GET', base + '/image-attempts/' + editAttempt.json().id)).json();
@@ -669,6 +727,12 @@ test('Activity Images: configured generation, automatic seed idempotency, frozen
     assert.equal(sent[1].prompt['8'].inputs.denoise, 0.65);
     const editSnapshot = database.connection.prepare("SELECT uploaded_file_mappings_json FROM activity_image_execution_snapshots WHERE attempt_id = ? AND phase = 'dispatched'").get(editAttempt.json().id) as any;
     assert.deepEqual(JSON.parse(editSnapshot.uploaded_file_mappings_json), { sourceImage: 'controlled-reference.png' });
+    assert.equal(database.connection.prepare("SELECT COUNT(*) AS count FROM activity_prompt_optimization_runs WHERE activity_id=? AND status='succeeded'").get(activity.id)!.count, 2);
+    const latestOptimization = database.connection.prepare(`SELECT policy_revision,policy_snapshot_json FROM activity_prompt_optimization_runs
+      WHERE activity_id=? ORDER BY created_at DESC LIMIT 1`).get(activity.id) as { policy_revision: number; policy_snapshot_json: string };
+    assert.equal(latestOptimization.policy_revision, 1);
+    assert.equal(JSON.parse(latestOptimization.policy_snapshot_json).revision, 1,
+      'the optimized media prompt persists the exact policy snapshot used by the live submission');
     database.connection.prepare("UPDATE generation_workflow_versions SET definition_json = ? WHERE workflow_id = 'proof-wf'").run(JSON.stringify({ '6': { class_type: 'CLIPTextEncode', inputs: { text: 'changed' } } }));
     assert.equal((await call('POST', base + '/image-attempts', { ...request, idempotencyKey: 'changed-plan' })).statusCode, 409);
   } finally { await app.close(); database.close(); }

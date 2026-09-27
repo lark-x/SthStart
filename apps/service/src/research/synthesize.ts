@@ -61,7 +61,7 @@ export async function regenerateSynthesis(
     const raw = await callLlm(profile, buildSynthesisPrompt({
       workTitle, title: project.title, question: project.question,
       claims: claimsForPrompt, evidence,
-    }), fetcher);
+    }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.regenerate_synthesis', objectType: 'research-project', objectId: projectId });
     synthesis = parseSynthesis(raw);
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };

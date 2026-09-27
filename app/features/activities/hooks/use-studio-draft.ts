@@ -91,5 +91,6 @@ export function useStudioDraft(id: string, incoming?: { document: ContentDocumen
     return () => { if (timer.current) clearTimeout(timer.current); window.removeEventListener('beforeunload', beforeUnload); };
   }, []);
   return { document, status, error, update, flush, resolve, version: () => state.current.version,
+    isClean: () => !state.current.dirty && !state.current.blocked && !pending.current,
     retry: () => { state.current.blocked = false; void flush(); } };
 }

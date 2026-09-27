@@ -170,7 +170,7 @@ export async function runResearch(
         return;
       }
       if (cancelled()) return;
-      const questions = parseQuestions(await callLlm(profile, buildResearchPrompt(input), options.fetcher ?? fetch));
+      const questions = parseQuestions(await callLlm(profile, buildResearchPrompt(input), options.fetcher ?? fetch, undefined, { database, feature: 'mcp-research', businessEvent: 'mcp.research.plan', objectType: 'research-task', objectId: task.id }));
       if (cancelled()) return;
       const akashaAdapter = createAkashaResearchAdapter(options);
       research.updateTask(task.id, { progressLabel: '正在搜索关系资料…' });
@@ -229,7 +229,7 @@ export async function runResearch(
               const searchTool = tools.find(tool => /search|query|find|搜索|检索/i.test(tool.name + ' ' + tool.description));
               const readTool = tools.find(tool => /read|detail|fetch|get|读取|正文/i.test(tool.name + ' ' + tool.description) && tool !== searchTool);
               if (!searchTool) throw new Error('没有可用的检索工具，请检查允许调用的工具');
-              const generateArgs = async (prompt: string) => parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch));
+              const generateArgs = async (prompt: string) => parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database, feature: 'mcp-research', businessEvent: 'mcp.research.tool_arguments', objectType: 'research-task', objectId: task.id }));
               const args = await researchToolArguments(searchTool, question.keyword, question.work || input.leadWork, undefined, generateArgs);
               if (cancelled() || Date.now() > deadline) break;
               toolCalls += 1;
@@ -387,7 +387,7 @@ async function organizeCandidates(
   evidence: ResearchEvidence[],
   database: ServiceDatabase,
 ): Promise<{ characters: ResearchCharacterCandidate[]; locations: ResearchLocationCandidate[] }> {
-  const raw = await callLlm(profile, buildCandidatesPrompt(input, evidence), options.fetcher ?? fetch);
+  const raw = await callLlm(profile, buildCandidatesPrompt(input, evidence), options.fetcher ?? fetch, undefined, { database, feature: 'mcp-research', businessEvent: 'mcp.research.organize_candidates', objectType: 'research-session' });
   const organized = parseOrganized(raw);
   const characters: ResearchCharacterCandidate[] = organized.characters.map((item, index) => {
     const match = matchLocalCharacters(database, item.name, item.work, input.leadWork);

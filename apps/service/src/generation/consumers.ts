@@ -36,3 +36,13 @@ export function ensureGenerationConsumerApps(database: ServiceDatabase) {
     database.connection.prepare('INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES (?,?)').run(consumer.id, 'keep');
   }
 }
+
+export function ensureLocalComfyuiEngine(database: ServiceDatabase) {
+  const now = nowIso();
+  const comfyUrl = (process.env.COMFYUI_URL || 'http://127.0.0.1:8188').replace(/\/+$/, '');
+  database.connection.prepare(`
+    INSERT INTO generation_engines(id, name, kind, base_url, credential_account, enabled, concurrency_limit, created_at, updated_at)
+    VALUES ('comfyui-local', '本地 ComfyUI (8188)', 'comfyui', ?, null, 1, 1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, enabled=1, updated_at=excluded.updated_at
+  `).run(comfyUrl, now, now);
+}

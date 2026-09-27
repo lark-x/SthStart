@@ -24,29 +24,53 @@ async function availablePort() {
 test('runtime settings persist with bounded normalization', () => {
   const database = new ServiceDatabase(':memory:');
   const settings = new RuntimeSettingsStore(database);
-  const updated = settings.update({ autoStart: true, extraLoraFolders: ['  /models/a  ', '', '/models/b'] });
+  const updated = settings.update({ autoStart: true, publicLlmEnabled: false, extraLoraFolders: ['  /models/a  ', '', '/models/b'] });
   assert.equal(updated.autoStart, true);
   assert.equal(updated.publicLlmEnabled, true);
   assert.deepEqual(settings.get().extraLoraFolders, ['/models/a', '/models/b']);
   database.close();
 });
 
-test('managed Linshe agent receives its public service identity and switch', async () => {
+test('managed Linshe agent receives its identity and locked hosted service flags', async () => {
   const agentPort = await availablePort();
   const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-env-'));
   mkdirSync(resolve(root, 'agent-core'), { recursive: true });
   const output = resolve(root, 'agent-core/runtime-env.json');
-  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync('runtime-env.json', JSON.stringify({ token: process.env.STHSTART_APP_TOKEN, enabled: process.env.STHSTART_PUBLIC_LLM, url: process.env.STHSTART_SERVICE_URL, portalUrl: process.env.STHSTART_PORTAL_URL })); setInterval(() => {}, 1000);`);
+  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync('runtime-env.json', JSON.stringify({ token: process.env.STHSTART_APP_TOKEN, llm: process.env.STHSTART_PUBLIC_LLM, vector: process.env.STHSTART_PUBLIC_VECTOR, image: process.env.STHSTART_PUBLIC_IMAGE, purpose: process.env.STHSTART_GENERATION_PURPOSE, url: process.env.STHSTART_SERVICE_URL, portalUrl: process.env.STHSTART_PORTAL_URL })); setInterval(() => {}, 1000);`);
   const database = new ServiceDatabase(':memory:');
   const settings = new RuntimeSettingsStore(database);
   const logs = new RuntimeLogService(database, root, false);
   const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', LINSHE_AGENT_PORT: String(agentPort), PROBE_TIMEOUT_MS: '100', PORTAL_ORIGINS: 'http://portal.test:4173' });
   const runtime = new RuntimeManager(config, settings, logs, { appToken: 'sth_app_runtime-test-token' });
   await runtime.start('linshe-agent');
-  for (let attempt = 0; attempt < 30 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+  for (let attempt = 0; attempt < 200 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
   assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), {
-    token: 'sth_app_runtime-test-token', enabled: 'true', url: 'http://127.0.0.1:44123', portalUrl: 'http://portal.test:4173',
+    token: 'sth_app_runtime-test-token', llm: 'true', vector: 'true', image: 'true', purpose: 'linshe-chat-image',
+    url: 'http://127.0.0.1:44123', portalUrl: 'http://portal.test:4173',
   });
+  await runtime.close(); database.close();
+});
+
+test('managed Linshe agent refuses to spawn when hosted readiness is incomplete', async () => {
+  const agentPort = await availablePort();
+  const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-preflight-'));
+  mkdirSync(resolve(root, 'agent-core'), { recursive: true });
+  const output = resolve(root, 'agent-core/should-not-start');
+  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync(${JSON.stringify(output)}, 'started'); setInterval(() => {}, 1000);`);
+  const database = new ServiceDatabase(':memory:');
+  const settings = new RuntimeSettingsStore(database);
+  const logs = new RuntimeLogService(database, root, false);
+  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', LINSHE_AGENT_PORT: String(agentPort), PROBE_TIMEOUT_MS: '100' });
+  const runtime = new RuntimeManager(config, settings, logs, {
+    appToken: 'sth_app_runtime-test-token',
+    hostedReadiness: async () => ({
+      ready: false, missing: ['缺少图片工作流'], appTokenValid: true, llmTextReady: true,
+      llmMultimodalReady: true, vectorReady: true, vectorMode: 'profile', imageReady: false,
+      imagePurpose: 'linshe-chat-image', imageWorkflowId: null, imageWorkflowVersion: null,
+    }),
+  });
+  await assert.rejects(runtime.start('linshe-agent'), /linshe_hosted_configuration_missing: 缺少图片工作流/);
+  assert.equal(existsSync(output), false);
   await runtime.close(); database.close();
 });
 

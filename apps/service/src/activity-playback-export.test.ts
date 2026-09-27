@@ -15,6 +15,7 @@ import { readConfig } from './config.js';
 import { SecretStore } from './security.js';
 import { ActivityStore } from './activities/store.js';
 import { buildActivityExportPackage } from './activities/exports.js';
+import { readZip } from './activities/zip.js';
 import { stageActivityImport, commitActivityImport } from './activities/imports.js';
 
 const adminToken = 'activity-m6-token-123456789012345';
@@ -205,6 +206,101 @@ test('M6-A: Compiled canvas follows output size and scales logical px by ratio',
   assert.match(desktopHtml, /id="stage-nav"/);
   assert.match(desktopHtml, /id="chat-view" class="pane"/);
   assert.match(desktopHtml, /id="moments-view" class="pane"/);
+});
+
+test('text-only preview works and stale playback is not exported', async (t) => {
+  const artifactDirectory = resolve(tmpdir(), `activity-text-preview-${randomUUID()}`);
+  t.after(() => rmSync(artifactDirectory, { recursive: true, force: true }));
+  const database = new ServiceDatabase();
+  const config = readConfig({ STHSTART_ADMIN_TOKEN: adminToken, STHSTART_ARTIFACT_DIR: artifactDirectory });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}) });
+  t.after(async () => { await app.close(); database.close(); });
+  const store = new ActivityStore(database);
+  const document = minimalPlaybackContent();
+  document.stages.push({ ...document.stages[0], id: 'stage_2', title: '第二幕', order: 2 });
+  const { activity } = store.createActivity({
+    title: document.activity.title,
+    type: document.activity.type,
+    theme: document.activity.theme,
+    location: document.activity.location,
+    initialDocument: document,
+  });
+  const oldContentId = activity.currentContentRevisionId!;
+  const oldMediaId = activity.currentMediaRevisionId!;
+  const oldPlayback = generateAutoPlayback(oldContentId, document, 'none', null);
+  const preview = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activity.id}/playback-preview`,
+    headers: { 'x-sthstart-admin-token': adminToken },
+    payload: { playback: oldPlayback },
+  });
+  assert.equal(preview.statusCode, 200, preview.body);
+  assert.match(preview.json().html, /<html/);
+
+  const invalidMediaPreview = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activity.id}/playback-preview`,
+    headers: { 'x-sthstart-admin-token': adminToken },
+    payload: { playback: { ...oldPlayback, mediaRevisionId: 'missing-media-revision' } },
+  });
+  assert.equal(invalidMediaPreview.statusCode, 409);
+
+  const savedResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activity.id}/playback`,
+    headers: { 'x-sthstart-admin-token': adminToken },
+    payload: {
+      expectedHeadVersion: activity.headVersion,
+      contentRevisionId: oldContentId,
+      mediaRevisionId: 'none',
+      document: oldPlayback,
+    },
+  });
+  assert.equal(savedResponse.statusCode, 201, savedResponse.body);
+  const saved = savedResponse.json() as { playbackRevisionId: string; activity: { headVersion: number } };
+  assert.equal(store.getPlaybackRevision(activity.id, saved.playbackRevisionId)?.mediaRevisionId, activity.currentMediaRevisionId);
+  const playbackAfterSave = store.getPlaybackRevision(activity.id, saved.playbackRevisionId)!;
+  const updatedPlaybackPreview = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/activities/${activity.id}/playback-preview`,
+    headers: { 'x-sthstart-admin-token': adminToken },
+    payload: { playback: playbackAfterSave },
+  });
+  assert.equal(updatedPlaybackPreview.statusCode, 200, updatedPlaybackPreview.body);
+
+  const updatedDocument = structuredClone(document);
+  updatedDocument.messages[0].text = '更新后的正文';
+  const draft = store.updateDraft(activity.id, 1, updatedDocument);
+  const committed = store.commitDraft(activity.id, saved.activity.headVersion, draft.draftVersion);
+  await assert.rejects(buildActivityExportPackage(config, database, store, activity.id, {
+    format: 'reader',
+    contentRevisionId: committed.contentRevisionId,
+    mediaRevisionId: oldMediaId,
+  }), /media_revision_mismatch/);
+
+  const currentExport = readZip(await buildActivityExportPackage(config, database, store, activity.id, {
+    format: 'reader',
+    contentRevisionId: committed.contentRevisionId,
+    mediaRevisionId: committed.mediaRevisionId,
+    playbackRevisionId: saved.playbackRevisionId,
+  }));
+  const playback = JSON.parse(Buffer.from(currentExport.get('data/playback.json')!).toString('utf8'));
+  const manifest = JSON.parse(Buffer.from(currentExport.get('manifest.json')!).toString('utf8'));
+  assert.equal(playback.contentRevisionId, committed.contentRevisionId);
+  assert.equal(playback.mediaRevisionId, committed.mediaRevisionId);
+  assert.equal(manifest.playbackRevisionId, 'auto');
+
+  const historicalExport = readZip(await buildActivityExportPackage(config, database, store, activity.id, {
+    format: 'reader',
+    contentRevisionId: oldContentId,
+    mediaRevisionId: 'none',
+    playbackRevisionId: saved.playbackRevisionId,
+  }));
+  const historicalPlayback = JSON.parse(Buffer.from(historicalExport.get('data/playback.json')!).toString('utf8'));
+  const historicalManifest = JSON.parse(Buffer.from(historicalExport.get('manifest.json')!).toString('utf8'));
+  assert.equal(historicalPlayback.contentRevisionId, oldContentId);
+  assert.equal(historicalPlayback.mediaRevisionId, 'none');
+  assert.equal(historicalManifest.playbackRevisionId, 'auto');
 });
 
 test('M6-A: Working project export and import restores editing policy and remapped references', async (t) => {
@@ -447,7 +543,7 @@ test('M6-B: Portable backup, verify, and restore whole-site data', async () => {
 
     // 2. Verify portable backup
     const verifyResult = await verifyPortableBackup(backupOutDir);
-    assert.equal(verifyResult.valid, true);
+    assert.equal(verifyResult.valid, true, verifyResult.errors.join('; '));
     assert.equal(verifyResult.errors.length, 0);
 
     // 3. Restore to a new target directory

@@ -27,6 +27,7 @@ const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const runtimePaths = [
   { from: 'dist', to: '/app/dist', label: 'Portal 构建产物' },
   { from: 'apps/service/dist', to: '/app/apps/service/dist', label: 'Service 编译产物' },
+  { from: 'apps/service/package.json', to: '/app/apps/service/package.json', label: 'Service 启动配置' },
   { from: 'apps/service/src', to: '/app/apps/service/src', label: 'Service 源码（迁移脚本运行时读取）' },
   { from: 'packages/contracts/src', to: '/app/packages/contracts/src', label: '契约源码（运行时解析）' },
   { from: 'packages/activity-playback/dist', to: '/app/packages/activity-playback/dist', label: '回放编译产物' },
@@ -90,7 +91,7 @@ if (status !== 'running') {
 // 3. 全量同步。不做子集更新——dist 与 src 必须同时换，否则运行时会对不上。
 for (const item of runtimePaths) {
   console.log(`[部署] 同步 ${item.label}：${item.from} → ${item.to}`);
-  const copy = run('docker', ['cp', `${resolve(root, item.from)}/.`, `${container}:${item.to}/`]);
+  const copy = run('docker', ['cp', `${resolve(root, item.from)}${item.from.endsWith('.json') ? '' : '/.'}`, `${container}:${item.to}${item.from.endsWith('.json') ? '' : '/'}`]);
   if (copy.status !== 0) {
     fail(`复制 ${item.from} 失败：${(copy.stderr || '').trim() || `退出码 ${copy.status}`}`);
   }

@@ -5,11 +5,15 @@ import type {
   ExecutionSnapshot,
   GenerationAttempt,
   GenerationAttemptStatus,
+  ActivityImagePromptPolicy,
 } from '@sthstart/contracts';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
+import { mergeGenerationValues, type InputSchemaMap } from '../generation/configuration.js';
+import { renderWorkflowSnapshot } from '../generation/workflows.js';
+import { inspectWorkflowRuntime } from '../generation/runtime-preflight.js';
 import { createArtifactReference } from '../artifacts.js';
 import {
   cancelGenerationTask,
@@ -18,6 +22,7 @@ import {
   resolveWorkflowAndEngine,
 } from '../generation.js';
 import { getPromptRecipe, resolveImageExecutionPlan } from './image-prompt-compiler.js';
+import { linkPromptOptimizationTask, optimizeActivityImagePrompt } from './image-prompt-optimizer.js';
 import { recordAssetLineage } from './image-lineage.js';
 import type { ActivityStore } from './store.js';
 
@@ -108,7 +113,8 @@ export async function createImageGenerationAttempt(
     throw err;
   }
 
-  const currentPlan = resolveImageExecutionPlan(database, recipe.references.length > 0);
+  const currentPlan = resolveImageExecutionPlan(database, recipe.references.length > 0, compilation.executionPlan?.presetId ?? undefined,
+    compilation.executionPlan?.presetRevision ?? undefined);
   if (!currentPlan) throw Object.assign(new Error('assignment_missing: 请配置活动生图工作流'), { code: 'assignment_missing' });
   if (!compilation.executionPlan || JSON.stringify(currentPlan) !== JSON.stringify(compilation.executionPlan)
       || (params.compilationId && params.compilationId !== compilation.id)
@@ -127,6 +133,26 @@ export async function createImageGenerationAttempt(
     ...params.customInputs,
   };
 
+  const resolvedWorkflow = resolveWorkflowAndEngine(database, 'activities', {
+    purpose: targetPurpose,
+    workflowId: currentPlan.workflowId,
+    workflowVersion: currentPlan.workflowVersion,
+    engineId: currentPlan.engineId,
+    isInternal: true,
+  });
+  const inputSchema = resolvedWorkflow.workflow.inputSchema as InputSchemaMap;
+  const validationMode = resolvedWorkflow.workflow.configFormatVersion >= 2 ? 'strict' : 'lenient';
+  const mergedInputs = mergeGenerationValues(inputSchema, resolvedWorkflow.workflow.editorConfig,
+    currentPlan.presetValues ?? {}, inputs, validationMode).values;
+  const preflightSnapshot = renderWorkflowSnapshot(resolvedWorkflow.workflow.definition,
+    resolvedWorkflow.workflow.nodeBindings, mergedInputs, resolvedSeed);
+  const preflight = await inspectWorkflowRuntime(resolvedWorkflow.engine, preflightSnapshot, secrets, fetcher, true);
+  if (!preflight.ok) {
+    throw Object.assign(new Error(`当前 ComfyUI 实例无法满足此工作流：${preflight.issues.join(' ')}`), {
+      code: 'workflow_runtime_requirements_missing', statusCode: 409,
+    });
+  }
+
   const inputArtifacts = recipe.references.map((r) => ({
     artifactId: r.artifactId,
     inputKey: r.inputKey,
@@ -136,6 +162,19 @@ export async function createImageGenerationAttempt(
     ? `act_${activityId}_${params.idempotencyKey}`
     : `act_${activityId}_${attemptId}`;
 
+  const policy = currentPlan.promptPolicySnapshot as unknown as ActivityImagePromptPolicy;
+  const sourcePrompt = String(inputs.prompt ?? inputs.positive ?? inputs.positivePrompt ?? '');
+  if (!sourcePrompt.trim()) throw Object.assign(new Error('prompt_missing: 已编译配方没有正向提示词。'), { code: 'prompt_missing' });
+  const sourceNegative = String(inputs.negativePrompt ?? inputs.negative ?? '');
+  const optimized = await optimizeActivityImagePrompt(database, secrets, {
+    activityId, workflowId: currentPlan.workflowId, workflowVersion: currentPlan.workflowVersion, policy,
+    sourcePrompt, existingNegativePrompt: sourceNegative, idempotencyKey: scopedIdempotencyKey,
+  }, fetcher);
+  for (const key of Object.keys(compilation.channels)) {
+    if (['prompt', 'positive', 'positivePrompt'].includes(key)) inputs[key] = optimized.optimizedPrompt;
+    if (['negative', 'negativePrompt'].includes(key) && optimized.negativePrompt) inputs[key] = optimized.negativePrompt;
+  }
+
   // Call createGenerationTask with atomic onInsertTask callback
   const genTask = await createGenerationTask(
     config,
@@ -144,10 +183,14 @@ export async function createImageGenerationAttempt(
     {
       appId: 'activities',
       purpose: targetPurpose,
+      presetId: currentPlan.presetId ?? undefined,
+      presetRevision: currentPlan.presetRevision ?? undefined,
       inputs,
       inputArtifacts,
       seed: resolvedSeed,
       idempotencyKey: scopedIdempotencyKey,
+      audit: { feature: 'activities', businessEvent: 'activity.media_slot.generate', objectType: 'activity', objectId: activityId,
+        sourceUrl: `/apps/activities/${encodeURIComponent(activityId)}`, traceId: optimized.traceId, parentId: optimized.optimizerCallId },
       onInsertTask: (txParams) => {
         // Atomic insertion in same transaction!
         database.connection.prepare(`
@@ -216,6 +259,7 @@ export async function createImageGenerationAttempt(
     fetcher,
   );
 
+  linkPromptOptimizationTask(database, activityId, scopedIdempotencyKey, genTask.id);
   return getImageAttempt(database, activityId, attemptId)!;
 }
 

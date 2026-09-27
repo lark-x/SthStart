@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 @import './styles/theme.css';
 
+@font-face {
+  font-family: 'Sthstart Comic Noto Sans SC';
+  src: url('/fonts/NotoSansSC-VF.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+}
+
 /* ---------- 基础层 ---------- */
 @layer base {
   * {
@@ -587,12 +595,13 @@ button.primary-action:hover {
 }
 
 /* ---------- 共享工作面 ---------- */
-.studio-records { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; align-items: start; }
+.studio-records { display: block; width: 100%; }
+.studio-records:has(> .studio-stages) { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; align-items: start; }
 .studio-stages { position: sticky; top: 16px; display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
 .studio-stage-list { display: flex; flex-direction: column; gap: 6px; }
 .studio-stage-list button { text-align: left; white-space: normal; }
 .studio-stage-mobile { display: none; }
-.studio-records-body { min-width: 0; }
+.studio-records-body { min-width: 0; width: 100%; }
 .studio-records-body > div:first-child { overflow-x: auto; }
 .studio-records-body > div:first-child button { flex-shrink: 0; white-space: nowrap; }
 .notebook-icon-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }

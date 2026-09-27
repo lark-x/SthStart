@@ -15,13 +15,21 @@ import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { resolveWorkflowAndEngine } from '../generation.js';
 import type { ImageExecutionPlan } from '@sthstart/contracts';
+import { resolveDefaultPreset, resolveEnabledPreset } from '../generation/configuration-store.js';
+import { resolveActivityImagePromptPolicy } from './image-prompt-policies.js';
 
-export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferences: boolean): ImageExecutionPlan | null {
+export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferences: boolean, selectedPresetId?: string, selectedPresetRevision?: number): ImageExecutionPlan | null {
   const preferred = hasReferences ? 'activity_image_edit' : 'activity_image_text';
   const assigned = database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE app_id = ? AND purpose = ?').get('activities', preferred);
   const purpose = assigned ? preferred : 'activity_media_slot';
   if (!database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE app_id = ? AND purpose = ?').get('activities', purpose)) return null;
-  const resolved = resolveWorkflowAndEngine(database, 'activities', { purpose });
+  const selectedPreset = selectedPresetId
+    ? resolveEnabledPreset(database, 'activities', purpose, selectedPresetId, selectedPresetRevision)
+    : resolveDefaultPreset(database, 'activities', purpose);
+  const resolved = selectedPreset
+    ? resolveWorkflowAndEngine(database, 'activities', { purpose, workflowId: selectedPreset.preset.workflowId,
+      workflowVersion: selectedPreset.preset.workflowVersion, engineId: selectedPreset.preset.engineId, isInternal: true })
+    : resolveWorkflowAndEngine(database, 'activities', { purpose });
   const capabilityRow = database.connection.prepare(`SELECT v.input_capabilities_json, m.input_capabilities_json AS legacy_input_capabilities_json
     FROM generation_workflow_versions v
     LEFT JOIN generation_workflow_media_versions m ON m.workflow_id=v.workflow_id AND m.version=v.version
@@ -31,8 +39,14 @@ export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferenc
   try { directCapabilities = JSON.parse(capabilityRow?.input_capabilities_json ?? '{}') as Record<string, unknown>; } catch { directCapabilities = {}; }
   try { legacyCapabilities = JSON.parse(capabilityRow?.legacy_input_capabilities_json ?? '{}') as Record<string, unknown>; } catch { legacyCapabilities = {}; }
   const inputCapabilities = Object.keys(directCapabilities).length ? directCapabilities : legacyCapabilities;
+  const promptPolicy = resolveActivityImagePromptPolicy(database, resolved.workflow.id, resolved.workflow.version);
   return { purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, engineId: resolved.engine.id,
     definitionHash: createHash('sha256').update(JSON.stringify(resolved.workflow.definition)).digest('hex'), nodeBindings: resolved.workflow.nodeBindings,
+    presetId: selectedPreset?.preset.id ?? null,
+    presetRevision: selectedPreset?.preset.revision ?? null,
+    presetValues: selectedPreset?.values ?? {},
+    promptPolicyRevision: promptPolicy.revision,
+    promptPolicySnapshot: promptPolicy as unknown as Record<string, unknown>,
     ...(Object.keys(inputCapabilities).length ? { inputCapabilities: inputCapabilities as ImageExecutionPlan['inputCapabilities'] } : {}) };
 }
 

@@ -59,7 +59,14 @@ async function harness(label: string): Promise<Harness> {
     STHSTART_PORT: '4311',
   });
   const { app } = await createService({ config, database, narrativeDatabase, secrets: new MemorySecrets() });
-  return { app, database, config, artifactDirectory, targetDirectory, root, close: () => app.close() };
+  return {
+    app, database, config, artifactDirectory, targetDirectory, root,
+    close: async () => {
+      await app.close();
+      narrativeDatabase.close();
+      database.close();
+    },
+  };
 }
 
 function nowIso() {

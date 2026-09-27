@@ -234,7 +234,7 @@ export async function runIdeaBatch(
       ideaCount: input.ideaCount,
       variantSeed: input.variantSeed,
       previousIdeas: batch.ideas,
-    }), options.fetcher ?? fetch);
+    }), options.fetcher ?? fetch, undefined, { database: options.database, feature: 'topic-ideas', businessEvent: 'topics.ideas.generate', objectType: 'idea-batch', objectId: batch.id });
     const parsed = parseIdeas(raw, input.ideaCount);
     if (parsed.length !== input.ideaCount || parsed.some(idea => !idea.overview || idea.stages.length < 2)) throw new Error('模型未返回完整的三个点子与阶段，请重试。');
     // 追加模式保留前一批候选。

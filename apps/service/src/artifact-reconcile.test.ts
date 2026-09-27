@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 
-import { reconcileArtifacts } from './artifacts.js';
+import { reconcileArtifacts, resolveArtifactStoragePath } from './artifacts.js';
 import { ServiceDatabase, nowIso } from './database.js';
 import { readConfig } from './config.js';
 
@@ -51,6 +51,40 @@ test('媒体巡检不会删掉角色来源快照与导入暂存文件', async ()
     assert.equal(await exists(stagedPath), true, '导入暂存文件必须保留');
     assert.equal(await exists(orphanPath), false, '真正的孤儿文件仍要被清理');
     assert.equal(result.orphansRemoved, 1, '只应清理那一个孤儿文件');
+  } finally {
+    database.close();
+  }
+});
+
+test('Docker 旧绝对路径可通过安全的相对存储键回填到当前 Windows 产物目录', async () => {
+  const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-portable-artifact-'));
+  const database = new ServiceDatabase(':memory:');
+  try {
+    const expectedPath = resolve(artifactDir, 'renders', 'kept-image.png');
+    await mkdir(dirname(expectedPath), { recursive: true });
+    await writeFile(expectedPath, Buffer.from('image data'));
+    const now = nowIso();
+    database.connection.prepare("INSERT INTO managed_apps VALUES ('activities','活动','artifact-test-token','[\"artifact\"]',1,?,?)").run(now, now);
+    database.connection.prepare(`INSERT INTO artifacts
+      (id,app_id,local_path,storage_key,content_type,media_type,byte_size,file_status,pinned,created_at,updated_at)
+      VALUES ('docker-image','activities','/app/data/artifacts/renders/kept-image.png',NULL,'image/png','image',10,'missing',0,?,?)`).run(now, now);
+
+    assert.equal(resolveArtifactStoragePath(database, 'docker-image', artifactDir), expectedPath);
+    const restored = database.connection.prepare('SELECT local_path,storage_key,file_status FROM artifacts WHERE id=?').get('docker-image') as
+      { local_path: string; storage_key: string; file_status: string };
+    assert.equal(restored.local_path, expectedPath);
+    assert.equal(restored.storage_key, 'renders/kept-image.png');
+    assert.equal(restored.file_status, 'ready');
+
+    database.connection.prepare("UPDATE artifacts SET file_status='missing' WHERE id='docker-image'").run();
+    assert.equal(resolveArtifactStoragePath(database, 'docker-image', artifactDir), expectedPath);
+    assert.equal(database.connection.prepare("SELECT file_status FROM artifacts WHERE id='docker-image'").get()!.file_status, 'ready',
+      'a restored file at the current absolute path must also be marked readable');
+
+    database.connection.prepare(`INSERT INTO artifacts
+      (id,app_id,local_path,storage_key,content_type,media_type,byte_size,file_status,pinned,created_at,updated_at)
+      VALUES ('unsafe-image','activities',NULL,'../../outside.png','image/png','image',10,'ready',0,?,?)`).run(now, now);
+    assert.equal(resolveArtifactStoragePath(database, 'unsafe-image', artifactDir), null, 'storage keys cannot escape the configured media directory');
   } finally {
     database.close();
   }

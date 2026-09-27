@@ -114,10 +114,21 @@ export function WorkflowImportDialog({
           loraSlots: suggestedDraft.editorConfig.loraSlots.filter((slot) => fields[slot.nameKey] && fields[slot.strengthKey]),
         } : null,
       };
+      let presetTemplates: unknown[] = [];
+      if (analysis.packageInfo) {
+        const bundle = JSON.parse(rawText) as Record<string, unknown>;
+        if (Array.isArray(bundle.presets)) {
+          // Templates without an explicit owner remain informational; never
+          // create presets in an unrelated application implicitly.
+          presetTemplates = bundle.presets.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' &&
+            !Array.isArray(item) && typeof (item as Record<string, unknown>).appId === 'string'));
+        }
+      }
       const created = await createWorkflowConfig({
         name: name.trim() || '未命名工作流',
         category: (draft.category ?? 'image') as 'image' | 'video' | 'audio' | 'transform',
         engineKind: engineId ? (engines.find((item) => item.id === engineId)?.kind ?? 'comfyui') : 'comfyui',
+        presetTemplates,
       });
       await saveWorkflowDraft(created.id, 1, draft);
       onImported(created.id);
@@ -184,7 +195,7 @@ export function WorkflowImportDialog({
             </div>
             <p className="text-sm text-muted">
               {analysis.source === 'config-package' ? '识别为配置包。' : '识别为原生 API JSON。'}共 {analysis.nodeCount} 个节点，{analysis.inputs.length} 个候选输入，{analysis.outputCandidates.length} 个输出节点候选。
-              {analysis.packageInfo?.presetCount ? ` 包含 ${analysis.packageInfo.presetCount} 个预设；本入口只恢复工作流草稿，预设需在保存版本后重新创建，不会自动开放用途。` : ''}
+              {analysis.packageInfo?.presetCount ? ` 包含 ${analysis.packageInfo.presetCount} 个预设；明确指定应用归属的模板会在绑定执行连接并发布版本后自动创建，但不会自动设为默认。` : ''}
             </p>
             {analysis.warnings.length > 0 && (
               <Alert variant="warning" title="分析提示">

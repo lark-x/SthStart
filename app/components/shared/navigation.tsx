@@ -12,6 +12,7 @@ import {
   Settings,
   SlidersHorizontal,
   Sparkles,
+  Activity,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -163,6 +164,17 @@ export const NAV_APPS: NavApp[] = [
     icon: SlidersHorizontal,
     description: '管理生成引擎、工作流与模型绑定',
     keywords: ['generation', '生成配置', '引擎', 'workflow'],
+  },
+  {
+    id: 'ai-logs',
+    title: 'AI 调用记录',
+    navLabel: 'AI 调用记录',
+    navSection: '设置',
+    href: '/settings/ai-logs',
+    group: '管理',
+    icon: Activity,
+    description: '查看业务模型调用、生成工作流与脱敏响应记录',
+    keywords: ['ai logs', 'AI 调用', '审计', '模型请求', '生成记录'],
   },
   {
     id: 'control-center',

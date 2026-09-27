@@ -4,6 +4,7 @@ import type { LlmModelRole } from '@sthstart/contracts';
 
 export interface ResolvedProfile {
   id: string;
+  name: string;
   baseUrl: string;
   model: string | null;
   secret: string | null;
@@ -14,11 +15,11 @@ export interface ResolvedProfile {
 
 function resolvedRow(database: ServiceDatabase, kind: 'llm' | 'vector' | 'image', requested?: string) {
   return database.connection.prepare(
-    `SELECT p.id,p.base_url,p.model,p.credential_account,o.thinking_mode,o.headers_json,o.extra_body_json FROM provider_profiles p
+    `SELECT p.id,p.name,p.base_url,p.model,p.credential_account,o.thinking_mode,o.headers_json,o.extra_body_json FROM provider_profiles p
      LEFT JOIN provider_profile_options o ON o.profile_id=p.id
      WHERE p.kind = ? AND p.enabled = 1 ${requested ? 'AND p.id = ?' : ''} ORDER BY p.created_at LIMIT 1`,
   ).get(...(requested ? [kind, requested] : [kind])) as {
-    id: string; base_url: string; model: string | null; credential_account: string | null; thinking_mode: 'enabled' | 'disabled' | 'omit' | null; headers_json: string | null; extra_body_json: string | null;
+    id: string; name: string; base_url: string; model: string | null; credential_account: string | null; thinking_mode: 'enabled' | 'disabled' | 'omit' | null; headers_json: string | null; extra_body_json: string | null;
   } | undefined;
 }
 
@@ -26,7 +27,7 @@ async function hydrateProfile(row: ReturnType<typeof resolvedRow>, secrets: Secr
   if (!row) return null;
   const envName = `STHSTART_SECRET_${row.id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
   const credential = row.credential_account ? await secrets.get(row.credential_account, envName) : { value: null };
-  return { id: row.id, baseUrl: row.base_url.replace(/\/$/, ''), model: row.model, secret: credential.value, thinkingMode: row.thinking_mode ?? 'omit', headers: JSON.parse(row.headers_json ?? '{}') as Record<string, string>, extraBody: JSON.parse(row.extra_body_json ?? '{}') as Record<string, unknown> } satisfies ResolvedProfile;
+  return { id: row.id, name: row.name, baseUrl: row.base_url.replace(/\/$/, ''), model: row.model, secret: credential.value, thinkingMode: row.thinking_mode ?? 'omit', headers: JSON.parse(row.headers_json ?? '{}') as Record<string, string>, extraBody: JSON.parse(row.extra_body_json ?? '{}') as Record<string, unknown> } satisfies ResolvedProfile;
 }
 
 export async function resolveProfile(
@@ -40,7 +41,7 @@ export async function resolveProfile(
 
 export async function resolveAssignedLlmProfile(database: ServiceDatabase, secrets: SecretStore, appId: string, role: LlmModelRole) {
   const row = database.connection.prepare(
-    `SELECT p.id,p.base_url,p.model,p.credential_account,o.thinking_mode,o.headers_json,o.extra_body_json
+    `SELECT p.id,p.name,p.base_url,p.model,p.credential_account,o.thinking_mode,o.headers_json,o.extra_body_json
      FROM app_llm_assignments a
      JOIN provider_profiles p ON p.id=a.profile_id AND p.kind='llm' AND p.enabled=1
      LEFT JOIN provider_profile_options o ON o.profile_id=p.id

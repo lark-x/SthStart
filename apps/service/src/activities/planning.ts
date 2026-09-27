@@ -691,7 +691,7 @@ function executePlanningJob(options: PlanningServiceOptions, sessionId: string, 
             knowledgeExcerpt: referencePromptBlock(snapshot.knowledge),
             referenceIds: (snapshot.knowledge?.references ?? []).map((item) => item.id),
           });
-          const response = await callLlm(profile, prompt, options.fetcher ?? fetch);
+          const response = await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'activity-planning', businessEvent: 'activity.planning.generate', objectType: 'planning-session', objectId: sessionId });
           if (!active()) return;
           const parsed = validatePlanningOutput(
             parseAiJsonOutput<unknown>(response),

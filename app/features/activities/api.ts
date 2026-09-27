@@ -17,6 +17,7 @@ import type {
   ImageConfigRevision,
   PromptRecipe,
   PromptCompilation,
+  PreparePromptRecipeRequest,
   GenerationAttempt,
   ImpactPreview,
   SourceRef,
@@ -552,15 +553,7 @@ export async function fetchImageConfigRevisions(id: string): Promise<{ items: Im
 // 10. Prompt Recipes & Preparation
 export async function preparePromptRecipe(
   id: string,
-  input: {
-    contentRevisionId: string;
-    imageConfigRevisionId?: string;
-    slotId: string;
-    expectedHeadVersion?: number;
-    overrides?: Array<{ id: string; fieldPath: string; overrideText: string; reason?: string }>;
-    references?: import('@sthstart/contracts').ReferenceInput[];
-    customParams?: Record<string, unknown>;
-  }
+  input: PreparePromptRecipeRequest
 ): Promise<{ recipe: PromptRecipe; compilation: PromptCompilation }> {
   return postJson(`/api/admin/activities/${encodeURIComponent(id)}/recipes/prepare`, input);
 }

@@ -9,8 +9,8 @@
  * - 可重复执行：已是 V2 的草稿跳过；快照按 (provider, externalId, payloadHash) 唯一去重。
  *
  * 用法：
- *   node scripts/character-model-migration.mjs preview [--db <path>] [--json]
- *   node scripts/character-model-migration.mjs apply   [--db <path>] [--json]
+ *   node --import tsx/esm scripts/character-model-migration.mjs preview [--db <path>] [--json]
+ *   node --import tsx/esm scripts/character-model-migration.mjs apply   [--db <path>] [--json]
  *
  * 注意：apply 会写入数据库。请先对副本执行，确认报告无误后再对日常库执行。
  */

@@ -1,7 +1,7 @@
 import { copyFileSync, statSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readConfig } from './config.js';
 
@@ -282,8 +282,12 @@ export async function verifyPortableBackup(
   if (manifest.type !== 'sthstart-portable-backup' || manifest.schemaVersion !== 1 || !Array.isArray(manifest.items) || !manifest.databases?.length) {
     return { valid: false, errors: ['invalid backup manifest'] };
   }
-  const base = resolve(backupDir) + '/';
-  if ([...manifest.databases, ...manifest.items.map(i => i.backupRelativePath)].some(p => typeof p !== 'string' || !resolve(backupDir, p).startsWith(base))) {
+  const base = resolve(backupDir);
+  if ([...manifest.databases, ...manifest.items.map(i => i.backupRelativePath)].some((path) => {
+    if (typeof path !== 'string' || !path || isAbsolute(path)) return true;
+    const inside = relative(base, resolve(base, path));
+    return !inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+  })) {
     return { valid: false, errors: ['backup path is outside archive'] };
   }
   for (const missing of manifest.missingFiles || []) errors.push('missing original resource: ' + missing.id);

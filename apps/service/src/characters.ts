@@ -3,7 +3,8 @@ import type { OrganizationEdit } from './characters/organization.js';
 import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { CharacterDraftV2, CharacterMigrationReview, CharacterProfile, CharacterRelationship, CharacterSource, CharacterVersion } from '@sthstart/contracts';
@@ -12,6 +13,7 @@ import { authenticateApp, hasCapability } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
+import { collectAiCallRedactionSecrets, fetchAuditedAiResponse, updateAiCallRecord } from './ai-call-trace.js';
 import { resolveAssignedLlmProfile, upstreamHeaders } from './providers.js';
 import { errorConfigurationPath, llmNotReadyError, resolveAppLlmBindingStatus, resolveCharacterLlmBindingStatus } from './llm-status.js';
 import type { SecretStore } from './security.js';
@@ -34,6 +36,7 @@ import {
 import { listCharacterLlmAssignments, resolveCharacterLlmProfile, setCharacterLlmAssignment } from './characters/model-assignments.js';
 import { buildAuditionPrompt, normalizeCharacterAppearance } from './characters/persona-compiler.js';
 import { buildCharacterVisualContext, previewAppearanceCandidateApplication, toCharacterRuntime } from '@sthstart/contracts';
+import { matchOfficialAvatarUrl, previewCharacterMultiSourceAssets } from './characters/official-avatars.js';
 
 function hash(value: unknown) { return createHash('sha256').update(value instanceof Uint8Array || typeof value === 'string' ? value : JSON.stringify(value)).digest('hex'); }
 
@@ -47,6 +50,14 @@ function avatarUrl(database: ServiceDatabase, assetId: unknown, assetPath: strin
 
 function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, assetPath = '/api/admin/characters/assets'): CharacterProfile {
   const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
+  let variants: import('@sthstart/contracts').CharacterVariant[] = [];
+  try {
+    if (row.variants_json) {
+      variants = JSON.parse(String(row.variants_json));
+    }
+  } catch {
+    variants = [];
+  }
   return {
     organization: normalizeOrganization(JSON.parse(String(row.organization_json || '{}'))),
     birthday: effectiveBirthday(draft),
@@ -54,9 +65,14 @@ function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, ass
     // draft 即权威存储形态（V2；未迁移的历史数据仍为 V1）。
     draft,
     tags: JSON.parse(String(row.tags_json)) as string[],
-    avatarUrl: avatarUrl(database, row.avatar_asset_id, assetPath), latestVersion: row.latest_version == null ? null : Number(row.latest_version),
+    avatarUrl: avatarUrl(database, row.avatar_asset_id, assetPath),
+    avatarAssetId: row.avatar_asset_id ? String(row.avatar_asset_id) : null,
+    portraitUrl: avatarUrl(database, row.portrait_asset_id, assetPath),
+    portraitAssetId: row.portrait_asset_id ? String(row.portrait_asset_id) : null,
+    latestVersion: row.latest_version == null ? null : Number(row.latest_version),
     archived: Boolean(row.archived), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     ...(row.draft_revision != null ? { draftRevision: Number(row.draft_revision) } : {}),
+    variants,
   };
 }
 
@@ -224,11 +240,14 @@ async function generateDraft(database: ServiceDatabase, secrets: SecretStore, fe
 
 参考资料：
 ${sources.map((source) => `【${source.title}】\n${source.excerpt}`).join('\n\n').slice(0, 24_000)}`;
-  const response = await fetcher(`${profile.baseUrl}/chat/completions`, { method: 'POST', headers: { ...profile.headers, ...upstreamHeaders(profile.secret) }, body: JSON.stringify({ ...profile.extraBody, model: profile.model, temperature: .3, messages: [{ role: 'system', content: '你是严谨的角色资料编辑，只输出有效 JSON。' }, { role: 'user', content: prompt }] }), signal: AbortSignal.timeout(180_000) });
+  const requestBody = { ...profile.extraBody, model: profile.model, temperature: .3, messages: [{ role: 'system', content: '你是严谨的角色资料编辑，只输出有效 JSON。' }, { role: 'user', content: prompt }] };
+  const audited = await fetchAuditedAiResponse(database, { applicationId: 'characters', feature: 'characters', businessEvent: 'character.draft.generate', objectType: 'character', callType: 'llm', provider: profile.name, models: [profile.model], parameters: { temperature: .3 }, positivePrompt: prompt, redactionSecrets: collectAiCallRedactionSecrets({ secret: profile.secret, headers: profile.headers, extraBody: profile.extraBody }) }, fetcher, `${profile.baseUrl}/chat/completions`, { method: 'POST', headers: { ...profile.headers, ...upstreamHeaders(profile.secret) }, body: JSON.stringify(requestBody), signal: AbortSignal.timeout(180_000) });
+  const response = audited.response;
   const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
   if (!response.ok) throw new Error(payload.error?.message ?? `HTTP ${response.status}`);
   const raw = payload.choices?.[0]?.message?.content?.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   if (!raw) throw new Error('empty_generation');
+  updateAiCallRecord(database, audited.callId, { responseText: raw, event: 'content_parsed', redactionSecrets: audited.redactionSecrets });
   return normalizeCharacterDraft(JSON.parse(raw));
 }
 
@@ -272,12 +291,46 @@ function characterAvatarPrompt(draft: unknown) {
   ].filter(Boolean).join('\n').slice(0, 4_000);
 }
 
-async function sendCharacterAsset(database: ServiceDatabase, assetId: string, reply: FastifyReply) {
+async function sendCharacterAsset(database: ServiceDatabase, assetId: string, reply: FastifyReply, config?: ServiceConfig) {
   // 角色资产只指向 artifacts 中的文件；没有 artifact 关联就无法提供内容。
-  const asset = database.connection.prepare('SELECT artifact_id FROM character_assets WHERE id=?').get(assetId) as { artifact_id: string | null } | undefined;
+  const asset = database.connection.prepare('SELECT artifact_id, source_url, kind, character_id FROM character_assets WHERE id=?').get(assetId) as { artifact_id: string | null; source_url?: string | null; kind?: string; character_id?: string } | undefined;
   if (!asset) return reply.code(404).send({ error: 'not_found' });
   if (!asset.artifact_id) return reply.code(404).send({ error: 'artifact_missing' });
-  const artifact = await readArtifact(database, asset.artifact_id);
+  let artifact = await readArtifact(database, asset.artifact_id);
+
+  // 自愈机制：若本地文件因清理或首次迁移缺失，自动按 source_url 回源下载并更新 artifacts
+  if ((!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) && asset.source_url) {
+    try {
+      const res = await fetch(asset.source_url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const contentType = res.headers.get('content-type') || 'image/png';
+        const ext = contentType.includes('webp') ? '.webp' : contentType.includes('jpeg') ? '.jpg' : '.png';
+        const artifactDir = config?.artifactDirectory || process.env.STHSTART_ARTIFACT_DIR || resolve(process.cwd(), 'data/artifacts');
+        const directory = resolve(artifactDir, 'characters');
+        await mkdir(directory, { recursive: true });
+        const filePath = resolve(directory, `${asset.artifact_id}${ext}`);
+        await writeFile(filePath, buffer);
+
+        const now = nowIso();
+        const byteSize = buffer.length;
+        const sha256 = createHash('sha256').update(buffer).digest('hex');
+
+        database.connection.prepare(`UPDATE artifacts SET local_path=?, content_type=?, byte_size=?, sha256=?, file_status='ready', updated_at=? WHERE id=?`)
+          .run(filePath, contentType, byteSize, sha256, now, asset.artifact_id);
+
+        artifact = await readArtifact(database, asset.artifact_id);
+      }
+    } catch (e) {
+      console.warn(`[characters] Failed to self-heal asset ${assetId} from ${asset.source_url}:`, e);
+    }
+  }
+
   if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'file_not_found' });
   reply.type(artifact.contentType || 'application/octet-stream').header('content-length', String(artifact.byteSize));
   return reply.send(createArtifactReadStream(artifact.localPath));
@@ -475,18 +528,207 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     return { items: rows.map((row) => mapProfile(database, row)) };
   });
 
-  app.post<{ Body: { slug?: string; displayName?: string; draft?: unknown; tags?: string[] } }>('/api/v1/admin/characters', async (request, reply) => {
+  app.post<{ Body: { slug?: string; displayName?: string; draft?: unknown; tags?: string[]; variants?: unknown[] } }>('/api/v1/admin/characters', async (request, reply) => {
     const body = request.body ?? {};
     const incoming: Record<string, unknown> = { ...(body.draft as object ?? {}) };
     if (body.displayName != null || !incoming.displayName) incoming.displayName = body.displayName ?? incoming.displayName ?? '';
     const draft = toAuthorityDraft(incoming);
     if (!draft.displayName) return reply.code(400).send({ error: 'display_name_required' });
     const id = randomUUID(); const now = nowIso(); const slug = uniqueSlug(database, request.body?.slug || draft.englishName || draft.displayName);
+    const variants = Array.isArray(request.body?.variants) ? request.body.variants : [];
     database.connection.prepare(`INSERT INTO character_profiles
-      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision)
-      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now);
+      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json)
+      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,?)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now, JSON.stringify(variants));
     upsertCharacterBirthday(database, id, draft);
     return reply.code(201).send(mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(id) as Record<string, unknown>));
+  });
+
+  // 批量匹配官方头像
+  app.post<{ Body: { ids?: string[]; onlyMissing?: boolean } }>('/api/v1/admin/characters/batch-match-official-avatars', async (request) => {
+    const onlyMissing = request.body?.onlyMissing !== false;
+    let rows: Record<string, unknown>[] = [];
+    if (Array.isArray(request.body?.ids) && request.body.ids.length > 0) {
+      const placeholders = request.body.ids.map(() => '?').join(',');
+      rows = database.connection.prepare(`SELECT id, display_name, draft_json, avatar_asset_id FROM character_profiles WHERE id IN (${placeholders}) AND archived=0`).all(...request.body.ids) as Record<string, unknown>[];
+    } else {
+      rows = database.connection.prepare('SELECT id, display_name, draft_json, avatar_asset_id FROM character_profiles WHERE archived=0').all() as Record<string, unknown>[];
+    }
+
+    if (onlyMissing) {
+      rows = rows.filter((r) => !r.avatar_asset_id);
+    }
+
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+    const items: Array<{ id: string; displayName: string; success: boolean; error?: string }> = [];
+
+    const concurrency = 6;
+    let index = 0;
+
+    async function worker() {
+      while (index < rows.length) {
+        const row = rows[index++];
+        const id = String(row.id);
+        const displayName = String(row.display_name);
+        try {
+          const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
+          const match = matchOfficialAvatarUrl(displayName, (draft as Record<string, unknown>).englishName as string | undefined, (draft as Record<string, unknown>).work as string | undefined);
+          if (!match) {
+            skipped++;
+            items.push({ id, displayName, success: false, error: '未在官方角色库中匹配到' });
+            continue;
+          }
+
+          const urls = match.candidateUrls && match.candidateUrls.length > 0
+            ? match.candidateUrls
+            : [
+                match.url,
+                `https://api.ambr.top/assets/UI/UI_AvatarIcon_${match.nameEn}.png`,
+              ];
+          let buffer: Buffer | null = null;
+          let contentType = 'image/png';
+          for (const u of urls) {
+            try {
+              const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+              if (res.ok) {
+                buffer = Buffer.from(await res.arrayBuffer());
+                contentType = res.headers.get('content-type') || 'image/png';
+                break;
+              }
+            } catch {
+              // try next
+            }
+          }
+
+          if (!buffer || buffer.length === 0) {
+            failed++;
+            items.push({ id, displayName, success: false, error: '下载官方头像失败' });
+            continue;
+          }
+
+          const assetId = randomUUID();
+          const now = nowIso();
+          const filename = `${match.nameEn || displayName}_avatar.png`;
+          const artifact = await streamUploadArtifact(config, database, {
+            appId: 'characters',
+            stream: Readable.from([buffer]),
+            contentType,
+            originalName: filename,
+            refType: 'character-asset',
+            refId: assetId,
+            metadata: { characterId: id, kind: 'avatar' },
+          });
+
+          database.transaction(() => {
+            database.connection.prepare(`INSERT INTO character_assets
+              (id,character_id,kind,created_at,artifact_id,source_url,user_note)
+              VALUES (?,?,?,?,?,?,?)`).run(assetId, id, 'avatar', now, artifact.id, match.url, `官方批量抓取: ${match.matchedName}`);
+            database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, id);
+          });
+
+          updated++;
+          items.push({ id, displayName, success: true });
+        } catch (e) {
+          failed++;
+          items.push({ id, displayName, success: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+    }
+
+    const workers = Array.from({ length: Math.min(concurrency, rows.length) }, () => worker());
+    await Promise.all(workers);
+
+    return {
+      total: rows.length,
+      updated,
+      skipped,
+      failed,
+      items,
+    };
+  });
+
+  // 官方角色头像一键匹配抓取
+  app.post<{ Params: { id: string } }>('/api/v1/admin/characters/:id/match-official-avatar', async (request, reply) => {
+    const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
+    const match = matchOfficialAvatarUrl(String(row.display_name), (draft as Record<string, unknown>).englishName as string | undefined, (draft as Record<string, unknown>).work as string | undefined);
+    if (!match) return reply.code(404).send({ error: 'no_official_avatar_found', message: `未在官方角色库中匹配到角色“${row.display_name}”。` });
+
+    const urls = match.candidateUrls && match.candidateUrls.length > 0
+      ? match.candidateUrls
+      : [
+          match.url,
+          `https://api.ambr.top/assets/UI/UI_AvatarIcon_${match.nameEn}.png`,
+        ];
+    let buffer: Buffer | null = null;
+    let contentType = 'image/png';
+    for (const u of urls) {
+      try {
+        const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (res.ok) {
+          buffer = Buffer.from(await res.arrayBuffer());
+          contentType = res.headers.get('content-type') || 'image/png';
+          break;
+        }
+      } catch {
+        // try next
+      }
+    }
+    if (!buffer || buffer.length === 0) {
+      return reply.code(502).send({ error: 'fetch_official_avatar_failed', message: `下载官方头像失败 (${match.matchedName})，请检查网络连接或稍后重试。` });
+    }
+
+    const assetId = randomUUID(); const now = nowIso();
+    const filename = `${match.nameEn || row.display_name}_avatar.png`;
+    const artifact = await streamUploadArtifact(config, database, {
+      appId: 'characters',
+      stream: Readable.from([buffer]),
+      contentType,
+      originalName: filename,
+      refType: 'character-asset',
+      refId: assetId,
+      metadata: { characterId: request.params.id, kind: 'avatar' },
+    });
+    database.transaction(() => {
+      database.connection.prepare(`INSERT INTO character_assets
+        (id,character_id,kind,created_at,artifact_id,source_url,user_note)
+        VALUES (?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id, match.url, `官方抓取: ${match.matchedName}`);
+      database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+    });
+    const updated = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
+    return mapProfile(database, updated);
+  });
+
+  // 从指定 URL 下载头像
+  app.post<{ Params: { id: string }; Body: { url?: string } }>('/api/v1/admin/characters/:id/fetch-avatar-url', async (request, reply) => {
+    const targetUrl = request.body?.url;
+    if (!targetUrl || typeof targetUrl !== 'string') return reply.code(400).send({ error: 'url_required' });
+    const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    try {
+      const res = await fetch(targetUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!res.ok) return reply.code(400).send({ error: 'fetch_avatar_failed', message: `无法从提供的链接下载图片 (HTTP ${res.status})` });
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const contentType = res.headers.get('content-type') || 'image/png';
+      const assetId = randomUUID(); const now = nowIso();
+      const artifact = await streamUploadArtifact(config, database, {
+        appId: 'characters', stream: Readable.from([buffer]), contentType,
+        originalName: `avatar_${assetId}.png`, refType: 'character-asset', refId: assetId,
+        metadata: { characterId: request.params.id, kind: 'avatar' },
+      });
+      database.transaction(() => {
+        database.connection.prepare(`INSERT INTO character_assets
+          (id,character_id,kind,created_at,artifact_id,source_url,user_note)
+          VALUES (?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id, targetUrl, 'URL导入头像');
+        database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+      });
+      const updated = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
+      return mapProfile(database, updated);
+    } catch (e) {
+      return reply.code(500).send({ error: 'fetch_avatar_error', message: String(e) });
+    }
   });
 
   // 迁移复核入口（规划第 7 节）：把「哪些角色还有待确认的迁移冲突、旧服装是什么」变成可查、可处理的接口。
@@ -536,7 +778,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     } catch { return reply.code(404).send({ error: 'source_snapshot_file_not_found' }); }
   });
 
-  app.put<{ Params: { id: string }; Body: { slug?: string; draft?: unknown; tags?: string[]; avatarAssetId?: string | null; expectedDraftRevision?: number } }>('/api/v1/admin/characters/:id', async (request, reply) => {
+  app.put<{ Params: { id: string }; Body: { slug?: string; draft?: unknown; tags?: string[]; avatarAssetId?: string | null; expectedDraftRevision?: number; variants?: unknown[] } }>('/api/v1/admin/characters/:id', async (request, reply) => {
     const current = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
     if (!current) return reply.code(404).send({ error: 'not_found' });
     const currentRevision = Number(current.draft_revision ?? 1);
@@ -556,10 +798,11 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const avatar = rawAvatar ? String(rawAvatar) : null;
     if (avatar && !database.connection.prepare('SELECT 1 FROM character_assets WHERE id=? AND character_id=?').get(avatar, request.params.id)) return reply.code(400).send({ error: 'invalid_avatar' });
     const nextRevision = currentRevision + 1;
-    const statement = database.connection.prepare(`UPDATE character_profiles SET slug=?,display_name=?,draft_json=?,tags_json=?,avatar_asset_id=?,draft_revision=?,updated_at=? WHERE id=?${request.body?.expectedDraftRevision != null ? ' AND draft_revision=?' : ''}`);
+    const variantsJson = request.body?.variants !== undefined ? JSON.stringify(request.body.variants) : String(current.variants_json || '[]');
+    const statement = database.connection.prepare(`UPDATE character_profiles SET slug=?,display_name=?,draft_json=?,tags_json=?,avatar_asset_id=?,draft_revision=?,updated_at=?,variants_json=? WHERE id=?${request.body?.expectedDraftRevision != null ? ' AND draft_revision=?' : ''}`);
     const result = request.body?.expectedDraftRevision != null
-      ? statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), request.params.id, currentRevision)
-      : statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), request.params.id);
+      ? statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id, currentRevision)
+      : statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id);
     if (Number(result.changes) !== 1) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
     upsertCharacterBirthday(database, request.params.id, draft);
     return mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>);
@@ -700,29 +943,215 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     return result.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
-  app.post<{ Params: { id: string }; Body: { dataUrl?: string; filename?: string; kind?: 'avatar' | 'reference'; purposes?: string[]; sourcePage?: string; originalUrl?: string; authorNote?: string; userNote?: string; outfitId?: string | null } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { dataUrl?: string; filename?: string; kind?: 'avatar' | 'portrait' | 'reference'; setAsActive?: boolean; purposes?: string[]; sourcePage?: string; originalUrl?: string; authorNote?: string; userNote?: string; outfitId?: string | null } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
     if (!database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(request.params.id)) return reply.code(404).send({ error: 'not_found' });
     const match = request.body?.dataUrl?.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/); if (!match) return reply.code(400).send({ error: 'invalid_image' });
     const bytes = Buffer.from(match[2], 'base64'); if (bytes.length > 8 * 1024 * 1024) return reply.code(413).send({ error: 'image_too_large' });
     const id = randomUUID(); const now = nowIso(); const originalName = request.body.filename?.slice(0, 255) || `${id}.${match[1].split('/')[1].replace('jpeg', 'jpg')}`;
-    const artifact = await streamUploadArtifact(config, database, { appId: 'characters', stream: Readable.from([bytes]), contentType: match[1], originalName, refType: 'character-asset', refId: id, metadata: { characterId: request.params.id, kind: request.body.kind === 'reference' ? 'reference' : 'avatar' } });
-    const purposes = Array.isArray(request.body.purposes) ? [...new Set(request.body.purposes.filter((purpose): purpose is string => ['avatar', 'identity', 'outfit', 'pose', 'style', 'init_image'].includes(purpose)))].slice(0, 10) : (request.body.kind === 'reference' ? ['identity'] : ['avatar']);
+    const rawKind = request.body.kind;
+    const kind: 'avatar' | 'portrait' | 'reference' = rawKind === 'reference' ? 'reference' : rawKind === 'portrait' ? 'portrait' : 'avatar';
+    const artifact = await streamUploadArtifact(config, database, { appId: 'characters', stream: Readable.from([bytes]), contentType: match[1], originalName, refType: 'character-asset', refId: id, metadata: { characterId: request.params.id, kind } });
+    const purposes = Array.isArray(request.body.purposes) ? [...new Set(request.body.purposes.filter((purpose): purpose is string => ['avatar', 'identity', 'outfit', 'pose', 'style', 'init_image'].includes(purpose)))].slice(0, 10) : (kind === 'reference' ? ['identity'] : [kind]);
     try {
       database.connection.prepare(`INSERT INTO character_assets
         (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note)
-        VALUES (?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, request.body.kind === 'reference' ? 'reference' : 'avatar', now, artifact.id, request.body.sourcePage?.slice(0, 2_000) || null, request.body.originalUrl?.slice(0, 2_000) || null, request.body.authorNote?.slice(0, 4_000) || '', request.body.userNote?.slice(0, 4_000) || '');
-      if (request.body.kind === 'reference') {
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, kind, now, artifact.id, request.body.sourcePage?.slice(0, 2_000) || null, request.body.originalUrl?.slice(0, 2_000) || null, request.body.authorNote?.slice(0, 4_000) || '', request.body.userNote?.slice(0, 4_000) || '');
+      if (kind === 'reference') {
         database.connection.prepare(`INSERT INTO character_visual_references
           (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)
           VALUES (?,?,?,?,1,NULL,?,?)`).run(randomUUID(), request.params.id, id, JSON.stringify(purposes), now, now);
       }
     } catch (error) { throw error; }
-    if (request.body.kind !== 'reference') database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(id, now, request.params.id);
-    const reference = request.body.kind === 'reference' ? visualReferenceRows(database, request.params.id).find((item) => item.assetId === id) : null;
-    return reply.code(201).send({ id, url: `/api/v1/admin/characters/assets/${id}`, ...(reference ? { reference } : {}) });
+    const setAsActive = request.body.setAsActive !== false;
+    if (setAsActive) {
+      if (kind === 'avatar') {
+        database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(id, now, request.params.id);
+      } else if (kind === 'portrait') {
+        database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(id, now, request.params.id);
+      }
+    }
+    const reference = kind === 'reference' ? visualReferenceRows(database, request.params.id).find((item) => item.assetId === id) : null;
+    return reply.code(201).send({ id, url: `/api/admin/characters/assets/${id}`, ...(reference ? { reference } : {}) });
   });
 
-  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/assets/:id', async (request, reply) => sendCharacterAsset(database, request.params.id, reply));
+  // 获取角色的资产列表（含当前生效的头像和立绘）
+  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
+    const profile = database.connection.prepare('SELECT id, avatar_asset_id, portrait_asset_id FROM character_profiles WHERE id=?').get(request.params.id) as { id: string; avatar_asset_id: string | null; portrait_asset_id: string | null } | undefined;
+    if (!profile) return reply.code(404).send({ error: 'not_found' });
+    const rows = database.connection.prepare('SELECT id, character_id, kind, created_at, source_url, author_note, user_note FROM character_assets WHERE character_id=? ORDER BY created_at DESC').all(request.params.id) as Record<string, unknown>[];
+    return {
+      characterId: profile.id,
+      avatarAssetId: profile.avatar_asset_id ? String(profile.avatar_asset_id) : null,
+      portraitAssetId: profile.portrait_asset_id ? String(profile.portrait_asset_id) : null,
+      items: rows.map((r) => ({
+        id: String(r.id),
+        characterId: String(r.character_id),
+        kind: String(r.kind) as 'avatar' | 'portrait' | 'reference',
+        url: `/api/admin/characters/assets/${r.id}`,
+        createdAt: String(r.created_at),
+        sourceUrl: r.source_url ? String(r.source_url) : null,
+        authorNote: r.author_note ? String(r.author_note) : undefined,
+        userNote: r.user_note ? String(r.user_note) : undefined,
+      })),
+    };
+  });
+
+  // 外部图片反向代理（解决海外 Wiki / 外部 CDN 防盗链或网络问题）
+  app.get<{ Querystring: { url?: string } }>('/api/v1/admin/proxy-image', async (request, reply) => {
+    const targetUrl = request.query.url;
+    if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+      return reply.code(400).send({ error: 'invalid_url' });
+    }
+    try {
+      const res = await fetcher(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        return reply.code(res.status).send({ error: 'fetch_failed' });
+      }
+      const contentType = res.headers.get('content-type') || 'image/png';
+      reply.header('Content-Type', contentType);
+      reply.header('Cache-Control', 'public, max-age=86400');
+      const arrayBuf = await res.arrayBuffer();
+      return reply.send(Buffer.from(arrayBuf));
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'proxy_failed', message: err?.message });
+    }
+  });
+
+  // 预览多源官方头像与立绘
+  app.post<{ Params: { id: string } }>('/api/v1/admin/characters/:id/preview-official-assets', async (request, reply) => {
+    const profile = database.connection.prepare('SELECT id, display_name, draft_json FROM character_profiles WHERE id=?').get(request.params.id) as { id: string; display_name: string; draft_json: string } | undefined;
+    if (!profile) return reply.code(404).send({ error: 'not_found' });
+    const draft = normalizeCharacterDraft(JSON.parse(profile.draft_json));
+    const items = await previewCharacterMultiSourceAssets(
+      profile.display_name,
+      (draft as Record<string, unknown>).englishName as string | undefined,
+      (draft as Record<string, unknown>).work as string | undefined,
+    );
+    return {
+      characterId: profile.id,
+      displayName: profile.display_name,
+      items,
+    };
+  });
+
+  // 导入选中的多源资产
+  app.post<{
+    Params: { id: string };
+    Body: {
+      items?: Array<{
+        kind: 'avatar' | 'portrait';
+        url: string;
+        source?: string;
+        title?: string;
+        setAsActive?: boolean;
+      }>;
+      assets?: Array<{
+        kind: 'avatar' | 'portrait';
+        url: string;
+        source?: string;
+        title?: string;
+        setAsActive?: boolean;
+      }>;
+    };
+  }>('/api/v1/admin/characters/:id/import-assets', async (request, reply) => {
+    const profile = database.connection.prepare('SELECT id, avatar_asset_id, portrait_asset_id FROM character_profiles WHERE id=?').get(request.params.id) as { id: string; avatar_asset_id: string | null; portrait_asset_id: string | null } | undefined;
+    if (!profile) return reply.code(404).send({ error: 'not_found' });
+    const assetsToImport = Array.isArray(request.body?.items) ? request.body.items : Array.isArray(request.body?.assets) ? request.body.assets : [];
+    if (assetsToImport.length === 0) return reply.code(400).send({ error: 'no_assets_provided' });
+
+    let activeAvatarAssetId = profile.avatar_asset_id;
+    let activePortraitAssetId = profile.portrait_asset_id;
+    const imported: Array<{ id: string; kind: 'avatar' | 'portrait'; url: string }> = [];
+
+    for (const item of assetsToImport) {
+      if (!item.url || !['avatar', 'portrait'].includes(item.kind)) continue;
+      try {
+        const res = await fetcher(item.url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
+        if (!res.ok) continue;
+        const arrayBuf = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuf);
+        const contentType = res.headers.get('content-type') || 'image/png';
+        const assetId = randomUUID();
+        const now = nowIso();
+        const ext = contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'png';
+        const filename = `${item.kind}_${Date.now()}.${ext}`;
+
+        const artifact = await streamUploadArtifact(config, database, {
+          appId: 'characters',
+          stream: Readable.from([buffer]),
+          contentType,
+          originalName: filename,
+          refType: 'character-asset',
+          refId: assetId,
+          metadata: { characterId: request.params.id, kind: item.kind },
+        });
+
+        database.transaction(() => {
+          database.connection.prepare(`INSERT INTO character_assets
+            (id,character_id,kind,created_at,artifact_id,source_url,user_note)
+            VALUES (?,?,?,?,?,?,?)`).run(
+            assetId,
+            request.params.id,
+            item.kind,
+            now,
+            artifact.id,
+            item.url,
+            item.title || item.source || '多源导入',
+          );
+          if (item.setAsActive) {
+            if (item.kind === 'avatar') {
+              database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+              activeAvatarAssetId = assetId;
+            } else if (item.kind === 'portrait') {
+              database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+              activePortraitAssetId = assetId;
+            }
+          }
+        });
+
+        imported.push({ id: assetId, kind: item.kind, url: `/api/admin/characters/assets/${assetId}` });
+      } catch {
+        // continue with other assets
+      }
+    }
+
+    return {
+      imported,
+      activeAvatarAssetId,
+      activePortraitAssetId,
+    };
+  });
+
+  // 设定主头像 / 主立绘
+  app.put<{
+    Params: { id: string };
+    Body: { assetId?: string; kind?: 'avatar' | 'portrait' };
+  }>('/api/v1/admin/characters/:id/set-active-asset', async (request, reply) => {
+    const assetId = text(request.body?.assetId, 200);
+    const kind = request.body?.kind;
+    if (!assetId || !kind || !['avatar', 'portrait'].includes(kind)) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const asset = database.connection.prepare('SELECT id, character_id FROM character_assets WHERE id=? AND character_id=?').get(assetId, request.params.id);
+    if (!asset) return reply.code(404).send({ error: 'asset_not_found' });
+
+    const now = nowIso();
+    if (kind === 'avatar') {
+      database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+    } else {
+      database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+    }
+
+    const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
+    return mapProfile(database, row);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/v1/admin/characters/assets/:id', async (request, reply) => sendCharacterAsset(database, request.params.id, reply, config));
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/visual-references', async (request, reply) => {
     if (!database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(request.params.id)) return reply.code(404).send({ error: 'not_found' });
@@ -763,10 +1192,13 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       const prompt = `请观察这张角色参考图，只输出 JSON，不要 Markdown。不要从画面推断未观察到的身份、作品或性格；不确定项放入 unknowns，视觉与已有人设冲突放入 conflicts。严格使用此格式：
 {"description":"观察到的整体外观","hair":"发型发色","eyes":"眼睛","build":"体态","accessories":[],"observedOutfit":"本图服装","unknowns":[],"conflicts":[],"evidence":["可见证据"]}
 已有角色名：${JSON.parse(profile.draft_json).displayName || '未命名'}。`;
-      const response = await fetcher(`${model.baseUrl}/chat/completions`, { method: 'POST', headers: { ...model.headers, ...upstreamHeaders(model.secret) }, body: JSON.stringify({ ...model.extraBody, model: model.model, temperature: 0.1, messages: [{ role: 'system', content: '你是谨慎的视觉资料提取器，只输出有效 JSON。' }, { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:${media.contentType};base64,${bytesBase64(media.bytes)}` } }] }] }), signal: AbortSignal.timeout(180_000) });
+      const requestBody = { ...model.extraBody, model: model.model, temperature: 0.1, messages: [{ role: 'system', content: '你是谨慎的视觉资料提取器，只输出有效 JSON。' }, { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:${media.contentType};base64,${bytesBase64(media.bytes)}` } }] }] };
+      const audited = await fetchAuditedAiResponse(database, { applicationId: 'characters', feature: 'characters', businessEvent: 'character.appearance.extract', objectType: 'character', objectId: request.params.id, callType: 'multimodal', provider: model.name, models: [model.model], parameters: { temperature: 0.1, referenceId, imageSha256: hash(media.bytes) }, positivePrompt: prompt, redactionSecrets: collectAiCallRedactionSecrets({ secret: model.secret, headers: model.headers, extraBody: model.extraBody }) }, fetcher, `${model.baseUrl}/chat/completions`, { method: 'POST', headers: { ...model.headers, ...upstreamHeaders(model.secret) }, body: JSON.stringify(requestBody), signal: AbortSignal.timeout(180_000) });
+      const response = audited.response;
       const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown } }>; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? `HTTP ${response.status}`);
       const extraction = appearanceExtraction(modelJson(payload.choices?.[0]?.message?.content));
+      updateAiCallRecord(database, audited.callId, { responseText: JSON.stringify(extraction), event: 'candidate_built', redactionSecrets: audited.redactionSecrets });
       const candidateId = randomUUID();
       database.connection.prepare(`INSERT INTO character_ai_candidates
         (id,character_id,import_session_id,reference_id,input_hash,output_json,model_profile_id,prompt_snapshot_json,status,created_at)
@@ -836,7 +1268,9 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       }
       const draft = normalizeCharacterDraft(JSON.parse(profile.draft_json));
       const prompt = buildAuditionPrompt(draft, scenario, text(request.body?.feedback, 4_000));
-      const response = await fetcher(`${model.baseUrl}/chat/completions`, { method: 'POST', headers: { ...model.headers, ...upstreamHeaders(model.secret) }, body: JSON.stringify({ ...model.extraBody, model: model.model, temperature: 0.7, messages: [{ role: 'system', content: '你是严格遵循已保存角色资料的试演助手，只输出有效 JSON。' }, { role: 'user', content: prompt }] }), signal: AbortSignal.timeout(180_000) });
+      const requestBody = { ...model.extraBody, model: model.model, temperature: 0.7, messages: [{ role: 'system', content: '你是严格遵循已保存角色资料的试演助手，只输出有效 JSON。' }, { role: 'user', content: prompt }] };
+      const audited = await fetchAuditedAiResponse(database, { applicationId: 'characters', feature: 'characters', businessEvent: 'character.audition.generate', objectType: 'character', objectId: request.params.id, callType: 'llm', provider: model.name, models: [model.model], parameters: { temperature: 0.7 }, positivePrompt: prompt, redactionSecrets: collectAiCallRedactionSecrets({ secret: model.secret, headers: model.headers, extraBody: model.extraBody }) }, fetcher, `${model.baseUrl}/chat/completions`, { method: 'POST', headers: { ...model.headers, ...upstreamHeaders(model.secret) }, body: JSON.stringify(requestBody), signal: AbortSignal.timeout(180_000) });
+      const response = audited.response;
       const payload = await response.json() as { choices?: Array<{ message?: { content?: unknown } }>; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? `HTTP ${response.status}`);
       const value = modelJson(payload.choices?.[0]?.message?.content);
@@ -846,6 +1280,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
         return [{ fieldPath: text(itemRecord.fieldPath, 200), before: text(itemRecord.before, 4_000), after: text(itemRecord.after, 4_000), reason: text(itemRecord.reason, 500) }];
       }).slice(0, 20) : [];
       const output = text(value.output, 8_000); if (!output) throw new Error('audition_output_empty');
+      updateAiCallRecord(database, audited.callId, { responseText: JSON.stringify(value), event: 'audition_candidate_built', redactionSecrets: audited.redactionSecrets });
       const id = randomUUID();
       database.connection.prepare(`INSERT INTO character_auditions
         (id,character_id,draft_revision,scenario,output,feedback,suggestions_json,compiler_version,model_profile_id,created_at)
@@ -872,7 +1307,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   });
   app.get<{ Params: { id: string } }>('/api/v1/characters/assets/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
-    return sendCharacterAsset(database, request.params.id, reply);
+    return sendCharacterAsset(database, request.params.id, reply, config);
   });
   app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/api/v1/characters/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;

@@ -90,7 +90,7 @@ export async function executeResearchRun(
     const keywords = project.scope.keywords ?? [];
     let plan: Array<Record<string, unknown>> = [];
     try {
-      const raw = await callLlm(profile, buildQueryPlanPrompt({ workTitle, title: project.title, question: project.question, keywords, entities: [] }), fetcher);
+      const raw = await callLlm(profile, buildQueryPlanPrompt({ workTitle, title: project.title, question: project.question, keywords, entities: [] }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.query_plan', objectType: 'research-run', objectId: runId });
       usedModelCalls += 1;
       plan = parseQueryPlan(raw) as unknown as Array<Record<string, unknown>>;
     } catch (error) {
@@ -167,7 +167,7 @@ export async function executeResearchRun(
     }));
     let parsedClaims: ReturnType<typeof parseClaims> = [];
     try {
-      const raw = await callLlm(profile, buildClaimExtractionPrompt({ workTitle, title: project.title, question: project.question, evidence: evidenceForPrompt }), fetcher);
+      const raw = await callLlm(profile, buildClaimExtractionPrompt({ workTitle, title: project.title, question: project.question, evidence: evidenceForPrompt }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.extract_claims', objectType: 'research-run', objectId: runId });
       usedModelCalls += 1;
       parsedClaims = parseClaims(raw);
     } catch (error) {
@@ -211,7 +211,7 @@ export async function executeResearchRun(
           workTitle, title: project.title,
           claims: accepted.map((item) => ({ id: item.claim.id, title: item.claim.title, claimType: item.claim.claimType ?? 'open-question', body: item.claim.body, evidenceIds: item.evidenceIds })),
           evidence: evidenceForPrompt,
-        }), fetcher);
+        }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.verify_claims', objectType: 'research-run', objectId: runId });
         usedModelCalls += 1;
         const verifications = parseVerification(raw);
         for (const verification of verifications) {
@@ -241,7 +241,7 @@ export async function executeResearchRun(
       return { id: fresh.id, title: fresh.title, claimType: fresh.claimType ?? 'open-question', body: fresh.body, uncertainty: fresh.uncertainty, evidenceIds: item.evidenceIds };
     });
     try {
-      const raw = await callLlm(profile, buildSynthesisPrompt({ workTitle, title: project.title, question: project.question, claims: claimsForSynthesis, evidence: evidenceForPrompt }), fetcher);
+      const raw = await callLlm(profile, buildSynthesisPrompt({ workTitle, title: project.title, question: project.question, claims: claimsForSynthesis, evidence: evidenceForPrompt }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.synthesize', objectType: 'research-run', objectId: runId });
       usedModelCalls += 1;
       const synthesis = parseSynthesis(raw);
       const unresolved = unresolvedSynthesisIds(synthesis, { evidenceIds: availableEvidenceIds, claimIds: new Set(claimsForSynthesis.map((item) => item.id)) });

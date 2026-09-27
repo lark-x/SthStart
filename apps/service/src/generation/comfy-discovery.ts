@@ -1,6 +1,6 @@
 import type { GenerationConnectionTestResult, GenerationModelEntry, GenerationNodeDefinition } from '@sthstart/contracts';
 import { discoverWorkerModels, discoverWorkerNodes, isWorkerDiscoveryUnsupported, workerHealth } from '../worker.js';
-import { sanitizeErrorMessage } from './errors.js';
+import { generationError, sanitizeErrorMessage } from './errors.js';
 
 /**
  * 连接发现的统一适配层（规划 §5「只读发现」）：
@@ -14,7 +14,7 @@ const MAX_OBJECT_INFO_BYTES = 48 * 1024 * 1024;
 const MODEL_FILE_PATTERN = /\.(safetensors|ckpt|pt|sft|gguf|bin|pth)$/i;
 
 /** 已知加载器节点 → 模型类别（models 子目录）。与 configuration.ts 的分析表一致。 */
-const LOADER_NODE_CATEGORIES: Record<string, { inputName: string; category: string }> = {
+export const LOADER_NODE_CATEGORIES: Record<string, { inputName: string; category: string }> = {
   CheckpointLoaderSimple: { inputName: 'ckpt_name', category: 'checkpoints' },
   unCLIPCheckpointLoader: { inputName: 'ckpt_name', category: 'checkpoints' },
   checkpointLoader: { inputName: 'ckpt_name', category: 'checkpoints' },
@@ -287,6 +287,42 @@ export async function testConnection(
   };
   lastTestCache.set(target.id, { result });
   return result;
+}
+
+/** Ask a ComfyUI instance to unload resident models and release cached GPU memory. */
+export async function requestModelUnload(
+  target: EngineTarget,
+  secret: string | null,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  if (target.kind !== 'comfyui') {
+    throw generationError('engine_operation_unsupported', '模型卸载仅支持 ComfyUI 直连。');
+  }
+  const baseUrl = cleanBaseUrl(target.baseUrl);
+  const body = JSON.stringify({ unload_models: true, free_memory: true });
+  const headers = {
+    'content-type': 'application/json',
+    ...(secret ? { authorization: `Bearer ${secret}` } : {}),
+  };
+  // ComfyUI versions expose this endpoint as /free; newer API routing also
+  // publishes /api/free. Only fall back when the route itself is absent.
+  for (const path of ['/free', '/api/free']) {
+    let response: Response;
+    try {
+      response = await fetcher(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (error) {
+      throw generationError('engine_unreachable', `无法向 ComfyUI 发送模型卸载请求：${sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 220)}`);
+    }
+    if (response.ok) return;
+    if (response.status === 404 || response.status === 405) continue;
+    throw generationError('upstream_rejected', `ComfyUI 模型卸载接口返回 HTTP ${response.status}。`);
+  }
+  throw generationError('upstream_rejected', '当前 ComfyUI 版本未提供模型卸载接口（/free 或 /api/free）。');
 }
 
 /** 列表页连接状态：仅读最近一次测试缓存，不逐项发起上游请求。 */

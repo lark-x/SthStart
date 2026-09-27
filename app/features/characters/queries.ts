@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { characterKeys } from '@/app/lib/query-keys';
-import { fetchCharacters, fetchCharacterDetail } from './api';
+import { fetchCharacters, fetchCharacterDetail, fetchCharacterAssets } from './api';
 
 export function useCharacters(options?: { query?: string }) {
   return useQuery({
@@ -16,6 +16,15 @@ export function useCharacterDetail(id?: string) {
     queryFn: () => fetchCharacterDetail(id!),
     enabled: Boolean(id),
     staleTime: 30_000,
+  });
+}
+
+export function useCharacterAssets(id?: string) {
+  return useQuery({
+    queryKey: characterKeys.assets(id ?? ''),
+    queryFn: () => fetchCharacterAssets(id!),
+    enabled: Boolean(id),
+    staleTime: 10_000,
   });
 }
 

@@ -798,7 +798,7 @@ export async function runKnowledgeCollection(
     let organizeError: string | null = null;
     if (profile) {
       try {
-        organized = parseOrganized(await callLlm(profile, buildOrganizePrompt(collection, deduped), options.fetcher ?? fetch), Math.max(10, deduped.length));
+        organized = parseOrganized(await callLlm(profile, buildOrganizePrompt(collection, deduped), options.fetcher ?? fetch, undefined, { database, feature: 'knowledge-collection', businessEvent: 'knowledge.collection.organize', objectType: 'knowledge-collection-run', objectId: run.id }), Math.max(10, deduped.length));
       } catch (error) {
         organizeError = '整理失败：' + (error instanceof Error ? error.message : String(error));
       }
@@ -876,7 +876,7 @@ async function buildCollectionToolArgs(
   return researchToolArguments(tool, keyword, '', undefined, async (prompt: string) => {
     const profile = await resolveAssignedLlmProfile(options.database, options.secrets, 'activities', 'text');
     if (!profile) throw new Error('文本模型未就绪，无法生成工具参数。');
-    return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch));
+    return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'knowledge-collection', businessEvent: 'knowledge.collection.tool_arguments', objectType: 'knowledge-collection' }));
   });
 }
 
@@ -930,7 +930,7 @@ export async function runOrganizeDraft(
       '只输出一个 JSON 对象：',
       '{"title":"资料标题","text":"整理后的正文","assumptions":["无法确认的点"]}',
     ].join('\n');
-    const parsed = parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch));
+    const parsed = parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'knowledge-collection', businessEvent: 'knowledge.draft.organize', objectType: 'knowledge-draft', objectId: draft.id }));
     const container = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
     const title = String(container.title ?? '').trim().slice(0, 200);
     const text = String(container.text ?? '').trim().slice(0, 20_000);

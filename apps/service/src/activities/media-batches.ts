@@ -33,6 +33,7 @@ import { getActivityAssetFile, listActivityAssets } from './media.js';
 import type { ReferenceInput } from '@sthstart/contracts';
 import type { ActivityStore } from './store.js';
 import { getActivityPreset } from './presets.js';
+import { listPresets } from '../generation/configuration-store.js';
 
 const processing = new WeakMap<ServiceDatabase, Set<string>>();
 function batchError(code: string, message: string, statusCode = 400): never {
@@ -49,7 +50,7 @@ function compileBatchSlot(database: ServiceDatabase, store: ActivityStore, activ
   if (current.editingPolicy?.lockedMediaSlotIds.includes(slotId)) batchError('media_slot_locked', '该图片槽位已锁定。');
   const slotConfig = config.document.slotConfigs?.find(s => s.slotId === slotId);
   const keys = [...new Set(slotConfig?.referenceAssetKeys ?? content.document.actors.filter(a => slot.actorIds.includes(a.id)).flatMap(a => a.appearanceReferenceAssetKeys || []))];
-  const plan = resolveImageExecutionPlan(database, keys.length > 0);
+  const plan = resolveImageExecutionPlan(database, keys.length > 0, input.generationPresetId);
   if (!plan) batchError('assignment_missing', '请配置活动文生图/图生图用途。');
   const inputKeys = plan.inputCapabilities ? Object.keys(plan.inputCapabilities).filter(key => plan.nodeBindings[key]) : plan.nodeBindings.sourceImage ? ['sourceImage'] : [];
   if (keys.length > inputKeys.length) batchError('reference_binding_missing', '工作流无法接收全部参考图，请在单图工作台调整参考图配置。');
@@ -80,6 +81,7 @@ function computeBatchRequestHash(params: {
   contentRevisionId: string;
   imageConfigRevisionId: string;
   productionPresetId?: string;
+  generationPresetId?: string;
   items: Array<{ slotId: string; candidateCount: number }>;
 }): string {
   return createHash('sha256').update(JSON.stringify(params)).digest('hex');
@@ -110,6 +112,7 @@ export function prepareMediaBatch(
   const slotMap = new Map((contentDoc.mediaSlots || []).map((s) => [s.id, s]));
   const readyItems: PrepareMediaBatchOutput['readyItems'] = [];
   const unreadyItems: PrepareMediaBatchOutput['unreadyItems'] = [];
+  const plans: NonNullable<ReturnType<typeof resolveImageExecutionPlan>>[] = [];
 
   for (const slotId of input.slotIds) {
     const slot = slotMap.get(slotId);
@@ -134,6 +137,7 @@ export function prepareMediaBatch(
     try {
       if (isSlotBusy(database, activityId, slotId)) batchError('slot_busy', '该槽位已有在途或待核对的任务。');
       const { compilation } = compileBatchSlot(database, store, activityId, input, slotId);
+      if (compilation.executionPlan) plans.push(compilation.executionPlan);
       readyItems.push({ slotId, slotCaption: slot.caption, workflowPurpose: compilation.executionPlan!.purpose, ready: true,
         reason: '用途与输入配置已校验，具体引擎依赖仍需执行时检查。' });
     } catch (error) {
@@ -141,7 +145,24 @@ export function prepareMediaBatch(
     }
   }
 
+  let generationPresetOptions: PrepareMediaBatchOutput['generationPresetOptions'] = [];
+  let selectedGenerationPresetId: string | null = input.generationPresetId ?? null;
+  const purposes = new Set(plans.map((plan) => plan.purpose));
+  if (plans.length && purposes.size === 1) {
+    const effectivePlan = plans[0];
+    // Expose all published, enabled presets for this purpose, not only the
+    // currently assigned workflow. Otherwise an optional workflow (for example
+    // Anima) can never be selected when the activity default is SD1.5.
+    generationPresetOptions = listPresets(database, { appId: 'activities', purpose: effectivePlan.purpose })
+      .filter((preset) => preset.enabled);
+    selectedGenerationPresetId ??= effectivePlan.presetId ?? null;
+  } else if (purposes.size > 1) {
+    selectedGenerationPresetId = null;
+  }
+
   return {
+    generationPresetOptions,
+    selectedGenerationPresetId,
     readyItems,
     unreadyItems,
     allReady: unreadyItems.length === 0 && readyItems.length > 0,
@@ -347,7 +368,8 @@ export async function createMediaBatch(
     batchError('invalid_items', '请选择不重复的槽位，每项生成 1～3 张。');
   }
   const requestHash = computeBatchRequestHash({ activityId, contentRevisionId: input.contentRevisionId,
-    imageConfigRevisionId: input.imageConfigRevisionId, productionPresetId: input.productionPresetId, items: input.items });
+    imageConfigRevisionId: input.imageConfigRevisionId, productionPresetId: input.productionPresetId,
+    generationPresetId: input.generationPresetId, items: input.items });
   if (input.idempotencyKey) {
     const existing = database.connection.prepare('SELECT id,request_hash FROM activity_media_batches WHERE activity_id=? AND idempotency_key=?')
       .get(activityId, input.idempotencyKey) as { id: string; request_hash: string } | undefined;
@@ -394,7 +416,9 @@ export async function createMediaBatch(
       input.imageConfigRevisionId,
       requestHash,
       input.idempotencyKey || null,
-      JSON.stringify({ productionPresetId: input.productionPresetId || null, productionPresetSnapshot: preset ? { id: preset.id, name: preset.name, version: preset.version, payload: preset.payload } : null }),
+      JSON.stringify({ productionPresetId: input.productionPresetId || null, productionPresetSnapshot: preset ? { id: preset.id, name: preset.name, version: preset.version, payload: preset.payload } : null,
+        generationPresetId: input.generationPresetId || null,
+        generationPresetSnapshot: input.generationPresetId ? listPresets(database, { appId: 'activities' }).find((item) => item.id === input.generationPresetId) ?? null : null }),
       now,
       now,
     );
@@ -459,12 +483,13 @@ export async function processMediaBatch(
   active.add(batchId);
   try {
     const batch = database.connection.prepare(`
-      SELECT content_revision_id, image_config_revision_id, stop_requested
+      SELECT content_revision_id, image_config_revision_id, stop_requested, options_json
       FROM activity_media_batches WHERE id = ?
     `).get(batchId) as {
       content_revision_id: string;
       image_config_revision_id: string;
       stop_requested: number;
+      options_json: string;
     } | undefined;
 
     if (!batch || Boolean(batch.stop_requested)) return;
@@ -475,6 +500,7 @@ export async function processMediaBatch(
 
     const contentDoc: ContentDocument = contentRev.document;
     const imageConfigDoc: ImageConfigDocument = imageConfigRev.document;
+    const batchOptions = JSON.parse(batch.options_json || '{}') as { generationPresetId?: string | null };
     const slotMap = new Map((contentDoc.mediaSlots || []).map((s) => [s.id, s]));
 
     const waitingItems = database.connection.prepare(`
@@ -516,7 +542,8 @@ export async function processMediaBatch(
         let compiled = snapshot.recipeId ? getPromptRecipe(database, activityId, snapshot.recipeId) : null;
         if (!compiled?.compilation.executionPlan) {
           compiled = compileBatchSlot(database, store, activityId, { contentRevisionId: batch.content_revision_id,
-            imageConfigRevisionId: batch.image_config_revision_id, slotIds: [item.slot_id] }, item.slot_id);
+            imageConfigRevisionId: batch.image_config_revision_id, slotIds: [item.slot_id],
+            generationPresetId: batchOptions.generationPresetId ?? undefined }, item.slot_id);
           saveRecipeAndCompilation(database, compiled.recipe, compiled.compilation);
           snapshot = { seed: snapshot.seed ?? Math.floor(Math.random() * 1_000_000_000), recipeId: compiled.recipe.id,
             compilationId: compiled.compilation.id, executionPlanHash: compiled.compilation.executionPlanHash };

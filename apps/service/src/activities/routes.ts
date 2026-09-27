@@ -1,5 +1,6 @@
 import { registerReworkRoutes } from './rework-routes.js';
 import { compileHyperFramesComposition } from '@sthstart/activity-playback';
+import { PreparePromptRecipeRequestSchema } from '@sthstart/contracts';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
@@ -19,6 +20,7 @@ import type {
   CreateMediaBatchInput,
   InstantiateTemplateInput,
   PrepareMediaBatchInput,
+  PreparePromptRecipeRequest,
   UpdateActivityPresetInput,
   ContentDocument,
   ContentRevision,
@@ -26,7 +28,12 @@ import type {
   MediaRevisionDocument,
   PlaybackDocument,
   PlaybackRevision,
+  SyncExternalActivity,
 } from '@sthstart/contracts';
+import { syncExternalActivity } from './external-sync.js';
+import { recoverOrphanedBeatRenderCandidates, registerBeatRenderRoutes, registerLegacyBeatRenderRoute } from './beat-renders.js';
+import { readArtifact } from '../artifacts.js';
+import { registerComicRoutes } from './comic-routes.js';
 import { authenticateAdmin } from '../access.js';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
@@ -93,8 +100,6 @@ import { resolveSourceRef } from './image-provenance.js';
 import { getAssetAncestors } from './image-lineage.js';
 import type {
   ImageConfigDocument,
-  PromptRecipeOverride,
-  ReferenceInput,
   SourceEntityKind,
   SourceRef,
 } from '@sthstart/contracts';
@@ -109,6 +114,7 @@ export function registerActivityRoutes(
   registerReworkRoutes(app, config, database, secrets, fetcher);
   const store = new ActivityStore(database);
   store.recoverDanglingJobs();
+  recoverOrphanedBeatRenderCandidates(database);
   // 排期投影可以随时重建，启动时同步以覆盖旧数据。
   store.rebuildSchedules();
 
@@ -120,19 +126,105 @@ export function registerActivityRoutes(
     return true;
   }
 
+  registerBeatRenderRoutes(app, config, database, secrets, fetcher, store, checkAdmin);
+  registerLegacyBeatRenderRoute(app, config, database, secrets, fetcher, store, checkAdmin);
+  registerComicRoutes(app, config, database, secrets, checkAdmin, fetcher);
+
+  // 0. External pipeline synchronization (Harness / CLI)
+  app.post<{ Body: SyncExternalActivity }>('/api/v1/admin/activities/sync-external', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    try {
+      const result = await syncExternalActivity(request.body, config, database, store);
+      return reply.code(200).send(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({ error: 'sync_failed', message });
+    }
+  });
+
+  // 0.2 Universal Artifact Streaming endpoint (used by Activities studio & media components)
+  app.route<{ Params: { id: string } }>({
+    method: ['GET', 'HEAD'],
+    url: '/api/v1/admin/artifacts/:id/file',
+    handler: async (request, reply) => {
+      if (!checkAdmin(request, reply)) return;
+      const artifact = await readArtifact(database, request.params.id, config.artifactDirectory);
+      if (!artifact || artifact.appId !== 'activities' || artifact.fileStatus !== 'ready' || !artifact.localPath) {
+        return reply.code(404).send({ error: 'artifact_not_found' });
+      }
+      if (!existsSync(artifact.localPath)) {
+        return reply.code(404).send({ error: 'file_not_found' });
+      }
+
+      const stat = statSync(artifact.localPath);
+      const fileSize = stat.size;
+      const range = request.headers.range;
+
+      reply.header('Accept-Ranges', 'bytes');
+      reply.header('Content-Type', artifact.contentType || 'image/png');
+      reply.header('ETag', `"${artifact.sha256 || artifact.id}"`);
+
+      if (range) {
+        const match = range.trim().match(/^bytes=(\d*)-(\d*)$/);
+        const first = match?.[1] || '';
+        const last = match?.[2] || '';
+        let start = first ? Number.parseInt(first, 10) : Number.NaN;
+        let end = last ? Number.parseInt(last, 10) : Number.NaN;
+        if (!first && last) {
+          const suffixLength = Number.parseInt(last, 10);
+          if (suffixLength > 0) {
+            start = Math.max(0, fileSize - suffixLength);
+            end = fileSize - 1;
+          }
+        } else if (first && !last) {
+          end = fileSize - 1;
+        }
+
+        if (!match || (!first && !last) || !Number.isInteger(start) || !Number.isInteger(end)
+          || start < 0 || start >= fileSize || end < start || end >= fileSize) {
+          reply.header('Content-Range', `bytes */${fileSize}`);
+          return reply.code(416).send({ error: 'requested_range_not_satisfiable' });
+        }
+
+        const chunksize = end - start + 1;
+        reply.code(206);
+        reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        reply.header('Content-Length', chunksize);
+
+        if (request.method === 'HEAD') return reply.send();
+        return reply.send(createReadStream(artifact.localPath, { start, end }));
+      } else {
+        reply.code(200);
+        reply.header('Content-Length', fileSize);
+        if (request.method === 'HEAD') return reply.send();
+        return reply.send(createReadStream(artifact.localPath));
+      }
+    },
+  });
+
+  app.get<{ Params: { id: string } }>('/api/v1/admin/artifacts/:id/raw', (req, rep) => {
+    if (!checkAdmin(req, rep)) return;
+    return rep.redirect(`/api/v1/admin/artifacts/${req.params.id}/file`, 302);
+  });
+  app.get<{ Params: { id: string } }>('/api/v1/admin/artifacts/:id', (req, rep) => {
+    if (!checkAdmin(req, rep)) return;
+    return rep.redirect(`/api/v1/admin/artifacts/${req.params.id}/file`, 302);
+  });
+
   app.post<{ Params: { id: string }; Body: { playback: PlaybackDocument } }>(
     '/api/v1/admin/activities/:id/playback-preview', async (request, reply) => {
       if (!checkAdmin(request, reply)) return;
       const playback = request.body.playback;
       const content = store.getContentRevision(request.params.id, playback.contentRevisionId);
-      const media = store.getMediaRevision(request.params.id, playback.mediaRevisionId);
-      if (!content || !media || media.contentRevisionId !== content.id) return reply.code(409).send({ error: 'preview_revision_mismatch' });
-      const validation = validatePlaybackDocument(playback, content.document, { schemaVersion: 1, slotBindings: media.slotBindings });
+      const media = playback.mediaRevisionId === 'none' ? null : store.getMediaRevision(request.params.id, playback.mediaRevisionId);
+      if (!content || (playback.mediaRevisionId !== 'none' && (!media || media.contentRevisionId !== content.id))) return reply.code(409).send({ error: 'preview_revision_mismatch' });
+      const mediaDoc = { schemaVersion: 1 as const, slotBindings: media?.slotBindings || [] };
+      const validation = validatePlaybackDocument(playback, content.document, mediaDoc);
       if (!validation.valid) return reply.code(400).send({ error: 'invalid_playback', details: validation.errors });
       const assetMap = Object.fromEntries(listActivityAssets(database, request.params.id).map(asset => [asset.assetKey,
         `/api/admin/activities/${encodeURIComponent(request.params.id)}/assets/${encodeURIComponent(asset.assetKey)}`]));
       const gsapSource = readFileSync(fileURLToPath(new URL('../../../../packages/activity-playback/templates/phone-v1/assets/gsap.min.js', import.meta.url)), 'utf8');
-      const result = compileHyperFramesComposition(content.document, { schemaVersion: 1, slotBindings: media.slotBindings }, playback, { assetUrlMap: assetMap, gsapSource });
+      const result = compileHyperFramesComposition(content.document, mediaDoc, playback, { assetUrlMap: assetMap, gsapSource });
       const avatar = Buffer.from(readFileSync(fileURLToPath(new URL('../../../../packages/activity-playback/templates/phone-v1/assets/default_avatar.png', import.meta.url)))).toString('base64');
       return { html: result.html.replaceAll('assets/default_avatar.png', `data:image/png;base64,${avatar}`) };
     });
@@ -200,6 +292,8 @@ export function registerActivityRoutes(
           sourceVersion: actor.sourceVersion,
           activityRole: actor.activityRole,
           outfitDescription: actor.outfitDescription,
+          avatarAssetId: actor.avatarAssetId,
+          portraitAssetId: actor.portraitAssetId,
         });
         if (!snapshot) throw new Error('character_snapshot_not_found');
         return { ...snapshot, id: actor.id };
@@ -222,7 +316,11 @@ export function registerActivityRoutes(
         const actorId = `act_${idx + 1}_${randomUUID().replace(/-/g, '').slice(0, 6)}`;
         if (a.sourceCharacterId) {
           const snapshot = createActorSnapshotFromCharacter(database, a.sourceCharacterId, {
-            sourceVersion: a.sourceVersion, activityRole: a.activityRole, outfitDescription: a.outfitDescription,
+            sourceVersion: a.sourceVersion,
+            activityRole: a.activityRole,
+            outfitDescription: a.outfitDescription,
+            avatarAssetId: (a as Record<string, unknown>).avatarAssetId as string | undefined,
+            portraitAssetId: (a as Record<string, unknown>).portraitAssetId as string | undefined,
           });
           if (!snapshot) throw new Error('character_snapshot_not_found');
           return { ...snapshot, id: actorId };
@@ -1436,16 +1534,7 @@ export function registerActivityRoutes(
   const handlePrepareRecipe = async (
     request: FastifyRequest<{
       Params: { id: string };
-      Body: {
-        slotId: string;
-        contentRevisionId?: string;
-        imageConfigRevisionId?: string;
-        overrides?: PromptRecipeOverride[];
-        references?: ReferenceInput[];
-        customParams?: Record<string, unknown>;
-        workflowId?: string;
-        workflowVersion?: number;
-      };
+      Body: PreparePromptRecipeRequest;
     }>,
     reply: FastifyReply,
   ) => {
@@ -1496,7 +1585,11 @@ export function registerActivityRoutes(
         if (ref.actorId && !contentRev.document.actors.some((actor) => actor.id === ref.actorId)) throw new Error('reference_actor_not_found');
         return { ...ref, artifactId: asset.artifactId, sha256: asset.sha256 || '' };
       });
-      const executionPlan = resolveImageExecutionPlan(database, references.length > 0);
+      const executionPlan = resolveImageExecutionPlan(database, references.length > 0, body.presetId, body.presetRevision);
+      if (executionPlan && ((body.workflowId && body.workflowId !== executionPlan.workflowId)
+          || (body.workflowVersion !== undefined && body.workflowVersion !== executionPlan.workflowVersion))) {
+        return reply.code(409).send({ error: 'workflow_selection_conflict', message: '所选工作流与生成预设不一致，请重新选择。' });
+      }
       const { recipe, compilation } = compilePromptRecipe({
         activityId,
         contentRevisionId: contentRevId,
@@ -1508,45 +1601,31 @@ export function registerActivityRoutes(
         references,
         executionPlan,
         customParams: body.customParams,
-        workflowId: body.workflowId,
-        workflowVersion: body.workflowVersion,
+        workflowId: executionPlan?.workflowId ?? body.workflowId,
+        workflowVersion: executionPlan?.workflowVersion ?? body.workflowVersion,
       });
 
       saveRecipeAndCompilation(database, recipe, compilation);
       return { recipe, compilation };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return reply.code(400).send({ error: 'recipe_preparation_failed', message: msg });
+      const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: unknown }).code || '') : '';
+      const statusCode = typeof err === 'object' && err !== null && 'statusCode' in err
+        ? Number((err as { statusCode?: unknown }).statusCode) || 400
+        : code.includes('conflict') ? 409 : 400;
+      return reply.code(statusCode).send({ error: code || 'recipe_preparation_failed', message: msg });
     }
   };
 
   app.post<{
     Params: { id: string };
-    Body: {
-      slotId: string;
-      contentRevisionId?: string;
-      imageConfigRevisionId?: string;
-      overrides?: PromptRecipeOverride[];
-      references?: ReferenceInput[];
-      customParams?: Record<string, unknown>;
-      workflowId?: string;
-      workflowVersion?: number;
-    };
-  }>('/api/v1/admin/activities/:id/image-recipes/prepare', handlePrepareRecipe);
+    Body: PreparePromptRecipeRequest;
+  }>('/api/v1/admin/activities/:id/image-recipes/prepare', { schema: { body: PreparePromptRecipeRequestSchema } }, handlePrepareRecipe);
 
   app.post<{
     Params: { id: string };
-    Body: {
-      slotId: string;
-      contentRevisionId?: string;
-      imageConfigRevisionId?: string;
-      overrides?: PromptRecipeOverride[];
-      references?: ReferenceInput[];
-      customParams?: Record<string, unknown>;
-      workflowId?: string;
-      workflowVersion?: number;
-    };
-  }>('/api/v1/admin/activities/:id/recipes/prepare', handlePrepareRecipe);
+    Body: PreparePromptRecipeRequest;
+  }>('/api/v1/admin/activities/:id/recipes/prepare', { schema: { body: PreparePromptRecipeRequestSchema } }, handlePrepareRecipe);
 
   const handleGetRecipe = async (
     request: FastifyRequest<{ Params: { id: string; recipeId: string } }>,
@@ -1599,7 +1678,10 @@ export function registerActivityRoutes(
       return reply.code(202).send(attempt);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('conflict') || (err as { code?: string })?.code === 'idempotency_conflict' || (err as { code?: string })?.code === 'head_conflict' || (err as { code?: string })?.code === 'execution_plan_conflict') {
+      if (msg.includes('conflict') || (err as { code?: string })?.code === 'idempotency_conflict'
+          || (err as { code?: string })?.code === 'head_conflict'
+          || (err as { code?: string })?.code === 'execution_plan_conflict'
+          || (err as { code?: string })?.code === 'preset_revision_conflict') {
         return reply.code(409).send({ error: 'conflict', message: msg });
       }
       if (msg.includes('assignment_missing') || (err as { code?: string })?.code === 'assignment_missing') {
@@ -1804,14 +1886,22 @@ export function registerActivityRoutes(
     const contentRev = store.getContentRevision(request.params.id, contentRevId);
     if (!contentRev) return reply.code(404).send({ error: 'content_revision_not_found' });
 
-    const mediaRevId = request.body.mediaRevisionId || act.currentMediaRevisionId;
-    const mediaRev = mediaRevId ? store.getMediaRevision(request.params.id, mediaRevId) : null;
+    const requestedMediaRevId = request.body.mediaRevisionId;
+    const currentMediaRevId = act.currentMediaRevisionId;
+    const currentMediaRev = currentMediaRevId ? store.getMediaRevision(request.params.id, currentMediaRevId) : null;
+    const mediaRevId = requestedMediaRevId === 'none'
+      ? 'none'
+      : requestedMediaRevId || (currentMediaRev?.contentRevisionId === contentRevId ? currentMediaRev.id : 'none');
+    const mediaRev = mediaRevId !== 'none' ? store.getMediaRevision(request.params.id, mediaRevId) : null;
+    if (mediaRevId !== 'none' && (!mediaRev || mediaRev.contentRevisionId !== contentRevId)) {
+      return reply.code(409).send({ error: 'playback_revision_mismatch' });
+    }
     const mediaDoc = mediaRev ? { schemaVersion: 1 as const, slotBindings: mediaRev.slotBindings } : null;
 
     const doc = generateAutoPlayback(
       contentRevId,
       contentRev.document,
-      mediaRevId || 'none',
+      mediaRevId,
       mediaDoc,
       {
         viewerActorId: request.body.viewerActorId,
@@ -1856,8 +1946,20 @@ export function registerActivityRoutes(
     const contentRev = store.getContentRevision(request.params.id, contentRevisionId);
     if (!contentRev) return reply.code(404).send({ error: 'content_revision_not_found' });
 
-    const mediaRev = store.getMediaRevision(request.params.id, mediaRevisionId);
+    const persistedMediaRevisionId = mediaRevisionId === 'none'
+      ? 'none'
+      : mediaRevisionId;
+    const mediaRev = persistedMediaRevisionId === 'none'
+      ? null
+      : store.getMediaRevision(request.params.id, persistedMediaRevisionId);
+    if (persistedMediaRevisionId !== 'none' && (!mediaRev || mediaRev.contentRevisionId !== contentRevisionId)) {
+      return reply.code(409).send({ error: 'playback_revision_mismatch' });
+    }
     const mediaDoc = mediaRev ? { schemaVersion: 1 as const, slotBindings: mediaRev.slotBindings } : null;
+
+    if (document.contentRevisionId !== contentRevisionId || document.mediaRevisionId !== persistedMediaRevisionId) {
+      return reply.code(400).send({ error: 'playback_document_revision_mismatch' });
+    }
 
     const validation = validatePlaybackDocument(document, contentRev.document, mediaDoc);
     if (!validation.valid) {
@@ -1872,7 +1974,9 @@ export function registerActivityRoutes(
       const res = store.savePlaybackRevision(
         request.params.id,
         expectedHeadVersion,
-        document,
+        mediaRev && document.mediaRevisionId === 'none'
+          ? { ...document, mediaRevisionId: mediaRev.id }
+          : document,
       );
 
       return reply.code(201).send({

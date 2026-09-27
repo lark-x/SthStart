@@ -6,13 +6,20 @@ import {
   generateCharacterDraft,
   publishCharacter,
   uploadCharacterAvatar,
+  uploadCharacterAsset,
+  previewCharacterOfficialAssets,
+  importCharacterAssets,
+  setCharacterActiveAsset,
+  matchOfficialAvatar,
+  batchMatchOfficialAvatars,
+  fetchAvatarFromUrl,
   importTavernCard,
   saveCharacterRelationship,
   deleteCharacterRelationship,
   generateCharacterAvatar,
   applyCharacterAvatar,
 } from './api';
-import type { CharacterDraftAny } from '@sthstart/contracts';
+import type { CharacterDraftAny, CharacterVariant } from '@sthstart/contracts';
 
 export function useCreateCharacter() {
   const queryClient = useQueryClient();
@@ -23,15 +30,46 @@ export function useCreateCharacter() {
     },
   });
 }
-
 export function useUpdateCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, draft, tags, expectedDraftRevision }: { id: string; draft: CharacterDraftAny; tags: string[]; expectedDraftRevision?: number }) =>
-      updateCharacter(id, { draft, tags, expectedDraftRevision }),
+    mutationFn: ({ id, draft, tags, variants, avatarAssetId, expectedDraftRevision }: { id: string; draft: CharacterDraftAny; tags: string[]; variants?: CharacterVariant[]; avatarAssetId?: string | null; expectedDraftRevision?: number }) =>
+      updateCharacter(id, { draft, tags, variants, avatarAssetId, expectedDraftRevision }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.all });
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(data.id) });
+    },
+  });
+}
+
+export function useMatchOfficialAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => matchOfficialAvatar(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(id) });
+    },
+  });
+}
+
+export function useFetchAvatarFromUrl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, url }: { id: string; url: string }) => fetchAvatarFromUrl(id, url),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
+    },
+  });
+}
+
+export function useBatchMatchOfficialAvatars() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { ids?: string[]; onlyMissing?: boolean }) => batchMatchOfficialAvatars(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
     },
   });
 }
@@ -122,6 +160,51 @@ export function useDeleteRelationship() {
     }) => deleteCharacterRelationship(characterId, relationshipId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.characterId) });
+    },
+  });
+}
+
+export function useUploadCharacterAsset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file, kind, setAsActive }: { id: string; file: File; kind?: 'avatar' | 'portrait' | 'reference'; setAsActive?: boolean }) =>
+      uploadCharacterAsset(id, file, kind, setAsActive),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: characterKeys.assets(variables.id) });
+    },
+  });
+}
+
+export function usePreviewCharacterOfficialAssets() {
+  return useMutation({
+    mutationFn: (id: string) => previewCharacterOfficialAssets(id),
+  });
+}
+
+export function useImportCharacterAssets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: import('@sthstart/contracts').CharacterImportAssetsRequest }) =>
+      importCharacterAssets(id, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: characterKeys.assets(variables.id) });
+    },
+  });
+}
+
+export function useSetCharacterActiveAsset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: import('@sthstart/contracts').CharacterSetActiveAssetRequest }) =>
+      setCharacterActiveAsset(id, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: characterKeys.assets(variables.id) });
     },
   });
 }

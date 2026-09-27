@@ -136,8 +136,8 @@ npx playwright test tests/e2e/portal.spec.ts -g "character library"   # 角色�
 
 ```text
 node scripts/character-model-audit.mjs [--db <path>] [--json] [--show-text]   # 只读基线审计
-node scripts/character-model-migration.mjs preview [--db <path>]              # 迁移预演，不写入
-node scripts/character-model-migration.mjs apply   [--db <path>]              # 归档旧服装行并迁移草稿
+node --import tsx/esm scripts/character-model-migration.mjs preview [--db <path>] # 迁移预演，不写入
+node --import tsx/esm scripts/character-model-migration.mjs apply   [--db <path>] # 归档旧服装行并迁移草稿
 ```
 
 审计与迁移都使用原始只读/直连 SQLite，不经过会自动迁移的 `ServiceDatabase`，因此不会在查看时改变库结构。

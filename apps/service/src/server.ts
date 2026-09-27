@@ -26,7 +26,7 @@ import { createNarrativeConnectors } from './narrative-connectors.js';
 import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 import { applyCreativeWhenReady, registerRuntimeRoutes } from './runtime-routes.js';
 import { ensureCreativeApp, registerCreativeRoutes } from './creative.js';
-import { ensureGenerationConsumerApps } from './generation/consumers.js';
+import { ensureGenerationConsumerApps, ensureLocalComfyuiEngine } from './generation/consumers.js';
 import { registerActivityRoutes } from './activities/routes.js';
 import { registerCalendarRoutes } from './calendar.js';
 import { registerPlanningRoutes } from './activities/planning.js';
@@ -45,6 +45,8 @@ import { BackupRunner } from './backup/runner.js';
 import { BackupRestoreService } from './backup/restore.js';
 import { BackupScheduler } from './backup/scheduler.js';
 import { registerBackupRoutes } from './backup/routes.js';
+import { registerAiCallRoutes } from './ai-call-routes.js';
+import { inspectLinsheHostedReadiness } from './linshe-hosted.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -76,6 +78,7 @@ export async function createService(options: ServiceOptions = {}) {
   database.connection.prepare("INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES ('linshe','keep')").run();
   ensureCreativeApp(database);
   ensureGenerationConsumerApps(database);
+  ensureLocalComfyuiEngine(database);
   if (!options.database && process.env.STHSTART_APP_TOKEN?.trim() && process.env.STHSTART_LLM_PROFILE?.trim()) {
     const legacy = database.connection.prepare(`SELECT a.id app_id,p.id profile_id FROM managed_apps a
       JOIN provider_profiles p ON p.id=? AND p.kind='llm' AND p.enabled=1
@@ -88,7 +91,11 @@ export async function createService(options: ServiceOptions = {}) {
   const secrets = options.secrets ?? new SecretStore();
   const runtimeSettings = new RuntimeSettingsStore(database);
   const runtimeLogs = new RuntimeLogService(database, config.logDirectory, !options.database);
-  const runtimeManager = new RuntimeManager(config, runtimeSettings, runtimeLogs, { appToken: linsheAppToken, fetcher: options.fetcher });
+  const runtimeManager = new RuntimeManager(config, runtimeSettings, runtimeLogs, {
+    appToken: linsheAppToken,
+    fetcher: options.fetcher,
+    hostedReadiness: () => inspectLinsheHostedReadiness(config, database, secrets, linsheAppToken, options.fetcher),
+  });
   // 云备份：仓库、目标、计划、运行、恢复与定时调度都跟随服务进程。
   const backupStore = new BackupStore(database);
   const backupVaults = new BackupVaultService(secrets);
@@ -234,6 +241,7 @@ export async function createService(options: ServiceOptions = {}) {
     config, database, store: backupStore, vaults: backupVaults, runner: backupRunner,
     restores: backupRestores, secrets, logs: runtimeLogs, fetcher: options.fetcher,
   });
+  registerAiCallRoutes(app, config, database);
   registerRuntimeRoutes(app, config, database, runtimeSettings, runtimeLogs, runtimeManager, options.fetcher);
 
   const retentionFailure = (error: unknown) => runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-retention', stream: 'system', level: 'warn', message: `保留策略执行失败：${String(error)}`, force: true });

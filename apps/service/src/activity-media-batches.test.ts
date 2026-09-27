@@ -17,12 +17,17 @@ import {
 } from './activities/media-batches.js';
 import { selectMediaForSlots, uploadActivityAsset } from './activities/media.js';
 import { getPromptRecipe } from './activities/image-prompt-compiler.js';
+import { createPreset } from './generation/configuration-store.js';
 import { Readable } from 'node:stream';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const mockFetch: typeof fetch = async () => Response.json({ prompt_id: 'test_prompt', number: 1 });
+const mockFetch: typeof fetch = async (input) => String(input).endsWith('/chat/completions')
+  ? Response.json({ choices: [{ message: { content: 'a composed illustration of Alice arranging fruit tarts on a floral picnic blanket' } }] })
+  : String(input).endsWith('/object_info')
+    ? Response.json({ CLIPTextEncode: { input: { required: { text: ['STRING', {}] } } } })
+    : Response.json({ prompt_id: 'test_prompt', number: 1 });
 function createMediaBatch(...args: Parameters<typeof createBatchService>) {
   args[6] = mockFetch;
   return createBatchService(...args);
@@ -201,6 +206,46 @@ test('prepareMediaBatch checks slot readiness, execution plan, and preflight war
   }
 });
 
+test('prepareMediaBatch exposes enabled presets from optional workflows without changing the activity default', async () => {
+  const { app, database, store, activityId, contentRevisionId, imageConfigRevisionId } = await setup();
+  try {
+    const now = new Date().toISOString();
+    database.connection.prepare(`INSERT INTO generation_workflows
+      (id,name,description,engine_kind,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?)`)
+      .run('wf_anima_optional', 'Anima optional workflow', '', 'comfyui', 1, now, now);
+    database.connection.prepare(`INSERT INTO generation_workflow_versions
+      (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run('wf_anima_optional', 1, 'engine_comfy', '{}', JSON.stringify({ prompt: ['1.inputs.text'] }), '[]',
+        JSON.stringify({ '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } } }), 1, now);
+    const optionalPreset = createPreset(database, { appId: 'activities', purpose: 'activity_image_text',
+      name: 'Anima optional test', workflowId: 'wf_anima_optional', workflowVersion: 1, engineId: 'engine_comfy', values: {} });
+
+    const prepared = prepareMediaBatch(database, store, activityId, {
+      contentRevisionId, imageConfigRevisionId, slotIds: ['slot_picnic_mat'],
+    });
+    assert.equal(prepared.readyItems[0].workflowPurpose, 'activity_image_text');
+    assert.ok(prepared.generationPresetOptions.some((preset) => preset.id === optionalPreset.id),
+      'alternate-workflow presets must be selectable while the default workflow stays assigned');
+    assert.equal(prepared.selectedGenerationPresetId, null);
+
+    const selected = prepareMediaBatch(database, store, activityId, {
+      contentRevisionId, imageConfigRevisionId, slotIds: ['slot_picnic_mat'], generationPresetId: optionalPreset.id,
+    });
+    assert.equal(selected.allReady, true);
+    assert.equal(selected.selectedGenerationPresetId, optionalPreset.id);
+    assert.ok(selected.generationPresetOptions.some((preset) => preset.id === optionalPreset.id));
+
+    const assignment = database.connection.prepare(`SELECT workflow_id,default_preset_id FROM app_generation_assignments
+      WHERE app_id='activities' AND purpose='activity_image_text'`).get() as { workflow_id: string; default_preset_id: string | null };
+    assert.equal(assignment.workflow_id, 'wf_text2img');
+    assert.equal(assignment.default_preset_id, null);
+  } finally {
+    await app.close();
+    database.close();
+  }
+});
+
 test('createMediaBatch validates version, enforces idempotency, and queues items', async () => {
   const { app, database, store, activityId, initialActivity, contentRevisionId, imageConfigRevisionId } = await setup();
   try {
@@ -357,6 +402,10 @@ test('batch dispatch freezes a valid plan, recovers attempt links, and retries w
   const config = readConfig({ STHSTART_ADMIN_TOKEN: adminToken });
   const secrets = new SecretStore({});
   try {
+    const now = new Date().toISOString();
+    database.connection.prepare(`INSERT INTO provider_profiles(id,name,kind,base_url,model,credential_account,enabled,created_at,updated_at)
+      VALUES ('batch-text','Mock batch text','llm','http://llm.mock/v1','mock-batch-model',NULL,1,?,?)`).run(now, now);
+    database.connection.prepare("INSERT INTO app_llm_assignments(app_id,role,profile_id,updated_at) VALUES ('activities','text','batch-text',?)").run(now);
     const input = { expectedHeadVersion: initialActivity.headVersion, contentRevisionId, imageConfigRevisionId,
       items: [{ slotId: 'slot_picnic_mat', candidateCount: 1 as const }], idempotencyKey: 'dispatch-regression' };
     const batch = await createMediaBatch(config, database, secrets, store, activityId, input);

@@ -10,8 +10,9 @@ import { hashToken, issueToken, type SecretStore } from './security.js';
 import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVersionStructure } from './generation.js';
 import { defaultWorkerSettings, workerHealth } from './worker.js';
 import { cachedConnectionStatus } from './generation/comfy-discovery.js';
-import { markDraftSynced } from './generation/configuration-store.js';
+import { applyWorkflowPresetTemplates, markDraftSynced } from './generation/configuration-store.js';
 import { validateEditorConfig } from './generation/configuration.js';
+import { validateActivityLoraInjection } from './generation/workflows.js';
 import { registerGenerationConfigRoutes } from './generation-config-routes.js';
 import { getH3Status, readH3Settings } from './h3.js';
 import { getMediaDiagnostics } from './media-diagnostics.js';
@@ -725,6 +726,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       description?: string;
       engineKind?: 'comfyui' | 'worker' | 'cloud';
       category?: 'image' | 'video' | 'audio' | 'transform';
+      presetTemplates?: unknown[];
     };
   }>('/api/v1/admin/generation/workflows', async (request, reply) => {
     const { name, description = '', engineKind = 'comfyui', category = 'image' } = request.body ?? {};
@@ -733,12 +735,49 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (!id?.match(/^[a-z][a-z0-9-]{1,62}$/) || !name?.trim() || !['comfyui', 'worker', 'cloud'].includes(engineKind) || !['image', 'video', 'audio', 'transform'].includes(category)) {
       return reply.code(400).send({ error: 'invalid_workflow' });
     }
+    const rawTemplates: unknown = request.body?.presetTemplates ?? [];
+    if (!Array.isArray(rawTemplates) || rawTemplates.length > 50) {
+      return reply.code(400).send({ error: 'invalid_preset_templates', message: '配置包最多可包含 50 个预设模板。' });
+    }
+    const normalizedTemplates: Array<{ key: string; appId: string; purpose: string; name: string; description: string; values: Record<string, unknown> }> = [];
+    const templateKeys = new Set<string>();
+    for (const [index, rawTemplate] of rawTemplates.entries()) {
+      if (!rawTemplate || typeof rawTemplate !== 'object' || Array.isArray(rawTemplate)) {
+        return reply.code(400).send({ error: 'invalid_preset_template', message: `第 ${index + 1} 个预设模板无效。` });
+      }
+      const template = rawTemplate as Record<string, unknown>;
+      const appId = typeof template.appId === 'string' ? template.appId.trim() : '';
+      const purpose = typeof template.purpose === 'string' ? template.purpose.trim() : '';
+      const presetName = typeof template.name === 'string' ? template.name.trim() : '';
+      const key = typeof template.key === 'string' && template.key.trim() ? template.key.trim() : `preset-${index + 1}`;
+      const values = template.values;
+      if (!/^[a-z][a-z0-9-]{1,62}$/.test(appId) || !purpose || purpose.length > 80 || !presetName || presetName.length > 120 ||
+        !/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || templateKeys.has(key) || !values || typeof values !== 'object' || Array.isArray(values)) {
+        return reply.code(400).send({ error: 'invalid_preset_template', message: `第 ${index + 1} 个预设模板字段无效。` });
+      }
+      try { assertNoWorkflowSecrets(template); }
+      catch (error) { return reply.code(400).send({ error: 'secrets_not_permitted', message: error instanceof Error ? error.message : String(error) }); }
+      if (!database.connection.prepare('SELECT 1 FROM managed_apps WHERE id=?').get(appId)) {
+        return reply.code(404).send({ error: 'app_not_found', message: `预设模板所属应用 ${appId} 不存在。` });
+      }
+      templateKeys.add(key);
+      normalizedTemplates.push({ key, appId, purpose, name: presetName,
+        description: typeof template.description === 'string' ? template.description.trim() : '', values: values as Record<string, unknown> });
+    }
     const now = nowIso();
-    database.connection.prepare(`
-      INSERT INTO generation_workflows (id, name, description, engine_kind, category, latest_version, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 0, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, engine_kind=excluded.engine_kind, category=excluded.category, updated_at=excluded.updated_at
-    `).run(id, name.trim(), description.trim(), engineKind, category, now, now);
+    database.transaction(() => {
+      database.connection.prepare(`
+        INSERT INTO generation_workflows (id, name, description, engine_kind, category, latest_version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, engine_kind=excluded.engine_kind, category=excluded.category, updated_at=excluded.updated_at
+      `).run(id, name.trim(), description.trim(), engineKind, category, now, now);
+      for (const template of normalizedTemplates) {
+        database.connection.prepare(`INSERT INTO generation_workflow_preset_templates
+          (workflow_id,template_key,app_id,purpose,name,description,values_json,created_at)
+          VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(workflow_id,template_key) DO NOTHING`)
+          .run(id, template.key, template.appId, template.purpose, template.name, template.description, JSON.stringify(template.values), now);
+      }
+    });
     return reply.code(201).send({ id });
   });
 
@@ -788,7 +827,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     let configFormatVersion = 1;
     if (request.body?.editorConfig !== undefined && request.body?.editorConfig !== null) {
       try {
-        editorConfigJson = JSON.stringify(validateEditorConfig(request.body.editorConfig));
+        const editorConfig = validateEditorConfig(request.body.editorConfig);
+        validateActivityLoraInjection(validated.validatedDefinition, editorConfig);
+        editorConfigJson = JSON.stringify(editorConfig);
         configFormatVersion = 2;
       } catch (err) {
         return reply.code(400).send({ error: 'invalid_editor_config', message: err instanceof Error ? err.message : String(err) });
@@ -841,9 +882,12 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       database.connection.prepare('UPDATE generation_workflows SET latest_version = ?, updated_at = ? WHERE id = ?')
         .run(version, now, request.params.id);
       markDraftSynced(database, request.params.id, version);
+      if (targetEngineId) applyWorkflowPresetTemplates(database, request.params.id, version, targetEngineId);
     });
 
-    return reply.code(201).send({ workflowId: request.params.id, version, configFormatVersion });
+    const appliedTemplates = database.connection.prepare(`SELECT COUNT(*) AS count FROM generation_workflow_preset_templates
+      WHERE workflow_id=? AND applied_workflow_version=?`).get(request.params.id, version) as { count: number };
+    return reply.code(201).send({ workflowId: request.params.id, version, configFormatVersion, createdPresetCount: Number(appliedTemplates.count) });
   });
 
   app.post<{

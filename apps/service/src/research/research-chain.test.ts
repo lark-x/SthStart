@@ -72,11 +72,7 @@ function stubFetch(calls: { count: number }) {
         { title: '没有证据的主题', question: 'q', reason: 'r', keywords: [], entities: [], seedEvidence: [], duplicateOf: '' },
       ]);
     }
-    return {
-      ok: true, status: 200,
-      json: async () => ({ choices: [{ message: { content } }] }),
-      text: async () => content,
-    };
+    return Response.json({ choices: [{ message: { content } }] });
   }) as unknown as typeof fetch;
 }
 

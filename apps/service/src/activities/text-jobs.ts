@@ -20,6 +20,7 @@ import {
   type StageGenerationOutput,
 } from './prompts.js';
 import { validateSnippetOutput } from './generation-validation.js';
+import { collectAiCallRedactionSecrets, fetchAuditedAiResponse, updateAiCallRecord } from '../ai-call-trace.js';
 
 function buildExistingStageOutput(
   stage: StageDefinition,
@@ -118,7 +119,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
         (err as unknown as { code: string }).code = 'stage_locked';
         throw err;
       }
-      prompt = buildStagePrompt(document, stage, instructions);
+      prompt = buildStagePrompt(document, stage, instructions, typeof scope.mcpContext === 'string' ? scope.mcpContext : undefined);
     } else if (mode === 'invite' || mode === 'wish' || mode === 'moment' || mode === 'shot' || mode === 'continue-chat') {
       const stageId = String(scope.stageId || document.stages[0]?.id);
       const stage = document.stages.find((s) => s.id === stageId);
@@ -178,7 +179,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
           store.appendJobEvent(jobId, activityId, 'stage_progress', { stageIndex: i, stageId: currentStage.id });
           const stPrompt = buildStagePrompt(document, currentStage, instructions) +
             '\n【本批已生成的前序阶段（尚未采用，后续必须保持事实连续；clientId 仅在各阶段内有效）】\n' + JSON.stringify(precedingStages);
-          const stResp = await callLlm(profile, stPrompt, fetchFn);
+          const stResp = await callLlm(profile, stPrompt, fetchFn, undefined, { database, traceId: jobId, businessEvent: 'activity.text.stage', objectType: 'activity', objectId: activityId });
 
           const midCheck = store.getJob(activityId, jobId);
           if (midCheck?.status === 'cancelled') return;
@@ -233,7 +234,7 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     if (typeof (cancelWatch as { unref?: () => void }).unref === 'function') (cancelWatch as unknown as { unref: () => void }).unref();
     let llmResponse: string;
     try {
-      llmResponse = await callLlm(profile, prompt, fetchFn, abortController.signal);
+      llmResponse = await callLlm(profile, prompt, fetchFn, abortController.signal, { database, traceId: jobId, businessEvent: `activity.text.${mode}`, objectType: 'activity', objectId: activityId });
     } finally {
       clearInterval(cancelWatch);
     }
@@ -283,7 +284,8 @@ export async function callLlm(
   profile: NonNullable<Awaited<ReturnType<typeof resolveAssignedLlmProfile>>>,
   prompt: string,
   fetchFn: typeof fetch,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  audit?: { database: ServiceDatabase; traceId?: string; businessEvent: string; objectType?: string | null; objectId?: string | null; feature?: string }
 ): Promise<string> {
   const url = `${profile.baseUrl}/chat/completions`;
   const headers = upstreamHeaders(profile.secret, true);
@@ -302,12 +304,19 @@ export async function callLlm(
     temperature: 0.7,
   };
 
-  const resp = await fetchFn(url, {
+  const init: RequestInit = {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
     ...(signal ? { signal } : {}),
-  });
+  };
+  const audited = audit ? await fetchAuditedAiResponse(audit.database, {
+    applicationId: 'activities', traceId: audit.traceId, feature: audit.feature ?? 'activities', businessEvent: audit.businessEvent,
+    objectType: audit.objectType, objectId: audit.objectId, callType: 'llm', provider: profile.name,
+    models: [String(payload.model)], parameters: { temperature: payload.temperature }, positivePrompt: prompt,
+    redactionSecrets: collectAiCallRedactionSecrets({ secret: profile.secret, headers: profile.headers, extraBody: profile.extraBody }),
+  }, fetchFn, url, init) : null;
+  const resp = audited?.response ?? await fetchFn(url, init);
 
   if (!resp.ok) {
     const text = await resp.text();
@@ -321,6 +330,10 @@ export async function callLlm(
   const content = data.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error('LLM 供应商返回内容为空');
+  }
+
+  if (audited) {
+    updateAiCallRecord(audit!.database, audited.callId, { responseText: content, event: 'content_parsed', detail: { model: profile.model }, redactionSecrets: audited.redactionSecrets });
   }
 
   return content;

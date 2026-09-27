@@ -1,33 +1,45 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
-  Settings2,
   MessageSquare,
   Camera,
   PlaySquare,
   History,
   Download,
   Check,
-  Share2,
   AlertCircle,
-  RefreshCw,
   Sparkles,
   Save,
   Clock,
   Compass,
-  FileCheck,
   Bookmark,
+  ChevronRight,
+  Layers,
+  Users,
+  PanelRightClose,
+  PanelRightOpen,
+  Send,
+  Trash2,
+  Lightbulb,
+  ExternalLink,
 } from 'lucide-react';
-import type { Activity, ContentDocument } from '@sthstart/contracts';
-import { useActivity, useActivityDraft } from '../queries';
+import type { Activity, ContentDocument, ActivityReviewItem } from '@sthstart/contracts';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePublicOverview, useAppLlmStatus } from '@/app/features/public-services/queries';
+import { updateLlmAssignments } from '@/app/features/public-services/api';
+import { providerKeys } from '@/app/lib/query-keys';
+import { getJson } from '@/app/lib/api-client';
+import { useActivity, useActivityDraft, useActivityPlaybackRevision } from '../queries';
 import { useCommitDraft } from '../mutations';
 import { useStudioDraft } from '../hooks/use-studio-draft';
 import { StagesEditor } from './stages-editor';
-import { ActivityReflectDialog } from '@/app/features/knowledge/components/activity-reflect-dialog';
+import { SceneBeatEditor } from './scene-beat-editor';
+import { StageRailNav } from './stage-rail-nav';
 import { RecordsEditor } from './records-editor';
 import { MediaWorkstation } from './media-workstation';
 import { PlaybackWorkstation } from './playback-workstation';
@@ -35,205 +47,416 @@ import { ExportPanel } from './export-panel';
 import { ActivityCreationProfile } from './creation-profile-picker';
 import { ReworkPanel } from './rework-panel';
 import { GenerationModal } from './generation-modal';
-import { InlineCandidatePanel } from './inline-candidate-panel';
+import { CandidateReviewPanel } from './candidate-review-panel';
 import { useActivityGeneration } from '../hooks/use-activity-generation';
-import { ProductionOverview } from './production-overview';
 import { HistoryDrawer } from './history-drawer';
 import { ImageWorkbench } from './image-workbench';
 import { ActivityPresetsModal } from './activity-presets-modal';
+import { ActorAssetPickerDialog } from './actor-asset-picker-dialog';
+import { ActivityReflectDialog } from '@/app/features/knowledge/components/activity-reflect-dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
-import { PageContainer, WorkbenchColumns } from '@/app/components/shared/page-layout';
-import { PageHeader } from '@/app/components/shared/page-header';
-import { PageTabs } from '@/app/components/ui/page-tabs';
+import { getEffectiveStageScenes } from '../scene-beat-utils';
 
 interface ActivityStudioWorkspaceProps {
   activityId: string;
 }
 
-/**
- * 工作室的四步：内容 → 素材 → 回放 → 导出。
- *
- * 顺序与 activity-guidance 的进度编号、ProductionOverview 的按钮去向共用同一份定义，
- * 避免出现「提示说第 1 步是设定、界面却停在记录」这类两套坐标系。
- */
-const STUDIO_TABS = [
-  { id: 'content', label: '内容', icon: MessageSquare },
-  { id: 'media', label: '素材', icon: Camera },
-  { id: 'playback', label: '回放', icon: PlaySquare },
-  { id: 'export', label: '导出', icon: Download },
-] as const;
-type StudioTab = (typeof STUDIO_TABS)[number]['id'];
+/** 活动编辑工作台的五步流程 */
+type PipelineStep = 'planning' | 'script' | 'media' | 'playback' | 'export';
 
-/** 旧链接兼容：settings 与 records 都并入 content。 */
-const LEGACY_TAB_MAP: Record<string, StudioTab> = {
-  settings: 'content',
-  records: 'content',
-  media: 'media',
-  playback: 'playback',
-  export: 'export',
-};
+const PIPELINE_STEPS = [
+  { id: 'planning' as const, label: '1. 基础企划', icon: Compass, desc: '主题、角色与阶段大纲' },
+  { id: 'script' as const, label: '2. 剧情创作', icon: MessageSquare, desc: '场次分镜与动作卡片' },
+  { id: 'media' as const, label: '3. 视觉素材', icon: Camera, desc: '槽位配图与生成' },
+  { id: 'playback' as const, label: '4. 回放预览', icon: PlaySquare, desc: '编排与检查当前内容' },
+  { id: 'export' as const, label: '5. 导出', icon: Download, desc: '下载离线阅读包或视频工程' },
+] as const;
+
+function cleanStageTitle(title: string) {
+  return title.replace(/^(?:(?:第\s*[一二三四五六七八九十0-9]+\s*(?:幕|阶段)|阶段\s*[一二三四五六七八九十0-9]+)\s*(?:[·：:-]\s*)?)+/, '').trim() || title;
+}
 
 export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceProps) {
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<StudioTab>('content');
+  const pathname = usePathname();
+  const router = useRouter();
+  const comicMode = searchParams.get('mode') === 'comic';
+  const initialRouteHandled = useRef(false);
+  const lastSynchronizedJobId = useRef(searchParams.get('jobId'));
 
-  // Modals & Drawers state
-  const [generationModalOpen, setGenerationModalOpen] = useState(false);
-  const [generationStageId, setGenerationStageId] = useState<string | undefined>(searchParams.get('stageId') || undefined);
-  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
-  const [reworkOpen,setReworkOpen]=useState(false);
-  const [presetsModalOpen, setPresetsModalOpen] = useState(false);
-  const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(null);
+  // 当前流水线步骤
+  const [currentStep, setCurrentStep] = useState<PipelineStep>('script');
 
-  /** 内容 tab 内的同层视图：设定 / 群聊 / 朋友圈 / 事件。 */
-  const [contentView, setContentView] = useState<'settings' | 'chat' | 'moments' | 'facts'>('chat');
+  // 剧情创作内部的子视图（场次分镜流 / 群聊 / 朋友圈 / 剧情事实）
+  const [contentView, setContentView] = useState<'beats' | 'chat' | 'moments' | 'facts'>('beats');
+  const [mobileStagePickerOpen, setMobileStagePickerOpen] = useState(false);
+
+  // 当前聚焦的阶段 ID
+  const [focusedStageId, setFocusedStageId] = useState<string | undefined>(
+    searchParams.get('stageId') || undefined
+  );
+
+  // 右侧 AI Copilot 侧栏展开状态（默认大屏展开）
+  const [copilotOpen, setCopilotOpen] = useState(true);
 
   useEffect(() => {
-    const tab = searchParams.get('tab');
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- URL 查询参数是外部状态：按 ?tab / ?jobId 深链打开对应面板。 */
-    if (tab && LEGACY_TAB_MAP[tab]) {
-      setActiveTab(LEGACY_TAB_MAP[tab]);
-      // 旧链接带 tab=settings 时直接落到设定视图，带 tab=records 时落到群聊。
-      if (tab === 'settings') setContentView('settings');
-      else if (tab === 'records') setContentView('chat');
-    }
-    if (searchParams.get('jobId')) setGenerationModalOpen(true);
-  }, [searchParams]);
+    const query = window.matchMedia('(min-width: 1280px)');
+    const syncCopilotToViewport = () => setCopilotOpen(query.matches);
+    syncCopilotToViewport();
+    query.addEventListener('change', syncCopilotToViewport);
+    return () => query.removeEventListener('change', syncCopilotToViewport);
+  }, []);
 
-  // Focus stage in records tab
-  const [focusedStageId, setFocusedStageId] = useState<string | undefined>(searchParams.get('stageId')||undefined);
+  // 弹窗与抽屉状态
+  const [generationModalOpen, setGenerationModalOpen] = useState(false);
+  const [generationStageId, setGenerationStageId] = useState<string | undefined>(
+    searchParams.get('stageId') || undefined
+  );
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [reworkOpen, setReworkOpen] = useState(false);
+  const [presetsModalOpen, setPresetsModalOpen] = useState(false);
+  const [workbenchSlotId, setWorkbenchSlotId] = useState<string | null>(null);
+  const [reflectOpen, setReflectOpen] = useState(false);
+  const [expandedActorId, setExpandedActorId] = useState<string | null>(null);
+  const [inspirationOpen, setInspirationOpen] = useState(false);
 
-  // Queries
-  const { data: activityData, isLoading: activityLoading, error: activityError, refetch: refetchActivity } =
-    useActivity(activityId);
-  const { data: draftData, isLoading: draftLoading, refetch: refetchDraft } =
-    useActivityDraft(activityId);
+  // 数据查询
+  const {
+    data: activityData,
+    isLoading: activityLoading,
+    error: activityError,
+    refetch: refetchActivity,
+  } = useActivity(activityId);
+
+  const {
+    data: draftData,
+    isLoading: draftLoading,
+    refetch: refetchDraft,
+  } = useActivityDraft(activityId);
+
+  const { data: reviews } = useQuery({
+    queryKey: ['activity-review', activityId, activityData?.activity?.headVersion],
+    queryFn: () =>
+      getJson<{ items: ActivityReviewItem[] }>(`/api/admin/activities/${activityId}/review-items`),
+    enabled: !!activityData?.activity?.headVersion,
+  });
+
+  const playbackQuery = useActivityPlaybackRevision(activityId, activityData?.activity?.currentPlaybackRevisionId || undefined);
 
   const draft = useStudioDraft(activityId, draftData?.draft);
   const { document, status: saveStatus } = draft;
-  useEffect(()=>{
-    if(!document)return;
-    const record=searchParams.get('recordId');const actor=searchParams.get('actorId');const stage=searchParams.get('stageId');const fact=searchParams.get('factId');
-    const frame=requestAnimationFrame(()=>{const target=window.document.getElementById(record?`record-${record}`:actor?`actor-${actor}`:stage?`stage-${stage}`:fact?`fact-${fact}`:'');if(target instanceof HTMLDetailsElement)target.open=true;target?.scrollIntoView({block:'center',behavior:'smooth'});});
-    return ()=>cancelAnimationFrame(frame);
-  },[searchParams,activeTab,!!document]);
+
+  // 定位锚点处理
+  useEffect(() => {
+    if (!document) return;
+    const record = searchParams.get('recordId');
+    const actor = searchParams.get('actorId');
+    const stage = searchParams.get('stageId');
+    const fact = searchParams.get('factId');
+    const frame = requestAnimationFrame(() => {
+      const target = window.document.getElementById(
+        record
+          ? `record-${record}`
+          : actor
+          ? `actor-${actor}`
+          : stage
+          ? `stage-${stage}`
+          : fact
+          ? `fact-${fact}`
+          : ''
+      );
+      if (target instanceof HTMLDetailsElement) target.open = true;
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [searchParams, currentStep, !!document]);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
-  const [serverDraft, setServerDraft] = useState<{ document: ContentDocument; draftVersion: number } | null>(null);
+  const [serverDraft, setServerDraft] = useState<{
+    document: ContentDocument;
+    draftVersion: number;
+  } | null>(null);
   const commitDraftMutation = useCommitDraft();
+
   const handleUpdateDocument = draft.update;
+
+  // 保存新版本
   const handleCommitDraft = async () => {
     if (committing) return false;
     setCommitting(true);
     setErrorMessage(null);
     try {
-      if (!await draft.flush()) return false;
+      if (!(await draft.flush())) return false;
       const fresh = await refetchActivity();
       if (!fresh.data) throw new Error('无法读取当前版本，请重试');
-      await commitDraftMutation.mutateAsync({ id: activityId, expectedHeadVersion: fresh.data.activity.headVersion, expectedDraftVersion: draft.version() });
+      await commitDraftMutation.mutateAsync({
+        id: activityId,
+        expectedHeadVersion: fresh.data.activity.headVersion,
+        expectedDraftVersion: draft.version(),
+      });
       const latest = await refetchDraft();
       if (latest.data?.draft) draft.resolve(latest.data.draft, false);
       await refetchActivity();
       return true;
-    } catch (err) { setErrorMessage(err instanceof Error ? err.message : '保存新版本失败'); return false; }
-    finally { setCommitting(false); }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : '保存新版本失败');
+      return false;
+    } finally {
+      setCommitting(false);
+    }
   };
+
   const handleReloadConflict = async () => {
     const latest = await refetchDraft();
     if (latest.data?.draft) setServerDraft(latest.data.draft);
   };
+
+  const handleBeatServerDraft = (server: { document: ContentDocument; draftVersion: number }) => {
+    if (draft.isClean()) {
+      setServerDraft(null);
+      draft.resolve(server, false);
+    } else {
+      // Background rendering can update the server draft while the user is typing.
+      // Keep their local copy untouched and route the server update through the existing conflict UI.
+      setServerDraft(server);
+    }
+  };
+
+  const refreshBeatServerDraft = async () => {
+    const latest = await refetchDraft();
+    if (latest.data?.draft) handleBeatServerDraft(latest.data.draft);
+  };
+
+  // 进入素材/回放/导出前，先落盘并确认版本
   const prepareContent = async () => {
-    if (committing || !await draft.flush()) return false;
+    if (committing || !(await draft.flush())) return false;
     try {
       const latest = await refetchActivity();
       if (!latest.data) throw new Error('无法读取活动，请重试');
-      if (JSON.stringify(latest.data.currentContentRevision?.document) === JSON.stringify(latest.data.draft.document)) return true;
+      if (
+        JSON.stringify(latest.data.currentContentRevision?.document) ===
+        JSON.stringify(latest.data.draft.document)
+      )
+        return true;
       return await handleCommitDraft();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '准备活动内容失败');
       return false;
     }
   };
-  const navigateTab = async (tab: typeof activeTab) => {
-    // 素材、回放、导出都消费已发布内容，进入前先把草稿落成版本。
-    if ((tab === 'media' || tab === 'playback' || tab === 'export') && !await prepareContent()) return;
-    setActiveTab(tab);
+
+  // 流水线步骤切换
+  const navigateStep = async (step: PipelineStep) => {
+    if ((step === 'media' || step === 'playback' || step === 'export') && !(await prepareContent()))
+      return;
+    setCurrentStep(step);
   };
+
+  useEffect(() => {
+    if (initialRouteHandled.current || !activityData?.activity || !draftData?.draft) return;
+    initialRouteHandled.current = true;
+    const tab = searchParams.get('tab');
+    const routeStep: PipelineStep = tab === 'settings' ? 'planning'
+      : tab === 'media' ? 'media'
+      : tab === 'playback' ? 'playback'
+      : tab === 'export' ? 'export'
+      : 'script';
+    if (tab === 'records') setContentView('chat');
+    if (routeStep === 'media' || routeStep === 'playback' || routeStep === 'export') {
+      void (async () => {
+        if (await prepareContent()) setCurrentStep(routeStep);
+      })();
+    } else {
+      setCurrentStep(routeStep);
+    }
+    const requestedJobId = searchParams.get('jobId');
+    if (requestedJobId) {
+      setGenerationStageId(searchParams.get('stageId') || undefined);
+      setGenerationModalOpen(true);
+    }
+  }, [activityData, draftData, searchParams]);
 
   const activity = activityData?.activity;
   const stages = document?.stages || [];
-  const [reflectOpen, setReflectOpen] = useState(false);
+  const effectiveStageId = stages.some((stage) => stage.id === focusedStageId) ? focusedStageId : stages[0]?.id;
+  const effectiveStage = stages.find((stage) => stage.id === effectiveStageId);
+  const effectiveGenerationStageId = stages.some((stage) => stage.id === generationStageId)
+    ? generationStageId
+    : effectiveStageId;
   const actors = document?.actors || [];
+  const playbackRevision = playbackQuery.data || activityData?.currentPlaybackRevision || null;
+  const [assetPickerActor, setAssetPickerActor] = useState<import('@sthstart/contracts').ActorSnapshot | null>(null);
 
-  /*
-   * 视图内一键生成（群聊续写 / 朋友圈动态）。
-   * 与生成弹窗共用 useActivityGeneration，两处不会各写一套「发起 → 轮询 → 采用」。
-   */
-  const generation = useActivityGeneration(activityId, activity?.headVersion ?? 0);
-  /* 自动续聊默认关闭：开启后只在冷场时预生成候选，不自动写入文档。 */
-  const [autoContinue, setAutoContinue] = useState(false);
-  const [autoContinueNotice, setAutoContinueNotice] = useState<string | null>(null);
-  const autoContinueCountRef = useRef(0);
-  /* 自动续聊的目标（阶段 + 会话）与「上次用户操作时间」，两者变化都会重置计时。 */
-  const [autoContinueTarget, setAutoContinueTarget] = useState<{ stageId: string; conversationId: string } | null>(null);
-  const [autoContinueTick, setAutoContinueTick] = useState(0);
-  /*
-   * 生成函数放进 ref：它每次渲染都是新引用，直接写进依赖会让 40 秒计时器被不断重置，
-   * 自动续聊就永远不会触发。计时只应由「开关 / 目标 / 用户操作」这三件事驱动。
-   */
-  const generationStartRef = useRef(generation.start);
-  generationStartRef.current = generation.start;
+  // 就地新增幕（不跳页，直接在当前活动追加新幕并聚焦）
+  const handleAddStageInPlace = () => {
+    if (!document) return;
+    const nextIdx = stages.length + 1;
+    const newStageId = `stage_${Date.now()}`;
+    const newStage = {
+      id: newStageId,
+      title: `第 ${nextIdx} 幕 · 新阶段`,
+      order: nextIdx,
+      actorIds: actors.map((a) => a.id),
+      location: document.activity.location || '',
+      instruction: '',
+      requiredBeats: [],
+      locked: false,
+      endCondition: '',
+    };
 
-  /*
-   * 只要停在群聊视图就登记续聊目标，不必先手动点一次生成。
-   * 有消息的阶段优先（续聊要有上文可接），否则用当前聚焦的阶段。
-   */
-  useEffect(() => {
-    if (!autoContinue || contentView !== 'chat' || !document) return;
-    const withMessages = stages.find((stage) => document.messages.some((message) => message.stageId === stage.id));
-    const stage = withMessages || stages.find((candidate) => candidate.id === focusedStageId) || stages[0];
-    if (!stage) return;
-    const conversationId = document.messages.find((message) => message.stageId === stage.id)?.conversationId
-      || document.conversations[0]?.id || 'group_main';
-    setAutoContinueTarget((current) =>
-      current?.stageId === stage.id && current?.conversationId === conversationId ? current : { stageId: stage.id, conversationId });
-  }, [autoContinue, contentView, document, stages, focusedStageId]);
+    const nextStages = [...stages, newStage];
+    handleUpdateDocument({ ...document, stages: nextStages });
+    setFocusedStageId(newStageId);
+  };
 
-  /*
-   * 冷场自动续聊。
-   *
-   * 与邻舍的做法一致：停留一段时间没有新消息就补一轮。差别在于这里只预生成候选，
-   * 不直接写进文档——生成结果仍要走「先预览、后采用」，避免模型在用户没看的时候改动内容。
-   * 连续触发上限 2 次，用户任意操作即归零，防止空转消耗模型额度。
-   */
-  useEffect(() => {
-    if (!autoContinue || !autoContinueTarget) return;
-    const { stageId, conversationId } = autoContinueTarget;
-    const timer = window.setTimeout(() => {
-      if (autoContinueCountRef.current >= 2) {
+  // AI 创作伴侣：读取公共服务配置中的真实可用大模型
+  const queryClient = useQueryClient();
+  const { data: publicOverview } = usePublicOverview();
+  const { data: appLlmStatus } = useAppLlmStatus('activities');
+
+  // 过滤出用户实际配置且启用的文本大模型
+  const configuredTextProfiles = useMemo(() => {
+    return (publicOverview?.profiles || []).filter(
+      (p) => p.enabled && p.capabilities?.includes('text')
+    );
+  }, [publicOverview?.profiles]);
+
+  // 当前活动绑定的文本模型 ID
+  const assignedTextProfileId =
+    appLlmStatus?.text?.profile?.id ||
+    publicOverview?.llmAssignments?.find((a) => a.appId === 'activities')?.textProfileId ||
+    '';
+
+  const activeProfile = useMemo(() => {
+    return configuredTextProfiles.find((p) => p.id === assignedTextProfileId);
+  }, [configuredTextProfiles, assignedTextProfileId]);
+
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSelection, setProfileSelection] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  useEffect(() => setProfileSelection(assignedTextProfileId), [assignedTextProfileId]);
+
+  const handleProfileChange = async (newProfileId: string) => {
+    setProfileError(null);
+    setProfileSelection(newProfileId);
+    setProfileSaving(true);
+    try {
+      await updateLlmAssignments('activities', {
+        textProfileId: newProfileId,
+        multimodalProfileId: publicOverview?.llmAssignments?.find((a) => a.appId === 'activities')?.multimodalProfileId ?? null,
+      });
+      await queryClient.invalidateQueries({ queryKey: providerKeys.llmStatus('activities') });
+      await queryClient.invalidateQueries({ queryKey: providerKeys.overview() });
+    } catch (err) {
+      setProfileSelection(assignedTextProfileId);
+      setProfileError(err instanceof Error ? err.message : '修改应用默认模型失败');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const [copilotGenType, setCopilotGenType] = useState<'shot' | 'continue-chat' | 'moment' | 'stage'>('continue-chat');
+  const [copilotUserPrompt, setCopilotUserPrompt] = useState<string>('');
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [preparingGeneration, setPreparingGeneration] = useState(false);
+  const generationRequestInFlight = useRef(false);
+
+  const handleCopilotGenerate = async (requestedMode = copilotGenType) => {
+    if (generationRequestInFlight.current || !document || generation.running || generation.starting || profileSaving) return;
+    generationRequestInFlight.current = true;
+    setPreparingGeneration(true);
+    setCopilotError(null);
+    try {
+      const curStageId = effectiveStageId;
+      if (!curStageId) {
+        setCopilotError('请先创建或选择一幕。');
         return;
       }
-      autoContinueCountRef.current += 1;
-      setAutoContinueNotice(null);
-      void generationStartRef.current({ mode: 'continue-chat', scope: { stageId, conversationId } });
-    }, 40_000);
-    return () => window.clearTimeout(timer);
-  }, [autoContinue, autoContinueTarget, autoContinueTick]);
+      if (!appLlmStatus?.text?.ready || !activeProfile) {
+        setProfileError('当前活动没有已绑定且可用的文本模型，请前往公共服务配置。');
+        return;
+      }
+      if (!(await draft.flush())) return;
 
-  /* 自动续聊的候选就绪后给出提示，与手动生成共用同一套候选面板。 */
+      let startedJobId: string | null = null;
+      if (requestedMode === 'shot') {
+        startedJobId = await generation.start({
+          mode: 'shot',
+          scope: { stageId: curStageId },
+          userInstruction: copilotUserPrompt.trim() || undefined,
+        });
+      } else if (requestedMode === 'continue-chat') {
+        const conversationId =
+          document.messages?.find((m) => m.stageId === curStageId)?.conversationId ||
+          document.conversations?.find((conversation) => conversation.kind === 'group')?.id ||
+          'group_main';
+        startedJobId = await generation.start({
+          mode: 'continue-chat',
+          scope: { stageId: curStageId, conversationId },
+          userInstruction: copilotUserPrompt.trim() || undefined,
+        });
+      } else if (requestedMode === 'moment') {
+        const author = actors[0]?.id;
+        if (!author) {
+          setCopilotError('活动中还没有可用于发布动态的角色。');
+          return;
+        }
+        startedJobId = await generation.start({
+          mode: 'moment',
+          scope: { stageId: curStageId, authorActorId: author },
+          userInstruction: copilotUserPrompt.trim() || undefined,
+        });
+      } else if (requestedMode === 'stage') {
+        startedJobId = await generation.start({
+          mode: 'stage',
+          scope: { stageId: curStageId },
+          userInstruction: copilotUserPrompt.trim() || undefined,
+        });
+      }
+      if (startedJobId) updateCurrentJobId(startedJobId, curStageId);
+    } finally {
+      generationRequestInFlight.current = false;
+      setPreparingGeneration(false);
+    }
+  };
+
+  // 生成状态与控制
+  const generation = useActivityGeneration(activityId, searchParams.get('jobId'));
+  const [reviewCandidateId, setReviewCandidateId] = useState<string | null>(null);
+  const updateCurrentJobId = (jobId: string | null, stageId?: string) => {
+    lastSynchronizedJobId.current = jobId;
+    generation.selectJob(jobId);
+    const params = new URLSearchParams(window.location.search);
+    if (jobId) params.set('jobId', jobId);
+    else params.delete('jobId');
+    if (jobId && stageId) params.set('stageId', stageId);
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+  };
+
   useEffect(() => {
-    if (!autoContinue || autoContinueCountRef.current === 0) return;
-    if (generation.candidates.length > 0) setAutoContinueNotice(`自动续聊已生成 ${generation.candidates.length} 个候选，确认后才会写入`);
-  }, [autoContinue, generation.candidates.length]);
+    const urlJobId = searchParams.get('jobId');
+    if (urlJobId === lastSynchronizedJobId.current) return;
+    lastSynchronizedJobId.current = urlJobId;
+    generation.selectJob(urlJobId);
+  }, [generation.selectJob, searchParams]);
+
+  const reviewCount =
+    reviews?.items.filter((item) => item.decision === 'pending' || item.decision === 'rework')
+      .length ?? 0;
+
+  // 统计信息
 
   if (activityLoading || draftLoading) {
     return (
-      <div className="w-full bg-paper flex items-center justify-center p-8">
+      <div className="w-full min-h-[500px] bg-paper flex items-center justify-center p-8">
         <div className="flex flex-col items-center gap-3">
           <Spinner className="h-8 w-8 text-accent animate-spin" />
           <p className="text-sm text-ink font-semibold">正在载入活动工作区…</p>
@@ -262,433 +485,1028 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   }
 
   return (
-    <div className="w-full bg-paper text-ink py-5">
-      <PageContainer className="space-y-4">
-        {document.activity.planningBasis?.inspiration && (
-          <details className="rounded-lg border border-border-default bg-surface p-3 text-sm">
-            <summary className="cursor-pointer font-semibold">灵感来源 · {document.activity.planningBasis.inspiration.ideaName}</summary>
-            <p className="mt-2">{document.activity.planningBasis.inspiration.adaptation}</p>
-            {document.activity.planningBasis.inspiration.topics.map(topic => <p key={topic.id} className="mt-2"><strong>{topic.title}</strong>：{topic.summary}</p>)}
-            {(document.activity.planningBasis.inspiration.sources ?? []).map((source, index) => <div key={index} className="mt-2 text-muted">
-              {/^(https?:)\/\//.test(source.url) ? <a href={source.url} target="_blank" rel="noreferrer" className="underline">{source.sourceName} · {source.documentLocator || '查看来源'}</a> : <span>{source.sourceName} · {source.documentLocator}</span>}
-              <p>{source.excerpt}</p>
-            </div>)}
-          </details>
-        )}
-        {/* 对象页头（§8.5）：活动名、保存/版本状态与当前主要动作固定在页头。 */}
-        <PageHeader
-          backHref="/apps/activities"
-          backLabel="返回活动列表"
-          title={document.activity.title}
-          status={
-            <>
-              <Badge variant="outline" className="bg-surface-muted font-mono text-xs text-ink">
-                版本 {activity.headVersion}
-              </Badge>
-              <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-sm">
-                {saveStatus === 'saving' && (
-                  <span className="flex items-center gap-1 text-warning-fg">
-                    <Spinner className="h-3 w-3 animate-spin" />
-                    自动保存草稿中…
-                  </span>
-                )}
-                {saveStatus === 'saved' && (
-                  <span className="flex items-center gap-1 font-medium text-success-fg">
-                    <Check className="h-3 w-3" />
-                    已保存
-                  </span>
-                )}
-                {saveStatus === 'unsaved' && (
-                  <span className="flex items-center gap-1 text-muted">
-                    <Clock className="h-3 w-3" />
-                    正在编辑…
-                  </span>
-                )}
-                {saveStatus === 'conflict' && (
-                  <div className="flex items-center gap-1 text-danger-fg">
-                    <AlertCircle className="h-3 w-3" />
-                    <span>草稿版本冲突</span>
-                    <button
-                      type="button"
-                      onClick={handleReloadConflict}
-                      className="ml-1 cursor-pointer font-semibold underline"
-                    >
-                      比较与恢复
-                    </button>
-                  </div>
-                )}
-                {saveStatus === 'error' && (
-                  <span className="flex items-center gap-1 text-danger-fg">
-                    <AlertCircle className="h-3 w-3" />
-                    保存失败
-                  </span>
-                )}
-              </div>
-            </>
-          }
-          actions={
-            <details className="rounded-lg border border-border-default bg-surface p-2">
-            <summary className="cursor-pointer px-2 text-sm font-medium">更多操作</summary>
-            <p className="px-2 pt-2 text-xs text-muted">编辑会自动保存。只有需要保留一个可回溯节点时，才需保存新版本。</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setReworkOpen(true)}>内容变化与处理历史</Button>
-            {/* 导出已升为页级 tab，不再在折叠菜单里重复一份入口。 */}
+    <div className="w-full h-screen max-h-screen bg-paper text-ink flex flex-col overflow-hidden" data-embed="true">
+      {/* 1. 极简单行顶栏 (48px 高度，彻底释放垂直空间) */}
+      <header className="h-12 border-b border-border-default bg-surface px-2 sm:px-4 lg:px-6 flex items-center justify-between gap-2 shrink-0 sticky top-0 z-30 shadow-2xs">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <Link
+            href="/apps/activities"
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink transition-colors shrink-0"
+            title="返回活动列表"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden md:inline">活动列表</span>
+          </Link>
+
+          <span className="text-border-control">/</span>
+
+          <h1 className="text-sm font-bold text-ink truncate max-w-[34vw] sm:max-w-xs md:max-w-md">
+            {document.activity.title}
+          </h1>
+
+          <Badge variant="outline" className="hidden sm:inline-flex bg-surface-muted font-mono text-xs text-ink shrink-0">
+            v{activity.headVersion}
+          </Badge>
+
+          {/* 实时保存状态 */}
+          <div role="status" aria-live="polite" className="hidden sm:flex items-center gap-1.5 text-xs text-muted shrink-0">
+            {saveStatus === 'saving' && (
+              <span className="flex items-center gap-1 text-warning-fg">
+                <Spinner className="h-3 w-3 animate-spin" />
+                正在保存…
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center gap-1 text-success-fg font-medium">
+                <Check className="h-3 w-3" />
+                已保存
+              </span>
+            )}
+            {saveStatus === 'unsaved' && (
+              <span className="flex items-center gap-1 text-muted">
+                <Clock className="h-3 w-3" />
+                正在编辑
+              </span>
+            )}
+            {saveStatus === 'conflict' && (
+              <span className="flex items-center gap-1 text-danger-fg font-semibold cursor-pointer" onClick={handleReloadConflict}>
+                <AlertCircle className="h-3 w-3" />
+                版本冲突(点击对比)
+              </span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="flex items-center gap-1 text-danger-fg font-semibold">
+                <AlertCircle className="h-3 w-3" />
+                保存失败
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 顶栏中央：五步活动流程导航 */}
+        <nav aria-label="流水线阶段" className="hidden xl:flex items-center gap-1 bg-surface-muted p-1 rounded-[var(--radius-control)] border border-border-default shadow-2xs">
+          {PIPELINE_STEPS.map((step) => {
+            const Icon = step.icon;
+            const isActive = currentStep === step.id;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => void navigateStep(step.id)}
+                aria-current={isActive ? 'step' : undefined}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-surface text-accent shadow-2xs font-bold'
+                    : 'text-muted hover:text-ink hover:bg-surface/50'
+                }`}
+                title={step.desc}
+              >
+                <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-accent' : 'text-muted'}`} />
+                <span>{step.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* 顶部动作栏：常用操作直接常驻，移除原生 details 折叠 */}
+        <div className="flex items-center gap-2 shrink-0">
+          {document.activity.planningBasis?.inspiration && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setHistoryDrawerOpen(true)}
-              className="flex h-8 items-center gap-1.5 text-sm"
+              onClick={() => setInspirationOpen(!inspirationOpen)}
+              className="h-8 text-xs hidden lg:inline-flex items-center gap-1"
             >
-              <History className="h-3.5 w-3.5 text-muted" />
-              <span className="hidden sm:inline">版本回溯</span>
-              <span className="sm:hidden">回溯</span>
+              <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+              <span>灵感来源</span>
             </Button>
+          )}
 
+          {reviewCount > 0 && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPresetsModalOpen(true)}
-              className="flex h-8 items-center gap-1.5 text-sm"
+              onClick={() => setReworkOpen(true)}
+              className="h-8 text-xs bg-amber-500/10 text-amber-600 border-amber-500/30 font-medium"
             >
-              <Bookmark className="h-3.5 w-3.5 text-muted" />
-              <span className="hidden sm:inline">预设/模板</span>
-              <span className="sm:hidden">预设</span>
+              <span className="hidden sm:inline">{reviewCount} 项变化待审</span>
             </Button>
+          )}
 
-            <Button
-              size="sm"
-              onClick={handleCommitDraft}
-              disabled={committing || saveStatus === 'conflict' || saveStatus === 'error'}
-              className="flex h-8 shrink-0 items-center gap-1.5 px-3 text-sm"
-            >
-              <Save className="h-3.5 w-3.5" />
-              <span>{committing ? '保存中…' : '保存新版本'}</span>
-            </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setHistoryDrawerOpen(true)}
+            className="h-8 px-2 sm:px-2.5 text-xs text-muted hover:text-ink flex items-center gap-1"
+            title="查看与回溯历史版本"
+          >
+            <History className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">版本回溯</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPresetsModalOpen(true)}
+            className="h-8 px-2 sm:px-2.5 text-xs text-muted hover:text-ink flex items-center gap-1"
+            title="预设与模板管理"
+          >
+            <Bookmark className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">预设模板</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={handleCommitDraft}
+            disabled={committing || saveStatus === 'conflict' || saveStatus === 'error'}
+            aria-label={committing ? '正在保存新版本' : '保存新版本'}
+            className="h-8 px-3 text-xs bg-accent text-white hover:bg-accent-dark font-semibold flex items-center gap-1.5 shadow-xs"
+          >
+            <Save className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{committing ? '保存中…' : '保存新版本'}</span>
+          </Button>
+
+          {/* AI Copilot 侧栏开关 */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCopilotOpen(!copilotOpen)}
+            className={`h-8 w-8 p-0 text-muted hover:text-ink ${comicMode ? 'hidden' : ''} ${copilotOpen ? 'text-accent' : ''}`}
+            title={copilotOpen ? '收起 AI 助手' : '展开 AI 助手'}
+            aria-label={copilotOpen ? '收起 AI 助手' : '展开 AI 助手'}
+          >
+            {copilotOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          </Button>
+        </div>
+      </header>
+
+      <nav aria-label="活动流程" className="xl:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface px-2 py-1.5">
+        {PIPELINE_STEPS.map((step) => {
+          const Icon = step.icon;
+          const active = currentStep === step.id;
+          return (
+            <button key={step.id} type="button" onClick={() => void navigateStep(step.id)}
+              aria-current={active ? 'step' : undefined}
+              className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] px-3 py-2 text-xs font-semibold ${active ? 'bg-accent text-white' : 'text-muted hover:bg-surface-muted hover:text-ink'}`}>
+              <Icon className="h-3.5 w-3.5" />{step.label.replace(/^\d+\.\s*/, '')}
+            </button>
+          );
+        })}
+      </nav>
+
+
+
+      {/* 冲突提示 Banner */}
+      {serverDraft && (
+        <section className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-amber-700 flex items-center gap-1.5">
+              <AlertCircle className="h-4 w-4" />
+              检测到服务器草稿冲突，请选择保留内容：
+            </span>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => { draft.resolve(serverDraft, true); setServerDraft(null); }}>保留本地输入并覆盖</Button>
+              <Button size="sm" variant="outline" onClick={() => { draft.resolve(serverDraft, false); setServerDraft(null); }}>改用服务器草稿</Button>
             </div>
-            </details>
-          }
-        />
-
-        {(errorMessage || draft.error) && (
-          <Alert variant="danger" title="系统提示">
-            {errorMessage || draft.error}
-            {saveStatus === 'error' && <Button onClick={draft.retry}>重试保存</Button>}
-          </Alert>
-        )}
-
-        {serverDraft && <section className="rounded-lg border border-border-default bg-surface p-4 space-y-3" aria-label="草稿冲突比较">
-          <h2 className="font-semibold">比较草稿后选择保留内容</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            <details><summary>本地输入</summary><pre className="max-h-64 overflow-auto text-sm">{JSON.stringify(document, null, 2)}</pre></details>
-            <details><summary>服务器草稿</summary><pre className="max-h-64 overflow-auto text-sm">{JSON.stringify(serverDraft.document, null, 2)}</pre></details>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => { draft.resolve(serverDraft, true); setServerDraft(null); }}>保留本地输入并保存</Button>
-            <Button onClick={() => { draft.resolve(serverDraft, false); setServerDraft(null); }}>改用服务器草稿</Button>
+        </section>
+      )}
+
+      {/* 灵感来源弹层（若点击展开） */}
+      {inspirationOpen && document.activity.planningBasis?.inspiration && (
+        <div className="bg-surface-raised border-b border-border-default px-6 py-3 text-xs space-y-2">
+          <div className="flex items-center justify-between font-bold text-ink">
+            <span>灵感来源 · {document.activity.planningBasis.inspiration.ideaName}</span>
+            <button type="button" onClick={() => setInspirationOpen(false)} className="text-muted hover:text-ink">关闭</button>
           </div>
-        </section>}
+          <p className="text-muted">{document.activity.planningBasis.inspiration.adaptation}</p>
+        </div>
+      )}
 
-        {/* 活动生产流水线概览条 (M1) */}
-        <ReworkPanel open={reworkOpen} onOpenChange={setReworkOpen} activityId={activityId} headVersion={activity.headVersion} document={document} onSaved={() => { void refetchActivity(); }} />
-        <ProductionOverview document={document} headVersion={activity.headVersion} onReview={()=>setReworkOpen(true)}
-          activityId={activityId}
-          onAction={async (action) => {
-            if (action === 'generate_text' || action === 'review_candidates') {
-              if (await draft.flush()) { setGenerationStageId(undefined); setGenerationModalOpen(true); }
-            } else if (action === 'preview_export') {
-              if (await prepareContent()) void navigateTab('export');
-            }
-          }}
-          onOpenBatchCandidates={async () => { if (await draft.flush()) setGenerationModalOpen(true); }}
-          onNavigateTab={(tab, view) => { if (view) setContentView(view); void navigateTab(tab); }}
-        />
+      {/* 2. 主体工作区：现代化极简布局 (56px 场次胶卷导轨 + 沉浸式宽幅中央分镜流 + 可选 AI 伴侣) */}
+      <div className="relative flex-1 flex overflow-hidden min-h-0">
 
-        {/* 工作模式：设定 / 记录 / 素材 / 回放，使用页级 tab 语义（§7.4）。 */}
-        <PageTabs
-          className="activity-workflow-tabs w-full sm:w-fit"
-          ariaLabel="活动工作模式"
-          value={activeTab}
-          onChange={(id) => { void navigateTab(id as typeof activeTab); }}
-          tabs={STUDIO_TABS.map((tab) => ({
-            id: tab.id,
-            panelId: `activity-panel-${tab.id}`,
-            label: (
-              <>
-                <tab.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>{tab.label}</span>
-              </>
-            ),
-          }))}
-        />
-
-        {/* Workstation Content View */}
-
-        {reflectOpen && (
-          <ActivityReflectDialog
-            open={reflectOpen}
-            onOpenChange={setReflectOpen}
-            activityId={activityId}
-            activityTitle={document?.activity.title || '未命名活动'}
-            version={draft.version()}
-            stages={stages.map((stage) => ({ id: stage.id, title: stage.title, instruction: stage.instruction }))}
+        {/* === 左侧：现代化紧凑场次导轨 (56px 胶卷导轨，悬停展开详细信息) === */}
+        {currentStep === 'script' && stages.length > 0 && (
+          <StageRailNav
+            stages={stages}
+            scenes={document.scenes || []}
+            activeStageId={effectiveStageId}
+            onSelectStage={(stId) => {
+              setFocusedStageId(stId);
+            }}
+            onAddStage={handleAddStageInPlace}
           />
         )}
-        <fieldset disabled={committing} className="min-w-0 border-0 p-0 py-1">
-          {/*
-           * 内容视图的分段控件。
-           *
-           * 它和上面的「内容/素材/回放/导出」是两层不同的导航：上面切换工作模式，
-           * 这里切换内容内的视图。之前两层都是同规格的标签栏，第一屏出现两排几乎等重的
-           * 导航按钮，用户看不出主次；这里降为连体分段控件，视觉权重明显低于页级标签。
-           */}
-          {activeTab === 'content' && (
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] bg-surface-muted p-0.5" role="tablist" aria-label="内容视图">
-                {([
-                  { id: 'settings' as const, label: '设定' },
-                  { id: 'chat' as const, label: '群聊' },
-                  { id: 'moments' as const, label: '朋友圈' },
-                  { id: 'facts' as const, label: '剧情事实' },
-                ]).map((view) => (
-                  <button
-                    key={view.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={contentView === view.id}
-                    onClick={() => setContentView(view.id)}
-                    className={`inline-flex min-h-8 items-center rounded-[var(--radius-control)] px-3 text-sm transition-colors ${
-                      contentView === view.id
-                        ? 'bg-surface font-semibold text-ink shadow-2xs'
-                        : 'text-muted hover:text-ink'
-                    }`}
-                  >
-                    {view.label}
-                  </button>
-                ))}
+
+        {/* === 中间：沉浸核心工作台 (Flex-1) === */}
+        <main className={`flex-1 h-full min-h-0 flex flex-col bg-paper min-w-0 ${comicMode ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+
+          {/* 错误提示 */}
+          {(errorMessage || draft.error) && (
+            <div className="p-4 border-b border-border-default bg-red-500/5">
+              <Alert variant="danger" title="系统提示">
+                {errorMessage || draft.error}
+                {saveStatus === 'error' && <Button size="sm" onClick={draft.retry} className="ml-2">重试保存</Button>}
+              </Alert>
+            </div>
+          )}
+
+          {/* 步骤 1：基础企划与阶段大纲 (Planning & Stages) */}
+          {currentStep === 'planning' && (
+            <div className="p-6 max-w-5xl mx-auto w-full space-y-6">
+              <div className="flex items-center justify-between pb-3 border-b border-border-default">
+                <div>
+                  <h2 className="text-base font-bold text-ink flex items-center gap-2">
+                    <Compass className="h-5 w-5 text-accent" />
+                    1. 基础企划与阶段大纲
+                  </h2>
+                  <p className="text-xs text-muted mt-0.5">
+                    设定活动基本属性、参与者个性及分阶段目标（Beats）。修改会自动存入草稿。
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setReflectOpen(true)} className="text-xs">
+                  整理为个人设定
+                </Button>
+              </div>
+
+              {/* 基本属性卡片 */}
+              <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-4">
+                <h3 className="text-xs font-bold text-muted uppercase tracking-wider">基本属性</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-semibold text-ink">活动标题</label>
+                    <Input
+                      value={document.activity.title}
+                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, title: e.target.value } })}
+                      className="h-9 text-sm bg-transparent"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-ink">活动主题</label>
+                    <Input
+                      value={document.activity.theme || ''}
+                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, theme: e.target.value } })}
+                      className="h-9 text-sm bg-transparent"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-ink">活动地点</label>
+                    <Input
+                      value={document.activity.location || ''}
+                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, location: e.target.value } })}
+                      className="h-9 text-sm bg-transparent"
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-semibold text-ink">活动日期（同步到角色日历）</label>
+                    <Input
+                      type="date"
+                      value={document.activity.scheduledDate || ''}
+                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, scheduledDate: e.target.value || null } })}
+                      className="h-9 text-sm bg-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 参与角色列表（改用清晰卡片，替代原生 details） */}
+              <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" />
+                    参与角色 ({actors.length})
+                  </h3>
+                  <span className="text-xs text-muted">点击卡片展开服装与职责设定</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {actors.map((actor) => {
+                    const isExpanded = expandedActorId === actor.id;
+                    return (
+                      <div
+                        key={actor.id}
+                        id={`actor-${actor.id}`}
+                        className="rounded-[var(--radius-control)] border border-border-default bg-surface-raised p-3 space-y-2 transition-all"
+                      >
+                        <div
+                          className="flex items-center justify-between cursor-pointer"
+                          onClick={() => setExpandedActorId(isExpanded ? null : actor.id)}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            {/* 头像缩略图 */}
+                            <div className="relative h-8 w-8 rounded-full overflow-hidden border border-border-default bg-surface-muted shrink-0">
+                              {actor.avatarUrl ? (
+                                <Image
+                                  src={actor.avatarUrl}
+                                  alt={actor.displayName}
+                                  fill
+                                  unoptimized
+                                  className="object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-xs font-bold text-muted">
+                                  {actor.displayName.slice(0, 1)}
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <span className="font-bold text-sm text-ink">{actor.displayName}</span>
+                              <span className="text-xs text-muted font-normal ml-1.5">({actor.activityRole || '本场角色'})</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {actor.sourceCharacterId && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssetPickerActor(actor);
+                                }}
+                                className="text-xs text-accent font-medium hover:underline px-2 py-0.5 rounded bg-accent/10 hover:bg-accent/20 transition-colors"
+                              >
+                                选头像/立绘
+                              </button>
+                            )}
+                            <button type="button" className="text-xs text-muted hover:text-ink font-medium">
+                              {isExpanded ? '收起' : '设定'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 如果已设置立绘，展示立绘指示 */}
+                        {actor.portraitUrl && (
+                          <div className="text-[11px] text-muted flex items-center gap-1.5 pt-1 border-t border-border-subtle/50">
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+                            <span>已指定独立立绘</span>
+                          </div>
+                        )}
+
+                        {isExpanded && (
+                          <div className="pt-2 border-t border-border-subtle space-y-2 text-xs">
+                            <div>
+                              <label className="block text-[11px] font-medium text-muted mb-1">服装装扮</label>
+                              <Input
+                                value={actor.outfitDescription}
+                                onChange={(e) =>
+                                  handleUpdateDocument({
+                                    ...document,
+                                    actors: actors.map((a) => (a.id === actor.id ? { ...a, outfitDescription: e.target.value } : a)),
+                                  })
+                                }
+                                className="h-7 text-xs bg-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-muted mb-1">本场职责</label>
+                              <Input
+                                value={actor.activityRole}
+                                onChange={(e) =>
+                                  handleUpdateDocument({
+                                    ...document,
+                                    actors: actors.map((a) => (a.id === actor.id ? { ...a, activityRole: e.target.value } : a)),
+                                  })
+                                }
+                                className="h-7 text-xs bg-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-muted mb-1">身份设定描述</label>
+                              <Input
+                                value={String(actor.persona?.identity || '')}
+                                onChange={(e) =>
+                                  handleUpdateDocument({
+                                    ...document,
+                                    actors: actors.map((a) =>
+                                      a.id === actor.id
+                                        ? { ...a, persona: { ...a.persona, identity: e.target.value } }
+                                        : a
+                                    ),
+                                  })
+                                }
+                                className="h-7 text-xs bg-transparent"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 阶段设定 */}
+              <StagesEditor
+                stages={stages}
+                actors={actors}
+                onChange={(newStages) => handleUpdateDocument({ ...document, stages: newStages })}
+              />
+
+              {/* 高级选项：创作偏好 */}
+              <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
+                <h3 className="text-xs font-bold text-muted uppercase tracking-wider">高级选项：创作偏好与模板</h3>
+                <ActivityCreationProfile
+                  activityId={activity.id}
+                  headVersion={activity.headVersion}
+                  value={document.activity.creationProfile}
+                  disabled={saveStatus !== 'saved'}
+                  onApplied={() => {
+                    void refetchActivity();
+                    void refetchDraft();
+                  }}
+                />
               </div>
             </div>
           )}
 
-          {activeTab === 'content' && contentView === 'settings' && (
-            <div className="space-y-4">
-            <div className="text-sm text-muted">只需确认活动内容、参与者和阶段安排。下面的改动会自动保存；服装、创作偏好等都可以稍后调整。</div>
-                <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-                      <Compass className="h-4 w-4 text-accent" />
-                      活动基本属性
-                    </h3>
-                    <Button size="sm" variant="ghost" onClick={() => setReflectOpen(true)}>整理为个人设定</Button>
+          {/* 步骤 2：剧情创作 (RecordsEditor - 释放垂直空间) */}
+          {currentStep === 'script' && (() => {
+            const currentStage = effectiveStage;
+            const stageIndex = stages.findIndex((s) => s.id === effectiveStageId);
+
+            return (
+            <div className="flex-1 flex flex-col h-full min-h-0">
+                {!stages.length && (
+                  <div className="m-auto max-w-lg p-8 text-center">
+                    <Layers className="mx-auto mb-3 h-10 w-10 text-accent" />
+                    <h2 className="text-base font-semibold text-ink">还没有阶段</h2>
+                    <p className="mt-2 text-sm text-muted">先建立第一幕，再添加场次、分镜与对话。</p>
+                    <Button type="button" className="mt-4" onClick={handleAddStageInPlace}>新建第一幕</Button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1 sm:col-span-2">
-                      <label className="text-sm font-medium text-ink">活动标题</label>
-                      <Input
-                        aria-label="活动标题"
-                        value={document.activity.title}
-                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, title: e.target.value } })}
-                        className="h-8 text-sm bg-transparent"
-                      />
+                )}
+                {/* 阶段大纲目标与 Beats 卡片 */}
+                {currentStage && (
+                  <div className="border-b border-border-default bg-surface px-6 py-2.5 space-y-2 shrink-0">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="px-2 py-0.5 rounded bg-accent/10 text-accent font-bold text-xs shrink-0">
+                          第 {stageIndex >= 0 ? stageIndex + 1 : 1} 幕
+                        </span>
+                        <h2 className="text-sm font-bold text-ink truncate">
+                          {cleanStageTitle(currentStage.title)}
+                        </h2>
+                        {currentStage.location && (
+                          <span className="text-xs text-muted shrink-0">📍 {currentStage.location}</span>
+                        )}
+                        {currentStage.endCondition && (
+                          <span className="text-xs text-muted shrink-0 hidden xl:inline">🏁 {currentStage.endCondition}</span>
+                        )}
+                        <button type="button" onClick={() => setMobileStagePickerOpen(!mobileStagePickerOpen)}
+                          aria-expanded={mobileStagePickerOpen}
+                          className="xl:hidden rounded border border-border-default px-2 py-1 text-xs text-muted hover:text-ink">
+                          切换幕
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] bg-surface-muted p-0.5 text-xs">
+                          {([
+                            { id: 'beats' as const, label: `分镜 (${getEffectiveStageScenes(currentStage, document.scenes).length})` },
+                            { id: 'chat' as const, label: `对话台词 (${document.messages.filter(m => m.stageId === currentStage.id).length})` },
+                            { id: 'moments' as const, label: `朋友圈 (${document.posts.filter(p => p.stageId === currentStage.id).length})` },
+                            { id: 'facts' as const, label: `剧情事实 (${document.facts.filter(f => f.stageId === currentStage.id).length})` },
+                          ]).map((v) => (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => setContentView(v.id)}
+                              className={`px-3 py-1 rounded-[var(--radius-control)] transition-colors cursor-pointer ${
+                                contentView === v.id
+                                  ? 'bg-surface font-semibold text-ink shadow-2xs'
+                                  : 'text-muted hover:text-ink'
+                              }`}
+                            >
+                              {v.label}
+                            </button>
+                          ))}
+                        </div>
+
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-ink">活动主题</label>
-                      <Input
-                        aria-label="活动主题"
-                        value={document.activity.theme || ''}
-                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, theme: e.target.value } })}
-                        className="h-8 text-sm bg-transparent"
+
+                    {mobileStagePickerOpen && (
+                      <div className="xl:hidden flex gap-2 overflow-x-auto border-t border-border-subtle pt-2">
+                        {stages.map((stage, index) => (
+                          <button key={stage.id} type="button" aria-pressed={stage.id === currentStage.id} onClick={() => { setFocusedStageId(stage.id); setMobileStagePickerOpen(false); }}
+                            className={`shrink-0 rounded-[var(--radius-control)] px-3 py-1.5 text-xs ${stage.id === currentStage.id ? 'bg-accent text-white' : 'bg-surface-muted text-ink'}`}>
+                            第 {index + 1} 幕 · {cleanStageTitle(stage.title)}
+                          </button>
+                        ))}
+                        <button type="button" onClick={handleAddStageInPlace} className="shrink-0 rounded-[var(--radius-control)] border border-dashed border-border-default px-3 py-1.5 text-xs text-accent">新增一幕</button>
+                      </div>
+                    )}
+
+                    {/* 阶段指导说明与关键事件 (Beats) - 紧凑单行条 */}
+                    {(currentStage.instruction || (currentStage.requiredBeats && currentStage.requiredBeats.length > 0)) && (
+                      <div className="flex items-center justify-between gap-3 text-xs text-muted pt-1.5 border-t border-border-subtle">
+                        <div className="flex items-center gap-2 min-w-0 truncate">
+                          {currentStage.instruction && (
+                            <span className="truncate" title={currentStage.instruction}>
+                              <span className="font-semibold text-ink">目标：</span>
+                              {currentStage.instruction}
+                            </span>
+                          )}
+                        </div>
+                        {currentStage.requiredBeats && currentStage.requiredBeats.length > 0 && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[11px] font-semibold text-muted">关键事件:</span>
+                            {currentStage.requiredBeats.map((beat) => {
+                              const isMentioned =
+                                document.messages.some((m) => m.stageId === currentStage.id && m.text.includes(beat.text)) ||
+                                document.facts.some((f) => f.stageId === currentStage.id && f.text.includes(beat.text));
+                              return (
+                                <span
+                                  key={beat.id}
+                                  title={beat.text}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] ${
+                                    isMentioned
+                                      ? 'bg-emerald-500/10 text-emerald-700 font-medium'
+                                      : 'bg-surface-muted text-muted'
+                                  }`}
+                                >
+                                  <span>{isMentioned ? '✓' : '○'}</span>
+                                  <span className="max-w-[120px] truncate">{beat.text}</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 核心编辑器 */}
+                <div className={`flex-1 min-h-0 ${contentView === 'beats' ? 'flex flex-col overflow-hidden p-3 sm:p-4' : 'overflow-y-auto p-4 sm:p-6'}`}>
+                  {!currentStage ? null : contentView === 'beats' ? (
+                    <SceneBeatEditor
+                      activityId={activityId}
+                      stage={currentStage}
+                      document={document}
+                      actors={actors}
+                      onUpdateDocument={handleUpdateDocument}
+                      onBeforeMediaGeneration={() => draft.flush()}
+                      onAdoptMediaResult={(nextDocument, draftVersion) => handleBeatServerDraft({ document: nextDocument, draftVersion })}
+                      onAutoAppliedCheck={() => { void refreshBeatServerDraft(); }}
+                    />
+                  ) : (
+                    <RecordsEditor
+                      document={document}
+                      stages={stages}
+                      actors={actors}
+                      currentStageId={effectiveStageId}
+                      onSelectStage={setFocusedStageId}
+                      hideStageSelector={true}
+                      onUpdateDocument={handleUpdateDocument}
+                      hideViewTabs
+                      onOpenWorkbench={(slotId) => setWorkbenchSlotId(slotId)}
+                      activeView={contentView}
+                      onActiveViewChange={(v) => setContentView(v === 'script' ? 'beats' : v)}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 步骤 3：视觉与素材 (MediaWorkstation) */}
+          {currentStep === 'media' && (
+            <div className="p-6 max-w-6xl mx-auto w-full">
+              <MediaWorkstation
+                activity={activity}
+                document={document}
+                currentMediaRevision={activityData.currentMediaRevision}
+                actors={actors}
+                onUpdateDocument={handleUpdateDocument}
+              />
+            </div>
+          )}
+
+          {currentStep === 'playback' && (
+            <div className={`flex-1 min-h-0 ${comicMode ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 sm:p-6'}`}>
+              <PlaybackWorkstation
+                key={`${activity.id}:${activity.currentContentRevisionId || 'none'}:${activity.currentMediaRevisionId || 'none'}`}
+                activity={activity}
+                document={document}
+                currentPlaybackRevision={playbackRevision}
+                mediaRevision={activityData.currentMediaRevision || null}
+                actors={actors}
+              />
+            </div>
+          )}
+
+          {/* 步骤 4：导出交付 (ExportPanel) */}
+          {currentStep === 'export' && (
+            <div className="p-6 max-w-5xl mx-auto w-full">
+              <ExportPanel
+                activity={activity}
+                creationProfile={document.activity.creationProfile}
+                mediaRevision={activityData.currentMediaRevision}
+                playbackRevision={playbackRevision}
+                contentRevision={activityData.currentContentRevision}
+              />
+            </div>
+          )}
+        </main>
+
+        {/* === 右侧：统一 AI 伴侣侧栏 (Copilot Panel) === */}
+        {/* === 右侧：统一 AI 伴侣侧栏 (三段式透明工作流) === */}
+        {copilotOpen && !comicMode && (
+          <aside className="fixed inset-x-0 top-24 bottom-0 z-40 flex w-full min-h-0 flex-col border-l border-border-default bg-surface shadow-xs xl:relative xl:inset-auto xl:z-auto xl:h-full xl:w-80 xl:shrink-0 xl:w-88">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-3.5">
+              {/* 头部标题与模型运行状态 */}
+              <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-ink">
+                  <Sparkles className="h-4 w-4 text-purple-500" />
+                  <span>AI 创作伴侣</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className={`text-[10px] ${generation.running ? 'bg-amber-500/10 text-amber-600 border-amber-500/30 animate-pulse' : 'bg-purple-500/10 text-purple-600 border-purple-500/30'}`}>
+                    {generation.running ? '任务进行中' : generation.failed ? '生成失败' : !appLlmStatus?.text?.ready ? '模型未就绪' : generation.candidates.length ? '候选待审' : '待命'}
+                  </Badge>
+                  <button type="button" className="xl:hidden rounded border border-border-default px-2 py-1 text-xs text-muted hover:text-ink" aria-label="收起 AI 助手" onClick={() => setCopilotOpen(false)}>收起</button>
+                </div>
+              </div>
+
+              {/* 段落 ①：模型选择与生成内容类型 */}
+              <div className="p-3 rounded-xl bg-surface-raised border border-border-default space-y-2.5 text-xs shadow-2xs">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-muted">
+                    <span className="flex items-center gap-1.5">
+                      <span>所有活动的默认文本模型</span>
+                      <Link
+                        href="/settings/public-services?section=routing&app=activities"
+                        target="_blank"
+                        className="text-[10px] text-accent hover:underline font-normal inline-flex items-center gap-0.5"
+                        title="前往公共服务配置与路由模型"
+                      >
+                        配置 <ExternalLink className="h-2.5 w-2.5" />
+                      </Link>
+                    </span>
+                    <span
+                      className={`text-[10px] font-medium flex items-center gap-1 ${
+                        appLlmStatus?.text?.ready ? 'text-emerald-600' : 'text-amber-600'
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          appLlmStatus?.text?.ready ? 'bg-emerald-500' : 'bg-amber-500'
+                        }`}
                       />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-ink">活动地点</label>
-                      <Input
-                        aria-label="活动地点"
-                        value={document.activity.location || ''}
-                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, location: e.target.value } })}
-                        className="h-8 text-sm bg-transparent"
-                      />
-                    </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <label className="text-sm font-medium text-ink">活动日期（可选，写入后出现在角色日历）</label>
-                      <Input
-                        aria-label="活动日期"
-                        type="date"
-                        value={document.activity.scheduledDate || ''}
-                        onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, scheduledDate: e.target.value || null } })}
-                        className="h-8 text-sm bg-transparent"
-                      />
-                      <p className="text-xs text-muted">
-                        {saveStatus === 'saved' ? '当前日期已保存。' : '日期修改会随草稿自动保存，保存完成后才会同步到日历。'}
+                      {appLlmStatus?.text?.ready ? '在线' : '未就绪'}
+                    </span>
+                  </div>
+
+                  {configuredTextProfiles.length > 0 ? (
+                    <select
+                      value={profileSelection || activeProfile?.id || ''}
+                      onChange={(e) => void handleProfileChange(e.target.value)}
+                      disabled={!configuredTextProfiles.length || profileSaving}
+                      className="w-full h-8 rounded-lg border border-border-default bg-surface px-2.5 text-xs font-semibold text-ink focus:border-accent focus:outline-none"
+                    >
+                      {!activeProfile && <option value="" disabled>{assignedTextProfileId ? '当前绑定模型未启用或无文本能力' : '尚未绑定文本模型'}</option>}
+                      {configuredTextProfiles.map((p) => {
+                        const isAssigned = p.id === assignedTextProfileId;
+                        return (
+                          <option key={p.id} value={p.id}>
+                            🤖 {p.name} ({p.model || '未设定具体模型名'}){isAssigned ? ' [应用默认]' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] space-y-1">
+                      <div className="font-semibold flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                        <span>未配置文本模型</span>
+                      </div>
+                      <p className="text-[10px] text-amber-700 leading-tight">
+                        当前尚未在公共服务中添加可用的大模型。
                       </p>
+                      <Link
+                        href="/settings/public-services?section=models"
+                        target="_blank"
+                        className="inline-flex items-center gap-1 text-[11px] text-accent font-semibold underline pt-0.5"
+                      >
+                        前往公共服务添加模型 <ExternalLink className="h-3 w-3" />
+                      </Link>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 border-t border-border-subtle pt-2">
-                    <span className="text-xs text-muted">参与角色：</span>
-                    {actors.map((actor) => (
-                      <details key={actor.id} id={`actor-${actor.id}`} className="w-full rounded border border-border-default p-2"><summary className="cursor-pointer text-sm">{actor.displayName} · 修改本场设定</summary><div className="mt-2 space-y-2">
-                        <label className="block text-xs">服装<Input value={actor.outfitDescription} onChange={e=>handleUpdateDocument({...document,actors:actors.map(a=>a.id===actor.id?{...a,outfitDescription:e.target.value}:a)})}/></label>
-                        <label className="block text-xs">本场职责<Input value={actor.activityRole} onChange={e=>handleUpdateDocument({...document,actors:actors.map(a=>a.id===actor.id?{...a,activityRole:e.target.value}:a)})}/></label>
-                        <label className="block text-xs">身份描述<Input value={String(actor.persona.identity||'')} onChange={e=>handleUpdateDocument({...document,actors:actors.map(a=>a.id===actor.id?{...a,persona:{...a.persona,identity:e.target.value}}:a)})}/></label>
-                        <p className="text-xs text-muted">修改仅用于本场活动；保存新版本后可查看影响清单。外观提示词和参考图可在媒体提示词工作台继续调整。</p>
-                      </div></details>
+                  )}
+                  <p className="text-[10px] leading-relaxed text-muted">修改后会影响活动应用中的所有活动，不是本活动专属设置。</p>
+                  {profileError && <p role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 px-2 py-1.5 text-[11px] text-danger-fg">{profileError}</p>}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-muted">生成目标内容</label>
+                  <div className="grid grid-cols-2 gap-1.5 text-xs font-medium">
+                    {[
+                      { id: 'shot' as const, label: '🎬 配图描述' },
+                      { id: 'continue-chat' as const, label: '💬 续写对话' },
+                      { id: 'moment' as const, label: '📸 朋友圈文案' },
+                      { id: 'stage' as const, label: '📑 本幕对话与动态' },
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setCopilotGenType(t.id)}
+                        className={`py-1.5 px-2 rounded-lg border text-left transition-all cursor-pointer text-[11px] font-semibold ${
+                          copilotGenType === t.id
+                            ? 'border-accent bg-accent/10 text-accent ring-1 ring-accent/30 shadow-2xs'
+                            : 'border-border-default bg-surface hover:bg-surface-muted text-muted hover:text-ink'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
                     ))}
                   </div>
-                  <details className="rounded-lg border border-border-subtle p-3">
-                  <summary className="cursor-pointer text-sm font-medium">高级选项：创作偏好与模板（可选）</summary>
-                  <ActivityCreationProfile activityId={activity.id} headVersion={activity.headVersion} value={document.activity.creationProfile} disabled={saveStatus!=='saved'} onApplied={()=>{void refetchActivity();void refetchDraft();}}/>
-                  <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
-                    <span className="text-xs text-muted">复用本场活动设置</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setPresetsModalOpen(true)}
-                      className="text-xs flex items-center gap-1.5"
-                    >
-                      <Bookmark className="h-3.5 w-3.5 text-accent" />
-                      另存为模板 / 预设管理
-                    </Button>
-                  </div>
-                  </details>
                 </div>
-                {/*
-                 * 阶段设定独占一行。
-                 *
-                 * 之前是左窄右宽两栏：左栏只有活动信息、很短，右栏阶段列表很长，
-                 * 左栏下方会空出一大片。改成上下堆叠后两栏都占满宽度，也不再留白。
-                 */}
-                <StagesEditor
-                  stages={stages}
-                  actors={actors}
-                  onChange={(newStages) => handleUpdateDocument({ ...document, stages: newStages })}
-                />
+              </div>
+
+              {/* 段落 ②：提交给文本任务的提示词 */}
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
+                    <Send className="h-3 w-3" />
+                    提示词工作台 (Prompt)
+                  </span>
+                  <span className="text-[10px] text-muted">将真实交付模型</span>
+                </div>
+
+                {/* 用户创作意图 Prompt 输入框 */}
+              <div className="space-y-1">
+                  <Textarea
+                    value={copilotUserPrompt}
+                    onChange={(e) => setCopilotUserPrompt(e.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        if (appLlmStatus?.text?.ready && activeProfile && stages.length && !profileSaving && !preparingGeneration && !generation.running && !generation.starting) {
+                          void handleCopilotGenerate();
+                        }
+                      }
+                    }}
+                    placeholder="补充本次写作的事件、情绪或风格要求…"
+                    rows={3}
+                    className="text-xs font-medium text-ink bg-surface-muted/40 focus:bg-surface leading-relaxed rounded-lg"
+                  />
+                </div>
+
+                {/* 阶段上下文目标 */}
+                {effectiveStage && (
+                  <div className="p-2 rounded-lg bg-surface-muted/50 border border-border-subtle text-[11px] space-y-1">
+                    <div className="font-semibold text-ink flex items-center justify-between">
+                      <span>阶段目标</span>
+                      <span className="text-muted font-mono">
+                        第 {stages.findIndex((s) => s.id === effectiveStage.id) + 1} 幕
+                      </span>
+                    </div>
+                    <p className="text-muted truncate" title={effectiveStage.instruction}>
+                      {effectiveStage.instruction || '未填写阶段行动要求'}
+                    </p>
+                  </div>
+                )}
+
+                <p className="rounded-lg border border-border-subtle bg-surface-muted/40 p-2 text-[11px] leading-relaxed text-muted">
+                  此处指令会随本次文本任务提交；阶段主旨和系统提示词微调在阶段设置中编辑。
+                </p>
+              </div>
+
+              {/* 段落 ③：生成执行按钮 */}
+              <div className="pt-1">
+                <Button
+                  size="sm"
+                  onClick={() => void handleCopilotGenerate()}
+                  disabled={preparingGeneration || generation.running || generation.starting || !appLlmStatus?.text?.ready || !activeProfile || profileSaving || stages.length === 0}
+                  className="w-full h-8 text-xs bg-accent text-white hover:bg-accent-dark font-bold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>{preparingGeneration ? '正在准备…' : generation.running ? '正在生成…' : generation.starting ? '正在提交…' : '生成候选'}</span>
+                </Button>
+                {copilotError && <p role="alert" className="mt-2 text-[11px] text-danger-fg">{copilotError}</p>}
+                {generation.errorMsg && <p role="alert" className="mt-2 text-[11px] text-danger-fg">{generation.errorMsg}</p>}
+                {generation.failed && <p role="alert" className="mt-2 text-[11px] text-danger-fg">{generation.job?.errorMessage || '生成任务失败，可调整要求后重试。'}</p>}
+                {generation.queryError && <p role="alert" className="mt-2 text-[11px] text-danger-fg">读取当前任务失败：{generation.queryError}</p>}
+                <Button type="button" variant="outline" size="sm" className="mt-2 w-full h-8 text-xs"
+                  disabled={!stages.length || !appLlmStatus?.text?.ready || profileSaving || preparingGeneration || generation.running || generation.starting}
+                  onClick={() => { setGenerationStageId(effectiveStageId); setGenerationModalOpen(true); }}>
+                  高级生成：整场规划与局部重写
+                </Button>
+              </div>
+
+              {/* 候选采纳区 (替代原来的行内候选面板) */}
+              <div className="space-y-2 pt-2 border-t border-border-subtle">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-muted">
+                    待采纳候选 ({generation.candidates.length})
+                  </span>
+                  {generation.candidates.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => updateCurrentJobId(null)}
+                      className="text-[11px] text-accent hover:underline cursor-pointer"
+                    >
+                      收起候选
+                    </button>
+                  )}
+                </div>
+
+                {generation.candidates.length === 0 ? (
+                  <div className="p-4 rounded-[var(--radius-control)] border border-dashed border-border-control text-center text-muted text-xs">
+                    暂无待处理候选
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {generation.candidates.map((cand) => {
+                      const payload = cand.payload as Record<string, unknown> & {
+                        messages?: Array<{ text?: string; speakerActorId?: string }>;
+                        posts?: Array<{ text?: string; authorActorId?: string }>;
+                      };
+                      const nameOf = (actorId?: string) =>
+                        actors.find((a) => a.id === actorId)?.displayName || actorId || '角色';
+                      const lines = [
+                        ...(payload.messages || []).map((m) => `${nameOf(m.speakerActorId)}: ${m.text || ''}`),
+                        ...(payload.posts || []).map((p) => `${nameOf(p.authorActorId)}（动态）: ${p.text || ''}`),
+                      ];
+                      const modeLabels: Record<string, string> = {
+                        plan: '阶段规划', 'whole-text': '整场生成',
+                        'rewrite-records': '局部重写', invite: '邀请文案', wish: '生日祝福',
+                        moment: '朋友圈文案', shot: '配图描述', 'continue-chat': '续写对话',
+                        stage: '本幕对话与动态',
+                      };
+                      const stageTitles = Array.isArray(payload.stages)
+                        ? (payload.stages as Array<{ title?: string }>).map((item) => item.title).filter(Boolean).slice(0, 3)
+                        : [];
+                      const overview = typeof payload.overview === 'string' ? payload.overview
+                        : typeof payload.summary === 'string' ? payload.summary : '';
+
+                      return (
+                        <div
+                          key={cand.id}
+                          className="p-3 rounded-[var(--radius-control)] bg-purple-500/5 border border-purple-500/20 space-y-2 text-xs"
+                        >
+                          <div className="flex items-center justify-between text-[11px] text-purple-700 font-semibold">
+                            <span>{modeLabels[generation.job?.mode || ''] || '文本候选'}</span>
+                          </div>
+                          <div className="text-ink text-xs space-y-1 max-h-36 overflow-y-auto leading-relaxed">
+                            {overview ? (
+                              <div className="bg-surface/80 p-1.5 rounded whitespace-pre-wrap break-words">{overview}</div>
+                            ) : lines.length > 0 ? (
+                              lines.map((l, idx) => (
+                                <div key={idx} className="bg-surface/80 p-1.5 rounded text-[11px]">
+                                  {l}
+                                </div>
+                              ))
+                            ) : stageTitles.length > 0 ? (
+                              <div className="bg-surface/80 p-1.5 rounded">阶段：{stageTitles.join('、')}</div>
+                            ) : (
+                              <p className="text-muted">新生成候选内容</p>
+                            )}
+                          </div>
+                          <Button type="button" size="sm" variant="outline" className="w-full"
+                            onClick={() => setReviewCandidateId(cand.id)}>
+                            审阅此候选
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    {reviewCandidateId && generation.candidates.some((candidate) => candidate.id === reviewCandidateId) && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs font-semibold text-ink">
+                          <span>候选差异审阅</span>
+                          <button type="button" className="text-muted hover:text-ink" onClick={() => setReviewCandidateId(null)}>关闭</button>
+                        </div>
+                        <CandidateReviewPanel
+                          key={reviewCandidateId}
+                          activityId={activityId}
+                          candidateId={reviewCandidateId}
+                          onApplied={() => {
+                            setReviewCandidateId(null);
+                            void refetchActivity();
+                            void refetchDraft();
+                            updateCurrentJobId(null);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
 
-          {/* 内容 tab：群聊 / 朋友圈 / 事件（由 contentView 决定） */}
-          {activeTab === 'content' && contentView !== 'settings' && (
-            <div className="space-y-3">
-            <InlineCandidatePanel
-              candidates={generation.candidates}
-              actors={actors}
-              running={generation.running}
-              failed={generation.failed}
-              errorMsg={generation.errorMsg}
-              adopting={generation.adopting}
-              onAdopt={(candidateId) => void generation.adopt(candidateId)}
-              onDismiss={() => { generation.reset(); setAutoContinueNotice(null); }}
-            />
-            <RecordsEditor
-              document={document}
-              stages={stages}
-              actors={actors}
-              currentStageId={focusedStageId}
-              onSelectStage={setFocusedStageId}
-              onUpdateDocument={handleUpdateDocument}
-              onOpenAiGenerator={async (stageId) => { if (await draft.flush()) { setGenerationStageId(stageId); setGenerationModalOpen(true); } }}
-              onGenerateChatRound={async (stageId, conversationId) => {
-                // 用户主动操作：自动续聊的连续计数归零。
-                autoContinueCountRef.current = 0;
-                setAutoContinueNotice(null);
-                setAutoContinueTarget({ stageId, conversationId });
-                setAutoContinueTick((current) => current + 1);
-                if (await draft.flush()) void generation.start({ mode: 'continue-chat', scope: { stageId, conversationId } });
-              }}
-              onGenerateMoment={async (stageId, authorActorId) => {
-                if (await draft.flush()) void generation.start({ mode: 'moment', scope: { stageId, authorActorId } });
-              }}
-              autoContinue={autoContinue}
-              onAutoContinueChange={(next) => {
-                autoContinueCountRef.current = 0;
-                setAutoContinueNotice(null);
-                setAutoContinue(next);
-              }}
-              autoContinueNotice={autoContinueNotice}
-              onOpenWorkbench={(slotId) => setWorkbenchSlotId(slotId)}
-              activeView={contentView}
-              onActiveViewChange={setContentView}
-            />
-            </div>
-          )}
+            {currentStep === 'script' && (
+              <div className="p-3 border-t border-border-subtle text-[10px] text-muted text-center">
+                在提示词输入框内按 Ctrl/⌘ + Enter 可生成；候选需先审阅再采用。
+              </div>
+            )}
+          </aside>
+        )}
 
-          {/* TAB 3: Media Workstation */}
-          {activeTab === 'media' && (
-            <MediaWorkstation
-              activity={activity}
-              document={document}
-              currentMediaRevision={activityData.currentMediaRevision}
-              actors={actors}
-              onUpdateDocument={handleUpdateDocument}
-            />
-          )}
+      </div>
 
-          {/* TAB 4: Playback & Export */}
-          {activeTab === 'playback' && (
-            <PlaybackWorkstation
-              activity={activity}
-              document={document}
-              currentPlaybackRevision={activityData.currentPlaybackRevision}
-              actors={actors}
-            />
-          )}
+      {/* 模态框与抽屉 */}
+      {reflectOpen && (
+        <ActivityReflectDialog
+          open={reflectOpen}
+          onOpenChange={setReflectOpen}
+          activityId={activityId}
+          activityTitle={document?.activity.title || '未命名活动'}
+          version={draft.version()}
+          stages={stages.map((stage) => ({ id: stage.id, title: stage.title, instruction: stage.instruction }))}
+        />
+      )}
 
-          {/* 导出：链路末端，与内容/素材/回放同层 */}
-          {activeTab === 'export' && (
-            <ExportPanel
-              activity={activity}
-              creationProfile={document.activity.creationProfile}
-            />
-          )}
-        </fieldset>
-
-        {/* AI Generation Modal */}
-        {generationModalOpen && <GenerationModal
+      {generationModalOpen && (
+        <GenerationModal
           open={generationModalOpen}
           onOpenChange={setGenerationModalOpen}
           activity={activity}
+          document={document}
           stages={stages}
-          currentStageId={generationStageId}
-          onCandidateAdopted={() => {
-            refetchActivity();
-            refetchDraft();
+          currentStageId={effectiveGenerationStageId}
+          jobId={generation.jobId}
+          onJobIdChange={updateCurrentJobId}
+          onBeforeGenerate={() => draft.flush()}
+          job={generation.job || null}
+          candidates={generation.candidates}
+          starting={generation.starting}
+          startError={generation.errorMsg}
+          onStartGeneration={generation.start}
+          onReviewCandidate={(candidateId) => {
+            setReviewCandidateId(candidateId);
+            setCopilotOpen(true);
+            setGenerationModalOpen(false);
           }}
-        />}
+          canGenerate={Boolean(appLlmStatus?.text?.ready && activeProfile && stages.length && !profileSaving && !generation.running && !generation.starting)}
+        />
+      )}
 
-        {/* History Drawer */}
-        <HistoryDrawer
-          open={historyDrawerOpen}
-          onOpenChange={setHistoryDrawerOpen}
+      <HistoryDrawer
+        open={historyDrawerOpen}
+        onOpenChange={setHistoryDrawerOpen}
+        activity={activity}
+        onRestored={() => {
+          refetchActivity();
+          refetchDraft();
+        }}
+      />
+
+      <ReworkPanel
+        open={reworkOpen}
+        onOpenChange={setReworkOpen}
+        activityId={activityId}
+        headVersion={activity.headVersion}
+        document={document}
+        onSaved={() => {
+          void refetchActivity();
+        }}
+      />
+
+      {workbenchSlotId && document && (
+        <ImageWorkbench
+          isOpen={Boolean(workbenchSlotId)}
+          onClose={() => setWorkbenchSlotId(null)}
           activity={activity}
-          onRestored={() => {
-            refetchActivity();
-            refetchDraft();
+          document={document}
+          initialSlotId={workbenchSlotId}
+          currentMediaRevision={activityData.currentMediaRevision}
+        />
+      )}
+
+      {presetsModalOpen && document && (
+        <ActivityPresetsModal
+          isOpen={presetsModalOpen}
+          onClose={() => setPresetsModalOpen(false)}
+          activity={activity}
+          document={document}
+        />
+      )}
+
+      {/* 挑选头像与立绘对话框 */}
+      {assetPickerActor && (
+        <ActorAssetPickerDialog
+          actor={assetPickerActor}
+          open={!!assetPickerActor}
+          onOpenChange={(open) => {
+            if (!open) setAssetPickerActor(null);
+          }}
+          onConfirm={(payload) => {
+            if (!document) return;
+            handleUpdateDocument({
+              ...document,
+              actors: actors.map((a) =>
+                a.id === assetPickerActor.id
+                  ? {
+                      ...a,
+                      ...(payload.avatarAssetId ? { avatarAssetId: payload.avatarAssetId, avatarUrl: payload.avatarUrl } : {}),
+                      ...(payload.portraitAssetId ? { portraitAssetId: payload.portraitAssetId, portraitUrl: payload.portraitUrl } : {}),
+                    }
+                  : a
+              ),
+            });
+            setAssetPickerActor(null);
           }}
         />
-
-        {/* Export Modal */}
-
-        {/* Image Workbench Modal */}
-        {workbenchSlotId && document && (
-          <ImageWorkbench
-            isOpen={Boolean(workbenchSlotId)}
-            onClose={() => setWorkbenchSlotId(null)}
-            activity={activity}
-            document={document}
-            initialSlotId={workbenchSlotId}
-            currentMediaRevision={activityData.currentMediaRevision}
-          />
-        )}
-
-        {/* Activity Presets Modal */}
-        {presetsModalOpen && document && (
-          <ActivityPresetsModal
-            isOpen={presetsModalOpen}
-            onClose={() => setPresetsModalOpen(false)}
-            activity={activity}
-            document={document}
-          />
-        )}
-      </PageContainer>
+      )}
     </div>
   );
 }

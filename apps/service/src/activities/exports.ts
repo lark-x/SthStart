@@ -416,8 +416,18 @@ export async function collectExportEntries(
   const contentRev = store.getContentRevision(activityId, contentRevId);
   if (!contentRev) throw new Error('content_revision_not_found');
 
-  const mediaRevId = options.mediaRevisionId || activity.currentMediaRevisionId;
-  const mediaRev = mediaRevId ? store.getMediaRevision(activityId, mediaRevId) : null;
+  const mediaRevId = !options.mediaRevisionId
+    ? activity.currentMediaRevisionId
+    : options.mediaRevisionId === 'none' ? null : options.mediaRevisionId;
+  const selectedMediaRev = mediaRevId ? store.getMediaRevision(activityId, mediaRevId) : null;
+  if (options.mediaRevisionId && options.mediaRevisionId !== 'none' && !selectedMediaRev) {
+    throw new Error('media_revision_not_found');
+  }
+  if (options.mediaRevisionId && options.mediaRevisionId !== 'none'
+    && selectedMediaRev?.contentRevisionId !== contentRevId) {
+    throw new Error('media_revision_mismatch');
+  }
+  const mediaRev = selectedMediaRev?.contentRevisionId === contentRevId ? selectedMediaRev : null;
 
   const format: ExportFormat =
     options.format ||
@@ -445,7 +455,7 @@ export async function collectExportEntries(
 
   const requiredAssets = new Set([
     ...(mediaRev?.slotBindings || []).flatMap(binding => binding.assets.map(asset => asset.assetKey)),
-    ...contentRev.document.actors.flatMap(actor => [actor.avatarAssetKey, ...actor.appearanceReferenceAssetKeys].filter(Boolean)),
+    ...contentRev.document.actors.flatMap(actor => [actor.avatarAssetKey, ...(actor.appearanceReferenceAssetKeys ?? [])].filter(Boolean)),
   ]);
   const includedAssets = new Set(mediaEntries.map(entry => entry.assetKey));
   const missing = [...requiredAssets].filter(key => !includedAssets.has(key!));
@@ -474,9 +484,16 @@ export async function collectExportEntries(
   // 2. Playback document
   let playbackDoc: PlaybackDocument;
   const playbackRevId = options.playbackRevisionId || activity.currentPlaybackRevisionId;
-  const playbackRev = playbackRevId ? store.getPlaybackRevision(activityId, playbackRevId) : null;
+  const playbackRevRecord = playbackRevId ? store.getPlaybackRevisionRecord(activityId, playbackRevId) : null;
+  const playbackRev = playbackRevRecord?.document || null;
 
-  if (playbackRev) {
+  const useSavedPlayback = Boolean(playbackRevRecord
+    && playbackRevRecord.contentRevisionId === contentRevId
+    && (playbackRevRecord.mediaRevisionId === (mediaRev?.id || 'none')
+      || (!mediaRev && playbackRevRecord.mediaRevisionId === 'none'))
+    && playbackRev?.contentRevisionId === contentRevId
+    && playbackRev.mediaRevisionId === playbackRevRecord.mediaRevisionId);
+  if (useSavedPlayback && playbackRev) {
     playbackDoc = playbackRev;
   } else {
     playbackDoc = generateAutoPlayback(contentRevId, contentRev.document, mediaRev?.id || 'none', mediaDoc);
@@ -826,7 +843,7 @@ export async function collectExportEntries(
     contentRevisionId: contentRevId,
     mediaRevisionId: mediaRev?.id,
     imageConfigRevisionId: mediaRev?.imageConfigRevisionId || undefined,
-    playbackRevisionId: playbackDoc.schemaVersion === 1 ? 'auto' : undefined,
+    playbackRevisionId: useSavedPlayback ? playbackRevId! : 'auto',
     exportedAt: nowIso(),
     files: manifestFiles,
   };

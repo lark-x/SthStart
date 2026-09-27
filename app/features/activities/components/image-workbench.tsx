@@ -49,6 +49,7 @@ import {
   useImageConfigDraft,
   useImageAttempts,
   useActivityCapabilities,
+  useActivityGenerationPresets,
   useActivityAssets,
   useAssetLineage,
 } from '../queries';
@@ -146,10 +147,24 @@ export function ImageWorkbench({
   // Generation Params
   const [seed, setSeed] = useState<number>(-1);
   const [selectedReferenceKey, setSelectedReferenceKey] = useState<string | null>(null);
+  const [selectedGenerationPresetId, setSelectedGenerationPresetId] = useState('');
   const [referenceRole, setReferenceRole] = useState<'init_image' | 'identity' | 'outfit' | 'style'>('init_image');
   const [denoise, setDenoise] = useState<number>(0.75);
   const [characterReferences, setCharacterReferences] = useState<Array<{ characterId: string; characterName: string; version?: number; referenceId: string; url: string }>>([]);
   const [transferringReference, setTransferringReference] = useState<string | null>(null);
+  const { data: generationPresets = [], isLoading: generationPresetsLoading } = useActivityGenerationPresets(isOpen);
+  const allowedPresetPurposes = selectedReferenceKey
+    ? ['activity_image_edit', 'activity_media_slot']
+    : ['activity_image_text', 'activity_media_slot'];
+  const generationPresetOptions = generationPresets.filter((preset) => preset.enabled && allowedPresetPurposes.includes(preset.purpose));
+  const selectedGenerationPreset = generationPresetOptions.find((preset) => preset.id === selectedGenerationPresetId);
+
+  const handleSelectReferenceAsset = (assetKey: string | null) => {
+    setSelectedReferenceKey(assetKey);
+    setSelectedGenerationPresetId('');
+    setPreparedRecipe(null);
+    setPreparedCompilation(null);
+  };
 
   // Comparison State
   const [compareAttemptId, setCompareAttemptId] = useState<string | null>(null);
@@ -241,7 +256,7 @@ export function ImageWorkbench({
     try {
       const asset = await transferCharacterReferenceToActivity(activity.id, { characterId: reference.characterId, version: reference.version, referenceId: reference.referenceId });
       await queryClient.invalidateQueries();
-      setSelectedReferenceKey(asset.assetKey);
+      handleSelectReferenceAsset(asset.assetKey);
       setStatusMessage({ type: 'success', text: `已将${reference.characterName}的角色参考图转入本活动。` });
     } catch (error) {
       setStatusMessage({ type: 'error', text: `转入角色参考图失败：${error instanceof Error ? error.message : String(error)}` });
@@ -261,6 +276,7 @@ export function ImageWorkbench({
           imageConfigRevisionId: configRevision?.id || configDraftData?.baseRevisionId || undefined,
           slotId: activeSlot.id,
           expectedHeadVersion: fresh.activity.headVersion,
+          ...(selectedGenerationPreset ? { presetId: selectedGenerationPreset.id, presetRevision: selectedGenerationPreset.revision } : {}),
           overrides: overrides.length > 0 ? overrides : undefined,
           references: selectedReferenceKey ? (() => {
             const asset = assetsData?.items.find((item) => item.assetKey === selectedReferenceKey);
@@ -339,7 +355,7 @@ export function ImageWorkbench({
     if (!file) return;
     try {
       const asset = await uploadAssetMutation.mutateAsync({ id: activity.id, file });
-      setSelectedReferenceKey(asset.assetKey);
+      handleSelectReferenceAsset(asset.assetKey);
       handleUpdateSlotConfig({
         referenceAssetKeys: [asset.assetKey],
       });
@@ -703,7 +719,7 @@ export function ImageWorkbench({
                     variant="ghost"
                     size="sm"
                     className="h-6 text-sm px-1 text-muted hover:text-red-400"
-                    onClick={() => setSelectedReferenceKey(null)}
+                    onClick={() => handleSelectReferenceAsset(null)}
                   >
                     清除
                   </Button>
@@ -711,7 +727,7 @@ export function ImageWorkbench({
               </div>
             </div>
 
-            <select aria-label="选择已有参考图片" value={selectedReferenceKey || ''} onChange={(e) => setSelectedReferenceKey(e.target.value || null)} className="w-full bg-surface border border-border-control rounded p-2 text-sm">
+            <select aria-label="选择已有参考图片" value={selectedReferenceKey || ''} onChange={(e) => handleSelectReferenceAsset(e.target.value || null)} className="w-full bg-surface border border-border-control rounded p-2 text-sm">
               <option value="">不使用参考图</option>
               {(assetsData?.items || []).filter((asset) => asset.type === 'image').map((asset) => <option key={asset.assetKey} value={asset.assetKey}>{asset.assetKey}</option>)}
             </select>
@@ -782,6 +798,34 @@ export function ImageWorkbench({
 
           {/* Execution Plan Hash & Seed Input */}
           <div className="bg-surface/60 border border-border-default rounded-lg p-3 space-y-2.5">
+            <div className="space-y-1.5">
+              <label htmlFor="activity-image-generation-preset" className="text-sm text-muted font-medium">图片模型与参数预设</label>
+              <select
+                id="activity-image-generation-preset"
+                aria-label="图片模型与参数预设"
+                value={selectedGenerationPreset ? selectedGenerationPreset.id : ''}
+                onChange={(event) => {
+                  setSelectedGenerationPresetId(event.target.value);
+                  setPreparedRecipe(null);
+                  setPreparedCompilation(null);
+                }}
+                className="w-full rounded border border-border-control bg-surface px-2 py-2 text-sm text-ink"
+              >
+                <option value="">沿用活动默认配置</option>
+                {generationPresetOptions.map((preset) => (
+                  <option key={preset.id} value={preset.id}>{preset.name} · {preset.workflowId} v{preset.workflowVersion}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted">
+                {selectedGenerationPreset
+                  ? `本次固定使用「${selectedGenerationPreset.name}」及其模型、采样参数。`
+                  : generationPresetsLoading
+                    ? '正在读取可用预设…'
+                    : generationPresetOptions.length
+                      ? '不选预设时沿用活动当前默认；选择 Base/Turbo 只影响本次，不会改动全局默认。'
+                      : '当前用途没有可选预设；不选时仍沿用活动当前默认配置。'}
+              </p>
+            </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted font-medium">随机种子 (Seed)</span>
               <div className="flex items-center gap-2">

@@ -237,7 +237,7 @@ export async function runTopicCollection(
                     const args = await researchToolArguments(readTool, keyword, '', entry, async prompt => {
                       const profile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
                       if (!profile) throw new Error('文本模型未就绪');
-                      return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch));
+                      return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database, feature: 'topic-collection', businessEvent: 'topics.collection.tool_arguments', objectType: 'topic-collection', objectId: run.id }));
                     });
                     const read = await client.callTool(readTool.name, args);
                     if (!read.ok) throw new Error(read.text || '读取失败');
@@ -296,7 +296,7 @@ export async function runTopicCollection(
 
     const recentTopics = topics.listTopics({ days: 7, pageSize: 100 }).items;
     const organized = parseOrganized(
-      await callLlm(profile, buildOrganizePrompt(deduped, settings, COLLECTION_WINDOW_DAYS, recentTopics), options.fetcher ?? fetch),
+      await callLlm(profile, buildOrganizePrompt(deduped, settings, COLLECTION_WINDOW_DAYS, recentTopics), options.fetcher ?? fetch, undefined, { database, feature: 'topic-collection', businessEvent: 'topics.collection.organize', objectType: 'topic-collection-run', objectId: run.id }),
       200,
     );
     if (!organized.length) {
@@ -382,7 +382,7 @@ async function buildToolArgs(
   return researchToolArguments(tool, keyword, '', undefined, async (prompt: string) => {
     const profile = await resolveAssignedLlmProfile(options.database, options.secrets, 'activities', 'text');
     if (!profile) throw new Error('文本模型未就绪，无法生成工具参数。');
-    const raw = await callLlm(profile, prompt, options.fetcher ?? fetch);
+    const raw = await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'topic-collection', businessEvent: 'topics.collection.tool_arguments', objectType: 'topic-collection' });
     return parseAiJsonOutput<unknown>(raw);
   });
 }

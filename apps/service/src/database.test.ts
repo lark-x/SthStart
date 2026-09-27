@@ -9,7 +9,7 @@ import { ServiceDatabase, SERVICE_DATABASE_MIGRATIONS, migrateDatabase } from '.
 test('fresh databases record an explicit migration baseline', () => {
   const database = new ServiceDatabase();
   const migrations = database.connection.prepare('SELECT version,name FROM schema_migrations').all() as Array<{ version: number; name: string }>;
-  assert.equal(migrations.length, 34);
+  assert.equal(migrations.length, SERVICE_DATABASE_MIGRATIONS.length);
   assert.equal(migrations[0].version, 1);
   assert.equal(migrations[0].name, 'initial');
   assert.equal(migrations[1].version, 2);
@@ -79,6 +79,11 @@ test('fresh databases record an explicit migration baseline', () => {
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_import_sessions'").get() !== undefined, true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_field_provenance'").get() !== undefined, true);
   assert.equal(database.connection.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='character_visual_references'").get() !== undefined, true);
+  const aiCallIndexes = database.connection.prepare("SELECT name FROM sqlite_schema WHERE type='index' AND name LIKE 'idx_ai_call_%'").all() as Array<{ name: string }>;
+  assert.deepEqual(new Set(aiCallIndexes.map((row) => row.name)), new Set([
+    'idx_ai_call_requested', 'idx_ai_call_app_status', 'idx_ai_call_event_trace', 'idx_ai_call_generation_task',
+    'idx_ai_call_events_call', 'idx_ai_call_business_event_requested', 'idx_ai_call_workflow_requested', 'idx_ai_call_object_requested',
+  ]));
   database.close();
 });
 
@@ -104,7 +109,7 @@ test('version one databases migrate existing LLM profiles to text capability', (
   const migrated = new ServiceDatabase(path);
   const row = migrated.connection.prepare("SELECT capabilities_json FROM provider_profile_options WHERE profile_id='old'").get() as { capabilities_json: string };
   assert.deepEqual(JSON.parse(row.capabilities_json), ['text']);
-  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 34);
+  assert.equal(migrated.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, SERVICE_DATABASE_MIGRATIONS.length);
   migrated.close();
 });
 
@@ -207,5 +212,45 @@ test('migration 20 保留同一资产的多条参考，且不要求头像必须�
     assert.equal(avatar?.artifact_id, 'art-asset-avatar', '无参考的头像仍要保留 artifact 关联');
     assert.equal(connection.prepare("SELECT count(*) count FROM character_visual_references WHERE asset_id='asset-avatar'").get()!.count, 0, '不应为头像编造参考行');
     assert.equal(connection.prepare("SELECT avatar_asset_id FROM character_profiles WHERE id='c1'").get()!.avatar_asset_id, 'asset-avatar', '头像归属不受影响');
+  } finally { connection.close(); }
+});
+
+test('migration 42 publishes an Anima LoRA workflow version without changing app defaults', () => {
+  const connection = new DatabaseSync(':memory:');
+  try {
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter((migration) => migration.version <= 41), 'service');
+    connection.prepare("INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES ('activity','活动','token','[]',1,'then','then')").run();
+    connection.prepare("INSERT INTO generation_engines(id,name,kind,base_url,enabled,concurrency_limit,created_at,updated_at) VALUES ('comfy','ComfyUI','comfyui','http://localhost:8188',1,1,'then','then')").run();
+    connection.prepare("INSERT INTO generation_workflows(id,name,description,engine_kind,latest_version,created_at,updated_at) VALUES ('anima-activity','Anima 活动动画','Anima workflow','comfyui',1,'then','then')").run();
+    const definition = JSON.stringify({
+      '1': { class_type: 'UNETLoader', inputs: { unet_name: 'anima_baseV10.safetensors' } },
+      '9': { class_type: 'KSampler', inputs: { model: ['1', 0], seed: 42 } },
+    });
+    connection.prepare(`INSERT INTO generation_workflow_versions
+      (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at)
+      VALUES ('anima-activity',1,'comfy','{}','{}','[]',?,1,'then')`).run(definition);
+    connection.prepare(`INSERT INTO generation_presets
+      (id,name,description,app_id,purpose,workflow_id,workflow_version,engine_id,values_json,enabled,revision,created_at,updated_at)
+      VALUES ('preset-base','Anima Base','Base parameters','activity','beat-image','anima-activity',1,'comfy','{"steps":28}',1,3,'then','then'),
+             ('preset-turbo','Anima Turbo','Turbo parameters','activity','beat-image','anima-activity',1,'comfy','{"steps":8}',1,2,'then','then')`).run();
+    connection.prepare(`INSERT INTO app_generation_assignments
+      (app_id,purpose,workflow_id,workflow_version,engine_id,updated_at)
+      VALUES ('activity','beat-image','anima-activity',1,'comfy','then')`).run();
+
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'service');
+
+    const versions = connection.prepare("SELECT version,definition_json,editor_config_json FROM generation_workflow_versions WHERE workflow_id='anima-activity' ORDER BY version").all() as Array<{ version: number; definition_json: string; editor_config_json: string | null }>;
+    assert.deepEqual(versions.map((row) => row.version), [1, 2], 'published v1 remains readable beside the new v2');
+    assert.equal(versions[1].definition_json, definition, 'the new version preserves the workflow graph');
+    assert.deepEqual(JSON.parse(versions[1].editor_config_json ?? '{}').activityLoraInjection, { targetNodeId: '9', targetInput: 'model' });
+
+    const presets = connection.prepare("SELECT name,workflow_version,values_json FROM generation_presets WHERE workflow_id='anima-activity' ORDER BY name,workflow_version").all() as Array<{ name: string; workflow_version: number; values_json: string }>;
+    assert.deepEqual(presets.map((preset) => [preset.name, preset.workflow_version, preset.values_json]), [
+      ['Anima Base', 1, '{"steps":28}'], ['Anima Base', 2, '{"steps":28}'],
+      ['Anima Turbo', 1, '{"steps":8}'], ['Anima Turbo', 2, '{"steps":8}'],
+    ]);
+
+    const assignment = connection.prepare("SELECT workflow_id,workflow_version,default_preset_id FROM app_generation_assignments WHERE app_id='activity' AND purpose='beat-image'").get() as { workflow_id: string; workflow_version: number; default_preset_id: string | null };
+    assert.deepEqual({ ...assignment }, { workflow_id: 'anima-activity', workflow_version: 1, default_preset_id: null }, 'migration does not silently change the app default');
   } finally { connection.close(); }
 });

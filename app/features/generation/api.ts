@@ -1,6 +1,8 @@
 import { ApiClientError, getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
+import { GenerationEngineFreeMemoryResponseSchema } from '@sthstart/contracts';
 import type {
   GenerationConnectionTestResult,
+  GenerationEngineFreeMemoryResponse,
   GenerationModelListResponse,
   GenerationNodeListResponse,
   GenerationPreset,
@@ -8,6 +10,10 @@ import type {
   GenerationTestRunDetail,
   GenerationTestRunSummary,
   WorkflowAnalyzeResponse,
+  ActivityImagePromptPolicyResponse,
+  SaveActivityImagePromptPolicyRequest,
+  BeatRenderActivityLoraPolicyResponse,
+  SaveBeatRenderActivityLoraPolicyRequest,
 } from '@sthstart/contracts';
 import type { Assignment, Engine, MediaDiagnostics, Workflow, WorkflowDraft, Worker } from './types';
 
@@ -15,6 +21,8 @@ const GENERATION_BASE_PATH = 'generation';
 const WORKERS_PATH = 'workers';
 const MEDIA_DIAGNOSTICS_PATH = 'media/diagnostics';
 const CREATIVE_ASSIGNMENTS_PATH = 'apps/creative-center/generation-assignments';
+const ACTIVITY_IMAGE_PROMPT_POLICY_PATH = `${GENERATION_BASE_PATH}/activity-image-prompt-policy`;
+const ACTIVITY_LORA_POLICY_PATH = `${GENERATION_BASE_PATH}/activity-loras`;
 
 export async function fetchGenerationEngines() {
   const response = await getJson<{ items: Engine[] }>(`${GENERATION_BASE_PATH}/engines`);
@@ -48,7 +56,7 @@ export async function saveWorkerConfig(input: { id: string; name: string; baseUr
   return postJson<{ workerId: string; token?: string }>(WORKERS_PATH, input);
 }
 
-export async function createWorkflowConfig(input: { id?: string; name: string; description?: string; engineKind?: 'comfyui' | 'worker' | 'cloud'; category?: 'image' | 'video' | 'audio' | 'transform' }) {
+export async function createWorkflowConfig(input: { id?: string; name: string; description?: string; engineKind?: 'comfyui' | 'worker' | 'cloud'; category?: 'image' | 'video' | 'audio' | 'transform'; presetTemplates?: unknown[] }) {
   return postJson<{ id: string }>(`${GENERATION_BASE_PATH}/workflows`, input);
 }
 
@@ -73,6 +81,12 @@ export async function saveCreativeCenterAssignments(assignments: unknown[]) {
 
 export async function testGenerationEngine(engineId: string) {
   return postJson<GenerationConnectionTestResult>(`${GENERATION_BASE_PATH}/engines/${encodeURIComponent(engineId)}/test`);
+}
+
+export async function unloadGenerationEngineModels(engineId: string): Promise<GenerationEngineFreeMemoryResponse> {
+  return postJson<GenerationEngineFreeMemoryResponse>(
+    `${GENERATION_BASE_PATH}/engines/${encodeURIComponent(engineId)}/free-memory`, {}, undefined, GenerationEngineFreeMemoryResponseSchema,
+  );
 }
 
 export async function fetchEngineModels(engineId: string, query: { type?: string; search?: string; refresh?: boolean } = {}) {
@@ -110,6 +124,24 @@ export async function saveWorkflowDraft(workflowId: string, revision: number, dr
     }
     throw error;
   }
+}
+
+export async function fetchActivityImagePromptPolicy(workflowId: string, workflowVersion: number) {
+  const params = new URLSearchParams({ workflowId, workflowVersion: String(workflowVersion) });
+  return getJson<ActivityImagePromptPolicyResponse>(`${ACTIVITY_IMAGE_PROMPT_POLICY_PATH}?${params}`);
+}
+
+export async function saveActivityImagePromptPolicy(input: SaveActivityImagePromptPolicyRequest) {
+  return putJson<ActivityImagePromptPolicyResponse>(ACTIVITY_IMAGE_PROMPT_POLICY_PATH, input);
+}
+
+export async function fetchActivityLoraPolicy(workflowId: string, workflowVersion: number) {
+  const params = new URLSearchParams({ workflowId, workflowVersion: String(workflowVersion) });
+  return getJson<BeatRenderActivityLoraPolicyResponse>(`${ACTIVITY_LORA_POLICY_PATH}?${params}`);
+}
+
+export async function saveActivityLoraPolicy(input: SaveBeatRenderActivityLoraPolicyRequest) {
+  return putJson<BeatRenderActivityLoraPolicyResponse>(ACTIVITY_LORA_POLICY_PATH, input);
 }
 
 export async function duplicateWorkflow(workflowId: string, input: { id?: string; name?: string } = {}) {

@@ -16,6 +16,38 @@ export type ReviewState = Static<typeof ReviewStateSchema>;
 export const ActorPersonaSchema = Type.Record(Type.String(), Type.Unknown());
 export type ActorPersona = Static<typeof ActorPersonaSchema>;
 
+/** A ComfyUI LoRA selection captured with a character or activity render. */
+export const ActivityLoraSchema = Type.Object({
+  model: Type.String({ minLength: 1, maxLength: 512 }),
+  strength: Type.Number({ minimum: -10, maximum: 10 }),
+  triggerWord: Type.String({ maxLength: 2_000 }),
+  enabled: Type.Boolean(),
+});
+export type ActivityLora = Static<typeof ActivityLoraSchema>;
+
+/** Per-shot values overlay inherited global and character LoRAs by exact model filename. */
+export const ActivityLoraOverrideSchema = Type.Object({
+  model: Type.String({ minLength: 1, maxLength: 512 }),
+  strength: Type.Optional(Type.Number({ minimum: -10, maximum: 10 })),
+  triggerWord: Type.Optional(Type.String({ maxLength: 2_000 })),
+  enabled: Type.Optional(Type.Boolean()),
+});
+export type ActivityLoraOverride = Static<typeof ActivityLoraOverrideSchema>;
+
+export const SceneBeatRenderSettingsSchema = Type.Object({
+  purpose: Type.Optional(Type.String()),
+  workflowId: Type.Optional(Type.String()),
+  workflowVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+  presetId: Type.Optional(Type.String()),
+  presetRevision: Type.Optional(Type.Integer({ minimum: 1 })),
+  customPrompt: Type.Optional(Type.String({ maxLength: 20_000 })),
+  negativePrompt: Type.Optional(Type.String({ maxLength: 20_000 })),
+  parameters: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  referenceAssetKey: Type.Optional(Type.String()),
+  loraOverrides: Type.Optional(Type.Array(ActivityLoraOverrideSchema, { maxItems: 32 })),
+});
+export type SceneBeatRenderSettings = Static<typeof SceneBeatRenderSettingsSchema>;
+
 export const ActorSnapshotSchema = Type.Object({
   id: Type.String(),
   sourceCharacterId: Type.Optional(Type.String()),
@@ -26,15 +58,45 @@ export const ActorSnapshotSchema = Type.Object({
   characterDraftRevision: Type.Optional(Type.Number()),
   displayName: Type.String(),
   persona: ActorPersonaSchema,
+  visualLoras: Type.Optional(Type.Array(ActivityLoraSchema, { maxItems: 32 })),
   avatarAssetKey: Type.Optional(Type.String()),
   avatarAssetId: Type.Optional(Type.String()),
   avatarUrl: Type.Optional(Type.String()),
+  portraitAssetId: Type.Optional(Type.String()),
+  portraitUrl: Type.Optional(Type.String()),
   activityRole: Type.String(),
   outfitDescription: Type.String(),
-  appearanceReferenceAssetKeys: Type.Array(Type.String()),
-  appearanceReferenceAssetIds: Type.Optional(Type.Array(Type.String())),
+  appearanceReferenceAssetKeys: Type.Optional(Type.Array(Type.String())),
 });
 export type ActorSnapshot = Static<typeof ActorSnapshotSchema>;
+
+export const SceneBeatSchema = Type.Object({
+  id: Type.String(),
+  sceneId: Type.Optional(Type.String()),
+  stageId: Type.Optional(Type.String()),
+  characterId: Type.String(),
+  characterName: Type.Optional(Type.String()),
+  action: Type.String(),
+  dialogue: Type.Optional(Type.String()),
+  outcome: Type.Optional(Type.String()),
+  mediaUrl: Type.Optional(Type.String()),
+  mediaType: Type.Optional(Type.Union([Type.Literal('image'), Type.Literal('video')])),
+  renderSettings: Type.Optional(SceneBeatRenderSettingsSchema),
+  orderIndex: Type.Optional(Type.Number()),
+});
+export type SceneBeat = Static<typeof SceneBeatSchema>;
+
+export const ActivitySceneSchema = Type.Object({
+  id: Type.String(),
+  stageId: Type.Optional(Type.String()),
+  title: Type.String(),
+  timeText: Type.String(),
+  locationText: Type.String(),
+  environment: Type.Optional(Type.String()),
+  beats: Type.Array(SceneBeatSchema),
+  orderIndex: Type.Optional(Type.Number()),
+});
+export type ActivityScene = Static<typeof ActivitySceneSchema>;
 
 export const StageDefinitionSchema = Type.Object({
   id: Type.String(),
@@ -52,8 +114,42 @@ export const StageDefinitionSchema = Type.Object({
   ),
   locked: Type.Boolean(),
   endCondition: Type.String(),
+  stagePremise: Type.Optional(Type.String()),
+  mcpQuery: Type.Optional(Type.String()),
+  mcpSourceIds: Type.Optional(Type.Array(Type.String())),
+  systemPromptOverride: Type.Optional(Type.String()),
+  scenes: Type.Optional(Type.Array(ActivitySceneSchema)),
 });
 export type StageDefinition = Static<typeof StageDefinitionSchema>;
+
+export const GenerateBeatMediaRequestSchema = Type.Object({
+  stageId: Type.String(),
+  beatId: Type.String(),
+  customPrompt: Type.Optional(Type.String()),
+  negativePrompt: Type.Optional(Type.String()),
+  seed: Type.Optional(Type.Number()),
+  steps: Type.Optional(Type.Number()),
+  cfg: Type.Optional(Type.Number()),
+  width: Type.Optional(Type.Number()),
+  height: Type.Optional(Type.Number()),
+  mediaType: Type.Optional(Type.Union([Type.Literal('image'), Type.Literal('video')])),
+  checkpoint: Type.Optional(Type.String()),
+  engineId: Type.Optional(Type.String()),
+});
+export type GenerateBeatMediaRequest = Static<typeof GenerateBeatMediaRequestSchema>;
+
+export const GenerateBeatMediaResponseSchema = Type.Object({
+  success: Type.Boolean(),
+  mediaUrl: Type.String(),
+  mediaType: Type.Union([Type.Literal('image'), Type.Literal('video')]),
+  promptUsed: Type.String(),
+  seed: Type.Number(),
+  characterConsistent: Type.Boolean(),
+  stageId: Type.String(),
+  beatId: Type.String(),
+  error: Type.Optional(Type.String()),
+});
+export type GenerateBeatMediaResponse = Static<typeof GenerateBeatMediaResponseSchema>;
 
 export const ConversationSchema = Type.Object({
   id: Type.String(),
@@ -155,6 +251,8 @@ export const ContentDocumentSchema = Type.Object({
     location: Type.String(),
     rules: Type.String(),
     generationMode: GenerationModeSchema,
+    systemPrompt: Type.Optional(Type.String()),
+    mcpSourceIds: Type.Optional(Type.Array(Type.String())),
   }),
   actors: Type.Array(ActorSnapshotSchema),
   relationships: Type.Array(
@@ -173,6 +271,7 @@ export const ContentDocumentSchema = Type.Object({
   mediaSlots: Type.Array(MediaSlotSchema),
   facts: Type.Array(ActivityFactSchema),
   stageResults: Type.Array(StageResultSchema),
+  scenes: Type.Optional(Type.Array(ActivitySceneSchema)),
   editingPolicy: Type.Optional(EditingPolicySchema),
 });
 export type ContentDocument = Static<typeof ContentDocumentSchema>;

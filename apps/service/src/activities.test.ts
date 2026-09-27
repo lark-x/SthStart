@@ -1255,6 +1255,10 @@ test('Activity Studio: whole-text carries preceding generated facts without impl
     assert.equal(store.getJob(activity.id, job.id)?.status, 'succeeded');
     assert.equal(prompts.length, 2);
     assert.ok(prompts[1].includes('特殊蓝色蛋糕已经送到营地'));
+    const traceIds = database.connection.prepare('SELECT DISTINCT trace_id FROM ai_call_records WHERE object_id=?').all(activity.id) as Array<{ trace_id: string }>;
+    const callCount = database.connection.prepare('SELECT COUNT(*) count FROM ai_call_records WHERE object_id=?').get(activity.id) as { count: number };
+    assert.equal(callCount.count, 2, 'each generated stage has a durable call record');
+    assert.deepEqual(traceIds.map((row) => row.trace_id), [job.id], 'all stages in one text job share its trace id');
     assert.deepEqual(store.getDraft(activity.id)!.document, doc);
     assert.equal(store.getActivity(activity.id)?.headVersion, activity.headVersion);
   } finally { await app.close(); database.close(); }

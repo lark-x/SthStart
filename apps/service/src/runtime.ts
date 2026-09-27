@@ -1,12 +1,13 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
 import type {
+  LinsheHostedReadiness,
   LogEvent,
   LogLevel,
   LogPolicy,
@@ -30,12 +31,16 @@ function currentEventId(event: LogEvent): string {
 const LEVEL_WEIGHT: Record<LogLevel, number> = { off: -1, error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
 const execFileAsync = promisify(execFile);
 
+const DEFAULT_COMFYUI_EXECUTABLE = process.platform === 'win32' && existsSync('F:\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\run_nvidia_gpu.bat')
+  ? 'F:\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\run_nvidia_gpu.bat'
+  : (existsSync('F:\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable') ? 'F:\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable' : '');
+
 const DEFAULT_SETTINGS: RuntimeSettings = {
   autoStart: false,
   autoOpenBrowser: false,
   useMirror: true,
   publicLlmEnabled: true,
-  comfyuiExecutable: '',
+  comfyuiExecutable: DEFAULT_COMFYUI_EXECUTABLE,
   extraLoraFolders: [],
   maibotAutostart: false,
   maibotBrowserMaibot: true,
@@ -88,7 +93,10 @@ function inferLevel(text: string, stream: LogEvent['stream']): Exclude<LogLevel,
 export class RuntimeSettingsStore {
   constructor(private readonly database: ServiceDatabase) {}
 
-  get(): RuntimeSettings { return setting(this.database, 'runtime.settings', DEFAULT_SETTINGS); }
+  get(): RuntimeSettings {
+    const current = setting(this.database, 'runtime.settings', DEFAULT_SETTINGS);
+    return { ...current, publicLlmEnabled: true };
+  }
 
   update(patch: Partial<RuntimeSettings>) {
     const current = this.get();
@@ -97,7 +105,8 @@ export class RuntimeSettingsStore {
       autoStart: typeof patch.autoStart === 'boolean' ? patch.autoStart : current.autoStart,
       autoOpenBrowser: typeof patch.autoOpenBrowser === 'boolean' ? patch.autoOpenBrowser : current.autoOpenBrowser,
       useMirror: typeof patch.useMirror === 'boolean' ? patch.useMirror : current.useMirror,
-      publicLlmEnabled: typeof patch.publicLlmEnabled === 'boolean' ? patch.publicLlmEnabled : current.publicLlmEnabled,
+      // Project-managed Linshe always routes through the audited public gateway.
+      publicLlmEnabled: true,
       comfyuiExecutable: typeof patch.comfyuiExecutable === 'string' ? patch.comfyuiExecutable.trim() : current.comfyuiExecutable,
       maibotAutostart: typeof patch.maibotAutostart === 'boolean' ? patch.maibotAutostart : current.maibotAutostart,
       maibotBrowserMaibot: typeof patch.maibotBrowserMaibot === 'boolean' ? patch.maibotBrowserMaibot : current.maibotBrowserMaibot,
@@ -367,6 +376,7 @@ interface PortOwner {
 interface RuntimeManagerOptions {
   appToken?: string;
   fetcher?: typeof fetch;
+  hostedReadiness?: () => Promise<LinsheHostedReadiness>;
 }
 
 /**
@@ -388,6 +398,26 @@ export class RuntimeManager {
     this.fetcher = options.fetcher ?? fetch;
   }
 
+  async hostedReadiness(): Promise<LinsheHostedReadiness> {
+    return this.options.hostedReadiness ? this.options.hostedReadiness() : {
+      ready: false, missing: ['邻舍托管配置检查不可用。'], appTokenValid: false,
+      llmTextReady: false, llmMultimodalReady: false, vectorReady: false, vectorMode: 'unavailable',
+      imageReady: false, imagePurpose: 'linshe-chat-image', imageWorkflowId: null, imageWorkflowVersion: null,
+    };
+  }
+
+  private async waitForManagedVectorStartup() {
+    const definition = this.definitions().find((item) => item.id === 'linshe-vector');
+    if (!definition || !this.managed.has('linshe-vector')) return;
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && this.managed.has('linshe-vector')) {
+      try {
+        if ((await this.fetcher(definition.health, { signal: AbortSignal.timeout(this.config.probeTimeoutMs) })).ok) return;
+      } catch { /* vector service is still starting */ }
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+    }
+  }
+
   private definitions(): Definition[] {
     const npm = npmLaunch();
     const python = process.platform === 'win32'
@@ -399,6 +429,40 @@ export class RuntimeManager {
       : [resolve(maibotRoot, 'MaiBot/.venv/bin/python'), 'python3'];
     const maibotPython = maibotPythonCandidates.find((candidate) => candidate === 'python3' || existsSync(candidate)) ?? '';
     const snowNode = process.platform === 'win32' && existsSync(resolve(maibotRoot, 'Snowluma/node.exe')) ? resolve(maibotRoot, 'Snowluma/node.exe') : process.execPath;
+
+    const comfyExe = this.settings.get().comfyuiExecutable || DEFAULT_COMFYUI_EXECUTABLE;
+    let comfyCommand = '';
+    let comfyArgs: string[] = [];
+    let comfyCwd = '';
+    let comfyInstalled = false;
+
+    if (comfyExe) {
+      try {
+        const isFile = existsSync(comfyExe) && !statSync(comfyExe).isDirectory();
+        const targetDir = isFile ? dirname(comfyExe) : comfyExe;
+        const embeddedPython = resolve(targetDir, 'python_embeded/python.exe');
+        const mainPy = resolve(targetDir, 'ComfyUI/main.py');
+        if (existsSync(embeddedPython) && existsSync(mainPy)) {
+          comfyCommand = embeddedPython;
+          comfyArgs = ['-s', mainPy, '--windows-standalone-build', '--listen', '0.0.0.0', '--port', '8188'];
+          comfyCwd = targetDir;
+          comfyInstalled = true;
+        } else if (existsSync(comfyExe)) {
+          comfyCommand = comfyExe;
+          comfyArgs = [];
+          comfyCwd = targetDir;
+          comfyInstalled = true;
+        }
+      } catch {
+        // ignore resolution error
+      }
+    }
+
+    const comfyHealth = (process.env.COMFYUI_URL ? `${process.env.COMFYUI_URL.replace(/\/+$/, '')}/system_stats` : 'http://127.0.0.1:8188/system_stats');
+    if (process.env.COMFYUI_URL || comfyExe) {
+      comfyInstalled = true;
+    }
+
     return [
       { id: 'linshe-vector', name: '向量服务', port: 8765, optional: true, cwd: resolve(this.config.linsheRoot, 'vector-service'), command: existsSync(python) ? python : 'python3', args: ['-m', 'uvicorn', 'server:app', '--host', '127.0.0.1', '--port', '8765', '--no-access-log'], health: 'http://127.0.0.1:8765/health', installed: existsSync(resolve(this.config.linsheRoot, 'vector-service/server.py')) },
       { id: 'linshe-agent', name: '邻舍主控后端', port: this.config.linsheAgentPort, optional: false, cwd: resolve(this.config.linsheRoot, 'agent-core'), command: process.execPath, args: ['app.js'], health: this.config.linsheHealthUrl, installed: existsSync(resolve(this.config.linsheRoot, 'agent-core/app.js')) },
@@ -409,6 +473,7 @@ export class RuntimeManager {
       { id: 'linshe-web', name: '邻舍 Web', port: this.config.linsheWebPort, optional: false, cwd: resolve(this.config.linsheRoot, 'web-ui'), command: npm.command, args: [...npm.prefix, 'run', 'dev', '--', '--host', this.config.lanAccess ? '0.0.0.0' : '127.0.0.1', '--port', String(this.config.linsheWebPort)], health: `http://127.0.0.1:${this.config.linsheWebPort}`, installed: existsSync(resolve(this.config.linsheRoot, 'web-ui/package.json')) },
       { id: 'maibot', name: 'MaiBot', port: 8001, optional: true, cwd: resolve(maibotRoot, 'MaiBot'), command: maibotPython, args: ['bot.py'], health: 'http://127.0.0.1:8001', installed: existsSync(resolve(maibotRoot, 'MaiBot/bot.py')) && Boolean(maibotPython) },
       { id: 'snowluma', name: 'SnowLuma', port: 5099, optional: true, cwd: resolve(maibotRoot, 'Snowluma'), command: snowNode, args: ['index.mjs'], health: 'http://127.0.0.1:5099', installed: existsSync(resolve(maibotRoot, 'Snowluma/index.mjs')) },
+      { id: 'comfyui', name: 'ComfyUI 绘图引擎', port: 8188, optional: true, cwd: comfyCwd, command: comfyCommand, args: comfyArgs, health: comfyHealth, installed: comfyInstalled },
     ];
   }
 
@@ -427,7 +492,7 @@ export class RuntimeManager {
   async start(id: string): Promise<unknown> {
     if (id === 'linshe') {
       const results: unknown[] = []; const started: string[] = [];
-      const ids = ['linshe-agent', 'linshe-web', 'linshe-vector', ...(this.settings.get().maibotAutostart ? ['maibot', 'snowluma'] : [])];
+      const ids = ['linshe-vector', 'linshe-agent', 'linshe-web', ...(this.settings.get().maibotAutostart ? ['maibot', 'snowluma'] : [])];
       try {
         for (const serviceId of ids) {
           const definition = this.definitions().find((item) => item.id === serviceId)!;
@@ -448,10 +513,24 @@ export class RuntimeManager {
         throw error;
       }
     }
+    if (id === 'linshe-agent' && this.options.hostedReadiness) {
+      await this.waitForManagedVectorStartup();
+      const readiness = await this.options.hostedReadiness();
+      if (!readiness.ready) throw new Error(`linshe_hosted_configuration_missing: ${readiness.missing.join('；')}`);
+    }
     const definition = this.definitions().find((item) => item.id === id);
     if (!definition) throw new Error('unknown_service');
     if (!definition.installed || !definition.command) throw new Error('service_not_installed');
     if (this.managed.has(id)) throw new Error('service_already_managed');
+
+    // 优先检查服务是否已在外部健康运行
+    let alreadyHealthy = false;
+    try {
+      alreadyHealthy = (await this.fetcher(definition.health, { signal: AbortSignal.timeout(1500) })).ok;
+    } catch { /* offline */ }
+    if (alreadyHealthy) {
+      return { id, alreadyRunning: true, external: true };
+    }
     const owner = await this.portOwner(definition);
     if (owner) {
       if (!owner.belongsToProject) throw new Error('port_owned_by_other_process');
@@ -476,7 +555,10 @@ export class RuntimeManager {
         ...(id === 'linshe-agent' ? {
           PORT: String(this.config.linsheAgentPort),
           STHSTART_APP_TOKEN: this.options.appToken ?? '',
-          STHSTART_PUBLIC_LLM: runtime.publicLlmEnabled ? 'true' : 'false',
+          STHSTART_PUBLIC_LLM: 'true',
+          STHSTART_PUBLIC_VECTOR: 'true',
+          STHSTART_PUBLIC_IMAGE: 'true',
+          STHSTART_GENERATION_PURPOSE: 'linshe-chat-image',
           STHSTART_PORTAL_URL: this.config.portalOrigins[0] ?? 'http://127.0.0.1:4173',
         } : {}),
         EXTRA_LORA_FOLDERS: runtime.extraLoraFolders.join(';'),
@@ -538,13 +620,8 @@ export class RuntimeManager {
     for (const id of [...this.managed.keys()].reverse()) await this.stop(id);
   }
 
-  launchComfyui() {
-    const executable = this.settings.get().comfyuiExecutable;
-    if (!executable || !existsSync(executable)) throw new Error('comfyui_executable_not_found');
-    const child = spawn(executable, [], { cwd: resolve(executable, '..'), detached: true, windowsHide: false, stdio: 'ignore' });
-    child.unref();
-    this.logs.append({ appId: 'linshe', serviceId: 'comfyui', stream: 'system', level: 'info', message: '已启动配置的 ComfyUI 启动器', force: true });
-    return { started: true };
+  async launchComfyui() {
+    return this.start('comfyui');
   }
 
   private capture(definition: Definition, stream: NodeJS.ReadableStream, kind: 'stdout' | 'stderr') {

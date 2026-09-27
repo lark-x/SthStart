@@ -4,90 +4,99 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useForm, useWatch } from 'react-hook-form';
+import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import {
   ArrowLeft,
   Upload,
   Download,
-  Send,
   Save,
   Sparkles,
-  User,
-  Heart,
   Palette,
-  Users,
+  Globe,
+  Plus,
+  Trash2,
+  Check,
   Layers,
-  IdCard,
+  FolderInput,
+  RotateCcw,
 } from 'lucide-react';
-import type { CharacterDraftV2 } from '@sthstart/contracts';
+import type { CharacterDraftV2, CharacterVariant } from '@sthstart/contracts';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
-import { Drawer } from '@/app/components/ui/drawer';
-import { useInlinePreviewColumn } from '@/app/lib/use-wide-detail-column';
-import { useCharacterDetail, useCharacters } from '../queries';
+import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { Textarea } from '@/app/components/ui/textarea';
+import { Dialog } from '@/app/components/ui/dialog';
+import { Alert } from '@/app/components/ui/alert';
+import { Skeleton } from '@/app/components/ui/skeleton';
+import { TagsInput } from '@/app/components/shared/tags-input';
+import { useToast } from '@/app/providers/ui-provider';
+import { useCharacterDetail, useCharacters, useCharacterAssets } from '../queries';
 import {
   useCreateCharacter,
   useUpdateCharacter,
-  useGenerateCharacterDraft,
-  usePublishCharacter,
   useUploadCharacterAvatar,
+  useUploadCharacterAsset,
+  useSetCharacterActiveAsset,
+  useMatchOfficialAvatar,
+  useFetchAvatarFromUrl,
   useGenerateCharacterAvatar,
   useApplyCharacterAvatar,
-  useSaveRelationship,
-  useDeleteRelationship,
 } from '../mutations';
-import { applyCharacterAppearanceExtraction, extractCharacterAppearance, exportTavernCard, fetchCharacterGenerationTask, fetchCharacterVisualReferences, uploadCharacterReference } from '../api';
-import { EMPTY_DRAFT_V2, splitLines } from '../schemas';
+import { exportTavernCard, fetchCharacterGenerationTask } from '../api';
+import { EMPTY_DRAFT_V2 } from '../schemas';
 import {
   characterDraftToFormValues,
   characterFormValuesToDraft,
   type CharacterFormValues,
 } from './character-form';
-import { IdentitySection } from './identity-section';
-import { PersonalitySection } from './personality-section';
-import { AppearanceSection } from './appearance-section';
-import { RelationsSection } from './relations-section';
-import { MigrationReviewPanel } from './migration-review-panel';
-import { PublishSection } from './publish-section';
-import { Button } from '@/app/components/ui/button';
-import { Alert } from '@/app/components/ui/alert';
-import { Skeleton } from '@/app/components/ui/skeleton';
-import { useToast } from '@/app/providers/ui-provider';
 import { CharacterImportDialog } from './character-import-dialog';
-import { CharacterAuditionPanel } from './character-audition-panel';
-import { CharacterModelRoutingPanel } from './character-model-routing-panel';
-import { CharacterKnowledgePanel } from '@/app/features/knowledge/components/character-knowledge-panel';
-
-type Section = 'identity' | 'personality' | 'appearance' | 'relations' | 'publish';
-/** 角色只有一套编辑结构；这个开关只决定「关系与来源」这类高级分区是否展开。 */
-type EditorMode = 'core' | 'more';
+import { CharacterMultiSourceDialog } from './character-multi-source-dialog';
 
 const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT_V2);
+
+const PERSONA_PLACEHOLDER = [
+  '### 身份与经历',
+  '她的社会身份、对外形象与核心经历。',
+  '',
+  '### 性格与处世',
+  '- 语气特征与日常处世风格',
+  '- 话语与内在情感的反差',
+  '',
+  '### 好恶与动机',
+  '- 喜欢：…',
+  '- 不喜欢：…',
+  '- 核心内在动机：…',
+].join('\n');
 
 export function CharacterEditor({ characterId }: { characterId?: string }) {
   const router = useRouter();
   const toast = useToast();
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const referenceInputRef = useRef<HTMLInputElement>(null);
+  const portraitInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeSection, setActiveSection] = useState<Section>('identity');
-  const [editorMode, setEditorMode] = useState<EditorMode>('core');
-  const [tags, setTags] = useState<string[]>([]);
+  // Status & UI state
   const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [useWeb, setUseWeb] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [visualReferences, setVisualReferences] = useState<Array<{ id: string; url: string; authorNote?: string; purposes?: string[] }>>([]);
-  const [referencePurpose, setReferencePurpose] = useState<'identity' | 'outfit' | 'pose' | 'style' | 'init_image'>('identity');
-  const [extractingReference, setExtractingReference] = useState<string | null>(null);
-  const [appearanceCandidate, setAppearanceCandidate] = useState<{ id: string; extraction: Record<string, unknown> } | null>(null);
-  const [appearanceCandidateFields, setAppearanceCandidateFields] = useState<string[]>(['/appearance/description', '/appearance/hair', '/appearance/eyes', '/appearance/build', '/appearance/accessories']);
-  const [sourceFocusPath] = useState(() => typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('fieldPath') || '');
-  const [sourceFocusActive, setSourceFocusActive] = useState(false);
-  const [draftRevision, setDraftRevision] = useState<number | undefined>(undefined);
-  const draftRevisionRef = useRef<number | undefined>(undefined);
+  const [tags, setTags] = useState<string[]>([]);
+  const [variants, setVariants] = useState<CharacterVariant[]>([]);
+  const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
 
+  // Dialogs state
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+  const [aiAvatarDialogOpen, setAiAvatarDialogOpen] = useState(false);
+  const [aiAvatarPrompt, setAiAvatarPrompt] = useState('');
+  const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
+  const [newVariantName, setNewVariantName] = useState('');
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [multiSourceDialogOpen, setMultiSourceDialogOpen] = useState(false);
+  const [assetFilter, setAssetFilter] = useState<'all' | 'avatar' | 'portrait'>('all');
+
+  // AI Avatar Task
+  const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
+
+  // Form
   const {
     control,
     register,
@@ -98,338 +107,42 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     clearErrors,
     formState: { isDirty, errors },
   } = useForm<CharacterFormValues>({ defaultValues: EMPTY_FORM_VALUES });
+
   const watchedValues = useWatch({ control });
+  const { fields: visualLoraFields, append: appendVisualLora, remove: removeVisualLora } = useFieldArray({
+    control,
+    name: 'visualLoras',
+  });
   const draft = characterFormValuesToDraft(
     (watchedValues ?? EMPTY_FORM_VALUES) as CharacterFormValues
   );
 
   // Queries
   const { data: detailData, error: detailError, refetch: refetchDetail } = useCharacterDetail(characterId);
-  const { data: libraryData } = useCharacters();
-  const library = libraryData?.items ?? [];
+  const { data: assetsData, refetch: refetchAssets } = useCharacterAssets(characterId);
 
   // Mutations
   const createMutation = useCreateCharacter();
   const updateMutation = useUpdateCharacter();
-  const generateMutation = useGenerateCharacterDraft();
-  const publishMutation = usePublishCharacter();
   const uploadAvatarMutation = useUploadCharacterAvatar();
+  const uploadAssetMutation = useUploadCharacterAsset();
+  const setActiveAssetMutation = useSetCharacterActiveAsset();
+  const matchOfficialAvatarMutation = useMatchOfficialAvatar();
+  const fetchAvatarFromUrlMutation = useFetchAvatarFromUrl();
   const generateAvatarMutation = useGenerateCharacterAvatar();
   const applyAvatarMutation = useApplyCharacterAvatar();
-  const saveRelMutation = useSaveRelationship();
-  const deleteRelMutation = useDeleteRelationship();
-  const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
-  /* §8.3：宽屏右侧内联预览，小屏改用抽屉。 */
-  const [previewDrawerOpen, setPreviewDrawerOpen] = useState(false);
-  const inlinePreviewColumn = useInlinePreviewColumn();
-  /*
-   * 预览默认收起（§8.3 的「宽屏右侧可放预览」是可选能力，不是常驻栏）。
-   * 常驻时它只占 360px 却比中间表单矮近 900px，右栏下方整片空着；
-   * 收起后中间表单从 752px 拿到约 1536px，空白随之消失。
-   */
-  const [previewOpen, setPreviewOpen] = useState(false);
 
-  const handleSave = useCallback(async (quiet = false) => {
-    const currentDraft = characterFormValuesToDraft(getValues());
-    if (!currentDraft.displayName.trim()) {
-      setError('displayName', { type: 'required', message: '请先填写角色名称' });
-      if (!quiet) {
-        setErrorMessage('请先填写角色名称');
-        toast.warning('请先填写角色名称');
-      }
-      return null;
-    }
-
-    setStatus('saving');
-    setErrorMessage('');
-    clearErrors('displayName');
-    const savedTags = [...tags];
-
-    try {
-      if (!characterId) {
-        const created = await createMutation.mutateAsync({
-          displayName: currentDraft.displayName.trim(),
-          draft: currentDraft,
-          tags,
-        });
-        draftRevisionRef.current = created.draftRevision;
-        setDraftRevision(created.draftRevision);
-        toast.success('角色创建成功');
-        router.replace(`/apps/characters/${created.id}`);
-        return created.id;
-      }
-
-      const updated = await updateMutation.mutateAsync({
-        id: characterId,
-        draft: currentDraft,
-        tags,
-        expectedDraftRevision: draftRevisionRef.current ?? detailData?.draftRevision,
-      });
-      draftRevisionRef.current = updated.draftRevision;
-      setDraftRevision(updated.draftRevision);
-      const currentValues = characterFormValuesToDraft(getValues());
-      const unchanged =
-        JSON.stringify(currentValues) === JSON.stringify(currentDraft) &&
-        JSON.stringify(tags) === JSON.stringify(savedTags);
-      if (unchanged) {
-        reset(characterDraftToFormValues(updated.draft));
-        setTags(updated.tags);
-      }
-      setStatus(unchanged ? 'saved' : 'dirty');
-      if (!quiet) toast.success('草稿已保存');
-      return characterId;
-    } catch (err) {
-      setStatus('error');
-      const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(msg);
-      if (!quiet) toast.error('保存失败', msg);
-      return null;
-    }
-  }, [characterId, clearErrors, createMutation, detailData, getValues, reset, router, setError, tags, toast, updateMutation]);
-
-  /* eslint-disable react-hooks/set-state-in-effect -- references are an external resource keyed by the selected character. */
+  // Populate data when detailData loads
   useEffect(() => {
-    if (detailData && !isDirty && status === 'clean') {
-      // Query refreshes may hydrate a clean editor, but never overwrite dirty input.
+    if (detailData) {
       reset(characterDraftToFormValues(detailData.draft));
-      setTags(detailData.tags);
-      setStatus('clean');
+      setTags(detailData.tags || []);
+      setVariants(detailData.variants || []);
+      setStatus('saved');
     }
-    if (detailData?.draftRevision != null && !isDirty) {
-      draftRevisionRef.current = detailData.draftRevision;
-      setDraftRevision(detailData.draftRevision);
-    }
-  }, [detailData, isDirty, reset, status]);
+  }, [detailData, reset]);
 
-  useEffect(() => {
-    if (!characterId) { setVisualReferences([]); return; }
-    void fetchCharacterVisualReferences(characterId).then((response) => {
-      setVisualReferences(response.items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string' ? [{ id: item.id, url: item.url, authorNote: typeof item.authorNote === 'string' ? item.authorNote : undefined, purposes: Array.isArray(item.purposes) ? item.purposes.filter((value): value is string => typeof value === 'string') : undefined }] : []));
-    }).catch(() => undefined);
-  }, [characterId]);
-
-  /* eslint-disable react-hooks/set-state-in-effect -- source links intentionally select and focus the target editor panel. */
-  useEffect(() => {
-    if (!sourceFocusPath) return;
-    setActiveSection(sourceFocusPath.includes('appearance') ? 'appearance' : sourceFocusPath.includes('speech') || sourceFocusPath.includes('personality') ? 'personality' : 'identity');
-    setSourceFocusActive(true);
-    const timer = window.setTimeout(() => document.getElementById('character-source-focus-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
-    const clear = window.setTimeout(() => setSourceFocusActive(false), 2_500);
-    return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
-  }, [sourceFocusPath]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!isDirty && status !== 'dirty') return;
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty, status]);
-
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        void handleSave();
-      }
-    };
-    document.addEventListener('keydown', handleShortcut);
-    return () => document.removeEventListener('keydown', handleShortcut);
-  }, [handleSave]);
-
-  // Auto save debounce
-  useEffect(() => {
-    if (!characterId || status !== 'dirty') return;
-    const timer = setTimeout(() => {
-      void handleSave(true);
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [characterId, handleSave, status]);
-
-  // 「已保存」徽标回落干净态必须放在 effect 里：用户新输入会把 status 变为
-  // dirty 并随之取消回落定时器；裸 setTimeout 会在用户继续输入后仍把状态改回
-  // clean，让上面的自动保存 effect 跳过最后一次编辑。
-  useEffect(() => {
-    if (status !== 'saved') return;
-    const timer = setTimeout(() => {
-      setStatus((current) => (current === 'saved' ? 'clean' : current));
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [status]);
-
-  const handleDraftChange = (patch: Partial<CharacterDraftV2>) => {
-    for (const [key, value] of Object.entries(patch) as Array<[
-      keyof CharacterDraftV2,
-      CharacterDraftV2[keyof CharacterDraftV2]
-    ]>) {
-      if (key === 'appearance' && value && typeof value === 'object') {
-        const current = characterFormValuesToDraft(getValues());
-        const values = characterDraftToFormValues({ ...current, appearance: value as CharacterDraftV2['appearance'] });
-        setValue('appearance', values.appearance, { shouldDirty: true, shouldTouch: true });
-        continue;
-      }
-      setValue(key as never, value as never, { shouldDirty: true, shouldTouch: true });
-    }
-    if (patch.displayName !== undefined) clearErrors('displayName');
-    setStatus('dirty');
-  };
-
-  const handleTagsChange = (newTags: string[]) => {
-    setTags(newTags);
-    setStatus('dirty');
-  };
-
-  const handleGenerate = async () => {
-    let targetId = characterId;
-    if (!targetId) {
-      targetId = (await handleSave()) ?? undefined;
-      if (!targetId) return;
-    } else if (isDirty || status === 'dirty') {
-      // 生成结果会整体重置表单；先把未保存的修改落库，避免并发编辑被覆盖。
-      const saved = await handleSave(true);
-      if (saved === null) {
-        toast.error('生成草稿失败', '草稿保存失败，请先解决保存问题');
-        return;
-      }
-    }
-    if (!aiPrompt.trim()) {
-      toast.warning('请填写角色描述用于 AI 提取');
-      return;
-    }
-
-    try {
-      const result = await generateMutation.mutateAsync({
-        id: targetId,
-        description: aiPrompt.trim(),
-        useWeb,
-      });
-      reset(characterDraftToFormValues(result.draft));
-      setStatus('clean');
-      toast.success(`已生成可编辑草稿，并收录 ${result.sources.length} 条参考来源`);
-      if (characterId) await refetchDetail();
-    } catch (err) {
-      toast.error('生成草稿失败', err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handlePublish = async () => {
-    let targetId = characterId;
-    if (!targetId) {
-      targetId = (await handleSave()) ?? undefined;
-      if (!targetId) return;
-    } else if (isDirty || status === 'dirty') {
-      // 发布快照的是服务端已保存的草稿，必须先落库未保存的修改，
-      // 否则发布出去的版本不是用户屏幕上看到的版本。
-      const saved = await handleSave(true);
-      if (saved === null) {
-        toast.error('发布失败', '草稿保存失败，请检查网络后重试');
-        return;
-      }
-    }
-
-    try {
-      let expectedDraftRevision = draftRevisionRef.current ?? detailData?.draftRevision;
-      if (isDirty || status === 'dirty') {
-        const refreshed = await refetchDetail();
-        expectedDraftRevision = refreshed.data?.draftRevision ?? expectedDraftRevision;
-        draftRevisionRef.current = expectedDraftRevision;
-      }
-      const ver = await publishMutation.mutateAsync({ id: targetId, expectedDraftRevision });
-      draftRevisionRef.current = ver.draftRevision ?? expectedDraftRevision;
-      setDraftRevision(ver.draftRevision ?? expectedDraftRevision);
-      toast.success(`已成功发布版本 v${ver.version}`);
-      if (characterId) await refetchDetail();
-    } catch (err) {
-      toast.error('发布失败', err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !characterId) return;
-
-    try {
-      await uploadAvatarMutation.mutateAsync({ id: characterId, file });
-      toast.success('头像上传成功');
-      await refetchDetail();
-    } catch (err) {
-      toast.error('头像上传失败', err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleUploadReference = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !characterId) return;
-    try {
-      await uploadCharacterReference(characterId, file, [referencePurpose]);
-      setVisualReferences((await fetchCharacterVisualReferences(characterId)).items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string' ? [{ id: item.id, url: item.url }] : []));
-      toast.success('外观参考图已保存');
-    } catch (err) { toast.error('上传参考图失败', err instanceof Error ? err.message : String(err)); }
-  };
-
-  const handleExtractReference = async (referenceId: string) => {
-    if (!characterId) return;
-    setExtractingReference(referenceId);
-    try {
-      if ((isDirty || status === 'dirty') && !await handleSave(true)) return;
-      const result = await extractCharacterAppearance(characterId, referenceId, draftRevisionRef.current ?? detailData?.draftRevision);
-      setAppearanceCandidate({ id: result.id, extraction: result.extraction });
-      setAppearanceCandidateFields(['/appearance/description', '/appearance/hair', '/appearance/eyes', '/appearance/build', '/appearance/accessories']);
-      toast.success('已生成视觉候选，请确认后应用');
-    } catch (err) { toast.error('视觉提取失败', err instanceof Error ? err.message : String(err)); }
-    finally { setExtractingReference(null); }
-  };
-
-  const handleApplyAppearanceCandidate = async (candidate: { id: string; extraction: Record<string, unknown> }, fieldPaths: string[]) => {
-    if (!characterId) return;
-    try {
-      if ((isDirty || status === 'dirty') && !await handleSave(true)) return;
-      const before = JSON.stringify(getValues());
-      const result = await applyCharacterAppearanceExtraction(characterId, candidate.id, draftRevisionRef.current ?? detailData?.draftRevision ?? 1, fieldPaths);
-      draftRevisionRef.current = result.draftRevision;
-      setDraftRevision(result.draftRevision);
-      if (JSON.stringify(getValues()) === before) {
-        reset(characterDraftToFormValues(result.draft));
-        setStatus('saved');
-      } else {
-        // 服务端已按勾选的细项重建 V2 基础外貌与默认穿着，这里取回结果覆盖本地草稿，
-        // 同时保留用户其他未保存的编辑。
-        const appearance: CharacterDraftV2['appearance'] = { ...characterFormValuesToDraft(getValues()).appearance };
-        const applied = (result.draft as { appearance?: Partial<CharacterDraftV2['appearance']> }).appearance;
-        if (typeof applied?.baseText === 'string') appearance.baseText = applied.baseText;
-        if (typeof applied?.defaultOutfitText === 'string') appearance.defaultOutfitText = applied.defaultOutfitText;
-        handleDraftChange({ appearance });
-      }
-      setAppearanceCandidate(null);
-      await refetchDetail();
-      toast.success('已确认应用视觉字段');
-    } catch (err) { toast.error('应用视觉候选失败', err instanceof Error ? err.message : String(err)); }
-  };
-
-  const handleGenerateAvatar = async () => {
-    if (!characterId) {
-      toast.warning('请先保存角色草稿');
-      return;
-    }
-    try {
-      if ((isDirty || status === 'dirty') && !await handleSave(true)) return;
-      const task = await generateAvatarMutation.mutateAsync({ id: characterId });
-      setAvatarTaskId(task.id);
-      toast.success('头像生成任务已提交');
-    } catch (err) {
-      toast.error('提交头像生成失败', err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  // useMutation 返回的对象每次渲染都是新引用，绝不能进 effect 依赖；
-  // 成功时先同步清空 avatarTaskId 再 await 应用结果，否则渲染触发的
-  // effect 重启会让 stopped 守卫拦下 setAvatarTaskId(null)，形成
-  // 「查询成功 → 应用 → 重启 → 再应用」的死循环并不断插入资产记录。
+  // AI Avatar Generation Polling
   const applyAvatarRef = useRef(applyAvatarMutation);
   useEffect(() => {
     applyAvatarRef.current = applyAvatarMutation;
@@ -449,7 +162,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             await applyAvatarRef.current.mutateAsync({ id: characterId, taskId: avatarTaskId });
             if (!stopped) {
               await refetchDetail();
-              toast.success('AI 头像已应用到角色');
+              toast.success('AI 头像已成功生成并应用！');
             }
           } catch (applyErr) {
             if (!stopped) {
@@ -463,7 +176,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           toast.error('头像生成失败', task.errorMessage || '生成任务未完成');
           return;
         }
-        timer = window.setTimeout(() => void poll(), 1_500);
+        timer = window.setTimeout(() => void poll(), 1500);
       } catch (err) {
         if (!stopped) {
           setAvatarTaskId(null);
@@ -478,117 +191,216 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     };
   }, [avatarTaskId, characterId, refetchDetail, toast]);
 
-  // App Router 的客户端导航（返回链接、移动端滑动手势返回）不触发
-  // beforeunload；已有角色的未保存修改在卸载时静默补存，避免丢失。
-  const saveRef = useRef(handleSave);
-  const characterIdRef = useRef(characterId);
-  const pendingEditsRef = useRef(false);
-  useEffect(() => {
-    saveRef.current = handleSave;
-    characterIdRef.current = characterId;
-    pendingEditsRef.current = isDirty || status === 'dirty';
-  }, [handleSave, characterId, isDirty, status]);
-  useEffect(() => {
-    const flushPending = () => {
-      if (characterIdRef.current && pendingEditsRef.current) void saveRef.current(true);
-    };
-    // pagehide 覆盖 iOS Safari 切后台/杀进程等既不触发 beforeunload、
-    // 也不触发组件卸载清理的退出路径，与 note-editor 的兜底一致。
-    const handlePageHide = () => flushPending();
-    window.addEventListener('pagehide', handlePageHide);
-    return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-      flushPending();
-    };
-  }, []);
+  // Handle Save
+  const handleSave = useCallback(async () => {
+    const currentValues = getValues();
+    const currentDraft = characterFormValuesToDraft(currentValues);
+    if (!currentDraft.displayName.trim()) {
+      setError('displayName', { type: 'required', message: '请先填写角色名称' });
+      setErrorMessage('请先填写角色名称');
+      toast.warning('请先填写角色名称');
+      return null;
+    }
+    clearErrors('displayName');
+    setErrorMessage('');
+    setStatus('saving');
 
-  const handleExportJson = async () => {
-    if (!characterId) return;
     try {
-      const card = await exportTavernCard(characterId);
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(card, null, 2)], { type: 'application/json' })
-      );
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${detailData?.slug || 'character'}.json`;
-      a.click();
-      // iOS Safari 上同步 revoke 可能取消尚未开始的下载，延迟释放。
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      toast.success('已导出 Tavern Card V2 JSON');
+      if (characterId) {
+        // 更新既有角色
+        const res = await updateMutation.mutateAsync({
+          id: characterId,
+          draft: currentDraft,
+          tags,
+          variants,
+          expectedDraftRevision: detailData?.draftRevision,
+        });
+        setStatus('saved');
+        toast.success('角色已保存');
+        await refetchDetail();
+        return res.id;
+      } else {
+        // 新建角色
+        const res = await createMutation.mutateAsync({
+          displayName: currentDraft.displayName.trim(),
+          draft: currentDraft,
+          tags,
+          variants,
+        });
+        setStatus('saved');
+        toast.success('角色创建成功');
+        router.push(`/apps/characters/${res.id}`);
+        return res.id;
+      }
+    } catch (err: unknown) {
+      setStatus('error');
+      const msg = err instanceof Error ? err.message : '保存失败，请检查网络或稍后重试';
+      setErrorMessage(msg);
+      toast.error('保存失败', msg);
+      return null;
+    }
+  }, [getValues, clearErrors, setError, toast, characterId, updateMutation, tags, variants, detailData?.draftRevision, refetchDetail, createMutation, router]);
+
+  // Handle Asset Upload (Avatar or Portrait)
+  const handleUploadAsset = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'avatar' | 'portrait') => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !characterId) return;
+    try {
+      await uploadAssetMutation.mutateAsync({ id: characterId, file, kind, setAsActive: true });
+      toast.success(`${kind === 'portrait' ? '立绘' : '头像'}上传成功`);
+      await Promise.all([refetchDetail(), refetchAssets()]);
     } catch (err) {
-      toast.error('导出失败', err instanceof Error ? err.message : String(err));
+      toast.error(`${kind === 'portrait' ? '立绘' : '头像'}上传失败`, err instanceof Error ? err.message : String(err));
     }
   };
 
-  const navItems: Array<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }>; advanced?: boolean }> = [
-    { id: 'identity', label: '身份与经历', icon: User },
-    { id: 'personality', label: '性格与表达', icon: Heart },
-    { id: 'appearance', label: '外观与素材', icon: Palette },
-    { id: 'relations', label: '关系与来源', icon: Users, advanced: true },
-    { id: 'publish', label: '应用与版本', icon: Layers },
-  ];
-  const visibleNavItems = navItems.filter((item) => editorMode === 'more' || !item.advanced);
-  /*
-   * 角色卡片预览与资料检查。宽屏作为右栏内联，小屏放进抽屉（§8.3），
-   * 两种形态共用这一份内容，避免出现两套不同步的预览。
-   */
-  const previewPanel = (
-    <div className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-sm space-y-3">
-            {/*
-             * 有头像才按 4:5 立绘比例撑开；没有头像时只留一个矮占位。
-             * 原来无条件用 aspect-4/5，没有头像的角色会留下一块 326×408 的灰底，
-             * 预览卡因此比实际信息高出一大截。
-             */}
-            <div className={`relative w-full rounded-[var(--radius-panel)] overflow-hidden bg-[#777865] flex items-center justify-center text-white shadow-inner ${detailData?.avatarUrl ? 'aspect-4/5 text-5xl' : 'h-24 text-3xl'}`}>
-              {detailData?.avatarUrl ? (
-                <Image
-                  src={detailData.avatarUrl}
-                  alt={draft.displayName}
-                  fill
-                  unoptimized
-                  className="object-cover"
-                />
-              ) : (
-                <span>{draft.displayName.slice(0, 1) || '角'}</span>
-              )}
-            </div>
+  // Handle Set Active Asset (Avatar or Portrait)
+  const handleSetActiveAsset = async (assetId: string, kind: 'avatar' | 'portrait') => {
+    if (!characterId) return;
+    try {
+      await setActiveAssetMutation.mutateAsync({ id: characterId, payload: { assetId, kind } });
+      toast.success(`已成功切换当前${kind === 'portrait' ? '主立绘' : '主头像'}`);
+      await Promise.all([refetchDetail(), refetchAssets()]);
+    } catch (err) {
+      toast.error(`切换${kind === 'portrait' ? '立绘' : '头像'}失败`, err instanceof Error ? err.message : String(err));
+    }
+  };
 
-            <div className="rounded bg-surface-muted p-3 text-sm space-y-2">
-              <strong>资料检查</strong>
-              {[['名字', draft.displayName, 'identity'], ['摘要', draft.summary, 'identity'], ['人设正文', draft.personaText, 'identity'], ['基础外貌', draft.appearance.baseText, 'appearance'], ['说话方式', draft.speechText, 'personality']].map(([label, value, section]) =>
-                !value?.trim() && <button type="button" key={label} onClick={() => setActiveSection(section as Section)} className="block text-accent-dark underline">补充{label}</button>)}
-            </div>
-            <div>
-              <span className="text-sm uppercase font-bold tracking-widest text-muted block truncate">
-                {draft.work || '原创世界'}
-              </span>
-              <h3 className="text-xl font-medium text-ink truncate mt-0.5">
-                {draft.displayName || '未命名角色'}
-              </h3>
-              <p className="text-sm text-muted line-clamp-3 leading-relaxed mt-1">
-                {draft.summary || draft.personaText || '此处将实时展示角色卡片预览。'}
-              </p>
-            </div>
+  // Handle Match Official Avatar
+  const handleMatchOfficial = async () => {
+    if (!characterId) {
+      toast.warning('请先保存角色档案后再抓取官方头像');
+      return;
+    }
+    try {
+      await matchOfficialAvatarMutation.mutateAsync(characterId);
+      toast.success('已成功抓取并应用官方高清头像！');
+      await refetchDetail();
+    } catch (err: unknown) {
+      toast.error('官方头像抓取失败', err instanceof Error ? err.message : String(err));
+    }
+  };
 
-            <div className="flex flex-wrap gap-1 pt-2 border-t border-border-subtle">
-              {draft.aliases.slice(0, 4).map((alias) => (
-                <span
-                  key={alias}
-                  className="text-sm bg-ink/6 text-muted px-2 py-0.5 rounded"
-                >
-                  {alias.slice(0, 10)}
-                </span>
-              ))}
-            </div>
-          </div>
-  );
+  // Handle URL Avatar Fetch
+  const handleFetchUrlAvatar = async () => {
+    if (!characterId) {
+      toast.warning('请先保存角色档案后再抓取头像');
+      return;
+    }
+    if (!customAvatarUrl.trim()) return;
+    try {
+      await fetchAvatarFromUrlMutation.mutateAsync({ id: characterId, url: customAvatarUrl.trim() });
+      toast.success('已成功从链接导入头像！');
+      setUrlDialogOpen(false);
+      setCustomAvatarUrl('');
+      await refetchDetail();
+    } catch (err: unknown) {
+      toast.error('从链接导入头像失败', err instanceof Error ? err.message : String(err));
+    }
+  };
 
-  // 编辑既有角色前必须等详情加载完成：空表单若允许交互，用户先打的字会
-  // 阻断数据水合，随后自动保存用近乎空白的草稿整体覆盖服务端数据。
+  // Handle AI Avatar Generation
+  const handleTriggerAiAvatar = () => {
+    if (!characterId) {
+      toast.warning('请先保存角色档案后再生成 AI 头像');
+      return;
+    }
+    const defaultPrompt = [
+      draft.displayName,
+      draft.work,
+      draft.appearance.baseText,
+      draft.appearance.defaultOutfitText,
+      'masterpiece, best quality, anime portrait, official art',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    setAiAvatarPrompt(defaultPrompt);
+    setAiAvatarDialogOpen(true);
+  };
+
+  const handleStartAiAvatarGeneration = async () => {
+    if (!characterId) return;
+    try {
+      setAiAvatarDialogOpen(false);
+      const task = await generateAvatarMutation.mutateAsync({
+        id: characterId,
+        prompt: aiAvatarPrompt.trim() || undefined,
+      });
+      setAvatarTaskId(task.id);
+      toast.success('AI 头像生成任务已提交，正在生成中…');
+    } catch (err: unknown) {
+      toast.error('提交 AI 头像生成失败', err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Handle Export Tavern Card
+  const handleExportTavern = async () => {
+    if (!characterId) return;
+    try {
+      const card = await exportTavernCard(characterId);
+      const blob = new Blob([JSON.stringify(card, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${draft.displayName || 'character'}_tavern_card.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('已导出标准酒馆角色卡 (JSON)');
+    } catch (err: unknown) {
+      toast.error('导出酒馆卡失败', err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Handle Add Variant
+  const handleAddVariant = () => {
+    if (!newVariantName.trim()) return;
+    const newVariant: CharacterVariant = {
+      id: crypto.randomUUID(),
+      name: newVariantName.trim(),
+      summary: draft.summary,
+      personaText: draft.personaText,
+      appearance: {
+        baseText: draft.appearance.baseText,
+        defaultOutfitText: draft.appearance.defaultOutfitText,
+      },
+    };
+    const nextVariants = [...variants, newVariant];
+    setVariants(nextVariants);
+    setActiveVariantId(newVariant.id);
+    setNewVariantName('');
+    setAddVariantDialogOpen(false);
+    setStatus('dirty');
+    toast.success(`已添加衍生形态「${newVariant.name}」`);
+  };
+
+  // Handle Remove Variant
+  const handleRemoveVariant = (variantId: string) => {
+    const next = variants.filter((v) => v.id !== variantId);
+    setVariants(next);
+    if (activeVariantId === variantId) {
+      setActiveVariantId(null);
+    }
+    setStatus('dirty');
+    toast.info('已移除衍生形态');
+  };
+
+  // Active Variant Data
+  const currentVariant = variants.find((v) => v.id === activeVariantId) || null;
+
+  // Active Avatar & Portrait URLs
+  const currentAvatarUrl = currentVariant?.avatarUrl || detailData?.avatarUrl;
+  const currentPortraitUrl = detailData?.portraitUrl;
+
+  const allAssets = assetsData?.items || [];
+  const filteredAssets = allAssets.filter((item) => {
+    if (assetFilter === 'all') return true;
+    return item.kind === assetFilter;
+  });
+
+  // Loading Skeleton
   if (characterId && !detailData) {
     if (detailError) {
-
       return (
         <div className="bg-paper text-ink">
           <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
@@ -597,7 +409,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               {detailError instanceof Error ? detailError.message : '无法加载该角色，请稍后重试。'}
             </p>
             <div className="flex items-center gap-2 pt-1">
-              <Button size="sm" variant="outline" onClick={() => void refetchDetail()}>重试</Button>
+              <Button size="sm" variant="outline" onClick={() => void refetchDetail()}>
+                重试
+              </Button>
               <Link
                 href="/apps/characters"
                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
@@ -612,400 +426,783 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     }
     return (
       <div className="bg-paper text-ink">
-        <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 sm:px-8">
-          <Skeleton className="h-8 w-1/3" />
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-64 w-full" />
+        <div className="mx-auto max-w-5xl space-y-6 px-4 py-10 sm:px-8">
+          <Skeleton className="h-10 w-1/3" />
+          <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
+            <Skeleton className="h-96 w-full rounded-xl" />
+            <Skeleton className="h-[600px] w-full rounded-xl" />
+          </div>
         </div>
       </div>
     );
   }
 
-  const saving = status === 'saving';
-
   return (
-    <PageContainer className="pb-10">
-      {/*
-       * 对象页头（§8.3）：头像／角色名、草稿与发布状态、保存并使用、更多操作集中在这里；
-       * 左侧栏只保留分区导航，不再重复一份名字与头像。
-       */}
+    <PageContainer className="pb-16 pt-2">
+      {/* 顶部页头：无版本号、无草稿/已发布标签 */}
       <PageHeader
         backHref="/apps/characters"
-        backLabel="资料库"
-        title={draft.displayName || '新角色草稿'}
+        backLabel="角色资料库"
+        title={draft.displayName || '新建角色档案'}
         status={
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => characterId && avatarInputRef.current?.click()}
-              disabled={!characterId}
-              className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-full bg-surface-muted text-lg text-ink disabled:cursor-not-allowed"
-              title={characterId ? '点击更换头像' : '保存后设置头像'}
-              aria-label={characterId ? '更换角色头像' : '保存后设置头像'}
-            >
-              {detailData?.avatarUrl ? (
-                <Image src={detailData.avatarUrl} alt="" fill unoptimized className="object-cover" />
-              ) : (
-                <span>{draft.displayName.slice(0, 1) || '角'}</span>
-              )}
-            </button>
-            <div className="min-w-0 text-sm text-muted">
-              <p className="truncate">{draft.work || '尚未设置作品'}</p>
-              <p className="truncate text-xs text-fg-subtle" role="status" aria-live="polite">
-                {status === 'saving'
-                  ? '正在自动保存…'
-                  : status === 'dirty'
-                  ? '等待保存修改…'
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                status === 'saving'
+                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                   : status === 'saved'
-                  ? '已保存'
-                  : detailData?.latestVersion
-                  ? `已发布 v${detailData.latestVersion}`
-                  : '未发布草稿'}
-              </p>
-            </div>
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                  : status === 'dirty' || isDirty
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                  : 'bg-surface-muted text-muted'
+              }`}
+            >
+              {status === 'saving' ? (
+                '正在保存…'
+              ) : status === 'saved' ? (
+                <>
+                  <Check className="h-3 w-3" />
+                  已保存
+                </>
+              ) : status === 'dirty' || isDirty ? (
+                '未保存修改'
+              ) : (
+                '就绪'
+              )}
+            </span>
+            {draft.work && (
+              <span className="text-xs text-muted truncate max-w-[160px]">
+                {draft.work}
+              </span>
+            )}
           </div>
         }
         actions={
-          <>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={async () => { if (characterId && (isDirty || status === 'dirty') && !await handleSave(true)) return; setImportDialogOpen(true); }}
-            title="导入角色卡并预览候选字段"
-          >
-            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">导入角色卡</span>
-            <span className="sm:hidden">导入</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setEditorMode((current) => current === 'core' ? 'more' : 'core')}
-            title={editorMode === 'core' ? '显示关系、来源与历史版本' : '隐藏关系、来源与历史版本'}
+          <div className="flex items-center gap-2.5">
+            <Button
+              size="sm"
+              variant="accent"
+              onClick={() => void handleSave()}
+              loading={status === 'saving'}
+              className="px-4 font-semibold shadow-sm"
             >
-            <span className="hidden sm:inline">{editorMode === 'core' ? '更多设置' : '收起设置'}</span>
-            <span className="sm:hidden">{editorMode === 'core' ? '更多' : '收起'}</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!characterId}
-            onClick={handleExportJson}
-            title="导出为 Tavern Card V2 JSON"
-          >
-            <Download className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">导出</span>
-          </Button>
-
-          {/* §8.3：小屏没有内联预览栏，用一个明确入口打开预览抽屉。 */}
-          {/*
-           * 预览入口：宽屏切换右侧预览栏，窄屏打开抽屉（§8.3）。
-           * 宽屏下预览默认收起，避免它比表单矮近 900px 却在右栏留下一整片空白。
-           */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => (inlinePreviewColumn ? setPreviewOpen((current) => !current) : setPreviewDrawerOpen(true))}
-            aria-pressed={inlinePreviewColumn ? previewOpen : undefined}
-            title={inlinePreviewColumn ? (previewOpen ? "收起角色卡片预览" : "展开角色卡片预览与资料检查") : "查看角色卡片预览与资料检查"}
-          >
-            <IdCard className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{inlinePreviewColumn && previewOpen ? "收起预览" : "预览"}</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="accent"
-            onClick={handlePublish}
-            disabled={!draft.displayName.trim() || saving}
-            loading={publishMutation.isPending}
-            className="shrink-0"
-          >
-            <Send className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>保存并使用</span>
-          </Button>
-          </>
+              <Save className="h-4 w-4 mr-1.5" aria-hidden="true" />
+              <span>保存角色</span>
+            </Button>
+          </div>
         }
       />
 
       {errorMessage && (
-        <div className="mx-auto w-full max-w-[1920px] px-4 sm:px-6 pt-4">
+        <div className="mt-4">
           <Alert variant="danger" onDismiss={() => setErrorMessage('')}>
             {errorMessage}
           </Alert>
         </div>
       )}
 
-      {/*
-       * 分区导航改为横向条（§8.3 只要求「分区可达」，没要求它占一整栏）。
-       * 原先是 3/12 的竖栏，360px 宽只放 4 个按钮、172px 就到底，
-       * 下方 1334px 全空且随 sticky 一路跟随；横过来后这段空白直接消失，
-       * 中间表单也从 6/12 拿到整行宽度。
-       */}
-      {/*
-       * 编辑区宽度：导航与表单放进同一个宽度容器，二者左边缘才会对齐。
-       * 原先导航铺满外框 1600px、表单居中在 1120px，1920px 下两者左右各差 208px，
-       * 导航像是浮在表单上方而不是它的标题栏。收起预览时整块按配置类页面的
-       * 1120px 居中（§4.2）；展开预览时放开到整行，把宽度让给右栏。
-       */}
-      <div className={`w-full pt-4 ${previewOpen && inlinePreviewColumn ? "" : "mx-auto max-w-[1120px]"}`}>
-        <nav
-          className="character-editor-tabs flex flex-wrap gap-1"
-          role="tablist"
-          aria-label="角色编辑分区"
-        >
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeSection === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setActiveSection(item.id)}
-                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-md text-sm font-semibold whitespace-nowrap transition-colors text-left cursor-pointer ${
-                  isActive
-                    ? 'bg-ink text-paper'
-                    : 'text-muted hover:bg-ink/6 hover:text-ink'
-                }`}
-              >
-                <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+      {/* 双栏工作台：左栏卡片与工具，右栏精简人设与外观 */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8 items-start">
+        {/* ================= 左栏：角色卡预览、头像工具、衍生形态 ================= */}
+        <div className="space-y-6 lg:sticky lg:top-6">
+          {/* 角色卡牌预览 */}
+          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
+                角色卡牌预览
+              </span>
+              <span className="inline-flex items-center rounded-md bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                {currentVariant ? `形态: ${currentVariant.name}` : '默认形态'}
+              </span>
+            </div>
 
-        {/* Editor Body：预览展开时右栏才出现，否则编辑区独占整行。 */}
-        <div className={`grid grid-cols-1 items-start gap-8 pt-6 ${previewOpen && inlinePreviewColumn ? "lg:grid-cols-[minmax(0,1fr)_360px]" : ""}`}>
-          {/* Center Main Editor */}
-          <div className="min-w-0 space-y-6">
-          {/* AI Extraction Assist */}
-          <details className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3">
-            <summary className="flex cursor-pointer items-center gap-2 text-accent">
-              <Sparkles className="h-4 w-4" />
-              <strong className="text-sm font-bold uppercase tracking-wider">
-                智能角色草稿提取
-              </strong>
-            </summary>
-            <p className="text-sm text-muted leading-relaxed">
-              输入角色名或人物背景片段，系统将自动生成结构化草稿；默认联网检索公开资料并保留原始出处供复核，可勾选下方开关关闭联网。
+            {/* 角色卡牌预览：立绘为主，头像为辅 */}
+            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-border-default/80 bg-surface-muted shadow-inner flex items-center justify-center">
+              {currentPortraitUrl ? (
+                <Image
+                  src={currentPortraitUrl}
+                  alt={draft.displayName || '角色立绘'}
+                  fill
+                  unoptimized
+                  className="object-contain"
+                />
+              ) : currentAvatarUrl ? (
+                <Image
+                  src={currentAvatarUrl}
+                  alt={draft.displayName || '角色头像'}
+                  fill
+                  unoptimized
+                  className="object-cover opacity-80"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-muted">
+                  <span className="text-5xl font-bold opacity-40">
+                    {draft.displayName ? draft.displayName.slice(0, 1) : '角'}
+                  </span>
+                  <span className="mt-2 text-xs text-fg-subtle">暂未设置立绘与头像</span>
+                </div>
+              )}
+
+              {/* 头像徽章（左上角浮动小圆图） */}
+              {currentAvatarUrl && (
+                <div className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-surface/90 backdrop-blur-md p-1 pr-2.5 shadow-md border border-border-default/60">
+                  <div className="relative h-9 w-9 overflow-hidden rounded-full border border-border-default bg-surface-muted">
+                    <Image
+                      src={currentAvatarUrl}
+                      alt={draft.displayName || '角色头像'}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="text-[11px] leading-tight">
+                    <span className="block font-bold text-ink">当前头像</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 立绘状态标签（右上角） */}
+              {currentPortraitUrl && (
+                <div className="absolute top-3 right-3 rounded-md bg-surface/80 backdrop-blur-md px-2 py-0.5 text-[11px] font-medium text-ink shadow-sm border border-border-default/50">
+                  当前立绘
+                </div>
+              )}
+            </div>
+
+            {/* 角色基本信息预览 */}
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-ink truncate">
+                {draft.displayName || '未命名角色'}
+              </h3>
+              <p className="text-xs font-medium text-fg-subtle">
+                {draft.work || '原创世界'}
+                {draft.originType === 'ip' ? ' · IP 角色' : ' · 原创'}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted line-clamp-3">
+                {draft.summary || draft.personaText || '尚未填写一句话人设概述。'}
+              </p>
+            </div>
+
+            {/* 标签 */}
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border-subtle">
+                {tags.slice(0, 5).map((t) => (
+                  <span key={t} className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 头像与角色卡多源获取工具 */}
+          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-3">
+            <h4 className="text-sm font-bold text-ink">获取头像与立绘</h4>
+            <p className="text-xs text-muted leading-relaxed">
+              支持多源（Enka CDN、百科 Wiki 等）自动匹配、AI 生图、本地上传与酒馆卡交互。
             </p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="例如：芙宁娜（原神），保留她表面戏剧化、内心敏感的反差"
-                className="flex-1 min-h-[38px] rounded border border-border-control bg-surface px-3 py-1 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-accent"
-              />
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {/* 多源获取头像与立绘 (重点入口) */}
               <Button
+                type="button"
                 size="sm"
                 variant="accent"
-                loading={generateMutation.isPending}
-                disabled={saving}
-                onClick={handleGenerate}
+                disabled={!characterId}
+                onClick={() => setMultiSourceDialogOpen(true)}
+                className="col-span-2 justify-center text-xs h-9 font-semibold shadow-sm"
+                title="自动探测 Enka CDN、Fandom Wiki 等官方资源库"
               >
-                <span>生成草稿</span>
+                <Sparkles className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+                <span>多源获取头像与立绘</span>
+              </Button>
+
+              {/* 本地上传立绘 */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!characterId || uploadAssetMutation.isPending}
+                onClick={() => portraitInputRef.current?.click()}
+                className="justify-start text-xs h-9"
+              >
+                <Upload className="h-3.5 w-3.5 mr-1 text-purple-500" aria-hidden="true" />
+                <span>上传立绘大图</span>
+              </Button>
+
+              {/* 本地上传头像 */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!characterId || uploadAssetMutation.isPending}
+                onClick={() => avatarInputRef.current?.click()}
+                className="justify-start text-xs h-9"
+              >
+                <Upload className="h-3.5 w-3.5 mr-1 text-emerald-500" aria-hidden="true" />
+                <span>上传头像图标</span>
+              </Button>
+
+              {/* AI 生成头像 */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!characterId || avatarTaskId !== null}
+                loading={avatarTaskId !== null}
+                onClick={handleTriggerAiAvatar}
+                className="justify-start text-xs h-9"
+                title="基于外观与服装特征通过 ComfyUI 生成专属头像"
+              >
+                <Palette className="h-3.5 w-3.5 mr-1 text-indigo-500" aria-hidden="true" />
+                <span>AI 生成头像</span>
+              </Button>
+
+              {/* 图片链接导入 */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!characterId}
+                onClick={() => setUrlDialogOpen(true)}
+                className="justify-start text-xs h-9"
+              >
+                <Globe className="h-3.5 w-3.5 mr-1 text-sky-500" aria-hidden="true" />
+                <span>从链接获取</span>
+              </Button>
+
+              {/* 导入酒馆卡 */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setImportDialogOpen(true)}
+                className="justify-start text-xs h-9"
+                title="导入 Tavern Card V2 (PNG/JSON)"
+              >
+                <FolderInput className="h-3.5 w-3.5 mr-1 text-amber-500" aria-hidden="true" />
+                <span>导入酒馆卡</span>
+              </Button>
+
+              {/* 导出酒馆卡 */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!characterId}
+                onClick={handleExportTavern}
+                className="justify-start text-xs h-9"
+                title="导出为标准 Tavern Card V2 JSON"
+              >
+                <Download className="h-3.5 w-3.5 mr-1 text-purple-500" aria-hidden="true" />
+                <span>导出酒馆卡</span>
               </Button>
             </div>
-            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
-              <input type="checkbox" checked={useWeb} onChange={(e) => setUseWeb(e.target.checked)} className="accent-accent" />
-              联网检索公开资料（关闭时仅根据描述生成草稿，不产生外部请求）
-            </label>
-          </details>
 
-          {/* Section Panels */}
-          <div className="p-6 rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-sm">
-            {activeSection === 'identity' && (
-              <IdentitySection
-                draft={draft}
-                tags={tags}
-                onChange={handleDraftChange}
-                onTagsChange={handleTagsChange}
-                control={control}
-                register={register}
-                displayNameError={errors.displayName?.message}
-              />
-            )}
+            {/* 隐藏的本地图片选择器 */}
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => handleUploadAsset(e, 'avatar')}
+            />
+            <input
+              ref={portraitInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => handleUploadAsset(e, 'portrait')}
+            />
+          </div>
 
-            {activeSection === 'personality' && (
-              <div className="space-y-6">
-                <PersonalitySection
-                  draft={draft}
-                  onChange={handleDraftChange}
-                  control={control}
-                  register={register}
-                />
-                <CharacterAuditionPanel
-                  characterId={characterId}
-                  draftRevision={detailData?.draftRevision}
-                  onAdoptSuggestion={(fieldPath, after) => {
-                    // 建议先写进当前草稿，仍需用户显式保存；采用时不直接发布。
-                    if (fieldPath === '/appearance/baseText') handleDraftChange({ appearance: { ...draft.appearance, baseText: after } });
-                    else if (fieldPath === '/appearance/defaultOutfitText') handleDraftChange({ appearance: { ...draft.appearance, defaultOutfitText: after } });
-                    else if (fieldPath === '/personaText') handleDraftChange({ personaText: after });
-                    else if (fieldPath === '/speechText') handleDraftChange({ speechText: after });
-                    else if (fieldPath === '/behaviorRules') handleDraftChange({ behaviorRules: after });
-                    else if (fieldPath === '/summary') handleDraftChange({ summary: after });
-                    else if (fieldPath === '/dialogueExamples') handleDraftChange({ dialogueExamples: splitLines(after) });
-                  }}
-                />
+          {/* 形象资产库 (Asset Gallery) */}
+          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-ink flex items-center gap-1.5">
+                <Layers className="h-4 w-4 text-accent" />
+                <span>形象资产库</span>
+              </h4>
+              <span className="text-xs text-muted">
+                {assetsData?.items ? `${assetsData.items.length} 个资产` : '加载中…'}
+              </span>
+            </div>
+            <p className="text-xs text-muted">
+              管理该角色的所有头像与立绘，可随时一键切换当前生效的立绘或头像。
+            </p>
+
+            {/* 过滤 Tab */}
+            <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg text-xs">
+              {(['all', 'portrait', 'avatar'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setAssetFilter(tab)}
+                  className={`flex-1 py-1 rounded-md transition-colors font-medium ${
+                    assetFilter === tab
+                      ? 'bg-surface text-ink shadow-xs'
+                      : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {tab === 'all' ? '全部' : tab === 'portrait' ? '立绘' : '头像'}
+                </button>
+              ))}
+            </div>
+
+            {/* 资产列表 */}
+            {filteredAssets.length === 0 ? (
+              <div className="py-6 text-center text-xs text-muted border border-dashed border-border-default rounded-lg">
+                暂无此分类资产，可通过「多源获取」或「上传」添加
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5 max-h-[360px] overflow-y-auto p-0.5">
+                {filteredAssets.map((asset) => {
+                  const isCurrentAvatar = asset.id === detailData?.avatarAssetId;
+                  const isCurrentPortrait = asset.id === detailData?.portraitAssetId;
+                  return (
+                    <div
+                      key={asset.id}
+                      className="group relative rounded-lg border border-border-default bg-surface-muted/30 p-2 space-y-2 hover:border-border-hover transition-all"
+                    >
+                      <div className="relative aspect-[3/4] w-full rounded overflow-hidden bg-surface-muted flex items-center justify-center">
+                        <Image
+                          src={asset.url}
+                          alt="角色资产"
+                          fill
+                          unoptimized
+                          className="object-contain"
+                        />
+                        {/* 状态徽章 */}
+                        <div className="absolute top-1 left-1 flex flex-col gap-1">
+                          {isCurrentAvatar && (
+                            <span className="rounded bg-emerald-500/90 text-white text-[9px] px-1 py-0.5 font-bold shadow-xs">
+                              主头像
+                            </span>
+                          )}
+                          {isCurrentPortrait && (
+                            <span className="rounded bg-accent/90 text-white text-[9px] px-1 py-0.5 font-bold shadow-xs">
+                              主立绘
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 切换按钮 */}
+                      <div className="flex flex-col gap-1">
+                        {!isCurrentAvatar && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[11px] px-1.5 w-full"
+                            onClick={() => handleSetActiveAsset(asset.id, 'avatar')}
+                            disabled={setActiveAssetMutation.isPending}
+                          >
+                            设为主头像
+                          </Button>
+                        )}
+                        {!isCurrentPortrait && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[11px] px-1.5 w-full"
+                            onClick={() => handleSetActiveAsset(asset.id, 'portrait')}
+                            disabled={setActiveAssetMutation.isPending}
+                          >
+                            设为主立绘
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+          </div>
 
-            {activeSection === 'appearance' && (
-              <div id="character-source-focus-panel" className={sourceFocusActive ? 'rounded-lg ring-2 ring-accent/50 ring-offset-4 transition' : ''}>
-                <AppearanceSection
-                  draft={draft}
-                  avatarUrl={detailData?.avatarUrl}
-                  canUpload={Boolean(characterId)}
-                  onUploadClick={() => avatarInputRef.current?.click()}
-                  onGenerateAvatar={() => void handleGenerateAvatar()}
-                  generatingAvatar={generateAvatarMutation.isPending || Boolean(avatarTaskId) || applyAvatarMutation.isPending || saving}
-                  onChange={handleDraftChange}
-                  references={visualReferences}
-                  onUploadReference={() => referenceInputRef.current?.click()}
-                  referencePurpose={referencePurpose}
-                  onReferencePurposeChange={setReferencePurpose}
-                  onExtractReference={(referenceId: string) => void handleExtractReference(referenceId)}
-                  extractingReference={extractingReference}
-                  appearanceCandidate={appearanceCandidate}
-                  selectedCandidateFields={appearanceCandidateFields}
-                  onCandidateFieldsChange={setAppearanceCandidateFields}
-                  onApplyAppearanceCandidate={(candidate: { id: string; extraction: Record<string, unknown> }, fieldPaths: string[]) => void handleApplyAppearanceCandidate(candidate, fieldPaths)}
-                />
+          {/* 衍生形态管理 (Variant Cards) */}
+          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Layers className="h-4 w-4 text-accent" />
+                <h4 className="text-sm font-bold text-ink">衍生形态</h4>
               </div>
-            )}
-
-           {activeSection === 'relations' && (
-              <div className="space-y-6">
-                <MigrationReviewPanel characterId={characterId} />
-                {/* 相关资料：按角色与作品查询资料库；资料不完整也能关联。 */}
-                {characterId && (
-                  <CharacterKnowledgePanel
-                    characterName={detailData?.displayName || draft.displayName || ''}
-                    work={detailData?.draft?.work || draft.work || ''}
-                  />
-                )}
-                <RelationsSection
-                detail={detailData}
-                library={library}
-                canEdit={Boolean(characterId)}
-                onAddRelationship={async (rel) => {
-                  if (!characterId) return;
-                  try {
-                    await saveRelMutation.mutateAsync({
-                      characterId,
-                      relationship: rel,
-                    });
-                    toast.success('关系已保存');
-                  } catch (err) {
-                    toast.error('保存关系失败', err instanceof Error ? err.message : String(err));
-                    // 向表单回传失败： RelationsSection 依赖 reject 跳过清空，
-                    // 否则用户填写的关系描述在失败后被静默丢弃。
-                    throw err;
-                  }
-                }}
-                onRemoveRelationship={async (relId) => {
-                  if (!characterId) return;
-                  try {
-                    await deleteRelMutation.mutateAsync({
-                      characterId,
-                      relationshipId: relId,
-                    });
-                    toast.success('关系已移除');
-                  } catch (err) {
-                    toast.error('移除关系失败', err instanceof Error ? err.message : String(err));
-                  }
-                }}
-                />
-              </div>
-            )}
-
-            {activeSection === 'publish' && (
-              <div className="space-y-6">
-                <PublishSection
-                  detail={detailData}
-                  draft={draft}
-                  onPublish={handlePublish}
-                  publishing={publishMutation.isPending}
-                />
-                <CharacterModelRoutingPanel characterId={characterId} />
-              </div>
-            )}
-
-            <div className="mt-8 pt-4 border-t border-border-subtle flex justify-end">
               <Button
-                variant="primary"
-                onClick={() => void handleSave()}
-                loading={status === 'saving'}
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setAddVariantDialogOpen(true)}
+                className="h-7 px-2 text-xs text-accent hover:bg-accent/10"
               >
-                <Save className="h-4 w-4" aria-hidden="true" />
-                <span>保存草稿</span>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                <span>新增形态</span>
               </Button>
+            </div>
+            <p className="text-xs text-muted">
+              原角色档案为固定主体；各形态拥有专属人设微调、换装外观与角色卡。
+            </p>
+
+            <div className="space-y-1.5 pt-1">
+              {/* 默认主体形态 */}
+              <button
+                type="button"
+                onClick={() => setActiveVariantId(null)}
+                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                  activeVariantId === null
+                    ? 'bg-accent/10 text-accent border border-accent/30'
+                    : 'bg-surface-muted text-ink hover:bg-surface-elevated'
+                }`}
+              >
+                <span>默认形态 (主档案)</span>
+                {activeVariantId === null && <Check className="h-3.5 w-3.5 text-accent" />}
+              </button>
+
+              {/* 用户自定义的衍生形态列表 */}
+              {variants.map((v) => (
+                <div
+                  key={v.id}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${
+                    activeVariantId === v.id
+                      ? 'bg-accent/10 text-accent border border-accent/30 font-medium'
+                      : 'bg-surface-muted text-ink hover:bg-surface-elevated'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveVariantId(v.id)}
+                    className="flex-1 text-left truncate"
+                  >
+                    {v.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveVariant(v.id)}
+                    className="ml-2 text-muted hover:text-danger p-0.5"
+                    title={`删除形态「${v.name}」`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Right Preview Card：≥1024px 内联右栏（§8.3） */}
-        {/* 右栏预览：仅在用户展开时出现（§8.3 的「宽屏右侧可放预览」是可选能力）。 */}
-        {previewOpen && inlinePreviewColumn && (
-          <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
-            {previewPanel}
-          </aside>
-        )}
+        {/* ================= 右栏：精简人设与外观表单 ================= */}
+        <div className="rounded-xl border border-border-default bg-surface p-6 shadow-sm space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-border-subtle">
+            <div>
+              <h2 className="text-lg font-bold text-ink">
+                {currentVariant ? `编辑衍生形态：${currentVariant.name}` : '编辑基础档案与外观'}
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                {currentVariant
+                  ? '该形态独立拥有定制的人设与外观服装描述。'
+                  : '字段已精简为人设与外观两大核心，保存即生效。'}
+              </p>
+            </div>
+            {currentVariant && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveVariantId(null)}
+                className="text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                <span>返回主档案</span>
+              </Button>
+            )}
+          </div>
+
+          {/* 1. 基本信息 */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
+                1
+              </span>
+              基本信息
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block text-xs font-semibold text-ink">
+                <span>
+                  角色名称 <span className="text-danger">*</span>
+                </span>
+                <Input
+                  {...register('displayName', { required: true })}
+                  placeholder="例如：芙宁娜"
+                  className="mt-1"
+                />
+                {errors.displayName && (
+                  <p className="mt-1 text-xs text-danger">角色名称不能为空</p>
+                )}
+              </label>
+
+              <label className="block text-xs font-semibold text-ink">
+                <span>所属作品</span>
+                <Input
+                  {...register('work')}
+                  placeholder="例如：原神"
+                  className="mt-1"
+                />
+              </label>
+            </div>
+
+            <label className="block text-xs font-semibold text-ink">
+              <span>角色标签（逗号分隔）</span>
+              <TagsInput
+                value={tags}
+                onChange={(nextTags) => {
+                  setTags(nextTags);
+                  setStatus('dirty');
+                }}
+                placeholder="枫丹，水神，戏剧家"
+                className="mt-1"
+              />
+            </label>
+          </div>
+
+          {/* 2. 角色人设 (Persona) */}
+          <div className="space-y-4 pt-4 border-t border-border-subtle">
+            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
+                2
+              </span>
+              角色人设 (Persona)
+            </h3>
+
+            <label className="block text-xs font-semibold text-ink">
+              <span>一句话概述（卡片与列表展示）</span>
+              <Textarea
+                rows={2}
+                {...register('summary')}
+                placeholder="枫丹前水神，聚光灯下华丽戏剧化，内心敏感孤单的戏剧家。"
+                className="mt-1 text-sm"
+              />
+            </label>
+
+            <label className="block text-xs font-semibold text-ink">
+              <span>详细人设背景（身份、经历、性格、好恶）</span>
+              <Textarea
+                rows={12}
+                {...register('personaText')}
+                placeholder={PERSONA_PLACEHOLDER}
+                className="mt-1 text-sm font-mono leading-relaxed"
+              />
+            </label>
+          </div>
+
+          {/* 3. 角色外观 (Appearance) */}
+          <div className="space-y-4 pt-4 border-t border-border-subtle">
+            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
+                3
+              </span>
+              角色外观 (Appearance)
+            </h3>
+
+            <label className="block text-xs font-semibold text-ink">
+              <span>基础外貌（面部、发型发色、体貌特征）</span>
+              <Textarea
+                rows={4}
+                {...register('appearance.baseText')}
+                placeholder="蓝白相间中长发，双色渐变微卷发尾；水蓝色异色瞳孔；身形娇小玲珑，神情灵动。"
+                className="mt-1 text-sm leading-relaxed"
+              />
+            </label>
+
+            <label className="block text-xs font-semibold text-ink">
+              <span>代表性装扮（默认服装、配饰细节）</span>
+              <Textarea
+                rows={4}
+                {...register('appearance.defaultOutfitText')}
+                placeholder="华丽的深蓝与白色枫丹礼服礼帽，精致蕾丝领结，左眼单片水滴装饰。"
+                className="mt-1 text-sm leading-relaxed"
+              />
+            </label>
+
+            <div className="space-y-3 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-raised/40 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-ink">角色 LoRA</h4>
+                  <p className="mt-1 text-xs leading-relaxed text-muted">活动镜头使用此角色时，会把这些 LoRA 叠加到活动画风设置上。文件名需与 ComfyUI 的 models/loras 清单一致。</p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}>
+                  <Plus className="h-3.5 w-3.5" />添加
+                </Button>
+              </div>
+              {visualLoraFields.length === 0 ? <p className="rounded border border-dashed border-border-default px-3 py-3 text-center text-xs text-muted">尚未配置角色 LoRA。</p> : (
+                <div className="space-y-3">
+                  {visualLoraFields.map((field, index) => (
+                    <div key={field.id} className="grid grid-cols-1 gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface p-3 sm:grid-cols-[minmax(0,1.5fr)_100px_minmax(0,1fr)_auto] sm:items-end">
+                      <label className="block min-w-0 text-xs font-medium text-muted">LoRA 文件名
+                        <Input {...register(`visualLoras.${index}.model`)} placeholder="character-style.safetensors" className="mt-1 bg-surface" />
+                      </label>
+                      <label className="block text-xs font-medium text-muted">强度
+                        <Input type="number" min={-10} max={10} step={0.05} {...register(`visualLoras.${index}.strength`, { valueAsNumber: true })} className="mt-1 bg-surface" />
+                      </label>
+                      <label className="block min-w-0 text-xs font-medium text-muted">触发词
+                        <Input {...register(`visualLoras.${index}.triggerWord`)} placeholder="角色或画风触发词" className="mt-1 bg-surface" />
+                      </label>
+                      <div className="flex items-center justify-between gap-2 sm:justify-end">
+                        <label className="inline-flex items-center gap-1.5 text-xs text-muted"><input type="checkbox" {...register(`visualLoras.${index}.enabled`)} className="h-4 w-4 accent-[var(--color-accent)]" />启用</label>
+                        <Button type="button" size="sm" variant="ghost" aria-label={`移除第 ${index + 1} 个角色 LoRA`} onClick={() => removeVisualLora(index)}><Trash2 className="h-3.5 w-3.5 text-muted" /></Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 底部保存条 */}
+          <div className="pt-6 border-t border-border-subtle flex items-center justify-between">
+            <span className="text-xs text-muted">
+              保存后即刻生效，无需繁琐的发布与版本号确认。
+            </span>
+            <Button
+              type="button"
+              variant="accent"
+              size="lg"
+              onClick={() => void handleSave()}
+              loading={status === 'saving'}
+              className="px-6 font-semibold"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              <span>保存角色</span>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* 小屏：同一份预览内容放进抽屉（§8.3「小屏改抽屉」） */}
-      <Drawer
-        open={!inlinePreviewColumn && previewDrawerOpen}
-        onOpenChange={setPreviewDrawerOpen}
-        position="bottom"
-        title="角色卡片预览"
-        description="内容随左侧编辑实时更新。"
+      {/* URL 导入头像对话框 */}
+      <Dialog
+        open={urlDialogOpen}
+        onOpenChange={setUrlDialogOpen}
+        title="从图片链接获取头像"
+        description="输入公开可访问的图片 URL，系统将自动下载并设为角色头像。"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setUrlDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="accent"
+              disabled={!customAvatarUrl.trim() || fetchAvatarFromUrlMutation.isPending}
+              loading={fetchAvatarFromUrlMutation.isPending}
+              onClick={handleFetchUrlAvatar}
+            >
+              抓取并应用
+            </Button>
+          </div>
+        }
       >
-        {previewPanel}
-      </Drawer>
+        <div className="space-y-3 py-2">
+          <Input
+            value={customAvatarUrl}
+            onChange={(e) => setCustomAvatarUrl(e.target.value)}
+            placeholder="https://example.com/avatar.png"
+            autoFocus
+          />
+        </div>
+      </Dialog>
 
-      {/* Hidden File Inputs */}
-      <input
-        ref={avatarInputRef}
-        hidden
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        aria-label="上传角色头像图片"
-        onChange={handleUploadAvatar}
-      />
-      <input
-        ref={referenceInputRef}
-        hidden
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        aria-label="上传外观参考图"
-        onChange={handleUploadReference}
-      />
+      {/* AI 头像生成确认对话框 */}
+      <Dialog
+        open={aiAvatarDialogOpen}
+        onOpenChange={setAiAvatarDialogOpen}
+        title="AI 一键生成头像"
+        description="系统已根据角色的外貌与代表性装扮自动合成提示词，您可以根据需要进行微调。"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setAiAvatarDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="accent"
+              disabled={generateAvatarMutation.isPending}
+              loading={generateAvatarMutation.isPending}
+              onClick={handleStartAiAvatarGeneration}
+            >
+              开始生成
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 py-2">
+          <label className="block text-xs font-semibold text-ink">生图提示词 (Prompt)</label>
+          <Textarea
+            rows={4}
+            value={aiAvatarPrompt}
+            onChange={(e) => setAiAvatarPrompt(e.target.value)}
+            className="text-sm font-mono"
+          />
+        </div>
+      </Dialog>
+
+      {/* 新增衍生形态对话框 */}
+      <Dialog
+        open={addVariantDialogOpen}
+        onOpenChange={setAddVariantDialogOpen}
+        title="新增衍生形态"
+        description="为角色创建一个情境形态（如：日常常服、雪山特训、夏日泳装），形态将挂在原角色档案下。"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setAddVariantDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="accent"
+              disabled={!newVariantName.trim()}
+              onClick={handleAddVariant}
+            >
+              确认添加
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 py-2">
+          <label className="block text-xs font-semibold text-ink">形态名称</label>
+          <Input
+            value={newVariantName}
+            onChange={(e) => setNewVariantName(e.target.value)}
+            placeholder="例如：雪山特训"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAddVariant();
+            }}
+          />
+        </div>
+      </Dialog>
+
+      {/* 酒馆卡导入对话框 */}
       <CharacterImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
-        targetCharacterId={characterId}
-        baseDraftRevision={draftRevision ?? detailData?.draftRevision}
-        onCommitted={(committedId) => {
-          if (characterId) {
-            void refetchDetail().then(({ data }) => {
-              if (!data) return;
-              reset(characterDraftToFormValues(data.draft)); setTags(data.tags);
-              draftRevisionRef.current = data.draftRevision; setDraftRevision(data.draftRevision); setStatus('clean');
-              void fetchCharacterVisualReferences(characterId).then((response) => setVisualReferences(response.items.flatMap((item) => typeof item.id === 'string' && typeof item.url === 'string' ? [{ id: item.id, url: item.url }] : [])));
-            });
-          }
-          else router.push(`/apps/characters/${committedId}`);
-          toast.success('角色卡已确认导入');
+        initialMode="online"
+        onCommitted={(newId) => {
+          setImportDialogOpen(false);
+          router.push(`/apps/characters/${newId}`);
         }}
       />
+
+      {/* 多源获取头像与立绘对话框 */}
+      {characterId && (
+        <CharacterMultiSourceDialog
+          characterId={characterId}
+          characterName={draft.displayName || '未命名角色'}
+          open={multiSourceDialogOpen}
+          onOpenChange={setMultiSourceDialogOpen}
+          onSuccess={() => {
+            void Promise.all([refetchDetail(), refetchAssets()]);
+          }}
+        />
+      )}
     </PageContainer>
   );
 }

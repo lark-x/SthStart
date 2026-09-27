@@ -243,6 +243,34 @@ export function createPreset(database: ServiceDatabase, input: CreatePresetInput
   return getPreset(database, id)!;
 }
 
+/** 发布导入的配置包时，把尚未应用的预设模板绑定到这个不可变版本。 */
+export function applyWorkflowPresetTemplates(database: ServiceDatabase, workflowId: string, workflowVersion: number, engineId: string | null): GenerationPreset[] {
+  const templates = database.connection.prepare(`SELECT * FROM generation_workflow_preset_templates
+    WHERE workflow_id=? AND applied_workflow_version IS NULL ORDER BY template_key`).all(workflowId) as Array<{
+      template_key: string; app_id: string; purpose: string; name: string; description: string; values_json: string;
+    }>;
+  const created: GenerationPreset[] = [];
+  for (const template of templates) {
+    const values = JSON.parse(template.values_json) as Record<string, unknown>;
+    const preset = createPreset(database, {
+      appId: template.app_id,
+      purpose: template.purpose,
+      name: template.name,
+      description: template.description,
+      workflowId,
+      workflowVersion,
+      engineId,
+      values,
+      enabled: true,
+    });
+    database.connection.prepare(`UPDATE generation_workflow_preset_templates
+      SET applied_workflow_version=?,created_preset_id=? WHERE workflow_id=? AND template_key=? AND applied_workflow_version IS NULL`)
+      .run(workflowVersion, preset.id, workflowId, template.template_key);
+    created.push(preset);
+  }
+  return created;
+}
+
 export interface UpdatePresetInput {
   name?: string;
   description?: string;

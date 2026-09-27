@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { GenerationAnalyzedInput } from '@sthstart/contracts';
+import {
+  ActivityImagePromptPolicyResponseSchema,
+  GenerationEngineFreeMemoryResponseSchema,
+  SaveActivityImagePromptPolicyRequestSchema,
+} from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
@@ -28,7 +33,9 @@ import {
   setDefaultPreset,
   updatePreset,
 } from './generation/configuration-store.js';
-import { cachedModels, getNodeDefinitions, listModels, loadObjectInfo, testConnection, type EngineTarget } from './generation/comfy-discovery.js';
+import { cachedModels, getNodeDefinitions, listModels, loadObjectInfo, requestModelUnload, testConnection, type EngineTarget } from './generation/comfy-discovery.js';
+import { getActivityImagePromptPolicy, resolveActivityImagePromptPolicy, saveActivityImagePromptPolicy } from './activities/image-prompt-policies.js';
+import { resolveAssignedLlmProfile } from './providers.js';
 
 /** 新管理路由（规划 §12）：按项目约定抽成独立模块，由 management.ts 挂载到管理鉴权之下。 */
 
@@ -168,6 +175,53 @@ export function registerGenerationConfigRoutes(
   secrets: SecretStore,
   fetcher: typeof fetch = fetch,
 ) {
+  app.get<{ Querystring: { workflowId?: string; workflowVersion?: string } }>(
+    '/api/v1/admin/generation/activity-image-prompt-policy',
+    { schema: { response: { 200: ActivityImagePromptPolicyResponseSchema } } },
+    async (request, reply) => {
+      const workflowId = request.query.workflowId?.trim() ?? '';
+      const workflowVersion = Number(request.query.workflowVersion);
+      if (!workflowId || !Number.isInteger(workflowVersion) || workflowVersion < 1) {
+        return reply.code(400).send({ error: 'invalid_workflow_version', message: '请指定工作流及已发布版本。' });
+      }
+      const version = database.connection.prepare(`SELECT 1 FROM generation_workflow_versions
+        WHERE workflow_id=? AND version=? AND is_published=1`).get(workflowId, workflowVersion);
+      if (!version) return reply.code(404).send({ error: 'workflow_version_not_found', message: '未找到该已发布工作流版本。' });
+      let optimizer = { ready: false, profileName: null as string | null, model: null as string | null, message: null as string | null };
+      try {
+        const profile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
+        optimizer = profile?.model
+          ? { ready: true, profileName: profile.name, model: profile.model, message: null }
+          : { ready: false, profileName: profile?.name ?? null, model: profile?.model ?? null, message: '请先在活动的模型配置中绑定可用的文本模型。' };
+      } catch (error) {
+        optimizer.message = error instanceof Error ? `文本模型配置不可用：${error.message}` : '文本模型配置不可用。';
+      }
+      return { policy: resolveActivityImagePromptPolicy(database, workflowId, workflowVersion), optimizer };
+    },
+  );
+
+  app.put<{ Body: import('@sthstart/contracts').SaveActivityImagePromptPolicyRequest }>(
+    '/api/v1/admin/generation/activity-image-prompt-policy',
+    { schema: { body: SaveActivityImagePromptPolicyRequestSchema, response: { 200: ActivityImagePromptPolicyResponseSchema } } },
+    async (request, reply) => {
+      try {
+        const policy = saveActivityImagePromptPolicy(database, request.body);
+        let optimizer = { ready: false, profileName: null as string | null, model: null as string | null, message: null as string | null };
+        try {
+          const profile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
+          optimizer = profile?.model
+            ? { ready: true, profileName: profile.name, model: profile.model, message: null }
+            : { ready: false, profileName: profile?.name ?? null, model: profile?.model ?? null, message: '请先在活动的模型配置中绑定可用的文本模型。' };
+        } catch (error) {
+          optimizer.message = error instanceof Error ? `文本模型配置不可用：${error.message}` : '文本模型配置不可用。';
+        }
+        return { policy, optimizer };
+      } catch (error) {
+        return sendConfigError(reply, error);
+      }
+    },
+  );
+
   // ── 连接发现 ──
 
   app.post<{ Params: { id: string } }>('/api/v1/admin/generation/engines/:id/test', async (request, reply) => {
@@ -179,6 +233,25 @@ export function registerGenerationConfigRoutes(
       return sendConfigError(reply, error);
     }
   });
+
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/admin/generation/engines/:id/free-memory',
+    { schema: { response: { 200: GenerationEngineFreeMemoryResponseSchema } } },
+    async (request, reply) => {
+      try {
+        const { target, secret } = await engineTarget(database, secrets, request.params.id);
+        await requestModelUnload(target, secret, fetcher);
+        return {
+          ok: true,
+          engineId: target.id,
+          acceptedAt: nowIso(),
+          message: 'ComfyUI 已接受卸载模型与释放显存缓存的请求。正在执行的任务不会被中断；模型文件不会被删除，下次绘制时会重新加载。',
+        };
+      } catch (error) {
+        return sendConfigError(reply, error);
+      }
+    },
+  );
 
   app.get<{ Params: { id: string }; Querystring: { type?: string; search?: string; limit?: string; offset?: string; refresh?: string } }>(
     '/api/v1/admin/generation/engines/:id/models',
@@ -382,6 +455,8 @@ export function registerGenerationConfigRoutes(
           editorConfig: row.editor_config_json ? JSON.parse(String(row.editor_config_json)) : null,
         },
         presets: presets.map((preset) => ({
+          key: preset.id,
+          appId: preset.appId,
           name: preset.name,
           description: preset.description,
           purpose: preset.purpose,
@@ -440,6 +515,7 @@ export function registerGenerationConfigRoutes(
         validationMode: 'strict',
         priority: 'interactive',
         idempotencyKey: typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim().length >= 8 ? body.idempotencyKey.trim() : null,
+        audit: { feature: 'generation-config', businessEvent: 'generation.workflow.test', objectType: 'workflow', objectId: request.params.id },
       }, fetcher);
       return reply.code(202).send({
         ...task,

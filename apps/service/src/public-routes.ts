@@ -30,8 +30,10 @@ import {
 import { createLegacyImageTask, legacyImageTaskDescriptor } from './generation/legacy-image.js';
 import { resolveAssignedLlmProfile, resolveProfile, safeJson, upstreamHeaders } from './providers.js';
 import { resolveAppLlmBindingStatus } from './llm-status.js';
+import { collectAiCallRedactionSecrets, createAiCallRecord, recordAiCallStream, redactAiValue, updateAiCallRecord } from './ai-call-trace.js';
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
+import { inspectLinsheHostedReadiness } from './linshe-hosted.js';
 
 function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifact' | 'generation' | 'persona', request: FastifyRequest, reply: FastifyReply) {
   const identity = authenticateApp(database, request);
@@ -63,8 +65,8 @@ function requestedLlmRole(request: FastifyRequest, body: Record<string, unknown>
   return multimodal ? 'multimodal' : 'text';
 }
 
-async function proxyJson(fetcher: typeof fetch, url: string, body: unknown, secret: string | null, timeoutMs = 60_000, customHeaders: Record<string, string> = {}) {
-  return fetcher(url, { method: 'POST', headers: { ...customHeaders, ...upstreamHeaders(secret) }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+async function proxyJson(fetcher: typeof fetch, url: string, body: unknown, secret: string | null, timeoutMs = 60_000, customHeaders: Record<string, string> = {}, signal?: AbortSignal) {
+  return fetcher(url, { method: 'POST', headers: { ...customHeaders, ...upstreamHeaders(secret) }, body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
 }
 
 function storageNamespace(database: ServiceDatabase, identity: AppIdentity, body: Record<string, unknown>, access: 'read' | 'write') {
@@ -214,6 +216,15 @@ function sanitizeMessage(input: string) {
 }
 
 export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
+  app.get('/api/v1/app/hosted-readiness', async (request, reply) => {
+    const identity = authenticateApp(database, request);
+    if (!identity) return reply.code(401).send({ error: 'invalid_app_token' });
+    if (identity.id !== 'linshe') return reply.code(403).send({ error: 'linshe_identity_required' });
+    const authorization = request.headers.authorization;
+    const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : null;
+    return inspectLinsheHostedReadiness(config, database, secrets, token, fetcher);
+  });
+
   app.get('/api/v1/app/config', async (request, reply) => {
     const identity = requireApp(database, 'llm', request, reply); if (!identity) return;
     const rows = database.connection.prepare(
@@ -292,10 +303,22 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     if (profile.thinkingMode === 'enabled') upstreamBody.thinking = { type: 'enabled' };
     else if (profile.thinkingMode === 'disabled') upstreamBody.thinking = { type: 'disabled' };
     else if (profile.thinkingMode === 'omit') delete upstreamBody.thinking;
+    const redactionSecrets = collectAiCallRedactionSecrets({ secret: profile.secret, headers: profile.headers, extraBody: profile.extraBody }, upstreamBody);
+    const callId = createAiCallRecord(database, {
+      applicationId: identity.id, feature: 'public-api', businessEvent: 'public.chat.completion', callType: role,
+      provider: profile.name, models: [profile.model], parameters: { stream: upstreamBody.stream === true, temperature: upstreamBody.temperature ?? null },
+      positivePrompt: JSON.stringify(upstreamBody.messages ?? []), requestSnapshot: { url: `${profile.baseUrl}/chat/completions`, body: upstreamBody },
+      sourceUrl: `${profile.baseUrl}/chat/completions`, redactionSecrets,
+    });
+    updateAiCallRecord(database, callId, { status: 'submitted', event: 'submitted', redactionSecrets });
     let upstream: Response;
+    const clientDisconnect = new AbortController();
+    request.raw.once('aborted', () => clientDisconnect.abort());
+    reply.raw.once('close', () => { if (!reply.raw.writableEnded) clientDisconnect.abort(); });
     try {
-      upstream = await proxyJson(fetcher, `${profile.baseUrl}/chat/completions`, upstreamBody, profile.secret, 180_000, profile.headers);
+      upstream = await proxyJson(fetcher, `${profile.baseUrl}/chat/completions`, upstreamBody, profile.secret, 180_000, profile.headers, clientDisconnect.signal);
     } catch (error) {
+      updateAiCallRecord(database, callId, { status: clientDisconnect.signal.aborted ? 'abandoned' : 'failed', event: clientDisconnect.signal.aborted ? 'client_disconnected' : 'upstream_error', errorCode: 'llm_upstream_unavailable', errorMessage: error instanceof Error ? error.message : String(error), redactionSecrets });
       return reply.code(502).send({ error: 'llm_upstream_unavailable', message: String(error) });
     }
     reply.code(upstream.status);
@@ -304,10 +327,15 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       reply.hijack();
       reply.raw.statusCode = upstream.status;
       if (contentType) reply.raw.setHeader('content-type', contentType);
-      Readable.fromWeb(upstream.body as never).pipe(reply.raw);
+      const auditedBody = recordAiCallStream(database, callId, upstream.body, upstream.ok ? 'succeeded' : 'failed', redactionSecrets);
+      Readable.fromWeb(auditedBody as never).pipe(reply.raw);
       return reply;
     }
-    return reply.send(await upstream.text());
+    const responseText = await upstream.text();
+    let usage: Record<string, unknown> = {};
+    try { const payload = JSON.parse(responseText) as Record<string, unknown>; if (payload.usage && typeof payload.usage === 'object' && !Array.isArray(payload.usage)) usage = payload.usage as Record<string, unknown>; } catch { /* provider returned non-JSON */ }
+    updateAiCallRecord(database, callId, { status: upstream.ok ? 'succeeded' : 'failed', event: upstream.ok ? 'response_received' : 'provider_error', detail: { httpStatus: upstream.status }, responseText, usage, errorCode: upstream.ok ? null : `http_${upstream.status}`, errorMessage: upstream.ok ? null : responseText, redactionSecrets });
+    return reply.send(responseText);
   });
 
   const vectorRoutes = [
@@ -320,12 +348,24 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       const identity = requireApp(database, 'vector', request, reply); if (!identity) return;
       const profile = await resolveProfile(database, secrets, 'vector', requestedProfile(request));
       const baseUrl = profile?.baseUrl ?? config.vectorDefaultUrl;
+      const redactionSecrets = collectAiCallRedactionSecrets({ secret: profile?.secret, headers: profile?.headers, extraBody: profile?.extraBody });
       try {
         const transformed = route === 'embed'
           ? { body: safeJson(request.body), namespace: `app:${identity.id}:default` }
           : namespacedVectorBody(database, identity, request.body, access);
-        const upstream = await proxyJson(fetcher, `${baseUrl}${upstreamPath}`, transformed.body, profile?.secret ?? null);
+        let vectorCallId: string | null = null;
+        if (route === 'embed' || route === 'search') {
+          vectorCallId = createAiCallRecord(database, { applicationId: identity.id, feature: 'public-vector', businessEvent: `public.vector.${route}`, callType: 'embedding', provider: profile?.name ?? 'vector-service', models: profile?.model ? [profile.model] : [], parameters: { route }, requestSnapshot: transformed.body, sourceUrl: `${baseUrl}${upstreamPath}`, redactionSecrets });
+          updateAiCallRecord(database, vectorCallId, { status: 'submitted', event: 'submitted', redactionSecrets });
+        }
+        let upstream: Response;
+        try { upstream = await proxyJson(fetcher, `${baseUrl}${upstreamPath}`, transformed.body, profile?.secret ?? null); }
+        catch (error) {
+          if (vectorCallId) updateAiCallRecord(database, vectorCallId, { status: 'abandoned', event: 'upstream_error', errorCode: 'vector_unavailable', errorMessage: error instanceof Error ? error.message : String(error), redactionSecrets });
+          throw error;
+        }
         const payload = await upstream.json();
+        if (vectorCallId) updateAiCallRecord(database, vectorCallId, { status: upstream.ok ? 'succeeded' : 'failed', event: upstream.ok ? 'response_received' : 'provider_error', detail: { httpStatus: upstream.status }, responseText: JSON.stringify(redactAiValue(payload, '', redactionSecrets)), errorCode: upstream.ok ? null : `http_${upstream.status}`, redactionSecrets });
         return reply.code(upstream.status).send(stripNamespace(payload, transformed.namespace));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

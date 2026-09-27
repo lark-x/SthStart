@@ -1,14 +1,11 @@
 'use client';
 import { normalizeCreationProfile } from '@sthstart/contracts';
 
-import { CandidateReviewPanel } from './candidate-review-panel';
-import { useSearchParams } from 'next/navigation';
-import { fetchActivityJobs, fetchActivityJob, retryActivityTextJob } from '../api';
+import { retryActivityTextJob } from '../api';
 import { useQueryClient } from '@tanstack/react-query';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Sparkles,
-  Check,
   Compass,
   MessageSquare,
   Layers,
@@ -18,9 +15,8 @@ import {
   ImagePlus,
   Pencil,
 } from 'lucide-react';
-import type { Activity, StageDefinition } from '@sthstart/contracts';
-import { useActivityJob, useActivityDraft } from '../queries';
-import { useTriggerTextGeneration, useAdoptCandidate, useAdoptCandidateBatch } from '../mutations';
+import type { Activity, ActivityCandidate, ActivityJob, ContentDocument, StageDefinition } from '@sthstart/contracts';
+import type { ActivityGenerationMode } from '../hooks/use-activity-generation';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -29,17 +25,29 @@ import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
 
-type GenerationMode =
-  | 'plan' | 'stage' | 'whole-text' | 'rewrite-records'
-  | 'invite' | 'wish' | 'moment' | 'shot';
+type GenerationMode = ActivityGenerationMode;
 
 interface GenerationModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   activity: Activity;
+  document: ContentDocument;
   stages: StageDefinition[];
   currentStageId?: string;
-  onCandidateAdopted?: () => void;
+  jobId: string | null;
+  onJobIdChange: (jobId: string | null) => void;
+  canGenerate: boolean;
+  onBeforeGenerate: () => Promise<boolean>;
+  job: ActivityJob | null;
+  candidates: ActivityCandidate[];
+  starting: boolean;
+  startError: string | null;
+  onStartGeneration: (input: {
+    mode: ActivityGenerationMode;
+    scope?: Record<string, unknown>;
+    userInstruction?: string;
+  }) => Promise<string | null>;
+  onReviewCandidate: (candidateId: string) => void;
 }
 
 const MODE_GROUPS: Array<{
@@ -52,7 +60,7 @@ const MODE_GROUPS: Array<{
     hint: '规划情节骨架或生成整个阶段的内容。',
     items: [
       { id: 'plan', label: '阶段规划', icon: Compass, desc: '构建整体情节骨架' },
-      { id: 'stage', label: '阶段内容', icon: MessageSquare, desc: '生成群聊与朋友圈' },
+      { id: 'stage', label: '本幕对话与动态', icon: MessageSquare, desc: '生成本幕对话与朋友圈动态' },
       { id: 'whole-text', label: '整场生成', icon: Layers, desc: '逐阶段串行成文' },
     ],
   },
@@ -63,7 +71,8 @@ const MODE_GROUPS: Array<{
       { id: 'invite', label: '生成邀请', icon: Mail, desc: '指定角色口吻的邀请消息' },
       { id: 'wish', label: '生日祝福', icon: Cake, desc: '对寿星的祝福语' },
       { id: 'moment', label: '朋友圈文案', icon: Camera, desc: '一条动态正文' },
-      { id: 'shot', label: '配图描述', icon: ImagePlus, desc: '镜头描述与配文' },
+      { id: 'continue-chat', label: '续写对话', icon: MessageSquare, desc: '在当前对话后继续写' },
+      { id: 'shot', label: '配图方案', icon: ImagePlus, desc: '生成镜头描述与配文，不会生成图片' },
     ],
   },
   {
@@ -75,7 +84,7 @@ const MODE_GROUPS: Array<{
   },
 ];
 
-const STAGE_SCOPED: GenerationMode[] = ['stage', 'rewrite-records', 'invite', 'wish', 'moment', 'shot'];
+const STAGE_SCOPED: GenerationMode[] = ['stage', 'rewrite-records', 'invite', 'wish', 'moment', 'shot', 'continue-chat'];
 const SNIPPET_MODES: GenerationMode[] = ['invite', 'wish', 'moment', 'shot'];
 
 // 每组按自身条目数分列：固定 6 列会把 3/4 张卡片压到 ~80px，导致四字标题逐字折行。
@@ -100,7 +109,7 @@ function describeJobFailure(message: string | null | undefined): { title: string
   return { title: '生成失败', detail: raw };
 }
 
-export function GenerationModal({ open, onOpenChange, activity, stages, currentStageId, onCandidateAdopted }: GenerationModalProps) {
+export function GenerationModal({ open, onOpenChange, activity, document, stages, currentStageId, jobId: activeJobId, onJobIdChange, canGenerate, onBeforeGenerate, job, candidates, starting, startError, onStartGeneration, onReviewCandidate }: GenerationModalProps) {
   const queryClient = useQueryClient();
   const [retrying, setRetrying] = useState(false);
   const [stageIds, setStageIds] = useState<string[]>(stages.filter(stage => !stage.locked).map(stage => stage.id));
@@ -111,34 +120,28 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
   const [authorActorId, setAuthorActorId] = useState('');
   const [shotActorIds, setShotActorIds] = useState<string[]>([]);
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
-  const searchParams = useSearchParams();
-  const [activeJobId, setActiveJobId] = useState<string | null>(searchParams.get('jobId'));
   const [pickedCandidateId, setPickedCandidateId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [candidateSelection,setCandidateSelection]=useState<string[]|null>(null);
-  const [batchAdopting, setBatchAdopting] = useState(false);
+  const [preparingGeneration, setPreparingGeneration] = useState(false);
+  const startInFlight = useRef(false);
+  const restoredJobId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || activeJobId) return;
-    let active = true;
-    void fetchActivityJobs(activity.id).then(result => {
-      const latest = result.items.filter(j => j.kind === 'text').sort((a,b) => b.createdAt.localeCompare(a.createdAt))[0];
-      if (active && latest) setActiveJobId(latest.id);
-    }).catch(error => { if (active) setErrorMsg(error instanceof Error ? error.message : "读取历史任务失败"); });
-    return () => { active = false; };
-  }, [open, activity.id, activeJobId]);
+    if (open && currentStageId && stages.some((stage) => stage.id === currentStageId)) {
+      setTargetStageId(currentStageId);
+    }
+  }, [open, currentStageId, stages]);
 
-  const triggerMutation = useTriggerTextGeneration();
-  const adoptMutation = useAdoptCandidate();
-  const { data: jobData } = useActivityJob(activity.id, activeJobId || undefined);
   useEffect(() => {
-    if (!open || !activeJobId) return;
-    let active = true;
-    void fetchActivityJob(activity.id, activeJobId).then(result => {
-      if (active && searchParams.get('jobId') === activeJobId && MODE_GROUPS.some(group=>group.items.some(item=>item.id===result.job.mode))) setMode(result.job.mode as GenerationMode);
-    }).catch(error => { if (active) setErrorMsg(error instanceof Error ? error.message : '读取任务失败'); });
-    return () => { active = false; };
-  }, [open, activity.id, activeJobId]);
+    if (!activeJobId || job?.id !== activeJobId || restoredJobId.current === activeJobId) return;
+    const restoredMode = job.mode;
+    if (MODE_GROUPS.some((group) => group.items.some((item) => item.id === restoredMode))) {
+      setMode(restoredMode as GenerationMode);
+    }
+    const stageId = (job as ActivityJob & { scope?: Record<string, unknown> }).scope?.stageId;
+    if (typeof stageId === 'string' && stages.some((stage) => stage.id === stageId)) setTargetStageId(stageId);
+    restoredJobId.current = activeJobId;
+  }, [activeJobId, job?.id, stages]);
   const handleRetry = async () => {
     if (!activeJobId) return;
     setRetrying(true);
@@ -146,9 +149,6 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
     catch (error) { setErrorMsg(error instanceof Error ? error.message : '继续生成失败'); }
     finally { setRetrying(false); }
   };
-  const { data: draftData } = useActivityDraft(activity.id);
-
-  const document = draftData?.draft.document;
   const profileMode = normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).textMode;
   const mode: GenerationMode = modeOverride ?? (currentStageId ? 'stage' : stages.length && profileMode === 'plan' ? 'whole-text' : profileMode);
   const instruction = instructionOverride ?? normalizeCreationProfile((document?.activity.creationProfile?.values||{}) as Record<string,unknown>).instruction;
@@ -181,53 +181,49 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
   const effectiveRecordIds = selectedRecordIds.filter((id) => selectableRecords.some((record) => record.id === id));
 
   const handleStartGeneration = async () => {
+    if (startInFlight.current || starting || !canGenerate) return;
+    startInFlight.current = true;
+    setPreparingGeneration(true);
     setErrorMsg(null);
     setPickedCandidateId(null);
-    if (mode === 'rewrite-records' && !effectiveRecordIds.length) {
-      setErrorMsg('请先选择要重写的消息或动态。');
-      return;
-    }
-    const scope: Record<string, unknown> = {};
-    if (mode === 'whole-text') {
-      scope.stageIds = stageIds.filter(id => stages.some(stage => stage.id === id && !stage.locked));
-      if (!(scope.stageIds as string[]).length) { setErrorMsg('请至少选择一个未锁定阶段。'); return; }
-    }
-    if (STAGE_SCOPED.includes(mode)) scope.stageId = targetStageId;
-    if (mode === 'rewrite-records') scope.recordIds = effectiveRecordIds;
-    if (mode === 'invite' || mode === 'wish') scope.speakerActorId = effectiveSpeakerActorId;
-    if (mode === 'wish') scope.birthdayActorIds = birthdayActorIds;
-    if (mode === 'moment') scope.authorActorId = effectiveAuthorActorId;
-    if (mode === 'shot') scope.actorIds = shotActorIds.length ? shotActorIds : stageActorIds;
-
     try {
-      const job = await triggerMutation.mutateAsync({
-        id: activity.id,
-        input: {
-          mode,
-          userInstruction: instruction.trim() || undefined,
-          scope,
-          idempotencyKey: `gen_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        },
+      if (!(await onBeforeGenerate())) return;
+      if (mode === 'rewrite-records' && !effectiveRecordIds.length) {
+        setErrorMsg('请先选择要重写的消息或动态。');
+        return;
+      }
+      const scope: Record<string, unknown> = {};
+      if (mode === 'whole-text') {
+        scope.stageIds = stageIds.filter(id => stages.some(stage => stage.id === id && !stage.locked));
+        if (!(scope.stageIds as string[]).length) { setErrorMsg('请至少选择一个未锁定阶段。'); return; }
+      }
+      if (STAGE_SCOPED.includes(mode)) scope.stageId = targetStageId;
+      if (mode === 'rewrite-records') scope.recordIds = effectiveRecordIds;
+      if (mode === 'invite' || mode === 'wish') scope.speakerActorId = effectiveSpeakerActorId;
+      if (mode === 'wish') scope.birthdayActorIds = birthdayActorIds;
+      if (mode === 'moment') scope.authorActorId = effectiveAuthorActorId;
+      if (mode === 'shot') scope.actorIds = shotActorIds.length ? shotActorIds : stageActorIds;
+      if (mode === 'continue-chat') {
+        scope.conversationId = document?.messages.find((message) => message.stageId === targetStageId)?.conversationId
+          || document?.conversations[0]?.id
+          || 'group_main';
+      }
+
+      const createdJobId = await onStartGeneration({
+        mode,
+        userInstruction: instruction.trim() || undefined,
+        scope,
       });
-      setActiveJobId(job.id);
+      if (createdJobId) onJobIdChange(createdJobId);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : '启动生成任务失败');
+    } finally {
+      startInFlight.current = false;
+      setPreparingGeneration(false);
     }
   };
 
-  const handleAdopt = async (candidateId: string) => {
-    try {
-      await adoptMutation.mutateAsync({ id: activity.id, candidateId, expectedHeadVersion: activity.headVersion });
-      onCandidateAdopted?.();
-      onOpenChange(false);
-      setActiveJobId(null);
-      setPickedCandidateId(null);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '采用候选失败');
-    }
-  };
-
-  const candidateList = jobData?.candidates || [];
+  const candidateList = activeJobId ? candidates : [];
   const orderedCandidates = useMemo(() => {
     // 整场生成的候选按阶段顺序采用；其他模式保持生成顺序。
     const order = new Map(stages.map((stage, index) => [stage.id, index]));
@@ -244,37 +240,8 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
     });
   }, [candidateList, stages]);
 
-  const adoptBatchMutation = useAdoptCandidateBatch();
-
-  /** 整批采用：调用原子批量采用接口，在单事务中按阶段顺序统一提交。 */
-  const handleAdoptBatch = async () => {
-    if (!orderedCandidates.length) return;
-    setBatchAdopting(true);
-    setErrorMsg(null);
-    try {
-      await adoptBatchMutation.mutateAsync({
-        id: activity.id,
-        input: {
-          candidateIds: orderedCandidates.filter(c=>candidateSelection===null||candidateSelection.includes(c.id)).map((c) => c.id),
-          expectedHeadVersion: activity.headVersion,
-          expectedDraftVersion: draftData?.draft.draftVersion ?? 1,
-        },
-      });
-      onCandidateAdopted?.();
-      onOpenChange(false);
-      setActiveJobId(null);
-      setPickedCandidateId(null);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '整批采用失败');
-    } finally {
-      setBatchAdopting(false);
-    }
-  };
-
   const activeCandidate = candidateList.find((candidate) => candidate.id === pickedCandidateId) || candidateList[candidateList.length - 1];
   const activePayload = activeCandidate?.payload as Record<string, unknown> | undefined;
-  const job = jobData?.job;
-  const canBatchAdopt = job?.status === 'succeeded' && orderedCandidates.length > 1;
   const isSnippet = SNIPPET_MODES.includes(mode);
   const modeHint = MODE_GROUPS.flatMap((group) => group.items).find((item) => item.id === mode)?.desc;
   const jobFailure = job?.status === 'failed' ? describeJobFailure(job.errorMessage) : null;
@@ -284,39 +251,29 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
       open={open}
       onOpenChange={onOpenChange}
       size="lg"
-      title="AI 活动内容生成"
-      description="选择写哪一段，按需补充要求，然后开始生成。先预览，确认满意后再采用。"
+      title="高级文本生成"
+      description="选择生成模式与上下文。每次只创建一个文本任务，结果统一进入右侧差异审阅。"
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>关闭</Button>
           <div className="flex flex-wrap items-center gap-2">
             {(job?.status === 'failed' || job?.status === 'result_unknown') && <Button size="sm" variant="outline" disabled={retrying}
               onClick={handleRetry}>{retrying ? '正在恢复…' : '继续原任务（保留成功阶段）'}</Button>}
-            {canBatchAdopt && (
-              <Button size="sm" variant="outline" disabled={batchAdopting || adoptMutation.isPending || candidateSelection?.length===0} onClick={() => void handleAdoptBatch()}>
-                {batchAdopting ? '整批采用中…' : `按阶段顺序采用全部 ${orderedCandidates.length} 份`}
-              </Button>
-            )}
             <Button
               size="sm"
               variant="outline"
-              disabled={triggerMutation.isPending || job?.status === 'running' || job?.status === 'queued'}
+              disabled={!canGenerate || starting || preparingGeneration || ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(job?.status || '')}
               onClick={() => void handleStartGeneration()}
             >
               <Sparkles className="h-3.5 w-3.5 text-accent" />
-              {activeCandidate ? '重新生成' : '开始生成'}
+              {preparingGeneration ? '正在准备…' : starting ? '正在提交…' : activeCandidate ? '重新生成' : '开始生成'}
             </Button>
-            {activeCandidate && !activeCandidate.scope.reviewBaseline && (
-              <Button size="sm" disabled={adoptMutation.isPending || !!activeCandidate.scope.reviewBaseline} onClick={() => void handleAdopt(activeCandidate.id)} className="bg-accent text-white hover:bg-accent-dark">
-                <Check className="h-3.5 w-3.5" />采用并更新版本
-              </Button>
-            )}
           </div>
         </div>
       }
     >
       <div className="space-y-4 py-1">
-        {errorMsg && <Alert variant="danger" title="生成提示">{errorMsg}</Alert>}
+        {(errorMsg || startError) && <Alert variant="danger" title="生成提示">{errorMsg || startError}</Alert>}
 
         {mode === 'whole-text' && <details className="rounded-lg border border-border-subtle p-3">
           <summary className="cursor-pointer text-sm text-muted">生成 {stageIds.filter(id => stages.some(stage => stage.id === id && !stage.locked)).length} 个阶段 · 按需调整范围</summary>
@@ -450,7 +407,7 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
           />
         </label>
 
-        {(job?.status === 'running' || job?.status === 'queued') && (
+        {job && ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(job.status) && (
           <div className="flex items-center gap-3 rounded-lg border border-amber-200/80 bg-amber-50/50 p-3.5">
             <Spinner className="h-4 w-4 text-amber-600" />
             <div className="text-sm text-amber-900">AI 正在生成内容中… 请稍候</div>
@@ -469,9 +426,13 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
         )}
         {job?.status === 'result_unknown' && <Alert variant="warning" title="任务中断">服务重启导致任务中断，可继续原任务，保留已经生成的成功阶段。</Alert>}
 
-        {canBatchAdopt&&<fieldset className="flex flex-wrap gap-3 rounded border border-border-default p-3"><legend className="text-sm">选择采用的阶段</legend>{orderedCandidates.map(candidate=><label key={candidate.id} className="text-sm"><input type="checkbox" checked={candidateSelection===null||candidateSelection.includes(candidate.id)} onChange={e=>setCandidateSelection(current=>e.target.checked?[...(current||[]),candidate.id]:(current||orderedCandidates.map(c=>c.id)).filter(id=>id!==candidate.id))}/>{stages.find(s=>s.id===candidate.scope.stageId)?.title||'阶段候选'}</label>)}</fieldset>}
-        {activeCandidate && <CandidateReviewPanel key={activeCandidate.id} activityId={activity.id} candidateId={activeCandidate.id} onApplied={() => { onCandidateAdopted?.(); }} />}
-        {!!activeCandidate?.scope.reviewBaseline&&orderedCandidates.length>1&&<div className="flex gap-2 flex-wrap">{orderedCandidates.map((candidate,index)=><Button key={candidate.id} size="sm" variant="outline" onClick={()=>setPickedCandidateId(candidate.id)}>候选 {index+1}</Button>)}</div>}
+        {activeCandidate && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface-muted/40 p-3">
+            <span className="text-sm text-ink">候选已就绪；请在右侧差异审阅中选择并采用。</span>
+            <Button type="button" size="sm" onClick={() => onReviewCandidate(activeCandidate.id)}>打开差异审阅</Button>
+          </div>
+        )}
+        {orderedCandidates.length > 1&&<div className="flex gap-2 flex-wrap">{orderedCandidates.map((candidate,index)=><Button key={candidate.id} size="sm" variant="outline" onClick={()=>setPickedCandidateId(candidate.id)}>候选 {index+1}</Button>)}</div>}
         {activeCandidate && !activeCandidate.scope.reviewBaseline && activePayload && (
           <div className="space-y-3 rounded-lg border border-border-default bg-surface p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-2.5">
@@ -483,17 +444,6 @@ export function GenerationModal({ open, onOpenChange, activity, stages, currentS
                   候选 ID: {activeCandidate.id.slice(0, 8)}…
                 </span>
               </div>
-              {canBatchAdopt && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={batchAdopting || adoptMutation.isPending || candidateSelection?.length===0}
-                  onClick={() => void handleAdoptBatch()}
-                  className="h-7 text-xs"
-                >
-                  {batchAdopting ? '整批采用中…' : `采用所选 ${candidateSelection===null?orderedCandidates.length:candidateSelection.length} 个阶段`}
-                </Button>
-              )}
             </div>
 
             {/* 阶段切换标签页 (当存在多个候选时) */}

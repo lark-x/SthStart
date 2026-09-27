@@ -97,6 +97,7 @@ export function MediaBatchPanel({
 
   // Production presets state
   const [selectedPresetId, setSelectedPresetId] = useState<string>('');
+  const [generationPresetId, setGenerationPresetId] = useState('__default__');
   const { data: presetsData } = useActivityPresets('production_preset');
   const createPresetMutation = useCreateActivityPreset();
   const productionPresets = presetsData?.items || [];
@@ -156,7 +157,7 @@ export function MediaBatchPanel({
   // Preflight prepare mutation
   const prepareMutation = usePrepareMediaBatch();
   const [preflight, setPreflight] = useState<{ key: string; result: PrepareMediaBatchOutput } | null>(null);
-  const preflightKey = JSON.stringify([activity.id, activity.currentContentRevisionId, configDraft?.baseRevisionId, selectedSlotIds]);
+  const preflightKey = JSON.stringify([activity.id, activity.currentContentRevisionId, configDraft?.baseRevisionId, selectedSlotIds, generationPresetId]);
   const preflightResult = preflight?.key === preflightKey ? preflight.result : null;
 
   useEffect(() => {
@@ -173,6 +174,7 @@ export function MediaBatchPanel({
             contentRevisionId: activity.currentContentRevisionId || '',
             imageConfigRevisionId: configDraft?.baseRevisionId || 'default',
             slotIds: selectedSlotIds,
+            ...(generationPresetId !== '__default__' && generationPresetId ? { generationPresetId } : {}),
           },
         });
         if (isMounted) {
@@ -187,7 +189,7 @@ export function MediaBatchPanel({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, selectedSlotIds, activity.id, activity.currentContentRevisionId, configDraft?.baseRevisionId, preflightKey]);
+  }, [isOpen, selectedSlotIds, activity.id, activity.currentContentRevisionId, configDraft?.baseRevisionId, generationPresetId, preflightKey]);
 
   // Mutations
   const createBatchMutation = useCreateMediaBatch();
@@ -222,6 +224,7 @@ export function MediaBatchPanel({
           contentRevisionId: fresh.activity.currentContentRevisionId!,
           imageConfigRevisionId: revision.id,
           productionPresetId: selectedPresetId || undefined,
+          ...(generationPresetId !== '__default__' && generationPresetId ? { generationPresetId } : {}),
           idempotencyKey: `batch_${activity.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           items: selectedSlotIds.map((slotId) => ({
             slotId,
@@ -374,7 +377,7 @@ export function MediaBatchPanel({
         {activeTab === 'create' && (
           <div className="space-y-4">
             {/* Options */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3.5 rounded-lg bg-surface-raised border border-border-default">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 p-3.5 rounded-lg bg-surface-raised border border-border-default">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-ink">每镜头候选张数</label>
                 <div className="flex items-center gap-2 pt-1">
@@ -397,6 +400,20 @@ export function MediaBatchPanel({
                   单次生成多个候选种子，方便在生成完成后挑选最佳结果。
                 </p>
               </div>
+
+              {preflightResult?.generationPresetOptions.length ? <div className="space-y-1">
+                <label htmlFor="media-generation-preset" className="text-xs font-semibold text-ink">图片模型与参数预设</label>
+                <select id="media-generation-preset" value={generationPresetId === '__default__' ? '' : generationPresetId}
+                  onChange={(event) => setGenerationPresetId(event.target.value || '__default__')}
+                  className="w-full text-xs py-1.5 px-2 border border-border-default rounded bg-surface text-ink">
+                  <option value="">按活动用途默认</option>
+                  {preflightResult.generationPresetOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · 默认' : ''}</option>)}
+                </select>
+                <p className="text-xs text-muted">与候选数量和画风偏好分开，模型及采样参数会随批次固定。</p>
+              </div> : <div className="space-y-1 text-xs text-muted">
+                <span className="font-semibold text-ink">图片模型与参数预设</span>
+                <p>{selectedSlotIds.length > 1 ? '当前未提供可切换预设，将按各图片用途的默认配置执行。' : '此用途尚无可选择的已发布预设。'}</p>
+              </div>}
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between">

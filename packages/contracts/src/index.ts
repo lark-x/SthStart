@@ -1,4 +1,9 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { ActivityLoraSchema, SceneBeatRenderSettingsSchema } from './activities.js';
+export * from './ai-calls.js';
+export * from './activity-image-prompts.js';
+export * from './activity-comic.js';
+export * from './activities.js';
 
 export const AppStatusSchema = Type.Union([
   Type.Literal('online'),
@@ -644,6 +649,12 @@ export const GenerationSizePresetSchema = Type.Object({
 });
 export type GenerationSizePreset = Static<typeof GenerationSizePresetSchema>;
 
+export const ActivityLoraInjectionSchema = Type.Object({
+  targetNodeId: Type.String({ minLength: 1 }),
+  targetInput: Type.String({ minLength: 1 }),
+});
+export type ActivityLoraInjection = Static<typeof ActivityLoraInjectionSchema>;
+
 /**
  * editor_config_json 的结构说明（V2）。它只描述“如何呈现”，不是第二份参数源；
  * 默认值、min/max、枚举唯一存于 input_schema_json，实际路径只存于 node_bindings_json。
@@ -656,6 +667,7 @@ export const GenerationEditorConfigSchema = Type.Object({
     nameKey: Type.String(),
     strengthKey: Type.String(),
   })),
+  activityLoraInjection: Type.Optional(ActivityLoraInjectionSchema),
   sizePresets: Type.Array(GenerationSizePresetSchema),
   constraints: Type.Object({
     maxPixels: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -741,6 +753,14 @@ export const GenerationConnectionTestResultSchema = Type.Object({
   errorMessage: Type.Union([Type.String(), Type.Null()]),
 });
 export type GenerationConnectionTestResult = Static<typeof GenerationConnectionTestResultSchema>;
+
+export const GenerationEngineFreeMemoryResponseSchema = Type.Object({
+  ok: Type.Boolean(),
+  engineId: Type.String(),
+  acceptedAt: Type.String({ format: 'date-time' }),
+  message: Type.String(),
+});
+export type GenerationEngineFreeMemoryResponse = Static<typeof GenerationEngineFreeMemoryResponseSchema>;
 
 export const GenerationModelEntrySchema = Type.Object({
   name: Type.String(),
@@ -1054,6 +1074,7 @@ export const CharacterDraftV2Schema = Type.Object({
   dialogueExamples: Type.Array(Type.String()),
   behaviorRules: Type.String(),
   appearance: CharacterAppearanceV2Schema,
+  visualLoras: Type.Optional(Type.Array(ActivityLoraSchema, { maxItems: 32 })),
   birthday: Type.Optional(CharacterBirthdaySchema),
 });
 export type CharacterDraftV2 = Static<typeof CharacterDraftV2Schema>;
@@ -1227,7 +1248,9 @@ function v2ToRuntime(draft: CharacterDraftV2): CharacterRuntime {
     appearance: {
       baseText: runtimeText(draft.appearance?.baseText, 8_000),
       defaultOutfitText: runtimeText(draft.appearance?.defaultOutfitText, 4_000),
-      stableFeatures: [],
+      // Activity persona projections retain V1-derived stable marks even though
+      // editable V2 drafts do not expose a separate stableFeatures field.
+      stableFeatures: runtimeList(asRecord(draft.appearance).stableFeatures),
     },
     ...(draft.birthday ? { birthday: draft.birthday } : {}),
   };
@@ -1263,10 +1286,16 @@ export function toCharacterRuntime(input: unknown): CharacterRuntime {
       ...(source.birthday ? { birthday: source.birthday as CharacterBirthday } : {}),
     };
     const runtime = v2ToRuntime(merged);
+    const stableFeatures = runtimeList(asRecord(source.appearance).stableFeatures);
     const legacy = asRecord(source.appearance).legacy;
-    return legacy
-      ? { ...runtime, appearance: { ...runtime.appearance, legacy: legacy as CharacterAppearance } }
-      : runtime;
+    return {
+      ...runtime,
+      appearance: {
+        ...runtime.appearance,
+        stableFeatures,
+        ...(legacy ? { legacy: legacy as CharacterAppearance } : {}),
+      },
+    };
   }
 
   // 旧活动文档把投影字段与 sourceSnapshot 分开存放；快照兜底合并，投影自身字段优先。
@@ -1356,7 +1385,7 @@ export const EMPTY_CHARACTER_DRAFT_V2: CharacterDraftV2 = {
   schemaVersion: 2,
   displayName: '', englishName: '', aliases: [], originType: 'original', work: '', summary: '',
   personaText: '', speechText: '', dialogueExamples: [], behaviorRules: '',
-  appearance: { baseText: '', defaultOutfitText: '' },
+  appearance: { baseText: '', defaultOutfitText: '' }, visualLoras: [],
 };
 
 /** 归一化 V2 草稿。 */
@@ -1379,6 +1408,20 @@ export function normalizeCharacterDraftV2(raw: unknown): CharacterDraftV2 {
       baseText: runtimeText(appearance.baseText, 8_000),
       defaultOutfitText: runtimeText(appearance.defaultOutfitText, 4_000),
     },
+    visualLoras: Array.isArray(source.visualLoras)
+      ? source.visualLoras.slice(0, 32).flatMap((rawLora) => {
+        const lora = asRecord(rawLora);
+        const model = runtimeText(lora.model, 512).trim();
+        if (!model) return [];
+        const strength = Number(lora.strength);
+        return [{
+          model,
+          strength: Number.isFinite(strength) ? Math.max(-10, Math.min(10, strength)) : 1,
+          triggerWord: runtimeText(lora.triggerWord, 2_000),
+          enabled: lora.enabled !== false,
+        }];
+      })
+      : [],
     ...(source.birthday && typeof source.birthday === 'object' ? { birthday: source.birthday as CharacterBirthday } : {}),
   };
 }
@@ -1472,6 +1515,7 @@ export function migrateCharacterDraftToV2(raw: unknown): CharacterMigrationResul
         baseText: baseTextParts.join('\n'),
         defaultOutfitText: runtime.appearance.defaultOutfitText,
       },
+      visualLoras: [],
       ...(draft.birthday ? { birthday: draft.birthday } : {}),
     },
     conflicts,
@@ -1987,6 +2031,21 @@ export type CharacterBrowseResult = {
   };
 };
 
+export const CharacterVariantSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  isDefault: Type.Optional(Type.Boolean()),
+  summary: Type.Optional(Type.String()),
+  personaText: Type.Optional(Type.String()),
+  appearance: Type.Optional(Type.Object({
+    baseText: Type.String(),
+    defaultOutfitText: Type.String(),
+  })),
+  avatarUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+export type CharacterVariant = Static<typeof CharacterVariantSchema>;
+
 export const CharacterProfileSchema = Type.Object({
   organization: Type.Optional(CharacterOrganizationSchema),
   birthday: Type.Optional(CharacterBirthdaySchema),
@@ -1996,12 +2055,16 @@ export const CharacterProfileSchema = Type.Object({
   draft: CharacterDraftAnySchema,
   tags: Type.Array(Type.String()),
   avatarUrl: Type.Union([Type.String(), Type.Null()]),
+  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   latestVersion: Type.Union([Type.Number(), Type.Null()]),
   archived: Type.Boolean(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
   draftRevision: Type.Optional(Type.Number()),
   defaultOutfitId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  variants: Type.Optional(Type.Array(CharacterVariantSchema)),
 });
 export type CharacterProfile = Static<typeof CharacterProfileSchema>;
 
@@ -2009,6 +2072,88 @@ export const CharacterListResponseSchema = Type.Object({
   items: Type.Array(CharacterProfileSchema),
 });
 export type CharacterListResponse = Static<typeof CharacterListResponseSchema>;
+
+export const CharacterBatchAvatarRequestSchema = Type.Object({
+  ids: Type.Optional(Type.Array(Type.String())),
+  onlyMissing: Type.Optional(Type.Boolean()),
+});
+export type CharacterBatchAvatarRequest = Static<typeof CharacterBatchAvatarRequestSchema>;
+
+export const CharacterBatchAvatarResponseSchema = Type.Object({
+  total: Type.Number(),
+  updated: Type.Number(),
+  skipped: Type.Number(),
+  failed: Type.Number(),
+  items: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      displayName: Type.String(),
+      success: Type.Boolean(),
+      error: Type.Optional(Type.String()),
+    })
+  ),
+});
+export type CharacterBatchAvatarResponse = Static<typeof CharacterBatchAvatarResponseSchema>;
+
+export const CharacterAssetItemSchema = Type.Object({
+  id: Type.String(),
+  characterId: Type.String(),
+  kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait'), Type.Literal('reference')]),
+  url: Type.String(),
+  originalName: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  contentType: Type.Optional(Type.String()),
+  byteSize: Type.Optional(Type.Number()),
+  createdAt: Type.String(),
+  userNote: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  authorNote: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  sourceUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+export type CharacterAssetItem = Static<typeof CharacterAssetItemSchema>;
+
+export const CharacterAssetListResponseSchema = Type.Object({
+  characterId: Type.Optional(Type.String()),
+  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  activeAvatarId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  activePortraitId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  items: Type.Array(CharacterAssetItemSchema),
+});
+export type CharacterAssetListResponse = Static<typeof CharacterAssetListResponseSchema>;
+
+export const CharacterOfficialAssetCandidateSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait')]),
+  url: Type.String(),
+  source: Type.String(),
+  title: Type.String(),
+  previewUrl: Type.Optional(Type.String()),
+});
+export type CharacterOfficialAssetCandidate = Static<typeof CharacterOfficialAssetCandidateSchema>;
+
+export const CharacterPreviewOfficialAssetsResponseSchema = Type.Object({
+  characterId: Type.String(),
+  displayName: Type.String(),
+  items: Type.Array(CharacterOfficialAssetCandidateSchema),
+});
+export type CharacterPreviewOfficialAssetsResponse = Static<typeof CharacterPreviewOfficialAssetsResponseSchema>;
+
+export const CharacterImportAssetsRequestSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait')]),
+      url: Type.String(),
+      source: Type.Optional(Type.String()),
+      setAsActive: Type.Optional(Type.Boolean()),
+    })
+  ),
+});
+export type CharacterImportAssetsRequest = Static<typeof CharacterImportAssetsRequestSchema>;
+
+export const CharacterSetActiveAssetRequestSchema = Type.Object({
+  assetId: Type.String(),
+  kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait')]),
+});
+export type CharacterSetActiveAssetRequest = Static<typeof CharacterSetActiveAssetRequestSchema>;
 
 export const CharacterGenerateResponseSchema = Type.Object({
   draft: CharacterDraftAnySchema,
@@ -2364,6 +2509,21 @@ export const RuntimeLlmStatusSchema = Type.Object({
 });
 export type RuntimeLlmStatus = Static<typeof RuntimeLlmStatusSchema>;
 
+export const LinsheHostedReadinessSchema = Type.Object({
+  ready: Type.Boolean(),
+  missing: Type.Array(Type.String()),
+  appTokenValid: Type.Boolean(),
+  llmTextReady: Type.Boolean(),
+  llmMultimodalReady: Type.Boolean(),
+  vectorReady: Type.Boolean(),
+  vectorMode: Type.Union([Type.Literal('profile'), Type.Literal('default'), Type.Literal('unavailable')]),
+  imageReady: Type.Boolean(),
+  imagePurpose: Type.Literal('linshe-chat-image'),
+  imageWorkflowId: Type.Union([Type.String(), Type.Null()]),
+  imageWorkflowVersion: Type.Union([Type.Number(), Type.Null()]),
+});
+export type LinsheHostedReadiness = Static<typeof LinsheHostedReadinessSchema>;
+
 export const LogPolicySchema = Type.Object({
   globalLevel: LogLevelSchema,
   serviceLevels: Type.Record(Type.String(), Type.Union([LogLevelSchema, Type.Null()])),
@@ -2415,6 +2575,7 @@ export const RuntimeOverviewSchema = Type.Object({
   services: Type.Array(RuntimeServiceSchema),
   settings: RuntimeSettingsSchema,
   linsheLlm: RuntimeLlmStatusSchema,
+  linsheHosted: LinsheHostedReadinessSchema,
   logPolicy: LogPolicySchema,
   recentErrors: Type.Number(),
   droppedLogs: Type.Number(),
@@ -3358,15 +3519,47 @@ export const ActorSnapshotSchema = Type.Object({
   characterDraftRevision: Type.Optional(Type.Number()),
   displayName: Type.String(),
   persona: ActorPersonaSchema,
+  visualLoras: Type.Optional(Type.Array(ActivityLoraSchema, { maxItems: 32 })),
   avatarAssetKey: Type.Optional(Type.String()),
   avatarAssetId: Type.Optional(Type.String()),
   avatarUrl: Type.Optional(Type.String()),
+  portraitAssetId: Type.Optional(Type.String()),
+  portraitUrl: Type.Optional(Type.String()),
   activityRole: Type.String(),
   outfitDescription: Type.String(),
-  appearanceReferenceAssetKeys: Type.Array(Type.String()),
+  // Older saved activities predate reference images; absence means no references.
+  appearanceReferenceAssetKeys: Type.Optional(Type.Array(Type.String())),
   appearanceReferenceAssetIds: Type.Optional(Type.Array(Type.String())),
 });
 export type ActorSnapshot = Static<typeof ActorSnapshotSchema>;
+
+export const SceneBeatSchema = Type.Object({
+  id: Type.String(),
+  sceneId: Type.Optional(Type.String()),
+  stageId: Type.Optional(Type.String()),
+  characterId: Type.String(),
+  characterName: Type.Optional(Type.String()),
+  action: Type.String(),
+  dialogue: Type.Optional(Type.String()),
+  outcome: Type.Optional(Type.String()),
+  mediaUrl: Type.Optional(Type.String()),
+  mediaType: Type.Optional(Type.Union([Type.Literal('image'), Type.Literal('video')])),
+  renderSettings: Type.Optional(SceneBeatRenderSettingsSchema),
+  orderIndex: Type.Optional(Type.Number()),
+});
+export type SceneBeat = Static<typeof SceneBeatSchema>;
+
+export const ActivitySceneSchema = Type.Object({
+  id: Type.String(),
+  stageId: Type.Optional(Type.String()),
+  title: Type.String(),
+  timeText: Type.String(),
+  locationText: Type.String(),
+  environment: Type.Optional(Type.String()),
+  beats: Type.Array(SceneBeatSchema),
+  orderIndex: Type.Optional(Type.Number()),
+});
+export type ActivityScene = Static<typeof ActivitySceneSchema>;
 
 export const StageDefinitionSchema = Type.Object({
   id: Type.String(),
@@ -3384,8 +3577,53 @@ export const StageDefinitionSchema = Type.Object({
   ),
   locked: Type.Boolean(),
   endCondition: Type.String(),
+  stagePremise: Type.Optional(Type.String()),
+  mcpQuery: Type.Optional(Type.String()),
+  mcpSourceIds: Type.Optional(Type.Array(Type.String())),
+  systemPromptOverride: Type.Optional(Type.String()),
+  scenes: Type.Optional(Type.Array(ActivitySceneSchema)),
 });
 export type StageDefinition = Static<typeof StageDefinitionSchema>;
+
+export const SyncExternalActivitySchema = Type.Object({
+  activityId: Type.Optional(Type.String()),
+  title: Type.String(),
+  theme: Type.Optional(Type.String()),
+  description: Type.Optional(Type.String()),
+  actors: Type.Optional(Type.Array(ActorSnapshotSchema)),
+  stages: Type.Optional(Type.Array(StageDefinitionSchema)),
+  scenes: Type.Optional(Type.Array(ActivitySceneSchema)),
+});
+export type SyncExternalActivity = Static<typeof SyncExternalActivitySchema>;
+
+export const GenerateBeatMediaRequestSchema = Type.Object({
+  stageId: Type.String(),
+  beatId: Type.String(),
+  customPrompt: Type.Optional(Type.String()),
+  negativePrompt: Type.Optional(Type.String()),
+  seed: Type.Optional(Type.Number()),
+  steps: Type.Optional(Type.Number()),
+  cfg: Type.Optional(Type.Number()),
+  width: Type.Optional(Type.Number()),
+  height: Type.Optional(Type.Number()),
+  mediaType: Type.Optional(Type.Union([Type.Literal('image'), Type.Literal('video')])),
+  checkpoint: Type.Optional(Type.String()),
+  engineId: Type.Optional(Type.String()),
+});
+export type GenerateBeatMediaRequest = Static<typeof GenerateBeatMediaRequestSchema>;
+
+export const GenerateBeatMediaResponseSchema = Type.Object({
+  success: Type.Boolean(),
+  mediaUrl: Type.String(),
+  mediaType: Type.Union([Type.Literal('image'), Type.Literal('video')]),
+  promptUsed: Type.String(),
+  seed: Type.Number(),
+  characterConsistent: Type.Boolean(),
+  stageId: Type.String(),
+  beatId: Type.String(),
+  error: Type.Optional(Type.String()),
+});
+export type GenerateBeatMediaResponse = Static<typeof GenerateBeatMediaResponseSchema>;
 
 export const ConversationSchema = Type.Object({
   id: Type.String(),
@@ -3525,6 +3763,8 @@ export const ContentDocumentSchema = Type.Object({
     location: Type.String(),
     rules: Type.String(),
     generationMode: GenerationModeSchema,
+    systemPrompt: Type.Optional(Type.String()),
+    mcpSourceIds: Type.Optional(Type.Array(Type.String())),
     // 可选排期与模板信息：旧文档缺失时视为未排期、无模板。
     scheduledDate: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     templateId: Type.Optional(Type.String()),
@@ -3605,9 +3845,17 @@ export const ContentDocumentSchema = Type.Object({
   mediaSlots: Type.Array(MediaSlotSchema),
   facts: Type.Array(ActivityFactSchema),
   stageResults: Type.Array(StageResultSchema),
+  scenes: Type.Optional(Type.Array(ActivitySceneSchema)),
   editingPolicy: Type.Optional(EditingPolicySchema),
 });
 export type ContentDocument = Static<typeof ContentDocumentSchema>;
+
+export const BeatRenderAdoptResponseSchema = Type.Object({
+  draftVersion: Type.Number(),
+  mediaUrl: Type.String(),
+  document: ContentDocumentSchema,
+});
+export type BeatRenderAdoptResponse = Static<typeof BeatRenderAdoptResponseSchema>;
 
 export const SlotBindingSchema = Type.Object({
   slotId: Type.String(),
@@ -3995,6 +4243,21 @@ export const PromptRecipeOverrideSchema = Type.Object({
 });
 export type PromptRecipeOverride = Static<typeof PromptRecipeOverrideSchema>;
 
+export const PreparePromptRecipeRequestSchema = Type.Object({
+  slotId: Type.String({ minLength: 1 }),
+  contentRevisionId: Type.Optional(Type.String()),
+  imageConfigRevisionId: Type.Optional(Type.String()),
+  expectedHeadVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+  overrides: Type.Optional(Type.Array(PromptRecipeOverrideSchema)),
+  references: Type.Optional(Type.Array(ReferenceInputSchema)),
+  customParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  presetId: Type.Optional(Type.String({ minLength: 1 })),
+  presetRevision: Type.Optional(Type.Integer({ minimum: 1 })),
+  workflowId: Type.Optional(Type.String()),
+  workflowVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+export type PreparePromptRecipeRequest = Static<typeof PreparePromptRecipeRequestSchema>;
+
 export const PromptRecipeSchema = Type.Object({
   id: Type.String(),
   activityId: Type.String(),
@@ -4019,6 +4282,11 @@ export const ImageExecutionPlanSchema = Type.Object({
   engineId: Type.String(),
   definitionHash: Type.String(),
   nodeBindings: Type.Record(Type.String(), Type.Array(Type.String())),
+  presetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  presetRevision: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
+  presetValues: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  promptPolicyRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  promptPolicySnapshot: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   inputCapabilities: Type.Optional(WorkflowInputCapabilitiesSchema),
 });
 export type ImageExecutionPlan = Static<typeof ImageExecutionPlanSchema>;
@@ -5255,6 +5523,7 @@ export const CreateMediaBatchInputSchema = Type.Object({
     })
   ),
   productionPresetId: Type.Optional(Type.String()),
+  generationPresetId: Type.Optional(Type.String()),
   idempotencyKey: Type.String(),
 });
 export type CreateMediaBatchInput = Static<typeof CreateMediaBatchInputSchema>;
@@ -5263,10 +5532,13 @@ export const PrepareMediaBatchInputSchema = Type.Object({
   contentRevisionId: Type.String(),
   imageConfigRevisionId: Type.String(),
   slotIds: Type.Array(Type.String()),
+  generationPresetId: Type.Optional(Type.String()),
 });
 export type PrepareMediaBatchInput = Static<typeof PrepareMediaBatchInputSchema>;
 
 export const PrepareMediaBatchOutputSchema = Type.Object({
+  generationPresetOptions: Type.Array(GenerationPresetSchema),
+  selectedGenerationPresetId: Type.Union([Type.String(), Type.Null()]),
   readyItems: Type.Array(
     Type.Object({
       slotId: Type.String(),

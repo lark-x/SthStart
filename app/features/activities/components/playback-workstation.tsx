@@ -1,5 +1,6 @@
 'use client';
 import { normalizeCreationProfile } from '@sthstart/contracts';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { postJson } from '@/app/lib/api-client';
 import React, { useState, useEffect, useRef } from 'react';
@@ -23,6 +24,7 @@ import type {
   ContentDocument,
   PlaybackDocument,
   PlaybackRevision,
+  MediaRevision,
 } from '@sthstart/contracts';
 import {
   useGenerateAutoPlayback,
@@ -36,6 +38,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Input } from '@/app/components/ui/input';
 import { SplitPanes } from '@/app/components/shared/split-panes';
+import { ComicWorkstation } from '../comic/comic-workstation';
 
 const actionLabels: Record<string, string> = { open_view: '切换视图', scroll_to: '滚动记录', open_media: '展开媒体', close_media: '关闭媒体', reveal_message: '显示消息', reveal_comments: '显示评论', typing: '正在输入', wait: '停留阅读', stage_card: '阶段说明' };
 
@@ -43,6 +46,7 @@ interface PlaybackWorkstationProps {
   activity: Activity;
   document: ContentDocument;
   currentPlaybackRevision?: PlaybackRevision | null;
+  mediaRevision?: MediaRevision | null;
   actors: ActorSnapshot[];
   disabled?: boolean;
 }
@@ -51,14 +55,34 @@ export function PlaybackWorkstation({
   activity,
   document,
   currentPlaybackRevision,
+  mediaRevision,
   actors,
   disabled,
 }: PlaybackWorkstationProps) {
-  const [playbackDoc, setPlaybackDoc] = useState<PlaybackDocument | null>(
-    currentPlaybackRevision?.document || null
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const comicMode = searchParams.get('mode') === 'comic';
+  const mediaRevisionMatchesContent = mediaRevision?.contentRevisionId === activity.currentContentRevisionId;
+  const hasSelectedMedia = Boolean(mediaRevisionMatchesContent
+    && mediaRevision?.slotBindings.some((binding) => binding.assets.length > 0));
+  const playbackMediaRevisionId = hasSelectedMedia && mediaRevision ? mediaRevision.id : 'none';
+  const mediaRevisionIdMatchesCurrent = (revisionId?: string) => {
+    if (hasSelectedMedia) return revisionId === mediaRevision?.id;
+    return revisionId === 'none' || (mediaRevisionMatchesContent && revisionId === mediaRevision?.id);
+  };
+  const currentPlaybackMatches = Boolean(currentPlaybackRevision
+    && currentPlaybackRevision.contentRevisionId === activity.currentContentRevisionId
+    && currentPlaybackRevision.document.contentRevisionId === activity.currentContentRevisionId
+    && mediaRevisionIdMatchesCurrent(currentPlaybackRevision.mediaRevisionId));
+  const savedPlaybackIsStale = Boolean(currentPlaybackRevision && !currentPlaybackMatches);
+  const [playbackDoc, setPlaybackDoc] = useState<PlaybackDocument | null>(() =>
+    currentPlaybackMatches && currentPlaybackRevision?.document
+      ? { ...currentPlaybackRevision.document, mediaRevisionId: playbackMediaRevisionId }
+      : null
   );
   const [viewerActorId, setViewerActorId] = useState<string>(
-    currentPlaybackRevision?.document?.viewerActorId || actors[0]?.id || ''
+    (currentPlaybackMatches ? currentPlaybackRevision?.document?.viewerActorId : undefined) || actors[0]?.id || ''
   );
   const [speed, setSpeed] = useState<number>(1);
   /*
@@ -78,6 +102,10 @@ export function PlaybackWorkstation({
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const playbackRevisionIsStale = Boolean(playbackDoc && (
+    playbackDoc.contentRevisionId !== activity.currentContentRevisionId
+    || !mediaRevisionIdMatchesCurrent(playbackDoc.mediaRevisionId)
+  ));
 
   const { data: presetsData } = useActivityPresets('playback_preset');
   const createPresetMutation = useCreateActivityPreset();
@@ -142,7 +170,10 @@ export function PlaybackWorkstation({
   }, [playbackDoc, deviceLayout]);
 
   useEffect(() => {
-    if (!playbackDoc) return;
+    if (!playbackDoc || playbackRevisionIsStale) {
+      setPreviewHtml('');
+      return;
+    }
     let active = true;
     /*
      * 设备布局是预览的本地开关：把 layout/output 覆盖成所选设备的成对尺寸，
@@ -157,7 +188,7 @@ export function PlaybackWorkstation({
         .catch(error => { if (active) { setPreviewHtml(''); setErrorMsg(String(error)); } });
     }, 200);
     return () => { active = false; clearTimeout(timer); };
-  }, [activity.id, playbackDoc, viewerActorId, deviceLayout]);
+  }, [activity.id, playbackDoc, playbackRevisionIsStale, viewerActorId, deviceLayout]);
 
   // The host owns live-preview transport; exported composition media remain framework-owned.
   const syncPreview = () => {
@@ -228,7 +259,7 @@ export function PlaybackWorkstation({
         id: activity.id,
         options: {
           contentRevisionId: activity.currentContentRevisionId || '',
-          mediaRevisionId: activity.currentMediaRevisionId || '',
+          mediaRevisionId: playbackMediaRevisionId,
           viewerActorId,
           speed,
           mode: playbackMode,
@@ -251,9 +282,10 @@ export function PlaybackWorkstation({
       await savePlaybackMutation.mutateAsync({
         id: activity.id,
         contentRevisionId: activity.currentContentRevisionId || '',
-        mediaRevisionId: activity.currentMediaRevisionId || '',
+        mediaRevisionId: playbackMediaRevisionId,
         document: {
           ...playbackDoc,
+          mediaRevisionId: playbackMediaRevisionId,
           viewerActorId,
         },
       });
@@ -300,8 +332,39 @@ export function PlaybackWorkstation({
   const previewScale = previewBoxWidth > 0 ? previewBoxWidth / canvasWidth : 0;
   const previewHeight = Math.round(canvasHeight * previewScale);
 
+  const modeSwitcher = (
+    <div className="flex shrink-0 items-center justify-between border-b border-border-default bg-surface px-3 py-2">
+      <div className="inline-flex rounded-[var(--radius-control)] bg-surface-muted p-1" role="tablist" aria-label="活动回放模式">
+        {([
+          { id: 'playback', label: '原回放' }, { id: 'comic', label: '漫画' },
+        ] as const).map((mode) => (
+          <button key={mode.id} type="button" role="tab" aria-selected={mode.id === (comicMode ? 'comic' : 'playback')}
+            onClick={() => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.set('tab', 'playback');
+              if (mode.id === 'comic') params.set('mode', 'comic'); else params.delete('mode');
+              router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+            }}
+            className={`rounded-[var(--radius-control)] px-3 py-1.5 text-sm font-medium ${mode.id === (comicMode ? 'comic' : 'playback') ? 'bg-surface text-accent shadow-xs' : 'text-muted hover:text-ink'}`}>
+            {mode.label}
+          </button>
+        ))}
+      </div>
+      {comicMode && <span className="text-xs text-muted">独立漫画草稿；不会改写分镜原图</span>}
+    </div>
+  );
+
+  if (comicMode) {
+    return <div className="flex h-full min-h-0 flex-col">{modeSwitcher}<div className="min-h-0 flex-1"><ComicWorkstation activity={activity} content={document} actors={actors} onBack={() => {
+      const params = new URLSearchParams(searchParams.toString()); params.delete('mode'); params.set('tab', 'playback');
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }} /></div></div>;
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="flex h-full min-h-0 flex-col">
+      {modeSwitcher}
+      <div className="min-h-0 flex-1 overflow-y-auto space-y-4">
       {/*
        * 单一工具栏：标题、主动作与全部参数收在一块，不再分成「标题卡 + 设置行」两段，
        * 页头到预览之间因此只剩一条带子。
@@ -330,7 +393,7 @@ export function PlaybackWorkstation({
             type="button"
             size="sm"
             onClick={handleSavePlayback}
-            disabled={disabled || !playbackDoc || savePlaybackMutation.isPending}
+            disabled={disabled || !playbackDoc || playbackRevisionIsStale || savePlaybackMutation.isPending}
             className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
           >
             <Save className="h-3.5 w-3.5" />
@@ -476,6 +539,19 @@ export function PlaybackWorkstation({
         </Alert>
       )}
 
+      {!playbackDoc && (
+        <Alert variant="warning" title={savedPlaybackIsStale ? '保存的回放版本已过期' : '当前内容尚无回放版本'}>
+          {savedPlaybackIsStale
+            ? '内容或媒体版本已变化，旧时间线不会用于当前预览。请重新编排后再播放或保存。'
+            : '先自动编排当前内容，即可预览纯文本活动或包含媒体的活动。'}
+        </Alert>
+      )}
+      {playbackRevisionIsStale && (
+        <Alert variant="warning" title="回放版本与当前内容不匹配">
+          请重新编排；旧时间线不会用于预览或导出。
+        </Alert>
+      )}
+
       {saveSuccess && (
         <Alert variant="info" title="已成功保存">
           回放脚本版本已成功落库，可在导出面板中下载完整可渲染工程。
@@ -535,6 +611,7 @@ export function PlaybackWorkstation({
                 setCurrentTimeMs(Number(e.target.value));
                 setIsPlaying(false);
               }}
+              disabled={!playbackDoc || playbackRevisionIsStale}
               className="w-full accent-accent cursor-pointer"
             />
 
@@ -547,6 +624,7 @@ export function PlaybackWorkstation({
                   setCurrentTimeMs(0);
                   setIsPlaying(false);
                 }}
+                disabled={!playbackDoc || playbackRevisionIsStale}
                 className="h-8 w-8 p-0"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -556,6 +634,7 @@ export function PlaybackWorkstation({
                 type="button"
                 size="sm"
                 onClick={() => setIsPlaying(!isPlaying)}
+                disabled={!playbackDoc || playbackRevisionIsStale}
                 className="h-8 px-4 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
               >
                 {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
@@ -644,6 +723,7 @@ export function PlaybackWorkstation({
         </div>
         }
       />
+      </div>
     </div>
   );
 }

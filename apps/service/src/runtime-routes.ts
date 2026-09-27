@@ -76,6 +76,9 @@ export function registerRuntimeRoutes(
 ) {
   const runtimeErrorMessage = (error: unknown) => {
     const code = error instanceof Error ? error.message : String(error);
+    if (code.startsWith('linshe_hosted_configuration_missing:')) {
+      return `邻舍托管配置未就绪：${code.slice('linshe_hosted_configuration_missing:'.length).trim()}`;
+    }
     return ({
       unknown_service: '未知的运行服务。', service_not_installed: '该服务尚未安装完整。',
       service_already_managed: '该服务已由控制中心管理。', port_owned_by_other_process: '端口正被其他程序占用，控制中心不会强制结束它。',
@@ -84,6 +87,7 @@ export function registerRuntimeRoutes(
   };
   async function overview(): Promise<RuntimeOverview> {
     const runtimeSettings = settings.get();
+    const hosted = await runtime.hostedReadiness();
     const rows = database.connection.prepare(`SELECT a.role,a.profile_id,p.model FROM app_llm_assignments a
       LEFT JOIN provider_profiles p ON p.id=a.profile_id WHERE a.app_id='linshe'`).all() as Array<{ role: 'text' | 'multimodal'; profile_id: string; model: string | null }>;
     const text = rows.find((row) => row.role === 'text');
@@ -91,11 +95,12 @@ export function registerRuntimeRoutes(
     return {
       services: await runtime.snapshot(), settings: runtimeSettings,
       linsheLlm: {
-        enabled: runtimeSettings.publicLlmEnabled,
+        enabled: true,
         textProfileId: text?.profile_id ?? null, textModel: text?.model ?? null,
         multimodalProfileId: multimodal?.profile_id ?? null, multimodalModel: multimodal?.model ?? null,
-        ready: !runtimeSettings.publicLlmEnabled || Boolean(text?.model),
+        ready: hosted.llmTextReady && hosted.llmMultimodalReady,
       },
+      linsheHosted: hosted,
       logPolicy: logs.getPolicy(), recentErrors: logs.recentErrorCount(), droppedLogs: logs.droppedLogs,
     };
   }
@@ -116,7 +121,7 @@ export function registerRuntimeRoutes(
   });
   app.post<{ Params: { id: string } }>('/api/v1/admin/runtime/services/:id/stop', async (request) => runtime.stop(request.params.id));
   app.post('/api/v1/admin/runtime/comfyui/start', async (_request, reply) => {
-    try { return reply.code(202).send(runtime.launchComfyui()); }
+    try { return reply.code(202).send(await runtime.launchComfyui()); }
     catch (error) { const code = error instanceof Error ? error.message : String(error); return reply.code(409).send({ error: code, message: runtimeErrorMessage(error) }); }
   });
   app.post<{ Params: { id: string } }>('/api/v1/admin/runtime/services/:id/restart', async (request, reply) => {

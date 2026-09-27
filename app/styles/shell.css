@@ -501,11 +501,28 @@ html[data-scrolling],
   }
 }
 
-/* 邻舍嵌入：精简外框，不占用常规导航列。 */
+/* 邻舍与工作室嵌入：精简外框，锁定视口高度，各列独立计算高度与滚动。 */
 .shell-root[data-embed='true'] {
   grid-template-columns: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 .shell-root[data-embed='true'] .shell-sidebar {
   display: none;
+}
+
+.shell-root[data-embed='true'] .shell-main {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.shell-root[data-embed='true'] .shell-content {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }

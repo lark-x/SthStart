@@ -90,7 +90,7 @@ test('结构迁移后的原文归档可在来源里下载，迁移不丢旧文�
 
   // 跑真实的迁移脚本（apply 会写库，所以先对临时副本执行）。
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-  execFileSync(process.execPath, [resolve(repositoryRoot, 'scripts/character-model-migration.mjs'), 'apply', '--db', databasePath], { cwd: repositoryRoot, stdio: 'pipe' });
+  execFileSync(process.execPath, ['--import', 'tsx/esm', resolve(repositoryRoot, 'scripts/character-model-migration.mjs'), 'apply', '--db', databasePath], { cwd: repositoryRoot, stdio: 'pipe' });
 
   const database = new ServiceDatabase(databasePath);
   const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}) });
@@ -155,7 +155,7 @@ test('非空服装表不会被静默删除：先中止并给出归档入口，�
 
   // 走归档入口：脚本先归档服装行，之后迁移才可以删除该表。
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-  const output = execFileSync(process.execPath, [resolve(repositoryRoot, 'scripts/character-model-migration.mjs'), 'apply', '--db', databasePath, '--json'], { cwd: repositoryRoot, encoding: 'utf8' });
+  const output = execFileSync(process.execPath, ['--import', 'tsx/esm', resolve(repositoryRoot, 'scripts/character-model-migration.mjs'), 'apply', '--db', databasePath, '--json'], { cwd: repositoryRoot, encoding: 'utf8' });
   const report = JSON.parse(output);
   assert.equal(report.outfitRows, 2);
   assert.equal(report.outfitDefaultsApplied, 1, '启用中的服装应成为默认穿着');
@@ -256,7 +256,7 @@ test('迁移复核入口能列出待确认角色，并显示旧多套服装与�
   before.close();
 
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-  execFileSync(process.execPath, [resolve(repositoryRoot, 'scripts/character-model-migration.mjs'), 'apply', '--db', databasePath], { cwd: repositoryRoot, stdio: 'pipe' });
+  execFileSync(process.execPath, ['--import', 'tsx/esm', resolve(repositoryRoot, 'scripts/character-model-migration.mjs'), 'apply', '--db', databasePath], { cwd: repositoryRoot, stdio: 'pipe' });
 
   const database = new ServiceDatabase(databasePath);
   const { app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}) });

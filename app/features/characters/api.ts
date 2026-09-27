@@ -1,6 +1,8 @@
 import { adminFetch, getJson, postJson, putJson, deleteJson } from '@/app/lib/api-client';
 import {
   CharacterAssetResponseSchema,
+  CharacterAssetListResponseSchema,
+  CharacterPreviewOfficialAssetsResponseSchema,
   GenerationTaskDescriptorSchema,
   CharacterDetailSchema,
   CharacterGenerateResponseSchema,
@@ -19,11 +21,17 @@ import type {
   CharacterSource,
   CharacterMigrationReview,
   CharacterMigrationReviewList,
+  CharacterVariant,
   CharacterVersion,
   GenerationTaskDescriptor,
   CharacterImportSession,
   CharacterCardSearchResponse,
   CharacterLlmStatusResponse,
+  CharacterAssetListResponse,
+  CharacterPreviewOfficialAssetsResponse,
+  CharacterOfficialAssetCandidate,
+  CharacterImportAssetsRequest,
+  CharacterSetActiveAssetRequest,
 } from '@sthstart/contracts';
 
 export type CharacterDetail = CharacterProfile & {
@@ -60,15 +68,36 @@ export async function createCharacter(payload: {
   displayName: string;
   draft: CharacterDraftAny;
   tags: string[];
+  variants?: CharacterVariant[];
 }): Promise<CharacterProfile> {
   return postJson<CharacterProfile>('characters', payload, undefined, CharacterProfileSchema);
 }
 
 export async function updateCharacter(
   id: string,
-  payload: { draft: CharacterDraftAny; tags: string[]; expectedDraftRevision?: number }
+  payload: { draft: CharacterDraftAny; tags: string[]; variants?: CharacterVariant[]; avatarAssetId?: string | null; expectedDraftRevision?: number }
 ): Promise<CharacterProfile> {
   return putJson<CharacterProfile>(`characters/${id}`, payload, undefined, CharacterProfileSchema);
+}
+
+export async function matchOfficialAvatar(id: string): Promise<CharacterProfile> {
+  return postJson<CharacterProfile>(`characters/${id}/match-official-avatar`, undefined, undefined, CharacterProfileSchema);
+}
+
+export async function batchMatchOfficialAvatars(payload: {
+  ids?: string[];
+  onlyMissing?: boolean;
+}): Promise<import('@sthstart/contracts').CharacterBatchAvatarResponse> {
+  return postJson<import('@sthstart/contracts').CharacterBatchAvatarResponse>(
+    'characters/batch-match-official-avatars',
+    payload,
+    undefined,
+    undefined
+  );
+}
+
+export async function fetchAvatarFromUrl(id: string, url: string): Promise<CharacterProfile> {
+  return postJson<CharacterProfile>(`characters/${id}/fetch-avatar-url`, { url }, undefined, CharacterProfileSchema);
 }
 
 export async function generateCharacterDraft(
@@ -99,6 +128,48 @@ export async function uploadCharacterAvatar(
     undefined,
     CharacterAssetResponseSchema
   );
+}
+
+export async function uploadCharacterAsset(
+  id: string,
+  file: File,
+  kind: 'avatar' | 'portrait' | 'reference' = 'avatar',
+  setAsActive = true
+): Promise<Record<string, unknown>> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  return postJson(
+    `characters/${id}/assets`,
+    { dataUrl, filename: file.name, kind, setAsActive },
+    undefined,
+    CharacterAssetResponseSchema
+  );
+}
+
+export async function fetchCharacterAssets(id: string): Promise<CharacterAssetListResponse> {
+  return getJson<CharacterAssetListResponse>(`characters/${id}/assets`, undefined, CharacterAssetListResponseSchema);
+}
+
+export async function previewCharacterOfficialAssets(id: string): Promise<CharacterPreviewOfficialAssetsResponse> {
+  return postJson<CharacterPreviewOfficialAssetsResponse>(`characters/${id}/preview-official-assets`, undefined, undefined, CharacterPreviewOfficialAssetsResponseSchema);
+}
+
+export async function importCharacterAssets(
+  id: string,
+  payload: CharacterImportAssetsRequest
+): Promise<{ imported: Array<{ id: string; kind: 'avatar' | 'portrait'; url: string }>; activeAvatarAssetId?: string | null; activePortraitAssetId?: string | null }> {
+  return postJson(`characters/${id}/import-assets`, payload);
+}
+
+export async function setCharacterActiveAsset(
+  id: string,
+  payload: CharacterSetActiveAssetRequest
+): Promise<CharacterProfile> {
+  return putJson<CharacterProfile>(`characters/${id}/set-active-asset`, payload, undefined, CharacterProfileSchema);
 }
 
 export async function uploadCharacterReference(id: string, file: File, purposes = ['identity']): Promise<{ id: string; url: string; reference?: Record<string, unknown> }> {
