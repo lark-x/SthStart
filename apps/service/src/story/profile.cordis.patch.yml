@@ -1,0 +1,81 @@
+# Managed by SthStart. The sdk-minimal bundle includes a shell by default;
+# disable every model-facing shell tool before adding the Story MCP bridge.
+- id: persistent-bash
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: llm-deepseek
+  disabled: true
+- id: sdk-jsonrpc-server
+  disabled: true
+- id: sandbox-policy
+  config:
+    mode: read-only
+    workspaceRoot: !!js process.cwd()
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    personaPrefix: >-
+      You are a fiction-writing assistant in SthStart Story Studio.
+      The SthStart project records are the sole source of canonical story facts.
+      Discuss and analyze freely. You may submit a pending change proposal
+      through Story MCP, but only the user can accept it into canonical data.
+      Never claim a proposal has changed canonical content. Use Story MCP
+      tools to inspect project data and submit proposals. Do not request
+      secrets, execute code, or instruct the user to grant filesystem access.
+- insert:
+    - id: story-sdk-jsonrpc-server
+      name: __STHSTART_STORY_RESUME_SERVER_PATH__
+      inject: [sdkAppStartup, loader]
+    - id: llm-sthstart
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          sthstart:
+            displayName: SthStart public text model
+            apiKeyEnv: STHSTART_STORY_APP_TOKEN
+            api: openai-completions
+            baseURL: !!js process.env.STHSTART_STORY_LLM_BASE_URL
+            defaultMaxTokens: !!js Number(process.env.STHSTART_STORY_OUTPUT_TOKENS ?? 4096)
+            models:
+              - id: !!js process.env.STHSTART_STORY_MODEL_ID
+                name: SthStart text model
+                contextWindow: !!js Number(process.env.STHSTART_STORY_CONTEXT_WINDOW ?? 32768)
+                reasoningEfforts: false
+    - id: story-token-meter
+      name: '@deepseek-ai/dsh-token-meter'
+    - id: story-skill-registry
+      name: '@deepseek-ai/dsh-skill'
+    - id: story-skill-filesystem
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js process.env.STHSTART_STORY_SKILLS_DIR
+        watch: false
+    - id: story-skill-tool
+      name: '@deepseek-ai/dsh-tool-skill'
+    - id: story-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: story
+        transport: stdio
+        command: !!js process.execPath
+        args:
+          - --import
+          - !!js process.env.STHSTART_STORY_TSX_IMPORT_PATH
+          - !!js process.env.STHSTART_STORY_MCP_SOURCE_PATH
+        env:
+          STHSTART_STORY_MCP_TOKEN: !!js process.env.STHSTART_STORY_MCP_TOKEN
+          STHSTART_STORY_PROJECT_ID: !!js process.env.STHSTART_STORY_PROJECT_ID
+          STHSTART_STORY_RUNTIME_SESSION_ID: !!js process.env.STHSTART_STORY_RUNTIME_SESSION_ID
+          STHSTART_STORY_INTERNAL_URL: !!js process.env.STHSTART_STORY_INTERNAL_URL
+        failOnStartupError: true
+    - id: story-compaction
+      name: '@deepseek-ai/dsh-compaction-basic'
+      config:
+        thresholdRatio: !!js Number(process.env.STHSTART_STORY_COMPACT_THRESHOLD ?? 0.75)
+        headroomTokens: 4096
+        retainTokens: !!js Number(process.env.STHSTART_STORY_RETAIN_TOKENS ?? 2048)
+        maxTokens: 1024

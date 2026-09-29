@@ -667,6 +667,26 @@ test('beat render preview is read-only, submit is idempotent, and adoption check
   assert.equal(retryState?.status, 'succeeded', 'a new idempotency key can retry the interrupted render');
   assert.ok(retryState?.task_id);
 
+  // A normal click no longer needs a browser preview or a client-generated
+  // snapshot. Repeating that click must reuse the same candidate and seed.
+  const directPayload = { stageId: 'stage-one', sceneId: 'scene-one', beatId: 'beat-one', idempotencyKey: 'beat-direct-without-preview' };
+  const direct = await currentApp.inject({ method: 'POST', url: endpoint, headers: adminHeaders, payload: directPayload });
+  assert.equal(direct.statusCode, 202, direct.body);
+  const repeated = await currentApp.inject({ method: 'POST', url: endpoint, headers: adminHeaders, payload: directPayload });
+  assert.equal(repeated.statusCode, 202, repeated.body);
+  assert.equal(repeated.json().candidateId, direct.json().candidateId);
+  let directState: { status: string; task_id: string | null } | undefined;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    directState = database.connection.prepare('SELECT status,task_id FROM activity_beat_render_candidates WHERE id=?')
+      .get(direct.json().candidateId) as typeof directState;
+    if (directState?.status === 'succeeded' || directState?.status === 'failed') break;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+  }
+  assert.equal(directState?.status, 'succeeded', 'background configuration must keep the same seed without a preview');
+  const changedClick = await currentApp.inject({ method: 'POST', url: endpoint, headers: adminHeaders,
+    payload: { ...directPayload, customPrompt: 'different composition' } });
+  assert.equal(changedClick.statusCode, 409, 'same key with a different request must not generate twice');
+
   assert.equal(database.connection.prepare("SELECT COUNT(*) count FROM ai_call_events WHERE call_id=? AND phase='candidate_image_selected'").get(candidateRow.call_id)!.count, 7,
     'ordinary and legacy history selections, including idempotent retries, remain auditable');
   assert.ok(database.connection.prepare('SELECT id FROM ai_call_records WHERE id=?').get(candidateRow.call_id));

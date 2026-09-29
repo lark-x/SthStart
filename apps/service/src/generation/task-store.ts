@@ -56,7 +56,7 @@ export function resolveWorkflowAndEngine(
   let engineId: string;
   if (options.isInternal && options.workflowId) {
     workflowId = options.workflowId;
-    const workflow = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(workflowId) as { latest_version: number } | undefined;
+    const workflow = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ? AND archived_at IS NULL').get(workflowId) as { latest_version: number } | undefined;
     if (!workflow) throw codedError('workflow_not_found', `未找到指定的工作流 ${workflowId}。`);
     version = options.workflowVersion ?? workflow.latest_version;
     const selected = database.connection.prepare(
@@ -79,7 +79,7 @@ export function resolveWorkflowAndEngine(
     version = assignment.workflow_version;
     engineId = assignment.engine_id;
   }
-  const workflow = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(workflowId) as { id: string; name: string; engine_kind: string; category?: string } | undefined;
+  const workflow = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ? AND archived_at IS NULL').get(workflowId) as { id: string; name: string; engine_kind: string; category?: string } | undefined;
   if (!workflow) throw codedError('workflow_not_found', `未找到指定的工作流 ${workflowId}。`);
   const workflowVersion = database.connection.prepare(`
     SELECT v.*, v.config_format_version AS config_format_version, v.editor_config_json,

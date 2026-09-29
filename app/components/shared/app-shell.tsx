@@ -84,7 +84,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const collapsed = mobileCollapsed ?? collapsedPref;
   const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
-  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio;
+  const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
+  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio || isStoryWorkspace;
 
   const toggleCollapsed = useCallback(() => {
     setMobileCollapsed((prev) => {

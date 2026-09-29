@@ -43,7 +43,7 @@ export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, 
     try { await onSaveToLibrary(topic); } finally { setSavingToLibrary(false); }
   };
   return (
-    <li className={'space-y-2 rounded-[var(--radius-panel)] border p-3 ' + (selected ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
+    <li className={'topic-summary-card space-y-3 rounded-[var(--radius-panel)] p-4 ' + (selected ? 'is-selected' : '')}>
       <div className="flex items-start gap-3">
         {onToggle && (
           <input
@@ -78,7 +78,7 @@ export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, 
         </div>
       </div>
       {showActions && (
-        <div className="flex flex-wrap gap-2">
+        <div className="topic-summary-actions flex flex-wrap gap-2">
           {onOpenDetail && <Button size="sm" variant="ghost" onClick={() => onOpenDetail(topic)}><Eye className="h-3.5 w-3.5" />查看详情</Button>}
           {onToggleFavorite && (
             <Button size="sm" variant="ghost" onClick={() => onToggleFavorite(topic)}>

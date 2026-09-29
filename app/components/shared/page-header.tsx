@@ -45,6 +45,7 @@ export function PageHeader({
 
       <div className="tpl-header-main">
         <div className="min-w-0">
+          {!compact && <p className="tpl-kicker">STHSTART <span aria-hidden="true">/</span> CREATIVE WORKSPACE</p>}
           <h1 className={cn('tpl-title', compact && 'text-xl')}>{title}</h1>
           {description && (
             <p className={cn('tpl-description mt-1', compact && 'line-clamp-2')}>

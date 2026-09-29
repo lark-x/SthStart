@@ -284,13 +284,14 @@ function reportControls(failures: Array<ControlSample & { route: string }>) {
 }
 
 async function sweepText(page: Page, warm: boolean) {
-  if (warm) await page.addInitScript(() => window.localStorage.setItem('sthstart_eye_care_mode', 'true'));
+  const expectedTheme = warm ? 'warm' : 'neutral';
+  await page.addInitScript((mode) => window.localStorage.setItem('sthstart_theme', mode), expectedTheme);
   const failures: Array<Sample & { route: string }> = [];
   let checked = 0;
   for (const route of ROUTES) {
     const response = await page.goto(route);
     if (response && response.status() >= 400) continue;
-    if (warm) await expect(page.locator('html')).toHaveAttribute('data-eye-care', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', expectedTheme);
     await page.waitForTimeout(350);
     for (const sample of await collectText(page)) {
       checked += 1;
@@ -300,7 +301,7 @@ async function sweepText(page: Page, warm: boolean) {
   return { failures, checked };
 }
 
-test('default theme text meets 4.5:1 on real surfaces', async ({ page }) => {
+test('neutral theme text meets 4.5:1 on real surfaces', async ({ page }) => {
   const { failures, checked } = await sweepText(page, false);
   // 取样量过低说明选择器或渲染出了问题，不能算通过。
   expect(checked, '取样文字数量').toBeGreaterThan(200);

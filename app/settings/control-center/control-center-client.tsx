@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Activity, Server, Sliders, Cpu, Terminal, RefreshCw } from 'lucide-react';
+import { Activity, Server, Sliders, Cpu, Terminal, RefreshCw, BookOpen } from 'lucide-react';
 import type { RuntimeSettings } from '@sthstart/contracts';
 import { useRuntimeOverview } from '@/app/features/runtime/queries';
 import {
@@ -34,8 +34,9 @@ import { buttonVariants } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
+import { StoryDshControlPanel } from '@/app/features/story/story-dsh-control-panel';
 
-type Tab = 'overview' | 'runtime' | 'creative' | 'models' | 'logs';
+type Tab = 'overview' | 'runtime' | 'creative' | 'models' | 'logs' | 'story-dsh';
 
 export function ControlCenter() {
   const searchParams = useSearchParams();
@@ -234,6 +235,7 @@ export function ControlCenter() {
           { id: 'runtime', label: '自启与服务', icon: Server },
           { id: 'creative', label: '创作扩展', icon: Sliders },
           { id: 'models', label: '模型接入', icon: Cpu },
+          { id: 'story-dsh', label: '剧情 DSH', icon: BookOpen },
           { id: 'logs', label: '实时日志', icon: Terminal },
         ].map((item) => ({
           id: item.id,
@@ -339,6 +341,12 @@ export function ControlCenter() {
               await logPolicyMutation.mutateAsync(p);
             }}
           />
+        </div>
+      )}
+
+      {tab === 'story-dsh' && (
+        <div id="control-panel-story-dsh" role="tabpanel" className="animate-in fade-in">
+          <StoryDshControlPanel />
         </div>
       )}
 

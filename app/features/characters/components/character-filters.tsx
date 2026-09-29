@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { CharacterBrowseQuery, CharacterBrowseResult } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { browseCharacters } from '../api';
 
 export { CHARACTER_FILTER_URL_PARAM, parseCharacterFilterParam } from '../filter-url';
@@ -72,9 +73,9 @@ function MultiFilter({ label, values, selected, onChange }: { label: string; val
   const needle = query.trim().toLowerCase();
   const matches = needle ? values.filter((item) => `${item.label} ${item.search || ''}`.toLowerCase().includes(needle)) : values;
 
-  return <details ref={ref} className="relative rounded-md border border-ink/15 bg-surface">
+  return <details ref={ref} className="relative rounded-[var(--radius-control)] border border-border-default bg-surface">
     <summary className="cursor-pointer px-3 py-2 text-sm">{label}{selected.length ? ` (${selected.length})` : ''}</summary>
-    <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-ink/15 bg-surface p-3 shadow-lg">
+    <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-[var(--radius-control)] border border-border-default bg-surface p-3 shadow-floating">
       <Input aria-label={`搜索${label}`} placeholder={`搜索${label}`} value={query} onChange={(event) => setQuery(event.target.value)} />
       <div className="mt-2 max-h-48 space-y-1 overflow-auto">
         {matches.map((item) => (
@@ -129,7 +130,7 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const select = (label: string, key: keyof CharacterBrowseQuery, options: [string, string][]) => (
     <label className="flex flex-col gap-1 text-sm">{label}
-      <select className="rounded border border-ink/15 bg-surface px-2 py-2" value={String(filter[key] || '')} onChange={(event) => onChange({ [key]: event.target.value || undefined })}>
+      <select className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-input px-3 text-sm text-ink" value={String(filter[key] || '')} onChange={(event) => onChange({ [key]: event.target.value || undefined })}>
         <option value="">全部</option>
         {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
       </select>
@@ -152,7 +153,8 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
     <Button size="sm" variant="ghost" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(!advancedOpen)}>更多筛选与排序</Button>
     {actions && <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">{actions}</div>}
     </div>
-    {advancedOpen && <div className="grid grid-cols-2 gap-3 border-t border-border-subtle pt-3 sm:grid-cols-3 xl:grid-cols-6">
+    <ResponsiveEditOverlay open={advancedOpen} onOpenChange={setAdvancedOpen} title="角色筛选" description="常用搜索与作品、标签、分组条件保留在列表上方。" footer={<Button type="button" onClick={() => setAdvancedOpen(false)}>完成筛选</Button>}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {select('作品类型', 'mediaType', ['游戏', '动画', '漫画', '小说', '影视', '其他'].map((type) => [type, type]))}
         {select('创作类型', 'originType', [['ip', '已有 IP'], ['original', '原创']])}
         {select('外观参考图', 'reference', [['yes', '有可用参考图'], ['no', '无可用参考图']])}
@@ -164,7 +166,8 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
         {select('生日月份', 'birthdayMonth', (facets?.birthdayMonths || []).map((month) => [String(month), `${month} 月`]))}
         {select('标签匹配', 'tagMode', [['any', '任一标签'], ['all', '全部标签']])}
         {select('排序', 'sort', [['updated', '最近更新'], ['name', '角色名称']])}
-    </div>}
+      </div>
+    </ResponsiveEditOverlay>
     {!!chips.length && <div className="flex w-full flex-wrap gap-2">
       {chips.map((chip) => (
         <button type="button" key={chip.key} className="rounded bg-accent/10 px-2 py-1 text-sm" onClick={() => clearChip(chip)}>{chip.label} ×</button>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Star } from 'lucide-react';
+import { Plus, Search, Star, SlidersHorizontal } from 'lucide-react';
 import type { NoteCategory, NoteKind, NoteNature, NoteUsage } from '@sthstart/contracts';
 import { useNotes } from '../queries';
 import { useLocalNotebookNotes } from '../hooks';
@@ -12,6 +12,10 @@ import { Input } from '@/app/components/ui/input';
 import { Alert } from '@/app/components/ui/alert';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { Button } from '@/app/components/ui/button';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { SectionHeader } from '@/app/components/shared/section-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
 
 const filterOptions: Array<{ value: 'all' | NoteKind; label: string }> = [
   { value: 'all', label: '全部' },
@@ -39,6 +43,7 @@ export function NotebookList() {
   const [natureFilter, setNatureFilter] = useState<'' | NoteNature>('');
   const [categoryFilter, setCategoryFilter] = useState<'' | NoteCategory>('');
   const [workFilter, setWorkFilter] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   // 元数据与关键词筛选走服务端：不在首批 300 条里过滤。
   const [debouncedQuery, setDebouncedQuery] = useState('');
   useEffect(() => {
@@ -84,8 +89,7 @@ export function NotebookList() {
   const metadataFilterActive = Boolean(usageFilter || natureFilter || categoryFilter || workFilter);
 
   return (
-    <div className="notebook-list-page w-full bg-paper text-ink px-4 sm:px-6 py-6">
-      <div className="mx-auto w-full max-w-[1920px] space-y-4">
+    <PageContainer className="notebook-list-page space-y-5 py-6 pb-10 text-ink">
       <PageHeader
         className="notebook-list-header"
         title="创作资料库"
@@ -108,7 +112,7 @@ export function NotebookList() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="notebook-list-filters flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-sm">
+      <div className="notebook-list-filters notebook-toolbar flex flex-col items-stretch gap-4 rounded-[var(--radius-panel)] bg-surface-raised p-4 shadow-[var(--shadow-panel)] sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-md">
           <Search className="h-4 w-4 absolute left-3 top-3 text-muted" aria-hidden="true" />
           <Input
@@ -136,8 +140,8 @@ export function NotebookList() {
                 onClick={() => setSelectedFilter(opt.value)}
                 className={`px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                   isActive
-                    ? 'bg-ink text-paper'
-                    : 'text-muted hover:text-ink hover:bg-ink/6'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'bg-surface-sunken/55 text-muted hover:text-ink hover:bg-surface-sunken'
                 }`}
               >
                 {opt.label}
@@ -147,52 +151,67 @@ export function NotebookList() {
         </div>
       </div>
 
-     {/* Main Grid */}
-        {/* 元数据筛选：作品 / 参考状态 / 内容性质 / 资料类型（服务端筛选）。 */}
-        {(facets || metadataFilterActive) && (
-          <div className="flex flex-wrap items-end gap-2 px-4 py-3 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-sm">
+      <div className="notebook-filter-summary flex min-w-0 flex-wrap items-center gap-3 rounded-xl px-1 py-1">
+        <Button size="sm" variant={metadataFilterActive ? 'primary' : 'outline'} aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
+          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />更多筛选{metadataFilterActive ? ' · 已启用' : ''}
+        </Button>
+        {metadataFilterActive && <p className="min-w-0 flex-1 text-sm text-muted">{[
+          workFilter && `作品：${workFilter}`,
+          usageFilter && `参考状态：${usageLabels[usageFilter]}`,
+          natureFilter && `内容性质：${natureLabels[natureFilter]}`,
+          categoryFilter && `资料类型：${categoryLabels[categoryFilter]}`,
+        ].filter(Boolean).join('　·　')}</p>}
+        {data?.total !== undefined && <span className="ml-auto text-sm text-muted">共 {data.total} 条资料</span>}
+      </div>
+
+      <ResponsiveEditOverlay
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        title="资料筛选"
+        description="搜索和资料分类常驻在列表顶部；这些元数据条件只影响当前列表。"
+        footer={<><Button type="button" variant="outline" onClick={() => { setUsageFilter(''); setNatureFilter(''); setCategoryFilter(''); setWorkFilter(''); }}>清空条件</Button><Button type="button" onClick={() => setFiltersOpen(false)}>完成</Button></>}
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {!!facets?.works.length && (
-              <label className="space-y-1">
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm">
                 <span className="text-xs text-muted">作品</span>
-                <select aria-label="按作品筛选" value={workFilter} onChange={(event) => setWorkFilter(event.target.value)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <select aria-label="按作品筛选" value={workFilter} onChange={(event) => setWorkFilter(event.target.value)} className="h-10 rounded-[var(--radius-control)] border border-border-control bg-surface-input px-3 text-sm text-ink">
                   <option value="">全部作品</option>
                   {facets.works.map((work) => <option key={work} value={work}>{work}</option>)}
                 </select>
               </label>
             )}
-            <label className="space-y-1">
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted">参考状态</span>
-              <select aria-label="按参考状态筛选" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value as '' | NoteUsage)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <select aria-label="按参考状态筛选" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value as '' | NoteUsage)} className="h-10 rounded-[var(--radius-control)] border border-border-control bg-surface-input px-3 text-sm text-ink">
                 <option value="">不限</option>
                 {Object.entries(usageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
-            <label className="space-y-1">
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted">内容性质</span>
-              <select aria-label="按内容性质筛选" value={natureFilter} onChange={(event) => setNatureFilter(event.target.value as '' | NoteNature)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <select aria-label="按内容性质筛选" value={natureFilter} onChange={(event) => setNatureFilter(event.target.value as '' | NoteNature)} className="h-10 rounded-[var(--radius-control)] border border-border-control bg-surface-input px-3 text-sm text-ink">
                 <option value="">不限</option>
                 {Object.entries(natureLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
-            <label className="space-y-1">
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted">资料类型</span>
-              <select aria-label="按资料类型筛选" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '' | NoteCategory)} className="h-8 rounded border border-border-control bg-surface-raised px-2 text-sm text-ink">
+                <select aria-label="按资料类型筛选" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '' | NoteCategory)} className="h-10 rounded-[var(--radius-control)] border border-border-control bg-surface-input px-3 text-sm text-ink">
                 <option value="">不限</option>
                 {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
-            {metadataFilterActive && (
-              <button type="button" className="h-8 px-3 rounded border border-border-default text-sm text-muted hover:text-ink" onClick={() => { setUsageFilter(''); setNatureFilter(''); setCategoryFilter(''); setWorkFilter(''); }}>清空筛选</button>
-            )}
-            {data?.total !== undefined && <span className="ml-auto text-xs text-muted">共 {data.total} 条资料</span>}
-          </div>
-        )}
+        </div>
+      </ResponsiveEditOverlay>
+
+     {/* Main Grid */}
       {isLoading && notes.length === 0 ? (
         <div className="notebook-list-skeleton grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
           {[1, 2, 3, 4, 5, 6].map((n) => (
             <div
               key={n}
-              className="p-5 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3"
+              className="notebook-card-skeleton rounded-[var(--radius-panel)] bg-surface p-5 shadow-[var(--shadow-panel)] space-y-3"
             >
               <Skeleton className="h-4 w-1/4" />
               <Skeleton className="h-6 w-3/4" />
@@ -204,26 +223,19 @@ export function NotebookList() {
       ) : visibleNotes.length > 0 ? (
         <div className="notebook-list-results space-y-10">
           <section className="notebook-recent-section space-y-4">
-            <div className="notebook-section-heading flex items-center justify-between pb-2 border-b border-border-subtle">
-              <div>
-                <span className="text-sm font-bold uppercase tracking-wider text-accent-dark">
-                  RECENT NOTES
-                </span>
-                <h3 className="text-xl font-medium text-ink">
-                  {selectedFilter === 'all' ? '最近记录' : kindLabels[selectedFilter]}
-                </h3>
-              </div>
-              <span className="font-mono text-sm text-muted">
-                {visibleNotes.length.toString().padStart(2, '0')}
-              </span>
-            </div>
+            <SectionHeader
+              className="notebook-section-heading"
+              title={selectedFilter === 'all' ? '最近记录' : kindLabels[selectedFilter]}
+              description="按最近更新排列，继续你的创作线索。"
+              actions={<span className="rounded-full bg-surface-sunken px-3 py-1 font-mono text-xs font-semibold text-muted">{visibleNotes.length.toString().padStart(2, '0')}</span>}
+            />
 
             <div className="notebook-note-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {visibleNotes.map((note) => (
                 <Link
                   key={note.id}
                   href={`/apps/notebook/${note.id}`}
-                  className={`notebook-list-item group relative flex flex-col justify-between p-5 min-h-[220px] rounded-[var(--radius-panel)] border border-border-default bg-surface hover:border-accent/60 hover:shadow-md transition-all duration-200 note-card note-kind-${note.kind}`}
+                  className={`notebook-list-item notebook-note-card group relative flex min-h-[220px] flex-col justify-between rounded-[var(--radius-panel)] bg-surface p-5 transition-all duration-200 note-card note-kind-${note.kind}`}
                 >
                   <div>
                     <div className="flex items-center justify-between text-sm text-muted mb-2 font-medium">
@@ -231,7 +243,7 @@ export function NotebookList() {
                       <time>{formatDate(note.updatedAt)}</time>
                     </div>
 
-                    <h4 className="text-xl font-medium text-ink group-hover:text-accent transition-colors line-clamp-2">
+                    <h4 className="font-serif text-xl font-semibold text-ink group-hover:text-accent transition-colors line-clamp-2">
                       {note.title || '未命名笔记'}
                     </h4>
 
@@ -240,7 +252,7 @@ export function NotebookList() {
                     </p>
                   </div>
 
-                    <div className="notebook-list-item-meta flex items-center justify-between pt-3 mt-4 border-t border-border-subtle text-sm text-muted">
+                    <div className="notebook-list-item-meta mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-sunken/55 px-3 py-2 text-xs text-muted">
                       <span className="font-medium">{stageLabels[note.stage]}</span>
                       <div className="flex items-center gap-2">
                         {note.knowledge && (
@@ -263,8 +275,8 @@ export function NotebookList() {
           </section>
 
           {/* Lore Shelves */}
-          <section className="notebook-lore-section grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border-subtle">
-            <div className="notebook-lore-shelf p-5 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3">
+          <section className="notebook-lore-section grid grid-cols-1 gap-4 pt-2 md:grid-cols-2">
+            <div className="notebook-lore-shelf rounded-[var(--radius-panel)] bg-surface p-5 shadow-[var(--shadow-panel)] space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-xl font-medium text-ink">角色人设</h4>
                 <button
@@ -281,7 +293,7 @@ export function NotebookList() {
                   <Link
                     key={item.id}
                     href={`/apps/notebook/${item.id}`}
-                    className="flex items-center justify-between p-2.5 rounded hover:bg-ink/4 transition-colors border-b border-border-subtle"
+                    className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-surface-sunken/65"
                   >
                     <span className="font-medium text-sm text-ink truncate">{item.title}</span>
                     <span className="text-sm text-muted flex-shrink-0">
@@ -300,7 +312,7 @@ export function NotebookList() {
               </div>
             </div>
 
-            <div className="notebook-lore-shelf p-5 rounded-[var(--radius-panel)] bg-surface border border-border-subtle space-y-3">
+            <div className="notebook-lore-shelf rounded-[var(--radius-panel)] bg-surface p-5 shadow-[var(--shadow-panel)] space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-xl font-medium text-ink">世界故事</h4>
                 <button
@@ -317,7 +329,7 @@ export function NotebookList() {
                   <Link
                     key={item.id}
                     href={`/apps/notebook/${item.id}`}
-                    className="flex items-center justify-between p-2.5 rounded hover:bg-ink/4 transition-colors border-b border-border-subtle"
+                    className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-surface-sunken/65"
                   >
                     <span className="font-medium text-sm text-ink truncate">{item.title}</span>
                     <span className="text-sm text-muted flex-shrink-0">
@@ -359,7 +371,6 @@ export function NotebookList() {
           }
         />
       )}
-      </div>
-    </div>
+    </PageContainer>
   );
 }

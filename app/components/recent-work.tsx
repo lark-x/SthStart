@@ -66,9 +66,9 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
    * 避免数据到达时整页高度跳变；加载提示保留在无障碍树中供读屏与测试识别。
    */
   const skeletonRows = (
-    <ul className="divide-y divide-border-subtle" aria-hidden="true">
+    <ul className="space-y-1.5" aria-hidden="true">
       {Array.from({ length: limit }, (_, index) => (
-        <li key={index} className="flex items-center gap-3 px-2 py-2.5">
+        <li key={index} className="flex items-center gap-3 rounded-xl bg-surface-sunken/45 px-3 py-2.5">
           <Skeleton className="h-4 w-4 flex-none" />
           <Skeleton className="h-4 min-w-0 flex-1" data-visual-dynamic="true" />
           <Skeleton className="h-3 w-8 flex-none" data-visual-dynamic="true" />
@@ -113,7 +113,7 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
           </div>
         </div>
       ) : (
-        <ul className="divide-y divide-border-subtle" data-testid="recent-work-list">
+        <ul className="space-y-1.5" data-testid="recent-work-list">
           {/*
            * 行数固定为 limit，行距与图标属于版式，纳入基线；
            * 标题与时间来自真实库（含随机夹具后缀），单独标为动态以免每次运行都污染基线。
@@ -125,10 +125,10 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
               <li key={item.id}>
                 <Link
                   href={item.href}
-                  className="flex items-center gap-3 rounded-[var(--radius-control)] px-2 py-2.5 transition-colors hover:bg-surface-hover"
+                  className="recent-work-row flex items-center gap-3 rounded-xl bg-surface-sunken/45 px-3 py-3 transition-colors hover:bg-accent/8"
                 >
                   {/* 每行图标随条目类型变化，类型由真实数据决定，故同样按动态内容遮罩。 */}
-                  <Icon className="h-4 w-4 flex-none text-muted" aria-hidden="true" data-visual-dynamic="true" />
+                  <span className="recent-work-icon flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-surface text-accent shadow-sm"><Icon className="h-4 w-4" aria-hidden="true" data-visual-dynamic="true" /></span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink" data-visual-dynamic="true">{item.title}</span>
                   <span className="flex-none text-xs text-fg-subtle" data-visual-dynamic="true">{item.kind}</span>
                   {updated && <time className="hidden flex-none text-xs text-fg-subtle sm:inline" dateTime={item.updatedAt} data-visual-dynamic="true">{updated}</time>}

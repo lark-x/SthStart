@@ -19,7 +19,7 @@ export function TaskCard({
 }) {
   const canRetry = ['failed', 'abandoned', 'cancelled'].includes(task.status);
   return (
-    <article className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4">
+    <article className="creative-task-card rounded-[var(--radius-panel)] bg-surface p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

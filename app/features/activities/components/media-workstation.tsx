@@ -228,7 +228,7 @@ export function MediaWorkstation({
             图片与视频
           </h3>
           <p className="text-sm text-muted">
-            管理活动记录引用的图片与视频。先批量生成候选，再挑一张采用；单张镜头也可在这里手动新增。
+            管理活动的图片与视频。打开任意镜头即可绘制图片、查看历史并挑选；也可批量绘制。
           </p>
         </div>
 
@@ -292,7 +292,7 @@ export function MediaWorkstation({
         <div className="p-12 text-center text-sm text-muted bg-surface rounded-lg border border-border-default space-y-2">
           <Film className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />
           <p>当前活动还没有图片或视频镜头</p>
-          <p className="text-sm">可点击上方“批量生图与挑选”一次生成多个候选，或“新增镜头”手动补一个；AI 生成对白与动态时也会自动创建。</p>
+          <p className="text-sm">可新增镜头后单张绘制，也可点击“批量生图与挑选”一次生成多个候选。</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -430,7 +430,7 @@ export function MediaWorkstation({
                         className="text-sm h-7 flex items-center gap-1 border-sky-300 text-sky-700 hover:bg-sky-50"
                       >
                         <Sparkles className="h-3 w-3 text-sky-500" />
-                        AI 生图 / 提示词溯源
+                        绘制图片
                       </Button>
                     )}
                   </div>

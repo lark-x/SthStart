@@ -85,7 +85,7 @@ export function Drawer({
         </div>
 
         {/* 抽屉同样在 portal 中，需显式声明滚动条自动隐藏。 */}
-        <div className="flex-1 overflow-y-auto py-2" data-autohide-scroll>{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto py-2" data-autohide-scroll>{children}</div>
 
         {footer && (
           <div className="flex items-center justify-end gap-3 pt-4 mt-auto border-t border-border-subtle">

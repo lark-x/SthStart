@@ -3,6 +3,7 @@ import { ActivityLoraSchema, SceneBeatRenderSettingsSchema } from './activities.
 export * from './ai-calls.js';
 export * from './activity-image-prompts.js';
 export * from './activity-comic.js';
+export * from './story.js';
 export * from './activities.js';
 
 export const AppStatusSchema = Type.Union([

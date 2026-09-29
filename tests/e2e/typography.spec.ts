@@ -66,13 +66,14 @@ type Sized = { px: number; text?: string; label?: string; selector: string };
 test.describe.configure({ timeout: 120_000 });
 
 async function sweep(page: Page, warm: boolean, collect: string, floor: number) {
-  if (warm) await page.addInitScript(() => window.localStorage.setItem('sthstart_eye_care_mode', 'true'));
+  const expectedTheme = warm ? 'warm' : 'neutral';
+  await page.addInitScript((mode) => window.localStorage.setItem('sthstart_theme', mode), expectedTheme);
   const failures: Array<Sized & { route: string }> = [];
   let checked = 0;
   for (const route of ROUTES) {
     const response = await page.goto(route);
     if (response && response.status() >= 400) continue;
-    if (warm) await expect(page.locator('html')).toHaveAttribute('data-eye-care', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', expectedTheme);
     await page.waitForTimeout(300);
     for (const row of (await page.evaluate(collect)) as Sized[]) {
       checked += 1;
@@ -89,7 +90,7 @@ function describe(failures: Array<Sized & { route: string }>) {
     .join('\n');
 }
 
-test('no visible text drops below the 12px auxiliary floor', async ({ page }) => {
+test('no visible text drops below the 12px auxiliary floor in the neutral theme', async ({ page }) => {
   const { failures, checked } = await sweep(page, false, COLLECT_TEXT_SIZES, 12);
   expect(checked, '取样文字数量').toBeGreaterThan(300);
   expect(failures.length, `低于 12px 的文字：\n${describe(failures)}`).toBe(0);

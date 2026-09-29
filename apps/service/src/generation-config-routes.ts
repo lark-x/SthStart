@@ -590,13 +590,18 @@ export function registerGenerationConfigRoutes(
 
   // ── 预设 ──
 
-  app.get<{ Querystring: { appId?: string; purpose?: string; workflowId?: string } }>('/api/v1/admin/generation/presets', async (request) => ({
-    items: listPresets(database, {
+  app.get<{ Querystring: { appId?: string; purpose?: string; workflowId?: string } }>('/api/v1/admin/generation/presets', async (request) => {
+    const activeWorkflows = new Map((database.connection.prepare('SELECT id,latest_version FROM generation_workflows WHERE archived_at IS NULL')
+      .all() as Array<{ id: string; latest_version: number }>).map((row) => [row.id, Number(row.latest_version)]));
+    return { items: listPresets(database, {
       appId: request.query.appId,
       purpose: request.query.purpose,
       workflowId: request.query.workflowId,
-    }),
-  }));
+    }).filter((preset) => {
+      const latest = activeWorkflows.get(preset.workflowId);
+      return latest !== undefined && (preset.enabled || preset.workflowVersion === latest);
+    }) };
+  });
 
   app.post<{ Body: {
     appId?: string; purpose?: string; name?: string; description?: string;

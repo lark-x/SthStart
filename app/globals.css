@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Keep design tokens in Tailwind's compilation graph so semantic utilities
+   (bg-accent, text-ink, border-border-default, etc.) are actually emitted. */
 @import './styles/theme.css';
 
 @font-face {
@@ -39,7 +41,7 @@
   }
 }
 
-html[data-eye-care="true"]:not([data-app="linshe"]) body {
+html:not([data-theme="neutral"]):not([data-app="linshe"]) body {
   background: var(--bg-app);
 }
 

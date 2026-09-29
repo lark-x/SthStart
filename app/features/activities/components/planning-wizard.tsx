@@ -1106,7 +1106,7 @@ export function PlanningWizard() {
                   (step === value ? 'border-accent bg-accent/10 font-semibold text-accent-dark'
                     : reachable ? 'border-border-default text-muted hover:bg-surface-hover' : 'border-border-subtle text-fg-subtle opacity-60')}
               >
-                <span className={'flex h-5 w-5 items-center justify-center rounded-full text-xs ' + (stepsDone(value) && step !== value ? 'bg-green-100 text-green-700' : 'bg-ink/8')}>
+                <span className={'flex h-5 w-5 items-center justify-center rounded-full bg-surface text-xs ' + (stepsDone(value) && step !== value ? 'bg-green-100 text-green-700' : '')}>
                   {stepsDone(value) && step !== value ? <Check className="h-3 w-3" /> : index + 1}
                 </span>
                 {label}
@@ -1258,9 +1258,11 @@ export function PlanningWizard() {
               <>
                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
                  <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Sparkles className="h-4 w-4 text-accent" />补充要求</h3>
-               {/* 从话题素材找灵感：复用素材库筛选，采用后把灵感来源写进企划。 */}
+                <details className="rounded-[var(--radius-control)] bg-surface-muted p-3">
+                <summary className="cursor-pointer text-sm font-medium text-ink">参考资料与话题灵感 · {references.length} 项</summary>
+                <div className="mt-4 space-y-5">
                 {/* 参考资料：手动检索选择，不触发联网；正文由服务端在生成时冻结。 */}
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><BookOpen className="h-4 w-4 text-accent" />参考资料（{references.length}）</h3>
                     <div className="flex flex-wrap gap-2">
@@ -1304,7 +1306,7 @@ export function PlanningWizard() {
                   </ul>
                   <p className="text-xs text-muted">背景参考按原作资料与未确认解释分开提交；「本次要求」优先于资料内容。未选择的资料不会被悄悄加入。</p>
                 </section>
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3">
                   <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Lightbulb className="h-4 w-4 text-accent" />从话题素材找灵感</h3>
                   <p className="text-xs text-muted">
                     {intake.cast.length
@@ -1321,6 +1323,8 @@ export function PlanningWizard() {
                   </Button>
                   {!intake.cast.length && <p className="text-xs text-amber-700">也可以先去「话题素材库」页面独立挑素材、生成点子。</p>}
                 </section>
+                </div>
+                </details>
                   <Textarea
                     aria-label="补充要求"
                     rows={4}
@@ -1328,12 +1332,18 @@ export function PlanningWizard() {
                     placeholder="例如：想在天台准备惊喜，希望每位寿星都有单独的祝福环节。"
                     onChange={(event) => setIntakeField('instruction', event.target.value)}
                   />
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-semibold text-ink">剧情范围说明</span>
-                    <Textarea aria-label="剧情范围说明" rows={2} value={intake.storyScopeNote} placeholder="如：只使用主线已公开的剧情，不涉及后续章节。" onChange={(event) => setIntakeField('storyScopeNote', event.target.value)} />
-                  </label>
+                  <details>
+                    <summary className="cursor-pointer text-sm text-muted">剧情范围说明（可选）</summary>
+                    <label className="mt-2 block space-y-1.5">
+                      <span className="text-xs font-semibold text-ink">剧情范围说明</span>
+                      <Textarea aria-label="剧情范围说明" rows={2} value={intake.storyScopeNote} placeholder="如：只使用主线已公开的剧情，不涉及后续章节。" onChange={(event) => setIntakeField('storyScopeNote', event.target.value)} />
+                    </label>
+                  </details>
                 </section>
 
+                <details className="rounded-[var(--radius-control)] bg-surface-muted p-3">
+                <summary className="cursor-pointer text-sm font-medium text-ink">资料检索与联动范围 · {intake.sourceIds.length} 个资料源</summary>
+                <div className="mt-4 space-y-5">
                 <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
                   <div>
                     <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Link2 className="h-4 w-4 text-accent" />联动范围</h3>
@@ -1412,6 +1422,8 @@ export function PlanningWizard() {
                   )}
                   {llmReady === false && <Alert variant="warning" title="文本模型未就绪">方案生成需要文本模型，请先前往 <a className="underline" href={MCP_SETTINGS_HREF} target="_blank" rel="noreferrer">公共服务配置</a>。</Alert>}
                 </section>
+                </div>
+                </details>
               </>
             )}
           />

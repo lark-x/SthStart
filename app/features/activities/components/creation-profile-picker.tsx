@@ -24,7 +24,7 @@ export function CreationProfilePicker({ value, onChange, allowDefault = true }: 
         onChange({ presetId: preset.id, name: preset.name, version: preset.version, values: normalizeCreationProfile(preset.payload) }); }, [data, defaults, value, allowDefault, onChange]);
     const values = normalizeCreationProfile((value?.values || {}) as Record<string, unknown>);
     return <div className="space-y-2 rounded-lg border border-border-default p-3"><label className="text-sm font-semibold">创作配置</label>
-    <select aria-label="创作配置" className="w-full rounded border border-border-default bg-surface p-2 text-sm" value={String(value?.presetId || '')} onChange={e => { const p = data?.items.find(p => p.id === e.target.value); onChange(p ? { presetId: p.id, name: p.name, version: p.version, values: normalizeCreationProfile(p.payload) } : {}); }}><option value="">使用普通设置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name} · v{p.version}</option>)}</select>
+    <select aria-label="创作配置" className="w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised p-2 text-sm" value={String(value?.presetId || '')} onChange={e => { const p = data?.items.find(p => p.id === e.target.value); onChange(p ? { presetId: p.id, name: p.name, version: p.version, values: normalizeCreationProfile(p.payload) } : {}); }}><option value="">使用普通设置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name} · v{p.version}</option>)}</select>
     {value?.presetId ? <p className="text-xs text-muted">已冻结「{String(value.name)}」v{String(value.version)}：每镜头 {values.candidateCount} 张候选，{values.expandMedia ? '展开' : '不展开'}媒体。修改预设不会改变本场活动；可重新选择套用新版。</p> : <p className="text-xs text-muted">可在活动的模板与预设管理中保存常用文字、生图、回放和导出偏好。</p>}
   </div>;
 }
@@ -52,10 +52,10 @@ export function CreationProfileEditor({ initial }: {
     catch (e) {
         setNotice((e as Error).message);
     } };
-    const textField = (key: 'instruction' | 'globalStylePrompt' | 'globalNegativePrompt', label: string) => <label className="block text-sm">{label}<textarea className="mt-1 w-full rounded border border-border-default bg-surface p-2" value={values[key]} onChange={e => setValues({ ...values, [key]: e.target.value })}/></label>;
+    const textField = (key: 'instruction' | 'globalStylePrompt' | 'globalNegativePrompt', label: string) => <label className="block text-sm">{label}<textarea className="mt-1 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised p-2" value={values[key]} onChange={e => setValues({ ...values, [key]: e.target.value })}/></label>;
     return <section className="space-y-3 border-t border-border-default pt-4"><h3 className="font-semibold">创作配置</h3>
     <select aria-label="编辑创作配置" className="w-full bg-surface p-2" value={selected} onChange={e => { setSelected(e.target.value); const p = data?.items.find(p => p.id === e.target.value); setName(p?.name || '我的创作配置'); setValues(normalizeCreationProfile(p?.payload || {})); }}><option value="">新建配置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-    <input aria-label="配置名称" className="w-full rounded border border-border-default bg-surface p-2" value={name} onChange={e => setName(e.target.value)}/>
+    <input aria-label="配置名称" className="w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised p-2" value={name} onChange={e => setName(e.target.value)}/>
     <label className="block text-sm">默认文字范围 <select value={values.textMode} onChange={e => setValues({ ...values, textMode: e.target.value as CreationProfileValues['textMode'] })}><option value="plan">阶段规划</option><option value="stage">当前阶段</option><option value="whole-text">整场活动</option></select></label>
     {textField('instruction', '默认文字补充要求')}{textField('globalStylePrompt', '默认图像风格')}{textField('globalNegativePrompt', '默认负面提示词')}
     <label className="block text-sm">每镜头候选数量 <select value={values.candidateCount} onChange={e => setValues({ ...values, candidateCount: Number(e.target.value) as 1 | 2 | 3 })}>{[1, 2, 3].map(n => <option key={n}>{n}</option>)}</select></label>

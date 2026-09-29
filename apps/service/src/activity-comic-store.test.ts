@@ -50,7 +50,8 @@ test('comic contract migration creates draft, revision, job, and output tables',
   const { database } = setup();
   const tables = new Set((database.connection.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all() as Array<{ name: string }>).map((row) => row.name));
   for (const table of ['activity_comic_drafts', 'activity_comic_revisions', 'activity_comic_jobs', 'activity_comic_job_outputs']) assert.ok(tables.has(table));
-  assert.equal(database.connection.prepare('SELECT MAX(version) version FROM schema_migrations').get()!.version, 43);
+  const comicMigration = database.connection.prepare('SELECT name FROM schema_migrations WHERE version = 43').get() as { name: string } | undefined;
+  assert.equal(comicMigration?.name, 'activity-comic-drafts-revisions-and-jobs');
   database.close();
 });
 

@@ -393,7 +393,8 @@ test('Generation tasks: full lifecycle from queued to succeeded with idempotency
   database.close();
 });
 
-test('Generation tasks: handles submission timeout with submission_outcome_unknown and prohibits auto-retry', async () => {
+for (const connectionRefused of [false, true]) {
+test(`Generation tasks: ${connectionRefused ? 'connection refused is actionable' : 'submission timeout is unknown'} and prohibits auto-retry`, async () => {
   const database = new ServiceDatabase();
   const artifactDir = await mkdtemp(resolve(tmpdir(), 'sthstart-gen-unknown-'));
   const token = seedApp(database, 'timeout-app');
@@ -411,6 +412,7 @@ test('Generation tasks: handles submission timeout with submission_outcome_unkno
     const url = String(input);
     if (url.includes('/prompt')) {
       promptAttempts++;
+      if (connectionRefused) throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } });
       const err = new Error('network timeout during prompt submission');
       err.name = 'TimeoutError';
       throw err;
@@ -439,9 +441,9 @@ test('Generation tasks: handles submission timeout with submission_outcome_unkno
     url: `/api/v1/generation/tasks/${taskId}`,
     headers: { authorization: `Bearer ${token}` },
   });
-  assert.equal(lookup.json().status, 'abandoned');
-  assert.equal(lookup.json().errorCode, 'submission_outcome_unknown');
-  assert.match(lookup.json().errorMessage, /提交状态不确定/);
+  assert.equal(lookup.json().status, connectionRefused ? 'failed' : 'abandoned');
+  assert.equal(lookup.json().errorCode, connectionRefused ? 'comfyui_unavailable' : 'submission_outcome_unknown');
+  assert.match(lookup.json().errorMessage, connectionRefused ? /请先启动 ComfyUI/ : /提交状态不确定/);
   assert.equal(promptAttempts, 1, 'Must not automatically re-submit after unknown submission outcome');
 
   // Test retry creates a NEW task referencing retryOf
@@ -461,6 +463,7 @@ test('Generation tasks: handles submission timeout with submission_outcome_unkno
   await app.close();
   database.close();
 });
+}
 
 test('Generation tasks: cancellation handles queued, pending queue, and running (abandoned without global interrupt)', async () => {
   const database = new ServiceDatabase();

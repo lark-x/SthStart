@@ -39,6 +39,13 @@ export function ImageGenerator({
   const ready = Boolean(binding?.ready);
   const needsSource = mode === 'image-to-image';
   const sourceMaxBytes = creativeInputMaxBytes(binding, 'sourceImage');
+  const sizePresets = [
+    { label: '方形', width: '1024', height: '1024' },
+    { label: '横幅', width: '1216', height: '832' },
+    { label: '竖幅', width: '832', height: '1216' },
+    { label: '宽屏', width: '1280', height: '720' },
+  ];
+  const activeSize = sizePresets.find((size) => size.width === form.width && size.height === form.height);
   return (
     <Card>
       <CardHeader>
@@ -64,20 +71,37 @@ export function ImageGenerator({
             onRemove={onSourceRemove}
           />
         )}
-        <div className="grid grid-cols-2 gap-3">
-          <div><InputLabel htmlFor="creative-width">宽度</InputLabel><Input id="creative-width" className="mt-1.5" type="number" min={64} max={4096} step={1} value={form.width} onChange={(event) => onFormChange('width', event.target.value)} /></div>
-          <div><InputLabel htmlFor="creative-height">高度</InputLabel><Input id="creative-height" className="mt-1.5" type="number" min={64} max={4096} step={1} value={form.height} onChange={(event) => onFormChange('height', event.target.value)} /></div>
-
-        </div>
-        <details className="border-t border-border-subtle pt-3">
-          <summary className="cursor-pointer text-sm text-muted">高级参数 · 反向提示词、步数与种子</summary>
-          <div className="mt-3 space-y-3">
-        <div>
-          <InputLabel htmlFor="creative-negative" hint="可选">反向提示词</InputLabel>
-          <Textarea id="creative-negative" className="mt-1.5" rows={3} value={form.negativePrompt} onChange={(event) => onFormChange('negativePrompt', event.target.value)} placeholder="不希望出现的内容，例如模糊、文字、水印…" maxLength={10000} />
-        </div>
-<div className="grid grid-cols-2 gap-3">          <div><InputLabel htmlFor="creative-steps">步数</InputLabel><Input id="creative-steps" className="mt-1.5" type="number" min={1} max={150} step={1} value={form.steps} onChange={(event) => onFormChange('steps', event.target.value)} /></div>
-          <div><InputLabel htmlFor="creative-seed" hint="可选">种子</InputLabel><Input id="creative-seed" className="mt-1.5" type="number" min={0} max={2147483647} step={1} value={form.seed} onChange={(event) => onFormChange('seed', event.target.value)} placeholder="随机" /></div></div></div>
+        <section aria-label="画布尺寸" className="space-y-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 className="text-sm font-medium text-ink">画布尺寸</h3>
+            <span className="text-xs text-muted">{form.width} × {form.height}{activeSize ? ` · ${activeSize.label}` : ' · 自定义'}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sizePresets.map((size) => {
+              const selected = activeSize?.label === size.label;
+              return <Button key={size.label} type="button" size="sm" variant={selected ? 'accent' : 'outline'} aria-pressed={selected} onClick={() => { onFormChange('width', size.width); onFormChange('height', size.height); }}>
+                {size.label}<span className="ml-1 text-xs opacity-75">{size.width}×{size.height}</span>
+              </Button>;
+            })}
+          </div>
+        </section>
+        <details className="rounded-xl bg-surface-muted/50 px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-ink">自定义尺寸与高级参数</summary>
+          <div className="mt-4 space-y-4">
+            <p className="text-xs leading-relaxed text-muted">自定义宽高需至少 256px，并按 8px 的倍数填写；预设尺寸适用于大多数工作流。</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><InputLabel htmlFor="creative-width">宽度</InputLabel><Input id="creative-width" className="mt-1.5" type="number" min={256} max={4096} step={8} value={form.width} onChange={(event) => onFormChange('width', event.target.value)} /></div>
+              <div><InputLabel htmlFor="creative-height">高度</InputLabel><Input id="creative-height" className="mt-1.5" type="number" min={256} max={4096} step={8} value={form.height} onChange={(event) => onFormChange('height', event.target.value)} /></div>
+            </div>
+            <div>
+              <InputLabel htmlFor="creative-negative" hint="可选">反向提示词</InputLabel>
+              <Textarea id="creative-negative" className="mt-1.5" rows={3} value={form.negativePrompt} onChange={(event) => onFormChange('negativePrompt', event.target.value)} placeholder="不希望出现的内容，例如模糊、文字、水印…" maxLength={10000} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><InputLabel htmlFor="creative-steps">步数</InputLabel><Input id="creative-steps" className="mt-1.5" type="number" min={1} max={150} step={1} value={form.steps} onChange={(event) => onFormChange('steps', event.target.value)} /></div>
+              <div><InputLabel htmlFor="creative-seed" hint="可选">种子</InputLabel><Input id="creative-seed" className="mt-1.5" type="number" min={0} max={2147483647} step={1} value={form.seed} onChange={(event) => onFormChange('seed', event.target.value)} placeholder="随机" /></div>
+            </div>
+          </div>
         </details>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">

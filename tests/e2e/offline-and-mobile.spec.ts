@@ -15,18 +15,21 @@ test('offline notebook shell renders each view with the backend unreachable', as
   await page.goto('/apps/notebook/offline');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('main')).toBeVisible();
-  await expect(page.getByRole('link', { name: '笔记', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: '新建记录' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '资料库', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '新建资料' })).toBeVisible();
 
   // 新建视图由离线外壳在客户端接管（/offline 下的路由不落到服务端），
   // 断网时仍可写标题与正文（本地草稿队列接管）。
-  await page.getByRole('link', { name: '新建记录' }).click();
-  const title = page.getByLabel('笔记标题');
+  await page.getByRole('link', { name: '新建资料' }).click();
+  await page.getByRole('button', { name: '编辑资料' }).click();
+  const edit = page.getByRole('dialog', { name: '编辑笔记资料' });
+  const title = edit.getByLabel('标题');
   await expect(title).toBeVisible();
   await title.fill('断网时写下的标题');
   await expect(title).toHaveValue('断网时写下的标题');
+  await edit.getByRole('button', { name: '应用修改' }).click();
 
-  const body = page.locator('textarea').first();
+  const body = page.getByRole('region', { name: '笔记正文' }).getByPlaceholder('写下一段文字记录…');
   await body.fill('断网时写下的正文');
   await expect(body).toHaveValue('断网时写下的正文');
 });
@@ -46,16 +49,19 @@ test('phone viewport keeps the note editor usable with a soft keyboard', async (
   await page.setViewportSize({ width: 390, height: 640 });
   await page.goto('/apps/notebook/new');
 
-  const title = page.getByLabel('笔记标题');
+  await page.getByRole('button', { name: '编辑资料' }).click();
+  const edit = page.getByRole('dialog', { name: '编辑笔记资料' });
+  const title = edit.getByLabel('标题');
   await expect(title).toBeVisible();
   await title.click();
   // 中文输入法组合输入不应触发误提交：直接输入多段中文后值保持不变。
   await title.fill('外婆家的下午');
   await expect(title).toHaveValue('外婆家的下午');
+  await edit.getByRole('button', { name: '应用修改' }).click();
 
   // 模拟软键盘压缩可视高度后，正文输入区仍落在可视范围内。
   await page.setViewportSize({ width: 390, height: 360 });
-  const body = page.locator('textarea').first();
+  const body = page.getByRole('region', { name: '笔记正文' }).getByPlaceholder('写下一段文字记录…');
   await body.scrollIntoViewIfNeeded();
   const box = await body.boundingBox();
   expect(box).not.toBeNull();

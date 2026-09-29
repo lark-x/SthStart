@@ -87,6 +87,21 @@ if (status !== 'running') {
   const start = run('docker', ['start', container], { stdio: 'inherit' });
   if (start.status !== 0) fail('启动容器失败。');
 }
+// Source-only hot deployment cannot introduce new runtime packages. Check before
+// copying anything so a missing DSH dependency cannot leave a half-updated app.
+const requiredRuntimePackages = [
+  '@deepseek-ai/dsh', '@deepseek-ai/dsh-sdk-client',
+  '@deepseek-ai/dsh-sdk-jsonrpc-server', '@deepseek-ai/dsh-sdk-protocol',
+];
+for (const packageName of requiredRuntimePackages) {
+  // Some ESM-only packages intentionally do not export a package root, so
+  // require.resolve(packageName) reports ERR_PACKAGE_PATH_NOT_EXPORTED even
+  // when the dependency is installed. The deployment guard is about presence.
+  const manifestPath = `/app/node_modules/${packageName}/package.json`;
+  const probe = run('docker', ['exec', container, 'node', '-e',
+    `process.exit(require('node:fs').existsSync(${JSON.stringify(manifestPath)}) ? 0 : 1)`]);
+  if (probe.status !== 0) fail(`容器缺少运行依赖 ${packageName}。先运行 docker compose up -d --build 更新镜像，再部署源码；尚未同步任何文件。`);
+}
 
 // 3. 全量同步。不做子集更新——dist 与 src 必须同时换，否则运行时会对不上。
 for (const item of runtimePaths) {

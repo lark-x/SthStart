@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityLoraOverride, ComicJob, ComicPanel, ComicRenderPreview, SceneBeatRenderSettings } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
+import { Drawer } from '@/app/components/ui/drawer';
+import Link from 'next/link';
 import { useActivityComicGenerationOptions } from '../queries';
 import { useCreateComicPanelRender, usePreviewComicPanelRender } from '../mutations';
 import type { Workflow, WorkflowVersion } from '@/app/features/generation/types';
@@ -58,6 +60,15 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
   const settings = panel.renderSettings;
   const [preview, setPreview] = useState<ComicRenderPreview | null>(null);
   const submitAttempt = useRef<{ planHash: string; draftVersion: number; seed: number; idempotencyKey: string } | null>(null);
+  const drawing = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setNarrow(media.matches);
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const attemptStorageKey = `sthstart:comic-render-attempt:${activityId}:${panel.id}`;
   const [error, setError] = useState<string | null>(null);
   const [seed, setSeed] = useState<number>(settings.parameters?.seed as number | undefined ?? Math.floor(Math.random() * 2_147_483_647));
@@ -71,21 +82,32 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
       const version = workflow?.versions.find((item) => item.version === assignment.workflow_version && item.isPublished);
       if (!workflow || !version || (workflow.category ?? version.category) !== 'image') continue;
       result.push({ key: `workflow:${assignment.purpose}:${workflow.id}:${version.version}`, purpose: assignment.purpose,
-        workflowId: workflow.id, workflowVersion: version.version, label: `${assignment.purpose} · ${workflow.name} v${version.version}` });
+        workflowId: workflow.id, workflowVersion: version.version, label: workflow.name });
     }
     for (const preset of data.presets) {
+      if (!preset.enabled) continue;
       const workflow = data.workflows.find((item) => item.id === preset.workflowId);
       if (!workflow || (workflow.category !== 'image' && workflow.versions.find((version) => version.version === preset.workflowVersion)?.category !== 'image')) continue;
       result.push({ key: `preset:${preset.id}:${preset.revision}`, purpose: preset.purpose, workflowId: preset.workflowId,
         workflowVersion: preset.workflowVersion, presetId: preset.id, presetRevision: preset.revision,
-        label: `${preset.purpose} · 预设：${preset.name} r${preset.revision}` });
+        label: preset.name });
     }
     return result;
   }, [optionsQuery.data]);
 
   const selectedOption = renderOptions.find((option) => option.workflowId === settings.workflowId && option.workflowVersion === settings.workflowVersion
     && (settings.presetId ? option.presetId === settings.presetId : !option.presetId)) ?? null;
-  const selectedVersion = selectedOption ? workflowVersion(optionsQuery.data?.workflows, selectedOption.workflowId, selectedOption.workflowVersion) : undefined;
+  const defaultPurpose = settings.referenceAssetKey ? 'activity_image_edit' : 'activity_image_text';
+  const defaultOption = !settings.workflowId && !settings.presetId
+    ? renderOptions.find((option) => option.purpose === defaultPurpose && option.presetId
+      && optionsQuery.data?.presets.some((preset) => preset.id === option.presetId && preset.isDefault))
+      ?? renderOptions.find((option) => option.purpose === defaultPurpose && !option.presetId)
+      ?? renderOptions.find((option) => option.purpose === 'activity_media_slot' && option.presetId
+        && optionsQuery.data?.presets.some((preset) => preset.id === option.presetId && preset.isDefault))
+      ?? renderOptions.find((option) => option.purpose === 'activity_media_slot' && !option.presetId)
+    : null;
+  const fieldOption = selectedOption ?? defaultOption;
+  const selectedVersion = fieldOption ? workflowVersion(optionsQuery.data?.workflows, fieldOption.workflowId, fieldOption.workflowVersion) : undefined;
   const fields = editableFields(selectedVersion);
 
   useEffect(() => {
@@ -123,32 +145,40 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
         try { sessionStorage.removeItem(attemptStorageKey); } catch { /* optional retry persistence */ }
       }
       setPreview(result);
+      return { preview: result, expectedDraftVersion };
     } catch (reason) { setError(reason instanceof Error ? reason.message : '绘制预览失败。'); }
   };
 
   const submit = async () => {
-    if (!preview || !preview.canSubmit || !draftVersion || !await flush()) { setError('请先完成可提交的配置预览，并确认漫画草稿已保存。'); return; }
+    if (drawing.current) return;
+    drawing.current = true; setBusy(true);
     try {
-      const expectedDraftVersion = getDraftVersion() ?? draftVersion;
-      const attempt = submitAttempt.current?.planHash === preview.planHash && submitAttempt.current.draftVersion === expectedDraftVersion
-        ? submitAttempt.current : { planHash: preview.planHash, draftVersion: expectedDraftVersion, seed: preview.seed, idempotencyKey: crypto.randomUUID() };
+      const checked = await runPreview();
+      if (!checked) return;
+      const { preview: current, expectedDraftVersion } = checked;
+      if (!current.canSubmit) { setError(current.warnings.join(' ') || '当前绘制配置不可用，请检查生成配置。'); return; }
+      if (getDraftVersion() !== expectedDraftVersion) { setError('画格内容刚刚发生变化，请再次绘制。'); return; }
+      const attempt = submitAttempt.current?.planHash === current.planHash && submitAttempt.current.draftVersion === expectedDraftVersion
+        ? submitAttempt.current : { planHash: current.planHash, draftVersion: expectedDraftVersion, seed: current.seed, idempotencyKey: crypto.randomUUID() };
       submitAttempt.current = attempt;
       try { sessionStorage.setItem(attemptStorageKey, JSON.stringify(attempt)); } catch { /* in-memory retry remains available */ }
       const job = await submitMutation.mutateAsync({ activityId, panelId: panel.id, request: {
-        expectedDraftVersion, planHash: preview.planHash, seed: preview.seed, idempotencyKey: attempt.idempotencyKey,
+        expectedDraftVersion, planHash: current.planHash, seed: current.seed, idempotencyKey: attempt.idempotencyKey,
       } });
       submitAttempt.current = null;
       try { sessionStorage.removeItem(attemptStorageKey); } catch { /* optional retry persistence */ }
       onSubmitted(job);
+      setSeed(Math.floor(Math.random() * 2_147_483_647));
       onOpenChange(false);
     } catch (reason) { setError(reason instanceof Error ? reason.message : '绘制任务提交失败。'); }
+    finally { drawing.current = false; setBusy(false); }
   };
 
   const selectRenderOption = (key: string) => {
     const option = renderOptions.find((item) => item.key === key);
-    if (!option) { updateSettings({ purpose: undefined, workflowId: undefined, workflowVersion: undefined, presetId: undefined, presetRevision: undefined }); return; }
+    if (!option) { updateSettings({ purpose: undefined, workflowId: undefined, workflowVersion: undefined, presetId: undefined, presetRevision: undefined, parameters: undefined }); return; }
     updateSettings({ purpose: option.purpose, workflowId: option.workflowId, workflowVersion: option.workflowVersion,
-      presetId: option.presetId, presetRevision: option.presetRevision });
+      presetId: option.presetId, presetRevision: option.presetRevision, parameters: undefined });
   };
 
   const setLoraEnabled = (model: string, enabled: boolean, strength: number) => {
@@ -166,18 +196,20 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
     updateSettings({ loraOverrides: next });
   };
 
-  return <Dialog open={open} onOpenChange={onOpenChange} title="画格绘制设置" description="提示词会在提交前由活动文本模型优化；工作流和 LoRA 以预览快照为准。" size="lg" className="max-h-[92dvh]">
+  const content = (
     <div className="space-y-4">
-      <label className={labelClass}>工作流 / 预设
+      <fieldset disabled={busy} className="min-w-0 space-y-4">
+      <label className={labelClass}>绘制预设
         <select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}>
-          <option value="">使用活动默认绑定</option>{renderOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+          <option value="">跟随活动默认配置</option>{renderOptions.filter((option) => option.presetId || option.key === selectedOption?.key).map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
         </select>
       </label>
       {optionsQuery.isLoading && <p className="text-xs text-muted">正在读取已发布的活动图片工作流…</p>}
       <label className={labelClass}>补充画面要求<textarea className={`${controlClass} min-h-20 resize-y`} maxLength={20_000} value={settings.customPrompt ?? ''}
         onChange={(event) => updateSettings({ customPrompt: event.target.value })} placeholder="例如：柔和的电影感逆光，保持角色服装细节。" /></label>
-      <div className="rounded-[var(--radius-panel)] border border-border-default p-3">
-        <h3 className="text-xs font-semibold text-ink">角色 LoRA</h3><p className="mt-1 text-xs text-muted">默认继承全局和角色设置，可按画格关闭或调权。</p>
+      <Link href="/settings/generation" target="_blank" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link>
+      <details className="rounded-[var(--radius-panel)] border border-border-default p-3" onToggle={(event) => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
+        <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="mt-1 text-xs text-muted">可按画格关闭或调权。</p>
         {preview?.loras.length ? <div className="mt-2 space-y-2">{preview.loras.map((lora) => {
           const override = settings.loraOverrides?.find((item) => item.model === lora.model);
           const enabled = override?.enabled ?? lora.enabled;
@@ -188,11 +220,12 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
             <input className="col-span-2 w-full accent-accent" type="range" min={-2} max={2} step={0.05} value={strength} disabled={!enabled}
               aria-label={`${lora.model} 强度`} onChange={(event) => setLoraStrength(lora.model, Number(event.target.value), enabled)} />
           </div>;
-        })}</div> : <p className="mt-2 text-xs text-muted">先预览工作流，检查当前会继承的 LoRA。</p>}
-      </div>
+        })}</div> : <p className="mt-2 text-xs text-muted">{previewMutation.isPending ? '正在读取 LoRA 配置…' : '本次未启用角色 LoRA。'}</p>}
+      </details>
       <details className="rounded-[var(--radius-panel)] border border-border-default p-3">
         <summary className="cursor-pointer text-sm font-medium text-ink">高级设置：负向词、角色参考、种子与采样参数</summary>
         <div className="mt-3 space-y-3">
+          <label className={labelClass}>切换其他工作流<select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}><option value="">跟随活动默认配置</option>{renderOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
           <label className={labelClass}>反向提示词<textarea className={`${controlClass} min-h-16 resize-y`} maxLength={20_000} value={settings.negativePrompt ?? ''}
             onChange={(event) => updateSettings({ negativePrompt: event.target.value })} placeholder="留空时使用工作流提示词策略默认值" /></label>
           <label className={labelClass}>角色参考图<select className={controlClass} value={settings.referenceAssetKey ?? ''} onChange={(event) => updateSettings({ referenceAssetKey: event.target.value || undefined })}>
@@ -212,19 +245,22 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
           })}</div>}
         </div>
       </details>
-      {preview && <section className="rounded-[var(--radius-panel)] border border-border-default bg-surface-muted/40 p-3">
+      {preview && <details className="rounded-[var(--radius-panel)] border border-border-default bg-surface-muted/40 p-3"><summary className="cursor-pointer text-sm text-muted">查看提示词与实际配置</summary>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"><strong className="text-ink">{preview.workflowName} v{preview.workflowVersion}</strong><span className="text-muted">模型：{preview.model || '工作流未识别模型'}</span><span className="text-muted">种子：{preview.seed}</span></div>
         <p className="mt-2 text-xs font-semibold text-ink">优化前提示词</p><pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words text-xs text-muted">{preview.positivePrompt}</pre>
         <p className="mt-2 text-xs font-semibold text-ink">反向提示词</p><p className="mt-1 max-h-16 overflow-auto whitespace-pre-wrap text-xs text-muted">{preview.negativePrompt || '工作流未使用反向提示词输入'}</p>
         {preview.warnings.length > 0 && <ul className="mt-2 space-y-1 text-xs text-warning">{preview.warnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul>}
         {!preview.canSubmit && <p role="alert" className="mt-2 text-xs font-medium text-danger">配置检查未通过，不能提交绘制。</p>}
-      </section>}
+      </details>}
+      </fieldset>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <div className="flex flex-wrap justify-end gap-2 border-t border-border-subtle pt-3">
-        <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
-        <Button variant="outline" loading={previewMutation.isPending} disabled={!draftVersion} onClick={() => void runPreview()}>检查绘制配置</Button>
-        <Button variant="primary" loading={submitMutation.isPending} disabled={!preview?.canSubmit || !draftVersion} onClick={() => void submit()}>提交绘制</Button>
+        <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>完成</Button>
+        <Button variant="primary" loading={busy} disabled={!draftVersion || busy || previewMutation.isPending} onClick={() => void submit()}>{previewMutation.isPending ? '检查连接与配置…' : '绘制新图'}</Button>
       </div>
     </div>
-  </Dialog>;
+  );
+  const description = '使用默认配置即可绘制；连接检查和提示词处理会自动完成。';
+  return narrow ? <Drawer open={open} onOpenChange={onOpenChange} position="bottom" title="画格绘制" description={description}>{content}</Drawer>
+    : <Dialog open={open} onOpenChange={onOpenChange} title="画格绘制" description={description} size="lg" className="max-h-[92dvh]">{content}</Dialog>;
 }

@@ -127,7 +127,9 @@ export type BeatRenderPreview = Static<typeof BeatRenderPreviewSchema>;
 
 export const BeatRenderSubmitRequestSchema = Type.Intersect([
   BeatRenderPreviewRequestSchema,
-  Type.Object({ planHash: Type.String(), idempotencyKey: Type.String({ minLength: 8, maxLength: 128 }) }),
+  // Normal drawing resolves the current configuration on the server. A supplied
+  // preview hash still opts into exact-preview conflict checking.
+  Type.Object({ planHash: Type.Optional(Type.String()), idempotencyKey: Type.String({ minLength: 8, maxLength: 128 }) }),
 ]);
 export type BeatRenderSubmitRequest = Static<typeof BeatRenderSubmitRequestSchema>;
 

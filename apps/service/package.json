@@ -12,6 +12,10 @@
     "test": "npm run build && node --import tsx/esm --test dist/*.test.js dist/*/*.test.js"
   },
   "dependencies": {
+    "@deepseek-ai/dsh": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-sdk-client": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-sdk-jsonrpc-server": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-sdk-protocol": "0.1.7-rc.2",
     "@fastify/cors": "^11.1.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@sinclair/typebox": "^0.34.41",

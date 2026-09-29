@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import './styles/theme.css';
 import './globals.css';
 import './styles/shell.css';
 import { QueryProvider } from './providers/query-provider';
@@ -9,6 +8,7 @@ import { GlobalCommandPalette } from './components/shared/command-palette';
 import { RoutePreloader } from './components/shared/route-preloader';
 import { NotebookSyncManager } from './features/notebook/components/notebook-sync-manager';
 import { NotebookOfflineRegistrar } from './features/notebook/components/notebook-offline-registrar';
+import { THEME_BOOTSTRAP_SCRIPT } from './lib/theme-preference';
 
 export const metadata: Metadata = {
   title: 'SthStart — 本地互动应用门户',
@@ -27,7 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem('sthstart_eye_care_mode')==='true'){document.documentElement.setAttribute('data-eye-care','true');}}catch(e){}`,
+            __html: THEME_BOOTSTRAP_SCRIPT,
           }}
         />
       </head>

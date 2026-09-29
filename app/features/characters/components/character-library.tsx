@@ -113,7 +113,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
         {browser.data?.items.map((character) => (
           <article
             key={character.id}
-            className="group relative flex items-center justify-between rounded-xl border border-border-default bg-surface p-3 shadow-sm transition-all hover:border-accent/40 hover:shadow-md"
+            className="character-profile-card group relative flex min-h-[94px] items-center justify-between rounded-[var(--radius-panel)] bg-surface p-4 transition-all"
           >
             {selectionMode && (
               <input

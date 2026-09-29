@@ -5,7 +5,7 @@ export function Card({ className, children, ...props }: React.HTMLAttributes<HTM
   return (
     <div
       className={cn(
-        'rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-5 transition-colors',
+        'rounded-[var(--radius-panel)] border border-border-subtle/70 bg-surface p-5 shadow-[var(--shadow-panel)] transition-[transform,box-shadow] duration-200',
         className
       )}
       {...props}
@@ -17,7 +17,7 @@ export function Card({ className, children, ...props }: React.HTMLAttributes<HTM
 
 export function CardHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex flex-col space-y-1.5 mb-4', className)} {...props}>
+    <div className={cn('mb-5 flex flex-col space-y-1.5', className)} {...props}>
       {children}
     </div>
   );
@@ -28,7 +28,7 @@ export function CardTitle({ className, children, ...props }: React.HTMLAttribute
   return (
     <h3
       className={cn(
-        'text-lg font-semibold tracking-tight text-ink',
+        'text-lg font-bold tracking-tight text-ink',
         className
       )}
       {...props}
@@ -56,7 +56,7 @@ export function CardContent({ className, children, ...props }: React.HTMLAttribu
 
 export function CardFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex items-center justify-between pt-4 mt-4 border-t border-border-subtle', className)} {...props}>
+    <div className={cn('mt-5 flex items-center justify-between gap-3 rounded-xl bg-surface-sunken/55 px-3 py-2.5', className)} {...props}>
       {children}
     </div>
   );

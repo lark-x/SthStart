@@ -27,6 +27,9 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Dialog } from '@/app/components/ui/dialog';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { FormField } from '@/app/components/ui/form-field';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { TagsInput } from '@/app/components/shared/tags-input';
@@ -91,6 +94,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const [newVariantName, setNewVariantName] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [multiSourceDialogOpen, setMultiSourceDialogOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [identityDiscardOpen, setIdentityDiscardOpen] = useState(false);
+  const [identityDraft, setIdentityDraft] = useState({ displayName: '', work: '', tags: [] as string[] });
   const [assetFilter, setAssetFilter] = useState<'all' | 'avatar' | 'portrait'>('all');
 
   // AI Avatar Task
@@ -240,6 +246,26 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       return null;
     }
   }, [getValues, clearErrors, setError, toast, characterId, updateMutation, tags, variants, detailData?.draftRevision, refetchDetail, createMutation, router]);
+
+  const openIdentityEditor = () => {
+    setIdentityDraft({ displayName: getValues('displayName'), work: getValues('work'), tags: [...tags] });
+    setIdentityOpen(true);
+  };
+  const requestCloseIdentityEditor = () => {
+    const changed = identityDraft.displayName !== getValues('displayName')
+      || identityDraft.work !== getValues('work')
+      || JSON.stringify(identityDraft.tags) !== JSON.stringify(tags);
+    if (changed) setIdentityDiscardOpen(true);
+    else setIdentityOpen(false);
+  };
+  const saveIdentityEditor = () => {
+    clearErrors('displayName');
+    setValue('displayName', identityDraft.displayName, { shouldDirty: true, shouldValidate: true });
+    setValue('work', identityDraft.work, { shouldDirty: true });
+    setTags(identityDraft.tags);
+    setStatus('dirty');
+    setIdentityOpen(false);
+  };
 
   // Handle Asset Upload (Avatar or Portrait)
   const handleUploadAsset = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'avatar' | 'portrait') => {
@@ -916,56 +942,16 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             )}
           </div>
 
-          {/* 1. 基本信息 */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
-                1
-              </span>
-              基本信息
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="block text-xs font-semibold text-ink">
-                <span>
-                  角色名称 <span className="text-danger">*</span>
-                </span>
-                <Input
-                  {...register('displayName', { required: true })}
-                  placeholder="例如：芙宁娜"
-                  className="mt-1"
-                />
-                {errors.displayName && (
-                  <p className="mt-1 text-xs text-danger">角色名称不能为空</p>
-                )}
-              </label>
-
-              <label className="block text-xs font-semibold text-ink">
-                <span>所属作品</span>
-                <Input
-                  {...register('work')}
-                  placeholder="例如：原神"
-                  className="mt-1"
-                />
-              </label>
+          <section className="flex min-w-0 items-start justify-between gap-4 rounded-[var(--radius-panel)] bg-surface-muted px-4 py-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-semibold text-ink">{draft.displayName || '未命名角色'}</h3>
+              <p className="mt-1 truncate text-sm text-muted">{draft.work || '未设置所属作品'}{tags.length ? ` · ${tags.slice(0, 3).join('、')}` : ''}</p>
             </div>
-
-            <label className="block text-xs font-semibold text-ink">
-              <span>角色标签（逗号分隔）</span>
-              <TagsInput
-                value={tags}
-                onChange={(nextTags) => {
-                  setTags(nextTags);
-                  setStatus('dirty');
-                }}
-                placeholder="枫丹，水神，戏剧家"
-                className="mt-1"
-              />
-            </label>
-          </div>
+            <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={openIdentityEditor}>编辑身份资料</Button>
+          </section>
 
           {/* 2. 角色人设 (Persona) */}
-          <div className="space-y-4 pt-4 border-t border-border-subtle">
+          <div className="space-y-4 pt-4">
             <h3 className="text-sm font-bold text-ink flex items-center gap-2">
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
                 2
@@ -995,7 +981,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
 
           {/* 3. 角色外观 (Appearance) */}
-          <div className="space-y-4 pt-4 border-t border-border-subtle">
+          <div className="space-y-4 pt-4">
             <h3 className="text-sm font-bold text-ink flex items-center gap-2">
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
                 3
@@ -1023,12 +1009,11 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               />
             </label>
 
-            <div className="space-y-3 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-raised/40 p-4">
+            <details className="rounded-[var(--radius-control)] bg-surface-muted p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-ink">角色 LoRA · {visualLoraFields.length} 项（可选）</summary>
+              <div className="mt-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-semibold text-ink">角色 LoRA</h4>
-                  <p className="mt-1 text-xs leading-relaxed text-muted">活动镜头使用此角色时，会把这些 LoRA 叠加到活动画风设置上。文件名需与 ComfyUI 的 models/loras 清单一致。</p>
-                </div>
+                <p className="max-w-[var(--shell-reading)] text-xs leading-relaxed text-muted">活动镜头使用此角色时，会把这些 LoRA 叠加到活动画风设置上。文件名需与 ComfyUI 的 models/loras 清单一致。</p>
                 <Button type="button" size="sm" variant="outline" onClick={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}>
                   <Plus className="h-3.5 w-3.5" />添加
                 </Button>
@@ -1054,7 +1039,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            </details>
           </div>
 
           {/* 底部保存条 */}
@@ -1076,6 +1062,33 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
         </div>
       </div>
+
+      <ResponsiveEditOverlay
+        open={identityOpen}
+        onOpenChange={(open) => { if (open) setIdentityOpen(true); else requestCloseIdentityEditor(); }}
+        title="编辑身份资料"
+        description="这些资料用于角色列表、检索和活动选人。保存到角色前仍需点击页面上的“保存角色”。"
+        footer={<><Button type="button" variant="outline" onClick={requestCloseIdentityEditor}>取消</Button><Button type="button" disabled={!identityDraft.displayName.trim()} onClick={saveIdentityEditor}>应用到表单</Button></>}
+      >
+        <div className="space-y-5">
+          <FormField label="角色名称" required error={errors.displayName ? '角色名称不能为空' : undefined}>
+            <Input value={identityDraft.displayName} maxLength={120} onChange={(event) => setIdentityDraft((value) => ({ ...value, displayName: event.target.value }))} placeholder="例如：芙宁娜" />
+          </FormField>
+          <FormField label="所属作品"><Input value={identityDraft.work} maxLength={120} onChange={(event) => setIdentityDraft((value) => ({ ...value, work: event.target.value }))} placeholder="例如：原神" /></FormField>
+          <FormField label="角色标签" hint="用于搜索和角色库筛选。">
+            <TagsInput value={identityDraft.tags} onChange={(nextTags) => setIdentityDraft((value) => ({ ...value, tags: nextTags }))} placeholder="枫丹、水神、戏剧家" />
+          </FormField>
+        </div>
+      </ResponsiveEditOverlay>
+      <ConfirmDialog
+        open={identityDiscardOpen}
+        onOpenChange={setIdentityDiscardOpen}
+        title="放弃身份资料修改？"
+        description="弹窗中的临时修改尚未应用到角色表单，关闭后将丢弃。"
+        cancelLabel="继续编辑"
+        confirmLabel="放弃修改"
+        onConfirm={() => setIdentityOpen(false)}
+      />
 
       {/* URL 导入头像对话框 */}
       <Dialog

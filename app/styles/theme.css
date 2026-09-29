@@ -2,9 +2,9 @@
  * SthStart 设计变量（唯一语义定义源）
  *
  * 两套主题：
- *   - 默认（无属性）：中性浅色创作桌面。背景、内容表面、输入表面分三层，
+ *   - 默认：暖杏创作桌面。背景、内容表面、输入表面分三层，
  *     强调色只用于主动作与当前位置，不铺满整块面板。
- *   - 暖色：html[data-eye-care="true"] 时启用，保留原有暖杏偏好，通过变量整体切换，
+ *   - 中性：html[data-theme="neutral"] 时启用，通过变量整体切换，
  *     不使用全屏滤镜或透明度叠加。
  *
  * 兼容说明：--paper / --ink / --muted / --accent / --accent-dark 等旧变量名继续保留，
@@ -21,6 +21,27 @@
   /* ---------- 应用背景三层 ---------- */
   --bg-app: #f5f6f8;
   --bg-nav: #eceff3;
+  --nav-surface: #202a36;
+  --nav-foreground: #f5f4ef;
+  --nav-muted: #b8c2ce;
+  --nav-hover: rgb(255 255 255 / 8%);
+  --nav-selected: #fffefa;
+  --nav-selected-text: #253345;
+  --nav-border: rgb(255 255 255 / 10%);
+  --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 14%);
+  --shadow-hero: 0 20px 48px rgb(40 47 39 / 18%);
+  --ambient-glow: color-mix(in srgb, var(--accent) 6%, transparent);
+  --shadow-control-inset: inset 0 1px 1px rgb(23 33 46 / 3%);
+  --hero-start: #233143;
+  --hero-mid: #304355;
+  --hero-end: #445366;
+  --hero-foreground: #f7f7f2;
+  --hero-muted: rgb(247 247 242 / 75%);
+  --hero-eyebrow: #c8d2ca;
+  --hero-glow: rgb(180 157 121 / 24%);
+  --hero-orbit: rgb(247 247 242 / 18%);
+  --hero-orbit-soft: rgb(247 247 242 / 12%);
+  --hero-dot: #d3a987;
   --surface: #ffffff;
   --surface-raised: #ffffff;
   --surface-sunken: #f0f3f7;
@@ -96,9 +117,9 @@
   --focus-ring-offset: 2px;
 
   /* ---------- 形状 ---------- */
-  --radius-control: 8px;
-  --radius-panel: 12px;
-  --radius-dialog: 16px;
+  --radius-control: 10px;
+  --radius-panel: 18px;
+  --radius-dialog: 20px;
   --radius-chip: 9999px;
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -108,10 +129,10 @@
   --radius-full: 9999px;
 
   /* ---------- 阴影：内容面板默认无重投影 ---------- */
-  --shadow-sm: 0 1px 2px rgb(23 33 46 / 6%);
-  --shadow-panel: 0 1px 2px rgb(23 33 46 / 5%);
-  --shadow-floating: 0 8px 24px rgb(23 33 46 / 12%);
-  --shadow-dialog: 0 24px 64px rgb(23 33 46 / 22%);
+  --shadow-sm: 0 2px 8px rgb(23 33 46 / 6%);
+  --shadow-panel: 0 4px 18px rgb(49 39 25 / 5%), 0 1px 3px rgb(49 39 25 / 4%);
+  --shadow-floating: 0 14px 36px rgb(23 33 46 / 16%);
+  --shadow-dialog: 0 28px 80px rgb(23 33 46 / 25%);
 
   /* ---------- 外框尺寸 ---------- */
   --shell-sidebar: 224px;
@@ -166,22 +187,48 @@
   --paper: var(--bg-app);
 }
 
-/* 暖色主题：保留原有暖杏偏好，作为可选主题而非默认。 */
-html[data-eye-care="true"]:not([data-app="linshe"]) {
+/* 暖杏为首次打开默认；旧 data-eye-care 仅保留兼容，邻舍内部不注入主题。 */
+html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --accent: #ae421f;
   --accent-dark: #923619;
   --accent-soft: #fbeadf;
   --accent-ring: rgb(174 66 31 / 32%);
 
-  --bg-app: #f1ece2;
+  --nav-surface: #2b382f;
+  --nav-foreground: #f6f0e5;
+  --nav-muted: #bdc6b8;
+  --nav-hover: rgb(255 252 245 / 9%);
+  --nav-selected: #f7ebd9;
+  --nav-selected-text: #2d382f;
+  --nav-border: rgb(255 252 245 / 12%);
+  --shadow-nav-active: 0 5px 16px rgb(23 31 25 / 22%);
+  --shadow-hero: 0 20px 48px rgb(39 48 39 / 24%);
+  --ambient-glow: color-mix(in srgb, var(--accent) 7%, transparent);
+  --shadow-control-inset: inset 0 1px 1px rgb(36 41 35 / 3%);
+  --hero-start: #29372f;
+  --hero-mid: #354238;
+  --hero-end: #4a4d3e;
+  --hero-foreground: #fbf4e8;
+  --hero-muted: rgb(251 244 232 / 78%);
+  --hero-eyebrow: #d9c8a8;
+  --hero-glow: rgb(212 167 105 / 23%);
+  --hero-orbit: rgb(250 241 221 / 18%);
+  --hero-orbit-soft: rgb(250 241 221 / 12%);
+  --hero-dot: #e3a078;
+
+  --bg-app: #eee8dd;
   --bg-nav: #eae4d9;
-  --surface: #fffcf5;
-  --surface-raised: #fffdf8;
-  --surface-sunken: #f3ede2;
-  --surface-muted: rgb(243 237 226 / 80%);
+  --surface: #fffdf8;
+  --surface-raised: #fffefa;
+  --surface-sunken: #e9e2d6;
+  --surface-muted: rgb(233 226 214 / 66%);
   --surface-hover: rgb(36 41 35 / 5%);
   --surface-input: #fffefa;
   --surface-dark: #1b211e;
+  --shadow-sm: 0 2px 8px rgb(49 39 25 / 7%);
+  --shadow-panel: 0 6px 22px rgb(61 46 27 / 6%), 0 1px 3px rgb(61 46 27 / 4%);
+  --shadow-floating: 0 14px 38px rgb(45 39 29 / 17%);
+  --shadow-dialog: 0 28px 80px rgb(45 39 29 / 28%);
 
   --fg-default: #242923;
   /* 同样满足 4.5:1；暖底比中性底更暗，需要一并下调并保持层级。 */
@@ -189,10 +236,10 @@ html[data-eye-care="true"]:not([data-app="linshe"]) {
   --fg-subtle: #60675d;
   --fg-inverse: #f4efe4;
 
-  --border-subtle: #e6ded2;
-  --border-default: #d6cbbb;
+  --border-subtle: #e2d8c9;
+  --border-default: #cfc3b1;
   --border-strong: #8c9186;
-  --border-control: #848a80;
+  --border-control: #838779;
 
   --success: #3f8558;
   --success-fg: #2c6642;

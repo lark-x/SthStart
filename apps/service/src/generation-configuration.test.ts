@@ -10,6 +10,7 @@ import { SecretStore } from './security.js';
 import { activeGenerationExecutions } from './generation.js';
 import { analyzeComfyApiJson, buildSuggestedDraft, mergeGenerationValues, parseEditorConfig, validateCombinedConstraints, validateModelSelection, validateValuesAgainstSchema } from './generation/configuration.js';
 import { getWorkflowDraft, resolveDefaultPreset, resolveEnabledPreset, saveWorkflowDraft, setDefaultPreset, updatePreset } from './generation/configuration-store.js';
+import { resolveWorkflowAndEngine } from './generation/task-store.js';
 
 const adminToken = 'admin-config-workspace-test-token-12345';
 const adminHeaders = { 'x-sthstart-admin-token': adminToken };
@@ -239,6 +240,14 @@ test('configuration workspace: draft, analyze, V2 versions, presets, test runs a
   assert.equal(created.statusCode, 201);
   const workflowId = created.json().id as string;
   assert.match(workflowId, /^wf-/);
+
+  database.connection.prepare('UPDATE generation_workflows SET archived_at=? WHERE id=?').run(now, workflowId);
+  const hidden = await app.inject({ method: 'GET', url: '/api/v1/admin/generation/workflows', headers: adminHeaders });
+  assert.equal(hidden.statusCode, 200);
+  assert.ok(!(hidden.json().items as Array<{ id: string }>).some((item) => item.id === workflowId));
+  assert.throws(() => resolveWorkflowAndEngine(database, 'creative-center', { isInternal: true, workflowId }),
+    (error: Error & { code?: string }) => error.code === 'workflow_not_found');
+  database.connection.prepare('UPDATE generation_workflows SET archived_at=NULL WHERE id=?').run(workflowId);
 
   const suggestedDraft = { ...analysis.suggestedDraft, name: '工作台样本工作流', engineId: 'ws-engine' };
   const draftSaved = await app.inject({ method: 'PUT', url: `/api/v1/admin/generation/workflows/${workflowId}/draft`, headers: adminHeaders, payload: { revision: 1, draft: suggestedDraft } });
@@ -491,5 +500,11 @@ test('imported workflow preset templates create version-bound Base/Turbo presets
     assert.equal(nextVersion.json().createdPresetCount, 0, 'publishing a later version does not duplicate previously applied templates');
     listed = await app.inject({ method: 'GET', url: `/api/v1/admin/generation/presets?appId=activities&purpose=activity_image_text&workflowId=${workflowId}`, headers: adminHeaders });
     assert.equal(listed.json().items.length, 2);
+    database.connection.prepare('UPDATE generation_presets SET enabled=0 WHERE id=?').run(base.id);
+    listed = await app.inject({ method: 'GET', url: `/api/v1/admin/generation/presets?appId=activities&purpose=activity_image_text&workflowId=${workflowId}`, headers: adminHeaders });
+    assert.deepEqual(listed.json().items.map((item: { id: string }) => item.id), [turbo.id], 'superseded disabled presets stay in history but leave the active list');
+    database.connection.prepare('UPDATE generation_workflows SET archived_at=? WHERE id=?').run(now, workflowId);
+    listed = await app.inject({ method: 'GET', url: `/api/v1/admin/generation/presets?workflowId=${workflowId}`, headers: adminHeaders });
+    assert.equal(listed.json().items.length, 0);
   } finally { await app.close(); database.close(); }
 });

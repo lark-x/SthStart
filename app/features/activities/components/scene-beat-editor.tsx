@@ -34,6 +34,8 @@ import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { ScenePreviewDrawer } from './scene-preview-drawer';
 import { getEffectiveStageScenes, writeStageScenes } from '../scene-beat-utils';
 import { BeatRenderWorkbench } from './beat-render-workbench';
@@ -75,6 +77,14 @@ export function SceneBeatEditor({
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [editBeatOpen, setEditBeatOpen] = useState(false);
+  const [editSceneOpen, setEditSceneOpen] = useState(false);
+  const [discardSceneOpen, setDiscardSceneOpen] = useState(false);
+  const [sceneDraft, setSceneDraft] = useState<{
+    title: string;
+    timeText: string;
+    locationText: string;
+    environment: string;
+  } | null>(null);
 
   React.useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)');
@@ -182,6 +192,56 @@ export function SceneBeatEditor({
   // Helper to remove mechanical prefix like "第 1 场：" or "第1场："
   const cleanSceneTitle = (title: string) => {
     return title.replace(/^(第\s*[一二三四五六七八九十0-9]+\s*场[：:\s]*)/, '') || title;
+  };
+
+  const openSceneEditor = () => {
+    if (!currentScene) return;
+    setSceneDraft({
+      title: cleanSceneTitle(currentScene.title),
+      timeText: currentScene.timeText || '',
+      locationText: currentScene.locationText || '',
+      environment: currentScene.environment || '',
+    });
+    setEditSceneOpen(true);
+  };
+
+  const sceneDraftChanged = Boolean(currentScene && sceneDraft && (
+    sceneDraft.title !== cleanSceneTitle(currentScene.title)
+    || sceneDraft.timeText !== (currentScene.timeText || '')
+    || sceneDraft.locationText !== (currentScene.locationText || '')
+    || sceneDraft.environment !== (currentScene.environment || '')
+  ));
+
+  const requestCloseSceneEditor = (open: boolean) => {
+    if (open) {
+      setEditSceneOpen(true);
+      return;
+    }
+    if (sceneDraftChanged) {
+      setDiscardSceneOpen(true);
+      return;
+    }
+    setEditSceneOpen(false);
+    setSceneDraft(null);
+  };
+
+  const discardSceneDraft = () => {
+    setDiscardSceneOpen(false);
+    setEditSceneOpen(false);
+    setSceneDraft(null);
+  };
+
+  const applySceneDraft = () => {
+    if (!currentScene || !sceneDraft || disabled) return;
+    handleUpdateScene({
+      ...currentScene,
+      title: sceneDraft.title.trim() || '未命名场次',
+      timeText: sceneDraft.timeText.trim(),
+      locationText: sceneDraft.locationText.trim(),
+      environment: sceneDraft.environment.trim(),
+    });
+    setEditSceneOpen(false);
+    setSceneDraft(null);
   };
 
   // Convert legacy messages to a default scene with beats
@@ -454,24 +514,29 @@ export function SceneBeatEditor({
 
       {/* 2. 当前场次时空与操作栏 (Scene Header: 紧凑单行胶囊 + 操作收敛) */}
       {currentScene && (
-        <div className="bg-surface rounded-xl border border-border-default p-3 shadow-2xs space-y-2 shrink-0">
+        <div className="rounded-xl bg-surface-muted/35 px-4 py-3 space-y-2.5 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2.5">
-            {/* 场次标题（清洗机械拼接前缀） */}
-            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               <span className="px-2 py-0.5 rounded bg-accent text-white font-bold text-xs shrink-0 shadow-2xs font-mono">
                 第 {currentSceneIndex + 1} 场
               </span>
-              <Input
-                value={cleanSceneTitle(currentScene.title)}
-                onChange={(e) => handleUpdateScene({ ...currentScene, title: e.target.value })}
-                placeholder="为这一场添加标题"
-                disabled={disabled}
-                className="h-7 text-xs sm:text-sm font-bold text-ink bg-transparent border-transparent hover:border-border-default focus:border-accent flex-1 min-w-[140px] px-1.5"
-              />
+              <div className="min-w-0 space-y-1">
+                <h2 className="truncate text-sm font-semibold text-ink sm:text-base">
+                  {cleanSceneTitle(currentScene.title) || '未命名场次'}
+                </h2>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                  <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5 shrink-0" />{currentScene.timeText || '未设置时间'}</span>
+                  <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3.5 w-3.5 shrink-0" /><span className="max-w-64 truncate">{currentScene.locationText || '未设置地点'}</span></span>
+                  {currentScene.environment?.trim() && <span className="inline-flex min-w-0 items-center gap-1"><Sparkles className="h-3.5 w-3.5 shrink-0" /><span className="max-w-80 truncate">{currentScene.environment}</span></span>}
+                </div>
+              </div>
             </div>
 
             {/* 场次右侧操作 */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+              <Button type="button" variant="outline" size="sm" onClick={openSceneEditor} disabled={disabled} className="h-8 px-2.5 text-xs">
+                编辑场次
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -549,47 +614,52 @@ export function SceneBeatEditor({
             </div>
           </div>
 
-          {/* 时空与环境设定：一行紧凑胶囊条 */}
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border-subtle text-xs">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-muted/40 border border-border-subtle text-ink flex-1 min-w-[140px] max-w-xs">
-              <Clock className="h-3 w-3 text-accent shrink-0" />
-              <span className="text-[11px] text-muted shrink-0">时间:</span>
-              <input
-                type="text"
-                value={currentScene.timeText}
-                onChange={(e) => handleUpdateScene({ ...currentScene, timeText: e.target.value })}
-                placeholder="如：傍晚 18:30"
-                disabled={disabled}
-                className="w-full bg-transparent text-xs font-semibold text-ink focus:outline-none placeholder:text-muted/60"
-              />
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-muted/40 border border-border-subtle text-ink flex-1 min-w-[160px] max-w-sm">
-              <MapPin className="h-3 w-3 text-accent shrink-0" />
-              <span className="text-[11px] text-muted shrink-0">地点:</span>
-              <input
-                type="text"
-                value={currentScene.locationText}
-                onChange={(e) => handleUpdateScene({ ...currentScene, locationText: e.target.value })}
-                placeholder="记录本场次的具体地点"
-                disabled={disabled}
-                className="w-full bg-transparent text-xs font-semibold text-ink focus:outline-none placeholder:text-muted/60"
-              />
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-muted/40 border border-border-subtle text-ink flex-1 min-w-[180px]">
-              <span className="text-[11px] text-muted shrink-0">🌤️ 氛围:</span>
-              <input
-                type="text"
-                value={currentScene.environment || ''}
-                onChange={(e) => handleUpdateScene({ ...currentScene, environment: e.target.value })}
-                placeholder="补充天气、光线或现场氛围（可选）"
-                disabled={disabled}
-                className="w-full bg-transparent text-xs text-ink focus:outline-none placeholder:text-muted/60"
-              />
-            </div>
-          </div>
         </div>
+      )}
+
+      {currentScene && sceneDraft && (
+        <>
+          <ResponsiveEditOverlay
+            open={editSceneOpen}
+            onOpenChange={requestCloseSceneEditor}
+            title="编辑场次"
+            description="修改场次标题、时间、地点和氛围；应用后写入当前活动草稿。"
+            footer={(
+              <div className="flex w-full justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => requestCloseSceneEditor(false)}>取消</Button>
+                <Button type="button" onClick={applySceneDraft} disabled={disabled}>应用修改</Button>
+              </div>
+            )}
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="space-y-1.5 sm:col-span-2">
+                <span className="text-sm font-medium text-ink">场次标题</span>
+                <Input autoFocus value={sceneDraft.title} onChange={(event) => setSceneDraft({ ...sceneDraft, title: event.target.value })} placeholder="为这一场添加标题" disabled={disabled} />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-ink">时间</span>
+                <Input value={sceneDraft.timeText} onChange={(event) => setSceneDraft({ ...sceneDraft, timeText: event.target.value })} placeholder="如：傍晚 18:30" disabled={disabled} />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-ink">地点</span>
+                <Input value={sceneDraft.locationText} onChange={(event) => setSceneDraft({ ...sceneDraft, locationText: event.target.value })} placeholder="记录本场次的具体地点" disabled={disabled} />
+              </label>
+              <label className="space-y-1.5 sm:col-span-2">
+                <span className="text-sm font-medium text-ink">氛围（可选）</span>
+                <Textarea rows={3} value={sceneDraft.environment} onChange={(event) => setSceneDraft({ ...sceneDraft, environment: event.target.value })} placeholder="补充天气、光线或现场氛围" disabled={disabled} />
+              </label>
+            </div>
+          </ResponsiveEditOverlay>
+          <ConfirmDialog
+            open={discardSceneOpen}
+            onOpenChange={setDiscardSceneOpen}
+            title="放弃场次修改？"
+            description="弹窗中的修改尚未应用，关闭后这些临时内容将被丢弃。"
+            cancelLabel="继续编辑"
+            confirmLabel="放弃修改"
+            onConfirm={discardSceneDraft}
+          />
+        </>
       )}
 
       {/* 3. 核心双栏工作台：黄金比例 4:6 (左 40% 剧本流，右 60% 镜头工坊) */}

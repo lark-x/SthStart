@@ -29,6 +29,8 @@ import { syncPendingNotebookData } from '../sync';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { TagsInput } from '@/app/components/shared/tags-input';
 import { useToast } from '@/app/providers/ui-provider';
 import { generateId } from '@/app/lib/uuid';
@@ -78,6 +80,9 @@ export function NoteEditor({
   const [savingLocal, setSavingLocal] = useState(false);
   const [online, setOnline] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [metaEditorOpen, setMetaEditorOpen] = useState(false);
+  const [discardMetaOpen, setDiscardMetaOpen] = useState(false);
+  const [metaDraft, setMetaDraft] = useState<Pick<CreativeNote, 'title' | 'tags' | 'kind' | 'stage'> | null>(null);
 
   const { data: detailData, isLoading: detailLoading, error: detailError, refetch: refetchDetail } = useNoteDetail(noteId);
   const { record: localRecord, loaded: localNoteLoaded } = useLocalNotebookNote(effectiveNoteId);
@@ -238,6 +243,36 @@ export function NoteEditor({
     editVersionRef.current += 1;
     setNote((prev) => updater(prev));
     setDirty(true);
+  };
+
+  const openMetaEditor = () => {
+    setMetaDraft({ title: note.title, tags: [...note.tags], kind: note.kind, stage: note.stage });
+    setMetaEditorOpen(true);
+  };
+
+  const metaDraftChanged = Boolean(metaDraft && (
+    metaDraft.title !== note.title || metaDraft.kind !== note.kind || metaDraft.stage !== note.stage ||
+    JSON.stringify(metaDraft.tags) !== JSON.stringify(note.tags)
+  ));
+
+  const requestMetaEditorClose = (open: boolean) => {
+    if (open) {
+      setMetaEditorOpen(true);
+      return;
+    }
+    if (metaDraftChanged) {
+      setDiscardMetaOpen(true);
+      return;
+    }
+    setMetaEditorOpen(false);
+    setMetaDraft(null);
+  };
+
+  const saveMetaDraft = () => {
+    if (!metaDraft) return;
+    updateNoteState((prev) => ({ ...prev, ...metaDraft }));
+    setMetaEditorOpen(false);
+    setMetaDraft(null);
   };
 
   const handleDelete = async () => {
@@ -485,85 +520,26 @@ export function NoteEditor({
 
       {/* Editor Structured Document Canvas */}
       <div className="notebook-editor-frame max-w-4xl mx-auto px-5 sm:px-8 py-4 space-y-3.5">
-        {/* Layer 1: Compact Meta Bar (元数据属性栏 - 紧凑行内高度) */}
-        <section className="notebook-meta-bar flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-surface-muted/80 border border-border-subtle" aria-label="页面属性">
-          <div className="flex items-center gap-3">
-            <div className="notebook-select-group flex items-center gap-1.5">
-              <span className="notebook-field-label text-sm font-bold text-muted">类型</span>
-              <select
-                value={note.kind}
-                aria-label="笔记类型"
-                onChange={(e) =>
-                  updateNoteState((prev) => ({ ...prev, kind: e.target.value as NoteKind }))
-                }
-                className="notebook-select h-6 px-2 bg-surface-raised border border-border-control rounded text-sm font-semibold text-ink outline-none"
-              >
-                {Object.entries(kindLabels).map(([val, label]) => (
-                  <option value={val} key={val}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="notebook-select-group flex items-center gap-1.5">
-              <span className="notebook-field-label text-sm font-bold text-muted">阶段</span>
-              <select
-                value={note.stage}
-                aria-label="笔记阶段"
-                onChange={(e) =>
-                  updateNoteState((prev) => ({ ...prev, stage: e.target.value as NoteStage }))
-                }
-                className="notebook-select h-6 px-2 bg-surface-raised border border-border-control rounded text-sm font-semibold text-ink outline-none"
-              >
-                {Object.entries(stageLabels).map(([val, label]) => (
-                  <option value={val} key={val}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Short metadata is summarized here and edited together, leaving the writing area uncluttered. */}
+        <section className="notebook-meta-bar flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted/60 px-4 py-3" aria-label="页面属性">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium text-muted">{kindLabels[note.kind]} · {stageLabels[note.stage]}</div>
+            <div className="mt-1 truncate text-sm text-ink">{note.title.trim() || '未命名笔记'}{note.tags.length ? <span className="ml-2 text-xs text-muted">{note.tags.slice(0, 3).join(' · ')}</span> : null}</div>
           </div>
-
-          <span className="notebook-local-hint text-xs text-fg-subtle">
-            自动保存在本机
-          </span>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="notebook-local-hint text-xs text-fg-subtle">自动保存在本机</span>
+            <Button type="button" size="sm" variant="outline" onClick={openMetaEditor}>编辑资料</Button>
+          </div>
         </section>
 
-       {/* Layer 2: Compact Title & Tags Section */}
         {/* 资料属性：默认收起，只在这里显式修改，不会因正文编辑被清空。 */}
         <NoteKnowledgePanel
           note={note}
           knowledge={note.knowledge}
           onChange={(knowledge) => updateNoteState((prev) => ({ ...prev, knowledge }))}
         />
-        <section className="notebook-heading space-y-1.5" aria-label="标题与标签">
-          <div className="flex items-center justify-between">
-            <span className="notebook-heading-kicker text-xs font-medium text-fg-subtle">标题与标签</span>
-          </div>
-          <label htmlFor="note-title" className="sr-only">笔记标题</label>
-          <input
-            id="note-title"
-            value={note.title}
-            onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
-            placeholder="输入笔记标题…"
-            className="notebook-title-input w-full bg-transparent text-xl sm:text-2xl font-medium text-ink placeholder:text-muted/30 outline-none pb-1.5 border-b border-border-subtle focus:border-accent"
-          />
 
-          <label className="notebook-tags-field flex items-center gap-1.5 pt-0.5">
-            <span className="notebook-field-label text-accent font-bold text-sm">#</span>
-            <TagsInput
-              value={note.tags}
-              onChange={(tags) =>
-                updateNoteState((prev) => ({ ...prev, tags }))
-              }
-              placeholder="添加标签（用逗号分隔，如：灵感，第 2 章）…"
-              className="notebook-tags-input w-full bg-transparent text-sm text-muted placeholder:text-muted/40 outline-none h-6"
-            />
-          </label>
-        </section>
-
-        {/* Layer 3: Main Text Content Focus Area (定高、舒适书写主舞台) */}
+        {/* Main Text Content Focus Area (定高、舒适书写主舞台) */}
         <section className="notebook-content-section space-y-2.5" aria-label="笔记正文">
           <div className="notebook-content-heading flex items-center justify-between pb-1 border-b border-border-subtle">
             <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
@@ -827,6 +803,45 @@ export function NoteEditor({
           </div>
         )}
       </div>
+
+      <ResponsiveEditOverlay
+        open={metaEditorOpen}
+        onOpenChange={requestMetaEditorClose}
+        title="编辑笔记资料"
+        description="标题、类型、阶段和标签会随笔记一起保存在本机，并按现有同步规则提交。"
+        footer={<><Button variant="outline" onClick={() => requestMetaEditorClose(false)}>取消</Button><Button variant="primary" onClick={saveMetaDraft}>应用修改</Button></>}
+      >
+        {metaDraft && <div className="space-y-5">
+          <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-title">标题
+            <input id="note-meta-title" autoFocus value={metaDraft.title} onChange={(event) => setMetaDraft({ ...metaDraft, title: event.target.value })} placeholder="输入笔记标题" className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus" />
+          </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-kind">类型
+              <select id="note-meta-kind" value={metaDraft.kind} onChange={(event) => setMetaDraft({ ...metaDraft, kind: event.target.value as NoteKind })} className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
+                {Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-stage">阶段
+              <select id="note-meta-stage" value={metaDraft.stage} onChange={(event) => setMetaDraft({ ...metaDraft, stage: event.target.value as NoteStage })} className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
+                {Object.entries(stageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="space-y-1.5 text-sm font-medium text-ink">
+            <span className="block">标签</span>
+            <TagsInput value={metaDraft.tags} onChange={(tags) => setMetaDraft({ ...metaDraft, tags })} placeholder="添加标签（用逗号分隔）" className="w-full bg-surface-raised text-sm text-ink" />
+          </div>
+        </div>}
+      </ResponsiveEditOverlay>
+      <ConfirmDialog
+        open={discardMetaOpen}
+        onOpenChange={setDiscardMetaOpen}
+        title="放弃未应用的修改？"
+        description="标题或资料字段有未应用的改动。放弃后会关闭编辑面板，不会更改笔记。"
+        confirmLabel="放弃修改"
+        danger
+        onConfirm={() => { setMetaEditorOpen(false); setMetaDraft(null); }}
+      />
 
       <input
         ref={fileInputRef}

@@ -47,6 +47,9 @@ import { BackupScheduler } from './backup/scheduler.js';
 import { registerBackupRoutes } from './backup/routes.js';
 import { registerAiCallRoutes } from './ai-call-routes.js';
 import { inspectLinsheHostedReadiness } from './linshe-hosted.js';
+import { StoryStore } from './story/store.js';
+import { StoryRuntime } from './story/runtime.js';
+import { registerStoryRoutes } from './story/routes.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -79,6 +82,13 @@ export async function createService(options: ServiceOptions = {}) {
   ensureCreativeApp(database);
   ensureGenerationConsumerApps(database);
   ensureLocalComfyuiEngine(database);
+  const storyAppToken = issueToken('sth_app');
+  database.connection.prepare(`INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at)
+    VALUES ('story','剧情工作室',?,?,1,?,?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name,token_hash=excluded.token_hash,capabilities_json=excluded.capabilities_json,enabled=1,updated_at=excluded.updated_at`)
+    .run(hashToken(storyAppToken), JSON.stringify(['llm']), identityUpdatedAt, identityUpdatedAt);
+  database.connection.prepare(`INSERT OR IGNORE INTO app_llm_assignments(app_id,role,profile_id,updated_at)
+    SELECT 'story','text',profile_id,? FROM app_llm_assignments WHERE app_id='activities' AND role='text'`).run(identityUpdatedAt);
   if (!options.database && process.env.STHSTART_APP_TOKEN?.trim() && process.env.STHSTART_LLM_PROFILE?.trim()) {
     const legacy = database.connection.prepare(`SELECT a.id app_id,p.id profile_id FROM managed_apps a
       JOIN provider_profiles p ON p.id=? AND p.kind='llm' AND p.enabled=1
@@ -229,6 +239,8 @@ export async function createService(options: ServiceOptions = {}) {
     provider: new LocalNarrativeCorpusProvider(narrativeDatabase),
   });
   registerActivityRoutes(app, config, database, secrets, options.fetcher);
+  const storyStore = new StoryStore(database);
+  registerStoryRoutes(app, config, storyStore, new StoryRuntime(config, database, storyStore, storyAppToken));
   registerCalendarRoutes(app, config, database);
   registerPlanningRoutes(app, { config, database, secrets, store: new ActivityStore(database), fetcher: options.fetcher, narrativeDatabase });
   registerMcpSourceRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });

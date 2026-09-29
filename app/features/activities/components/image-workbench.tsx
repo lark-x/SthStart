@@ -6,6 +6,7 @@ import { fetchCharacterVisualReferences } from '@/app/features/characters/api';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SourceRef } from '@sthstart/contracts';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ApiClientError } from '@/app/lib/api-client';
 import {
   Sparkles,
   Camera,
@@ -50,6 +51,7 @@ import {
   useImageAttempts,
   useActivityCapabilities,
   useActivityGenerationPresets,
+  useActivityImageGenerationAssignments,
   useActivityAssets,
   useAssetLineage,
 } from '../queries';
@@ -86,6 +88,10 @@ export function ImageWorkbench({
   onLocateField,
 }: ImageWorkbenchProps) {
   const mediaSlots = document.mediaSlots || [];
+  const [advanced, setAdvanced] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const drawLock = useRef(false);
+  const pendingDraw = useRef<{ signature: string; recipe: PromptRecipe; compilation: PromptCompilation; headVersion: number; idempotencyKey: string } | null>(null);
   const [activeSlotId, setActiveSlotId] = useState<string>(
     initialSlotId || mediaSlots[0]?.id || ''
   );
@@ -153,10 +159,11 @@ export function ImageWorkbench({
   const [characterReferences, setCharacterReferences] = useState<Array<{ characterId: string; characterName: string; version?: number; referenceId: string; url: string }>>([]);
   const [transferringReference, setTransferringReference] = useState<string | null>(null);
   const { data: generationPresets = [], isLoading: generationPresetsLoading } = useActivityGenerationPresets(isOpen);
-  const allowedPresetPurposes = selectedReferenceKey
-    ? ['activity_image_edit', 'activity_media_slot']
-    : ['activity_image_text', 'activity_media_slot'];
-  const generationPresetOptions = generationPresets.filter((preset) => preset.enabled && allowedPresetPurposes.includes(preset.purpose));
+  const { data: imageAssignments = [] } = useActivityImageGenerationAssignments(isOpen);
+  const preferredPurpose = selectedReferenceKey ? 'activity_image_edit' : 'activity_image_text';
+  const activePurpose = imageAssignments.some((assignment) => assignment.purpose === preferredPurpose)
+    ? preferredPurpose : 'activity_media_slot';
+  const generationPresetOptions = generationPresets.filter((preset) => preset.enabled && preset.purpose === activePurpose);
   const selectedGenerationPreset = generationPresetOptions.find((preset) => preset.id === selectedGenerationPresetId);
 
   const handleSelectReferenceAsset = (assetKey: string | null) => {
@@ -264,7 +271,7 @@ export function ImageWorkbench({
   };
 
   // Prepare recipe
-  const handlePrepareRecipe = async () => {
+  const handlePrepareRecipe = async (quiet = false) => {
     if (!activeSlot || !activity.currentContentRevisionId) return;
     try {
       const configRevision = currentConfigDoc ? await commitRevisionMutation.mutateAsync({ id: activity.id, document: currentConfigDoc }) : null;
@@ -293,38 +300,42 @@ export function ImageWorkbench({
       setSelectedAttemptId(null);
       setPreparedRecipe(res.recipe);
       setPreparedCompilation(res.compilation);
-      setStatusMessage({ type: 'success', text: '配方准备与提示词编译就绪' });
-      setTimeout(() => setStatusMessage(null), 3000);
+      if (!quiet) setStatusMessage({ type: 'success', text: '提示词与绘制配置已准备好' });
+      return { ...res, headVersion: (await fetchActivity(activity.id)).activity.headVersion };
     } catch (err) {
       setStatusMessage({ type: 'error', text: '准备配方失败: ' + String(err) });
     }
   };
 
-  // Submit generation attempt
-  const handleSubmitAttempt = async () => {
-    if (!preparedRecipe || !preparedCompilation || !activeSlot) return;
+  const handleDraw = async () => {
+    if (drawLock.current || !activeSlot) return;
+    drawLock.current = true; setDrawing(true);
+    setStatusMessage({ type: 'success', text: '正在准备提示词与绘制配置…' });
     try {
-      const res = await createAttemptMutation.mutateAsync({
-        id: activity.id,
-        input: {
-          contentRevisionId: preparedRecipe.contentRevisionId,
-          imageConfigRevisionId: preparedRecipe.imageConfigRevisionId,
-          slotId: activeSlot.id,
-          recipeId: preparedRecipe.id,
-          compilationId: preparedCompilation.id,
-          executionPlanHash: preparedCompilation.executionPlanHash,
-          expectedHeadVersion: activity.headVersion,
-          seed: seed >= 0 ? seed : undefined,
-          idempotencyKey: `attempt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        },
-      });
-      setSelectedAttemptId(res.id);
-      setStatusMessage({ type: 'success', text: '生成尝试已提交排队' });
-      setTimeout(() => setStatusMessage(null), 3000);
-      refetchAttempts();
-    } catch (err) {
-      setStatusMessage({ type: 'error', text: '提交生图尝试失败: ' + String(err) });
-    }
+      const signature = JSON.stringify({ slot: activeSlot.id, config: currentConfigDoc, overrides,
+        reference: selectedReferenceKey, referenceRole, denoise, preset: selectedGenerationPreset, seed,
+        contentRevisionId: activity.currentContentRevisionId });
+      if (pendingDraw.current?.signature !== signature) {
+        const prepared = await handlePrepareRecipe(true);
+        if (!prepared) return;
+        pendingDraw.current = { signature, recipe: prepared.recipe, compilation: prepared.compilation,
+          headVersion: prepared.headVersion, idempotencyKey: crypto.randomUUID() };
+      }
+      const attempt = pendingDraw.current;
+      const result = await createAttemptMutation.mutateAsync({ id: activity.id, input: {
+        contentRevisionId: attempt.recipe.contentRevisionId, imageConfigRevisionId: attempt.recipe.imageConfigRevisionId,
+        slotId: activeSlot.id, recipeId: attempt.recipe.id, compilationId: attempt.compilation.id,
+        executionPlanHash: attempt.compilation.executionPlanHash, expectedHeadVersion: attempt.headVersion,
+        seed: seed >= 0 ? seed : undefined, idempotencyKey: attempt.idempotencyKey,
+      } });
+      pendingDraw.current = null;
+      setSelectedAttemptId(result.id);
+      setStatusMessage({ type: 'success', text: '已开始绘制，图片完成后会出现在历史记录中。' });
+      void refetchAttempts();
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status >= 400 && error.status < 500) pendingDraw.current = null;
+      setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : '无法开始绘制，请重试。' });
+    } finally { drawLock.current = false; setDrawing(false); }
   };
 
   // Adopt asset as slot candidate
@@ -393,32 +404,32 @@ export function ImageWorkbench({
     <Drawer
       open={isOpen}
       onOpenChange={(open) => !open && onClose()}
-      title="图片生成与提示词来源"
-      className="max-w-[1100px] w-full flex flex-col p-4 overflow-hidden bg-surface text-ink"
+      title="素材绘制"
+      className="max-w-[1100px] w-full flex flex-col p-2 sm:p-4 overflow-hidden bg-surface text-ink"
     >
       {editingSource && <SourceFieldEditor activityId={activity.id} source={editingSource} onClose={() => setEditingSource(null)} onSaved={() => { setPreparedRecipe(null); setPreparedCompilation(null); }} />}
       {/* Top Bar */}
-      <div className="px-6 py-3 border-b border-border-default bg-surface/90 flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex flex-wrap min-w-0 items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted">目标镜头:</span>
+      <div className="px-2 py-3 sm:px-6 border-b border-border-default bg-surface/90 flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex w-full flex-wrap min-w-0 items-center gap-3 sm:w-auto sm:gap-4">
+          <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
+            <span className="shrink-0 text-sm font-semibold text-muted">目标镜头</span>
             <select
               value={activeSlot?.id || ''}
               onChange={(e) => setActiveSlotId(e.target.value)}
-              className="bg-paper border border-border-control text-ink text-sm rounded px-2.5 py-1.5 focus:border-sky-500 outline-none"
+              className="min-w-0 w-full sm:w-auto sm:max-w-[26rem] bg-paper border border-border-control text-ink text-sm rounded-[var(--radius-control)] px-2.5 py-1.5 focus:border-accent outline-none"
             >
-              {mediaSlots.map((slot) => {
+              {mediaSlots.map((slot, index) => {
                 const stage = stageMap.get(slot.stageId);
                 return (
                   <option key={slot.id} value={slot.id}>
-                    {slot.id} - {stage?.title || '未指定阶段'} ({slot.kind})
+                    {index + 1}. {slot.caption?.trim() || stage?.title || '未命名镜头'}（{slot.kind === 'image' ? '图片' : '视频'}）
                   </option>
                 );
               })}
             </select>
           </div>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className={`${advanced ? 'flex' : 'hidden'} items-center gap-2 text-sm`}>
             <span className="text-muted">槽位:</span>
             <code className="text-muted font-mono text-sm bg-surface-muted px-1.5 py-0.5 rounded">
               {activeSlot?.id || 'default'}
@@ -440,7 +451,7 @@ export function ImageWorkbench({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className={`${advanced ? 'flex' : 'hidden'} items-center gap-3`}>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted">生图引擎就绪度:</span>
             <span
@@ -477,10 +488,14 @@ export function ImageWorkbench({
         </div>
       </div>
 
-      {/* Main 3-Column Body */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-0 min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-default px-4 py-2">
+        <p className="text-sm text-muted">使用活动默认配置，点击绘制即可。提示词准备与配置检查会自动完成。</p>
+        <Button size="sm" variant="outline" onClick={() => setAdvanced((value) => !value)}>{advanced ? '收起详细配置' : '详细配置与提示词来源'}</Button>
+      </div>
+      {/* Main body */}
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-0 min-w-0 min-h-0 overflow-y-auto xl:overflow-hidden">
         {/* Left Column (3 cols): Scopes & Controls */}
-        <div className="xl:col-span-3 min-w-0 border-r border-border-default p-4 overflow-y-auto space-y-4 bg-surface/30">
+        <div className={`${advanced ? '' : 'hidden'} xl:col-span-3 min-w-0 border-r border-border-default p-4 overflow-y-auto space-y-4 bg-surface/30`}>
           <div className="flex items-center justify-between pb-2 border-b border-border-default">
             <span className="text-sm font-bold text-muted uppercase tracking-wider">
               1. 设定范围与覆盖
@@ -664,16 +679,16 @@ export function ImageWorkbench({
         </div>
 
         {/* Middle Column (5 cols): Recipe, Source Provenance & Params */}
-        <div className="xl:col-span-5 min-w-0 border-r border-border-default p-4 overflow-y-auto space-y-4 bg-paper">
+        <div className={`${advanced ? 'xl:col-span-5' : 'xl:col-span-6'} min-w-0 border-r border-border-default p-4 overflow-y-auto space-y-4 bg-paper`}>
           <div className="flex items-center justify-between pb-2 border-b border-border-default">
             <span className="text-sm font-bold text-muted uppercase tracking-wider">
-              2. 配方准备与生成参数
+              绘制设置
             </span>
             <Button
               size="sm"
-              className="h-7 text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium"
-              disabled={prepareRecipeMutation.isPending}
-              onClick={handlePrepareRecipe}
+              className={`${advanced ? '' : 'hidden'} h-7 text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium`}
+              disabled={prepareRecipeMutation.isPending || drawing}
+              onClick={() => void handlePrepareRecipe()}
             >
               {prepareRecipeMutation.isPending ? (
                 <>
@@ -690,7 +705,7 @@ export function ImageWorkbench({
           </div>
 
           {/* Reference Image Section (I2I) */}
-          <div className="bg-surface/60 border border-border-default rounded-lg p-3 space-y-2.5">
+          <div className={`${advanced ? '' : 'hidden'} bg-surface/60 border border-border-default rounded-[var(--radius-panel)] p-3 space-y-2.5`}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
@@ -777,7 +792,7 @@ export function ImageWorkbench({
           </div>
 
           {/* Prompt Source Panel */}
-          <div className="bg-surface/40 border border-border-default rounded-lg p-3">
+          <div className={`${advanced ? '' : 'hidden'} bg-surface/40 border border-border-default rounded-[var(--radius-panel)] p-3`}>
             <PromptSourcePanel
               activityId={activity.id}
               blocks={sourceRecipe?.blocks || []}
@@ -813,7 +828,7 @@ export function ImageWorkbench({
               >
                 <option value="">沿用活动默认配置</option>
                 {generationPresetOptions.map((preset) => (
-                  <option key={preset.id} value={preset.id}>{preset.name} · {preset.workflowId} v{preset.workflowVersion}</option>
+                  <option key={preset.id} value={preset.id}>{preset.name}{advanced ? ` · ${preset.workflowId} v${preset.workflowVersion}` : ''}</option>
                 ))}
               </select>
               <p className="text-xs text-muted">
@@ -826,7 +841,7 @@ export function ImageWorkbench({
                       : '当前用途没有可选预设；不选时仍沿用活动当前默认配置。'}
               </p>
             </div>
-            <div className="flex items-center justify-between text-sm">
+            <div className={`${advanced ? 'flex' : 'hidden'} items-center justify-between text-sm`}>
               <span className="text-muted font-medium">随机种子 (Seed)</span>
               <div className="flex items-center gap-2">
                 <Button
@@ -846,12 +861,12 @@ export function ImageWorkbench({
               </div>
             </div>
 
-            {preparedCompilation && <div className="text-sm space-y-2">
+            {advanced && preparedCompilation && <div className="text-sm space-y-2">
               <p>{preparedCompilation.executionPlan ? `工作流 ${preparedCompilation.executionPlan.workflowId} v${preparedCompilation.executionPlan.workflowVersion} · 引擎 ${preparedCompilation.executionPlan.engineId}` : '尚未分配可执行工作流；配置后需要重新准备。'}</p>
               <details><summary>将提交的完整提示词与有效参数</summary><pre className="whitespace-pre-wrap break-words max-h-60 overflow-auto">{JSON.stringify({ channels: preparedCompilation.channels, parameters: preparedCompilation.effectiveParams, references: preparedRecipe?.references }, null, 2)}</pre></details>
               {!!executionSnapshots.length && <details><summary>所选历史图片的实际执行快照</summary><pre className="whitespace-pre-wrap break-words max-h-60 overflow-auto">{JSON.stringify(executionSnapshots, null, 2)}</pre></details>}
             </div>}
-            {preparedCompilation && (
+            {advanced && preparedCompilation && (
               <div className="text-sm text-muted font-mono flex items-center justify-between pt-1 border-t border-border-default">
                 <span>执行计划哈希:</span>
                 <span className="text-sky-400">{preparedCompilation.executionPlanHash.slice(0, 16)}...</span>
@@ -859,11 +874,12 @@ export function ImageWorkbench({
             )}
 
             <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold h-9 mt-2"
-              disabled={!preparedRecipe || !preparedCompilation || createAttemptMutation.isPending}
-              onClick={handleSubmitAttempt}
+              variant="primary"
+              className="w-full font-semibold h-9 mt-2"
+              disabled={drawing || !activeSlot || !activity.currentContentRevisionId}
+              onClick={() => void handleDraw()}
             >
-              {createAttemptMutation.isPending ? (
+              {drawing ? (
                 <>
                   <Spinner className="w-4 h-4 mr-2" />
                   提交生成任务中...
@@ -871,7 +887,7 @@ export function ImageWorkbench({
               ) : (
                 <>
                   <Play className="w-4 h-4 mr-2" />
-                  提交生成尝试 (Generate)
+                  绘制新图
                 </>
               )}
             </Button>
@@ -879,10 +895,10 @@ export function ImageWorkbench({
         </div>
 
         {/* Right Column (4 cols): Candidate Stream & Actions */}
-        <div className="xl:col-span-4 min-w-0 p-4 overflow-y-auto space-y-4 bg-surface/30">
+        <div className={`${advanced ? 'xl:col-span-4' : 'xl:col-span-6'} min-w-0 p-4 overflow-y-auto space-y-4 bg-surface/30`}>
           <div className="flex items-center justify-between pb-2 border-b border-border-default">
             <span className="text-sm font-bold text-muted uppercase tracking-wider">
-              3. 生成尝试与候选流 ({attempts.length})
+              图片历史与绘制记录 ({attempts.length})
             </span>
             <Button
               variant="ghost"
@@ -896,7 +912,7 @@ export function ImageWorkbench({
 
           {attempts.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500 border border-dashed border-border-default rounded-lg">
-              本镜头尚无生成记录，请在左侧编译配方并点击“提交生成尝试”。
+              还没有绘制记录。选择上方预设后点击“绘制新图”即可开始。
             </div>
           ) : (
             <div className="space-y-3">

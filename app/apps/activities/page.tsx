@@ -154,7 +154,7 @@ export default function ActivitiesPage() {
         )}
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2.5 px-4 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-xs">
+        <div className="activity-toolbar flex flex-col sm:flex-row items-center justify-between gap-3 py-3 px-4 rounded-[var(--radius-panel)] bg-surface shadow-[var(--shadow-panel)]">
           <div className="relative w-full sm:max-w-md">
             <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted" />
             <Input
@@ -199,7 +199,7 @@ export default function ActivitiesPage() {
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="p-5 rounded-[var(--radius-panel)] border border-border-subtle bg-surface space-y-3"
+                className="activity-card-skeleton p-5 rounded-[var(--radius-panel)] bg-surface space-y-3 shadow-[var(--shadow-panel)]"
               >
                 <Skeleton className="h-5 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
@@ -229,61 +229,57 @@ export default function ActivitiesPage() {
             {filtered.map((act) => (
               <div
                 key={act.id}
-                className="group flex flex-col justify-between p-5 rounded-[var(--radius-panel)] border border-border-default bg-surface hover:border-accent/60 hover:shadow-md transition-all duration-200"
+                className="activity-card group flex min-h-[230px] flex-col justify-between p-5 rounded-[var(--radius-panel)] bg-surface transition-all duration-200"
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <Link
                       href={`/apps/activities/${act.id}`}
-                      className="text-base font-bold text-ink group-hover:text-accent transition-colors line-clamp-1"
+                      className="text-base font-bold text-ink group-hover:text-accent transition-colors line-clamp-2 leading-snug"
                     >
                       {act.title}
                     </Link>
-                    <Badge
-                      variant="outline"
-                      className="text-xs font-mono flex-shrink-0 bg-surface-muted text-ink"
-                    >
+                    <Badge variant="secondary" className="shrink-0 font-mono text-xs">
                       v{act.headVersion}
                     </Badge>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
                     {act.type && (
-                      <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-200">
+                      <Badge variant="warning" className="text-xs">
                         {act.type}
                       </Badge>
                     )}
                     {act.theme && (
-                      <Badge variant="outline" className="text-xs bg-surface-muted text-ink border-border-default">
+                      <Badge variant="secondary" className="text-xs">
                         {act.theme}
                       </Badge>
                     )}
                     {act.archived ? (
-                      <Badge variant="outline" className="text-xs bg-surface-hover text-muted">
+                      <Badge variant="stopped" className="text-xs">
                         已归档
                       </Badge>
                     ) : null}
                   </div>
 
+                  {act.location && <p className="flex items-center gap-2 text-sm text-muted"><Calendar className="size-3.5 shrink-0 text-accent" />{act.location}</p>}
                   {act.rules && (
-                    <p className="text-xs text-muted line-clamp-2 leading-relaxed">
+                    <p className="text-sm text-muted line-clamp-2 leading-relaxed">
                       {act.rules}
                     </p>
                   )}
                 </div>
 
                 {/* Footer and Actions */}
-                <div className="pt-4 mt-4 border-t border-border-subtle flex items-center justify-between text-xs text-muted">
-                  <span className="text-xs font-mono">
-                    {new Date(act.updatedAt).toLocaleDateString('zh-CN')}
-                  </span>
-
-                  <div className="flex items-center gap-1">
+                <div className="activity-card-footer mt-5 flex items-center justify-between gap-2 rounded-xl bg-surface-sunken/55 px-2 py-1.5 text-xs text-muted">
+                  <span className="activity-card-date">更新于 {new Date(act.updatedAt).toLocaleDateString('zh-CN')}</span>
+                  <div className="flex items-center gap-0.5">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDuplicate(act.id)}
                       title="复制活动副本"
+                      aria-label={"复制活动 " + act.title}
                       className="h-7 w-7 p-0 text-muted hover:text-ink"
                     >
                       <Copy className="h-3.5 w-3.5" />
@@ -294,6 +290,7 @@ export default function ActivitiesPage() {
                       size="sm"
                       onClick={() => handleToggleArchive(act)}
                       title={act.archived ? '取消归档' : '归档活动'}
+                      aria-label={(act.archived ? '取消归档' : '归档') + '活动 ' + act.title}
                       className="h-7 w-7 p-0 text-muted hover:text-ink"
                     >
                       {act.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
@@ -304,6 +301,7 @@ export default function ActivitiesPage() {
                       size="sm"
                       onClick={() => handleDelete(act.id, act.title)}
                       title="删除活动"
+                      aria-label={"删除活动 " + act.title}
                       className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -311,7 +309,7 @@ export default function ActivitiesPage() {
 
                     <Link
                       href={`/apps/activities/${act.id}`}
-                      className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-[var(--radius-control)] bg-accent/10 text-accent hover:bg-accent hover:text-white font-semibold text-xs transition-colors"
+                      className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-dark"
                     >
                       <span>进入</span>
                       <ExternalLink className="h-3 w-3" />

@@ -69,7 +69,7 @@ export function NarrativeReader({
   return (
     <article ref={articleRef} className="min-w-0 flex-1 overflow-y-auto bg-surface">
       <div className="mx-auto w-full max-w-[var(--shell-reading)] px-4 py-8 sm:px-8">
-        <header className="space-y-3 border-b border-border-subtle pb-6">
+        <header className="narrative-reader-header space-y-3 pb-6">
           <div className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
             <span>{reading.scenes.length} 个场景</span>
           </div>

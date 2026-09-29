@@ -28,9 +28,9 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
 
   /* 骨架与真实日程行同构，保证载入完成时不出现整块高度跳变。 */
   const skeletonRows = (
-    <ul className="divide-y divide-border-subtle" aria-hidden="true">
+    <ul className="space-y-2" aria-hidden="true">
       {Array.from({ length: limit }, (_, index) => (
-        <li key={index} className="flex items-start gap-3 py-2.5">
+        <li key={index} className="flex items-start gap-3 rounded-xl bg-surface-sunken/45 px-3 py-2.5">
           <Skeleton className="mt-0.5 h-4 w-4 flex-none" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-4 w-3/4" data-visual-dynamic="true" />
@@ -62,10 +62,10 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
       ) : events.length === 0 ? (
         <p className="text-sm text-muted">未来 {days} 天内没有生日或已排期活动。</p>
       ) : (
-        <ul className="divide-y divide-border-subtle" data-testid="upcoming-schedule-list">
+        <ul className="space-y-2" data-testid="upcoming-schedule-list">
           {/* 同上：行数与行距纳入基线，日期与标题按动态内容遮罩。 */}
           {events.map((event) => (
-            <li key={event.id} className="flex items-start gap-3 py-2.5">
+            <li key={event.id} className="flex items-start gap-3 rounded-xl bg-surface-sunken/45 px-3 py-2.5">
               {event.kind === 'birthday'
                 ? <Cake className="mt-0.5 h-4 w-4 flex-none text-accent" aria-hidden="true" />
                 : <CalendarDays className="mt-0.5 h-4 w-4 flex-none text-muted" aria-hidden="true" />}

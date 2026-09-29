@@ -47,11 +47,16 @@ async function main() {
       await page.goto(activityUrl, { waitUntil: 'domcontentloaded' });
       await page.locator('[data-embed="true"]').waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('main').waitFor({ state: 'visible', timeout: 10_000 });
+      await page.setViewportSize({ width: 1920, height: 1080 });
       await page.getByRole('navigation', { name: '流水线阶段' }).waitFor({ state: 'visible', timeout: 30_000 });
       await page.waitForTimeout(1000);
       await assertWorkspaceNavigation(page, '流水线阶段');
-      await page.screenshot({ path: resolve(outputDir, 'desktop-1440.png'), fullPage: false });
+      await page.screenshot({ path: resolve(outputDir, 'wide-1920.png'), fullPage: false });
 
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.waitForTimeout(400);
+      await assertWorkspaceNavigation(page, '活动流程');
+      await page.screenshot({ path: resolve(outputDir, 'desktop-1440.png'), fullPage: false });
       await assertNoPageOverflow(page, '桌面视口');
 
       await page.setViewportSize({ width: 768, height: 1024 });
@@ -77,8 +82,9 @@ async function main() {
     await page.goto(new URL('/settings/ai-logs?callId=sample-call-001', baseUrl).toString(), { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'AI 调用记录', exact: true }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('heading', { name: '生成产物' }).waitFor({ state: 'visible', timeout: 15_000 });
-    await page.locator('section[aria-label="调用详情"] img').first().waitFor({ state: 'visible', timeout: 15_000 });
-    await page.addStyleTag({ content: 'section[aria-label="调用详情"] > div { max-height: none !important; overflow: visible !important; }' });
+    const detailDialog = page.getByRole('dialog', { name: 'AI 调用详情' });
+    await detailDialog.locator('img').first().waitFor({ state: 'visible', timeout: 15_000 });
+    await page.addStyleTag({ content: '[role="dialog"] > div[tabindex="-1"], [role="dialog"] [class*="max-h-"][class*="overflow-y-auto"] { max-height: none !important; overflow: visible !important; }' });
     await page.waitForTimeout(800);
     await page.screenshot({ path: resolve(outputDir, 'ai-logs-desktop-1440.png'), fullPage: true });
     await assertNoPageOverflow(page, 'AI 调用记录桌面视口');

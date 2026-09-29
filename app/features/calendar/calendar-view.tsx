@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, Cake, Film, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { CalendarDays, Cake, Film, ChevronLeft, ChevronRight, ExternalLink, SlidersHorizontal } from 'lucide-react';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer, Toolbar } from '@/app/components/shared/page-layout';
 import { SplitPanes } from '@/app/components/shared/split-panes';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useCalendarEvents, useCalendarFacets } from './queries';
 import type { CalendarEvent, CalendarFilter } from './api';
 
@@ -32,6 +33,7 @@ export function CalendarView() {
   const [favorite, setFavorite] = useState(false);
   const [work, setWork] = useState('');
   const [kind, setKind] = useState<'all' | 'birthday' | 'activity'>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const gridStart = useMemo(() => {
     const blanks = leadingBlanks(year, month);
@@ -126,20 +128,39 @@ export function CalendarView() {
         {/* 第二层工具栏：搜索与筛选（§8.7）。 */}
         <Toolbar>
           <Input aria-label="搜索角色或活动" placeholder="搜索角色姓名或活动标题…" value={query} onChange={(event) => setQuery(event.target.value)} className="w-full sm:w-64" />
-          <select aria-label="筛选作品" className="rounded border border-border-control bg-surface px-2 py-2 text-sm" value={work} onChange={(event) => setWork(event.target.value)}>
-            <option value="">全部作品</option>
-            {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
-          </select>
-          <div className="flex overflow-hidden rounded border border-ink/15 text-sm">
+          <div className="flex overflow-hidden rounded-xl bg-surface-sunken/65 p-1 text-sm">
             {([['all', '全部'], ['birthday', '仅生日'], ['activity', '仅活动']] as const).map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setKind(value)} className={`px-3 py-2 ${kind === value ? 'bg-accent text-white' : 'bg-surface'}`}>{label}</button>
+              <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`px-3 py-2 ${kind === value ? 'bg-accent text-white' : 'bg-surface text-muted hover:text-ink'}`}>{label}</button>
             ))}
           </div>
-          <label className="flex items-center gap-2 px-2 text-sm">
-            <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} />仅收藏角色
-          </label>
+          <Button type="button" size="sm" variant="outline" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1.5 h-4 w-4" />更多筛选{work || favorite ? ' · 已启用' : ''}</Button>
           {isLoading && <span className="text-sm text-muted">正在更新…</span>}
         </Toolbar>
+        {(work || favorite) && <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="当前筛选条件">
+          {work && <span className="rounded-full bg-surface-muted px-2.5 py-1">作品：{work}</span>}
+          {favorite && <span className="rounded-full bg-surface-muted px-2.5 py-1">仅收藏角色</span>}
+          <button type="button" className="text-accent hover:underline" onClick={() => { setWork(''); setFavorite(false); }}>清除</button>
+        </div>}
+        <ResponsiveEditOverlay
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          title="日历筛选"
+          description="搜索与事件类型常驻在日历上方；作品和收藏条件可在这里调整。"
+          footer={<><Button variant="outline" onClick={() => { setWork(''); setFavorite(false); }}>重置</Button><Button variant="primary" onClick={() => setFiltersOpen(false)}>完成</Button></>}
+        >
+          <div className="space-y-4">
+            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="calendar-work-filter">作品
+              <select id="calendar-work-filter" className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal" value={work} onChange={(event) => setWork(event.target.value)}>
+                <option value="">全部作品</option>
+                {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+              </select>
+            </label>
+            <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-muted/50 px-3 text-sm text-ink">
+              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
+              仅显示收藏角色的生日
+            </label>
+          </div>
+        </ResponsiveEditOverlay>
 
         {error && <p role="alert" className="text-sm text-accent-dark">{error instanceof Error ? error.message : String(error)}</p>}
 
@@ -149,14 +170,14 @@ export function CalendarView() {
           from="lg"
           labels={{ left: '月历', right: '当天详情' }}
           left={
-          <section className="tpl-panel p-3">
+          <section className="calendar-month-panel tpl-panel p-4">
             <div className="mb-3 flex items-center justify-end">
               <span className="text-sm text-muted">本月共 {(data?.events || []).length} 项</span>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-sm text-muted">
+            <div className="mb-1 grid grid-cols-7 gap-1.5 text-center text-xs font-semibold tracking-wide text-muted">
               {WEEKDAYS.map((label) => <div key={label} className="py-1">{label}</div>)}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1.5">
               {cells.map((cell) => {
                 const events = byDate.get(cell.key) || [];
                 const inMonth = cell.day !== undefined;
@@ -170,12 +191,12 @@ export function CalendarView() {
                     onClick={() => { setSelectedDate(cell.key); setPicked([]); }}
                     aria-label={inMonth ? `${cell.key}，${events.length} 项事件` : undefined}
                     aria-pressed={isSelected}
-                    className={`min-h-20 rounded border p-1.5 text-left align-top text-sm transition-colors ${isSelected ? 'border-accent bg-accent/5' : 'border-border-subtle'} ${inMonth ? 'bg-surface' : 'bg-surface-muted/40 opacity-40'}`}
+                    className={`calendar-day min-h-20 rounded-xl p-1.5 text-left align-top text-sm transition-all ${isSelected ? 'is-selected bg-accent/8 ring-2 ring-accent/35' : 'bg-surface'} ${inMonth ? '' : 'opacity-35'}`}
                   >
                     <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${isToday ? 'bg-accent text-white' : ''}`}>{cell.day}</span>
                     <span className="mt-1 flex flex-col gap-0.5">
                       {events.slice(0, 3).map((event) => (
-                        <span key={event.id} className={`block truncate rounded px-1 ${event.kind === 'birthday' ? 'bg-rose-50 text-rose-700' : 'bg-sky-50 text-sky-800'}`}>
+                        <span key={event.id} className={`block truncate rounded px-1 ${event.kind === 'birthday' ? 'bg-warning-bg text-warning-fg' : 'bg-info-bg text-info-fg'}`}>
                           {event.kind === 'birthday' ? '🎂 ' : '🎬 '}{event.title}
                         </span>
                       ))}
@@ -188,7 +209,7 @@ export function CalendarView() {
           </section>
           }
           right={
-          <section className="space-y-3 rounded-lg border border-border-subtle bg-surface p-3">
+          <section className="calendar-day-detail space-y-4 rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--shadow-panel)]">
             <h2 className="flex items-center gap-2 text-base font-semibold"><CalendarDays className="h-4 w-4 text-accent" />{selectedDate} 当天</h2>
             {!dayEvents.length && <p className="text-sm text-muted">这一天没有生日或活动。</p>}
             {!!birthdays.length && (
@@ -196,7 +217,7 @@ export function CalendarView() {
                 <p className="text-sm font-medium">寿星（{birthdays.length}）</p>
                 <ul className="space-y-1">
                   {birthdays.map((event) => (
-                    <li key={event.id} className="flex items-center gap-2 rounded border border-border-subtle p-2 text-sm">
+                    <li key={event.id} className="flex items-center gap-2 rounded-xl bg-surface-sunken/50 p-2.5 text-sm">
                       <input
                         type="checkbox"
                         aria-label={`选择${event.characterName || event.title}`}
@@ -224,7 +245,7 @@ export function CalendarView() {
                 <p className="text-sm font-medium">活动</p>
                 <ul className="space-y-1">
                   {dayEvents.filter((event) => event.kind === 'activity').map((event) => (
-                    <li key={event.id} className="rounded border border-border-subtle p-2 text-sm">
+                    <li key={event.id} className="rounded-xl bg-surface-sunken/50 p-3 text-sm">
                       <span className="flex items-center gap-2"><Film className="h-4 w-4 text-sky-600" />{event.title}</span>
                       <div className="mt-1 flex items-center justify-between text-xs text-muted">
                         <span>参与角色 {event.participantCount ?? 0} 位</span>

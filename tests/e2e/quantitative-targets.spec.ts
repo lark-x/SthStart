@@ -45,7 +45,7 @@ test('列表页首屏内容顶部在 1440×900 下不超过 240px', async ({ pag
   expect(failures.length, failures.join('\n')).toBe(0);
 });
 
-test('1280×720 下主生成动作与活动阶段入口可见', async ({ page }) => {
+test('1280×720 下生成配置入口与活动工作区主要操作可见', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
 
   const failures: string[] = [];
@@ -66,7 +66,7 @@ test('1280×720 下主生成动作与活动阶段入口可见', async ({ page })
     if (!box || box.y > 720) failures.push('生成配置页主动作在首屏之外');
   }
 
-  // 活动页：当前阶段与生成入口。
+  // 活动工作区：以当前选中阶段和场次操作作为主要入口。
   await page.goto('/apps/activities');
   await page.waitForTimeout(400);
   const hrefs = await page
@@ -83,23 +83,22 @@ test('1280×720 下主生成动作与活动阶段入口可见', async ({ page })
   } else {
     await page.goto(activityPath);
     await page.waitForTimeout(600);
-    const stage = page.getByText('当前阶段').first();
-    if (!(await stage.isVisible())) failures.push('活动页在 1280×720 下看不到当前阶段');
-    /*
-     * 生成入口已从页头收进「接下来做什么」区域：页头不再常驻一个重复的生成按钮，
-     * 由该区域的主动作承担（文案随草稿状态变化，如「生成活动内容」/「继续写活动内容」）。
-     * 这里断言的是「首屏有可用的生成入口」这一意图，而不是某个具体按钮文案。
-     */
-    const next = page.getByRole('region', { name: '接下来做什么' });
-    const generate = next.getByRole('button').first();
-    if ((await generate.count()) === 0) failures.push('活动页找不到生成入口');
-    else if (!(await generate.isVisible())) failures.push('活动页生成入口不可见');
+    const stageRail = page.getByRole('navigation', { name: '场次导轨导航' });
+    if (!(await stageRail.isVisible())) failures.push('活动页在 1280×720 下看不到阶段/场次导航');
+
+    const selectedStage = page.locator('main').getByRole('heading', { level: 2 }).first();
+    if (!(await selectedStage.isVisible())) failures.push('活动页看不到当前选中阶段标题');
+
+    const sceneAction = page.getByRole('button', { name: /新建场次|添加分镜|追加下一镜/ }).first();
+    if ((await sceneAction.count()) === 0) failures.push('活动页找不到场次或分镜编辑入口');
+    else if (!(await sceneAction.isVisible())) failures.push('活动页场次或分镜编辑入口不可见');
   }
 
   expect(failures.length, failures.join('\n')).toBe(0);
 });
 
 test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('sthstart_theme', 'neutral'));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/apps/activities/new');
 
@@ -123,8 +122,8 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   const before = await page.evaluate(() => window.scrollY);
 
   // 切换主题（侧栏底部的护眼开关）。
-  await page.getByRole('button', { name: /护眼/ }).first().click();
-  await expect(page.locator('html')).toHaveAttribute('data-eye-care', 'true');
+  await page.getByRole('button', { name: /主题/ }).first().click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'warm');
 
   // 收起侧栏。
   await page.getByRole('button', { name: /收起|展开/ }).first().click();
@@ -137,6 +136,6 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   expect(Math.abs(after - before), `滚动位置从 ${before} 跳到 ${after}`).toBeLessThanOrEqual(8);
 
   // 复原，避免影响后续用例的显示偏好。
-  await page.getByRole('button', { name: /护眼/ }).first().click();
+  await page.getByRole('button', { name: /主题/ }).first().click();
   await page.getByRole('button', { name: /收起|展开/ }).first().click();
 });

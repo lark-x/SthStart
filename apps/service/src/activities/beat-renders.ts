@@ -634,11 +634,16 @@ export function registerBeatRenderRoutes(
     if (!target) return reply.code(404).send({ error: 'beat_not_found', message: '此镜头已不存在，请刷新后重新选择。' });
     if (target.beat.mediaType === 'video') return reply.code(400).send({ error: 'video_generation_not_supported', message: '视频镜头不能提交图片生成。' });
     try {
-      const plan = normalizeOptions(database, activityId, target, request.body);
+      // Stable seed for one logical click, including network retries without a
+      // preview. Freeze it before dispatch so normalization cannot rerandomize it.
+      const submission = { ...request.body, seed: request.body.seed
+        ?? (typeof request.body.parameters?.seed === 'number' ? request.body.parameters.seed : undefined)
+        ?? (Number.parseInt(hashAiSource({ activityId, key: request.body.idempotencyKey }).slice(0, 8), 16) % 2_147_483_647) };
+      const plan = normalizeOptions(database, activityId, target, submission);
       if (!plan.canSubmit) throw codedError('beat_render_input_required', plan.warnings.join(' '), 409);
       if (plan.promptPolicy.enabled && !plan.optimizerReady) throw codedError('prompt_optimizer_not_configured',
         '活动尚未绑定可用的文本模型，已停止生图；请到生成配置的应用模型设置中绑定后重试。', 409);
-      if (plan.planHash !== request.body.planHash) throw codedError('beat_render_plan_conflict', '镜头内容或工作流配置已变化，请重新预览后提交。', 409);
+      if (request.body.planHash && plan.planHash !== request.body.planHash) throw codedError('beat_render_plan_conflict', '镜头内容或工作流配置已变化，请重新绘制。', 409);
       const requestFingerprint = hashAiSource({ planHash: plan.planHash, sourceFingerprint: plan.sourceFingerprint });
       const previous = database.connection.prepare('SELECT * FROM activity_beat_render_candidates WHERE activity_id=? AND idempotency_key=?')
         .get(activityId, request.body.idempotencyKey) as Record<string, unknown> | undefined;
@@ -659,7 +664,7 @@ export function registerBeatRenderRoutes(
           requestFingerprint, plan.sourceFingerprint, draft.draftVersion, plan.positivePrompt, plan.negativePrompt ?? '', nowIso(), plan.positivePrompt,
           plan.promptPolicy.enabled ? 'optimizing' : 'skipped', autoApplyState,
           autoApplyState === 'ineligible' ? '提交时镜头已有画面' : null, draft.draftVersion);
-      setImmediate(() => { void dispatchBeatRender(config, database, secrets, fetcher, store, activityId, candidateId, request.body, plan.planHash, plan.sourceFingerprint); });
+      setImmediate(() => { void dispatchBeatRender(config, database, secrets, fetcher, store, activityId, candidateId, submission, plan.planHash, plan.sourceFingerprint); });
       return reply.code(202).send({ candidateId, taskId: null, callId: null } satisfies BeatRenderSubmitResponse);
     } catch (error) {
       const value = error as Error & { code?: string; statusCode?: number };

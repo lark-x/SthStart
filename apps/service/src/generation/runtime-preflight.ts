@@ -80,7 +80,7 @@ export async function inspectWorkflowRuntime(
   if (target.kind === 'comfyui') {
     const result = await loadObjectInfo(target, secret, fetcher, refresh);
     if (!result.objectInfo) {
-      return { ok: false, issues: [`无法读取 ComfyUI「${target.id}」的 /object_info 节点与模型清单：${result.error ?? '上游未返回有效数据'}；已阻止提交。`] };
+      return { ok: false, issues: [`ComfyUI 暂不可用。请先启动 ComfyUI，再到「生成配置」测试连接后重试。连接检查：${result.error ?? '未返回有效的节点与模型清单'}。`] };
     }
     nodeDefinitions = new Map(Object.entries(result.objectInfo).map(([key, value]) => [key, asRecord(value) ?? {}]));
   } else if (target.kind === 'worker') {

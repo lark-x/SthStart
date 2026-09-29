@@ -67,6 +67,17 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['activities', '活动', '工作室', '企划'],
   },
   {
+    id: 'story',
+    title: '剧情工作室',
+    navLabel: '剧情',
+    navSection: '创作',
+    href: '/apps/story',
+    group: '创作',
+    icon: BookOpen,
+    description: '整理大纲、世界观与角色，开启独立 AI 剧情讨论会话',
+    keywords: ['story', '剧情', '大纲', '世界观', '会话'],
+  },
+  {
     id: 'inspiration',
     title: '话题素材库',
     navLabel: '话题素材',

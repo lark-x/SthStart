@@ -160,7 +160,7 @@ export function NarrativeWorkspace() {
   return (
     <div className="flex min-h-0 w-full flex-col md:h-dvh">
       {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
-      <div className="shrink-0 border-b border-border-subtle bg-surface">
+      <div className="narrative-workspace-header shrink-0 bg-surface">
         <PageContainer className="pt-4">
           <PageHeader
             compact

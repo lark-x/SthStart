@@ -38,10 +38,10 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
   const quickActions: CommandItem[] = [
     {
       id: 'action-toggle-eyecare',
-      title: '切换暖杏护眼模式',
-      description: '开启或关闭全局温润羊皮纸暖色显示',
+      title: '切换主题（暖杏／中性）',
+      description: '在暖杏创作桌面与中性浅色主题之间切换',
       category: '偏好',
-      keywords: ['eyecare', '护眼', '暖杏', '羊皮纸', 'theme', '模式'],
+      keywords: ['eyecare', '主题', '中性', '暖杏', '羊皮纸', 'theme', '模式'],
       icon: <Eye className="h-4 w-4 text-accent" />,
       action: () => toggleEyeCare?.(),
     },

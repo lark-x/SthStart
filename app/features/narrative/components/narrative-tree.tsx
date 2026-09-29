@@ -66,8 +66,8 @@ export function NarrativeTree({
   }, [nodes]);
 
   return (
-    <aside className="flex max-h-[45dvh] w-full flex-col bg-surface-muted md:max-h-none md:h-full md:w-64 md:flex-none md:border-r md:border-border-subtle">
-      <div className="shrink-0 space-y-1.5 border-b border-border-subtle p-3">
+    <aside className="narrative-tree flex max-h-[45dvh] w-full flex-col bg-surface-muted md:max-h-none md:h-full md:w-64 md:flex-none">
+      <div className="narrative-tree-head shrink-0 space-y-1.5 p-3">
         <label
           htmlFor="narrative-work-select"
           className="block text-xs font-semibold text-fg-subtle"
@@ -119,7 +119,7 @@ export function NarrativeTree({
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-border-subtle p-3">
+      <div className="narrative-tree-foot shrink-0 p-3">
         <Button variant="outline" size="sm" className="w-full justify-center" onClick={onOpenImport}>
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           <span>导入任务链</span>

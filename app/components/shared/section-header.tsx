@@ -15,9 +15,9 @@ export function SectionHeader({
   className,
 }: SectionHeaderProps) {
   return (
-    <div className={cn('flex items-end justify-between gap-4 mb-5 pb-3 border-b border-border-subtle', className)}>
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight text-ink">
+    <div className={cn('flex items-end justify-between gap-4 mb-5', className)}>
+      <div className="section-heading-copy min-w-0">
+        <h2 className="text-lg font-bold tracking-tight text-ink">
           {title}
         </h2>
         {description && (

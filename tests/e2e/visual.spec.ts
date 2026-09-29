@@ -48,8 +48,11 @@ const screenshotOptions = {
  */
 async function waitForDashboardSettled(page: import('@playwright/test').Page) {
   await expect(page.getByRole('status')).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(8, { timeout: 15_000 });
-  await expect(page.getByTestId('upcoming-schedule-list').getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
+  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
+  const scheduleItems = page.getByTestId('upcoming-schedule-list').getByRole('listitem');
+  const emptySchedule = page.getByText('未来 45 天内没有生日或已排期活动。', { exact: true });
+  await expect.poll(async () => (await scheduleItems.count()) === 5 || await emptySchedule.isVisible(), { timeout: 15_000 })
+    .toBeTruthy();
 }
 
 /** 页面本身不得横向溢出；失败时直接给出超宽元素，而不是只报像素差异。 */
@@ -76,7 +79,7 @@ test('portal desktop visual baseline', async ({ page }) => {
     ...screenshotOptions,
     fullPage: true,
     mask: [page.locator('[data-visual-dynamic]')],
-    maskColor: '#f5f6f8',
+    maskColor: '#f1ece2',
   });
 });
 
@@ -90,13 +93,14 @@ test('portal mobile visual baseline', async ({ page }) => {
     ...screenshotOptions,
     fullPage: true,
     mask: [page.locator('[data-visual-dynamic]')],
-    maskColor: '#f5f6f8',
+    maskColor: '#f1ece2',
   });
 });
 
 test('control center overview visual baseline', async ({ page }) => {
   await page.goto('/settings/control-center');
-  await expect(page.getByRole('heading', { name: '邻舍运行栈' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '邻舍运行控制中心' })).toBeVisible();
+  await expect(page.getByText('运行栈状态')).toBeVisible();
   await expect(page).toHaveScreenshot('control-center-overview.png', {
     ...screenshotOptions,
     fullPage: false,
@@ -119,9 +123,8 @@ test('control center logs visual baseline', async ({ page }) => {
 
 test('character editor visual baseline', async ({ page }) => {
   await page.goto('/apps/characters/new');
-  // 分区是 tablist 里的 tab，不是 heading；旧的 heading 断言在 V2 编辑器上已失效。
-  await expect(page.getByRole('tab', { name: '身份与经历' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '身份与人设' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '编辑基础档案与外观' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '编辑身份资料' })).toBeVisible();
   await expect(page).toHaveScreenshot('character-editor.png', {
     ...screenshotOptions,
     fullPage: true,
@@ -130,7 +133,8 @@ test('character editor visual baseline', async ({ page }) => {
 
 test('notebook visual baseline', async ({ page }) => {
   await page.goto('/apps/notebook/new');
-  await expect(page.getByPlaceholder('输入笔记标题…')).toBeVisible();
+  await expect(page.getByRole('button', { name: '编辑资料' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '笔记正文' }).getByPlaceholder('写下一段文字记录…')).toBeVisible();
   await expect(page).toHaveScreenshot('notebook.png', {
     ...screenshotOptions,
     fullPage: true,

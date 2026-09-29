@@ -220,6 +220,15 @@ export function useActivityGenerationPresets(enabled = true) {
   });
 }
 
+export function useActivityImageGenerationAssignments(enabled = true) {
+  return useQuery({
+    queryKey: [...generationKeys.all, 'activity-image-assignments'],
+    queryFn: async () => (await fetchGenerationAssignments()).filter((item) => item.app_id === 'activities'),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useImageConfigDraft(id?: string) {
   return useQuery({
     queryKey: activityKeys.imageConfigDraft(id ?? ''),

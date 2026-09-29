@@ -52,6 +52,29 @@ test('portal opens on the work dashboard with full sidebar navigation', async ({
   expect((neighborLink?.y ?? 720) + (neighborLink?.height ?? 0)).toBeLessThanOrEqual(720);
 });
 
+test('portal app directory starts with frequent tools and can search every module', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const directory = page.getByTestId('app-directory');
+  await expect(directory.getByRole('heading', { name: '全部应用' })).toBeVisible();
+  await expect(directory.getByRole('button', { name: '常用' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(directory.getByRole('listitem')).toHaveCount(5);
+
+  await directory.getByRole('button', { name: '设置' }).click();
+  await expect(directory.getByRole('listitem')).toHaveCount(5);
+  await directory.getByRole('textbox', { name: '搜索应用' }).fill('模型');
+  await expect(directory.getByRole('listitem')).toHaveCount(3);
+
+  await directory.getByRole('button', { name: '全部', exact: true }).click();
+  await directory.getByRole('button', { name: '清空搜索' }).click();
+  await expect(directory.getByRole('listitem')).toHaveCount(14);
+  const noHorizontalOverflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+  );
+  expect(noHorizontalOverflow).toBe(true);
+});
+
 test('creative center exposes a safe unconfigured image workspace', async ({ page }) => {
   await page.goto('/apps/creative');
   await expect(page.getByRole('heading', { name: '创作中心' })).toBeVisible();

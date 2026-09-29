@@ -687,7 +687,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
 
   // ── Generation Workflows & Versions Admin ──
   app.get('/api/v1/admin/generation/workflows', async () => {
-    const workflows = database.connection.prepare('SELECT * FROM generation_workflows ORDER BY name').all() as Array<Record<string, unknown>>;
+    // Archived workflows remain in the database for immutable tasks and call logs,
+    // but must not appear as a new-generation choice.
+    const workflows = database.connection.prepare('SELECT * FROM generation_workflows WHERE archived_at IS NULL ORDER BY name').all() as Array<Record<string, unknown>>;
     const versions = database.connection.prepare('SELECT * FROM generation_workflow_versions ORDER BY version DESC').all() as Array<Record<string, unknown>>;
     const mediaVersions = database.connection.prepare('SELECT * FROM generation_workflow_media_versions').all() as Array<Record<string, unknown>>;
     return {

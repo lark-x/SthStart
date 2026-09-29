@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Link2, Lightbulb, RefreshCw, Settings2, Wand2, X,
+  CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Link2, Lightbulb, RefreshCw, Settings2, SlidersHorizontal, Wand2, X,
 } from 'lucide-react';
 import type { ActivityIdea, ActivityIdeaBatch, Topic, TopicKind } from '@sthstart/contracts';
 import { PageHeader } from '@/app/components/shared/page-header';
@@ -18,6 +18,7 @@ import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { EmptyState } from '@/app/components/ui/empty-state';
@@ -49,6 +50,10 @@ export function TopicLibraryView() {
   const [workFilter, setWorkFilter] = useState<string[]>([]);
   const [kindFilter, setKindFilter] = useState<TopicKind | ''>('');
   const [days, setDays] = useState(30);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftWorkFilter, setDraftWorkFilter] = useState<string[]>([]);
+  const [draftKindFilter, setDraftKindFilter] = useState<TopicKind | ''>('');
+  const [draftDays, setDraftDays] = useState(30);
   const [page, setPage] = useState(1);
   const { selected, setSelected, selectedTopics, toggleSelected } = useTopicSelection();
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -111,6 +116,21 @@ export function TopicLibraryView() {
   const latestRun = runsQuery.data?.items[0] ?? null;
   const settings = settingsQuery.data;
   const activeRun = latestRun && ['queued', 'running'].includes(latestRun.status) ? latestRun : null;
+  const defaultDays = view === 'favorite' ? 0 : 30;
+  const activeFilterCount = Number(workFilter.length > 0) + Number(Boolean(kindFilter)) + Number(days !== defaultDays);
+  const openFilters = () => {
+    setDraftWorkFilter([...workFilter]);
+    setDraftKindFilter(kindFilter);
+    setDraftDays(days);
+    setFiltersOpen(true);
+  };
+  const applyFilters = () => {
+    setWorkFilter(draftWorkFilter);
+    setKindFilter(draftKindFilter);
+    setDays(draftDays);
+    setPage(1);
+    setFiltersOpen(false);
+  };
 
   const lastCompletedRun = React.useRef<string | null>(null);
   useEffect(() => {
@@ -183,8 +203,8 @@ export function TopicLibraryView() {
   const totalPages = topicsQuery.data ? Math.max(1, Math.ceil(topicsQuery.data.total / PAGE_SIZE)) : 1;
 
   return (
-    <div className="w-full bg-paper py-6 text-ink">
-      <PageContainer className="space-y-4">
+    <div className="w-full bg-paper text-ink">
+    <PageContainer className="topic-library-page space-y-5 py-6 text-ink">
         <PageHeader
           title="话题素材库"
           description="后台定时搜集关注作品的新梗与讨论；勾选素材后可以让模型生成活动点子，再带入企划。"
@@ -202,7 +222,7 @@ export function TopicLibraryView() {
         {notice && <Alert variant="info">{notice}</Alert>}
 
         {/* 状态行：自动搜集开关、最近成功时间、下次执行、最近新增 */}
-        <section className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[var(--radius-panel)] border border-border-default bg-surface px-4 py-3 text-sm">
+        <section className="topic-status-strip flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-panel)] bg-surface px-4 py-3 text-sm shadow-[var(--shadow-panel)]">
           <span className="flex items-center gap-1.5">
             <CalendarClock className="h-4 w-4 text-accent" />
             自动搜集
@@ -220,7 +240,7 @@ export function TopicLibraryView() {
         <WorkbenchColumns
           left={(
             <>
-              <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+              <section className="topic-list-panel space-y-4 rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--shadow-panel)]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-base font-semibold text-ink">素材（{topicsQuery.data?.total ?? 0}）</h2>
                   <Button size="sm" variant="ghost" onClick={() => void topicsQuery.refetch()}><RefreshCw className="h-3.5 w-3.5" />刷新列表</Button>
@@ -236,24 +256,14 @@ export function TopicLibraryView() {
                     <span className="text-xs text-muted">关键词</span>
                     <Input aria-label="搜索素材" value={search} placeholder="搜索标题、摘要、作品或角色" onChange={(event) => setSearch(event.target.value)} className="h-9 text-sm" />
                   </label>
-                  <label className="space-y-1">
-                    <span className="text-xs text-muted">作品</span>
-                    <TopicWorkFilter value={workFilter} options={topicsQuery.data?.facets.works ?? []} onChange={value => { setWorkFilter(value); setPage(1); }} />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs text-muted">内容类型</span>
-                    <Select aria-label="按内容类型筛选" value={kindFilter} onChange={(event) => { setKindFilter(event.target.value as TopicKind | ''); setPage(1); }} className="h-9 text-sm">
-                      <option value="">全部类型</option>
-                      {(Object.keys(TOPIC_KIND_LABELS) as TopicKind[]).map((kind) => <option key={kind} value={kind}>{TOPIC_KIND_LABELS[kind]}</option>)}
-                    </Select>
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs text-muted">时间范围</span>
-                    <Select aria-label="按时间范围筛选" value={String(days)} onChange={(event) => { setDays(Number(event.target.value)); setPage(1); }} className="h-9 text-sm">
-                      {TIME_RANGES.map((range) => <option key={range.value} value={range.value}>{range.label}</option>)}
-                    </Select>
-                  </label>
+                  <Button type="button" size="sm" variant="outline" onClick={openFilters} aria-expanded={filtersOpen}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
                 </div>
+                {activeFilterCount > 0 && <div className="flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="已启用筛选">
+                  {workFilter.length > 0 && <span className="rounded-full bg-surface-muted px-2.5 py-1">{workFilter.length} 个作品</span>}
+                  {kindFilter && <span className="rounded-full bg-surface-muted px-2.5 py-1">{TOPIC_KIND_LABELS[kindFilter]}</span>}
+                  {days !== defaultDays && <span className="rounded-full bg-surface-muted px-2.5 py-1">{TIME_RANGES.find((range) => range.value === days)?.label ?? '自定义时间'}</span>}
+                  <button type="button" className="text-accent hover:underline" onClick={() => { setWorkFilter([]); setKindFilter(''); setDays(defaultDays); setPage(1); }}>清除</button>
+                </div>}
 
                 {topicsQuery.isLoading && <Spinner size="sm" label="正在加载素材…" />}
                 {topicsQuery.isError && <Alert variant="warning" title="素材加载失败">{topicsQuery.error instanceof Error ? topicsQuery.error.message : '请稍后重试'}。已有素材不会因此删除。</Alert>}
@@ -304,7 +314,7 @@ export function TopicLibraryView() {
                 )}
               </section>
 
-              <section className="space-y-2 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+              <section className="topic-history-panel space-y-2 rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--shadow-panel)]">
                 <h2 className="text-sm font-semibold text-ink">最近的采纳与线索</h2>
                 {historyQuery.data?.items.length
                   ? <ul className="space-y-1.5 text-xs text-muted">
@@ -321,7 +331,7 @@ export function TopicLibraryView() {
             </>
           )}
           right={(
-            <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+            <section className="topic-idea-panel space-y-4 rounded-[var(--radius-panel)] bg-surface p-5 shadow-[var(--shadow-panel)]">
               <h2 className="flex items-center gap-2 text-base font-semibold text-ink"><Lightbulb className="h-4 w-4 text-accent" />从素材生成点子</h2>
               <p className="text-sm text-muted">勾选 1～3 条素材效果最好，最多 5 条。可以跨页勾选。</p>
               <p className="text-sm">已选 {selected.length} 条{selected.length > MAX_SELECTED ? '（超过上限，请去掉一些）' : ''}</p>
@@ -353,6 +363,29 @@ export function TopicLibraryView() {
           )}
         />
       </PageContainer>
+
+      <ResponsiveEditOverlay
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        title="筛选话题素材"
+        description="搜索和收藏/使用状态仍留在列表区；这里调整作品、内容类型与时间范围。"
+        footer={<><Button variant="outline" onClick={() => { setDraftWorkFilter([]); setDraftKindFilter(''); setDraftDays(defaultDays); }}>重置条件</Button><Button variant="primary" onClick={applyFilters}>应用筛选</Button></>}
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5"><span className="block text-sm font-medium text-ink">作品</span><TopicWorkFilter value={draftWorkFilter} options={topicsQuery.data?.facets.works ?? []} onChange={setDraftWorkFilter} /></div>
+          <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="topic-kind-filter">内容类型
+            <Select id="topic-kind-filter" aria-label="按内容类型筛选" value={draftKindFilter} onChange={(event) => setDraftKindFilter(event.target.value as TopicKind | '')} className="h-11 text-base font-normal">
+              <option value="">全部类型</option>
+              {(Object.keys(TOPIC_KIND_LABELS) as TopicKind[]).map((kind) => <option key={kind} value={kind}>{TOPIC_KIND_LABELS[kind]}</option>)}
+            </Select>
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="topic-days-filter">时间范围
+            <Select id="topic-days-filter" aria-label="按时间范围筛选" value={String(draftDays)} onChange={(event) => setDraftDays(Number(event.target.value))} className="h-11 text-base font-normal">
+              {TIME_RANGES.map((range) => <option key={range.value} value={range.value}>{range.label}</option>)}
+            </Select>
+          </label>
+        </div>
+      </ResponsiveEditOverlay>
 
       <Drawer
         open={Boolean(detailId)}

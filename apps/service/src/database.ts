@@ -1687,6 +1687,109 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     )`,
     `CREATE INDEX idx_activity_comic_outputs_artifact ON activity_comic_job_outputs(artifact_id)`,
   ] },
+  { version: 44, name: 'story-studio-projects-sessions-and-proposals', statements: [
+    `CREATE TABLE story_projects (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '',
+      revision INTEGER NOT NULL DEFAULT 1, context_settings_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE story_documents (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('outline','world','scene')),
+      title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    `CREATE UNIQUE INDEX idx_story_one_outline ON story_documents(project_id) WHERE kind='outline'`,
+    `CREATE INDEX idx_story_documents_project ON story_documents(project_id,kind,position,id)`,
+    `CREATE TABLE story_characters (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+      source_character_id TEXT, source_version INTEGER,
+      revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(source_character_id,source_version) REFERENCES character_versions(character_id,version) ON DELETE SET NULL
+    )`,
+    `CREATE INDEX idx_story_characters_project ON story_characters(project_id,name,id)`,
+    `CREATE TABLE story_agent_sessions (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      title TEXT NOT NULL, runtime_session_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL CHECK(status IN ('idle','running','interrupted')),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX idx_story_sessions_project ON story_agent_sessions(project_id,updated_at DESC,id)`,
+    `CREATE TABLE story_agent_messages (
+      id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES story_agent_sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+      content TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','completed','interrupted')),
+      idempotency_key TEXT, created_at TEXT NOT NULL,
+      UNIQUE(session_id,idempotency_key)
+    )`,
+    `CREATE INDEX idx_story_messages_session ON story_agent_messages(session_id,created_at,id)`,
+    `CREATE TABLE story_proposals (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES story_agent_sessions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('outline','world','scene','character')),
+      target_id TEXT NOT NULL, base_revision INTEGER NOT NULL,
+      proposed_title TEXT NOT NULL, proposed_body TEXT NOT NULL, reason TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected')),
+      created_at TEXT NOT NULL, decided_at TEXT
+    )`,
+    `CREATE INDEX idx_story_proposals_project ON story_proposals(project_id,status,created_at DESC,id)`,
+  ] },
+  { version: 45, name: 'story-chapters-revisions-and-native-dsh-bridge', foreignKeysOff: true, statements: [
+    `CREATE TABLE story_documents_new (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('outline','world','scene','chapter')),
+      title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`,
+    `INSERT INTO story_documents_new(id,project_id,kind,title,body,position,revision,created_at,updated_at)
+      SELECT id,project_id,kind,title,body,position,revision,created_at,updated_at FROM story_documents`,
+    `DROP TABLE story_documents`,
+    `ALTER TABLE story_documents_new RENAME TO story_documents`,
+    `CREATE UNIQUE INDEX idx_story_one_outline ON story_documents(project_id) WHERE kind='outline'`,
+    `CREATE INDEX idx_story_documents_project ON story_documents(project_id,kind,position,id)`,
+    `CREATE TABLE story_proposals_new (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      session_id TEXT REFERENCES story_agent_sessions(id) ON DELETE CASCADE,
+      operation TEXT NOT NULL CHECK(operation IN ('update','create')),
+      origin TEXT NOT NULL CHECK(origin IN ('legacy','native_dsh')),
+      kind TEXT NOT NULL CHECK(kind IN ('outline','world','scene','chapter','character')),
+      target_id TEXT, base_revision INTEGER, result_entry_id TEXT,
+      proposed_title TEXT NOT NULL, proposed_body TEXT NOT NULL, reason TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected')),
+      created_at TEXT NOT NULL, decided_at TEXT,
+      CHECK((operation='update' AND target_id IS NOT NULL AND base_revision IS NOT NULL) OR
+            (operation='create' AND target_id IS NULL AND base_revision IS NULL AND kind<>'outline'))
+    )`,
+    `INSERT INTO story_proposals_new(id,project_id,session_id,operation,origin,kind,target_id,base_revision,result_entry_id,
+      proposed_title,proposed_body,reason,status,created_at,decided_at)
+      SELECT id,project_id,session_id,'update','legacy',kind,target_id,base_revision,NULL,
+        proposed_title,proposed_body,reason,status,created_at,decided_at FROM story_proposals`,
+    `DROP TABLE story_proposals`,
+    `ALTER TABLE story_proposals_new RENAME TO story_proposals`,
+    `CREATE INDEX idx_story_proposals_project ON story_proposals(project_id,status,created_at DESC,id)`,
+    `CREATE INDEX idx_story_proposals_session ON story_proposals(session_id,created_at DESC)`,
+    `CREATE TABLE story_entry_revisions (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      entry_kind TEXT NOT NULL CHECK(entry_kind IN ('outline','world','scene','chapter','character')),
+      entry_id TEXT NOT NULL, revision INTEGER NOT NULL, snapshot_json TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('baseline','manual','proposal','restore')),
+      proposal_id TEXT REFERENCES story_proposals(id) ON DELETE SET NULL, created_at TEXT NOT NULL,
+      UNIQUE(entry_kind,entry_id,revision)
+    )`,
+    `CREATE INDEX idx_story_entry_revisions_lookup ON story_entry_revisions(project_id,entry_kind,entry_id,revision DESC)`,
+    `INSERT INTO story_entry_revisions(id,project_id,entry_kind,entry_id,revision,snapshot_json,source,proposal_id,created_at)
+      SELECT 'baseline:'||id,project_id,kind,id,revision,
+        json_object('kind',kind,'title',title,'body',body),'baseline',NULL,updated_at FROM story_documents`,
+    `INSERT INTO story_entry_revisions(id,project_id,entry_kind,entry_id,revision,snapshot_json,source,proposal_id,created_at)
+      SELECT 'baseline:'||id,project_id,'character',id,revision,
+        json_object('kind','character','name',name,'notes',notes,'sourceCharacterId',source_character_id,'sourceVersion',source_version),
+        'baseline',NULL,updated_at FROM story_characters`,
+    `CREATE TABLE story_bridge_grants (
+      project_id TEXT PRIMARY KEY REFERENCES story_projects(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, last_used_at TEXT
+    )`,
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

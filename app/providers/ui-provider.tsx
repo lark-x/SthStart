@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { X, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { generateId } from '../lib/uuid';
+import { applyThemeMode, readThemeMode } from '../lib/theme-preference';
 
 export type ToastVariant = 'default' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -48,36 +49,27 @@ const DEFAULT_DURATION: Record<ToastVariant, number> = {
 
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  // 初始值必须与 SSR 渲染一致（false）：localStorage 在挂载后再同步，
+  // 初始值必须与 SSR 渲染一致（暖杏）：localStorage 在挂载后再同步，
   // 否则客户端首帧与服务端 HTML 不匹配，触发 React 水合失配。
-  const [eyeCare, setEyeCare] = useState(false);
+  const [eyeCare, setEyeCare] = useState(true);
 
   useEffect(() => {
-    setEyeCare(localStorage.getItem('sthstart_eye_care_mode') === 'true');
+    let mode: 'warm' | 'neutral' = 'warm';
+    try { mode = readThemeMode((key) => localStorage.getItem(key)); } catch { /* 存储不可用时沿用默认暖杏 */ }
+    setEyeCare(mode === 'warm');
+    applyThemeMode(document.documentElement, mode);
   }, []);
 
   const toggleEyeCare = useCallback((enabled?: boolean) => {
     setEyeCare((prev) => {
       const next = typeof enabled === 'boolean' ? enabled : !prev;
       if (typeof window !== 'undefined') {
-        localStorage.setItem('sthstart_eye_care_mode', String(next));
-        if (next) {
-          document.documentElement.setAttribute('data-eye-care', 'true');
-        } else {
-          document.documentElement.removeAttribute('data-eye-care');
-        }
+        localStorage.setItem('sthstart_theme', next ? 'warm' : 'neutral');
+        applyThemeMode(document.documentElement, next ? 'warm' : 'neutral');
       }
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    if (eyeCare) {
-      document.documentElement.setAttribute('data-eye-care', 'true');
-    } else {
-      document.documentElement.removeAttribute('data-eye-care');
-    }
-  }, [eyeCare]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));

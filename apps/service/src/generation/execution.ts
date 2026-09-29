@@ -711,8 +711,19 @@ export async function executeQueuedTask(
       body: JSON.stringify({ prompt: workflowSnapshot, client_id: taskId }),
       signal: AbortSignal.timeout(30_000),
     });
-  } catch {
-    // Submission outcome unknown: do NOT re-submit!
+  } catch (error) {
+    // Connection refusal happens before a request can be accepted. Timeouts and
+    // dropped connections remain uncertain and must never be auto-resubmitted.
+    const cause = error instanceof Error ? (error as Error & { cause?: { code?: string } }).cause : undefined;
+    if (cause?.code === 'ECONNREFUSED') {
+      const nowErr = nowIso();
+      const message = '无法连接 ComfyUI，请先启动 ComfyUI，并在生成配置中测试连接后重新绘制。';
+      database.connection.prepare("UPDATE generation_tasks SET status='failed', error_code='comfyui_unavailable', error_message=?, upstream_may_continue=0, updated_at=?, finished_at=? WHERE id=?")
+        .run(message, nowErr, nowErr, taskId);
+      recordGenerationEvent(database, { taskId, appId, eventType: 'failed', payload: { errorCode: 'comfyui_unavailable', errorMessage: message } });
+      setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+      return;
+    }
     const nowErr = nowIso();
     database.connection.prepare(
       "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '提交状态不确定，禁止自动重复提交', updated_at = ?, finished_at = ? WHERE id = ?",

@@ -118,7 +118,7 @@ export function Toolbar({ className, children, ...rest }: React.ComponentProps<'
   return (
     <div
       className={cn(
-        'tpl-toolbar rounded-[var(--radius-panel)] border border-border-subtle bg-surface px-3 py-2',
+        'tpl-toolbar rounded-[var(--radius-panel)] bg-surface-raised px-4 py-3 shadow-[var(--shadow-panel)]',
         className,
       )}
       {...rest}

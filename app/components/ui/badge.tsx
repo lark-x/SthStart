@@ -4,7 +4,7 @@ import { cn } from '../../lib/cn';
 
 /** 状态徽标统一走语义状态 token（§3.1），护眼主题自动生效。 */
 export const badgeVariants = cva(
-  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-sm font-medium tracking-wide transition-colors',
+  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide transition-colors',
   {
     variants: {
       variant: {

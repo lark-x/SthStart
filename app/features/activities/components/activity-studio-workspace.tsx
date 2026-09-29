@@ -57,6 +57,10 @@ import { ActivityReflectDialog } from '@/app/features/knowledge/components/activ
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
+import { FormField } from '@/app/components/ui/form-field';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { ShortFieldGrid } from '@/app/components/ui/form-section';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
@@ -101,16 +105,16 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
     searchParams.get('stageId') || undefined
   );
 
-  // 右侧 AI Copilot 侧栏展开状态（默认大屏展开）
-  const [copilotOpen, setCopilotOpen] = useState(true);
+  // 辅助 AI 面板默认收起；用户可在当前标签页中记住自己的展开选择。
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   useEffect(() => {
-    const query = window.matchMedia('(min-width: 1280px)');
-    const syncCopilotToViewport = () => setCopilotOpen(query.matches);
-    syncCopilotToViewport();
-    query.addEventListener('change', syncCopilotToViewport);
-    return () => query.removeEventListener('change', syncCopilotToViewport);
-  }, []);
+    try { setCopilotOpen(sessionStorage.getItem(`sthstart:activity-assistant:${activityId}`) === 'true'); } catch { /* optional session preference */ }
+  }, [activityId]);
+  const changeCopilotOpen = (open: boolean) => {
+    setCopilotOpen(open);
+    try { sessionStorage.setItem(`sthstart:activity-assistant:${activityId}`, String(open)); } catch { /* optional session preference */ }
+  };
 
   // 弹窗与抽屉状态
   const [generationModalOpen, setGenerationModalOpen] = useState(false);
@@ -124,6 +128,10 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   const [reflectOpen, setReflectOpen] = useState(false);
   const [expandedActorId, setExpandedActorId] = useState<string | null>(null);
   const [inspirationOpen, setInspirationOpen] = useState(false);
+  const [activityBasicsOpen, setActivityBasicsOpen] = useState(false);
+  const [activityBasicsDiscardOpen, setActivityBasicsDiscardOpen] = useState(false);
+  const [activityBasicsError, setActivityBasicsError] = useState('');
+  const [activityBasicsDraft, setActivityBasicsDraft] = useState({ title: '', theme: '', location: '', scheduledDate: '' });
 
   // 数据查询
   const {
@@ -185,6 +193,44 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   const commitDraftMutation = useCommitDraft();
 
   const handleUpdateDocument = draft.update;
+
+  const openActivityBasics = () => {
+    if (!document) return;
+    setActivityBasicsDraft({
+      title: document.activity.title,
+      theme: document.activity.theme ?? '',
+      location: document.activity.location ?? '',
+      scheduledDate: document.activity.scheduledDate ?? '',
+    });
+    setActivityBasicsError('');
+    setActivityBasicsOpen(true);
+  };
+
+  const requestCloseActivityBasics = () => {
+    if (!document) { setActivityBasicsOpen(false); return; }
+    const changed = activityBasicsDraft.title !== document.activity.title
+      || activityBasicsDraft.theme !== (document.activity.theme ?? '')
+      || activityBasicsDraft.location !== (document.activity.location ?? '')
+      || activityBasicsDraft.scheduledDate !== (document.activity.scheduledDate ?? '');
+    if (changed) setActivityBasicsDiscardOpen(true);
+    else setActivityBasicsOpen(false);
+  };
+
+  const saveActivityBasics = async () => {
+    if (!document) return;
+    handleUpdateDocument({
+      ...document,
+      activity: {
+        ...document.activity,
+        title: activityBasicsDraft.title.trim(),
+        theme: activityBasicsDraft.theme,
+        location: activityBasicsDraft.location,
+        scheduledDate: activityBasicsDraft.scheduledDate || null,
+      },
+    });
+    if (await draft.flush()) setActivityBasicsOpen(false);
+    else setActivityBasicsError(draft.error || '保存失败。内容仍保留在窗口中，请重试。');
+  };
 
   // 保存新版本
   const handleCommitDraft = async () => {
@@ -544,7 +590,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         </div>
 
         {/* 顶栏中央：五步活动流程导航 */}
-        <nav aria-label="流水线阶段" className="hidden xl:flex items-center gap-1 bg-surface-muted p-1 rounded-[var(--radius-control)] border border-border-default shadow-2xs">
+        <nav aria-label="流水线阶段" className="hidden 2xl:flex items-center gap-1 bg-surface-muted p-1 rounded-[var(--radius-control)] border border-border-default shadow-2xs">
           {PIPELINE_STEPS.map((step) => {
             const Icon = step.icon;
             const isActive = currentStep === step.id;
@@ -630,7 +676,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCopilotOpen(!copilotOpen)}
+            onClick={() => changeCopilotOpen(!copilotOpen)}
             className={`h-8 w-8 p-0 text-muted hover:text-ink ${comicMode ? 'hidden' : ''} ${copilotOpen ? 'text-accent' : ''}`}
             title={copilotOpen ? '收起 AI 助手' : '展开 AI 助手'}
             aria-label={copilotOpen ? '收起 AI 助手' : '展开 AI 助手'}
@@ -640,7 +686,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         </div>
       </header>
 
-      <nav aria-label="活动流程" className="xl:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface px-2 py-1.5">
+      <nav aria-label="活动流程" className="2xl:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface px-2 py-1.5">
         {PIPELINE_STEPS.map((step) => {
           const Icon = step.icon;
           const active = currentStep === step.id;
@@ -730,45 +776,14 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                 </Button>
               </div>
 
-              {/* 基本属性卡片 */}
-              <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-4">
-                <h3 className="text-xs font-bold text-muted uppercase tracking-wider">基本属性</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-semibold text-ink">活动标题</label>
-                    <Input
-                      value={document.activity.title}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, title: e.target.value } })}
-                      className="h-9 text-sm bg-transparent"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-ink">活动主题</label>
-                    <Input
-                      value={document.activity.theme || ''}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, theme: e.target.value } })}
-                      className="h-9 text-sm bg-transparent"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-ink">活动地点</label>
-                    <Input
-                      value={document.activity.location || ''}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, location: e.target.value } })}
-                      className="h-9 text-sm bg-transparent"
-                    />
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-semibold text-ink">活动日期（同步到角色日历）</label>
-                    <Input
-                      type="date"
-                      value={document.activity.scheduledDate || ''}
-                      onChange={(e) => handleUpdateDocument({ ...document, activity: { ...document.activity, scheduledDate: e.target.value || null } })}
-                      className="h-9 text-sm bg-transparent"
-                    />
-                  </div>
+              <section className="flex min-w-0 items-start justify-between gap-4 rounded-[var(--radius-panel)] bg-surface-muted px-4 py-3">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold text-ink">{document.activity.title || '未命名活动'}</h3>
+                  <p className="mt-1 truncate text-sm text-muted">{[document.activity.theme, document.activity.location].filter(Boolean).join(' · ') || '尚未填写主题或地点'}</p>
+                  <p className="mt-0.5 text-xs text-muted">{document.activity.scheduledDate ? `活动日期 · ${document.activity.scheduledDate}` : '未排期'}</p>
                 </div>
-              </div>
+                <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={openActivityBasics}>编辑活动资料</Button>
+              </section>
 
               {/* 参与角色列表（改用清晰卡片，替代原生 details） */}
               <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
@@ -903,8 +918,9 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               />
 
               {/* 高级选项：创作偏好 */}
-              <div className="p-4 rounded-[var(--radius-panel)] bg-surface border border-border-default space-y-3">
-                <h3 className="text-xs font-bold text-muted uppercase tracking-wider">高级选项：创作偏好与模板</h3>
+              <details className="rounded-[var(--radius-panel)] bg-surface-muted p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-ink">创作偏好与模板（高级）</summary>
+                <div className="mt-4">
                 <ActivityCreationProfile
                   activityId={activity.id}
                   headVersion={activity.headVersion}
@@ -915,7 +931,8 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                     void refetchDraft();
                   }}
                 />
-              </div>
+                </div>
+              </details>
             </div>
           )}
 
@@ -1124,7 +1141,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                   <Badge variant="outline" className={`text-[10px] ${generation.running ? 'bg-amber-500/10 text-amber-600 border-amber-500/30 animate-pulse' : 'bg-purple-500/10 text-purple-600 border-purple-500/30'}`}>
                     {generation.running ? '任务进行中' : generation.failed ? '生成失败' : !appLlmStatus?.text?.ready ? '模型未就绪' : generation.candidates.length ? '候选待审' : '待命'}
                   </Badge>
-                  <button type="button" className="xl:hidden rounded border border-border-default px-2 py-1 text-xs text-muted hover:text-ink" aria-label="收起 AI 助手" onClick={() => setCopilotOpen(false)}>收起</button>
+                  <button type="button" className="xl:hidden rounded border border-border-default px-2 py-1 text-xs text-muted hover:text-ink" aria-label="收起 AI 助手" onClick={() => changeCopilotOpen(false)}>收起</button>
                 </div>
               </div>
 
@@ -1404,6 +1421,37 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
       </div>
 
       {/* 模态框与抽屉 */}
+      <ResponsiveEditOverlay
+        open={activityBasicsOpen}
+        onOpenChange={(open) => { if (open) setActivityBasicsOpen(true); else requestCloseActivityBasics(); }}
+        title="编辑活动资料"
+        description="修改将保存到活动草稿；日期会同步用于角色日历。"
+        footer={<><Button type="button" variant="outline" onClick={requestCloseActivityBasics}>取消</Button><Button type="button" disabled={!activityBasicsDraft.title.trim()} onClick={() => void saveActivityBasics()}>保存资料</Button></>}
+      >
+        <div className="space-y-5">
+          <FormField label="活动标题" required>
+            <Input value={activityBasicsDraft.title} onChange={(event) => setActivityBasicsDraft((value) => ({ ...value, title: event.target.value }))} maxLength={120} />
+          </FormField>
+          <ShortFieldGrid>
+            <FormField label="活动主题"><Input value={activityBasicsDraft.theme} onChange={(event) => setActivityBasicsDraft((value) => ({ ...value, theme: event.target.value }))} /></FormField>
+            <FormField label="活动地点"><Input value={activityBasicsDraft.location} onChange={(event) => setActivityBasicsDraft((value) => ({ ...value, location: event.target.value }))} /></FormField>
+          </ShortFieldGrid>
+          <FormField label="活动日期" hint="可留空；填写后会同步到角色日历。">
+            <Input type="date" value={activityBasicsDraft.scheduledDate} onChange={(event) => setActivityBasicsDraft((value) => ({ ...value, scheduledDate: event.target.value }))} />
+          </FormField>
+          {(activityBasicsError || draft.error) && <Alert variant="danger" title="资料尚未保存">{activityBasicsError || draft.error}</Alert>}
+        </div>
+      </ResponsiveEditOverlay>
+      <ConfirmDialog
+        open={activityBasicsDiscardOpen}
+        onOpenChange={setActivityBasicsDiscardOpen}
+        title="放弃活动资料修改？"
+        description="当前弹窗中的临时修改尚未保存，关闭后将丢弃这些修改。"
+        cancelLabel="继续编辑"
+        confirmLabel="放弃修改"
+        onConfirm={() => { setActivityBasicsOpen(false); setActivityBasicsError(''); }}
+      />
+
       {reflectOpen && (
         <ActivityReflectDialog
           open={reflectOpen}
@@ -1433,7 +1481,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           onStartGeneration={generation.start}
           onReviewCandidate={(candidateId) => {
             setReviewCandidateId(candidateId);
-            setCopilotOpen(true);
+            changeCopilotOpen(true);
             setGenerationModalOpen(false);
           }}
           canGenerate={Boolean(appLlmStatus?.text?.ready && activeProfile && stages.length && !profileSaving && !generation.running && !generation.starting)}

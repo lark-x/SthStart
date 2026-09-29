@@ -21,12 +21,12 @@ export function EyeCareToggle({ className }: { className?: string }) {
           : 'bg-surface hover:bg-surface-raised text-muted hover:text-ink border border-border-default shadow-2xs',
         className
       )}
-      title={eyeCare ? '关闭暖杏护眼模式' : '开启暖杏护眼模式'}
-      aria-label={eyeCare ? '关闭暖杏护眼模式' : '开启暖杏护眼模式'}
+      title={eyeCare ? '切换到中性主题' : '切换到暖杏主题'}
+      aria-label={eyeCare ? '切换到中性主题' : '切换到暖杏主题'}
       aria-pressed={eyeCare}
     >
       <Eye className={cn('h-3.5 w-3.5 shrink-0', eyeCare ? 'text-accent-dark' : 'text-muted')} aria-hidden="true" />
-      <span className="hidden sm:inline">{eyeCare ? '暖杏护眼' : '护眼'}</span>
+      <span className="hidden sm:inline">{eyeCare ? '暖杏' : '中性'}</span>
     </button>
   );
 }
