@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { ActivityLora, GenerationPriority, GenerationProgress, GenerationTaskDescriptor } from '@sthstart/contracts';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
-import { createArtifactReference, persistArtifact, removeArtifact, streamUploadArtifact } from '../artifacts.js';
+import { createArtifactReference, persistArtifact, readArtifact, removeArtifact, streamUploadArtifact } from '../artifacts.js';
 import type { SecretStore } from '../security.js';
+import { executeCloudGeneration, ingestCloudImagesToArtifacts } from './cloud-adapter.js';
+import { executionRegistryFor } from './execution-registry.js';
 import {
   confirmWorkerTask,
   downloadWorkerOutput,
@@ -13,7 +16,7 @@ import {
   submitWorkerTask,
   WORKER_OUTPUT_ID_PATTERN,
 } from '../worker.js';
-import { activeGenerationExecutions, generationExecutionsStopped, recordGenerationEvent } from './events.js';
+import { activeGenerationExecutions, generationExecutionsFor, generationExecutionsStopped, recordGenerationEvent } from './events.js';
 import { generationError, sanitizeErrorMessage } from './errors.js';
 import { computeRequestHash, injectActivityLoras, renderWorkflowSnapshot } from './workflows.js';
 import { mergeGenerationValues, validateRequiredValues } from './configuration.js';
@@ -231,7 +234,7 @@ export async function createGenerationTask(
 
   validateInputArtifacts(database, options.appId, inputArtifacts, resolved.workflow.inputCapabilities);
   for (const input of inputArtifacts) {
-    if (!resolved.workflow.nodeBindings[input.inputKey]) {
+    if (resolved.engine.kind !== 'cloud' && !resolved.workflow.nodeBindings[input.inputKey]) {
       throw generationError('input_binding_not_found', `工作流没有为输入 ${input.inputKey} 配置节点绑定。`);
     }
   }
@@ -427,8 +430,9 @@ export async function createGenerationTask(
         console.error(`[generation] task ${id} background error:`, err);
       }
     })
-    .finally(() => activeGenerationExecutions.delete(p));
-  activeGenerationExecutions.add(p);
+    .finally(() => { generationExecutionsFor(database).delete(p); activeGenerationExecutions.delete(p); });
+  generationExecutionsFor(database).add(p);
+    activeGenerationExecutions.add(p);
 
   return getGenerationTask(database, id, options.appId)!;
 }
@@ -479,7 +483,7 @@ export async function executeQueuedTask(
     return;
   }
 
-  if (engineRow.kind !== "comfyui" && engineRow.kind !== "worker") {
+  if (engineRow.kind !== 'comfyui' && engineRow.kind !== 'worker' && engineRow.kind !== 'cloud') {
     const nowErr = nowIso();
     database.connection.prepare(
       "UPDATE generation_tasks SET status = 'failed', error_code = 'unsupported_engine', error_message = '暂不支持该类型的生成引擎', updated_at = ?, finished_at = ? WHERE id = ?",
@@ -494,7 +498,7 @@ export async function executeQueuedTask(
     return;
   }
 
-  const concurrencyLimit = engineRow.kind === 'worker' ? 1 : Math.max(1, Number(engineRow.concurrency_limit || 1));
+  const concurrencyLimit = engineRow.kind === 'worker' ? 1 : Math.max(1, Number(engineRow.concurrency_limit || (engineRow.kind === 'cloud' ? 2 : 1)));
   const leaseOwner = randomUUID();
   const leaseExpiresAt = new Date(Date.now() + 60_000).toISOString();
   const now = nowIso();
@@ -578,8 +582,8 @@ export async function executeQueuedTask(
     return;
   }
   const versionBindings = database.connection.prepare('SELECT node_bindings_json FROM generation_workflow_versions WHERE workflow_id = ? AND version = ?')
-    .get(String(taskRow.workflow_id), Number(taskRow.workflow_version)) as { node_bindings_json: string };
-  const bindings = JSON.parse(versionBindings.node_bindings_json) as Record<string, string[]>;
+    .get(String(taskRow.workflow_id), Number(taskRow.workflow_version)) as { node_bindings_json: string } | undefined;
+  const bindings = JSON.parse(versionBindings?.node_bindings_json ?? '{}') as Record<string, string[]>;
   const mappings: Record<string, string> = {};
   for (const input of parseGenerationRequestParams(taskRow.request_params_json).inputArtifacts) {
     let value: unknown = workflowSnapshot;
@@ -591,6 +595,149 @@ export async function executeQueuedTask(
     actualInputs: workflowSnapshot, uploadedFileMappings: mappings,
     requestSummary: { engineId, workflowId: taskRow.workflow_id, workflowVersion: taskRow.workflow_version, clientId: taskId, phaseMeaning: 'dispatch_started_not_acknowledged' },
   } });
+  if (engineRow.kind === 'cloud') {
+    const abortController = new AbortController();
+    const taskPromise = executionRegistryFor(database).start({ taskId, appId, kind: 'cloud_generation', abortController }, async () => {
+      try {
+        const nowRunning = nowIso();
+        database.connection.prepare(
+          "UPDATE generation_tasks SET status = 'running', progress_json = ?, updated_at = ? WHERE id = ?",
+        ).run(JSON.stringify({ value: null, stage: 'generating', source: 'cloud' }), nowRunning, taskId);
+        recordGenerationEvent(database, { taskId, appId, eventType: 'running', payload: { status: 'running', source: 'cloud' } });
+
+        const parsedParams = parseGenerationRequestParams(taskRow.request_params_json);
+        const userInputs = parsedParams.inputs;
+        const inputArtifacts = parsedParams.inputArtifacts;
+
+        const prompt = String(userInputs.prompt || userInputs.positivePrompt || '').trim();
+        const negativePrompt = String(userInputs.negativePrompt || '').trim() || undefined;
+        const size = typeof userInputs.size === 'string' ? userInputs.size : '1024x1024';
+        const quality = typeof userInputs.quality === 'string' ? userInputs.quality : undefined;
+        const format = typeof userInputs.format === 'string' ? userInputs.format : undefined;
+
+        let workflowDef: Record<string, unknown> = {};
+        try {
+          workflowDef = JSON.parse(String(taskRow.workflow_snapshot_json || '{}')) as Record<string, unknown>;
+        } catch {}
+
+        const model = String(userInputs.modelId || userInputs.model || workflowDef.modelId || workflowDef.model || '').trim();
+        if (!model) throw new Error('cloud_recipe_model_required');
+        const operation = (userInputs.operation || workflowDef.operation || (inputArtifacts.length > 0 ? 'image-to-image' : 'text-to-image')) as 'text-to-image' | 'image-to-image';
+
+        let referenceImage: { buffer: Buffer; contentType: string; filename?: string } | null = null;
+        let maskImage: { buffer: Buffer; contentType: string; filename?: string } | null = null;
+
+        if (inputArtifacts.length > 0) {
+          const refArtifact = inputArtifacts.find((a) => a.inputKey === 'referenceImage' || a.inputKey === 'image' || a.inputKey === 'init_image') || inputArtifacts[0];
+          const art = await readArtifact(database, refArtifact.artifactId, config.artifactDirectory);
+          if (art?.localPath) {
+            const buf = await readFile(art.localPath);
+            referenceImage = {
+              buffer: buf,
+              contentType: art.contentType || 'image/png',
+              filename: art.originalName || 'reference.png',
+            };
+          }
+
+          const maskArtItem = inputArtifacts.find((a) => a.inputKey === 'mask' || a.inputKey === 'maskImage');
+          if (maskArtItem) {
+            const maskArt = await readArtifact(database, maskArtItem.artifactId, config.artifactDirectory);
+            if (maskArt?.localPath) {
+              const buf = await readFile(maskArt.localPath);
+              maskImage = {
+                buffer: buf,
+                contentType: maskArt.contentType || 'image/png',
+                filename: maskArt.originalName || 'mask.png',
+              };
+            }
+          }
+        }
+
+        const cloudRes = await executeCloudGeneration({
+          engine: {
+            id: engineId,
+            baseUrl: engineBaseUrl,
+            secret,
+            name: typeof engineRow.name === 'string' ? engineRow.name : undefined,
+          },
+          model,
+          operation,
+          prompt,
+          negativePrompt,
+          size: typeof userInputs.size === 'string' ? size : typeof workflowDef.size === 'string' ? workflowDef.size : size,
+          quality: quality ?? (typeof workflowDef.quality === 'string' ? workflowDef.quality : undefined),
+          format: format ?? (typeof workflowDef.format === 'string' ? workflowDef.format : undefined),
+          n: typeof userInputs.n === 'number' ? userInputs.n : undefined,
+          customParams: workflowDef.customParams && typeof workflowDef.customParams === 'object' ? workflowDef.customParams as Record<string, unknown> : {},
+          referenceImage,
+          maskImage,
+          signal: abortController.signal,
+          timeoutMs: 90000,
+          fetchFn: fetcher,
+        });
+
+        if (abortController.signal.aborted) return;
+
+        const persistedArtifacts = await ingestCloudImagesToArtifacts(config, database, appId, taskId, cloudRes.images);
+        const nowDone = nowIso();
+        const updateResult = database.connection.prepare(
+          "UPDATE generation_tasks SET status = 'succeeded', progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ? AND status = 'running'",
+        ).run(JSON.stringify({ value: 1, stage: 'completed', source: 'cloud' }), nowDone, nowDone, taskId);
+
+        if (Number(updateResult.changes) > 0) {
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'succeeded',
+            payload: {
+              status: 'succeeded',
+              count: persistedArtifacts.length,
+              source: 'cloud',
+              artifactIds: persistedArtifacts.map((a) => a.artifactId),
+            },
+          });
+        }
+      } catch (err) {
+        if (abortController.signal.aborted) {
+          const currentTask = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+          if (currentTask?.status === 'cancelled') return;
+        }
+
+        const nowErr = nowIso();
+        const safeMessage = sanitizeErrorMessage(err instanceof Error ? err.message : String(err)).slice(0, 300);
+        const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError' || err.message.includes('timeout'));
+
+        if (isTimeout) {
+          database.connection.prepare(
+            "UPDATE generation_tasks SET status = 'abandoned', error_code = 'cloud_timeout_uncertain', error_message = ?, upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ? AND status IN ('submitting', 'running')",
+          ).run(`云端生成超时，未确认结果（不自动重试以防重复计费）：${safeMessage}`, nowErr, nowErr, taskId);
+
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'abandoned',
+            payload: { errorCode: 'cloud_timeout_uncertain', errorMessage: safeMessage },
+          });
+        } else {
+          database.connection.prepare(
+            "UPDATE generation_tasks SET status = 'failed', error_code = 'cloud_request_failed', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ? AND status IN ('submitting', 'running')",
+          ).run(safeMessage, nowErr, nowErr, taskId);
+
+          recordGenerationEvent(database, {
+            taskId,
+            appId,
+            eventType: 'failed',
+            payload: { errorCode: 'cloud_request_failed', errorMessage: safeMessage },
+          });
+        }
+      } finally {
+        setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+      }
+    });
+    await taskPromise;
+    return;
+  }
+
   if (engineRow.kind === 'worker') {
     let outputDeclarations: string[] = [];
     try {
@@ -1400,6 +1547,16 @@ export async function cancelGenerationTask(
   const engine = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(String(task.engine_id)) as Record<string, unknown> | undefined;
   const providerTaskId = task.provider_task_id ? String(task.provider_task_id) : null;
 
+  if (engine?.kind === 'cloud') {
+    executionRegistryFor(database).abort(taskId, 'user_cancelled');
+    database.connection.prepare(
+      "UPDATE generation_tasks SET status = 'cancelled', updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(now, now, taskId);
+    recordGenerationEvent(database, { taskId, appId, eventType: "cancelled", payload: { status: "cancelled" } });
+    setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
+    return getGenerationTask(database, taskId, appId)!;
+  }
+
   if (engine?.kind === 'worker') {
     database.connection.prepare(
       "UPDATE generation_tasks SET status = 'abandoned', error_code = 'worker_cancel_not_supported', error_message = 'Windows Worker 任务已停止本地跟踪；远端任务可能仍在运行', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
@@ -1504,6 +1661,11 @@ export async function retryGenerationTask(
     throw err;
   }
 
+  if (['submission_outcome_unknown', 'cloud_timeout_uncertain'].includes(String(original.error_code)) && !newIdempotencyKey?.trim()) {
+    const err = new Error('上游执行结果未确认，请先核实结果，并显式提供新的幂等键再提交。');
+    (err as { code?: string }).code = 'not_retryable';
+    throw err;
+  }
   const originalStatus = String(original.status);
   if (!["failed", "abandoned", "cancelled"].includes(originalStatus)) {
     const err = new Error("只有处于失败、已放弃或已取消终态的任务才可重试。");
@@ -1554,7 +1716,8 @@ export async function scheduleQueuedTasks(
           console.error(`[generation] scheduled task ${row.id} error:`, err);
         }
       })
-      .finally(() => activeGenerationExecutions.delete(p));
+      .finally(() => { generationExecutionsFor(database).delete(p); activeGenerationExecutions.delete(p); });
+    generationExecutionsFor(database).add(p);
     activeGenerationExecutions.add(p);
   }
   } catch (err) {
@@ -1649,8 +1812,9 @@ export async function reconcileGenerationTasks(
             console.error(`[generation] reconcile queued task ${taskId} error:`, err);
           }
         })
-        .finally(() => activeGenerationExecutions.delete(p));
-      activeGenerationExecutions.add(p);
+        .finally(() => { generationExecutionsFor(database).delete(p); activeGenerationExecutions.delete(p); });
+      generationExecutionsFor(database).add(p);
+    activeGenerationExecutions.add(p);
       recoveredCount++;
     } else if (status === "submitting" && !task.provider_task_id) {
       const now = nowIso();
@@ -1674,8 +1838,9 @@ export async function reconcileGenerationTasks(
             console.error(`[generation] reconcile poll task ${taskId} error:`, err);
           }
         })
-        .finally(() => activeGenerationExecutions.delete(p));
-      activeGenerationExecutions.add(p);
+        .finally(() => { generationExecutionsFor(database).delete(p); activeGenerationExecutions.delete(p); });
+      generationExecutionsFor(database).add(p);
+    activeGenerationExecutions.add(p);
       recoveredCount++;
     }
   }

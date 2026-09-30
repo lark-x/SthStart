@@ -56,7 +56,9 @@ export function SplitPanes({
     const update = () => {
       // 用文档坐标：页面滚动时 rect.top 会变，但文档位置不变，数值才稳定。
       const top = el.getBoundingClientRect().top + window.scrollY;
-      const available = Math.max(MIN_AVAILABLE, window.innerHeight - top - BOTTOM_GUTTER);
+      const available = Math.max(0, window.innerHeight - top - BOTTOM_GUTTER);
+      // 矮窗口改用自然文档滚动，不能用最小值把两栏强行撑出视口。
+      el.dataset.short = String(available < MIN_AVAILABLE);
       // 窗口只改变高度时 top 不变，也必须更新滚动边界。
       if (Math.abs(available - lastAvailable) < 1) return;
       lastAvailable = available;

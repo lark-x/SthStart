@@ -149,6 +149,108 @@ export const ProviderProfileSchema = Type.Object({
 });
 export type ProviderProfile = Static<typeof ProviderProfileSchema>;
 
+export const ServiceConnectionKindSchema = Type.Union([
+  Type.Literal('openai-compatible-text'),
+  Type.Literal('openai-compatible-image'),
+  Type.Literal('comfyui'),
+  Type.Literal('worker'),
+  Type.Literal('vector'),
+]);
+export type ServiceConnectionKind = Static<typeof ServiceConnectionKindSchema>;
+
+export const ServiceConnectionSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  kind: ServiceConnectionKindSchema,
+  baseUrl: Type.String(),
+  credentialAccount: Type.Union([Type.String(), Type.Null()]),
+  hasCredential: Type.Boolean(),
+  credentialSource: Type.Union([Type.Literal('keyring'), Type.Literal('environment'), Type.Literal('none')]),
+  timeoutMs: Type.Integer({ minimum: 1000, maximum: 600000 }),
+  headers: Type.Record(Type.String(), Type.String()),
+  options: Type.Record(Type.String(), Type.Unknown()),
+  enabled: Type.Boolean(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type ServiceConnection = Static<typeof ServiceConnectionSchema>;
+
+export const ModelCapabilitySchema = LlmModelCapabilitySchema;
+export type ModelCapability = LlmModelCapability;
+
+export const ModelProfileSchema = Type.Object({
+  id: Type.String(),
+  connectionId: Type.String(),
+  name: Type.String(),
+  modelId: Type.String(),
+  capabilities: Type.Array(LlmModelCapabilitySchema),
+  contextLength: Type.Union([Type.Integer(), Type.Null()]),
+  maxOutputTokens: Type.Union([Type.Integer(), Type.Null()]),
+  defaultParams: Type.Record(Type.String(), Type.Unknown()),
+  advancedJson: Type.Record(Type.String(), Type.Unknown()),
+  testStatus: Type.Union([Type.Literal('untested'), Type.Literal('passed'), Type.Literal('failed')]),
+  lastTestedAt: Type.Union([Type.String(), Type.Null()]),
+  enabled: Type.Boolean(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+export type ModelProfile = Static<typeof ModelProfileSchema>;
+
+export const PurposeBindingSchema = Type.Object({
+  id: Type.String(),
+  appId: Type.String(),
+  purposeKey: Type.String(),
+  targetType: Type.Union([Type.Literal('model'), Type.Literal('preset')]),
+  targetId: Type.String(),
+  inheritAppDefault: Type.Boolean(),
+  updatedAt: Type.String(),
+});
+export type PurposeBinding = Static<typeof PurposeBindingSchema>;
+
+export const ConnectionTestResultSchema = Type.Object({
+  success: Type.Boolean(),
+  latencyMs: Type.Number(),
+  statusCode: Type.Union([Type.Integer(), Type.Null()]),
+  message: Type.Union([Type.String(), Type.Null()]),
+  discoveredModels: Type.Optional(Type.Array(Type.String())),
+});
+export type ConnectionTestResult = Static<typeof ConnectionTestResultSchema>;
+
+export const ModelInferenceTestResultSchema = Type.Object({
+  success: Type.Boolean(),
+  latencyMs: Type.Number(),
+  output: Type.Union([Type.String(), Type.Null()]),
+  tokenUsage: Type.Union([Type.Record(Type.String(), Type.Number()), Type.Null()]),
+  error: Type.Union([Type.String(), Type.Null()]),
+  aiCallId: Type.Union([Type.String(), Type.Null()]),
+});
+export type ModelInferenceTestResult = Static<typeof ModelInferenceTestResultSchema>;
+
+export const DiscoveredModelListSchema = Type.Object({
+  models: Type.Array(Type.String()),
+  endpoint: Type.String(),
+});
+export type DiscoveredModelList = Static<typeof DiscoveredModelListSchema>;
+
+export const CloudRecipeOperationSchema = Type.Union([
+  Type.Literal('text-to-image'),
+  Type.Literal('image-to-image'),
+]);
+export type CloudRecipeOperation = Static<typeof CloudRecipeOperationSchema>;
+
+export const CloudRecipeDefinitionSchema = Type.Object({
+  type: Type.Literal('cloud_recipe'),
+  modelId: Type.String(),
+  operation: CloudRecipeOperationSchema,
+  size: Type.Optional(Type.String()),
+  quality: Type.Optional(Type.String()),
+  format: Type.Optional(Type.String()),
+  referenceAssetHandling: Type.Optional(Type.String()),
+  customParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+export type CloudRecipeDefinition = Static<typeof CloudRecipeDefinitionSchema>;
+
+
 export const AppLlmAssignmentSchema = Type.Object({
   appId: Type.String(),
   textProfileId: Type.Union([Type.String(), Type.Null()]),

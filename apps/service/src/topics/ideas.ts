@@ -4,7 +4,7 @@ import type {
 } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile } from '../providers.js';
 import { resolveAppLlmBindingStatus } from '../llm-status.js';
 import { callLlm } from '../activities/text-jobs.js';
 import { parseAiJsonOutput } from '../activities/prompts.js';
@@ -223,18 +223,24 @@ export async function runIdeaBatch(
   const ideas = new IdeaStore(options.database);
   ideas.updateBatch(batch.id, { status: 'running' });
   try {
-    const bindingStatus = await resolveAppLlmBindingStatus(options.database, options.secrets, 'activities', 'text');
-    const profile = bindingStatus.ready ? await resolveAssignedLlmProfile(options.database, options.secrets, 'activities', 'text') : null;
-    if (!profile) throw new Error('文本模型未就绪，请先在公共服务中为活动工作室绑定文本模型。');
-    const raw = await callLlm(profile, buildIdeaPrompt({
-      topics: input.topics,
-      requirement: batch.requirement,
-      leadCharacterName: batch.leadCharacterName,
-      activityType: batch.activityType,
-      ideaCount: input.ideaCount,
-      variantSeed: input.variantSeed,
-      previousIdeas: batch.ideas,
-    }), options.fetcher ?? fetch, undefined, { database: options.database, feature: 'topic-ideas', businessEvent: 'topics.ideas.generate', objectType: 'idea-batch', objectId: batch.id });
+    const profile = await resolveEffectiveModelProfile(options.database, options.secrets, 'topics', 'ideas');
+    if (!profile) throw new Error('文本模型未就绪，请先在公共服务中为话题或活动工作室绑定文本模型。');
+    const raw = await callLlm(
+      profile,
+      buildIdeaPrompt({
+        topics: input.topics,
+        requirement: batch.requirement,
+        leadCharacterName: batch.leadCharacterName,
+        activityType: batch.activityType,
+        ideaCount: input.ideaCount,
+        variantSeed: input.variantSeed,
+        previousIdeas: batch.ideas,
+      }),
+      options.fetcher ?? fetch,
+      undefined,
+      { database: options.database, feature: 'topic-ideas', businessEvent: 'topics.ideas.generate', objectType: 'idea-batch', objectId: batch.id, applicationId: 'topics' },
+      { systemPrompt: '你是一名创意策划总监，擅长根据热点题材与角色设定发散出富有戏剧张力的活动点子。', jsonMode: true }
+    );
     const parsed = parseIdeas(raw, input.ideaCount);
     if (parsed.length !== input.ideaCount || parsed.some(idea => !idea.overview || idea.stages.length < 2)) throw new Error('模型未返回完整的三个点子与阶段，请重试。');
     // 追加模式保留前一批候选。

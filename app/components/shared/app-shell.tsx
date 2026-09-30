@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo } from 'lucide-react';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp } from './navigation';
 import { EyeCareToggle } from './eye-care-toggle';
@@ -72,6 +72,7 @@ function serverCollapsedPref() {
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const collapsedPref = useSyncExternalStore(subscribeNavPref, readCollapsedPref, serverCollapsedPref);
   const [mobileCollapsed, setMobileCollapsed] = useState<boolean | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -85,7 +86,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const collapsed = mobileCollapsed ?? collapsedPref;
   const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
   const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
-  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio || isStoryWorkspace;
+  const isNarrativeFocus = pathname === '/apps/narrative' && (searchParams.get('view') === 'review' || (!searchParams.has('project') && !['research', 'import'].includes(searchParams.get('mode') ?? 'read')));
+  const isNotebookEditor = pathname.startsWith('/apps/notebook/') && pathname !== '/apps/notebook/offline';
+  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio || isStoryWorkspace || isNotebookEditor || isNarrativeFocus;
 
   const toggleCollapsed = useCallback(() => {
     setMobileCollapsed((prev) => {
@@ -105,23 +108,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (restoreFocus) triggerRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const handleOpenNav = () => setDrawerOpen(true);
+    const handleOpenTasks = () => setTaskDrawerOpen(true);
+    window.addEventListener('sthstart:open-nav-drawer', handleOpenNav);
+    window.addEventListener('sthstart:open-task-drawer', handleOpenTasks);
+    return () => {
+      window.removeEventListener('sthstart:open-nav-drawer', handleOpenNav);
+      window.removeEventListener('sthstart:open-task-drawer', handleOpenTasks);
+    };
+  }, []);
+
   useOverlayAccessibility({
-    open: drawerOpen && !embed,
+    open: drawerOpen,
     onRequestClose: closeDrawer,
     containerRef: drawerRef,
     initialFocusRef: closeButtonRef,
   });
 
-  // 手机旋转/窗口放大进入桌面后，移除遮罩并释放滚动锁。
+  // 手机旋转/窗口放大进入桌面后，移除遮罩并释放滚动锁（非全屏工作区模式）。
   useEffect(() => {
-    if (!drawerOpen) return;
+    if (!drawerOpen || embed) return;
     const desktop = window.matchMedia('(min-width: 1024px)');
     const onDesktop = () => {
       if (desktop.matches) closeDrawer(false);
     };
     desktop.addEventListener('change', onDesktop);
     return () => desktop.removeEventListener('change', onDesktop);
-  }, [drawerOpen, closeDrawer]);
+  }, [drawerOpen, embed, closeDrawer]);
 
   const active = currentApp(pathname);
   const pageTitle = active ? active.title : NAV_PORTAL.title;
@@ -132,6 +146,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <span className="shell-brand-mark" aria-hidden="true">S</span>
         <span className="shell-brand-text">SthStart</span>
       </Link>
+
+      <button
+        type="button"
+        className="shell-nav-link w-full text-left"
+        onClick={() => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
+        }}
+        title="搜索与命令 (Cmd+K)"
+        aria-label="搜索与命令快捷键"
+      >
+        <Search className="shell-nav-icon" aria-hidden="true" />
+        <span className="shell-nav-text flex-1">搜索与命令</span>
+        <kbd className="shell-nav-text rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-nav-muted">⌘K</kbd>
+      </button>
 
       <nav className="shell-nav" aria-label="主导航">
         <div className="shell-nav-group">
@@ -215,7 +243,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (embed) {
     return (
       <div className="shell-root" data-embed="true">
+        <AutoHideScrollbars />
         <div className="shell-main">{children}</div>
+        {drawerOpen && (
+          <>
+            <div className="shell-drawer-backdrop" onClick={() => closeDrawer()} aria-hidden="true" />
+            <div className="shell-drawer" ref={drawerRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="导航">
+              <button
+                ref={closeButtonRef}
+                type="button"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+                onClick={() => closeDrawer()}
+                aria-label="关闭导航"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+              {navContent}
+            </div>
+          </>
+        )}
+        <TaskDrawer isOpen={taskDrawerOpen} onClose={() => setTaskDrawerOpen(false)} />
       </div>
     );
   }

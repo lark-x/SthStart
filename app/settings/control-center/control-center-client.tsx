@@ -194,7 +194,7 @@ export function ControlCenter() {
   return (
     <PageContainer width="settings" className="space-y-4 py-6">
       <PageHeader
-        title="邻舍运行控制中心"
+        title="控制中心"
         description="统一管理邻舍主服务、ComfyUI、向量数据库与生图依赖，掌控实时日志与自启状态。"
         actions={
           <div className="flex items-center gap-2">
@@ -235,7 +235,7 @@ export function ControlCenter() {
           { id: 'runtime', label: '自启与服务', icon: Server },
           { id: 'creative', label: '创作扩展', icon: Sliders },
           { id: 'models', label: '模型接入', icon: Cpu },
-          { id: 'story-dsh', label: '剧情 DSH', icon: BookOpen },
+          { id: 'story-dsh', label: '创作代理', icon: BookOpen },
           { id: 'logs', label: '实时日志', icon: Terminal },
         ].map((item) => ({
           id: item.id,

@@ -169,8 +169,16 @@ export async function runResearch(
         });
         return;
       }
-      if (cancelled()) return;
-      const questions = parseQuestions(await callLlm(profile, buildResearchPrompt(input), options.fetcher ?? fetch, undefined, { database, feature: 'mcp-research', businessEvent: 'mcp.research.plan', objectType: 'research-task', objectId: task.id }));
+      const questions = parseQuestions(
+        await callLlm(
+          profile,
+          buildResearchPrompt(input),
+          options.fetcher ?? fetch,
+          undefined,
+          { database, feature: 'mcp-research', businessEvent: 'mcp.research.plan', objectType: 'research-task', objectId: task.id, applicationId: 'mcp' },
+          { systemPrompt: '你是一名严肃求证的文献调研员，专门根据企划目标制定待查证的核心问题。', jsonMode: true }
+        )
+      );
       if (cancelled()) return;
       const akashaAdapter = createAkashaResearchAdapter(options);
       research.updateTask(task.id, { progressLabel: '正在搜索关系资料…' });
@@ -229,7 +237,17 @@ export async function runResearch(
               const searchTool = tools.find(tool => /search|query|find|搜索|检索/i.test(tool.name + ' ' + tool.description));
               const readTool = tools.find(tool => /read|detail|fetch|get|读取|正文/i.test(tool.name + ' ' + tool.description) && tool !== searchTool);
               if (!searchTool) throw new Error('没有可用的检索工具，请检查允许调用的工具');
-              const generateArgs = async (prompt: string) => parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database, feature: 'mcp-research', businessEvent: 'mcp.research.tool_arguments', objectType: 'research-task', objectId: task.id }));
+              const generateArgs = async (prompt: string) =>
+                parseAiJsonOutput<unknown>(
+                  await callLlm(
+                    profile,
+                    prompt,
+                    options.fetcher ?? fetch,
+                    undefined,
+                    { database, feature: 'mcp-research', businessEvent: 'mcp.research.tool_arguments', objectType: 'research-task', objectId: task.id, applicationId: 'mcp' },
+                    { systemPrompt: '你是一名文献检索专家，负责为外部工具生成精确的结构化查询参数。', jsonMode: true }
+                  )
+                );
               const args = await researchToolArguments(searchTool, question.keyword, question.work || input.leadWork, undefined, generateArgs);
               if (cancelled() || Date.now() > deadline) break;
               toolCalls += 1;
@@ -387,7 +405,14 @@ async function organizeCandidates(
   evidence: ResearchEvidence[],
   database: ServiceDatabase,
 ): Promise<{ characters: ResearchCharacterCandidate[]; locations: ResearchLocationCandidate[] }> {
-  const raw = await callLlm(profile, buildCandidatesPrompt(input, evidence), options.fetcher ?? fetch, undefined, { database, feature: 'mcp-research', businessEvent: 'mcp.research.organize_candidates', objectType: 'research-session' });
+  const raw = await callLlm(
+    profile,
+    buildCandidatesPrompt(input, evidence),
+    options.fetcher ?? fetch,
+    undefined,
+    { database, feature: 'mcp-research', businessEvent: 'mcp.research.organize_candidates', objectType: 'research-session', applicationId: 'mcp' },
+    { systemPrompt: '你是一名严肃求证的文献调研员，负责对照证据客观梳理候选角色与地点。', jsonMode: true }
+  );
   const organized = parseOrganized(raw);
   const characters: ResearchCharacterCandidate[] = organized.characters.map((item, index) => {
     const match = matchLocalCharacters(database, item.name, item.work, input.leadWork);

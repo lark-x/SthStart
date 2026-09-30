@@ -159,7 +159,7 @@ export async function prepareInputArtifacts(
   fetcher: typeof fetch,
 ): Promise<Record<string, unknown>> {
   const parsedRequest = parseGenerationRequestParams(taskRow.request_params_json);
-  if (!parsedRequest.inputArtifacts.length) return workflowSnapshot;
+  if (engineKind === 'cloud' || !parsedRequest.inputArtifacts.length) return workflowSnapshot;
   const version = database.connection.prepare(
     `SELECT v.node_bindings_json, v.input_capabilities_json,
       m.input_capabilities_json AS legacy_input_capabilities_json

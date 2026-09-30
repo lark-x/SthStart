@@ -11,15 +11,21 @@ export type StoryContextSettings = Static<typeof StoryContextSettingsSchema>;
 export const StoryProjectSchema = Type.Object({
   id: Type.String(), title: Type.String(), summary: Type.String(), revision: Type.Integer(),
   contextSettings: StoryContextSettingsSchema,
+  workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(), updatedAt: Type.String(),
 });
 export type StoryProject = Static<typeof StoryProjectSchema>;
-export const CreateStoryProjectSchema = Type.Object({ title: Type.String({ minLength: 1, maxLength: 120 }), summary: Type.Optional(Type.String({ maxLength: 4000 })) });
+export const CreateStoryProjectSchema = Type.Object({
+  title: Type.String({ minLength: 1, maxLength: 120 }),
+  summary: Type.Optional(Type.String({ maxLength: 4000 })),
+  workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
 export type CreateStoryProject = Static<typeof CreateStoryProjectSchema>;
 export const UpdateStoryProjectSchema = Type.Object({
   expectedRevision: Type.Integer({ minimum: 1 }),
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
   summary: Type.Optional(Type.String({ maxLength: 4000 })),
+  workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   contextSettings: Type.Optional(StoryContextSettingsSchema),
 });
 export type UpdateStoryProject = Static<typeof UpdateStoryProjectSchema>;
@@ -201,3 +207,36 @@ export const StoryCharacterListSchema = Type.Object({ items: Type.Array(StoryCha
 export const StorySessionListSchema = Type.Object({ items: Type.Array(StorySessionSchema) });
 export const StoryMessageListSchema = Type.Object({ items: Type.Array(StoryMessageSchema) });
 export const StoryProposalListSchema = Type.Object({ items: Type.Array(StoryProposalSchema) });
+
+export const StoryDshStatusSchema = Type.Object({
+  running: Type.Boolean(),
+  port: Type.Union([Type.Integer(), Type.Null()]),
+  url: Type.Union([Type.String(), Type.Null()]),
+  projectId: Type.String(),
+});
+export type StoryDshStatus = Static<typeof StoryDshStatusSchema>;
+
+export const StartStoryDshResponseSchema = Type.Object({
+  ok: Type.Boolean(),
+  url: Type.String(),
+  port: Type.Integer(),
+  projectId: Type.String(),
+});
+export type StartStoryDshResponse = Static<typeof StartStoryDshResponseSchema>;
+
+export const StoryScriptLineSchema = Type.Object({
+  type: Type.Union([Type.Literal('dialogue'), Type.Literal('narration'), Type.Literal('scene_header')]),
+  speaker: Type.Optional(Type.String()),
+  content: Type.String(),
+  emotion: Type.Optional(Type.String()),
+});
+export type StoryScriptLine = Static<typeof StoryScriptLineSchema>;
+
+export const StoryScriptProjectSchema = Type.Object({
+  title: Type.String(),
+  chapterTitle: Type.String(),
+  characters: Type.Array(Type.String()),
+  lines: Type.Array(StoryScriptLineSchema),
+});
+export type StoryScriptProject = Static<typeof StoryScriptProjectSchema>;
+

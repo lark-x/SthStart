@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -29,8 +30,11 @@ test('Story MCP exposes only scoped read tools and queries the Story service', a
   upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
   const address = upstream.address(); assert.ok(address && typeof address !== 'string');
   const client = new Client({ name: 'story-test', version: '1.0.0' });
+  const serverPath = existsSync(fileURLToPath(new URL('./mcp-server.ts', import.meta.url)))
+    ? fileURLToPath(new URL('./mcp-server.ts', import.meta.url))
+    : fileURLToPath(new URL('./mcp-server.js', import.meta.url));
   const transport = new StdioClientTransport({ command: process.execPath,
-    args: ['--import', import.meta.resolve('tsx/esm'), fileURLToPath(new URL('./mcp-server.ts', import.meta.url))],
+    args: ['--import', import.meta.resolve('tsx/esm'), serverPath],
     env: { ...Object.fromEntries(Object.entries(process.env).filter((pair): pair is [string, string] => typeof pair[1] === 'string')),
       STHSTART_STORY_INTERNAL_URL: `http://127.0.0.1:${address.port}`,
       STHSTART_STORY_PROJECT_ID: 'p-one', STHSTART_STORY_RUNTIME_SESSION_ID: 'session-one',

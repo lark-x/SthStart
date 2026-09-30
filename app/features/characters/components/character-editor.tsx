@@ -454,7 +454,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       <div className="bg-paper text-ink">
         <div className="mx-auto max-w-5xl space-y-6 px-4 py-10 sm:px-8">
           <Skeleton className="h-10 w-1/3" />
-          <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
             <Skeleton className="h-96 w-full rounded-xl" />
             <Skeleton className="h-[600px] w-full rounded-xl" />
           </div>
@@ -528,7 +528,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       )}
 
       {/* 双栏工作台：左栏卡片与工具，右栏精简人设与外观 */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8 items-start">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">
         {/* ================= 左栏：角色卡预览、头像工具、衍生形态 ================= */}
         <div className="space-y-6 lg:sticky lg:top-6">
           {/* 角色卡牌预览 */}
@@ -916,7 +916,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         {/* ================= 右栏：精简人设与外观表单 ================= */}
-        <div className="rounded-xl border border-border-default bg-surface p-6 shadow-sm space-y-6">
+        <div className="rounded-xl border border-border-default bg-surface p-6 shadow-sm space-y-6 max-w-[760px] w-full min-w-0">
           <div className="flex items-center justify-between pb-4 border-b border-border-subtle">
             <div>
               <h2 className="text-lg font-bold text-ink">
@@ -965,7 +965,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 rows={2}
                 {...register('summary')}
                 placeholder="枫丹前水神，聚光灯下华丽戏剧化，内心敏感孤单的戏剧家。"
-                className="mt-1 text-sm"
+                className="mt-1 text-base"
               />
             </label>
 
@@ -975,7 +975,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 rows={12}
                 {...register('personaText')}
                 placeholder={PERSONA_PLACEHOLDER}
-                className="mt-1 text-sm font-mono leading-relaxed"
+                className="mt-1 text-base font-mono leading-relaxed"
               />
             </label>
           </div>
@@ -995,7 +995,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 rows={4}
                 {...register('appearance.baseText')}
                 placeholder="蓝白相间中长发，双色渐变微卷发尾；水蓝色异色瞳孔；身形娇小玲珑，神情灵动。"
-                className="mt-1 text-sm leading-relaxed"
+                className="mt-1 text-base leading-relaxed"
               />
             </label>
 
@@ -1005,7 +1005,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 rows={4}
                 {...register('appearance.defaultOutfitText')}
                 placeholder="华丽的深蓝与白色枫丹礼服礼帽，精致蕾丝领结，左眼单片水滴装饰。"
-                className="mt-1 text-sm leading-relaxed"
+                className="mt-1 text-base leading-relaxed"
               />
             </label>
 

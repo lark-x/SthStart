@@ -254,3 +254,29 @@ test('migration 42 publishes an Anima LoRA workflow version without changing app
     assert.deepEqual({ ...assignment }, { workflow_id: 'anima-activity', workflow_version: 1, default_preset_id: null }, 'migration does not silently change the app default');
   } finally { connection.close(); }
 });
+
+test('migration 47 migrates provider_profiles to service_connections and model_profiles 1:1 preserving IDs', () => {
+  const connection = new DatabaseSync(':memory:');
+  try {
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter((migration) => migration.version <= 46), 'service');
+    connection.prepare("INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES ('activity','活动','token','[]',1,'then','then')").run();
+    connection.prepare("INSERT INTO provider_profiles(id,name,kind,base_url,model,credential_account,enabled,created_at,updated_at) VALUES ('p-openai','OpenAI API','llm','https://api.openai.com/v1','gpt-4o','profile:p-openai',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").run();
+    connection.prepare("INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES ('p-openai','enabled','{\"X-Custom\":\"1\"}','{}','[\"text\",\"vision\"]')").run();
+
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'service');
+
+    const conn = connection.prepare("SELECT * FROM service_connections WHERE id='conn_p-openai'").get() as Record<string, unknown> | undefined;
+    assert.ok(conn, 'connection created with conn_ prefix');
+    assert.equal(conn.kind, 'openai-compatible-text');
+    assert.equal(conn.base_url, 'https://api.openai.com/v1');
+    assert.equal(conn.credential_account, 'profile:p-openai');
+
+    const model = connection.prepare("SELECT * FROM model_profiles WHERE id='p-openai'").get() as Record<string, unknown> | undefined;
+    assert.ok(model, 'model profile created with exact preserved ID');
+    assert.equal(model.connection_id, 'conn_p-openai');
+    assert.equal(model.model_id, 'gpt-4o');
+    assert.deepEqual(JSON.parse(String(model.capabilities_json)), ['text', 'vision']);
+    assert.equal(JSON.parse(String(model.advanced_json)).thinkingMode, 'enabled');
+  } finally { connection.close(); }
+});
+

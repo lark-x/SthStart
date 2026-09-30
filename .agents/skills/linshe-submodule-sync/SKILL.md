@@ -1,99 +1,45 @@
 ---
 name: linshe-submodule-sync
 description: >-
-  Use this skill when updating, syncing, or troubleshooting the upstream/linshe git submodule,
-  or verifying the Linshe character contract and runtime environment in SthStart.
+  Use when initializing, updating, or troubleshooting the upstream/linshe Git submodule
+  in SthStart, or checking its integration contract and runtime. Distinguish restoring
+  the parent repository's pinned commit from intentionally advancing or editing Linshe.
 ---
 
-# 邻舍 Submodule 同步与适配指南 (Linshe Submodule Sync)
+# 邻舍子模块与集成维护
 
-`upstream/linshe` 是 SthStart 的核心集成子模块（Git Submodule），指向 Fork 仓库 `lark-x/galgame-with-comfyUI` 的 `lark` 分支。
+`upstream/linshe` 是 Git 子模块。当前 `.gitmodules` 指向 `lark-x/galgame-with-comfyUI` 的 `lark` 分支，操作前以仓库实际配置为准，不自动重写为文档里的固定值。
 
-为了保障多应用协同稳定，**严禁直接在 SthStart 仓库中随意修改 `upstream/linshe` 内部代码**，所有更新必须遵循 Submodule 指针管理与契约冒烟流程。
+## 先确认目标与工作区
 
----
+- 查看父项目 `git status --short`、`git submodule status upstream/linshe`；子模块已初始化时再查看 `git -C upstream/linshe status --short` 和实际远程配置。
+- 分清用户希望恢复父仓库锁定版本、引入指定远程版本，还是修改邻舍代码。只读审查不更新指针。
+- 子模块 detached HEAD 是锁定提交的正常状态，不必为了检查切换分支。发现已有修改时保留它们，不用 reset、clean、强制 checkout 或覆盖拉取解决问题。
 
-## 核心工作流速览
+## 三种操作
 
-```text
-1. 确认/修复 Fork 指向
-   └── npm run linshe:use-fork
-        ↓
-2. 拉取更新或切换指针
-   └── git submodule update --init --recursive
-        ↓
-3. 环境体检与契约冒烟
-   └── npm run doctor && npm run test:linshe-contract
-        ↓
-4. 父项目提交指针
-   └── git add upstream/linshe && git commit -m "chore(linshe): update submodule pointer"
-```
+### 恢复父仓库锁定版本
 
----
-
-## 具体操作步骤
-
-### 步骤 1：初始化或修复 Submodule 指向
-
-在新的克隆或 Submodule 指针异常时，运行自带脚本将 Submodule 锁定至 `lark-x` Fork 的 `lark` 分支：
+在没有会被覆盖的本地改动时：
 
 ```bash
-npm run linshe:use-fork
-git submodule update --init --recursive
+git submodule update --init --recursive upstream/linshe
 ```
 
----
+该命令检出父项目记录的 SHA，不会自动获取配置分支的最新提交。
 
-### 步骤 2：同步 Submodule 最新提交
+### 引入指定提交或远程分支版本
 
-当 Fork 仓库的 `lark` 分支有新更新需要引入 SthStart 时：
+先检查子模块实际 remote，再 fetch 用户所需 ref，确认提交内容并检出明确的目标 SHA；不要无条件 `git pull`。若用户指定最新分支，以 fetch 后的远程 ref 为准，不猜测提交号。父项目差异应能解释此次子模块指针变化。
 
-```bash
-# 进入子模块拉取最新提交
-cd upstream/linshe
-git fetch origin
-git checkout lark
-git pull origin lark
-cd ../..
-```
+`npm run linshe:use-fork` 会修改子模块配置，仅在用户要求使用该 fork 或确认当前配置确实需要修复时运行，不作为例行更新的第一步。
 
-> [!WARNING] 避免 Detached HEAD（头指针分离）
-> 如果在 `upstream/linshe` 中处于 `(HEAD detached at ...)` 状态，请务必先 `git checkout lark` 再拉取或修改代码。
+### 修改邻舍代码
 
----
+用户明确要求邻舍修复时，可以在子模块内开发；先选定合适的分支并保留已有工作。区分子模块文件修改、子模块提交以及父项目指针更新，不能只提交父项目指针就宣称未提交代码已被保存。
 
-### 步骤 3：环境体检与契约冒烟测试
+## 按变化验证与交付
 
-Submodule 更新后，必须验证本地运行环境及两端的契约兼容性：
-
-1. **环境诊断**（检查 Python 虚拟环境、Jina 向量模型、端口占用）：
-   ```bash
-   npm run doctor
-   ```
-2. **邻舍角色契约冒烟测试**（验证 SthStart 公共服务是否能被邻舍适配器正常消费）：
-   ```bash
-   npm run test:linshe-contract
-   ```
-
----
-
-## 步骤 4：在 SthStart 中提交指针更新
-
-当体检与契约测试全部通过后，在 SthStart 根目录提交子模块指针更新：
-
-```bash
-git add upstream/linshe
-git commit -m "chore(linshe): update upstream/linshe pointer"
-```
-
----
-
-## 常见问题与避坑指南
-
-1. **Submodule 存在未提交修改 (Dirty Submodule)**：
-   - 如果 `git status` 显示 `upstream/linshe (modified content)`，先进入 `upstream/linshe` 查看 `git status`。
-   - 不要把未受版本控制的临时调试文件或日志提交到父仓库。
-2. **上游原作者仓库更新流程**：
-   - SthStart 不直接跟原作者仓库通信。
-   - Fork 仓库内置 GitHub Action `sync-upstream.yml`，每日同步原作者到 `main` 并提 PR 到 `lark` 分支。
-   - 在 Fork 审核合并 PR 之后，再通过本流程更新 SthStart 的指针。
+- 集成接口或子模块版本变更运行 `npm run test:linshe-contract`，有邻舍业务修改时增加对应检查。
+- Python、模型权重或启动环境相关变化再运行 `npm run doctor`；不要求普通指针审查下载模型或配置未使用的能力。
+- 交付说明旧、新 SHA、相关变化和验证结果。仅在用户任务包含提交或推送时执行这些动作；不要自动提交整个父仓库或混入无关改动。

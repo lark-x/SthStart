@@ -13,20 +13,22 @@ export default function Home() {
     <PageContainer className="space-y-5 pb-8">
       <section className="desk-hero" aria-labelledby="desk-title">
         <div className="desk-hero-copy">
-          <p className="desk-eyebrow">STHSTART <span aria-hidden="true">/</span> CREATIVE DESK</p>
-          <h1 id="desk-title">工作台</h1>
-          <p>让角色、故事与画面，在一个地方继续生长。</p>
+          <div className="desk-hero-copy-inline">
+            <h1 id="desk-title">工作台</h1>
+            <p className="desk-hero-subtitle">让角色、故事与画面在统一的私密空间中自由生长</p>
+          </div>
         </div>
         <div className="desk-hero-actions">
+          <span className="desk-hero-note">本地空间 · 内容即时保存在工作区</span>
           <QuickCreate />
-          <span className="desk-hero-note">本地创作空间 · 内容保存在你的工作区</span>
         </div>
-        <div className="desk-hero-orbit" aria-hidden="true"><span /><span /><span /></div>
       </section>
 
+      <AppDirectory />
+
       {/*
-       * 用明确的 .dash-grid 规则代替工具类媒体查询：轨道宽度始终受容器约束，
-       * 子项显式 min-width:0，避免任何一帧出现内容撑破单列宽度的横向溢出。
+       * 用明确的 .dash-grid 规则约束轨道宽度，子项显式 min-width:0，
+       * 避免任何一帧出现内容撑破单列宽度的横向溢出。
        */}
       <div className="dash-grid">
         <RecentWork limit={5} />
@@ -36,8 +38,6 @@ export default function Home() {
           <RuntimeStrip />
         </div>
       </div>
-
-      <AppDirectory />
     </PageContainer>
   );
 }

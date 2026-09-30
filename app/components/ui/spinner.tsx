@@ -2,7 +2,7 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
-export interface SpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface SpinnerProps extends React.HTMLAttributes<HTMLSpanElement> {
   size?: 'sm' | 'md' | 'lg';
   label?: string;
 }
@@ -20,7 +20,7 @@ export function Spinner({
   };
 
   return (
-    <div
+    <span
       role="status"
       className={cn('inline-flex items-center gap-2 text-muted', className)}
       {...props}
@@ -28,7 +28,7 @@ export function Spinner({
       <Loader2 className={cn('animate-spin text-accent', sizeClasses[size])} aria-hidden="true" />
       {label && <span className="text-sm">{label}</span>}
       <span className="sr-only">{label}</span>
-    </div>
+    </span>
   );
 }
 

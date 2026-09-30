@@ -12,6 +12,7 @@ import {
   StoryMessageListSchema, StoryProjectListSchema, StoryProjectSchema, StoryProposalListSchema,
   StoryProposalSchema, StorySessionListSchema, StorySessionSchema,
   ReorderStoryChaptersSchema, RestoreStoryEntryRevisionSchema, StorySearchQuerySchema, StorySearchResponseSchema,
+  StartStoryDshResponseSchema, StoryDshStatusSchema, StoryScriptProjectSchema,
   UpdateStoryCharacterSchema, UpdateStoryDocumentSchema, UpdateStoryProjectSchema,
   type CreateStoryCharacter, type CreateStoryDocument, type CreateStoryProject,
   type CreateNativeStoryProposal, type CreateStoryProposal, type SendStoryMessage, type StoryDocumentKind, type UpdateStoryCharacter,
@@ -22,6 +23,8 @@ import { authenticateAdmin } from '../access.js';
 import type { ServiceConfig } from '../config.js';
 import { StoryError, StoryStore } from './store.js';
 import { StoryRuntime } from './runtime.js';
+import { DshProcessManager } from './dsh-process-manager.js';
+import { StoryCompiler } from './compiler.js';
 
 const ProjectParams = Type.Object({ projectId: Type.String() });
 const ItemParams = Type.Object({ projectId: Type.String(), id: Type.String() });
@@ -32,6 +35,7 @@ const InternalProposalBody = Type.Intersect([
 ]);
 
 export function registerStoryRoutes(app: FastifyInstance, config: ServiceConfig, store: StoryStore, runtime: StoryRuntime) {
+  const dshManager = new DshProcessManager(config, store);
   const listeners = new Map<string, Set<(type: string, payload: unknown) => void>>();
   const active = new Set<Promise<void>>();
   const bridgePresence = new Map<string, { instanceId: string; port: number; lastHeartbeatAt: string; timestamp: number }>();
@@ -225,6 +229,43 @@ export function registerStoryRoutes(app: FastifyInstance, config: ServiceConfig,
       });
     });
 
+  app.get<{ Params: { projectId: string } }>('/api/v1/admin/story/projects/:projectId/dsh/status',
+    { schema: { params: ProjectParams, response: { 200: StoryDshStatusSchema } } }, async (request, reply) => {
+      if (!check(request, reply)) return;
+      return guarded(reply, () => dshManager.status(request.params.projectId));
+    });
+  app.post<{ Params: { projectId: string } }>('/api/v1/admin/story/projects/:projectId/dsh/start',
+    { schema: { params: ProjectParams, response: { 200: StartStoryDshResponseSchema } } }, async (request, reply) => {
+      if (!check(request, reply)) return;
+      return guarded(reply, async () => {
+        const portalPort = process.env.PORTAL_PORT || '4173';
+        const portalOrigin = request.headers.origin || `http://127.0.0.1:${portalPort}`;
+        return dshManager.start(request.params.projectId, { portalOrigin });
+      });
+    });
+  app.post<{ Params: { projectId: string } }>('/api/v1/admin/story/projects/:projectId/dsh/stop',
+    { schema: { params: ProjectParams } }, async (request, reply) => {
+      if (!check(request, reply)) return;
+      return guarded(reply, async () => dshManager.stop(request.params.projectId));
+    });
+
+  const CompileScriptBodySchema = Type.Object({
+    body: Type.String({ maxLength: 100000 }),
+    chapterTitle: Type.Optional(Type.String({ maxLength: 120 })),
+    projectTitle: Type.Optional(Type.String({ maxLength: 120 })),
+  });
+  app.post<{ Params: { projectId: string }; Body: { body: string; chapterTitle?: string; projectTitle?: string } }>(
+    '/api/v1/admin/story/projects/:projectId/compiler/script',
+    { schema: { params: ProjectParams, body: CompileScriptBodySchema, response: { 200: StoryScriptProjectSchema } } },
+    async (request, reply) => {
+      if (!check(request, reply)) return;
+      return guarded(reply, () => StoryCompiler.compileToScript(request.body.body, {
+        chapterTitle: request.body.chapterTitle,
+        projectTitle: request.body.projectTitle,
+      }));
+    });
+
+
   app.get<{ Params: { projectId: string } }>('/api/v1/admin/story/projects/:projectId/documents',
     { schema: { params: ProjectParams, response: { 200: StoryDocumentListSchema } } },
     async (request, reply) => { if (!check(request, reply)) return; return guarded(reply, () => ({ items: store.listDocuments(request.params.projectId) })); });
@@ -323,6 +364,7 @@ export function registerStoryRoutes(app: FastifyInstance, config: ServiceConfig,
 
   app.addHook('onClose', async () => {
     for (const set of listeners.values()) set.clear();
+    await dshManager.stop();
     await runtime.close();
     await Promise.allSettled([...active]);
   });

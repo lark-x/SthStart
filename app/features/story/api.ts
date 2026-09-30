@@ -5,8 +5,10 @@ import {
   StoryCompactResponseSchema, StoryDocumentListSchema, StoryDocumentSchema, StoryEntryRevisionListSchema,
   StoryEntrySchema, StoryMessageListSchema, StoryProjectListSchema, StoryProjectSchema,
   StoryProposalListSchema, StoryProposalSchema, StorySearchResponseSchema, StorySessionListSchema, StorySessionSchema,
+  StoryDshStatusSchema, StartStoryDshResponseSchema, StoryScriptProjectSchema,
   type CreateStoryCharacter, type CreateStoryDocument, type CreateStoryProposal,
   type StoryContextSettings, type UpdateStoryCharacter, type UpdateStoryDocument,
+  type StoryDshStatus, type StartStoryDshResponse, type StoryScriptProject,
 } from '@sthstart/contracts';
 
 const root = 'story/projects';
@@ -15,9 +17,9 @@ const sessionPath = (projectId: string, sessionId: string) => `${projectPath(pro
 
 export const storyApi = {
   listProjects: () => getJson<{ items: import('@sthstart/contracts').StoryProject[] }>(root, undefined, StoryProjectListSchema),
-  createProject: (title: string, summary = '') => postJson<import('@sthstart/contracts').StoryProject>(root, { title, summary }, undefined, StoryProjectSchema),
+  createProject: (title: string, summary = '', workId?: string) => postJson<import('@sthstart/contracts').StoryProject>(root, { title, summary, workId: workId || undefined }, undefined, StoryProjectSchema),
   getProject: (id: string) => getJson<import('@sthstart/contracts').StoryProject>(projectPath(id), undefined, StoryProjectSchema),
-  updateProject: (id: string, expectedRevision: number, patch: { title?: string; summary?: string; contextSettings?: StoryContextSettings }) =>
+  updateProject: (id: string, expectedRevision: number, patch: { title?: string; summary?: string; workId?: string | null; contextSettings?: StoryContextSettings }) =>
     putJson<import('@sthstart/contracts').StoryProject>(projectPath(id), { expectedRevision, ...patch }, undefined, StoryProjectSchema),
   listDocuments: (id: string) => getJson<{ items: import('@sthstart/contracts').StoryDocument[] }>(`${projectPath(id)}/documents`, undefined, StoryDocumentListSchema),
   createDocument: (id: string, input: CreateStoryDocument) => postJson<import('@sthstart/contracts').StoryDocument>(`${projectPath(id)}/documents`, input, undefined, StoryDocumentSchema),
@@ -53,4 +55,10 @@ export const storyApi = {
   bridgeStatus: (id: string) => getJson<import('@sthstart/contracts').StoryBridgeStatus>(`${projectPath(id)}/bridge-status`, undefined, StoryBridgeStatusSchema),
   createBridgeGrant: (id: string) => postJson<import('@sthstart/contracts').CreateStoryBridgeGrantResponse>(`${projectPath(id)}/bridge-grant`, {}, undefined, CreateStoryBridgeGrantResponseSchema),
   revokeBridgeGrant: (id: string) => deleteJson<null>(`${projectPath(id)}/bridge-grant`),
+  dshStatus: (id: string) => getJson<StoryDshStatus>(`${projectPath(id)}/dsh/status`, undefined, StoryDshStatusSchema),
+  startDsh: (id: string) => postJson<StartStoryDshResponse>(`${projectPath(id)}/dsh/start`, {}, undefined, StartStoryDshResponseSchema),
+  stopDsh: (id: string) => postJson<{ ok: boolean }>(`${projectPath(id)}/dsh/stop`, {}),
+  compileScript: (id: string, body: string, options?: { chapterTitle?: string; projectTitle?: string }) =>
+    postJson<StoryScriptProject>(`${projectPath(id)}/compiler/script`, { body, ...options }, undefined, StoryScriptProjectSchema),
 };
+

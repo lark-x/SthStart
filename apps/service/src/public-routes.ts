@@ -316,7 +316,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
     request.raw.once('aborted', () => clientDisconnect.abort());
     reply.raw.once('close', () => { if (!reply.raw.writableEnded) clientDisconnect.abort(); });
     try {
-      upstream = await proxyJson(fetcher, `${profile.baseUrl}/chat/completions`, upstreamBody, profile.secret, 180_000, profile.headers, clientDisconnect.signal);
+      upstream = await proxyJson(fetcher, `${profile.baseUrl}/chat/completions`, upstreamBody, profile.secret, profile.timeoutMs ?? 180_000, profile.headers, clientDisconnect.signal);
     } catch (error) {
       updateAiCallRecord(database, callId, { status: clientDisconnect.signal.aborted ? 'abandoned' : 'failed', event: clientDisconnect.signal.aborted ? 'client_disconnected' : 'upstream_error', errorCode: 'llm_upstream_unavailable', errorMessage: error instanceof Error ? error.message : String(error), redactionSecrets });
       return reply.code(502).send({ error: 'llm_upstream_unavailable', message: String(error) });

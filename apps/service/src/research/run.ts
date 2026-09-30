@@ -12,7 +12,7 @@ import {
   buildClaimExtractionPrompt, buildQueryPlanPrompt, buildSynthesisPrompt, buildVerificationPrompt,
   parseClaims, parseQueryPlan, parseSynthesis, parseVerification,
 } from './prompts.js';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile } from '../providers.js';
 import { callLlm } from '../activities/text-jobs.js';
 
 export interface ResearchRunOptions {
@@ -55,7 +55,7 @@ export async function executeResearchRun(
   const workTitle = (narrativeDatabase.connection.prepare('SELECT title FROM narrative_works WHERE id=?').get(project.workId) as { title: string } | undefined)?.title ?? project.workId;
 
   let usedModelCalls = run.usedModelCalls;
-  let profile: Awaited<ReturnType<typeof resolveAssignedLlmProfile>> = null;
+  let profile: Awaited<ReturnType<typeof resolveEffectiveModelProfile>> = null;
   const fail = (message: string, incomplete: string | null = null) => {
     store.updateRun(runId, { status: incomplete ? 'incomplete' : 'failed', errorMessage: message, incompleteReason: incomplete, finishedAt: new Date().toISOString(), usedModelCalls });
   };
@@ -77,7 +77,7 @@ export async function executeResearchRun(
     }
     guard();
 
-    profile = await resolveAssignedLlmProfile(database, secrets, 'narrative', 'text');
+    profile = await resolveEffectiveModelProfile(database, secrets, 'narrative', 'research');
     if (!profile) {
       fail('没有可用的文本模型。', '请在「模型与公共服务」为叙事档案配置文本模型后重试。');
       return store.getRun(runId);
@@ -90,7 +90,14 @@ export async function executeResearchRun(
     const keywords = project.scope.keywords ?? [];
     let plan: Array<Record<string, unknown>> = [];
     try {
-      const raw = await callLlm(profile, buildQueryPlanPrompt({ workTitle, title: project.title, question: project.question, keywords, entities: [] }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.query_plan', objectType: 'research-run', objectId: runId });
+      const raw = await callLlm(
+        profile,
+        buildQueryPlanPrompt({ workTitle, title: project.title, question: project.question, keywords, entities: [] }),
+        fetcher,
+        undefined,
+        { database, feature: 'narrative-research', businessEvent: 'narrative.research.query_plan', objectType: 'research-run', objectId: runId, applicationId: 'narrative' },
+        { systemPrompt: '你是一名严肃求证的文献研究员，专门为叙事创作制定精确的检索计划。', jsonMode: true }
+      );
       usedModelCalls += 1;
       plan = parseQueryPlan(raw) as unknown as Array<Record<string, unknown>>;
     } catch (error) {
@@ -167,7 +174,14 @@ export async function executeResearchRun(
     }));
     let parsedClaims: ReturnType<typeof parseClaims> = [];
     try {
-      const raw = await callLlm(profile, buildClaimExtractionPrompt({ workTitle, title: project.title, question: project.question, evidence: evidenceForPrompt }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.extract_claims', objectType: 'research-run', objectId: runId });
+      const raw = await callLlm(
+        profile,
+        buildClaimExtractionPrompt({ workTitle, title: project.title, question: project.question, evidence: evidenceForPrompt }),
+        fetcher,
+        undefined,
+        { database, feature: 'narrative-research', businessEvent: 'narrative.research.extract_claims', objectType: 'research-run', objectId: runId, applicationId: 'narrative' },
+        { systemPrompt: '你是一名严谨的结论提取专家，负责从证据原文中提炼结论卡。', jsonMode: true }
+      );
       usedModelCalls += 1;
       parsedClaims = parseClaims(raw);
     } catch (error) {
@@ -207,11 +221,18 @@ export async function executeResearchRun(
      */
     if (accepted.length) {
       try {
-        const raw = await callLlm(profile, buildVerificationPrompt({
-          workTitle, title: project.title,
-          claims: accepted.map((item) => ({ id: item.claim.id, title: item.claim.title, claimType: item.claim.claimType ?? 'open-question', body: item.claim.body, evidenceIds: item.evidenceIds })),
-          evidence: evidenceForPrompt,
-        }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.verify_claims', objectType: 'research-run', objectId: runId });
+        const raw = await callLlm(
+          profile,
+          buildVerificationPrompt({
+            workTitle, title: project.title,
+            claims: accepted.map((item) => ({ id: item.claim.id, title: item.claim.title, claimType: item.claim.claimType ?? 'open-question', body: item.claim.body, evidenceIds: item.evidenceIds })),
+            evidence: evidenceForPrompt,
+          }),
+          fetcher,
+          undefined,
+          { database, feature: 'narrative-research', businessEvent: 'narrative.research.verify_claims', objectType: 'research-run', objectId: runId, applicationId: 'narrative' },
+          { systemPrompt: '你是一名事实核查员，负责对照证据严密验证结论的确定性等级与反面证据。', jsonMode: true }
+        );
         usedModelCalls += 1;
         const verifications = parseVerification(raw);
         for (const verification of verifications) {
@@ -241,7 +262,14 @@ export async function executeResearchRun(
       return { id: fresh.id, title: fresh.title, claimType: fresh.claimType ?? 'open-question', body: fresh.body, uncertainty: fresh.uncertainty, evidenceIds: item.evidenceIds };
     });
     try {
-      const raw = await callLlm(profile, buildSynthesisPrompt({ workTitle, title: project.title, question: project.question, claims: claimsForSynthesis, evidence: evidenceForPrompt }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.synthesize', objectType: 'research-run', objectId: runId });
+      const raw = await callLlm(
+        profile,
+        buildSynthesisPrompt({ workTitle, title: project.title, question: project.question, claims: claimsForSynthesis, evidence: evidenceForPrompt }),
+        fetcher,
+        undefined,
+        { database, feature: 'narrative-research', businessEvent: 'narrative.research.synthesize', objectType: 'research-run', objectId: runId, applicationId: 'narrative' },
+        { systemPrompt: '你是一名专业的文献编纂与研究综述总监，负责撰写逻辑严密的总稿。', jsonMode: true }
+      );
       usedModelCalls += 1;
       const synthesis = parseSynthesis(raw);
       const unresolved = unresolvedSynthesisIds(synthesis, { evidenceIds: availableEvidenceIds, claimIds: new Set(claimsForSynthesis.map((item) => item.id)) });

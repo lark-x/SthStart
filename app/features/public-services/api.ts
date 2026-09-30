@@ -15,6 +15,13 @@ import type {
   ProviderProfile,
   PublicServiceOverview,
   SavedProfileResponse,
+  ServiceConnection,
+  ServiceConnectionKind,
+  ConnectionTestResult,
+  DiscoveredModelList,
+  ModelProfile,
+  ModelInferenceTestResult,
+  PurposeBinding,
 } from '@sthstart/contracts';
 
 export type LlmDraft = {
@@ -94,3 +101,101 @@ export async function updateLlmAssignments(
 export async function fetchAppLlmStatus(appId: string): Promise<AppLlmStatusResponse> {
   return getJson<AppLlmStatusResponse>(`apps/${appId}/llm-status`, undefined, AppLlmStatusResponseSchema);
 }
+
+// ── 服务连接 (Service Connections) ──
+
+export async function fetchConnections(): Promise<ServiceConnection[]> {
+  const res = await getJson<{ items: ServiceConnection[] }>('connections');
+  return res.items;
+}
+
+export async function saveConnection(payload: {
+  id?: string;
+  name: string;
+  kind: ServiceConnectionKind;
+  baseUrl: string;
+  secret?: string;
+  timeoutMs?: number;
+  headers?: Record<string, string>;
+  options?: Record<string, unknown>;
+  enabled?: boolean;
+}): Promise<{ id: string; secretStored: boolean; warning: string | null }> {
+  return postJson<{ id: string; secretStored: boolean; warning: string | null }>('connections', payload);
+}
+
+export async function deleteConnection(id: string): Promise<void> {
+  await deleteJson(`connections/${encodeURIComponent(id)}`);
+}
+
+export async function testConnectionProbe(payload: {
+  connectionId?: string;
+  baseUrl?: string;
+  secret?: string;
+  kind?: ServiceConnectionKind;
+  headers?: Record<string, string>;
+}): Promise<ConnectionTestResult> {
+  return postJson<ConnectionTestResult>('connections/test', payload);
+}
+
+export async function discoverConnectionModels(payload: {
+  connectionId?: string;
+  baseUrl?: string;
+  secret?: string;
+  headers?: Record<string, string>;
+}): Promise<DiscoveredModelList> {
+  return postJson<DiscoveredModelList>('connections/discover-models', payload);
+}
+
+// ── 模型配置 (Model Profiles) ──
+
+export async function fetchModelProfiles(): Promise<ModelProfile[]> {
+  const res = await getJson<{ items: ModelProfile[] }>('models');
+  return res.items;
+}
+
+export async function saveModelProfile(payload: {
+  id?: string;
+  connectionId: string;
+  name: string;
+  modelId: string;
+  capabilities: LlmModelCapability[];
+  contextLength?: number | null;
+  maxOutputTokens?: number | null;
+  defaultParams?: Record<string, unknown>;
+  advancedJson?: Record<string, unknown>;
+  enabled?: boolean;
+}): Promise<ModelProfile> {
+  return postJson<ModelProfile>('models', payload);
+}
+
+export async function deleteModelProfile(id: string): Promise<void> {
+  await deleteJson(`models/${encodeURIComponent(id)}`);
+}
+
+export async function testModelInference(
+  id: string,
+  prompt?: string,
+  type: 'text' | 'json' | 'vision' = 'text',
+): Promise<ModelInferenceTestResult> {
+  return postJson<ModelInferenceTestResult>(`models/${encodeURIComponent(id)}/test`, { prompt, type });
+}
+
+// ── 用途绑定 (Purpose Bindings) ──
+
+export async function fetchPurposeBindings(): Promise<PurposeBinding[]> {
+  const res = await getJson<{ items: PurposeBinding[] }>('purposes');
+  return res.items;
+}
+
+export async function savePurposeBinding(appId: string, purpose: string, payload: {
+  targetType: 'model' | 'preset';
+  targetId: string;
+  inheritAppDefault?: boolean;
+}): Promise<PurposeBinding> {
+  return putJson<PurposeBinding>(`purposes/${encodeURIComponent(appId)}/${encodeURIComponent(purpose)}`, payload);
+}
+
+export async function deletePurposeBinding(appId: string, purpose: string): Promise<void> {
+  await deleteJson(`purposes/${encodeURIComponent(appId)}/${encodeURIComponent(purpose)}`);
+}
+

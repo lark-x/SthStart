@@ -115,32 +115,33 @@ export function compileBeatPrompt(
 
   const promptParts: string[] = [];
 
-  // 1. 底座硬约束（角色特征锁定）
+  // 1. 画师串与画质锚点（吸收邻舍 v3.6.0 标准工作流）
+  promptParts.push('masterpiece, best quality, highres, absurdres, 8k resolution');
+  promptParts.push('@ebora, cinematic lighting, finely detailed');
+
+  // 2. 底座硬约束（角色特征锁定与外貌）
   promptParts.push(`1person, solo, character: ${actorName}`);
   if (characterAppearance) promptParts.push(characterAppearance);
   if (characterOutfit) promptParts.push(characterOutfit);
   if (characterLora) promptParts.push(characterLora);
 
-  // 2. 场景时空与环境氛围
+  // 3. 场景时空与环境氛围
   if (locationContext) promptParts.push(`environment: ${locationContext}`);
   if (timeContext) promptParts.push(`time: ${timeContext}`);
   if (atmosphere) promptParts.push(`atmosphere: ${atmosphere}`);
 
-  // 3. 分镜动作与台词
+  // 4. 分镜动作与情感对白
   if (action) promptParts.push(`action: ${action}`);
   if (dialogue) promptParts.push(`expression: speaking thoughtfully, emotional nuance`);
   if (outcome) promptParts.push(`story outcome: ${outcome}`);
 
-  // 4. 自定义提示词修饰
+  // 5. 自定义提示词修饰
   if (customPrompt?.trim()) {
     promptParts.push(customPrompt.trim());
   }
 
-  // 5. 电影质感通用正向词
-  promptParts.push('cinematic lighting, masterpiece, high quality, highly detailed, 8k resolution, photorealistic illustration');
-
   const positivePrompt = promptParts.filter(Boolean).join(', ');
-  const negativePrompt = 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, artist name, mutated hands, poorly drawn face, mutation, deformed, dehydrated, bad proportions, cloned face, disfigured, extra limbs';
+  const negativePrompt = 'score_1, score_2, score_3, bad anatomy, bad hands, bad proportions, deformed anatomy, deformed face, deformed eyes, multiple fingers, text, watermark, artist name, censor, mosaic, signature, logo, shadows, highlights, strong lighting, dramatic lighting, rim light, backlighting, high contrast, volumetric lighting, lowres, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, blurry, mutated hands, poorly drawn face, mutation, deformed, dehydrated, disfigured, extra limbs';
 
   return {
     positivePrompt,
@@ -163,8 +164,6 @@ export async function executeComfyBeatRender(
 ): Promise<GenerateBeatMediaResponse> {
   if (request.mediaType === 'video') throw new Error('video_generation_not_supported');
   if (request.mediaType && request.mediaType !== 'image') throw new Error('unsupported_media_type');
-  if (!request.engineId) throw new Error('comfy_engine_required');
-  if (!request.checkpoint) throw new Error('checkpoint_required');
   if (request.seed !== undefined && (!Number.isSafeInteger(request.seed) || request.seed < 0 || request.seed > 2147483647)) throw new Error('invalid_seed');
   if (request.steps !== undefined && (!Number.isInteger(request.steps) || request.steps < 1 || request.steps > 100)) throw new Error('invalid_steps');
   if (request.cfg !== undefined && (!Number.isFinite(request.cfg) || request.cfg < 1 || request.cfg > 30)) throw new Error('invalid_cfg');
@@ -194,9 +193,15 @@ export async function executeComfyBeatRender(
     request.customPrompt
   );
 
-  const engineRow = database.connection.prepare(
-    "SELECT base_url FROM generation_engines WHERE id = ? AND enabled = 1 AND kind = 'comfyui'"
-  ).get(request.engineId) as { base_url: string } | undefined;
+  // 智能寻找可用 ComfyUI 引擎（未指定时自动回退到首个可用引擎）
+  const engineRow = request.engineId
+    ? (database.connection.prepare(
+        "SELECT id, base_url FROM generation_engines WHERE id = ? AND enabled = 1 AND kind = 'comfyui'"
+      ).get(request.engineId) as { id: string; base_url: string } | undefined)
+    : (database.connection.prepare(
+        "SELECT id, base_url FROM generation_engines WHERE enabled = 1 AND kind = 'comfyui' ORDER BY id ASC LIMIT 1"
+      ).get() as { id: string; base_url: string } | undefined);
+
   if (!engineRow?.base_url) throw new Error('comfy_engine_unavailable');
   const comfyUrl = engineRow.base_url.replace(/\/+$/, '');
   let imageBuffer: Buffer | null = null;
@@ -212,8 +217,25 @@ export async function executeComfyBeatRender(
     {
       if (onProgress) onProgress({ phase: 'connected', progress: 0.1 });
 
-      // 动态获取可用的 Checkpoint 模型
-      const selectedCheckpoint = request.checkpoint;
+      // 动态获取可用的 Checkpoint 模型（未指定时自动探测可用模型列表）
+      let selectedCheckpoint = request.checkpoint;
+      if (!selectedCheckpoint) {
+        try {
+          const objInfoRes = await fetcher(`${comfyUrl}/object_info/CheckpointLoaderSimple`, { signal: AbortSignal.timeout(3000) });
+          if (objInfoRes.ok) {
+            const objInfo = (await objInfoRes.json()) as any;
+            const ckptList = objInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0];
+            if (Array.isArray(ckptList) && ckptList.length > 0) {
+              selectedCheckpoint = ckptList.find((c: string) => /anime|turbo|xl|sd/i.test(c)) || ckptList[0];
+            }
+          }
+        } catch {
+          // fallback
+        }
+        if (!selectedCheckpoint) {
+          selectedCheckpoint = 'anima_turboV10.safetensors';
+        }
+      }
 
       // 构建标准文生图 Prompt 结构（KSampler + CheckpointLoaderSimple + CLIPTextEncode）
       const clientId = randomUUID();
@@ -293,7 +315,7 @@ export async function executeComfyBeatRender(
         if (onProgress) onProgress({ phase: 'queued', promptId, progress: 0.2 });
 
         // 轮询历史记录（参考 Linshe downloadImagesFromHistory 的重试模式）
-        const maxPollAttempts = options.maxPollAttempts ?? 40;
+        const maxPollAttempts = options.maxPollAttempts ?? 120;
         const pollIntervalMs = options.pollIntervalMs ?? 1500;
         for (let i = 0; i < maxPollAttempts; i++) {
           await new Promise((r) => setTimeout(r, pollIntervalMs));

@@ -48,7 +48,16 @@ export async function fetchMediaDiagnostics() {
   return getJson<MediaDiagnostics>(MEDIA_DIAGNOSTICS_PATH);
 }
 
-export async function saveGenerationEngine(input: { id: string; name: string; baseUrl: string; secret?: string; concurrencyLimit: number }) {
+export async function saveGenerationEngine(input: {
+  id: string;
+  name: string;
+  kind?: 'comfyui' | 'worker' | 'cloud';
+  baseUrl: string;
+  secret?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+  concurrencyLimit: number;
+}) {
   await postJson(`${GENERATION_BASE_PATH}/engines`, input);
 }
 

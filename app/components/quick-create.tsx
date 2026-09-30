@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { BookOpen, CalendarDays, ChevronDown, Film, Plus, Sparkles, Users } from 'lucide-react';
 
 const ACTIONS = [
+  { href: '/apps/story', label: '剧本创作', description: '编剧工作室、大纲世界观与角色设定', icon: BookOpen },
   { href: '/apps/activities/new', label: '新建活动', description: '策划并生成一场互动活动', icon: Film },
   { href: '/apps/characters/new', label: '新建角色', description: '手写或导入角色设定', icon: Users },
   { href: '/apps/creative', label: '新建生图', description: '文本生图与图生图', icon: Sparkles },

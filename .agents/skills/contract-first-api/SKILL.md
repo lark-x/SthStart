@@ -1,140 +1,41 @@
 ---
 name: contract-first-api
 description: >-
-  Use this skill when adding or modifying API endpoints, data models, or service routes in SthStart.
-  Enforces the contract-first workflow across packages/contracts, apps/service, and app/features.
+  Use when adding or changing shared API requests, responses, or cross-layer data contracts
+  in SthStart, or implementing service routes that consume them. Align contracts, service
+  validation, and frontend API clients without moving private implementation types into contracts.
 ---
 
-# 契约驱动 API 开发指南 (Contract-First API)
+# SthStart 契约驱动 API 开发
 
-在 SthStart 中新增或变更任何 API 接口与数据模型时，必须严格遵循“契约先行”规范。严禁直接在前端或服务端手写未经 `packages/contracts` 导出的临时类型。
+## 边界与实现顺序
 
----
+- 先查 `packages/contracts/src/` 的现有契约。新增或改变跨端请求、响应时，先调整 TypeBox Schema 与 `Static` 类型，再实现服务端和前端调用；在 `packages/contracts/src/index.ts` 导出新增模块。
+- 服务内部模型、UI 状态和私有辅助类型可以留在所属模块。只修复既有接口的实现、不改变对外字段时，不必修改契约。
+- 检查已有调用方、返回包装和错误形状；新增字段考虑旧数据，局部更新区分字段缺失与显式清空，不顺带重构无关接口。
 
-## 核心流程速览
+## 服务端与前端接入
 
-```text
-1. 定义契约 (packages/contracts)
-   └── TypeBox Schema + Static TypeScript 类型导出
-        ↓
-2. 服务端实现 (apps/service)
-   └── Fastify 路由注入校验 + Store 实现 + 靶向单测
-        ↓
-3. 前端接入 (app/features)
-   └── 引用契约类型 + @tanstack/react-query 封装 Hooks
+- 在 `apps/service/src/` 对应业务模块接入共享契约，沿用该模块的路由注册、鉴权和运行时校验方式。TypeScript 类型不等于请求校验，不能依靠类型断言接受任意输入。
+- 使用 Fastify response schema 时，核对完整返回结构，避免序列化丢失包装字段或元数据；不要为修复一个接口而批量补全无关路由的 schema。
+- 前端请求集中在 `app/features/<module>/api.ts`，优先使用 `app/lib/api-client.ts` 的 `getJson`、`postJson` 等封装，复用管理接口路径、会话、CSRF 和错误处理。文件上传、流式等特殊请求沿用现有 `adminFetch` 用法。
+- API 客户端接收业务相对路径，管理接口由底层处理 `/api/admin/` 前缀；不要直接把服务端 `/api/v1/` 路径复制到门户调用。
+- 有响应 Schema 时传给客户端作运行时验证。沿用模块现有 React Query 查询键，写入成功后更新或失效相关缓存。
+
+现有笔记详情接口可作为接入示例：
+
+```typescript
+import { getJson } from '@/app/lib/api-client';
+import { CreativeNoteSchema, type CreativeNote } from '@sthstart/contracts';
+
+export function fetchNoteDetail(id: string): Promise<CreativeNote> {
+  return getJson<CreativeNote>(
+    'notebook/notes/' + encodeURIComponent(id), undefined, CreativeNoteSchema,
+  );
+}
 ```
 
----
+## 必要验证
 
-## 具体开发步骤
-
-### 第一步：契约定义 (`packages/contracts/`)
-
-1. **定位或新建模块契约**：
-   - 业务契约位于 `packages/contracts/src/<module>.ts`（如 `activities.ts`、`narrative.ts` 等）。
-2. **编写 TypeBox Schema 与类型**：
-   ```typescript
-   import { Type, type Static } from '@sinclair/typebox';
-
-   export const MyItemSchema = Type.Object({
-     id: Type.String(),
-     title: Type.String(),
-     createdAt: Type.String({ format: 'date-time' }),
-   });
-   export type MyItem = Static<typeof MyItemSchema>;
-
-   export const CreateMyItemRequestSchema = Type.Object({
-     title: Type.String({ minLength: 1 }),
-   });
-   export type CreateMyItemRequest = Static<typeof CreateMyItemRequestSchema>;
-   ```
-3. **在入口统一导出**：
-   - 打开 `packages/contracts/src/index.ts`，重新导出新定义的 Schema 与类型：
-     ```typescript
-     export * from './<module>.js';
-     ```
-4. **靶向验证契约**：
-   ```bash
-   npm run test:contracts
-   ```
-
----
-
-### 第二步：服务端实现 (`apps/service/`)
-
-1. **引入契约并配置 Fastify 路由校验**：
-   - 路由文件位于 `apps/service/src/<module>/routes.ts`。
-   - 利用 Fastify 对 TypeBox 的原生支持，在路由定义中传入 Schema 进行运行时入参/出参校验：
-     ```typescript
-     import { CreateMyItemRequestSchema, MyItemSchema } from '@sthstart/contracts';
-     import type { FastifyPluginAsync } from 'fastify';
-
-     export const myRoutes: FastifyPluginAsync = async (fastify) => {
-       fastify.post('/api/v1/my-items', {
-         schema: {
-           body: CreateMyItemRequestSchema,
-           response: {
-             200: MyItemSchema,
-           },
-         },
-       }, async (request, reply) => {
-         // request.body 会自动根据 Schema 完成类型推导与校验
-         const result = await store.create(request.body);
-         return result;
-       });
-     };
-     ```
-2. **Store 数据层实现**：
-   - 实体存储通常位于 `apps/service/src/<module>/store.ts`，操作 SQLite 或内存状态。
-3. **编写与运行单测**：
-   - 在 `apps/service/src/<module>.test.ts` 中补充接口测试。
-   - **快速靶向运行单测（无需全量构建）**：
-     ```bash
-     node --import tsx/esm --test apps/service/src/<module>.test.ts
-     ```
-
----
-
-### 第三步：前端接入 (`app/features/`)
-
-1. **封装 API 请求**：
-   - 在 `app/features/<module>/api.ts` 中直接引入 contracts 类型：
-     ```typescript
-     import type { CreateMyItemRequest, MyItem } from '@sthstart/contracts';
-
-     export async function createMyItem(payload: CreateMyItemRequest): Promise<MyItem> {
-       const res = await fetch('/api/v1/my-items', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify(payload),
-       });
-       if (!res.ok) throw new Error(`Failed to create item: ${res.statusText}`);
-       return res.json();
-     }
-     ```
-2. **封装 React Query Hook**：
-   - 在 `app/features/<module>/mutations.ts` 或 `queries.ts`：
-     ```typescript
-     import { useMutation, useQueryClient } from '@tanstack/react-query';
-     import { createMyItem } from './api';
-
-     export function useCreateMyItem() {
-       const queryClient = useQueryClient();
-       return useMutation({
-         mutationFn: createMyItem,
-         onSuccess: () => {
-           queryClient.invalidateQueries({ queryKey: ['my-items'] });
-         },
-       });
-     }
-     ```
-3. **UI 组件使用**：
-   - 在页面或组件中直接调用该 Hook，禁止在 UI 组件内部散落 `fetch`。
-
----
-
-## 验证检查表 (Verification Checklist)
-
-- [ ] 契约测试通过：`npm run test:contracts`
-- [ ] 服务端靶向单测通过：`node --import tsx/esm --test apps/service/src/<module>.test.ts`
-- [ ] 全局类型检查通过：`npm run typecheck`
+- 契约有改动时运行 `npm run test:contracts`；业务逻辑有改动时运行对应服务测试，例如 `node --import tsx/esm --test apps/service/src/topics.test.ts`，替换为实际受影响的测试文件。
+- 接口字段或跨层调用有变化时运行 `npm run typecheck`。覆盖本次改变的成功、错误或兼容行为；不要仅为新增内部类型运行整套构建和测试。

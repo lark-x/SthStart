@@ -6,7 +6,7 @@ import { normalizeModelOutput, validateGeneratedOutput } from './generation-vali
 import type { ContentDocument, StageDefinition } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import type { SecretStore } from '../security.js';
-import { resolveAssignedLlmProfile, upstreamHeaders } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile, upstreamHeaders } from '../providers.js';
 import { llmNotReadyError, resolveAppLlmBindingStatus } from '../llm-status.js';
 import type { ActivityStore } from './store.js';
 import {
@@ -21,6 +21,7 @@ import {
 } from './prompts.js';
 import { validateSnippetOutput } from './generation-validation.js';
 import { collectAiCallRedactionSecrets, fetchAuditedAiResponse, updateAiCallRecord } from '../ai-call-trace.js';
+import { executeTextLlm } from '../llm/common-llm.js';
 
 function buildExistingStageOutput(
   stage: StageDefinition,
@@ -91,10 +92,15 @@ export async function executeTextJob(options: ExecuteJobOptions): Promise<void> 
     store.updateJob(jobId, { status: 'running' });
     store.appendJobEvent(jobId, activityId, 'started', { mode });
 
-    // 1. Resolve LLM profile（执行前复检：排队期间配置可能变化）
-    const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
-    const profile = bindingStatus.ready ? await resolveAssignedLlmProfile(database, secrets, 'activities', 'text') : null;
+    // 1. Resolve LLM profile（执行前复检：优先用途绑定，次选应用级默认绑定）
+    const purposeKey = (mode === 'plan' || mode === 'stage' || mode === 'whole-text')
+      ? 'planning'
+      : (mode === 'continue-chat' || mode === 'rewrite-records')
+        ? 'dialogue'
+        : 'text';
+    const profile = await resolveEffectiveModelProfile(database, secrets, 'activities', purposeKey);
     if (!profile) {
+      const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
       throw llmNotReadyError(bindingStatus);
     }
 
@@ -285,58 +291,29 @@ export async function callLlm(
   prompt: string,
   fetchFn: typeof fetch,
   signal?: AbortSignal,
-  audit?: { database: ServiceDatabase; traceId?: string; businessEvent: string; objectType?: string | null; objectId?: string | null; feature?: string }
+  audit?: { database: ServiceDatabase; traceId?: string; businessEvent: string; objectType?: string | null; objectId?: string | null; feature?: string; applicationId?: string },
+  customOptions?: { systemPrompt?: string; temperature?: number; jsonMode?: boolean }
 ): Promise<string> {
-  const url = `${profile.baseUrl}/chat/completions`;
-  const headers = upstreamHeaders(profile.secret, true);
-  if (profile.headers) {
-    Object.assign(headers, profile.headers);
-  }
-
-  // 核心字段在 extraBody 之后写入，供应商配置不能覆盖 model/messages。
-  const payload: Record<string, unknown> = {
-    ...profile.extraBody,
-    model: profile.model || 'gpt-4o',
-    messages: [
-      { role: 'system', content: 'You are an expert story director and screenwriter.' },
-      { role: 'user', content: prompt },
-    ],
-    temperature: 0.7,
-  };
-
-  const init: RequestInit = {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    ...(signal ? { signal } : {}),
-  };
-  const audited = audit ? await fetchAuditedAiResponse(audit.database, {
-    applicationId: 'activities', traceId: audit.traceId, feature: audit.feature ?? 'activities', businessEvent: audit.businessEvent,
-    objectType: audit.objectType, objectId: audit.objectId, callType: 'llm', provider: profile.name,
-    models: [String(payload.model)], parameters: { temperature: payload.temperature }, positivePrompt: prompt,
-    redactionSecrets: collectAiCallRedactionSecrets({ secret: profile.secret, headers: profile.headers, extraBody: profile.extraBody }),
-  }, fetchFn, url, init) : null;
-  const resp = audited?.response ?? await fetchFn(url, init);
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`LLM 供应商响应错误 [${resp.status}]: ${text.slice(0, 300)}`);
-  }
-
-  const data = (await resp.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error('LLM 供应商返回内容为空');
-  }
-
-  if (audited) {
-    updateAiCallRecord(audit!.database, audited.callId, { responseText: content, event: 'content_parsed', detail: { model: profile.model }, redactionSecrets: audited.redactionSecrets });
-  }
-
-  return content;
+  return executeTextLlm({
+    profile,
+    prompt,
+    systemPrompt: customOptions?.systemPrompt ?? 'You are an expert story director and screenwriter.',
+    temperature: customOptions?.temperature,
+    jsonMode: customOptions?.jsonMode,
+    abortSignal: signal,
+    fetchFn,
+    audit: audit
+      ? {
+          database: audit.database,
+          traceId: audit.traceId,
+          applicationId: audit.applicationId ?? 'activities',
+          feature: audit.feature ?? 'activities',
+          businessEvent: audit.businessEvent,
+          objectType: audit.objectType,
+          objectId: audit.objectId,
+        }
+      : undefined,
+  });
 }
 
 /**
@@ -621,8 +598,16 @@ export async function runTextGenerationJob(
   }
 
   // 创建任务前结构预检：未就绪直接 409，不产生注定失败的排队任务。
-  const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
-  if (!bindingStatus.ready) throw llmNotReadyError(bindingStatus);
+  const purposeKey = (params.mode === 'plan' || params.mode === 'stage' || params.mode === 'whole-text')
+    ? 'planning'
+    : (params.mode === 'continue-chat' || params.mode === 'rewrite-records')
+      ? 'dialogue'
+      : 'text';
+  const effectiveProfile = await resolveEffectiveModelProfile(database, secrets, 'activities', purposeKey);
+  if (!effectiveProfile) {
+    const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
+    if (!bindingStatus.ready) throw llmNotReadyError(bindingStatus);
+  }
 
   const { job, isExisting } = store.createJob({
     activityId,

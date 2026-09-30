@@ -73,7 +73,7 @@ export function GenerationSettingsFeature() {
       <PageHeader
         backHref="/apps/creative"
         backLabel="返回创作中心"
-        title="图片生成设置"
+        title="生成配置"
         description="常用设置里选择绘制模式、尺寸和画风；需要修改 ComfyUI 工作流节点时再进入高级配置。"
         actions={(
           <Button size="sm" variant="outline" onClick={() => { void load(); }}>

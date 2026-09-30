@@ -7,7 +7,8 @@ test('story migration 45 upgrades existing rows and preserves legacy proposal li
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON');
   try {
-    migrateDatabase(db, SERVICE_DATABASE_MIGRATIONS.slice(0, -1), 'service-test');
+    const migration45Index = SERVICE_DATABASE_MIGRATIONS.findIndex((m) => m.version === 45);
+    migrateDatabase(db, SERVICE_DATABASE_MIGRATIONS.slice(0, migration45Index), 'service-test');
     db.prepare(`INSERT INTO story_projects(id,title,summary,revision,context_settings_json,created_at,updated_at)
       VALUES ('project-1','雾港','',1,'{}','2026-01-01','2026-01-01')`).run();
     db.prepare(`INSERT INTO story_documents(id,project_id,kind,title,body,position,revision,created_at,updated_at)
@@ -17,7 +18,7 @@ test('story migration 45 upgrades existing rows and preserves legacy proposal li
     db.prepare(`INSERT INTO story_proposals(id,project_id,session_id,kind,target_id,base_revision,proposed_title,proposed_body,reason,status,created_at,decided_at)
       VALUES ('proposal-1','project-1','session-1','outline','outline-1',3,'新大纲','提案正文','补充冲突','pending','2026-01-03',NULL)`).run();
 
-    migrateDatabase(db, SERVICE_DATABASE_MIGRATIONS, 'service-test');
+    migrateDatabase(db, SERVICE_DATABASE_MIGRATIONS.slice(0, migration45Index + 1), 'service-test');
 
     const proposal = db.prepare('SELECT * FROM story_proposals WHERE id=?').get('proposal-1') as Record<string, unknown>;
     assert.equal(proposal.operation, 'update');

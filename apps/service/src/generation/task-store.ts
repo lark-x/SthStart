@@ -93,7 +93,7 @@ export function resolveWorkflowAndEngine(
   if (!engineId) throw codedError('generation_engine_unavailable', '未配置可用的生成引擎。');
   const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ? AND enabled = 1').get(engineId) as Record<string, unknown> | undefined;
   if (!engine) throw codedError('generation_engine_unavailable', `生成引擎 ${engineId} 处于禁用或不存在状态。`);
-  if (engine.kind !== 'comfyui' && engine.kind !== 'worker') throw codedError('unsupported_engine', `暂不支持引擎类型 "${engine.kind}"。`);
+  if (engine.kind !== 'comfyui' && engine.kind !== 'worker' && engine.kind !== 'cloud') throw codedError('unsupported_engine', `暂不支持引擎类型 "${engine.kind}"。`);
   const editorConfig = parseEditorConfig(workflowVersion.editor_config_json);
   return {
     workflow: {

@@ -1,0 +1,67 @@
+/* SthStart 剧情工作室专属 DSH 定制主题 */
+:root {
+  /* 品牌色体系 */
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #b84420 !important;
+  --dsw-alias-brand-primary-new-colorhover-new-color: #963517 !important;
+  --dsw-alias-brand-primary-new-coloractive-new-color: #7d2a12 !important;
+
+  /* 界面层次与底色（暖白纸感与桌面双层） */
+  --dsw-alias-bg-base: #faf9f6 !important;
+  --dsw-alias-bg-layer-1: #ffffff !important;
+  --dsw-alias-bg-layer-2: #f4f3ef !important;
+  --dsw-alias-bg-layer-3: #eeebe3 !important;
+
+  /* 文本层次（墨黑、次级墨灰、辅助线） */
+  --dsw-alias-label-primary: #17212e !important;
+  --dsw-alias-label-secondary: #566273 !important;
+  --dsw-alias-label-tertiary: #848d9b !important;
+  --dsw-alias-label-quaternary: #adb6c4 !important;
+
+  /* 边框体系 */
+  --dsw-alias-border-l1: #cfd6df !important;
+  --dsw-alias-border-l2: #e2e7ed !important;
+  --dsw-alias-border-l3: #eceff3 !important;
+
+  /* 交互态与高亮 */
+  --dsw-alias-interactive-bg-hover: rgba(23, 33, 46, 0.05) !important;
+  --dsw-alias-interactive-bg-active: rgba(23, 33, 46, 0.08) !important;
+  --dsw-alias-markdown-tag: rgba(184, 68, 32, 0.08) !important;
+
+  /* 圆角 */
+  --dsw-radius-panel: 12px !important;
+  --dsw-radius-lg: 10px !important;
+  --dsw-radius-md: 8px !important;
+  --dsw-radius-sm: 6px !important;
+
+  /* 字体栈 */
+  --dsw-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif !important;
+}
+
+/* 顶部与侧栏磨砂微透效果 */
+header, [role="banner"] {
+  background-color: var(--dsw-alias-bg-layer-2) !important;
+  border-bottom: 1px solid var(--dsw-alias-border-l2) !important;
+}
+
+/* 输入框与消息卡片精致圆角与边框 */
+textarea, input[type="text"] {
+  border-radius: var(--dsw-radius-md) !important;
+  border-color: var(--dsw-alias-border-l1) !important;
+}
+textarea:focus, input[type="text"]:focus {
+  border-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color) !important;
+  box-shadow: 0 0 0 2px rgba(184, 68, 32, 0.15) !important;
+}
+
+/* 滚动条与 SthStart 统一 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-border-l1);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dsw-alias-label-tertiary);
+}

@@ -5,7 +5,7 @@ import type { NarrativeCorpusProvider, ResearchScope } from './corpus.js';
 import { ResearchStore, type TopicSuggestionRow } from './store.js';
 import { RESEARCH_BUDGET } from './engine.js';
 import { buildTopicSuggestionPrompt, parseTopicSuggestionsDetailed, type ParsedTopicSuggestion } from './prompts.js';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile } from '../providers.js';
 import { callLlm } from '../activities/text-jobs.js';
 
 export interface TopicSuggestionOptions {
@@ -65,7 +65,7 @@ export async function suggestResearchTopics(
     };
   }
 
-  const profile = await resolveAssignedLlmProfile(database, secrets, 'narrative', 'text');
+  const profile = await resolveEffectiveModelProfile(database, secrets, 'narrative', 'research');
   if (!profile) {
     return {
       batchId: '', items: [], scanned: { nodes: 0, total: catalog.items.length, batches: 0, modelCalls: 0 }, discarded,
@@ -89,10 +89,17 @@ export async function suggestResearchTopics(
     }
     if (!excerpts.length) continue;
     try {
-      const raw = await callLlm(profile, buildTopicSuggestionPrompt({
-        workTitle, scopeLabel: describeScope(scope), scannedNodes: Math.min(offset + batch.length, scannable.length),
-        totalNodes: catalog.items.length, batches: excerpts, existingTitles: input.existingTitles,
-      }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.suggest_topics', objectType: 'narrative-work', objectId: input.workId });
+      const raw = await callLlm(
+        profile,
+        buildTopicSuggestionPrompt({
+          workTitle, scopeLabel: describeScope(scope), scannedNodes: Math.min(offset + batch.length, scannable.length),
+          totalNodes: catalog.items.length, batches: excerpts, existingTitles: input.existingTitles,
+        }),
+        fetcher,
+        undefined,
+        { database, feature: 'narrative-research', businessEvent: 'narrative.research.suggest_topics', objectType: 'narrative-work', objectId: input.workId, applicationId: 'narrative' },
+        { systemPrompt: '你是一名叙事选题顾问，负责从作品原文资料中发掘有研究价值和戏剧潜力的主题。', jsonMode: true }
+      );
       modelCalls += 1;
       const parsed = parseTopicSuggestionsDetailed(raw);
       collected.push(...parsed.kept);

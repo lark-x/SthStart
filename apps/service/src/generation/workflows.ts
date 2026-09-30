@@ -108,6 +108,48 @@ export function validateWorkflowVersionStructure(
   };
 }
 
+export function validateCloudRecipeStructure(
+  definition: unknown,
+  inputSchema: unknown,
+  nodeBindings: unknown,
+  outputDeclarations: unknown,
+) {
+  if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+    const error = new Error('云端配方定义 definition 必须为合法的 JSON 对象喵。') as Error & { code?: string };
+    error.code = 'invalid_cloud_recipe_definition'; throw error;
+  }
+  const raw = definition as Record<string, unknown>;
+  const modelId = raw.modelId ?? raw.model;
+  const operation = raw.operation ?? 'text-to-image';
+  if (typeof modelId !== 'string' || !modelId.trim() || !['text-to-image', 'image-to-image'].includes(String(operation))
+      || (raw.type !== undefined && raw.type !== 'cloud_recipe')
+      || (raw.customParams !== undefined && (!raw.customParams || typeof raw.customParams !== 'object' || Array.isArray(raw.customParams)))) {
+    const error = new Error('云端配方必须提供实际 modelId 和有效 operation，customParams 必须为对象。') as Error & { code?: string };
+    error.code = 'invalid_cloud_recipe_definition'; throw error;
+  }
+  const validatedDefinition = { ...raw, type: 'cloud_recipe', modelId: modelId.trim(), operation };
+
+  if (!inputSchema || typeof inputSchema !== 'object' || Array.isArray(inputSchema)) {
+    const error = new Error('输入结构 inputSchema 必须为合法的 JSON 对象喵。') as Error & { code?: string };
+    error.code = 'invalid_input_schema'; throw error;
+  }
+
+  const validatedNodeBindings: Record<string, unknown> = (nodeBindings && typeof nodeBindings === 'object' && !Array.isArray(nodeBindings))
+    ? (nodeBindings as Record<string, unknown>)
+    : {};
+
+  const validatedOutputDeclarations: string[] = Array.isArray(outputDeclarations) && outputDeclarations.length > 0
+    ? (outputDeclarations as string[]).map(String)
+    : ['image'];
+
+  return {
+    validatedDefinition,
+    validatedInputSchema: inputSchema as Record<string, unknown>,
+    validatedNodeBindings,
+    validatedOutputDeclarations,
+  };
+}
+
 export function renderWorkflowSnapshot(
   definition: Record<string, unknown>,
   nodeBindings: Record<string, string[]>,

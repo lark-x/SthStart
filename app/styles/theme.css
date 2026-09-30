@@ -21,27 +21,28 @@
   /* ---------- 应用背景三层 ---------- */
   --bg-app: #f5f6f8;
   --bg-nav: #eceff3;
-  --nav-surface: #202a36;
+  --nav-surface: #1e2631;
   --nav-foreground: #f5f4ef;
   --nav-muted: #b8c2ce;
   --nav-hover: rgb(255 255 255 / 8%);
   --nav-selected: #fffefa;
   --nav-selected-text: #253345;
-  --nav-border: rgb(255 255 255 / 10%);
+  --nav-border: rgb(255 255 255 / 8%);
   --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 14%);
-  --shadow-hero: 0 20px 48px rgb(40 47 39 / 18%);
+  --shadow-hero: 0 16px 40px rgb(40 47 39 / 8%);
+  --shadow-editorial: 0 2px 12px -2px rgb(23 33 46 / 5%), 0 1px 3px 0 rgb(23 33 46 / 3%);
   --ambient-glow: color-mix(in srgb, var(--accent) 6%, transparent);
   --shadow-control-inset: inset 0 1px 1px rgb(23 33 46 / 3%);
-  --hero-start: #233143;
-  --hero-mid: #304355;
-  --hero-end: #445366;
-  --hero-foreground: #f7f7f2;
-  --hero-muted: rgb(247 247 242 / 75%);
-  --hero-eyebrow: #c8d2ca;
-  --hero-glow: rgb(180 157 121 / 24%);
-  --hero-orbit: rgb(247 247 242 / 18%);
-  --hero-orbit-soft: rgb(247 247 242 / 12%);
-  --hero-dot: #d3a987;
+  --hero-start: #ffffff;
+  --hero-mid: #fbfbf9;
+  --hero-end: #f5f4ef;
+  --hero-foreground: #17212e;
+  --hero-muted: #566273;
+  --hero-eyebrow: #b84420;
+  --hero-glow: rgb(184 68 32 / 12%);
+  --hero-orbit: rgb(184 68 32 / 14%);
+  --hero-orbit-soft: rgb(184 68 32 / 8%);
+  --hero-dot: #b84420;
   --surface: #ffffff;
   --surface-raised: #ffffff;
   --surface-sunken: #f0f3f7;
@@ -49,6 +50,7 @@
   --surface-hover: rgb(23 33 46 / 5%);
   --surface-input: #ffffff;
   --surface-dark: #161d27;
+  --hairline: rgb(23 33 46 / 8%);
 
   /* ---------- 文字 ---------- */
   --fg-default: #17212e;
@@ -194,41 +196,42 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --accent-soft: #fbeadf;
   --accent-ring: rgb(174 66 31 / 32%);
 
-  --nav-surface: #2b382f;
+  --nav-surface: #252e28;
   --nav-foreground: #f6f0e5;
   --nav-muted: #bdc6b8;
   --nav-hover: rgb(255 252 245 / 9%);
   --nav-selected: #f7ebd9;
   --nav-selected-text: #2d382f;
-  --nav-border: rgb(255 252 245 / 12%);
+  --nav-border: rgb(255 252 245 / 8%);
   --shadow-nav-active: 0 5px 16px rgb(23 31 25 / 22%);
-  --shadow-hero: 0 20px 48px rgb(39 48 39 / 24%);
+  --shadow-hero: 0 16px 40px rgb(39 48 39 / 8%);
+  --shadow-editorial: 0 2px 12px -2px rgb(36 41 35 / 5%), 0 1px 3px 0 rgb(36 41 35 / 3%);
   --ambient-glow: color-mix(in srgb, var(--accent) 7%, transparent);
   --shadow-control-inset: inset 0 1px 1px rgb(36 41 35 / 3%);
-  --hero-start: #29372f;
-  --hero-mid: #354238;
-  --hero-end: #4a4d3e;
-  --hero-foreground: #fbf4e8;
-  --hero-muted: rgb(251 244 232 / 78%);
-  --hero-eyebrow: #d9c8a8;
-  --hero-glow: rgb(212 167 105 / 23%);
-  --hero-orbit: rgb(250 241 221 / 18%);
-  --hero-orbit-soft: rgb(250 241 221 / 12%);
-  --hero-dot: #e3a078;
+  --hero-start: #ffffff;
+  --hero-mid: #fffdf8;
+  --hero-end: #f7f3ec;
+  --hero-foreground: #242923;
+  --hero-muted: #575f57;
+  --hero-eyebrow: #ae421f;
+  --hero-glow: rgb(174 66 31 / 12%);
+  --hero-orbit: rgb(174 66 31 / 14%);
+  --hero-orbit-soft: rgb(174 66 31 / 8%);
+  --hero-dot: #ae421f;
 
-  --bg-app: #eee8dd;
-  --bg-nav: #eae4d9;
-  --surface: #fffdf8;
-  --surface-raised: #fffefa;
-  --surface-sunken: #e9e2d6;
-  --surface-muted: rgb(233 226 214 / 66%);
+  --bg-app: #f7f6f2;
+  --bg-nav: #f2eee6;
+  --surface: #ffffff;
+  --surface-raised: #fbfbf9;
+  --surface-sunken: #f0eee8;
+  --surface-muted: rgb(240 238 232 / 70%);
   --surface-hover: rgb(36 41 35 / 5%);
-  --surface-input: #fffefa;
+  --surface-input: #ffffff;
   --surface-dark: #1b211e;
-  --shadow-sm: 0 2px 8px rgb(49 39 25 / 7%);
-  --shadow-panel: 0 6px 22px rgb(61 46 27 / 6%), 0 1px 3px rgb(61 46 27 / 4%);
-  --shadow-floating: 0 14px 38px rgb(45 39 29 / 17%);
-  --shadow-dialog: 0 28px 80px rgb(45 39 29 / 28%);
+  --shadow-sm: 0 2px 8px rgb(49 39 25 / 6%);
+  --shadow-panel: 0 4px 16px rgb(61 46 27 / 5%), 0 1px 3px rgb(61 46 27 / 3%);
+  --shadow-floating: 0 14px 38px rgb(45 39 29 / 15%);
+  --shadow-dialog: 0 28px 80px rgb(45 39 29 / 24%);
 
   --fg-default: #242923;
   /* 同样满足 4.5:1；暖底比中性底更暗，需要一并下调并保持层级。 */
@@ -236,10 +239,11 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --fg-subtle: #60675d;
   --fg-inverse: #f4efe4;
 
-  --border-subtle: #e2d8c9;
-  --border-default: #cfc3b1;
+  --border-subtle: #eae6de;
+  --border-default: #dcd6cb;
   --border-strong: #8c9186;
   --border-control: #838779;
+  --hairline: rgb(36 41 35 / 8%);
 
   --success: #3f8558;
   --success-fg: #2c6642;
@@ -299,6 +303,7 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --color-border-default: var(--border-default);
   --color-border-strong: var(--border-strong);
   --color-border-control: var(--border-control);
+  --color-hairline: var(--hairline);
 
   --color-status-online: var(--success);
   --color-status-offline: var(--danger);
@@ -334,6 +339,7 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
 
   --shadow-sm: 0 1px 2px rgb(23 33 46 / 6%);
   --shadow-panel: 0 1px 2px rgb(23 33 46 / 5%);
+  --shadow-editorial: var(--shadow-editorial);
   --shadow-floating: 0 8px 24px rgb(23 33 46 / 12%);
   --shadow-dialog: 0 24px 64px rgb(23 33 46 / 22%);
 

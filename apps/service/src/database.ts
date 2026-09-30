@@ -1790,6 +1790,74 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, last_used_at TEXT
     )`,
   ] },
+  { version: 46, name: 'story-project-work-context', statements: [
+    'ALTER TABLE story_projects ADD COLUMN work_id TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_story_projects_work ON story_projects(work_id)',
+  ] },
+  { version: 47, name: 'service-connections-and-model-profiles', statements: [
+    `CREATE TABLE IF NOT EXISTS service_connections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('openai-compatible-text','openai-compatible-image','comfyui','worker','vector')),
+      base_url TEXT NOT NULL,
+      credential_account TEXT,
+      timeout_ms INTEGER NOT NULL DEFAULT 60000,
+      headers_json TEXT NOT NULL DEFAULT '{}',
+      options_json TEXT NOT NULL DEFAULT '{}',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS model_profiles (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL REFERENCES service_connections(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      capabilities_json TEXT NOT NULL DEFAULT '["text"]',
+      context_length INTEGER,
+      max_output_tokens INTEGER,
+      default_params_json TEXT NOT NULL DEFAULT '{}',
+      advanced_json TEXT NOT NULL DEFAULT '{}',
+      test_status TEXT NOT NULL DEFAULT 'untested' CHECK(test_status IN ('untested','passed','failed')),
+      last_tested_at TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS purpose_bindings (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL REFERENCES managed_apps(id) ON DELETE CASCADE,
+      purpose_key TEXT NOT NULL,
+      target_type TEXT NOT NULL CHECK(target_type IN ('model','preset')),
+      target_id TEXT NOT NULL,
+      inherit_app_default INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      UNIQUE(app_id, purpose_key)
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_model_profiles_connection ON model_profiles(connection_id)',
+    'CREATE INDEX IF NOT EXISTS idx_purpose_bindings_lookup ON purpose_bindings(app_id, purpose_key)',
+    `INSERT INTO service_connections(id, name, kind, base_url, credential_account, timeout_ms, headers_json, options_json, enabled, created_at, updated_at)
+      SELECT 'conn_' || p.id, p.name || ' 连接',
+        CASE p.kind WHEN 'llm' THEN 'openai-compatible-text' WHEN 'image' THEN 'openai-compatible-image' ELSE 'vector' END,
+        p.base_url, p.credential_account, 60000, coalesce(o.headers_json, '{}'), coalesce(o.extra_body_json, '{}'),
+        p.enabled, p.created_at, p.updated_at
+      FROM provider_profiles p
+      LEFT JOIN provider_profile_options o ON o.profile_id = p.id
+      WHERE NOT EXISTS (SELECT 1 FROM service_connections sc WHERE sc.id = 'conn_' || p.id)`,
+    `INSERT INTO model_profiles(id, connection_id, name, model_id, capabilities_json, context_length, max_output_tokens, default_params_json, advanced_json, test_status, last_tested_at, enabled, created_at, updated_at)
+      SELECT p.id, 'conn_' || p.id, p.name, coalesce(p.model, p.id),
+        coalesce(o.capabilities_json, '["text"]'), NULL, NULL, '{}',
+        json_object('thinkingMode', coalesce(o.thinking_mode, 'omit')),
+        'untested', NULL, p.enabled, p.created_at, p.updated_at
+      FROM provider_profiles p
+      LEFT JOIN provider_profile_options o ON o.profile_id = p.id
+      WHERE NOT EXISTS (SELECT 1 FROM model_profiles mp WHERE mp.id = p.id)`,
+    `INSERT INTO service_connections(id, name, kind, base_url, credential_account, timeout_ms, headers_json, options_json, enabled, created_at, updated_at)
+      SELECT e.id, e.name, CASE e.kind WHEN 'cloud' THEN 'openai-compatible-image' ELSE e.kind END,
+        e.base_url, e.credential_account, 60000, '{}', '{}', e.enabled, e.created_at, e.updated_at
+      FROM generation_engines e
+      WHERE NOT EXISTS (SELECT 1 FROM service_connections sc WHERE sc.id = e.id)`,
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

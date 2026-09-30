@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import net from 'node:net';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -111,6 +111,37 @@ const generationCode = await new Promise((resolveCode, reject) => {
 if (generationCode !== 0) throw new Error('无法根据本机 DSH 标准 Web profile 生成 Story MCP 配置。');
 
 const require = createRequire(import.meta.url);
+
+// 注入 SthStart 剧情专属视觉主题样式到 DSH Web
+try {
+  const dshWebFrontendPkg = require.resolve('@deepseek-ai/dsh-web-frontend/package.json');
+  const dshWebDist = resolve(dirname(dshWebFrontendPkg), 'dist');
+  const dshWebAssets = resolve(dshWebDist, 'assets');
+  const themeSrc = resolve(repoRoot, 'scripts/story-dsh/sthstart-theme.css');
+  const themeDest = resolve(dshWebAssets, 'sthstart-theme.css');
+  await cp(themeSrc, themeDest);
+
+  const indexPath = resolve(dshWebDist, 'index.html');
+  const indexHtml = await readFile(indexPath, 'utf8');
+  if (!indexHtml.includes('sthstart-theme.css')) {
+    const updatedHtml = indexHtml.replace('</head>', '    <link rel="stylesheet" crossorigin href="./assets/sthstart-theme.css">\n  </head>');
+    await writeFile(indexPath, updatedHtml, 'utf8');
+  }
+} catch (e) {
+  console.warn('注入 DSH 专属主题样式失败（非关键）：', e.message);
+}
+
+// 同步剧情专属 Skills 到 DSH 工作区与 home 目录
+try {
+  const skillsSrc = resolve(repoRoot, 'apps/service/src/story/skills');
+  const dshWorkspaceSkills = join(workspace, '.dsh', 'skills');
+  const dshHomeSkills = join(dshHome, 'skills');
+  await cp(skillsSrc, dshWorkspaceSkills, { recursive: true, force: true });
+  await cp(skillsSrc, dshHomeSkills, { recursive: true, force: true });
+} catch (e) {
+  console.warn('同步剧情 Skills 失败（非关键）：', e.message);
+}
+
 const dshPackage = require.resolve('@deepseek-ai/dsh/package.json');
 const dshBin = resolve(dirname(dshPackage), 'lib/bin.js');
 const child = spawn(process.execPath, [dshBin, '--profile', 'web', '--patch', patchPath,

@@ -1,19 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppLlmAssignment, GenerationWorker, LlmModelCapability, ManagedApp, PersonaTemplate, ProviderProfile, PublicCapability } from '@sthstart/contracts';
 import { authenticateAdmin } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
-import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVersionStructure } from './generation.js';
+import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVersionStructure, validateCloudRecipeStructure } from './generation.js';
 import { defaultWorkerSettings, workerHealth } from './worker.js';
 import { cachedConnectionStatus } from './generation/comfy-discovery.js';
 import { applyWorkflowPresetTemplates, markDraftSynced } from './generation/configuration-store.js';
 import { validateEditorConfig } from './generation/configuration.js';
 import { validateActivityLoraInjection } from './generation/workflows.js';
 import { registerGenerationConfigRoutes } from './generation-config-routes.js';
+import { registerConnectionRoutes, hydrateConnection } from './connections-routes.js';
+import { registerModelRoutes, hydrateModelProfile } from './models-routes.js';
 import { getH3Status, readH3Settings } from './h3.js';
 import { getMediaDiagnostics } from './media-diagnostics.js';
 import { resolveAppLlmBindingStatus } from './llm-status.js';
@@ -114,8 +116,11 @@ function validCapabilities(kind: ProviderProfile['kind'], capabilities: unknown)
 }
 
 function profileUsage(database: ServiceDatabase, profileId: string) {
-  return database.connection.prepare(`SELECT a.app_id,m.name,a.role FROM app_llm_assignments a
+  const assignments = database.connection.prepare(`SELECT a.app_id,m.name,a.role FROM app_llm_assignments a
     JOIN managed_apps m ON m.id=a.app_id WHERE a.profile_id=? ORDER BY m.name,a.role`).all(profileId) as Array<{ app_id: string; name: string; role: string }>;
+  const bindings = database.connection.prepare(`SELECT p.app_id,m.name,p.purpose_key as role FROM purpose_bindings p
+    JOIN managed_apps m ON m.id=p.app_id WHERE p.target_type='model' AND p.target_id=? ORDER BY m.name,p.purpose_key`).all(profileId) as Array<{ app_id: string; name: string; role: string }>;
+  return [...assignments, ...bindings];
 }
 
 function personaRows(database: ServiceDatabase): PersonaTemplate[] {
@@ -215,11 +220,52 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
 
   // 配置工作台新路由（发现/分析/草稿/导出/试运行/预设）挂载在同一管理鉴权之下。
   registerGenerationConfigRoutes(app, config, database, secrets, fetcher);
+  registerConnectionRoutes(app, config, database, secrets, fetcher);
+  registerModelRoutes(app, config, database, secrets, fetcher);
 
-  app.get('/api/v1/admin/overview', async () => ({
-    keyring: await secrets.status(), apps: appRows(database),
-    profiles: await profileRows(database, secrets), llmAssignments: assignmentRows(database), personas: personaRows(database),
-  }));
+  // 兼容旧接口别名
+  const llmProfilesHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!authenticateAdmin(config.adminToken, request)) return reply.code(401).send({ error: 'unauthorized' });
+    return profileRows(database, secrets);
+  };
+  app.get('/api/admin/llm-profiles', llmProfilesHandler);
+  app.get('/api/v1/admin/llm-profiles', llmProfilesHandler);
+  app.get('/api/admin/llm-assignments', async (request, reply) => {
+    if (!authenticateAdmin(config.adminToken, request)) return reply.code(401).send({ error: 'unauthorized' });
+    return assignmentRows(database);
+  });
+  app.get('/api/v1/admin/llm-assignments', async (request, reply) => {
+    if (!authenticateAdmin(config.adminToken, request)) return reply.code(401).send({ error: 'unauthorized' });
+    return assignmentRows(database);
+  });
+
+  app.get('/api/v1/admin/overview', async () => {
+    const connRows = database.connection.prepare('SELECT * FROM service_connections ORDER BY name COLLATE NOCASE').all() as Record<string, unknown>[];
+    const connections = await Promise.all(connRows.map((row) => hydrateConnection(row, secrets)));
+    const modelRows = database.connection.prepare('SELECT * FROM model_profiles ORDER BY name COLLATE NOCASE').all() as Record<string, unknown>[];
+    const modelProfiles = modelRows.map((row) => hydrateModelProfile(row));
+    const purposeRows = database.connection.prepare('SELECT * FROM purpose_bindings ORDER BY app_id, purpose_key').all() as Record<string, unknown>[];
+    const purposeBindings = purposeRows.map((row) => ({
+      id: String(row.id),
+      appId: String(row.app_id),
+      purposeKey: String(row.purpose_key),
+      targetType: row.target_type as 'model' | 'preset',
+      targetId: String(row.target_id),
+      inheritAppDefault: Boolean(row.inherit_app_default),
+      updatedAt: String(row.updated_at),
+    }));
+
+    return {
+      keyring: await secrets.status(),
+      apps: appRows(database),
+      profiles: await profileRows(database, secrets),
+      llmAssignments: assignmentRows(database),
+      personas: personaRows(database),
+      connections,
+      modelProfiles,
+      purposeBindings,
+    };
+  });
 
   app.get('/api/v1/admin/apps', async () => ({ items: appRows(database) }));
 
@@ -296,6 +342,36 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       database.connection.prepare(`INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)
         ON CONFLICT(profile_id) DO UPDATE SET thinking_mode=excluded.thinking_mode,headers_json=excluded.headers_json,extra_body_json=excluded.extra_body_json,capabilities_json=excluded.capabilities_json`)
         .run(id, thinkingMode, JSON.stringify(filteredHeaders), JSON.stringify(extraBody), JSON.stringify(capabilities));
+
+      // 双向同步镜像至 service_connections 与 model_profiles
+      const connId = `conn_${id}`;
+      const connKind = kind === 'llm' ? 'openai-compatible-text' : kind === 'image' ? 'openai-compatible-image' : 'vector';
+      database.connection.prepare(`
+        INSERT INTO service_connections (id, name, kind, base_url, credential_account, timeout_ms, headers_json, options_json, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          kind = excluded.kind,
+          base_url = excluded.base_url,
+          credential_account = excluded.credential_account,
+          headers_json = excluded.headers_json,
+          options_json = excluded.options_json,
+          enabled = excluded.enabled,
+          updated_at = excluded.updated_at
+      `).run(connId, `${name.trim()} 连接`, connKind, normalizedUrl, account, 60000, JSON.stringify(filteredHeaders), JSON.stringify(extraBody), enabled ? 1 : 0, now, now);
+
+      database.connection.prepare(`
+        INSERT INTO model_profiles (id, connection_id, name, model_id, capabilities_json, context_length, max_output_tokens, default_params_json, advanced_json, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          connection_id = excluded.connection_id,
+          name = excluded.name,
+          model_id = excluded.model_id,
+          capabilities_json = excluded.capabilities_json,
+          advanced_json = excluded.advanced_json,
+          enabled = excluded.enabled,
+          updated_at = excluded.updated_at
+      `).run(id, connId, name.trim(), model?.trim() || id, JSON.stringify(capabilities), null, null, '{}', JSON.stringify({ thinkingMode, ...extraBody }), enabled ? 1 : 0, now, now);
     });
     return reply.code(201).send({ id, secretStored: secretWarning === null, warning: secretWarning });
   });
@@ -364,6 +440,17 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run(targetId, targetName, 'llm', String(source.base_url), model, targetAccount, now, now);
         database.connection.prepare('INSERT INTO provider_profile_options(profile_id,thinking_mode,headers_json,extra_body_json,capabilities_json) VALUES (?,?,?,?,?)')
           .run(targetId, String(source.thinking_mode ?? 'omit'), String(source.headers_json ?? '{}'), String(source.extra_body_json ?? '{}'), JSON.stringify(capabilities));
+
+        const connId = `conn_${targetId}`;
+        database.connection.prepare(`
+          INSERT INTO service_connections (id, name, kind, base_url, credential_account, timeout_ms, headers_json, options_json, enabled, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(connId, `${targetName} 连接`, 'openai-compatible-text', String(source.base_url), targetAccount, 60000, String(source.headers_json ?? '{}'), String(source.extra_body_json ?? '{}'), 1, now, now);
+
+        database.connection.prepare(`
+          INSERT INTO model_profiles (id, connection_id, name, model_id, capabilities_json, context_length, max_output_tokens, default_params_json, advanced_json, enabled, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(targetId, connId, targetName, model, JSON.stringify(capabilities), null, null, '{}', JSON.stringify({ thinkingMode: source.thinking_mode ?? 'omit' }), 1, now, now);
       });
     } catch (error) {
       if (credential.value && secretWarning === null) await secrets.delete(targetAccount).catch(() => undefined);
@@ -377,7 +464,12 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (usage.length) return reply.code(409).send({ error: 'profile_in_use', message: '请先更换使用该模型的应用。', apps: usage });
     const row = database.connection.prepare('SELECT credential_account FROM provider_profiles WHERE id=?').get(request.params.id) as { credential_account: string | null } | undefined;
     if (!row) return reply.code(404).send({ error: 'profile_not_found' });
-    database.connection.prepare('DELETE FROM provider_profiles WHERE id=?').run(request.params.id);
+    database.transaction(() => {
+      database.connection.prepare('DELETE FROM provider_profiles WHERE id=?').run(request.params.id);
+      database.connection.prepare('DELETE FROM provider_profile_options WHERE profile_id=?').run(request.params.id);
+      database.connection.prepare('DELETE FROM model_profiles WHERE id=?').run(request.params.id);
+      database.connection.prepare('DELETE FROM service_connections WHERE id = ? AND NOT EXISTS (SELECT 1 FROM model_profiles WHERE connection_id = service_connections.id)').run(`conn_${request.params.id}`);
+    });
     if (row.credential_account) await secrets.delete(row.credential_account).catch(() => undefined);
     return { ok: true };
   });
@@ -811,14 +903,28 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       }
     }
 
-    let validated: ReturnType<typeof validateWorkflowVersionStructure>;
+    let validated: {
+      validatedDefinition: Record<string, unknown>;
+      validatedInputSchema: Record<string, unknown>;
+      validatedNodeBindings: Record<string, unknown>;
+      validatedOutputDeclarations: string[];
+    };
     try {
-      validated = validateWorkflowVersionStructure(
-        request.body?.definition,
-        request.body?.inputSchema ?? {},
-        request.body?.nodeBindings ?? {},
-        request.body?.outputDeclarations ?? [],
-      );
+      if (wf.engine_kind === 'cloud') {
+        validated = validateCloudRecipeStructure(
+          request.body?.definition,
+          request.body?.inputSchema ?? {},
+          request.body?.nodeBindings ?? {},
+          request.body?.outputDeclarations ?? ['image'],
+        );
+      } else {
+        validated = validateWorkflowVersionStructure(
+          request.body?.definition,
+          request.body?.inputSchema ?? {},
+          request.body?.nodeBindings ?? {},
+          request.body?.outputDeclarations ?? [],
+        );
+      }
     } catch (err) {
       const code = (err as { code?: string })?.code || 'invalid_workflow_format';
       return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
@@ -830,7 +936,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     if (request.body?.editorConfig !== undefined && request.body?.editorConfig !== null) {
       try {
         const editorConfig = validateEditorConfig(request.body.editorConfig);
-        validateActivityLoraInjection(validated.validatedDefinition, editorConfig);
+        if (wf.engine_kind !== 'cloud') {
+          validateActivityLoraInjection(validated.validatedDefinition, editorConfig);
+        }
         editorConfigJson = JSON.stringify(editorConfig);
         configFormatVersion = 2;
       } catch (err) {
@@ -984,9 +1092,23 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const nodeBindings = rawBody.nodeBindings ?? versionObj.nodeBindings ?? {};
     const outputDeclarations = rawBody.outputDeclarations ?? versionObj.outputDeclarations ?? [];
 
-    let validated: ReturnType<typeof validateWorkflowVersionStructure>;
+    let validated: {
+      validatedDefinition: Record<string, unknown>;
+      validatedInputSchema: Record<string, unknown>;
+      validatedNodeBindings: Record<string, unknown>;
+      validatedOutputDeclarations: string[];
+    };
     try {
-      validated = validateWorkflowVersionStructure(definition, inputSchema, nodeBindings, outputDeclarations);
+      if (engineKind === 'cloud') {
+        validated = validateCloudRecipeStructure(
+          definition,
+          inputSchema,
+          nodeBindings,
+          Array.isArray(outputDeclarations) && outputDeclarations.length > 0 ? outputDeclarations : ['image'],
+        );
+      } else {
+        validated = validateWorkflowVersionStructure(definition, inputSchema, nodeBindings, outputDeclarations);
+      }
     } catch (err) {
       const code = (err as { code?: string })?.code || 'invalid_workflow_format';
       return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });

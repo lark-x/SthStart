@@ -26,6 +26,7 @@ async function main() {
   });
 
   try {
+    await page.request.post(new URL('/api/auth/admin-session', baseUrl).toString(), { headers: { origin: new URL(baseUrl).origin } });
     let activityUrl = configuredActivityUrl
       ? new URL(configuredActivityUrl, baseUrl).toString()
       : null;
@@ -48,14 +49,14 @@ async function main() {
       await page.locator('[data-embed="true"]').waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('main').waitFor({ state: 'visible', timeout: 10_000 });
       await page.setViewportSize({ width: 1920, height: 1080 });
-      await page.getByRole('navigation', { name: '流水线阶段' }).waitFor({ state: 'visible', timeout: 30_000 });
+      await page.getByRole('navigation', { name: '工坊产物阶段' }).waitFor({ state: 'visible', timeout: 30_000 });
       await page.waitForTimeout(1000);
-      await assertWorkspaceNavigation(page, '流水线阶段');
+      await assertWorkspaceNavigation(page, '工坊产物阶段');
       await page.screenshot({ path: resolve(outputDir, 'wide-1920.png'), fullPage: false });
 
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.waitForTimeout(400);
-      await assertWorkspaceNavigation(page, '活动流程');
+      await assertWorkspaceNavigation(page, '工坊产物阶段');
       await page.screenshot({ path: resolve(outputDir, 'desktop-1440.png'), fullPage: false });
       await assertNoPageOverflow(page, '桌面视口');
 
@@ -82,16 +83,15 @@ async function main() {
     await page.goto(new URL('/settings/ai-logs?callId=sample-call-001', baseUrl).toString(), { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: 'AI 调用记录', exact: true }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('heading', { name: '生成产物' }).waitFor({ state: 'visible', timeout: 15_000 });
-    const detailDialog = page.getByRole('dialog', { name: 'AI 调用详情' });
-    await detailDialog.locator('img').first().waitFor({ state: 'visible', timeout: 15_000 });
-    await page.addStyleTag({ content: '[role="dialog"] > div[tabindex="-1"], [role="dialog"] [class*="max-h-"][class*="overflow-y-auto"] { max-height: none !important; overflow: visible !important; }' });
+    const detailPanel = page.getByRole('region', { name: 'AI 调用详情', exact: true });
+    await detailPanel.locator('img').first().waitFor({ state: 'visible', timeout: 15_000 });
     await page.waitForTimeout(800);
-    await page.screenshot({ path: resolve(outputDir, 'ai-logs-desktop-1440.png'), fullPage: true });
+    await page.screenshot({ path: resolve(outputDir, 'ai-logs-desktop-1440.png'), fullPage: false });
     await assertNoPageOverflow(page, 'AI 调用记录桌面视口');
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(500);
-    await page.screenshot({ path: resolve(outputDir, 'ai-logs-mobile-390.png'), fullPage: true });
+    await page.screenshot({ path: resolve(outputDir, 'ai-logs-mobile-390.png'), fullPage: false });
     await assertNoPageOverflow(page, 'AI 调用记录窄屏视口');
 
     if (pageErrors.length) throw new Error(`页面发生 ${pageErrors.length} 个未捕获异常，详见上方输出。`);
@@ -186,7 +186,7 @@ async function assertWorkspaceNavigation(page, accessibleName) {
   const navigation = page.getByRole('navigation', { name: accessibleName });
   await navigation.waitFor({ state: 'visible', timeout: 10_000 });
   const stepCount = await navigation.getByRole('button').count();
-  if (stepCount !== 5) throw new Error(`预期显示 5 个流程步骤，实际为 ${stepCount}。`);
+  if (stepCount !== 5) throw new Error(`预期显示 5 个工坊视图，实际为 ${stepCount}。`);
   const activeStepCount = await navigation.locator('button[aria-current="step"]').count();
   if (activeStepCount !== 1) throw new Error(`预期恰有一个当前步骤，实际为 ${activeStepCount}。`);
   const hasHorizontalOverflow = await page.evaluate(() =>

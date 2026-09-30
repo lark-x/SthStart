@@ -5,7 +5,7 @@ import type { NarrativeDatabase } from '../narrative-database.js';
 import { ResearchStore } from './store.js';
 import { natureForClaims, unresolvedSynthesisIds } from './engine.js';
 import { buildSynthesisPrompt, parseSynthesis } from './prompts.js';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile } from '../providers.js';
 import { callLlm } from '../activities/text-jobs.js';
 
 export interface SynthesizeOptions {
@@ -38,7 +38,7 @@ export async function regenerateSynthesis(
   const accepted = store.listClaims({ projectId }).filter((claim) => claim.status === 'accepted');
   if (!accepted.length) return { ok: false, reason: '至少需要一条已接受的结论才能生成总稿。' };
 
-  const profile = await resolveAssignedLlmProfile(database, secrets, 'narrative', 'text');
+  const profile = await resolveEffectiveModelProfile(database, secrets, 'narrative', 'research');
   if (!profile) return { ok: false, reason: '没有可用的文本模型，请在「模型与公共服务」为叙事档案配置。' };
 
   const workTitle = (options.narrativeDatabase.connection.prepare('SELECT title FROM narrative_works WHERE id=?').get(project.workId) as { title: string } | undefined)?.title ?? project.workId;
@@ -58,10 +58,17 @@ export async function regenerateSynthesis(
 
   let synthesis;
   try {
-    const raw = await callLlm(profile, buildSynthesisPrompt({
-      workTitle, title: project.title, question: project.question,
-      claims: claimsForPrompt, evidence,
-    }), fetcher, undefined, { database, feature: 'narrative-research', businessEvent: 'narrative.research.regenerate_synthesis', objectType: 'research-project', objectId: projectId });
+    const raw = await callLlm(
+      profile,
+      buildSynthesisPrompt({
+        workTitle, title: project.title, question: project.question,
+        claims: claimsForPrompt, evidence,
+      }),
+      fetcher,
+      undefined,
+      { database, feature: 'narrative-research', businessEvent: 'narrative.research.regenerate_synthesis', objectType: 'research-project', objectId: projectId, applicationId: 'narrative' },
+      { systemPrompt: '你是一名专业的文献编纂与研究综述总监，负责重新撰写逻辑严密的总稿。', jsonMode: true }
+    );
     synthesis = parseSynthesis(raw);
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };

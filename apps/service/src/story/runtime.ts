@@ -17,8 +17,18 @@ export class StoryRuntime {
     private readonly store: StoryStore, private readonly appToken: string) {}
 
   private model(): string {
-    const row = this.db.connection.prepare(`SELECT p.model FROM app_llm_assignments a
-      JOIN provider_profiles p ON p.id=a.profile_id AND p.kind='llm' AND p.enabled=1
+    const binding = this.db.connection.prepare(`
+      SELECT coalesce(m.model_id, p.model) as model FROM purpose_bindings pb
+      LEFT JOIN model_profiles m ON m.id = pb.target_id AND m.enabled = 1
+      LEFT JOIN provider_profiles p ON p.id = pb.target_id AND p.enabled = 1
+      WHERE pb.app_id = 'story' AND pb.purpose_key IN ('story', 'writing') AND pb.target_type = 'model' AND pb.inherit_app_default = 0
+      LIMIT 1
+    `).get() as { model: string | null } | undefined;
+    if (binding?.model) return binding.model;
+
+    const row = this.db.connection.prepare(`SELECT coalesce(m.model_id, p.model) as model FROM app_llm_assignments a
+      LEFT JOIN model_profiles m ON m.id=a.profile_id AND m.enabled=1
+      LEFT JOIN provider_profiles p ON p.id=a.profile_id AND p.kind='llm' AND p.enabled=1
       WHERE a.app_id='story' AND a.role='text'`).get() as { model: string | null } | undefined;
     if (!row?.model) throw new StoryError('story_model_unconfigured', 503, '请先为剧情工作室绑定公共文本模型。');
     return row.model;

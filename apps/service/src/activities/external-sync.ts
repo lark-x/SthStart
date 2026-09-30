@@ -48,20 +48,6 @@ export async function processExternalMedia(
   config: ServiceConfig,
   database: ServiceDatabase,
 ): Promise<{ url: string; mediaType: 'image' | 'video' }> {
-  // If it's already an HTTP / relative URL, keep it
-  if (
-    filePathOrUrl.startsWith('http://') ||
-    filePathOrUrl.startsWith('https://') ||
-    filePathOrUrl.startsWith('/')
-  ) {
-    const ext = extname(filePathOrUrl.split('?')[0]).toLowerCase();
-    const mime = inferMimeType(filePathOrUrl);
-    return {
-      url: filePathOrUrl,
-      mediaType: inferMediaType(mime, ext),
-    };
-  }
-
   // If local file exists, upload to artifact store
   if (existsSync(filePathOrUrl)) {
     const stats = statSync(filePathOrUrl);
@@ -80,6 +66,20 @@ export async function processExternalMedia(
 
     return {
       url: `/api/admin/artifacts/${artifact.id}/file`,
+      mediaType: inferMediaType(mime, ext),
+    };
+  }
+
+  // If it's already an HTTP / relative URL, keep it
+  if (
+    filePathOrUrl.startsWith('http://') ||
+    filePathOrUrl.startsWith('https://') ||
+    filePathOrUrl.startsWith('/')
+  ) {
+    const ext = extname(filePathOrUrl.split('?')[0]).toLowerCase();
+    const mime = inferMimeType(filePathOrUrl);
+    return {
+      url: filePathOrUrl,
       mediaType: inferMediaType(mime, ext),
     };
   }

@@ -6,6 +6,12 @@ import { syncGenerationAiCall } from '../ai-call-trace.js';
 
 export const generationEventBus = new EventEmitter();
 export const activeGenerationExecutions = new Set<Promise<void>>();
+const databaseExecutions = new WeakMap<ServiceDatabase, Set<Promise<void>>>();
+export function generationExecutionsFor(database: ServiceDatabase): Set<Promise<void>> {
+  let executions = databaseExecutions.get(database);
+  if (!executions) { executions = new Set(); databaseExecutions.set(database, executions); }
+  return executions;
+}
 const stoppedDatabases = new WeakSet<ServiceDatabase>();
 
 export function resumeGenerationExecutions(database: ServiceDatabase) {

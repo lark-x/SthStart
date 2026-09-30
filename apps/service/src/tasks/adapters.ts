@@ -36,6 +36,65 @@ export interface ListTasksOptions {
   narrativeDatabase?: NarrativeDatabase | null;
 }
 
+export function getActiveTasksCount(
+  database: ServiceDatabase,
+  narrativeDatabase?: NarrativeDatabase | null,
+): number {
+  let count = 0;
+  function safeCount(sql: string): number {
+    try {
+      const row = database.connection.prepare(sql).get() as { c: number } | undefined;
+      return Number(row?.c ?? 0);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 1. activity_media_batches (准备中或执行中的批次)
+  count += safeCount(`
+    SELECT COUNT(*) as c FROM activity_media_batches b
+    WHERE b.stop_requested = 0 AND (
+      b.id NOT IN (SELECT DISTINCT batch_id FROM activity_media_batch_items)
+      OR b.id IN (
+        SELECT DISTINCT batch_id FROM activity_media_batch_items
+        WHERE state IN ('waiting', 'preparing')
+           OR attempt_id IN (
+             SELECT id FROM activity_image_attempts
+             WHERE status IN ('queued', 'preparing', 'running', 'submitting', 'accepted')
+           )
+      )
+    )
+  `);
+  // 2. activity_jobs (文本或导出任务)
+  count += safeCount("SELECT COUNT(*) as c FROM activity_jobs WHERE kind IN ('text','export') AND status IN ('queued', 'preparing', 'submitting', 'running', 'accepted')");
+  // 3. activity_image_attempts (单图生成)
+  count += safeCount("SELECT COUNT(*) as c FROM activity_image_attempts att LEFT JOIN generation_tasks t ON t.id = att.task_id WHERE att.id NOT IN (SELECT attempt_id FROM activity_media_batch_items WHERE attempt_id IS NOT NULL) AND COALESCE(t.status, att.status) IN ('queued', 'preparing', 'submitting', 'running', 'accepted')");
+  // 4. topic_collection_runs
+  count += safeCount("SELECT COUNT(*) as c FROM topic_collection_runs WHERE status IN ('queued', 'running')");
+  // 5. knowledge_collection_runs
+  count += safeCount("SELECT COUNT(*) as c FROM knowledge_collection_runs WHERE status IN ('queued', 'running')");
+  // 6. backup_runs
+  count += safeCount("SELECT COUNT(*) as c FROM backup_runs WHERE status IN ('queued', 'running')");
+  // 7. activity_idea_batches
+  count += safeCount("SELECT COUNT(*) as c FROM activity_idea_batches WHERE status IN ('queued', 'running')");
+  // 8. planning_research_tasks
+  count += safeCount("SELECT COUNT(*) as c FROM planning_research_tasks WHERE status IN ('queued', 'running')");
+  // 9. activity_planning_jobs
+  count += safeCount("SELECT COUNT(*) as c FROM activity_planning_jobs WHERE status IN ('queued', 'running')");
+  // 10. generation_tasks (独立生成)
+  count += safeCount("SELECT COUNT(*) as c FROM generation_tasks WHERE status IN ('queued', 'accepted', 'running', 'submitting') AND id NOT IN (SELECT task_id FROM activity_image_attempts WHERE task_id IS NOT NULL)");
+
+  // 11. narrative_research_runs (叙事库)
+  if (narrativeDatabase) {
+    try {
+      const row = narrativeDatabase.connection.prepare("SELECT COUNT(*) as c FROM narrative_research_runs WHERE status IN ('queued', 'running')").get() as { c: number } | undefined;
+      count += Number(row?.c ?? 0);
+    } catch (error) { throw error; }
+  }
+
+  return count;
+}
+
 export function listUnifiedTasks(
   database: ServiceDatabase,
   options?: ListTasksOptions,
@@ -50,19 +109,46 @@ export function listUnifiedTasks(
   function safeQuery<T>(fn: () => T[]): T[] {
     try {
       return fn();
-    } catch {
-      return [];
+    } catch (error) {
+      throw error;
     }
   }
 
   // 1. Activity Media Batches
   if (!filterDomain || filterDomain === 'activity_media_batch') {
+    let whereClause = '';
+    if (filterState === 'active') {
+      whereClause = `WHERE b.stop_requested = 0 AND (
+        b.id NOT IN (SELECT DISTINCT batch_id FROM activity_media_batch_items)
+        OR b.id IN (
+          SELECT DISTINCT batch_id FROM activity_media_batch_items
+          WHERE state IN ('waiting', 'preparing')
+             OR attempt_id IN (
+               SELECT id FROM activity_image_attempts
+               WHERE status IN ('queued', 'preparing', 'running', 'submitting', 'accepted')
+             )
+        )
+      )`;
+    } else if (filterState === 'recent') {
+      whereClause = `WHERE b.stop_requested = 1 OR (
+        b.id IN (SELECT DISTINCT batch_id FROM activity_media_batch_items)
+        AND b.id NOT IN (
+          SELECT DISTINCT batch_id FROM activity_media_batch_items
+          WHERE state IN ('waiting', 'preparing')
+             OR attempt_id IN (
+               SELECT id FROM activity_image_attempts
+               WHERE status IN ('queued', 'preparing', 'running', 'submitting', 'accepted')
+             )
+        )
+      )`;
+    }
     const batchRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT b.id, b.activity_id, a.title as activity_title, b.created_at, b.updated_at, b.stop_requested
            FROM activity_media_batches b
            LEFT JOIN activities a ON a.id = b.activity_id
+           ${whereClause}
            ORDER BY b.created_at DESC
            LIMIT ?`,
         )
@@ -111,13 +197,19 @@ export function listUnifiedTasks(
 
   // 2. Activity Text Jobs
   if (!filterDomain || filterDomain === 'activity_text' || filterDomain === 'export') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "AND j.status IN ('queued', 'preparing', 'submitting', 'running', 'accepted')";
+    } else if (filterState === 'recent') {
+      stateFilter = "AND j.status NOT IN ('queued', 'preparing', 'submitting', 'running', 'accepted')";
+    }
     const textRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT j.id, j.activity_id, a.title as activity_title, j.kind, j.mode, j.status, j.error_message, j.created_at, j.updated_at
            FROM activity_jobs j
            LEFT JOIN activities a ON a.id = j.activity_id
-           WHERE j.kind IN ('text','export')
+           WHERE j.kind IN ('text','export') ${stateFilter}
            ORDER BY j.created_at DESC
            LIMIT ?`,
         )
@@ -172,6 +264,12 @@ export function listUnifiedTasks(
 
   // 3. Standalone Image Attempts
   if (!filterDomain || filterDomain === 'generation') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "AND COALESCE(t.status, att.status) IN ('queued', 'preparing', 'submitting', 'running', 'accepted')";
+    } else if (filterState === 'recent') {
+      stateFilter = "AND COALESCE(t.status, att.status) NOT IN ('queued', 'preparing', 'submitting', 'running', 'accepted')";
+    }
     const attemptRows = safeQuery(() =>
       database.connection
         .prepare(
@@ -179,7 +277,7 @@ export function listUnifiedTasks(
            FROM activity_image_attempts att
            LEFT JOIN activities a ON a.id = att.activity_id
            LEFT JOIN generation_tasks t ON t.id=att.task_id
-           WHERE att.id NOT IN (SELECT attempt_id FROM activity_media_batch_items WHERE attempt_id IS NOT NULL)
+           WHERE att.id NOT IN (SELECT attempt_id FROM activity_media_batch_items WHERE attempt_id IS NOT NULL) ${stateFilter}
            ORDER BY att.created_at DESC
            LIMIT ?`,
         )
@@ -234,11 +332,18 @@ export function listUnifiedTasks(
 
   // 4. Topic Collection Runs
   if (!filterDomain || filterDomain === 'topic_collection') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE status NOT IN ('queued', 'running')";
+    }
     const topicRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT id, status, progress_label, error_message, created_count, merged_count, failed_count, created_at, updated_at
            FROM topic_collection_runs
+           ${stateFilter}
            ORDER BY created_at DESC
            LIMIT ?`,
         )
@@ -292,12 +397,19 @@ export function listUnifiedTasks(
 
   // 5b. 资料搜集执行（第二轮）：执行记录进统一任务中心，跳转到资料库的搜集任务页。
   if (!filterDomain || filterDomain === 'knowledge_collection') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE r.status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE r.status NOT IN ('queued', 'running')";
+    }
     const knowledgeRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT r.id, r.status, r.progress_label, r.error_message, r.new_count, r.changed_count, r.duplicate_count, r.created_at, r.updated_at, c.name collection_name
            FROM knowledge_collection_runs r
            LEFT JOIN knowledge_collections c ON c.id = r.collection_id
+           ${stateFilter}
            ORDER BY r.created_at DESC
            LIMIT ?`,
         )
@@ -345,6 +457,12 @@ export function listUnifiedTasks(
   }
 
   if (!filterDomain || filterDomain === 'backup') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE r.status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE r.status NOT IN ('queued', 'running')";
+    }
     const backupRows = safeQuery(() =>
       database.connection
         .prepare(
@@ -352,7 +470,9 @@ export function listUnifiedTasks(
                   r.object_count, r.reused_object_count, r.created_at, r.updated_at,
                   (SELECT COALESCE(SUM(t.uploaded_bytes),0) FROM backup_target_runs t WHERE t.run_id=r.id) AS target_uploaded,
                   (SELECT COALESCE(SUM(t.total_bytes),0) FROM backup_target_runs t WHERE t.run_id=r.id) AS target_total
-           FROM backup_runs r ORDER BY r.created_at DESC LIMIT 20`,
+           FROM backup_runs r
+           ${stateFilter}
+           ORDER BY r.created_at DESC LIMIT 20`,
         )
         .all() as Array<{
           id: string;
@@ -403,11 +523,18 @@ export function listUnifiedTasks(
   }
 
   if (!filterDomain || filterDomain === 'idea_generation') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE status NOT IN ('queued', 'running')";
+    }
     const ideaRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT id, status, requirement, error_message, session_id, activity_id, created_at, updated_at
            FROM activity_idea_batches
+           ${stateFilter}
            ORDER BY created_at DESC
            LIMIT ?`,
         )
@@ -451,12 +578,19 @@ export function listUnifiedTasks(
 
   // 6. Research Tasks
   if (!filterDomain || filterDomain === 'research') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE rt.status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE rt.status NOT IN ('queued', 'running')";
+    }
     const researchRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT rt.id, rt.session_id, json_extract(s.form_json, '$.title') as session_title, rt.status, rt.progress_label, rt.error_message, rt.used_tool_calls, rt.budget_tool_calls, rt.created_at, rt.updated_at
            FROM planning_research_tasks rt
            LEFT JOIN activity_planning_sessions s ON s.id = rt.session_id
+           ${stateFilter}
            ORDER BY rt.created_at DESC
            LIMIT ?`,
         )
@@ -513,12 +647,19 @@ export function listUnifiedTasks(
    * 任务抽屉里显示为「剧情研究」，与活动企划的 MCP 研究区分开。
    */
   if (options?.narrativeDatabase && (!filterDomain || filterDomain === 'narrative_research')) {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE r.status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE r.status NOT IN ('queued', 'running')";
+    }
     const runRows = safeQuery(() =>
       options.narrativeDatabase!.connection.prepare(
         `SELECT r.id, r.project_id, p.title project_title, r.status, r.stage, r.progress_label,
                 r.error_message, r.incomplete_reason, r.used_model_calls, r.created_at, r.updated_at
          FROM narrative_research_runs r
          LEFT JOIN narrative_research_projects p ON p.id = r.project_id
+         ${stateFilter}
          ORDER BY r.created_at DESC LIMIT ?`,
       ).all(limit) as Array<{
         id: string; project_id: string; project_title: string | null; status: string; stage: string;
@@ -556,12 +697,19 @@ export function listUnifiedTasks(
 
   // 8. Planning Jobs
   if (!filterDomain || filterDomain === 'planning') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "WHERE pj.status IN ('queued', 'running')";
+    } else if (filterState === 'recent') {
+      stateFilter = "WHERE pj.status NOT IN ('queued', 'running')";
+    }
     const planningRows = safeQuery(() =>
       database.connection
         .prepare(
           `SELECT pj.id, pj.session_id, json_extract(s.form_json, '$.title') as session_title, pj.status, pj.error_message, pj.created_at, pj.updated_at
            FROM activity_planning_jobs pj
            LEFT JOIN activity_planning_sessions s ON s.id = pj.session_id
+           ${stateFilter}
            ORDER BY pj.created_at DESC
            LIMIT ?`,
         )
@@ -604,8 +752,15 @@ export function listUnifiedTasks(
   }
 
   if (!filterDomain || filterDomain === 'generation') {
+    let stateFilter = '';
+    if (filterState === 'active') {
+      stateFilter = "AND status IN ('queued','accepted','running','submitting')";
+    } else if (filterState === 'recent') {
+      stateFilter = "AND status NOT IN ('queued','accepted','running','submitting')";
+    }
     const rows = database.connection.prepare(`SELECT id,app_id,purpose,status,error_code,error_message,created_at,updated_at FROM generation_tasks
       WHERE id NOT IN (SELECT task_id FROM activity_image_attempts WHERE task_id IS NOT NULL)
+      ${stateFilter}
       ORDER BY created_at DESC LIMIT ?`).all(limit) as Array<{ id: string; app_id: string; purpose: string; status: string; error_code: string; error_message: string; created_at: string; updated_at: string }>;
     for (const row of rows) {
       const active = ['queued','accepted','running','submitting'].includes(row.status);
@@ -620,8 +775,8 @@ export function listUnifiedTasks(
   // Sort all tasks by created_at DESC
   tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Count active tasks
-  const activeCount = tasks.filter((t) => t.displayState === 'waiting' || t.displayState === 'running').length;
+  // 精准独立统计当前系统活跃任务总数，绝不依赖截断后的内存列表
+  const activeCount = getActiveTasksCount(database, options?.narrativeDatabase);
 
   // Filter by state if requested
   let filtered = tasks;

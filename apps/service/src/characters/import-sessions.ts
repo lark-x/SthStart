@@ -23,6 +23,7 @@ function v1Shape(draft: CharacterDraftAny): CharacterDraft {
   return isV2Draft(draft) ? toV1View(draft) : draft;
 }
 import { upsertCharacterBirthday } from './birthday.js';
+import { cleanseCharacterDraft } from './cleanse.js';
 import { parseCharacterCard, CARD_PARSER_VERSION } from './card-parser.js';
 import { mapCharacterCard, mapCharacterImage } from './card-mapper.js';
 import { removeArtifact, streamUploadArtifact } from '../artifacts.js';
@@ -358,6 +359,7 @@ export async function commitCharacterImportSession(
       assetArtifactId = artifact.id;
     }
 
+    const cleanDraft = cleanseCharacterDraft(draft);
     const result = database.transaction(() => {
       if (targetId) {
         const latest = database.connection.prepare('SELECT draft_revision FROM character_profiles WHERE id=?').get(targetId) as { draft_revision: number } | undefined;
@@ -366,11 +368,11 @@ export async function commitCharacterImportSession(
       if (!targetId) {
         database.connection.prepare(`INSERT INTO character_profiles
           (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision)
-          VALUES (?,?,?,?,?,NULL,NULL,0,?,?,?)`).run(characterId, `character-${characterId.slice(0, 8)}`, draft.displayName, JSON.stringify(draft), '[]', now, now, newDraftRevision);
+          VALUES (?,?,?,?,?,NULL,NULL,0,?,?,?)`).run(characterId, `character-${characterId.slice(0, 8)}`, cleanDraft.displayName, JSON.stringify(cleanDraft), '[]', now, now, newDraftRevision);
       }
       database.connection.prepare(`UPDATE character_profiles SET display_name=?,draft_json=?,updated_at=?,draft_revision=?${avatarAssetId ? ',avatar_asset_id=?' : ''} WHERE id=?`)
-        .run(...(avatarAssetId ? [draft.displayName, JSON.stringify(draft), now, newDraftRevision, avatarAssetId, characterId] : [draft.displayName, JSON.stringify(draft), now, newDraftRevision, characterId]));
-      upsertCharacterBirthday(database, characterId, draft);
+        .run(...(avatarAssetId ? [cleanDraft.displayName, JSON.stringify(cleanDraft), now, newDraftRevision, avatarAssetId, characterId] : [cleanDraft.displayName, JSON.stringify(cleanDraft), now, newDraftRevision, characterId]));
+      upsertCharacterBirthday(database, characterId, cleanDraft);
       if (candidate.tags) {
         const previousTags = profile ? JSON.parse(String(database.connection.prepare('SELECT tags_json FROM character_profiles WHERE id=?').get(characterId)!.tags_json)) as string[] : [];
         database.connection.prepare('UPDATE character_profiles SET tags_json=? WHERE id=?').run(JSON.stringify([...new Set([...previousTags, ...candidate.tags])].slice(0, 50)), characterId);

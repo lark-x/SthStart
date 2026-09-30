@@ -65,8 +65,8 @@ export function Drawer({
           className
         )}
       >
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div>
+        <div className="flex shrink-0 items-start justify-between gap-4 mb-4">
+          <div className="min-w-0">
             <h3 id={titleId} className="text-lg font-semibold text-ink">
               {title}
             </h3>
@@ -77,18 +77,18 @@ export function Drawer({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-lg p-1.5 text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭抽屉"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
-        {/* 抽屉同样在 portal 中，需显式声明滚动条自动隐藏。 */}
+        {/* 抽屉正文需显式声明滚动条自动隐藏。 */}
         <div className="min-h-0 flex-1 overflow-y-auto py-2" data-autohide-scroll>{children}</div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-3 pt-4 mt-auto border-t border-border-subtle">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 pt-4 mt-auto border-t border-border-subtle">
             {footer}
           </div>
         )}

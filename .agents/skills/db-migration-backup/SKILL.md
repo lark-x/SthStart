@@ -1,107 +1,63 @@
 ---
 name: db-migration-backup
 description: >-
-  Use this skill when modifying database schemas, running SQLite migrations, checking data integrity,
-  or performing database backup and restore operations in SthStart.
+  Use when changing SQLite schemas, running migrations, checking integrity, or backing up
+  and restoring SthStart data. Distinguish read-only checks and temporary test databases
+  from operations that write real user databases or media assets.
 ---
 
-# 数据库变更与便携备份指南 (DB Migration & Backup)
+# SthStart 数据库迁移与备份
 
-SthStart 使用本地 SQLite 数据库（WAL 模式），主要包含业务主库（`sthstart.db`）与叙事档案库（`narrative.db`）。
+SthStart 使用 WAL 模式的 SQLite。业务库与叙事档案库的实际路径由配置决定，默认文件名为 `sthstart.db` 与 `narrative.db`。
 
-修改数据库或执行数据运维时，必须严格遵守“**先检查 ➔ 必备份 ➔ 慎迁移 ➔ 验完整性**”的安全原则。
+## 编写迁移
 
----
+- 业务迁移位于 `apps/service/src/database.ts` 的 `SERVICE_DATABASE_MIGRATIONS`，叙事迁移位于 `apps/service/src/narrative-database.ts` 的 `NARRATIVE_DATABASE_MIGRATIONS`。
+- 使用当前 `DatabaseMigration` 接口：`version`、`name`、`statements: readonly string[]`。版本取所属数组现有最大值加一，不照抄文档中的固定版本，不修改已经执行的迁移。
+- 重建外键关联表时按迁移器约定使用 `foreignKeysOff`；需要拦截破坏性迁移时使用 `guard`，不要另写绕过事务和恢复逻辑的迁移脚本。
+- 用临时数据库验证旧版本升级、已有数据保留和完整性；仅编写代码或运行临时测试，不要求备份真实用户数据库。
 
-## 核心运维命令速查
+迁移项形状示意，字段与 SQL 按实际任务替换：
 
-```bash
-# 1. 状态与完整性检查
-npm run db:check                # 检查当前版本与迁移状态
-npm run db:integrity            # 运行 SQLite PRAGMA integrity_check
-
-# 2. 数据库迁移
-npm run db:migrate              # 执行未执行的迁移脚本
-
-# 3. 原始数据库快照备份与还原 (VACUUM INTO)
-npm run db:backup               # 备份到 data/backups/<timestamp>/
-npm run db:restore -- <dir> --confirm  # 从指定目录恢复数据库
-
-# 4. 便携备份（包含数据库 + 媒体资产清单）
-node --import tsx scripts/portable-backup.ts backup [target-dir]
-node --import tsx scripts/portable-backup.ts verify <backup-dir>
-node --import tsx scripts/portable-backup.ts restore <backup-dir> --confirm
-```
-
----
-
-## 场景一：修改表结构与编写数据库迁移
-
-当你需要新增字段、修改表结构或创建新表时：
-
-### 1. 确认迁移定义位置
-- 业务主库迁移：`apps/service/src/database.ts` 中的 `SERVICE_DATABASE_MIGRATIONS` 数组。
-- 叙事档案库迁移：`apps/service/src/narrative-database.ts` 中的 `NARRATIVE_DATABASE_MIGRATIONS` 数组。
-
-### 2. 迁移定义规范
-每个迁移项包含唯一的递增 `version` 与 SQL 升级语句：
 ```typescript
 {
-  version: 12, // 必须紧接上一版本的递增整数
-  up: `
-    ALTER TABLE activities ADD COLUMN review_notes TEXT;
-    CREATE INDEX IF NOT EXISTS idx_activities_review ON activities(review_notes);
-  `,
+  version: nextVersion, // 取当前迁移数组的最大版本 + 1
+  name: 'add_example_field',
+  statements: ['ALTER TABLE example_table ADD COLUMN example_field TEXT'],
 }
 ```
 
-### 3. 安全执行流程
-1. **备份当前数据库**：
-   ```bash
-   npm run db:backup
-   ```
-2. **执行迁移**：
-   ```bash
-   npm run db:migrate
-   ```
-3. **校验迁移结果**：
-   ```bash
-   npm run db:check
-   npm run db:integrity
-   ```
+## 检查和真实数据操作
 
----
+```bash
+npm run db:check
+npm run db:integrity
+```
 
-## 场景二：便携备份与数据恢复 (Portable Backup)
+这两个命令只读，不要求预先备份。`db:check` 检查迁移版本，`db:integrity` 运行 `PRAGMA integrity_check`。
 
-便携备份是 SthStart 提供的综合备份机制，不仅包含 SQLite 数据库，还记录了媒体资产（Artifacts）的校验哈希与相对路径。
+迁移、恢复、重置真实数据前，确认目标配置和用户任务范围，备份当前数据，再执行必要操作。启动可能应用待执行迁移的服务也按真实写入处理。不能仅为了验证代码而自动迁移用户数据库。
 
-### 1. 创建便携备份
+```bash
+npm run db:backup
+npm run db:migrate
+npm run db:check
+npm run db:integrity
+```
+
+WAL 数据库使用项目备份工具生成一致快照，不能只复制活跃数据库的 `.db` 文件并忽略 WAL。
+
+## 两种备份的区别
+
+- `npm run db:backup`：生成数据库快照和 `media-manifest.json`，不复制媒体二进制文件。适用于数据库变更前保底；重置会删除资产，需要完整备份。
+- 便携备份：复制数据库、当前工具覆盖的本地媒体与笔记附件，生成 `backup-manifest.json`，记录路径、哈希和缺失文件。不能把未下载的远程媒体当作已备份文件。
+
 ```bash
 node --import tsx scripts/portable-backup.ts backup
-```
-- 产物将存放在备份目录下，生成 `manifest.json` 与数据库副本。
-
-### 2. 验证备份完整性
-在还原之前，务必验证备份文件是否损坏：
-```bash
 node --import tsx scripts/portable-backup.ts verify <backup-dir>
-```
-
-### 3. 从备份中恢复
-> [!CAUTION]
-> 恢复操作会覆盖当前的数据库文件，必须明确携带 `--confirm` 参数。
-```bash
 node --import tsx scripts/portable-backup.ts restore <backup-dir> --confirm
-```
-
----
-
-## 危险操作警告 (Reset)
-
-重置数据库会彻底删除数据库文件及关联的本地资产：
-```bash
-# 严禁在未确认的情况下使用！
+npm run db:restore -- <backup-dir> --confirm
 npm run db:reset -- --confirm
 ```
-执行前请务必确认已做好备份。
+
+恢复前验证对应备份，停止使用目标数据库的服务；恢复或重置需已有明确授权，并保留 CLI 要求的 `--confirm`。用户已经明确要求恢复或重置时，不重复询问同一授权。`db:reset` 删除数据库、媒体目录和笔记资产，不用于解决普通迁移失败。

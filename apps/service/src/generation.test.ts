@@ -1301,17 +1301,17 @@ test("Generation worker: submits once, polls, persists output, and confirms remo
   database.close();
 });
 
-test("Generation unsupported engine: cloud engine task creation fails with unsupported_engine", async () => {
+test("Generation cloud engine: cloud engine task creation succeeds", async () => {
   const database = new ServiceDatabase();
-  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-unsupported-"));
-  const token = seedApp(database, "unsupp-app");
+  const artifactDir = await mkdtemp(resolve(tmpdir(), "sthstart-gen-cloud-"));
+  const token = seedApp(database, "cloud-app");
   const config = testConfig({ STHSTART_ARTIFACT_DIR: artifactDir });
   const now = nowIso();
 
   database.connection.prepare("INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)").run("eng-cloud", "Cloud", "cloud", "http://cloud.test:9000", null, 1, 2, now, now);
   database.connection.prepare("INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("wf-cloud", "Cloud WF", "", "cloud", "image", 1, now, now);
   database.connection.prepare("INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)").run("wf-cloud", 1, "eng-cloud", "{}", "{}", "[]", JSON.stringify({ "6": { class_type: "Test", inputs: {} } }), 1, now);
-  database.connection.prepare("INSERT INTO app_generation_assignments(app_id,purpose,workflow_id,workflow_version,engine_id,updated_at) VALUES (?,?,?,?,?,?)").run("unsupp-app", "default", "wf-cloud", 1, "eng-cloud", now);
+  database.connection.prepare("INSERT INTO app_generation_assignments(app_id,purpose,workflow_id,workflow_version,engine_id,updated_at) VALUES (?,?,?,?,?,?)").run("cloud-app", "default", "wf-cloud", 1, "eng-cloud", now);
 
   const { app } = await createService({ config, database, secrets: new SecretStore({}) });
   const createRes = await app.inject({
@@ -1320,8 +1320,8 @@ test("Generation unsupported engine: cloud engine task creation fails with unsup
     headers: { authorization: `Bearer ${token}`, "idempotency-key": "cloud-key-1" },
     payload: {},
   });
-  assert.equal(createRes.statusCode, 400);
-  assert.equal(createRes.json().error, "unsupported_engine");
+  assert.equal(createRes.statusCode, 202);
+  assert.equal(createRes.json().status, "queued");
   await app.close();
   database.close();
 });

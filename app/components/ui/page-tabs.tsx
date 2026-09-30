@@ -80,10 +80,10 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-medium transition-colors',
+              'inline-flex h-11 sm:h-9 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
               selected
-                ? 'bg-surface text-ink shadow-xs'
+                ? 'bg-surface text-accent font-semibold'
                 : 'text-muted hover:bg-surface-hover hover:text-ink',
               tab.disabled && 'pointer-events-none opacity-50'
             )}

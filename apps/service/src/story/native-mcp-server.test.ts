@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -26,9 +27,12 @@ test('native DSH stdio MCP exposes exactly six scoped tools and only submits pro
   const address = http.address();
   assert.ok(address && typeof address !== 'string');
   const token = 'bridge-test-token-abcdefghijklmnopqrstuvwxyz0123456789';
+  const serverPath = existsSync(fileURLToPath(new URL('./native-mcp-server.ts', import.meta.url)))
+    ? fileURLToPath(new URL('./native-mcp-server.ts', import.meta.url))
+    : fileURLToPath(new URL('./native-mcp-server.js', import.meta.url));
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: ['--import', import.meta.resolve('tsx/esm'), fileURLToPath(new URL('./native-mcp-server.ts', import.meta.url))],
+    args: ['--import', import.meta.resolve('tsx/esm'), serverPath],
     cwd: process.cwd(), stderr: 'pipe',
     env: { PATH: process.env.PATH ?? '', STHSTART_STORY_PROJECT_ID: 'project-test', STHSTART_STORY_BRIDGE_TOKEN: token,
       STHSTART_STORY_PORTAL_URL: `http://127.0.0.1:${address.port}` },

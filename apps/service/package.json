@@ -9,7 +9,7 @@
     "build:comic-reader": "vite build --config vite.comic-reader.config.mjs",
     "start": "node --import tsx/esm dist/start.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --import tsx/esm --test dist/*.test.js dist/*/*.test.js"
+    "test": "npm run build && node --import tsx/esm --test --test-concurrency=1 dist/*.test.js dist/*/*.test.js"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.7-rc.2",

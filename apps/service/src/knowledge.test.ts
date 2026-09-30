@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Value } from '@sinclair/typebox/value';
+import { CreativeNoteSchema, CreativeNotesResponseSchema } from '@sthstart/contracts';
 import { createService } from './server.js';
 import { ServiceDatabase } from './database.js';
 import { readConfig } from './config.js';
@@ -307,4 +309,31 @@ test('knowledge: 资料库列表按元数据筛选并返回分面', async () => 
   const byKeyword = await app.inject({ url: '/api/v1/admin/notebook/notes?q=' + encodeURIComponent('星铁'), headers: adminHeaders });
   assert.equal(byKeyword.json().total, 1);
   await app.close(); database.close();
+});
+
+
+test('notebook: legacy blocks without IDs and legacy categories remain readable', async () => {
+  const { app, database } = await bootstrap();
+  try {
+    const created = await createNote(app, {
+      title: '旧导入资料', content: [{ type: 'text', text: '保留原文' }],
+      knowledge: { works: [], characters: [], locations: [], sources: [], nature: 'canon', authorship: 'excerpt', usage: 'reference', category: 'plot' },
+    });
+    assert.ok(Value.Check(CreativeNoteSchema, created), 'write responses must include block IDs');
+    database.connection.prepare('UPDATE creative_notes SET content_json=? WHERE id=?')
+      .run(JSON.stringify([{ type: 'text', text: '保留原文' }]), created.id as string);
+    database.connection.prepare("UPDATE note_knowledge SET category='world' WHERE note_id=?").run(created.id as string);
+    const url = '/api/v1/admin/notebook/notes/' + created.id;
+    const first = (await app.inject({ url, headers: adminHeaders })).json();
+    const second = (await app.inject({ url, headers: adminHeaders })).json();
+    assert.ok(Value.Check(CreativeNoteSchema, first));
+    assert.equal(first.content[0].type, 'text');
+    if (first.content[0].type === 'text') assert.equal(first.content[0].text, '保留原文');
+    assert.equal(first.content[0].id, second.content[0].id, 'read compatibility IDs must remain stable');
+    assert.equal(first.knowledge?.category, 'other');
+    const list = (await app.inject({ url: '/api/v1/admin/notebook/notes?page=1&pageSize=50', headers: adminHeaders })).json();
+    assert.ok(Value.Check(CreativeNotesResponseSchema, list));
+    const stored = database.connection.prepare('SELECT content_json FROM creative_notes WHERE id=?').get(created.id as string) as { content_json: string };
+    assert.equal(JSON.parse(stored.content_json)[0].id, undefined, 'reading must not rewrite legacy storage');
+  } finally { await app.close(); database.close(); }
 });

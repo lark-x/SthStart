@@ -17,6 +17,8 @@ import { Button } from '@/app/components/ui/button';
 import { IconButton } from '@/app/components/ui/icon-button';
 import { Input } from '@/app/components/ui/input';
 
+import { cleanseHtmlText } from '../cleanse';
+
 export type StringField = { value: string };
 
 export type CharacterArrayName = 'aliases' | 'dialogueExamples';
@@ -44,31 +46,31 @@ export type CharacterFormValues = {
 };
 
 function toFields(values: string[] | undefined): StringField[] {
-  return (values ?? []).map((value) => ({ value }));
+  return (values ?? []).map((value) => ({ value: cleanseHtmlText(value) }));
 }
 
 function fromFields(values: StringField[] | undefined): string[] {
   return (values ?? [])
-    .map((item) => item.value.trim())
+    .map((item) => cleanseHtmlText(item.value.trim()))
     .filter(Boolean);
 }
 
 export function characterDraftToFormValues(draft: CharacterDraftAny): CharacterFormValues {
   const runtime = toCharacterRuntime(draft);
   return {
-    displayName: runtime.displayName,
-    englishName: runtime.englishName,
+    displayName: cleanseHtmlText(runtime.displayName),
+    englishName: cleanseHtmlText(runtime.englishName),
     originType: runtime.originType,
-    work: runtime.work,
-    summary: runtime.summary,
-    personaText: runtime.personaText,
-    speechText: runtime.speechText,
-    behaviorRules: runtime.behaviorRules,
+    work: cleanseHtmlText(runtime.work),
+    summary: cleanseHtmlText(runtime.summary),
+    personaText: cleanseHtmlText(runtime.personaText),
+    speechText: cleanseHtmlText(runtime.speechText),
+    behaviorRules: cleanseHtmlText(runtime.behaviorRules),
     aliases: toFields([...runtime.aliases]),
     dialogueExamples: toFields([...runtime.dialogueExamples]),
     appearance: {
-      baseText: runtime.appearance.baseText,
-      defaultOutfitText: runtime.appearance.defaultOutfitText,
+      baseText: cleanseHtmlText(runtime.appearance.baseText),
+      defaultOutfitText: cleanseHtmlText(runtime.appearance.defaultOutfitText),
     },
     visualLoras: 'visualLoras' in draft ? [...(draft.visualLoras ?? [])] : [],
     birthday: ('birthday' in draft && draft.birthday) ? draft.birthday : { status: 'unset', calendar: 'unknown' },
@@ -79,19 +81,19 @@ export function characterDraftToFormValues(draft: CharacterDraftAny): CharacterF
 export function characterFormValuesToDraft(values: CharacterFormValues): CharacterDraftV2 {
   return {
     schemaVersion: 2,
-    displayName: values.displayName,
-    englishName: values.englishName,
+    displayName: cleanseHtmlText(values.displayName),
+    englishName: cleanseHtmlText(values.englishName),
     originType: values.originType,
-    work: values.work,
-    summary: values.summary,
-    personaText: values.personaText,
-    speechText: values.speechText,
+    work: cleanseHtmlText(values.work),
+    summary: cleanseHtmlText(values.summary),
+    personaText: cleanseHtmlText(values.personaText),
+    speechText: cleanseHtmlText(values.speechText),
     dialogueExamples: fromFields(values.dialogueExamples),
-    behaviorRules: values.behaviorRules,
+    behaviorRules: cleanseHtmlText(values.behaviorRules),
     aliases: fromFields(values.aliases),
     appearance: {
-      baseText: values.appearance.baseText,
-      defaultOutfitText: values.appearance.defaultOutfitText,
+      baseText: cleanseHtmlText(values.appearance.baseText),
+      defaultOutfitText: cleanseHtmlText(values.appearance.defaultOutfitText),
     },
     visualLoras: values.visualLoras,
     birthday: values.birthday || { status: 'unset', calendar: 'unknown' },

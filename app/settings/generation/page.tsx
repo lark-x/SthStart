@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { GenerationSettings } from './generation-client';
 
 export const metadata: Metadata = {
-  title: '图片生成设置 — SthStart',
+  title: '生成配置 — SthStart',
   description: '管理活动绘制模式、尺寸、画风及高级 ComfyUI 工作流。',
 };
 

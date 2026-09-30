@@ -5,7 +5,7 @@ import type {
 } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile } from '../providers.js';
 import { resolveAppLlmBindingStatus } from '../llm-status.js';
 import { callLlm } from '../activities/text-jobs.js';
 import { parseAiJsonOutput } from '../activities/prompts.js';
@@ -792,13 +792,22 @@ export async function runKnowledgeCollection(
     }
 
     store.updateRun(run.id, { progressLabel: '正在整理资料…' });
-    const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
-    const profile = bindingStatus.ready ? await resolveAssignedLlmProfile(database, secrets, 'activities', 'text') : null;
+    const profile = await resolveEffectiveModelProfile(database, secrets, 'notebook', 'notebook');
     let organized: OrganizedItem[] = [];
     let organizeError: string | null = null;
     if (profile) {
       try {
-        organized = parseOrganized(await callLlm(profile, buildOrganizePrompt(collection, deduped), options.fetcher ?? fetch, undefined, { database, feature: 'knowledge-collection', businessEvent: 'knowledge.collection.organize', objectType: 'knowledge-collection-run', objectId: run.id }), Math.max(10, deduped.length));
+        organized = parseOrganized(
+          await callLlm(
+            profile,
+            buildOrganizePrompt(collection, deduped),
+            options.fetcher ?? fetch,
+            undefined,
+            { database, feature: 'knowledge-collection', businessEvent: 'knowledge.collection.organize', objectType: 'knowledge-collection-run', objectId: run.id, applicationId: 'knowledge' },
+            { systemPrompt: '你是专业的创作资料整理专家，负责对原始资料进行客观严谨的结构化提炼。', jsonMode: true }
+          ),
+          Math.max(10, deduped.length)
+        );
       } catch (error) {
         organizeError = '整理失败：' + (error instanceof Error ? error.message : String(error));
       }
@@ -874,9 +883,17 @@ async function buildCollectionToolArgs(
   options: KnowledgeCollectionOptions,
 ): Promise<Record<string, unknown>> {
   return researchToolArguments(tool, keyword, '', undefined, async (prompt: string) => {
-    const profile = await resolveAssignedLlmProfile(options.database, options.secrets, 'activities', 'text');
+    const profile = await resolveEffectiveModelProfile(options.database, options.secrets, 'notebook', 'notebook');
     if (!profile) throw new Error('文本模型未就绪，无法生成工具参数。');
-    return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'knowledge-collection', businessEvent: 'knowledge.collection.tool_arguments', objectType: 'knowledge-collection' }));
+    const raw = await callLlm(
+      profile,
+      prompt,
+      options.fetcher ?? fetch,
+      undefined,
+      { database: options.database, feature: 'knowledge-collection', businessEvent: 'knowledge.collection.tool_arguments', objectType: 'knowledge-collection', applicationId: 'knowledge' },
+      { systemPrompt: '你是专业的创作资料整理专家，负责为外部工具检索生成精确的参数。', jsonMode: true }
+    );
+    return parseAiJsonOutput<unknown>(raw);
   });
 }
 
@@ -905,9 +922,8 @@ export async function runOrganizeDraft(
   const knowledge = new KnowledgeStore(options.database);
   store.updateDraft(draft.id, { status: 'running' });
   try {
-    const bindingStatus = await resolveAppLlmBindingStatus(options.database, options.secrets, 'activities', 'text');
-    const profile = bindingStatus.ready ? await resolveAssignedLlmProfile(options.database, options.secrets, 'activities', 'text') : null;
-    if (!profile) throw new Error('文本模型未就绪，请先在公共服务中为活动工作室绑定文本模型。');
+    const profile = await resolveEffectiveModelProfile(options.database, options.secrets, 'notebook', 'notebook');
+    if (!profile) throw new Error('文本模型未就绪，请先在公共服务中为创作资料库或活动工作室绑定文本模型。');
     const versions = draft.sourceVersionIds
       .map((id) => knowledge.getSourceVersion(id))
       .filter((item): item is NonNullable<ReturnType<KnowledgeStore['getSourceVersion']>> => Boolean(item));
@@ -930,7 +946,16 @@ export async function runOrganizeDraft(
       '只输出一个 JSON 对象：',
       '{"title":"资料标题","text":"整理后的正文","assumptions":["无法确认的点"]}',
     ].join('\n');
-    const parsed = parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'knowledge-collection', businessEvent: 'knowledge.draft.organize', objectType: 'knowledge-draft', objectId: draft.id }));
+    const parsed = parseAiJsonOutput<unknown>(
+      await callLlm(
+        profile,
+        prompt,
+        options.fetcher ?? fetch,
+        undefined,
+        { database: options.database, feature: 'knowledge-collection', businessEvent: 'knowledge.draft.organize', objectType: 'knowledge-draft', objectId: draft.id, applicationId: 'knowledge' },
+        { systemPrompt: '你是创作资料整理员，负责从原始资料中提取纯粹事实并输出规范的 JSON 结构。', jsonMode: true }
+      )
+    );
     const container = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
     const title = String(container.title ?? '').trim().slice(0, 200);
     const text = String(container.text ?? '').trim().slice(0, 20_000);

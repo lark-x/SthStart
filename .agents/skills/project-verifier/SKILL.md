@@ -1,105 +1,48 @@
 ---
 name: project-verifier
 description: >-
-  Use this skill when verifying changes, running tests, type-checking, diagnosing environment issues,
-  or preparing code for commit in the SthStart monorepo. Enforces tiered, targeted verification to maximize efficiency.
+  Use when choosing or running checks for SthStart changes, diagnosing related environment
+  failures, or preparing an authorized commit. Select targeted tests and expand only for
+  cross-cutting changes, failures, or actual CI requirements.
 ---
 
-# 项目分级与靶向验证指南 (Project Verifier)
+# SthStart 定向验证
 
-SthStart 是一个包含前端门户、后端 Fastify 服务、TypeBox 共享契约、Playwright E2E、Windows Worker 等多子项目的 Monorepo。
+先查看当前差异、受影响调用方与 `package.json` 的实际脚本，再选择足以证明改动正确的检查。不要把提交准备自动扩展成部署或真实数据操作。
 
-为了避免无谓的全量测试等待，验证必须按**分级（Tiered）**和**靶向（Targeted）**原则进行：**只运行与当前改动相关的最轻量命令**。
+## 按改动选择检查
 
----
+| 改动 | 最小有效检查 |
+| --- | --- |
+| 文档或 skill 文本 | 格式、引用、命令和接口事实核对；修改同步脚本时验证同步及只读检查行为 |
+| 共享契约 | `npm run test:contracts`；跨层字段或调用变化增加 `npm run typecheck` |
+| 服务业务逻辑 | 对应模块测试；签名或跨模块变更增加类型检查 |
+| 前端工具、API 客户端 | 对应测试，或 `npm run test:portal`；类型变化增加类型检查 |
+| 前端布局与交互 | 受影响路由的浏览器检查；全局外框变更扩大到代表性页面 |
+| Windows Worker | `npm run test:windows-worker` |
+| 邻舍适配契约 | `npm run test:linshe-contract` |
+| 数据库迁移 | 临时旧版数据库升级、数据保留和完整性检查，不拿用户数据库试迁移 |
 
-## 验证分级指南
+服务测试可以直接运行，不必先完整构建；以下为现有文件示例，按实际改动选择：
 
-| 级别 | 适用场景 | 预计耗时 | 推荐命令 |
-| :--- | :--- | :--- | :--- |
-| **Level 1 (靶向单测)** | 日常改动某个具体文件后的即时反馈 | 1~3 秒 | 见下方“靶向命令速查” |
-| **Level 2 (类型检查)** | 修改了契约、跨模块调用或重构后 | 5~15 秒 | `npm run typecheck` |
-| **Level 3 (环境诊断)** | 运行时报错、子模块或环境变量异常 | 3~8 秒 | `npm run doctor` |
-| **Level 4 (全量预提交)** | 完成功能开发、准备提交代码或合并 PR | 30~60 秒 | `npm run ci:core` |
-
----
-
-## Level 1：靶向命令速查
-
-根据你修改的文件路径，直接运行对应的精准命令：
-
-### 1. 修改了契约 (`packages/contracts/`)
 ```bash
-npm run test:contracts
-```
-
-### 2. 修改了后端服务业务代码 (`apps/service/src/`)
-直接用 `tsx/esm` 运行对应的单个测试文件，无需重新 build：
-```bash
-# 示例：修改了 activities 模块
 node --import tsx/esm --test apps/service/src/activity-production.test.ts
-
-# 示例：修改了 topics 模块
 node --import tsx/esm --test apps/service/src/topics.test.ts
-
-# 示例：修改了 mcp 模块
 node --import tsx/esm --test apps/service/src/mcp.test.ts
 ```
 
-### 3. 修改了前端门户工具或库 (`app/lib/`)
-```bash
-npm run test:portal
-```
+`npm run test:portal` 覆盖 `app/lib/*.test.ts` 和 Story bridge 路由测试，不代表所有页面都已验收。`npm run typecheck` 会先构建 activity-playback 依赖，再检查根项目及 workspace 类型，不是纯单文件检查。
 
-### 4. 修改了 Windows Worker 脚本 (`workers/windows-worker/`)
-```bash
-npm run test:windows-worker
-```
+## 何时扩大范围
 
-### 5. 涉及邻舍 Submodule 适配与集成
-```bash
-npm run test:linshe-contract
-```
+- 多模块变更、发布准备或实际 CI 要求时选择 `npm run ci:core`：类型检查、门户测试、全部服务测试和构建，不能称为轻量冒烟。
+- `npm run verify` 包含类型检查、全部项目测试、构建和 lint；`npm run test:e2e` 会先构建再运行 Playwright。按任务需要选择，不作为所有小改动的固定步骤。
+- 没有相关测试且变更有实质风险时补充能验证行为的测试；不为低影响可逆修改编写与实现或文档措辞逐字对应的测试。
+- 相关检查通过后，只有新增修改、失败或未解决疑点才重复或扩大检查。
 
----
+## 环境诊断与交付
 
-## Level 2：类型检查 (Typecheck)
-
-当修改了接口字段、函数签名或 contracts 时，运行类型检查：
-```bash
-npm run typecheck
-```
-> **注意**：该命令会自动先构建依赖包（如 `@sthstart/activity-playback`），然后检查全局及各 workspace 的 TypeScript 类型。
-
----
-
-## Level 3：环境体检 (Doctor)
-
-当本地运行出现端口冲突、邻舍 Submodule 未同步、Python 虚拟环境丢失或模型权重未就绪时：
-```bash
-npm run doctor
-```
-如果需要检查远程部署或性能基准：
-```bash
-npm run doctor:remote
-```
-
----
-
-## Level 4：全量与 CI 验证 (Pre-commit / CI)
-
-### 核心 CI 冒烟测试 (推荐在提交前执行)
-包含类型检查、门户测试、服务测试与打包构建：
-```bash
-npm run ci:core
-```
-
-### 完整验证 (包含 ESLint)
-```bash
-npm run verify
-```
-
-### E2E 端到端测试 (Playwright)
-```bash
-npm run test:e2e
-```
+- `npm run doctor` 对应 `scripts/linshe-doctor.mjs`，主要诊断邻舍、Python、向量模型及相关配置，不作为门户所有问题的默认诊断。
+- `npm run doctor:remote` 对应远程性能诊断，可能访问配置的远程服务；仅在相关任务中使用。
+- 区分代码失败和缺少服务、凭据、浏览器或外部模型等环境限制。优先完成可执行的相关检查，报告已通过、失败和未验证的内容，不声称覆盖未运行的场景。
+- 提交或推送遵循用户任务范围；不能为了让检查通过而默认部署、恢复数据库或修改邻舍配置。

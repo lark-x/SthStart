@@ -43,10 +43,19 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
+/** 旧导入记录可能没有块 ID；读取时提供稳定标识，不改写原始存储。 */
+function withBlockIds(content: unknown[], prefix: string): unknown[] {
+  return content.map((block, index) => {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) return block;
+    const value = block as Record<string, unknown>;
+    return typeof value.id === 'string' ? value : { ...value, id: `${prefix}-${index}` };
+  });
+}
+
 function mapNote(row: Record<string, unknown>, knowledge: NoteKnowledge | null) {
   return {
     id: String(row.id), title: String(row.title), kind: String(row.kind), summary: String(row.summary),
-    content: JSON.parse(String(row.content_json)) as unknown[], tags: JSON.parse(String(row.tags_json)) as string[],
+    content: withBlockIds(JSON.parse(String(row.content_json)) as unknown[], String(row.id)), tags: JSON.parse(String(row.tags_json)) as string[],
     stage: String(row.stage), favorite: Boolean(row.favorite),
     revision: Number(row.revision ?? 1),
     ...(knowledge ? { knowledge } : {}),
@@ -59,7 +68,7 @@ function validate(body: NoteBody): { title: string; kind: string; stage: string;
   const kind = kinds.has(body.kind ?? '') ? body.kind! : 'note';
   const stage = stages.has(body.stage ?? '') ? body.stage! : 'draft';
   const summary = body.summary?.trim().slice(0, 500) ?? '';
-  const content = Array.isArray(body.content) ? body.content.slice(0, 500) : [];
+  const content = Array.isArray(body.content) ? withBlockIds(body.content.slice(0, 500), randomUUID()) : [];
   const tags = Array.isArray(body.tags) ? [...new Set(body.tags.map((tag) => String(tag).trim()).filter(Boolean))].slice(0, 20) : [];
   return { title, kind, stage, summary, content, tags, favorite: Boolean(body.favorite) };
 }

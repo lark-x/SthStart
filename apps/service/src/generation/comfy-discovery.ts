@@ -247,6 +247,36 @@ export async function testConnection(
     }
   }
 
+  if (target.kind === 'cloud') {
+    let ok = false;
+    let errorMessage: string | null = null;
+    try {
+      const probeUrl = `${cleanBaseUrl(target.baseUrl)}/models`;
+      const response = await fetcher(probeUrl, {
+        headers: secret ? { authorization: `Bearer ${secret}` } : {},
+        signal: AbortSignal.timeout(10_000),
+      });
+      ok = response.ok || response.status === 400 || response.status === 401;
+      if (!ok) {
+        errorMessage = `云端服务返回 HTTP ${response.status}喵。`;
+      }
+    } catch (error) {
+      errorMessage = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300);
+    }
+    const latencyMs = Date.now() - startedAt;
+    const result: GenerationConnectionTestResult = {
+      ...base,
+      ok,
+      latencyMs,
+      summary: ok ? `云端接口可达 · ${latencyMs}ms` : '无法连接云端服务',
+      discoverySupported: true,
+      errorCode: ok ? null : 'cloud_unreachable',
+      errorMessage,
+    };
+    lastTestCache.set(target.id, { result });
+    return result;
+  }
+
   // ComfyUI 直连：先取 /system_stats（含版本与设备信息），404 时回退探测根路径。
   let ok = false;
   let system: Record<string, unknown> | undefined;
@@ -349,6 +379,51 @@ export async function listModels(
       return { items: [], stale: false, fetchedAt: null, error: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300) };
     }
   }
+  if (target.kind === 'cloud') {
+    try {
+      const probeUrl = `${cleanBaseUrl(target.baseUrl)}/models`;
+      const response = await fetcher(probeUrl, {
+        headers: {
+          accept: 'application/json',
+          ...(secret ? { authorization: `Bearer ${secret}` } : {}),
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        return { items: [], stale: false, fetchedAt: null, error: `云端服务返回 HTTP ${response.status}喵。` };
+      }
+      const payload = (await response.json().catch(() => null)) as
+        | { data?: unknown[]; models?: unknown[] }
+        | unknown[]
+        | null;
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.models)
+            ? payload.models
+            : [];
+      const modelNames = rows
+        .map((item) =>
+          typeof item === 'string'
+            ? item
+            : item && typeof item === 'object'
+              ? String((item as { id?: unknown; name?: unknown }).id ?? (item as { name?: unknown }).name ?? '')
+              : '',
+        )
+        .filter(Boolean);
+      const search = options.search?.trim().toLowerCase();
+      const filteredNames = search ? modelNames.filter((name) => name.toLowerCase().includes(search)) : modelNames;
+      const items: GenerationModelEntry[] = filteredNames.map((name) => ({
+        name,
+        category: 'cloud_models',
+        label: name,
+      }));
+      return { items, stale: false, fetchedAt: new Date().toISOString(), error: null };
+    } catch (error) {
+      return { items: [], stale: false, fetchedAt: null, error: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300) };
+    }
+  }
 
   const objectInfo = await fetchComfyObjectInfo(target, secret, fetcher, Boolean(options.refresh));
   const state = objectInfoState(target);
@@ -393,6 +468,7 @@ export async function getNodeDefinitions(
   fetcher: typeof fetch = fetch,
 ): Promise<{ items: GenerationNodeDefinition[]; stale: boolean; fetchedAt: string | null; error: string | null }> {
   if (!classTypes.length) return { items: [], stale: false, fetchedAt: null, error: null };
+  if (target.kind === 'cloud') return { items: [], stale: false, fetchedAt: null, error: null };
   if (target.kind === 'worker') {
     if (!secret) return { items: [], stale: false, fetchedAt: null, error: 'Windows Worker 凭据未配置，无法读取节点信息。' };
     try {

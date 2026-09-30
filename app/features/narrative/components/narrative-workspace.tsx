@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Drawer } from '@/app/components/ui/drawer';
 import { useQueryClient } from '@tanstack/react-query';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import {
@@ -20,6 +22,7 @@ import { narrativeKeys } from '@/app/lib/query-keys';
 import { useToast } from '@/app/providers/ui-provider';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { cn } from '@/app/lib/cn';
 
@@ -28,8 +31,25 @@ export function NarrativeWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // 窄屏下目录默认收起：正文优先，目录与检索各自单独打开（§8.9）。
   const [treeOpen, setTreeOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const update = () => setNarrow(query.matches);
+    update(); query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<'read' | 'research' | 'import'>('read');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const modeParam = searchParams.get('mode');
+  const mode = modeParam === 'import' ? 'import' : modeParam === 'research' || searchParams.has('project') ? 'research' : 'read';
+  const setMode = (next: 'read' | 'research' | 'import') => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('mode', next);
+    if (next !== 'research') { params.delete('project'); params.delete('view'); }
+    router.push(`${pathname}?${params}`, { scroll: false });
+  };
   const [selectedWorkId, setSelectedWorkId] = useState<string>('');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -137,6 +157,7 @@ export function NarrativeWorkspace() {
 
   const handleSelectSearchResult = (res: NarrativeSearchResult) => {
     setMode('read');
+    setInspectorOpen(false);
     if (res.nodeId) {
       setConceptTaskId(null);
       setSelectedNodeId(res.nodeId);
@@ -157,65 +178,7 @@ export function NarrativeWorkspace() {
     await refetchWorks();
   };
 
-  return (
-    <div className="flex min-h-0 w-full flex-col md:h-dvh">
-      {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
-      <div className="narrative-workspace-header shrink-0 bg-surface">
-        <PageContainer className="pt-4">
-          <PageHeader
-            compact
-            title="叙事档案"
-            description="任务链阅读、多作品追溯与原文检索。"
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 pt-1">
-            <PageTabs
-              ariaLabel="叙事工作模式"
-              value={mode}
-              onChange={(id) => setMode(id as 'read' | 'research' | 'import')}
-              tabs={[
-                { id: 'read', label: '阅读' },
-                { id: 'research', label: '研究专题' },
-                { id: 'import', label: '数据源与导入' },
-              ]}
-            />
-
-            {mode === 'read' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  aria-expanded={treeOpen}
-                  onClick={() => setTreeOpen((open) => !open)}
-                  className="inline-flex h-9 items-center rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
-                >
-                  目录
-                </button>
-
-                <button
-                  type="button"
-                  aria-expanded={inspectorOpen}
-                  onClick={() => setInspectorOpen((open) => !open)}
-                  className={cn(
-                    'inline-flex h-9 items-center rounded-[var(--radius-control)] border px-3 text-sm font-medium transition-colors',
-                    inspectorOpen
-                      ? 'border-accent/30 bg-accent/12 font-semibold text-accent-dark'
-                      : 'border-border-default bg-surface text-muted hover:text-ink',
-                  )}
-                >
-                  检索原文
-                </button>
-              </div>
-            )}
-          </div>
-        </PageContainer>
-      </div>
-
-      {/* Main Workspace */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {mode === 'read' ? (
-          <>
-            {/* 宽屏常驻左栏；窄屏默认隐藏，由页头「目录」按钮单独打开。 */}
-            <div className={cn('min-h-0 md:flex md:w-64 md:flex-none', treeOpen ? 'flex' : 'hidden')}>
+  const treePanel = (
               <NarrativeTree
                 works={works}
                 selectedWorkId={activeWorkId}
@@ -233,6 +196,73 @@ export function NarrativeWorkspace() {
                 }}
                 onOpenImport={() => setMode('import')}
               />
+  );
+
+  const modeTabs = (
+            <PageTabs
+              ariaLabel="叙事工作模式"
+              value={mode}
+              onChange={(id) => setMode(id as 'read' | 'research' | 'import')}
+              tabs={[
+                { id: 'read', label: '阅读' },
+                { id: 'research', label: '研究专题' },
+                { id: 'import', label: '数据源与导入' },
+              ]}
+            />
+  );
+  const readingActions = (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  aria-expanded={treeOpen}
+                  onClick={() => setTreeOpen((open) => !open)}
+                  className="inline-flex h-11 sm:h-9 items-center rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
+                >
+                  目录
+                </button>
+
+                <button
+                  type="button"
+                  aria-expanded={inspectorOpen}
+                  onClick={() => setInspectorOpen((open) => !open)}
+                  className={cn(
+                    'inline-flex h-11 sm:h-9 items-center rounded-[var(--radius-control)] border px-3 text-sm font-medium transition-colors',
+                    inspectorOpen
+                      ? 'border-accent/30 bg-accent/12 font-semibold text-accent-dark'
+                      : 'border-border-default bg-surface text-muted hover:text-ink',
+                  )}
+                >
+                  检索原文
+                </button>
+              </div>
+  );
+
+  return (
+    <div className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
+      {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
+      {mode === 'read' ? <WorkspaceHeader title="叙事档案" centerSlot={modeTabs} actions={readingActions} /> : <div className="narrative-workspace-header shrink-0 bg-surface">
+        <PageContainer className="pt-4">
+          <PageHeader
+            compact
+            title="叙事档案"
+            description="任务链阅读、多作品追溯与原文检索。"
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 pt-1">
+            {modeTabs}
+
+
+          </div>
+        </PageContainer>
+      </div>}
+
+      {/* Main Workspace */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {mode === 'read' ? (
+          <>
+            {/* 宽屏常驻左栏；窄屏默认隐藏，由页头「目录」按钮单独打开。 */}
+            <div className="hidden min-h-0 md:flex md:w-64 md:flex-none">
+              {treePanel}
             </div>
 
             <NarrativeReader
@@ -244,12 +274,16 @@ export function NarrativeWorkspace() {
               generatingConcept={Boolean(conceptTaskId) || submittingConcept}
             />
 
-            {inspectorOpen && <NarrativeInspector
+            {inspectorOpen && <div className="hidden min-h-0 md:flex"><NarrativeInspector
               query={searchQuery}
               onQueryChange={setSearchQuery}
               results={searchData?.items ?? []}
               onSelectResult={handleSelectSearchResult}
-            />}
+            /></div>}
+            <Drawer open={narrow && treeOpen} onOpenChange={setTreeOpen} title="作品目录" className="md:hidden">{treePanel}</Drawer>
+            <Drawer open={narrow && inspectorOpen} onOpenChange={setInspectorOpen} title="检索原文" className="md:hidden">
+              <NarrativeInspector query={searchQuery} onQueryChange={setSearchQuery} results={searchData?.items ?? []} onSelectResult={handleSelectSearchResult} />
+            </Drawer>
           </>
         ) : mode === 'research' ? (
           <ResearchWorkspace works={works} />

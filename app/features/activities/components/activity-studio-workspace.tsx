@@ -27,6 +27,8 @@ import {
   Trash2,
   Lightbulb,
   ExternalLink,
+  Menu,
+  ListTodo,
 } from 'lucide-react';
 import type { Activity, ContentDocument, ActivityReviewItem } from '@sthstart/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +36,7 @@ import { usePublicOverview, useAppLlmStatus } from '@/app/features/public-servic
 import { updateLlmAssignments } from '@/app/features/public-services/api';
 import { providerKeys } from '@/app/lib/query-keys';
 import { getJson } from '@/app/lib/api-client';
+import { fetchGenerationEngines } from '@/app/features/generation/api';
 import { useActivity, useActivityDraft, useActivityPlaybackRevision } from '../queries';
 import { useCommitDraft } from '../mutations';
 import { useStudioDraft } from '../hooks/use-studio-draft';
@@ -70,15 +73,15 @@ interface ActivityStudioWorkspaceProps {
   activityId: string;
 }
 
-/** 活动编辑工作台的五步流程 */
-type PipelineStep = 'planning' | 'script' | 'media' | 'playback' | 'export';
+/** 视觉工坊核心流转阶段：以分镜漫画与视听剧场为双核心产物 */
+type PipelineStep = 'script' | 'playback' | 'media' | 'planning' | 'export';
 
 const PIPELINE_STEPS = [
-  { id: 'planning' as const, label: '1. 基础企划', icon: Compass, desc: '主题、角色与阶段大纲' },
-  { id: 'script' as const, label: '2. 剧情创作', icon: MessageSquare, desc: '场次分镜与动作卡片' },
-  { id: 'media' as const, label: '3. 视觉素材', icon: Camera, desc: '槽位配图与生成' },
-  { id: 'playback' as const, label: '4. 回放预览', icon: PlaySquare, desc: '编排与检查当前内容' },
-  { id: 'export' as const, label: '5. 导出', icon: Download, desc: '下载离线阅读包或视频工程' },
+  { id: 'script' as const, label: '分镜漫剧', icon: MessageSquare, desc: '场次分镜流、动作对白与镜头绘制' },
+  { id: 'playback' as const, label: '视听剧场', icon: PlaySquare, desc: '动态立绘视窗、全景背景与互动回放' },
+  { id: 'media' as const, label: '视觉资产', icon: Camera, desc: '全书媒体槽位与画廊管理' },
+  { id: 'planning' as const, label: '企划设定', icon: Compass, desc: '活动主题、参与角色与阶段目标' },
+  { id: 'export' as const, label: '导出交付', icon: Download, desc: '离线漫画包与漫剧视频工程导出' },
 ] as const;
 
 function cleanStageTitle(title: string) {
@@ -366,6 +369,16 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   const { data: publicOverview } = usePublicOverview();
   const { data: appLlmStatus } = useAppLlmStatus('activities');
 
+  // ComfyUI 生图引擎状态感知
+  const enginesQuery = useQuery({
+    queryKey: ['generation', 'engines'],
+    queryFn: fetchGenerationEngines,
+    staleTime: 30_000,
+  });
+  const comfyEngine = useMemo(() => {
+    return enginesQuery.data?.find((e) => e.kind === 'comfyui' && Boolean(e.enabled));
+  }, [enginesQuery.data]);
+
   // 过滤出用户实际配置且启用的文本大模型
   const configuredTextProfiles = useMemo(() => {
     return (publicOverview?.profiles || []).filter(
@@ -531,7 +544,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   }
 
   return (
-    <div className="w-full h-screen max-h-screen bg-paper text-ink flex flex-col overflow-hidden" data-embed="true">
+    <div className="w-full h-dvh max-h-dvh bg-paper text-ink flex flex-col overflow-hidden" data-embed="true">
       {/* 1. 极简单行顶栏 (48px 高度，彻底释放垂直空间) */}
       <header className="h-12 border-b border-border-default bg-surface px-2 sm:px-4 lg:px-6 flex items-center justify-between gap-2 shrink-0 sticky top-0 z-30 shadow-2xs">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -586,11 +599,22 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                 保存失败
               </span>
             )}
+            {comfyEngine ? (
+              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 border border-emerald-500/20" title={`已连接 ${comfyEngine.name} (${comfyEngine.base_url})`}>
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                ComfyUI 在线
+              </span>
+            ) : (
+              <Link href="/settings/generation" className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 border border-amber-500/20 hover:bg-amber-500/20" title="点击前往配置 ComfyUI">
+                <span className="size-1.5 rounded-full bg-amber-500" />
+                ComfyUI 待连接
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* 顶栏中央：五步活动流程导航 */}
-        <nav aria-label="流水线阶段" className="hidden 2xl:flex items-center gap-1 bg-surface-muted p-1 rounded-[var(--radius-control)] border border-border-default shadow-2xs">
+        {/* 顶栏中央：核心视觉工坊流程导航 */}
+        <nav aria-label="工坊产物阶段" className="hidden lg:flex items-center gap-1 bg-surface-muted p-1 rounded-[var(--radius-control)] border border-border-default shadow-2xs">
           {PIPELINE_STEPS.map((step) => {
             const Icon = step.icon;
             const isActive = currentStep === step.id;
@@ -683,10 +707,32 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           >
             {copilotOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
           </Button>
+
+          {/* 全站导航与全局任务入口 */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('sthstart:open-nav-drawer'))}
+            className="inline-flex h-8 items-center gap-1 px-2.5 rounded-md border border-border-default bg-surface text-xs font-medium text-ink hover:bg-surface-muted/60 hover:border-accent transition-colors cursor-pointer"
+            title="全站导航"
+            aria-label="打开全站导航"
+          >
+            <Menu className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+            <span className="hidden xl:inline">导航</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('sthstart:open-task-drawer'))}
+            className="relative inline-flex h-8 w-8 items-center justify-center rounded-md border border-border-default bg-surface text-ink hover:bg-surface-muted/60 hover:border-accent transition-colors cursor-pointer"
+            title="全局任务抽屉"
+            aria-label="打开全局任务抽屉"
+          >
+            <ListTodo className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+          </button>
         </div>
       </header>
 
-      <nav aria-label="活动流程" className="2xl:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface px-2 py-1.5">
+      <nav aria-label="活动流程" className="lg:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface px-2 py-1.5">
         {PIPELINE_STEPS.map((step) => {
           const Icon = step.icon;
           const active = currentStep === step.id;

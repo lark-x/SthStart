@@ -277,8 +277,7 @@ button.primary-action:hover {
 
 /* ---------- 笔记工作区与编辑器 ---------- */
 .notebook-workspace-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 0;
 }
 
 .notebook-workspace-header {
@@ -616,3 +615,12 @@ button.primary-action:hover {
 }
 
 .notebook-textarea:placeholder-shown { height: 120px; min-height: 120px; }
+
+/* 工作台高度由根容器分配，标题或页签换行不再把栏位撑出屏幕。 */
+@media (min-width: 1024px) {
+  .notebook-master-pane, .notebook-detail-pane { height: 100%; }
+}
+.notebook-focused .notebook-workspace-body { min-height: 0; overflow: hidden; }
+.notebook-focused .notebook-master-pane, .notebook-focused .notebook-detail-pane {
+  height: 100%; min-height: 0; overflow-y: auto;
+}

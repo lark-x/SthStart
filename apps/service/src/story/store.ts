@@ -36,6 +36,7 @@ function requiredText(value: string, label: string): string {
 function project(row: Row): StoryProject {
   return { id: str(row, 'id'), title: str(row, 'title'), summary: str(row, 'summary'), revision: num(row, 'revision'),
     contextSettings: JSON.parse(str(row, 'context_settings_json')) as StoryContextSettings,
+    workId: row.work_id === null || row.work_id === undefined ? null : String(row.work_id),
     createdAt: str(row, 'created_at'), updatedAt: str(row, 'updated_at') };
 }
 function document(row: Row): StoryDocument {
@@ -103,9 +104,10 @@ export class StoryStore {
   }
   createProject(input: CreateStoryProject): StoryProject {
     const id = randomUUID(); const now = nowIso();
+    const workId = input.workId?.trim() || null;
     this.db.transaction(() => {
-      this.db.connection.prepare('INSERT INTO story_projects VALUES (?,?,?,?,?,?,?)')
-        .run(id, requiredText(input.title, '项目名称'), input.summary?.trim() ?? '', 1, JSON.stringify(DEFAULT_STORY_CONTEXT), now, now);
+      this.db.connection.prepare('INSERT INTO story_projects(id,title,summary,revision,context_settings_json,created_at,updated_at,work_id) VALUES (?,?,?,?,?,?,?,?)')
+        .run(id, requiredText(input.title, '项目名称'), input.summary?.trim() ?? '', 1, JSON.stringify(DEFAULT_STORY_CONTEXT), now, now, workId);
       const outlineId = randomUUID();
       this.db.connection.prepare('INSERT INTO story_documents VALUES (?,?,?,?,?,?,?,?,?)')
         .run(outlineId, id, 'outline', '主线大纲', '', 0, 1, now, now);
@@ -116,9 +118,10 @@ export class StoryStore {
   updateProject(id: string, input: UpdateStoryProject): StoryProject {
     const old = this.requireProject(id);
     if (input.contextSettings) validateContextSettings(input.contextSettings);
-    const result = this.db.connection.prepare(`UPDATE story_projects SET title=?,summary=?,context_settings_json=?,revision=revision+1,updated_at=?
+    const workId = input.workId === undefined ? (old.workId ?? null) : (input.workId?.trim() || null);
+    const result = this.db.connection.prepare(`UPDATE story_projects SET title=?,summary=?,context_settings_json=?,work_id=?,revision=revision+1,updated_at=?
       WHERE id=? AND revision=?`).run(input.title === undefined ? old.title : requiredText(input.title, '项目名称'), input.summary?.trim() ?? old.summary,
-      JSON.stringify(input.contextSettings ?? old.contextSettings), nowIso(), id, input.expectedRevision);
+      JSON.stringify(input.contextSettings ?? old.contextSettings), workId, nowIso(), id, input.expectedRevision);
     if (result.changes !== 1) throw new StoryError('story_revision_conflict', 409, '项目已被其他操作修改，请刷新后重试。');
     return this.requireProject(id);
   }

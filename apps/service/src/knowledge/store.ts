@@ -212,7 +212,7 @@ export class KnowledgeStore {
       works: parseJson<NoteKnowledge['works']>(row.works_json, []),
       characters: parseJson<NoteKnowledge['characters']>(row.characters_json, []),
       locations: parseJson<NoteKnowledge['locations']>(row.locations_json, []),
-      ...(row.category ? { category: String(row.category) as NoteCategory } : {}),
+      ...(row.category ? { category: CATEGORIES.includes(String(row.category) as NoteCategory) ? String(row.category) as NoteCategory : 'other' as const } : {}),
       nature: String(row.nature) as NoteNature,
       authorship: String(row.authorship) as NoteAuthorship,
       usage: String(row.usage) as NoteUsage,

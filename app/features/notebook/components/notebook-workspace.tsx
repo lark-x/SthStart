@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
   Search,
@@ -20,14 +20,17 @@ import { CollectionManager } from '@/app/features/knowledge/components/collectio
 import { PendingInbox } from '@/app/features/knowledge/components/pending-inbox';
 import { Input } from '@/app/components/ui/input';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Button } from '@/app/components/ui/button';
+import { Alert } from '@/app/components/ui/alert';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 
 const COLLAPSED_KEY = 'sthstart_notebook_sidebar_collapsed';
 
 // 折叠状态以 localStorage 为唯一事实来源：useSyncExternalStore 在服务端
-// 渲染固定返回 true，客户端挂载后读取真实值，避免水合不匹配。
+// 渲染固定返回 false，默认展示列表，客户端挂载后读取偏好。
 const collapsedListeners = new Set<() => void>();
 
 function subscribeCollapsed(onStoreChange: () => void) {
@@ -38,11 +41,12 @@ function subscribeCollapsed(onStoreChange: () => void) {
 }
 
 function readCollapsed() {
-  return localStorage.getItem(COLLAPSED_KEY) !== 'false';
+  try { return localStorage.getItem(COLLAPSED_KEY) === 'true'; }
+  catch { return false; }
 }
 
 function getServerCollapsed() {
-  return true;
+  return false;
 }
 
 const filterOptions: Array<{ value: 'all' | NoteKind; label: string }> = [
@@ -74,15 +78,30 @@ export function NotebookWorkspace({
   initialKind?: NoteKind;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const focused = pathname !== '/apps/notebook' && pathname !== '/apps/notebook/offline';
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = workspaceRef.current;
+    if (!el) return;
+    const update = () => {
+      if (focused || window.innerWidth < 1024) { el.style.removeProperty('height'); return; }
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const available = window.innerHeight - top - 16;
+      el.style.height = available >= 360 ? `${available}px` : '';
+    };
+    update(); window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [focused]);
 
-  // Sidebar collapsed state: default true (collapsed to 0px)
+  // 初次访问默认显示列表，保留用户主动收起的偏好。
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, getServerCollapsed);
 
-  const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>('all');
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ work: '', character: '', usage: '', nature: '', category: '' });
+  const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>(() => filterOptions.find((item) => item.value === searchParams.get('filterKind'))?.value ?? 'all');
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
+  const [page, setPage] = useState(Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1));
+  const [filters, setFilters] = useState({ work: searchParams.get('work') ?? '', character: searchParams.get('character') ?? '', usage: searchParams.get('usage') ?? '', nature: searchParams.get('nature') ?? '', category: searchParams.get('category') ?? '' });
   const [activeId, setActiveId] = useState<string | null>(initialNoteId ?? null);
   const [isCreating, setIsCreating] = useState<boolean>(isNew);
   // 用户在移动端点过“返回笔记列表”后不再被 initialNoteId 自动拉回编辑器：
@@ -91,18 +110,22 @@ export function NotebookWorkspace({
   const [exitedToMobileList, setExitedToMobileList] = useState(false);
   // 资料库顶栏三个视图：资料 / 搜集任务 / 待整理。
   // 视图由 URL 参数推导（任务中心用 ?view=collections 深链进来）；
-  // 用户点过标签后以本地选择为准，不用 effect 回写，避免多余的级联渲染。
+  // 标签切换同步 URL，刷新与浏览器前进/后退可以还原当前视图。
   const viewParam = searchParams?.get('view');
-  const [manualView, setManualView] = useState<'notes' | 'collections' | 'pending' | null>(null);
-  const view: 'notes' | 'collections' | 'pending' = manualView
-    ?? (viewParam === 'collections' || viewParam === 'pending' ? viewParam : 'notes');
-  const setView = setManualView;
+  const view: 'notes' | 'collections' | 'pending' =
+    viewParam === 'collections' || viewParam === 'pending' ? viewParam : 'notes';
+  const setView = (next: 'notes' | 'collections' | 'pending') => {
+    const params = new URLSearchParams(searchParams?.toString());
+    if (next === 'notes') params.delete('view');
+    else params.set('view', next);
+    router.push(`${pathname}${params.size ? `?${params}` : ''}`, { scroll: false });
+  };
 
   const [createKind, setCreateKind] = useState<NoteKind>(
     (searchParams?.get('kind') as NoteKind) || initialKind
   );
 
-  const { data, isLoading } = useNotes({ q: query, kind: selectedFilter, page, pageSize: 50,
+  const { data, isLoading, isError, error, refetch } = useNotes({ q: query, kind: selectedFilter, page, pageSize: 50,
     works: filters.work ? [filters.work] : [], characters: filters.character ? [filters.character] : [],
     usage: filters.usage, nature: filters.nature, category: filters.category });
   const localRecords = useLocalNotebookNotes(data?.items);
@@ -136,16 +159,12 @@ export function NotebookWorkspace({
 
   const toggleCollapsed = useCallback(() => {
     const next = !readCollapsed();
-    localStorage.setItem(COLLAPSED_KEY, String(next));
+    try { localStorage.setItem(COLLAPSED_KEY, String(next)); } catch { /* 隐私模式仍可使用页面 */ }
     for (const listener of collapsedListeners) listener();
   }, []);
 
-  // 路由 props（initialNoteId/isNew）只在真实导航时更新；桌面端选中/新建
-  // 走 history.replaceState 原地切换，组件不重挂载，props 停留在进入页面时
-  // 的旧路由上。若不用 routeKey 门禁，每次内部选中都会被旧路由分支立刻撤销：
-  // /new 页选中笔记弹回空白编辑器、[id] 页选中弹回 URL 里的旧笔记——
-  // 表现为“列表无法选中”。桌面端“未选中时自动打开第一条”不依赖路由，
-  // 保持每次依赖变化都评估。
+  // 路由切换时同步选中项；同一路由上的其他交互不能反复重置编辑状态。
+  // 桌面概览在资料加载后自动预览第一条，正式选中则进入详情路由。
   const appliedRouteRef = useRef<string | null>(null);
   useEffect(() => {
     const routeKey = `${initialNoteId ?? ''}|${isNew ? 'new' : ''}`;
@@ -169,25 +188,28 @@ export function NotebookWorkspace({
     }
   }, [initialNoteId, isNew, notes, activeId, isCreating, exitedToMobileList]);
 
+  // 详情与返回链接携带浏览筛选，不依赖组件是否被路由重挂载。
+  const browseHref = (path: string, kind?: NoteKind) => {
+    const params = new URLSearchParams();
+    if (selectedFilter !== 'all') params.set('filterKind', selectedFilter);
+    if (query) params.set('q', query);
+    if (page > 1) params.set('page', String(page));
+    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+    if (kind) params.set('kind', kind);
+    return `${path}${params.size ? `?${params}` : ''}`;
+  };
+
   const handleSelectNote = (id: string) => {
     setIsCreating(false);
     setActiveId(id);
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      window.history.replaceState(null, '', "/apps/notebook/" + id);
-    } else {
-      router.push("/apps/notebook/" + id);
-    }
+    router.push(browseHref("/apps/notebook/" + id), { scroll: false });
   };
 
   const handleStartNew = (kind: NoteKind = 'diary') => {
     setCreateKind(kind);
     setIsCreating(true);
     setActiveId(null);
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      window.history.replaceState(null, '', "/apps/notebook/new?kind=" + kind);
-    } else {
-      router.push("/apps/notebook/new?kind=" + kind);
-    }
+    router.push(browseHref("/apps/notebook/new", kind), { scroll: false });
   };
 
   // 退出编辑态回到列表：移动端“返回列表”按钮与删除笔记共用。
@@ -196,9 +218,7 @@ export function NotebookWorkspace({
     setExitedToMobileList(true);
     setActiveId(null);
     setIsCreating(false);
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', '/apps/notebook');
-    }
+    router.push(browseHref('/apps/notebook'), { scroll: false });
   };
 
   const isEditingOnMobile = Boolean(activeId || isCreating);
@@ -209,19 +229,12 @@ export function NotebookWorkspace({
   const masterPaneClass = isEditingOnMobile
     ? collapsed
       ? 'hidden'
-      : 'hidden lg:flex lg:w-[300px] lg:min-w-[300px]'
+      : 'hidden lg:flex lg:w-[280px] lg:min-w-[280px]'
     : collapsed
     ? 'flex w-full lg:hidden'
-    : 'flex w-full lg:w-[300px] lg:min-w-[300px]';
+    : 'flex w-full lg:w-[280px] lg:min-w-[280px]';
 
-  return (
-    <div className="notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col">
-      {/* Top Global Header Bar */}
-      <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
-        <PageHeader
-          compact
-          title="创作资料库"
-          actions={
+  const headerActions = (
             <>
               <button
                 type="button"
@@ -234,38 +247,44 @@ export function NotebookWorkspace({
                 <span>{collapsed ? '展开列表' : '收起列表'}</span>
               </button>
           <Link
-            href="/apps/notebook/new"
+            href={browseHref("/apps/notebook/new", 'diary')}
             onClick={(e) => {
               if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
                 e.preventDefault();
                 handleStartNew('diary');
               }
             }}
-            className="notebook-new-note-action inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white hover:bg-accent-dark font-semibold text-sm transition-colors shadow-xs cursor-pointer shrink-0"
+            className="notebook-new-note-action inline-flex items-center gap-1.5 h-11 sm:h-9 px-3 rounded-[var(--radius-control)] bg-accent text-[var(--fg-on-accent)] hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">新建资料</span>
             <span className="sm:hidden">新建</span>
           </Link>
             </>
-          }
+  );
+
+  return (
+    <div ref={workspaceRef} className={"notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col " + (focused ? 'notebook-focused h-dvh overflow-hidden' : '')}>
+      {/* Top Global Header Bar */}
+      {focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" actions={headerActions} /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
+        <PageHeader
+          compact
+          title="创作资料库"
+          actions={headerActions}
         />
-      </header>
+      </header>}
 
       {/* 资料库视图切换：资料 / 搜集任务 / 待整理 */}
-      <nav className="flex flex-wrap gap-1.5 border-b border-border-subtle px-4 py-2 sm:px-6" aria-label="资料库视图">
-        {([['notes', '资料'], ['collections', '搜集任务'], ['pending', '待整理']] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={view === id}
-            onClick={() => setView(id)}
-            className={'rounded-full px-3 py-1 text-sm font-medium transition-colors ' + (view === id ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5 hover:text-ink')}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <div className="border-b border-border-subtle px-4 py-2 sm:px-6">
+        <PageTabs
+          ariaLabel="资料库视图"
+          value={view}
+          tabs={[{ id: 'notes', label: '资料' }, { id: 'collections', label: '搜集任务' }, { id: 'pending', label: '待整理' }]}
+          onChange={(next) => {
+            if (next === 'notes' || next === 'collections' || next === 'pending') setView(next);
+          }}
+        />
+      </div>
 
       {view !== 'notes' && (
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
@@ -345,6 +364,10 @@ export function NotebookWorkspace({
             ))}
           </div>
 
+          {isError && <Alert variant="danger" className="m-3 text-sm" title="资料列表加载失败">
+            {error instanceof Error ? error.message : '暂时无法读取服务端资料。'}
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>重试</Button>
+          </Alert>}
           {/* Note Items List Stream */}
           <div className="notebook-master-list flex-1 overflow-y-auto p-2 space-y-1.5">
             {isLoading && notes.length === 0 ? (
@@ -421,7 +444,7 @@ export function NotebookWorkspace({
               })
             ) : (
               <div className="p-6 text-center text-sm text-muted space-y-2">
-                <p>{query ? '未搜索到相关笔记' : '暂无此类记录'}</p>
+                <p>{isError ? '可用的本地资料将显示在这里' : query ? '未搜索到相关笔记' : '暂无此类记录'}</p>
                 <button
                   type="button"
                   onClick={() => handleStartNew(selectedFilter === 'all' ? 'diary' : selectedFilter)}
@@ -447,7 +470,7 @@ export function NotebookWorkspace({
           }
         >
           {/* Mobile Back Button Bar */}
-          {isEditingOnMobile && (
+          {isEditingOnMobile && !focused && (
             <div className="lg:hidden flex items-center justify-between px-4 py-2 bg-paper border-b border-border-subtle">
               <button
                 type="button"

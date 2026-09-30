@@ -361,17 +361,44 @@ export function registerActivityRoutes(
         };
       });
 
-      const stages = stageTitles.map((stTitle, idx) => ({
-        id: `st_${idx + 1}_${randomUUID().replace(/-/g, '').slice(0, 6)}`,
-        title: stTitle,
-        order: idx + 1,
-        actorIds: actors.map((a) => a.id),
-        location: body.location || '',
-        instruction: '',
-        requiredBeats: [],
-        locked: false,
-        endCondition: '',
-      }));
+      const stages = stageTitles.map((stTitle, idx) => {
+        const stageId = `st_${idx + 1}_${randomUUID().replace(/-/g, '').slice(0, 6)}`;
+        const firstActor = actors[0];
+        const sceneId = `sc_${idx + 1}_${randomUUID().replace(/-/g, '').slice(0, 6)}`;
+        const beatId = `beat_${idx + 1}_1_${randomUUID().replace(/-/g, '').slice(0, 6)}`;
+        return {
+          id: stageId,
+          title: stTitle,
+          order: idx + 1,
+          actorIds: actors.map((a) => a.id),
+          location: body.location || '',
+          instruction: '',
+          requiredBeats: [],
+          locked: false,
+          endCondition: '',
+          scenes: [
+            {
+              id: sceneId,
+              stageId,
+              title: `${stTitle} · 第 1 场`,
+              timeText: '日间',
+              locationText: body.location || '故事主舞台',
+              environment: '',
+              beats: [
+                {
+                  id: beatId,
+                  sceneId,
+                  stageId,
+                  characterId: firstActor ? firstActor.id : 'actor_narrator',
+                  characterName: firstActor ? firstActor.displayName : '旁白',
+                  action: `${stTitle}开篇，舞台拉开序幕。`,
+                  orderIndex: 0,
+                },
+              ],
+            },
+          ],
+        };
+      });
 
       const conversationId = `conv_group_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
       const conversations = [

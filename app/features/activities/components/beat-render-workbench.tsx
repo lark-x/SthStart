@@ -128,6 +128,10 @@ export function BeatRenderWorkbench({
 
   const handleOpenSettings = async () => {
     setSettingsOpen(true);
+    if (onBeforeAction) {
+      const ok = await onBeforeAction();
+      if (!ok) return;
+    }
     if (!plan) await loadSettingsPreview(settings);
   };
 
@@ -348,20 +352,45 @@ export function BeatRenderWorkbench({
           <div className="min-w-0"><div className="text-xs font-semibold text-ink">当前镜头画面</div><div className="max-w-full truncate text-[11px] text-muted">{settingsLabel}</div></div>
           <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void handleOpenSettings()}><Settings2 className="mr-1 h-4 w-4" />绘制设置</Button>
         </div>
-        <div className={`relative aspect-video w-full overflow-hidden rounded-[var(--radius-control)] border border-border-default ${unavailableMediaUrl === currentUrl ? 'bg-surface-muted' : 'bg-black'} flex items-center justify-center`}>
+        <div className={`relative aspect-video w-full overflow-hidden rounded-[var(--radius-control)] border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
           {currentUrl ? unavailableMediaUrl === currentUrl
             ? <div role="status" className="p-4 text-center text-sm text-muted">当前画面文件不可用，历史图片仍可重新选择。</div>
             : beat.mediaType === 'video' ? <video src={currentUrl} controls onError={() => setUnavailableMediaUrl(currentUrl)} className="h-full w-full object-contain" />
               : <img src={currentUrl} alt="当前镜头画面" onError={() => setUnavailableMediaUrl(currentUrl)} className="h-full w-full object-contain" />
-            : <div className="p-4 text-center text-muted"><ImagePlus className="mx-auto mb-2 h-8 w-8 opacity-60" /><span className="block text-sm font-medium">还没有镜头画面</span><span className="mt-1 block text-xs">绘制成功且镜头内容未变化时，第一张图片会自动写入草稿。</span></div>}
+            : (
+              <div className="p-6 text-center max-w-sm">
+                <div className="mx-auto mb-2.5 flex size-11 items-center justify-center rounded-full bg-accent/10 text-accent">
+                  <Sparkles className="size-5" />
+                </div>
+                <h4 className="text-sm font-semibold text-ink">
+                  {actor?.displayName ? `${actor.displayName} · 镜头画面待绘制` : '分镜画面待绘制'}
+                </h4>
+                <p className="mt-1 line-clamp-2 text-xs text-muted">
+                  {beat.action ? `动作：${beat.action}` : '点击下方按钮，使用 ComfyUI 动漫预设自动渲染画面。'}
+                </p>
+              </div>
+            )}
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Button type="button" variant="accent" disabled={disabled || Boolean(working) || running || beat.mediaType === 'video'} onClick={() => void handleDraw()}>
-            {working === 'submit' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}绘制新图
-          </Button>
-          {selectedCandidate && <Button type="button" variant="outline" disabled={disabled || Boolean(working) || running} onClick={() => void rerender(selectedCandidate)}>
-            {working === 'rerender' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}按此图配置重绘
-          </Button>}
+          {selectedCandidate ? (
+            <>
+              <Button type="button" variant="accent" disabled={disabled || Boolean(working) || running} onClick={() => void rerender(selectedCandidate)}>
+                {working === 'rerender' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}换种子重抽
+              </Button>
+              <Button type="button" variant="outline" disabled={disabled || Boolean(working) || running} onClick={() => void handleOpenSettings()}>
+                <Settings2 className="mr-1 h-4 w-4" />微调提示词重绘
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" variant="accent" disabled={disabled || Boolean(working) || running || beat.mediaType === 'video'} onClick={() => void handleDraw()}>
+                {working === 'submit' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}一键极速绘制
+              </Button>
+              <Button type="button" variant="outline" disabled={disabled || Boolean(working) || running} onClick={() => void handleOpenSettings()}>
+                <Settings2 className="mr-1 h-4 w-4" />自定义工作流/画风
+              </Button>
+            </>
+          )}
         </div>
         {beat.mediaType === 'video' && <p className="text-xs text-muted">当前引用是视频，本入口暂不支持图片绘制；请先在“编辑镜头”中更换或移除视频。</p>}
         {running && <p className="flex items-center gap-2 text-sm text-muted" role="status"><LoaderCircle className="h-4 w-4 animate-spin" />{candidates.some((item) => item.status === 'preparing') ? '正在准备提示词与绘制配置…' : candidates.some((item) => item.status === 'running') ? 'ComfyUI 正在绘制…' : '已提交，等待 ComfyUI 绘制…'}完成后图片会出现在下方。</p>}

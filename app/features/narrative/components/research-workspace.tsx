@@ -1,51 +1,93 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Play, Ban, RotateCcw, CheckCircle2, BookOpen, AlertTriangle } from 'lucide-react';
+import {
+  Loader2,
+  Play,
+  RotateCcw,
+  CheckCircle2,
+  BookOpen,
+  AlertTriangle,
+  ArrowRight,
+  Sparkles,
+  ExternalLink,
+} from 'lucide-react';
 import type { NarrativeWork, ResearchScope } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { EmptyState } from '@/app/components/ui/empty-state';
-import { PageContainer } from '@/app/components/shared/page-layout';
+import { PageContainer, WorkspaceShell } from '@/app/components/shared/page-layout';
+import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { narrativeKeys } from '@/app/lib/query-keys';
 import { useToast } from '@/app/providers/ui-provider';
 import { useResearchProject, useResearchProjects, useResearchProvider, useResearchRun } from '../research-queries';
 import {
-  archiveResearchProject, cancelResearchRun, confirmResearchProject, createResearchProject,
-  deleteResearchEvidence, previewResearchPublish, publishResearch, revalidateResearchClaim,
-  retryResearchRun, startResearchRun, suggestResearchTopics,
-  regenerateResearchDraft, updateResearchClaim, updateResearchDraft,
+  archiveResearchProject,
+  cancelResearchRun,
+  confirmResearchProject,
+  createResearchProject,
+  deleteResearchEvidence,
+  previewResearchPublish,
+  publishResearch,
+  retryResearchRun,
+  revalidateResearchClaim,
+  startResearchRun,
+  suggestResearchTopics,
+  regenerateResearchDraft,
+  updateResearchClaim,
+  updateResearchDraft,
 } from '../research-api';
 import { ResearchTopicPicker } from './research-topic-picker';
 import { ResearchReview } from './research-review';
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: '草稿', confirmed: '已确认', researching: '研究中', review: '待审核', published: '已发布', archived: '已归档',
+  draft: '草稿',
+  confirmed: '已确认',
+  researching: '研究中',
+  review: '待审核',
+  published: '已发布',
+  archived: '已归档',
 };
 
 const RUN_STATUS_LABELS: Record<string, string> = {
-  queued: '排队中', running: '运行中', 'needs-review': '等待审核', succeeded: '已完成',
-  incomplete: '结果不完整', failed: '失败', cancelled: '已取消', interrupted: '已中断',
+  queued: '排队中',
+  running: '运行中',
+  'needs-review': '等待审核',
+  succeeded: '已完成',
+  incomplete: '结果不完整',
+  failed: '失败',
+  cancelled: '已取消',
+  interrupted: '已中断',
 };
 
 /**
- * 研究专题工作台：专题列表 → 第一次确认 → 运行进度 → 结论审核 → 发布。
- * 两次人工确认不可绕过，AI 不能自行发布。
+ * 研究专题工作台：
+ * 拆解为两个清晰层级：
+ * 1. 专题概览：专题列表 + 摘要详情 + 运行与配置
+ * 2. 研究审核独立工作区：隐藏专题列表与全局导航，结论(240px) + 正文(受控主区) + 证据(360px)，独占全屏！
  */
 export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [workId, setWorkId] = useState('');
-  /*
-   * 支持从创作资料库跳回：资料属性里的「来自研究专题」链接带 ?project=。
-   * 用惰性初始值读取，避免用 effect 补状态而多渲染一次。
-   */
-  const [selectedProjectId, setSelectedProjectId] = useState(() => (
-    typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('project') ?? ''
-  ));
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const selectedProjectId = searchParams.get('project') ?? '';
+  const isReviewing = searchParams.get('view') === 'review';
+  const navigateProject = (id: string, review = false) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('mode', 'research');
+    if (id) params.set('project', id); else params.delete('project');
+    if (review) params.set('view', 'review'); else params.delete('view');
+    router.push(`${pathname}?${params}`, { scroll: false });
+  };
+  const setSelectedProjectId = (id: string) => navigateProject(id);
+  const setIsReviewing = (review: boolean) => navigateProject(selectedProjectId, review);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -55,7 +97,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
   const { data: provider } = useResearchProvider();
   const { data: projectsData, refetch: refetchProjects } = useResearchProjects(activeWorkId || undefined);
   const projects = projectsData?.items ?? [];
-  const { data: detail, refetch: refetchDetail } = useResearchProject(selectedProjectId || undefined);
+  const { data: detail, refetch: refetchDetail, isPending: loadingDetail, error: detailError } = useResearchProject(selectedProjectId || undefined);
 
   const project = detail?.project ?? null;
   const runs = detail?.runs ?? [];
@@ -63,7 +105,9 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
   const runActive = latestRun ? ['queued', 'running'].includes(latestRun.status) : false;
   const { data: runDetail } = useResearchRun(latestRun?.id, runActive);
 
-  // 运行结束后刷新专题详情，结论与总稿随之出现。
+  const claims = runDetail?.claims ?? detail?.claims ?? [];
+  const acceptedCount = claims.filter((c) => c.status === 'accepted').length;
+
   const latestRunStatus = latestRun?.status;
   const latestRunId = latestRun?.id;
   useEffect(() => {
@@ -84,18 +128,132 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
       if (successMessage) toast.success(successMessage);
     } catch (error) {
       toast.error('操作失败', error instanceof Error ? error.message : String(error));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const emptyCorpus = provider?.status === 'empty';
 
+  // ------------------------------------------------------------------
+  // 模式 2：研究审核独立专注工作区 (全屏展开，彻底消除多层嵌套挤压)
+  // ------------------------------------------------------------------
+  if (isReviewing && !project) {
+    return <WorkspaceShell>
+      <WorkspaceHeader title="研究审核" backHref="/apps/narrative?mode=research" backLabel="专题概览" />
+      <div className="p-4">
+        {loadingDetail && selectedProjectId ? <p className="text-sm text-muted">正在读取研究结果…</p> : <Alert variant="danger" title="无法打开研究审核">{detailError instanceof Error ? detailError.message : '请选择一个研究专题。'}</Alert>}
+      </div>
+    </WorkspaceShell>;
+  }
+  if (isReviewing && project) {
+    return (
+      <WorkspaceShell className="fixed inset-0 z-30 bg-paper flex flex-col">
+        <WorkspaceHeader
+          title={`${project.title} · 研究审核`}
+          backLabel="专题概览"
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void guard(async () => {
+                  const preview = await previewResearchPublish(project.id);
+                  setPublishBlocked(preview.blocked);
+                  setPublishOpen(true);
+                })}
+              >
+                <span>检查条件</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={busy}
+                onClick={() => void guard(async () => {
+                  const result = await publishResearch(project.id, { revision: project.revision });
+                  toast.success(result.created ? '已写入资料库' : '这篇资料已存在', result.href);
+                  await refresh();
+                })}
+              >
+                <span>确认并写入资料库</span>
+              </Button>
+              <button
+                type="button"
+                onClick={() => setIsReviewing(false)}
+                className="inline-flex h-11 sm:h-9 items-center px-3 rounded-md text-xs font-semibold text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors border border-border-default"
+              >
+                退出审核
+              </button>
+            </div>
+          }
+          status={
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-surface-muted border border-border-subtle">
+              <span>已接受</span>
+              <strong className="text-accent">{acceptedCount}</strong>
+              <span className="opacity-60">/ {claims.length}</span>
+            </span>
+          }
+        />
 
+        {publishOpen && publishBlocked.length > 0 && (
+          <div className="px-4 py-2 bg-warning-bg/40 border-b border-warning-border">
+            <Alert variant="warning" className="text-xs py-1">
+              还不能发布：{publishBlocked.join('；')}
+            </Alert>
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ResearchReview
+            claims={claims}
+            draft={detail?.latestDraft ?? null}
+            regenerating={runActive}
+            isStandaloneWorkspace={true}
+            onUpdateClaim={async (id, patch) => {
+              await updateResearchClaim(id, patch as never);
+              await refresh();
+            }}
+            onRevalidate={async (id) => {
+              const result = await revalidateResearchClaim(id);
+              const invalid = result.evidence.filter((item) => !item.valid).length;
+              toast.info('证据已重新校验', invalid ? `有 ${invalid} 条证据已失效。` : '全部证据仍然有效。');
+              await refresh();
+            }}
+            onDeleteEvidence={async (id) => {
+              await deleteResearchEvidence(id);
+              await refresh();
+            }}
+            onSaveDraft={async (patch) => {
+              const draftId = detail?.latestDraft?.id;
+              if (!draftId) return;
+              await updateResearchDraft(draftId, patch);
+              await refresh();
+            }}
+            onRegenerate={async () => {
+              const result = await regenerateResearchDraft(project.id);
+              if (!result.ok) {
+                toast.error('重新生成总稿失败', result.reason ?? '');
+                return;
+              }
+              toast.success('已生成新的总稿版本喵');
+              await refresh();
+            }}
+          />
+        </div>
+      </WorkspaceShell>
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // 模式 1：专题概览视图 (保留自然列表与主从浏览)
+  // ------------------------------------------------------------------
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <PageContainer className="space-y-4 py-4">
         {emptyCorpus && (
           <Alert variant="warning">
-            本地还没有叙事原文，可以创建研究专题，但无法开始研究运行。请先在「数据源与导入」导入规范化 JSON。
+            本地还没有叙事原文，可以创建研究专题，但无法开始研究运行。请先在「数据源与导入」导入规范化 JSON 。
           </Alert>
         )}
 
@@ -112,7 +270,9 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-ink">研究专题</h2>
-                <Button size="sm" onClick={() => { setCreating(true); setSelectedProjectId(''); }}>新建</Button>
+                <Button size="sm" onClick={() => { setCreating(true); setSelectedProjectId(''); }}>
+                  新建专题
+                </Button>
               </div>
               <div className="space-y-2">
                 {projects.map((item) => (
@@ -120,7 +280,11 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                     key={item.id}
                     type="button"
                     onClick={() => { setSelectedProjectId(item.id); setCreating(false); }}
-                    className={`w-full rounded-[var(--radius-panel)] border p-3 text-left transition-colors ${selectedProjectId === item.id ? 'border-accent/50 bg-accent/8' : 'border-border-default bg-surface hover:border-accent/30'}`}
+                    className={`w-full rounded-[var(--radius-panel)] border p-3 text-left transition-colors cursor-pointer ${
+                      selectedProjectId === item.id
+                        ? 'border-accent/50 bg-accent/8 shadow-2xs'
+                        : 'border-border-default bg-surface hover:border-accent/30'
+                    }`}
                   >
                     <span className="block text-sm font-semibold leading-snug text-ink">{item.title}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-1">
@@ -133,7 +297,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
               </div>
             </div>
 
-            {/* 右栏：当前专题 */}
+            {/* 右栏：当前专题概览详情 */}
             <div className="min-w-0 space-y-4">
               {creating && (
                 <ResearchTopicPicker
@@ -165,7 +329,8 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                               await confirmResearchProject(project.id, { revision: project.revision });
                               await refresh();
                             }, '主题已确认')}>
-                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /><span>确认主题</span>
+                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>确认主题</span>
                             </Button>
                           )}
                           {project.status !== 'draft' && project.status !== 'archived' && (
@@ -180,7 +345,9 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void guard(async () => {
                             await archiveResearchProject(project.id);
                             await refresh();
-                          }, '专题已归档')}><span>归档</span></Button>
+                          }, '专题已归档')}>
+                            <span>归档</span>
+                          </Button>
                         </div>
                       </div>
                       {project.status === 'draft' && (
@@ -189,7 +356,30 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                     </CardContent>
                   </Card>
 
-                  {/* 运行进度 */}
+                  {/* 核心入口：进入研究审核专注工作区 */}
+                  {claims.length > 0 && (
+                    <div className="p-4 rounded-xl border border-accent/30 bg-accent/5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="size-4 text-accent" />
+                          <h3 className="text-sm font-bold text-ink">研究成果已生成，待人工核验</h3>
+                        </div>
+                        <p className="text-xs text-muted">
+                          共生成 {claims.length} 条论点与证据（已接受 {acceptedCount} 条）。进入审核工作区，核验证据并修订总稿。
+                        </p>
+                      </div>
+                      <Button
+                        variant="primary"
+                        onClick={() => setIsReviewing(true)}
+                        className="gap-2 font-semibold shadow-xs"
+                      >
+                        <span>进入研究审核工作区</span>
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* 运行进度卡片 */}
                   {latestRun && (
                     <Card>
                       <CardContent className="space-y-2 p-4">
@@ -201,19 +391,20 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                           </div>
                           <div className="flex flex-none gap-2">
                             {runActive && (
-                              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void guard(async () => {
+                              <Button size="sm" variant="outline" disabled={busy} onClick={() => void guard(async () => {
                                 await cancelResearchRun(latestRun.id);
                                 await refresh();
                               }, '运行已取消')}>
-                                <Ban className="h-3.5 w-3.5" aria-hidden="true" /><span>取消</span>
+                                <span>取消运行</span>
                               </Button>
                             )}
-                            {!runActive && ['failed', 'incomplete', 'cancelled', 'interrupted'].includes(latestRun.status) && (
-                              <Button size="sm" variant="outline" disabled={busy} onClick={() => void guard(async () => {
+                            {!runActive && ['failed', 'interrupted', 'incomplete'].includes(latestRun.status) && (
+                              <Button size="sm" variant="outline" disabled={busy || emptyCorpus} onClick={() => void guard(async () => {
                                 await retryResearchRun(latestRun.id);
                                 await refresh();
                               }, '已重新运行')}>
-                                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /><span>重试</span>
+                                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>重试</span>
                               </Button>
                             )}
                           </div>
@@ -221,108 +412,22 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                         {latestRun.progressLabel && <p className="text-sm text-ink">{latestRun.progressLabel}</p>}
                         {latestRun.errorMessage && <Alert variant="danger">{latestRun.errorMessage}</Alert>}
                         {latestRun.incompleteReason && <Alert variant="warning">{latestRun.incompleteReason}</Alert>}
-
-                        {latestRun.queryPlan.length > 0 && (
-                          <details className="text-xs text-muted">
-                            <summary className="cursor-pointer">检索计划（{latestRun.queryPlan.length} 个问题）</summary>
-                            <ul className="mt-2 space-y-1">
-                              {latestRun.queryPlan.map((item, index) => (
-                                <li key={index} className="leading-relaxed">
-                                  · {String((item as Record<string, unknown>).question ?? '')}
-                                  <span className="text-muted">（{(Array.isArray((item as Record<string, unknown>).keywords) ? ((item as Record<string, unknown>).keywords as unknown[]).map(String) : []).join('、')}）</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
-
-                        {/* 校验失败的结论与读取失败要如实展示，而不是静默丢弃。 */}
-                        {Array.isArray((latestRun.synthesis as Record<string, unknown>).rejectedClaims) && ((latestRun.synthesis as Record<string, unknown>).rejectedClaims as unknown[]).length > 0 && (
-                          <details className="text-xs text-muted">
-                            <summary className="flex cursor-pointer items-center gap-1">
-                              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                              未通过校验的结论（{((latestRun.synthesis as Record<string, unknown>).rejectedClaims as unknown[]).length} 条）
-                            </summary>
-                            <ul className="mt-2 space-y-1">
-                              {(((latestRun.synthesis as Record<string, unknown>).rejectedClaims) as Array<{ title: string; reason: string }>).map((item, index) => (
-                                <li key={index}>· {item.title}：{item.reason}</li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
                       </CardContent>
                     </Card>
                   )}
 
-                  {/* 结论审核 */}
-                  {(runDetail?.claims.length ?? detail?.claims.length ?? 0) > 0 && (
-                    <ResearchReview
-                      claims={runDetail?.claims ?? detail?.claims ?? []}
-                      draft={detail?.latestDraft ?? null}
-                      regenerating={runActive}
-                      onUpdateClaim={async (id, patch) => {
-                        await updateResearchClaim(id, patch as never);
-                        await refresh();
-                      }}
-                      onRevalidate={async (id) => {
-                        const result = await revalidateResearchClaim(id);
-                        const invalid = result.evidence.filter((item) => !item.valid).length;
-                        toast.info('证据已重新校验', invalid ? `有 ${invalid} 条证据已失效。` : '全部证据仍然有效。');
-                        await refresh();
-                      }}
-                      onDeleteEvidence={async (id) => { await deleteResearchEvidence(id); await refresh(); }}
-                      onSaveDraft={async (patch) => {
-                        const draftId = detail?.latestDraft?.id;
-                        if (!draftId) return;
-                        await updateResearchDraft(draftId, patch);
-                        await refresh();
-                      }}
-                      onRegenerate={async () => {
-                        const result = await regenerateResearchDraft(project.id);
-                        if (!result.ok) { toast.error('重新生成总稿失败', result.reason ?? ''); return; }
-                        toast.success('已生成新的总稿版本');
-                        await refresh();
-                      }}
-                    />
-                  )}
-
-                  {/* 发布 */}
-                  {detail?.latestDraft && (
-                    <Card>
-                      <CardContent className="space-y-3 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <h3 className="text-sm font-semibold text-ink">写入创作资料库</h3>
-                            <p className="mt-1 text-xs text-muted">发布前会检查已接受结论、证据有效性与总稿引用。</p>
-                          </div>
-                          <div className="flex flex-none gap-2">
-                            <Button size="sm" variant="outline" disabled={busy} onClick={() => void guard(async () => {
-                              const preview = await previewResearchPublish(project.id);
-                              setPublishBlocked(preview.blocked);
-                              setPublishOpen(true);
-                            })}><span>检查发布条件</span></Button>
-                            <Button size="sm" variant="primary" disabled={busy} onClick={() => void guard(async () => {
-                              const result = await publishResearch(project.id, { revision: project.revision });
-                              toast.success(result.created ? '已写入资料库' : '这篇资料已存在', result.href);
-                              await refresh();
-                            })}><span>确认并写入资料库</span></Button>
-                          </div>
-                        </div>
-                        {publishOpen && publishBlocked.length > 0 && (
-                          <Alert variant="warning">
-                            还不能发布：
-                            <ul className="mt-1 list-disc pl-4">
-                              {publishBlocked.map((item, index) => <li key={index}>{item}</li>)}
-                            </ul>
-                          </Alert>
-                        )}
-                        {project.publishedNoteId && (
-                          <a href={`/apps/notebook/${project.publishedNoteId}`} className="inline-flex items-center gap-1 text-sm text-accent hover:underline">
-                            <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />打开已发布的资料
-                          </a>
-                        )}
-                      </CardContent>
-                    </Card>
+                  {/* 已发布资料快捷入口 */}
+                  {project.publishedNoteId && (
+                    <div className="p-3 rounded-lg border border-border-default bg-surface flex items-center justify-between">
+                      <span className="text-xs text-muted">本专题已完成审核并写入创作资料库</span>
+                      <a
+                        href={`/apps/notebook/${project.publishedNoteId}`}
+                        className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-semibold"
+                      >
+                        <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>打开已发布的资料</span>
+                      </a>
+                    </div>
                   )}
                 </>
               )}
@@ -330,7 +435,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
               {!creating && !project && (
                 <EmptyState
                   title="选择一个研究专题"
-                  description="或点左上「新建」，让 AI 从本地原文里发现值得研究的主题。"
+                  description="或点左上「新建专题」，让 AI 从本地语料中发现值得研究的主题。"
                   actions={<Button onClick={() => setCreating(true)}>新建研究专题</Button>}
                 />
               )}

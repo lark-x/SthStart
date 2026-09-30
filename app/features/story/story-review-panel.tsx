@@ -11,7 +11,7 @@ import { StoryMarkdown } from './story-markdown';
 import { storyApi } from './api';
 
 type EntryRow = { kind: 'document'; item: StoryDocument } | { kind: 'character'; item: StoryCharacter };
-type PanelTab = 'proposals' | 'revisions' | 'dsh' | 'archive';
+type PanelTab = 'proposals' | 'revisions' | 'agent' | 'archive';
 const kindName: Record<StoryProposalKind | 'character', string> = {
   outline: '大纲', world: '世界观', scene: '场景', chapter: '章节', character: '角色',
 };
@@ -48,7 +48,7 @@ function ReadOnlyArchive({ projectId }: { projectId: string }) {
   const messages = useQuery({ queryKey: ['story', projectId, 'archive-messages', selected?.id],
     queryFn: () => storyApi.listMessages(projectId, selected!.id), enabled: Boolean(selected) });
   return <section className="space-y-3">
-    <p className="rounded-[var(--radius-control)] bg-surface-muted p-3 text-sm text-muted">这是 SthStart 旧版内置会话的只读归档，不是 DSH 原生会话；不能继续发送、压缩或补看当时的工具轨迹。</p>
+    <p className="rounded-[var(--radius-control)] bg-surface-muted p-3 text-sm text-muted">这是 SthStart 旧版内置会话的只读归档；不能继续发送、压缩或补看当时的工具轨迹。</p>
     {sessions.isLoading && <p className="text-sm text-muted">正在读取归档…</p>}
     <label className="block text-sm">旧会话<select className="mt-1 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 py-2" value={selected?.id ?? ''} onChange={(event) => setSessionId(event.target.value)}>
       {(sessions.data?.items ?? []).map((session) => <option key={session.id} value={session.id}>{session.title} · {new Date(session.updatedAt).toLocaleString('zh-CN')}</option>)}
@@ -121,21 +121,21 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
     finally { setGrantBusy(false); }
   };
   const revokeGrant = async () => {
-    if (!window.confirm('撤销后当前 DSH 启动器的桥接会立即失效。确定撤销？')) return;
+    if (!window.confirm('撤销后当前创作代理的桥接会立即失效。确定撤销？')) return;
     try { await storyApi.revokeBridgeGrant(projectId); setOneTimeToken(''); await client.invalidateQueries({ queryKey: ['story', projectId, 'bridge-status'] }); setNotice('项目桥接已撤销。'); }
     catch (cause) { setNotice(cause instanceof Error ? cause.message : '撤销失败。'); }
   };
 
   return <Drawer open={open} onOpenChange={onOpenChange} title="审阅与项目连接" description="正式资料仍只由本工作台保存或在接受提案后更新。">
     <div className="mb-4 grid grid-cols-2 gap-1 rounded-[var(--radius-control)] bg-surface-muted p-1 sm:grid-cols-4">
-      {([['proposals', '提案'], ['revisions', '版本'], ['dsh', 'DSH 连接'], ['archive', '旧会话']] as const).map(([key, label]) => <button key={key} onClick={() => onTabChange(key)} className={`rounded-[var(--radius-control)] px-2 py-2 text-sm ${tab === key ? 'bg-surface font-semibold text-accent shadow-sm' : 'text-muted hover:bg-surface-hover'}`}>{label}</button>)}
+      {([['proposals', '提案'], ['revisions', '版本'], ['agent', '代理连接'], ['archive', '旧会话']] as const).map(([key, label]) => <button key={key} onClick={() => onTabChange(key)} className={`rounded-[var(--radius-control)] px-2 py-2 text-sm ${tab === key ? 'bg-surface font-semibold text-accent shadow-sm' : 'text-muted hover:bg-surface-hover'}`}>{label}</button>)}
     </div>
     {notice && <div role="status" className="mb-3 flex items-start gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface-muted p-3 text-sm"><span className="min-w-0 flex-1">{notice}</span><button aria-label="关闭提示" onClick={() => setNotice('')}><X className="size-4" /></button></div>}
 
     {tab === 'proposals' && <section className="space-y-3">
       <div className="flex items-center justify-between"><h3 className="font-semibold">待审阅提案</h3><span className="text-xs text-muted">{proposals.data?.items.filter((item) => item.status === 'pending').length ?? 0} 项待审</span></div>
       {proposals.isLoading && <p className="text-sm text-muted">正在读取提案…</p>}
-      {proposals.data?.items.length === 0 && <p className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-6 text-center text-sm text-muted">暂无提案。DSH 只能提交建议，接受后才会改动正式资料。</p>}
+      {proposals.data?.items.length === 0 && <p className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-6 text-center text-sm text-muted">暂无提案。AI 智能体只能提交建议，接受后才会改动正式资料。</p>}
       {proposals.data?.items.map((proposal) => {
         const targetRow = entries.find((entry) => entry.item.id === proposal.targetId);
         const target = targetRow ? targetRow.item : null;
@@ -143,7 +143,7 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
         const stale = proposal.operation === 'update' && (!target || target.revision !== proposal.baseRevision);
         const diff = target ? lineDiff(current, proposal.proposedBody) : null;
         return <article key={proposal.id} className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
-          <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-accent/10 px-2 py-1 text-xs font-semibold text-accent">{proposal.operation === 'create' ? '新建' : '更新'} · {kindName[proposal.kind]}</span><span className="text-xs text-muted">{proposal.origin === 'native_dsh' ? 'DSH 原生会话' : proposal.origin === 'legacy' ? '旧版内置会话' : '未知来源'}</span><span className="ml-auto text-xs text-muted">{new Date(proposal.createdAt).toLocaleString('zh-CN')}</span></div>
+          <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-accent/10 px-2 py-1 text-xs font-semibold text-accent">{proposal.operation === 'create' ? '新建' : '更新'} · {kindName[proposal.kind]}</span><span className="text-xs text-muted">{proposal.origin === 'native_dsh' ? '外部代理会话' : proposal.origin === 'legacy' ? '旧版内置会话' : '未知来源'}</span><span className="ml-auto text-xs text-muted">{new Date(proposal.createdAt).toLocaleString('zh-CN')}</span></div>
           <h4 className="mt-3 font-semibold">{proposal.proposedTitle}</h4>
           <p className="mt-1 text-sm text-muted">{proposal.operation === 'create' ? '将创建新的正式资料。' : `目标：${target ? titleOf(target) : '条目不存在'} · 基于 v${proposal.baseRevision ?? '—'}${target ? ` / 当前 v${target.revision}` : ''}`}</p>
           {stale && proposal.status === 'pending' && <p role="alert" className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-900">基准版本已变化或目标已删除。此提案保持待审，不能覆盖当前正式内容。</p>}
@@ -179,21 +179,21 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
       })}
     </section>}
 
-    {tab === 'dsh' && <section className="space-y-4">
+    {tab === 'agent' && <section className="space-y-4">
       <div className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
-        <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">原生 DSH Web</h3><p className="mt-1 text-sm text-muted">对话、流式 Markdown、模型选择与轨迹由 DSH 原生页面提供。</p></div><span className={`rounded-full px-2 py-1 text-xs ${bridge.data?.running ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-muted text-muted'}`}>{bridge.data?.running ? '运行中' : bridge.data?.paired ? '已配对 · 离线' : '未配对'}</span></div>
-        {isLocalHost ? <a className="mt-3 inline-flex items-center gap-2 rounded-[var(--radius-control)] border border-border-default px-3 py-2 text-sm font-medium hover:bg-surface-hover" href="http://127.0.0.1:3081" target="_blank" rel="noreferrer noopener">打开本机 DSH <ExternalLink className="size-4" /></a>
-          : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">DSH 只运行在启动器所在电脑。本页面来自局域网地址，不能提供当前设备可用的 DSH 链接。</p>}
+        <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">外部创作代理</h3><p className="mt-1 text-sm text-muted">支持通过 Antigravity、Claude 等 Agent 协作推进剧情草稿。</p></div><span className={`rounded-full px-2 py-1 text-xs ${bridge.data?.running ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-muted text-muted'}`}>{bridge.data?.running ? '运行中' : bridge.data?.paired ? '已配对 · 离线' : '未配对'}</span></div>
+        {isLocalHost ? <a className="mt-3 inline-flex items-center gap-2 rounded-[var(--radius-control)] border border-border-default px-3 py-2 text-sm font-medium hover:bg-surface-hover" href="http://127.0.0.1:3081" target="_blank" rel="noreferrer noopener">打开本机代理工作台 <ExternalLink className="size-4" /></a>
+          : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">创作代理运行在启动器所在主机。本页面来自远程地址，不能直接提供当前设备可用的链接。</p>}
         <p className="mt-3 text-xs text-muted">桥接：{bridge.data?.paired ? `已配对 · 最近使用 ${bridge.data.lastUsedAt ? new Date(bridge.data.lastUsedAt).toLocaleString('zh-CN') : '暂无'}` : '尚未配对'}{bridge.data?.lastHeartbeatAt ? ` · 心跳 ${new Date(bridge.data.lastHeartbeatAt).toLocaleTimeString('zh-CN')}` : ''}</p>
       </div>
       <div className="rounded-[var(--radius-panel)] border border-border-default p-4">
-        <div className="flex items-center gap-2"><KeyRound className="size-4 text-accent" /><h3 className="font-semibold">项目配对与启动</h3></div>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm"><li>在本页生成一次性 Token，并复制。</li><li>在本机 PowerShell 执行下方启动命令；首次配对加入 <code>-Pair</code>。</li><li>启动器提示输入时粘贴 Token。Token 会使用当前 Windows 用户 DPAPI 加密保存，不出现在启动参数中。</li><li>DSH 首次启动后，在 DSH 自己的设置页配置模型与密钥。此配置不写入 SthStart。</li><li>完成配对后，可在“控制中心 → 剧情 DSH”一键启动并查看心跳状态。</li></ol>
+        <div className="flex items-center gap-2"><KeyRound className="size-4 text-accent" /><h3 className="font-semibold">创作代理配对与桥接凭证</h3></div>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm"><li>在本页生成一次性授权 Token 并复制。</li><li>在外部智能代理客户端或本机终端执行接入命令。</li><li>授权 Token 使用当前环境安全加密保存，不出现在命令行日志中。</li><li>代理首次启动后，在客户端配置模型与密钥，此配置不写入 SthStart。</li><li>完成配对后，即可通过 MCP 或原生桥接安全审阅提案。</li></ol>
         <pre className="mt-3 overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-3 text-xs">{`Set-ExecutionPolicy -Scope Process Bypass; & ${"'F:\\Project\\SthStart\\scripts\\story-dsh\\start.ps1'"} -ProjectId '${projectId.replaceAll("'", "''")}' -PortalUrl '${localPortal.replaceAll("'", "''")}' -Pair`}</pre>
-        <p className="mt-2 text-xs text-muted">以后启动可去掉 <code>-Pair</code>。端口 3081 已占用时启动器会停止并提示，不会终止占用进程；每个项目使用独立工作目录。项目间切换前先退出当前 DSH。</p>
+        <p className="mt-2 text-xs text-muted">端口已占用时启动器会停止并提示，不会终止占用进程；每个项目使用独立工作目录。</p>
         <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={grantBusy} onClick={() => void generateGrant()}><Plus className="size-4" />{bridge.data?.paired ? '重新生成 Token' : '生成一次性 Token'}</Button>{bridge.data?.paired && <Button size="sm" variant="outline" onClick={() => void revokeGrant()}>撤销桥接</Button>}</div>
         {oneTimeToken && <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3"><label className="block text-xs font-semibold text-amber-950">一次性 Token（关闭页面或重新生成后不再显示）<Input readOnly value={oneTimeToken} className="mt-2 font-mono text-xs" onFocus={(event) => event.currentTarget.select()} /></label><Button size="sm" variant="outline" className="mt-2" onClick={() => void navigator.clipboard.writeText(oneTimeToken).then(() => setNotice('Token 已复制。')).catch(() => setNotice('浏览器未授权剪贴板，请在上方文本框中手动复制。'))}><Copy className="size-4" />复制 Token</Button><p className="mt-2 text-xs text-amber-950">不要发给其他人或贴入对话；此 Token 只能访问当前项目的只读资料与提案接口。</p></div>}
-        <details className="mt-4 rounded-[var(--radius-control)] border border-border-default p-3"><summary className="cursor-pointer text-sm font-medium">桥接权限与备份边界</summary><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted"><li>DSH 可读取正式资料、搜索、提交待审提案与查看提案状态；不能直接保存正式资料。</li><li>撤销或重新生成会立即使旧凭据失效；服务重启后 DSH 显示离线，需由启动器重新发送心跳。</li><li>同一 Windows 用户下这不是操作系统级隔离。DSH 项目工作目录和模型凭据不包含在普通 SthStart 备份中，需单独安全备份。</li></ul></details>
+        <details className="mt-4 rounded-[var(--radius-control)] border border-border-default p-3"><summary className="cursor-pointer text-sm font-medium">桥接权限与备份边界</summary><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted"><li>创作代理可读取正式资料、搜索、提交待审提案与查看提案状态；不能直接改写正式资料。</li><li>撤销或重新生成会立即使旧凭据失效。</li><li>外部智能代理的工作目录和模型凭据不包含在普通 SthStart 备份中，需单独安全备份。</li></ul></details>
       </div>
     </section>}
 

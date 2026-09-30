@@ -17,6 +17,7 @@ import {
   Link as LinkIcon,
   User,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import type { CreativeNote, NoteBlock, NoteKind, NoteStage } from '@sthstart/contracts';
 import { useNoteDetail } from '../queries';
@@ -80,6 +81,7 @@ export function NoteEditor({
   const [savingLocal, setSavingLocal] = useState(false);
   const [online, setOnline] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [zenMode, setZenMode] = useState(false);
   const [metaEditorOpen, setMetaEditorOpen] = useState(false);
   const [discardMetaOpen, setDiscardMetaOpen] = useState(false);
   const [metaDraft, setMetaDraft] = useState<Pick<CreativeNote, 'title' | 'tags' | 'kind' | 'stage'> | null>(null);
@@ -435,20 +437,35 @@ export function NoteEditor({
           </Link>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="notebook-save-status text-sm text-muted font-medium" aria-live="polite">
-              {savingLocal
-                ? '🟢 正在保存到本机…'
-                : dirty
-                ? '🟡 等待本机保存…'
-                : localRecord?.status === 'syncing'
-                ? '🔵 正在同步…'
-                : localRecord?.status === 'pending'
-                ? online ? '🟢 本机已保存 · 等待同步' : '⚪ 离线 · 待同步'
-                : localRecord?.status === 'error'
-                ? '🔴 本机已保存 · 同步失败'
-                : localRecord?.status === 'synced'
-                ? '🟢 已同步'
-                : '🟢 本地笔记'}
+            <span className="notebook-save-status flex items-center gap-1.5 text-sm text-muted font-medium" aria-live="polite">
+              <span className={`inline-block h-2 w-2 rounded-full ${
+                savingLocal
+                  ? 'bg-accent animate-pulse'
+                  : dirty
+                  ? 'bg-warning'
+                  : localRecord?.status === 'syncing'
+                  ? 'bg-accent animate-pulse'
+                  : localRecord?.status === 'pending'
+                  ? online ? 'bg-success' : 'bg-muted'
+                  : localRecord?.status === 'error'
+                  ? 'bg-danger'
+                  : 'bg-success'
+              }`} />
+              <span>
+                {savingLocal
+                  ? '正在保存到本机…'
+                  : dirty
+                  ? '等待本机保存…'
+                  : localRecord?.status === 'syncing'
+                  ? '正在同步…'
+                  : localRecord?.status === 'pending'
+                  ? online ? '本机已保存 · 等待同步' : '离线 · 待同步'
+                  : localRecord?.status === 'error'
+                  ? '本机已保存 · 同步失败'
+                  : localRecord?.status === 'synced'
+                  ? '已同步'
+                  : '本地笔记'}
+              </span>
             </span>
           </div>
         )}
@@ -472,6 +489,19 @@ export function NoteEditor({
         )}
 
         <div className="notebook-editor-actions flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={zenMode ? 'accent' : 'outline'}
+            className="h-8 px-2.5 text-sm"
+            onClick={() => setZenMode((prev) => !prev)}
+            title={zenMode ? '退出专注模式' : '进入禅道专注模式'}
+            aria-pressed={zenMode}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>{zenMode ? '退出专注' : '专注写作'}</span>
+          </Button>
+
           <button
             type="button"
             onClick={() =>
@@ -519,25 +549,29 @@ export function NoteEditor({
       )}
 
       {/* Editor Structured Document Canvas */}
-      <div className="notebook-editor-frame max-w-4xl mx-auto px-5 sm:px-8 py-4 space-y-3.5">
+      <div className={`notebook-editor-frame mx-auto px-5 sm:px-8 py-4 space-y-3.5 transition-all ${zenMode ? 'zen-workspace max-w-3xl' : 'max-w-3xl'}`}>
         {/* Short metadata is summarized here and edited together, leaving the writing area uncluttered. */}
-        <section className="notebook-meta-bar flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted/60 px-4 py-3" aria-label="页面属性">
-          <div className="min-w-0">
-            <div className="truncate text-xs font-medium text-muted">{kindLabels[note.kind]} · {stageLabels[note.stage]}</div>
-            <div className="mt-1 truncate text-sm text-ink">{note.title.trim() || '未命名笔记'}{note.tags.length ? <span className="ml-2 text-xs text-muted">{note.tags.slice(0, 3).join(' · ')}</span> : null}</div>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="notebook-local-hint text-xs text-fg-subtle">自动保存在本机</span>
-            <Button type="button" size="sm" variant="outline" onClick={openMetaEditor}>编辑资料</Button>
-          </div>
-        </section>
+        {!zenMode && (
+          <section className="notebook-meta-bar flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted/60 px-4 py-3" aria-label="页面属性">
+            <div className="min-w-0">
+              <div className="truncate text-xs font-medium text-muted">{kindLabels[note.kind]} · {stageLabels[note.stage]}</div>
+              <div className="mt-1 truncate text-sm text-ink">{note.title.trim() || '未命名笔记'}{note.tags.length ? <span className="ml-2 text-xs text-muted">{note.tags.slice(0, 3).join(' · ')}</span> : null}</div>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="notebook-local-hint text-xs text-fg-subtle">自动保存在本机</span>
+              <Button type="button" size="sm" variant="outline" onClick={openMetaEditor}>编辑资料</Button>
+            </div>
+          </section>
+        )}
 
         {/* 资料属性：默认收起，只在这里显式修改，不会因正文编辑被清空。 */}
-        <NoteKnowledgePanel
-          note={note}
-          knowledge={note.knowledge}
-          onChange={(knowledge) => updateNoteState((prev) => ({ ...prev, knowledge }))}
-        />
+        {!zenMode && (
+          <NoteKnowledgePanel
+            note={note}
+            knowledge={note.knowledge}
+            onChange={(knowledge) => updateNoteState((prev) => ({ ...prev, knowledge }))}
+          />
+        )}
 
         {/* Main Text Content Focus Area (定高、舒适书写主舞台) */}
         <section className="notebook-content-section space-y-2.5" aria-label="笔记正文">
@@ -605,10 +639,11 @@ export function NoteEditor({
                 {/* Block Types */}
                 {block.type === 'text' && (
                   <textarea
+                    data-reading-surface
                     value={block.text}
                     onChange={(e) => handleUpdateBlock(block.id, { text: e.target.value })}
                     placeholder="写下一段文字记录…"
-                    className="notebook-textarea w-full bg-transparent text-[15.5px] sm:text-[16.5px] leading-[1.8] text-ink placeholder:text-muted/40 outline-none p-1"
+                    className="notebook-textarea w-full bg-transparent text-[16px] sm:text-[17px] leading-[1.85] text-ink placeholder:text-muted/40 outline-none p-1"
                   />
                 )}
 

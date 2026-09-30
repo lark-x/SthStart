@@ -63,6 +63,7 @@ function ConnectionForm({
         await saveGenerationEngine({
           id, name: value('name'), baseUrl: value('baseUrl'),
           secret: value('secret') || undefined,
+          kind: (value('kind') || (engine?.kind ?? 'comfyui')) as 'comfyui' | 'worker' | 'cloud',
           concurrencyLimit: Math.max(1, Number(value('concurrency') || 1)),
         });
       }
@@ -87,6 +88,7 @@ function ConnectionForm({
           <label htmlFor="conn-kind" className="mb-1 block text-sm font-medium text-ink">连接方式</label>
           <Select id="conn-kind" name="kind" defaultValue={engine?.kind ?? 'comfyui'} disabled={Boolean(engine)}>
             <option value="comfyui">ComfyUI 直连（默认）</option>
+            <option value="cloud">云端兼容接口（OpenAI / DALL-E）</option>
             <option value="worker">Windows Worker（高级）</option>
           </Select>
         </div>

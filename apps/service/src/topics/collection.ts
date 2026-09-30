@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type {
   TopicCollectionRun, TopicCollectionSettings, TopicInfoNature, TopicKind,
 } from '@sthstart/contracts';
-import { resolveAssignedLlmProfile } from '../providers.js';
+import { resolveAssignedLlmProfile, resolveEffectiveModelProfile } from '../providers.js';
 import { resolveAppLlmBindingStatus } from '../llm-status.js';
 import { callLlm } from '../activities/text-jobs.js';
 import { parseAiJsonOutput } from '../activities/prompts.js';
@@ -235,9 +235,9 @@ export async function runTopicCollection(
                   toolCalls++;
                   try {
                     const args = await researchToolArguments(readTool, keyword, '', entry, async prompt => {
-                      const profile = await resolveAssignedLlmProfile(database, secrets, 'activities', 'text');
+                      const profile = await resolveEffectiveModelProfile(database, secrets, 'topics', 'collection');
                       if (!profile) throw new Error('文本模型未就绪');
-                      return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database, feature: 'topic-collection', businessEvent: 'topics.collection.tool_arguments', objectType: 'topic-collection', objectId: run.id }));
+                      return parseAiJsonOutput<unknown>(await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database, feature: 'topic-collection', businessEvent: 'topics.collection.tool_arguments', objectType: 'topic-collection', objectId: run.id, applicationId: 'topics' }, { systemPrompt: '你是一名专业的题材情报分析师，负责精确解析外部工具的参数。', jsonMode: true }));
                     });
                     const read = await client.callTool(readTool.name, args);
                     if (!read.ok) throw new Error(read.text || '读取失败');
@@ -280,8 +280,7 @@ export async function runTopicCollection(
       return;
     }
 
-    const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'activities', 'text');
-    const profile = bindingStatus.ready ? await resolveAssignedLlmProfile(database, secrets, 'activities', 'text') : null;
+    const profile = await resolveEffectiveModelProfile(database, secrets, 'topics', 'collection');
     if (!profile) {
       // 整理不了时保留原始候选供重试，不把失败当成没有新内容。
       topics.updateRun(run.id, {
@@ -296,7 +295,14 @@ export async function runTopicCollection(
 
     const recentTopics = topics.listTopics({ days: 7, pageSize: 100 }).items;
     const organized = parseOrganized(
-      await callLlm(profile, buildOrganizePrompt(deduped, settings, COLLECTION_WINDOW_DAYS, recentTopics), options.fetcher ?? fetch, undefined, { database, feature: 'topic-collection', businessEvent: 'topics.collection.organize', objectType: 'topic-collection-run', objectId: run.id }),
+      await callLlm(
+        profile,
+        buildOrganizePrompt(deduped, settings, COLLECTION_WINDOW_DAYS, recentTopics),
+        options.fetcher ?? fetch,
+        undefined,
+        { database, feature: 'topic-collection', businessEvent: 'topics.collection.organize', objectType: 'topic-collection-run', objectId: run.id, applicationId: 'topics' },
+        { systemPrompt: '你是一名专业的题材情报分析师，负责将海量碎片情报整理为结构化的话题条目。', jsonMode: true }
+      ),
       200,
     );
     if (!organized.length) {
@@ -380,9 +386,16 @@ async function buildToolArgs(
 ): Promise<Record<string, unknown>> {
   void discovered;
   return researchToolArguments(tool, keyword, '', undefined, async (prompt: string) => {
-    const profile = await resolveAssignedLlmProfile(options.database, options.secrets, 'activities', 'text');
+    const profile = await resolveEffectiveModelProfile(options.database, options.secrets, 'topics', 'collection');
     if (!profile) throw new Error('文本模型未就绪，无法生成工具参数。');
-    const raw = await callLlm(profile, prompt, options.fetcher ?? fetch, undefined, { database: options.database, feature: 'topic-collection', businessEvent: 'topics.collection.tool_arguments', objectType: 'topic-collection' });
+    const raw = await callLlm(
+      profile,
+      prompt,
+      options.fetcher ?? fetch,
+      undefined,
+      { database: options.database, feature: 'topic-collection', businessEvent: 'topics.collection.tool_arguments', objectType: 'topic-collection', applicationId: 'topics' },
+      { systemPrompt: '你是一名专业的题材情报分析师，负责精确解析外部工具的参数。', jsonMode: true }
+    );
     return parseAiJsonOutput<unknown>(raw);
   });
 }

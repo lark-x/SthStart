@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { once } from 'node:events';
 import test from 'node:test';
 import { DeepSeekHarness, HarnessClient } from '@deepseek-ai/dsh-sdk-client';
+
+const currentDir = dirname(fileURLToPath(import.meta.url));
+const storyDir = currentDir.includes('/dist/story') ? resolve(currentDir, '../../src/story') : currentDir;
 
 test('restricted DSH profile can use an OpenAI-compatible SthStart gateway and resume after restart', { timeout: 90_000 }, async () => {
   const requests: Array<{ authorization: string | undefined; body: Record<string, unknown> }> = [];
@@ -28,44 +32,45 @@ test('restricted DSH profile can use an OpenAI-compatible SthStart gateway and r
     response.write(`data: ${JSON.stringify({ id: 'mock-1', object: 'chat.completion.chunk', created: 1, model: 'poc-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
     response.end('data: [DONE]\n\n');
   });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  assert.ok(address && typeof address !== 'string');
-  const root = await mkdtemp(resolve(tmpdir(), 'sthstart-story-dsh-test-'));
-  const sourcePatch = await readFile(resolve('apps/service/src/story/profile.cordis.patch.yml'), 'utf8');
-  const patchPath = resolve(root, 'story.cordis.patch.yml');
-  await writeFile(patchPath, sourcePatch.replace('__STHSTART_STORY_RESUME_SERVER_PATH__', resolve('apps/service/src/story/dsh-resume-server.mjs').replaceAll('\\', '/')));
-  const options: ConstructorParameters<typeof DeepSeekHarness>[0] = {
-    profile: 'sdk-minimal',
-    patches: [patchPath],
-    dshHome: resolve(root, 'home'),
-    processCwd: root,
-    cwd: root,
-    provider: 'sthstart',
-    model: 'poc-model',
-    initializeTimeoutMs: 45_000,
-    env: {
-      NODE_ENV: process.env.NODE_ENV,
-      PATH: process.env.PATH,
-      SystemRoot: process.env.SystemRoot,
-      TEMP: process.env.TEMP,
-      TMP: process.env.TMP,
-      HOME: process.env.HOME,
-      STHSTART_STORY_APP_TOKEN: 'test-token',
-      STHSTART_STORY_LLM_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
-      STHSTART_STORY_MODEL_ID: 'poc-model',
-      STHSTART_STORY_MCP_TOKEN: 'test-mcp-token',
-      STHSTART_STORY_PROJECT_ID: 'test-project',
-      STHSTART_STORY_RUNTIME_SESSION_ID: 'session-test',
-      STHSTART_STORY_MCP_SOURCE_PATH: resolve('apps/service/src/story/mcp-server.ts'),
-      STHSTART_STORY_TSX_IMPORT_PATH: import.meta.resolve('tsx/esm'),
-      STHSTART_STORY_SKILLS_DIR: resolve('apps/service/src/story/skills'),
-      STHSTART_STORY_INTERNAL_URL: `http://127.0.0.1:${address.port}`,
-      DSH_TELEMETRY_MODE: 'OFF',
-    },
-  };
+  let root = '';
   try {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    root = await mkdtemp(resolve(tmpdir(), 'sthstart-story-dsh-test-'));
+    const sourcePatch = await readFile(resolve(storyDir, 'profile.cordis.patch.yml'), 'utf8');
+    const patchPath = resolve(root, 'story.cordis.patch.yml');
+    await writeFile(patchPath, sourcePatch.replace('__STHSTART_STORY_RESUME_SERVER_PATH__', resolve(storyDir, 'dsh-resume-server.mjs').replaceAll('\\', '/')));
+    const options: ConstructorParameters<typeof DeepSeekHarness>[0] = {
+      profile: 'sdk-minimal',
+      patches: [patchPath],
+      dshHome: resolve(root, 'home'),
+      processCwd: root,
+      cwd: root,
+      provider: 'sthstart',
+      model: 'poc-model',
+      initializeTimeoutMs: 45_000,
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        PATH: process.env.PATH,
+        SystemRoot: process.env.SystemRoot,
+        TEMP: process.env.TEMP,
+        TMP: process.env.TMP,
+        HOME: process.env.HOME,
+        STHSTART_STORY_APP_TOKEN: 'test-token',
+        STHSTART_STORY_LLM_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+        STHSTART_STORY_MODEL_ID: 'poc-model',
+        STHSTART_STORY_MCP_TOKEN: 'test-mcp-token',
+        STHSTART_STORY_PROJECT_ID: 'test-project',
+        STHSTART_STORY_RUNTIME_SESSION_ID: 'session-test',
+        STHSTART_STORY_MCP_SOURCE_PATH: resolve(storyDir, 'mcp-server.ts'),
+        STHSTART_STORY_TSX_IMPORT_PATH: import.meta.resolve('tsx/esm'),
+        STHSTART_STORY_SKILLS_DIR: resolve(storyDir, 'skills'),
+        STHSTART_STORY_INTERNAL_URL: `http://127.0.0.1:${address.port}`,
+        DSH_TELEMETRY_MODE: 'OFF',
+      },
+    };
     let sessionId: string;
     {
       const harness = new DeepSeekHarness(options);
@@ -113,6 +118,6 @@ test('restricted DSH profile can use an OpenAI-compatible SthStart gateway and r
       'Story skills must be visible to the model');
   } finally {
     server.close();
-    await rm(root, { recursive: true, force: true });
+    if (root) await rm(root, { recursive: true, force: true });
   }
 });

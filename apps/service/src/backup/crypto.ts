@@ -141,11 +141,17 @@ export function deriveSubkey(masterKey: Buffer, purpose: 'object-encryption' | '
   return Buffer.from(hkdfSync('sha256', masterKey, Buffer.from('sthstart-backup-v1', 'utf8'), Buffer.from(purpose, 'utf8'), KEY_BYTES));
 }
 
-/** 生成人类可读的恢复密钥（高熵，分组便于抄写）。 */
 export function generateRecoveryKey(): string {
-  const bytes = randomBytes(32);
-  const base = encodeBytes(bytes, 'base64url').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 40);
-  return base.match(/.{1,5}/g)!.join('-');
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let base = '';
+  while (base.length < 40) {
+    const bytes = randomBytes(40);
+    for (const b of bytes) {
+      base += alphabet[b % alphabet.length];
+      if (base.length === 40) break;
+    }
+  }
+  return base.match(/.{5}/g)!.join('-');
 }
 
 /** 恢复密钥校验段：用于快速判断输入是否正确，不泄露密钥本身。 */

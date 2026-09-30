@@ -14,7 +14,7 @@ import { hashToken, issueToken, SecretStore } from './security.js';
 import { registerManagementRoutes } from './management.js';
 import { registerPublicRoutes } from './public-routes.js';
 import { enforceAllRetention, reconcileArtifacts } from './artifacts.js';
-import { activeGenerationExecutions, reconcileGenerationTasks, resumeGenerationExecutions, startGenerationScheduler, stopGenerationExecutions } from './generation.js';
+import { generationExecutionsFor, reconcileGenerationTasks, resumeGenerationExecutions, startGenerationScheduler, stopGenerationExecutions } from './generation.js';
 import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
 import { NarrativeDatabase } from './narrative-database.js';
@@ -39,6 +39,7 @@ import { registerKnowledgeRoutes } from './knowledge/routes.js';
 import { KnowledgeScheduler } from './knowledge/scheduler.js';
 import { TopicScheduler } from './topics/scheduler.js';
 import { registerTaskRoutes } from './tasks/routes.js';
+import { executionRegistryFor, waitForExecutions } from './generation/execution-registry.js';
 import { BackupStore } from './backup/store.js';
 import { BackupVaultService } from './backup/vault.js';
 import { BackupRunner } from './backup/runner.js';
@@ -294,13 +295,19 @@ export async function createService(options: ServiceOptions = {}) {
     knowledgeScheduler.stop();
     backupScheduler.stop();
     stopGenerationExecutions(database);
-    await genReconcilePromise.catch(() => {});
-    await Promise.allSettled(Array.from(activeGenerationExecutions));
+    await executionRegistryFor(database).drain(10000);
+    const pending = [genReconcilePromise, ...generationExecutionsFor(database), ...executionRegistryFor(database).getPendingPromises()];
+    const settled = await waitForExecutions(pending, 10000);
+    if (!settled) runtimeLogs.append({ appId: 'sthstart', serviceId: 'generation-shutdown', stream: 'system', level: 'warn', message: '生成任务停机等待超时，保留数据库连接直到任务退出。', force: true });
     await runtimeManager.close();
     // 退出前尽量把日志写入队列排空。
     await runtimeLogs.flush();
-    if (!options.database) database.close();
-    if (!options.narrativeDatabase) narrativeDatabase.close();
+    const closeOwnedDatabases = () => {
+      if (!options.database) database.close();
+      if (!options.narrativeDatabase) narrativeDatabase.close();
+    };
+    if (settled) closeOwnedDatabases();
+    else void Promise.allSettled(pending).then(closeOwnedDatabases);
   });
 
   if (!options.database && runtimeSettings.get().autoStart) {
