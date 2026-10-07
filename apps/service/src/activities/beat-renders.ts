@@ -10,32 +10,42 @@ import {
   BeatRenderActivityLoraPolicyResponseSchema, BeatRenderAdoptResponseSchema, BeatRenderCandidateListSchema, BeatRenderPreviewRequestSchema, BeatRenderSelectImageRequestSchema, BeatRenderActivityLoraPolicySchema, SaveBeatRenderActivityLoraPolicyRequestSchema, BeatRenderRerenderRequestSchema, GenerateBeatMediaRequestSchema,
   buildCharacterVisualContext,
   BeatRenderPreviewSchema, BeatRenderSubmitRequestSchema,
+  DEFAULT_ACTIVITY_NEGATIVE_PROMPT,
 } from '@sthstart/contracts';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
 import { createGenerationTask } from '../generation/execution.js';
-import { projectFieldContracts, validateRequiredValues, type InputSchemaMap } from '../generation/configuration.js';
+import { validateRequiredValues, type InputSchemaMap } from '../generation/configuration.js';
 import { resolveWorkflowAndEngine } from '../generation/task-store.js';
 import { loadObjectInfo, listModels } from '../generation/comfy-discovery.js';
 import { generationEventBus } from '../generation/events.js';
 import { resolveArtifactStoragePath } from '../artifacts.js';
 import { extractModelNames, hashAiSource, redactAiValue, syncBeatRenderCandidateFromTask, updateAiCallRecord } from '../ai-call-trace.js';
 import { linkPromptOptimizationTask, optimizeActivityImagePrompt, PromptOptimizationError } from './image-prompt-optimizer.js';
+import { studioRenderAudit, type StudioRenderContext, type StudioOptimizerOverride } from './studio-render-context.js';
+import { activityTextProfileId, inspectStudioTextProfile, studioTextProfileBinding } from './studio-model-binding.js';
+import { readImageOperationMetadata } from './studio-image-operation.js';
 import { resolveActivityImagePromptPolicy } from './image-prompt-policies.js';
 import {
-  appendLoraTriggerWords, buildActivityImageWorkflowSnapshot, inspectActivityImageWorkflow,
+  activityVisualParameterFields, appendLoraTriggerWords, buildActivityImageWorkflowSnapshot, finalizeActivityVisualPrompt, hashVisualPlan, inspectActivityImageWorkflow, resolveEffectiveActivityVisualPlan,
+  v2FinalizeInputFrom,
   listActivityImageWorkflowOptions, mergeActivityImageInputs, mergeActivityLoras, parseInputCapabilities,
   promptInputKey as promptKey, readActivityLoraPolicy, referenceInputKey as referenceInput, resolveActivityImageWorkflow,
 } from './image-render-common.js';
-import type { ActivityStore } from './store.js';
+import { ActivityStore } from './store.js';
+import { getCommittedImageConfig, getCommittedImageConfigRevisionId } from './image-configs.js';
+import { compileDirectorPrompt, resolveVisualSettings } from './visual-settings.js';
 
 type AdminCheck = (request: FastifyRequest, reply: FastifyReply) => boolean;
-type RenderTarget = { stage: ContentDocument['stages'][number]; scene: ActivityScene; beat: SceneBeat; actor: ActorSnapshot | null };
+type RenderTarget = { stage: ContentDocument['stages'][number]; scene: ActivityScene; beat: SceneBeat; actor: ActorSnapshot | null; actors: ActorSnapshot[] };
 type NormalizedOptions = {
   purpose: string; workflowId: string; workflowVersion: number; presetId: string | null; presetRevision: number | null;
   seed: number; positivePrompt: string; negativePrompt: string | null; parameters: Record<string, unknown>;
+  stylePrompt: string;
+  visualConfiguration: Record<string, unknown>;
+  negativeOverride: string | undefined;
   referenceAssetKey: string | null; referenceArtifactId: string | null; referenceInputKey: string | null;
   sourceFingerprint: string; source: Array<{ label: string; value: string }>;
   warnings: string[]; canSubmit: boolean;
@@ -85,7 +95,11 @@ export function findBeatRenderTarget(document: ContentDocument, stageId: string,
   const scene = stageScenes(document, stage).find((item) => item.id === sceneId);
   const beat = scene?.beats.find((item) => item.id === beatId);
   if (!scene || !beat) return null;
-  return { stage, scene, beat, actor: document.actors.find((actor) => actor.id === beat.characterId) ?? null };
+  const actorIds = beat.actorIds ?? (beat.characterId && beat.characterId !== 'narrator' ? [beat.characterId] : []);
+  const actors = actorIds.map(id => document.actors.find(actor => actor.id === id));
+  if (beat.actorIds && actors.some(actor => !actor)) throw codedError('beat_actor_not_found', '镜头中的角色不属于当前活动，请先修正角色选择。', 409);
+  return { stage, scene, beat, actor: document.actors.find((actor) => actor.id === beat.characterId) ?? null,
+    actors: actors.filter((actor): actor is ActorSnapshot => Boolean(actor)) };
 }
 
 function actorVisualText(actor: ActorSnapshot): string {
@@ -94,16 +108,32 @@ function actorVisualText(actor: ActorSnapshot): string {
   }).text;
 }
 
+/**
+ * 只读来源指纹（计划 §11.2）：细化用它判断“来源描述是否已变化”。
+ * 这里只走 compileSource，不解析画面方案，因此不需要画风预设或模型选择可用。
+ */
+export function previewBeatRenderSourceFingerprint(database: ServiceDatabase, activityId: string,
+  target: { stageId: string; sceneId: string; beatId: string }, customPrompt?: string): string | null {
+  const draft = new ActivityStore(database).getDraft(activityId);
+  if (!draft) return null;
+  const resolved = findBeatRenderTarget(draft.document, target.stageId, target.sceneId, target.beatId);
+  return resolved ? compileSource(resolved, customPrompt).sourceFingerprint : null;
+}
+
 function compileSource(target: RenderTarget, customPrompt?: string) {
   const { stage, scene, beat, actor } = target;
-  const subject = actor
+  const subject = beat.actorIds?.length === 0
+    ? '无人物角色，聚焦场景中正在发生的事物'
+    : target.actors.length
+    ? target.actors.map(item => `${item.displayName}，必须出现在画面中；${actorVisualText(item)}`).join('\n')
+    : actor && beat.actorIds?.length !== 0
     ? `${actor.displayName}，必须出现在画面中，不可缺席${actorVisualText(actor) ? `；${actorVisualText(actor)}` : ''}`
     : beat.characterId === 'narrator'
       ? '无人物角色，聚焦场景中正在发生的事物'
       : `${beat.characterName || beat.characterId}，必须出现在画面中，不可缺席`;
   const composition = customPrompt?.trim()
-    ? `${customPrompt.trim()}；主体角色需清楚可见，可见动作应明确呈现。`
-    : actor
+    ? `${customPrompt.trim()}；${target.actors.length ? '主体角色需清楚可见，' : ''}可见动作应明确呈现。`
+    : target.actors.length
       ? '以指定角色为画面主体，确保人物可见并清楚呈现动作，避免裁切或遗漏人物。'
       : '画面聚焦场景关键元素与正在发生的变化，保持主体明确。';
   const source = [
@@ -111,6 +141,10 @@ function compileSource(target: RenderTarget, customPrompt?: string) {
     { label: '可见动作', value: beat.action },
     { label: '场景', value: [stage.location, scene.title, scene.timeText, scene.locationText, scene.environment].filter(Boolean).join('；') },
     { label: '镜头构图', value: composition },
+    { label: '导演设置', value: compileDirectorPrompt(beat.renderSettings?.director) },
+    { label: '补充构图', value: beat.renderSettings?.composition ?? '' },
+    { label: '补充视觉描述', value: beat.renderSettings?.visualSupplement ?? '' },
+    { label: '表情要求', value: beat.renderSettings?.expression ?? '' },
   ].filter((item) => item.value.trim());
   const positivePrompt = source.map((item) => `${item.label}：${item.value}`).join('\n');
   const sourceFingerprint = hashAiSource({
@@ -119,73 +153,60 @@ function compileSource(target: RenderTarget, customPrompt?: string) {
     beat: { id: beat.id, characterId: beat.characterId, characterName: beat.characterName, action: beat.action, dialogue: beat.dialogue, outcome: beat.outcome,
       mediaType: beat.mediaType === 'video' ? 'video' : null },
     actor: actor ? { id: actor.id, sourceCharacterId: actor.sourceCharacterId, sourceVersion: actor.sourceVersion, displayName: actor.displayName, persona: actor.persona, activityRole: actor.activityRole, outfitDescription: actor.outfitDescription, appearanceReferenceAssetKeys: actor.appearanceReferenceAssetKeys } : null,
+    ...(beat.actorIds ? { actors: target.actors, actorIds: beat.actorIds } : {}),
+    ...(beat.renderSettings?.director ? { director: beat.renderSettings.director } : {}),
+    ...(beat.renderSettings?.composition ? { composition: beat.renderSettings.composition } : {}),
+    ...(beat.renderSettings?.customPrompt ? { renderSupplement: beat.renderSettings.customPrompt } : {}),
+    ...(beat.renderSettings?.visualSupplement ? { visualSupplement: beat.renderSettings.visualSupplement } : {}),
+    ...(beat.renderSettings?.expression ? { expression: beat.renderSettings.expression } : {}),
   });
   return { source, positivePrompt, sourceFingerprint };
 }
 
-function parameterFields(resolved: ReturnType<typeof resolveWorkflowAndEngine>, values: Record<string, unknown>): BeatRenderPreview['fields'] {
-  const schema = resolved.workflow.inputSchema as InputSchemaMap;
-  const contracts = projectFieldContracts(schema, resolved.workflow.editorConfig);
-  return contracts.map((field) => {
-    const configured = resolved.workflow.editorConfig?.fields[field.key];
-    const modelField = field.type === 'model' || Boolean(field.modelCategory);
-    const modelEditable = modelField && resolved.workflow.editorConfig?.modelSelection !== 'preset-locked' && configured?.allowIndividualSwitch !== false;
-    return {
-      key: field.key, label: field.label, type: field.type, value: values[field.key] ?? field.defaultValue,
-      required: field.required, ...(field.minimum === undefined ? {} : { minimum: field.minimum }),
-      ...(field.maximum === undefined ? {} : { maximum: field.maximum }), ...(field.step === undefined ? {} : { step: field.step }),
-      ...(field.enumValues === undefined ? {} : { enumValues: field.enumValues }),
-      ...(configured?.allowedModels ? { allowedModels: configured.allowedModels } : {}),
-      ...(field.modelCategory ? { modelCategory: field.modelCategory } : {}), modelEditable,
-    };
-  });
-}
 
-function normalizeOptions(database: ServiceDatabase, activityId: string, target: RenderTarget, request: BeatRenderPreviewRequest): NormalizedOptions {
-  const { source, positivePrompt, sourceFingerprint } = compileSource(target, request.customPrompt);
-  const selection = resolveActivityImageWorkflow(database, { purpose: request.purpose, referenceAssetKey: request.referenceAssetKey,
-    workflowId: request.workflowId, workflowVersion: request.workflowVersion, presetId: request.presetId, presetRevision: request.presetRevision });
+function normalizeOptions(database: ServiceDatabase, activityId: string, target: RenderTarget, request: BeatRenderPreviewRequest,
+  optimizerOverride?: StudioOptimizerOverride): NormalizedOptions {
+  const settings = {
+    ...target.beat.renderSettings,
+    ...Object.fromEntries(Object.entries(request).filter(([, value]) => value !== undefined)),
+  };
+  const customPrompt = request.customPrompt !== undefined ? request.customPrompt : target.beat.renderSettings?.customPrompt;
+  const effectiveTarget = { ...target, beat: { ...target.beat, renderSettings: {
+    ...target.beat.renderSettings,
+    ...(request.director !== undefined ? { director: request.director } : {}),
+    ...(request.composition !== undefined ? { composition: request.composition } : {}),
+  } } };
+  const { source, positivePrompt, sourceFingerprint } = compileSource(effectiveTarget, customPrompt);
+  const effective = resolveEffectiveActivityVisualPlan(database, { imageConfig: getCommittedImageConfig(database, activityId),
+    imageConfigRevisionId: getCommittedImageConfigRevisionId(database, activityId),
+    settings, actors: target.actors, sourcePrompt: positivePrompt, seed: request.seed });
+  const { visual, selection } = effective;
   const { purpose, selectedPresetId, selectedPresetRevision, presetValues, hasPreset, resolved } = selection;
   const availableWorkflows = selection.availableWorkflows;
   const inputSchema = resolved.workflow.inputSchema as InputSchemaMap;
-  const promptPolicy = resolveActivityImagePromptPolicy(database, resolved.workflow.id, resolved.workflow.version);
-  const loraPolicy = readActivityLoraPolicy(database, resolved.workflow.id, resolved.workflow.version);
-  const loraOverrides = request.loraOverrides ?? target.beat.renderSettings?.loraOverrides ?? [];
-  const loras = mergeActivityLoras(loraPolicy.entries, target.actor?.visualLoras ?? [], loraOverrides);
-  const injection = resolved.workflow.editorConfig?.activityLoraInjection;
-  if (loras.some((item) => item.enabled) && !injection) throw codedError('activity_lora_unsupported', '所选工作流版本未声明动态 LoRA 插入点。', 409);
-  if (loras.some((item) => item.enabled) && Object.values(resolved.workflow.definition).some((raw) => {
-    const node = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-    return node.class_type === 'LoraLoader' || node.class_type === 'LoraLoaderModelOnly';
-  })) throw codedError('activity_lora_static_conflict', '所选工作流包含固定 LoRA 节点，不能再叠加动态 LoRA。', 409);
-  const optimizerReady = Boolean(database.connection.prepare(`SELECT 1 FROM app_llm_assignments a JOIN provider_profiles p ON p.id=a.profile_id
-    WHERE a.app_id='activities' AND a.role='text' AND p.kind='llm' AND p.enabled=1 AND p.model IS NOT NULL AND p.model<>''`).get());
+  const { promptPolicy, loraPolicy, loras } = effective;
+  const assigned = database.connection.prepare("SELECT profile_id FROM app_llm_assignments WHERE app_id='activities' AND role='text'").get();
+  const binding = studioTextProfileBinding(database, optimizerOverride?.profileId ?? String(assigned?.profile_id ?? ''));
+  if (optimizerOverride && binding.hash !== optimizerOverride.profileHash)
+    throw codedError('studio_fallback_config_changed','备用优化模型配置已变化，请重新审阅。',409);
+  const optimizerReady = binding.enabled && Boolean(binding.model.trim());
   const promptInputKey = promptKey(inputSchema)!;
   const negativeInputKey = promptKey(inputSchema, true);
   if (negativeInputKey && !resolved.workflow.nodeBindings[negativeInputKey]) {
     throw codedError('negative_prompt_binding_missing', '当前工作流声明了反向提示词，但未绑定到 ComfyUI 节点；请在生成配置中修正工作流后重试。', 409);
   }
-  const defaultNegativePrompt = '低清晰度，模糊，畸形肢体，错误手部，多余手指，缺失手指，文字，水印，签名，裁切，重复人物';
   const mode = resolved.workflow.configFormatVersion >= 2 ? 'strict' : 'lenient';
-  const merged = mergeActivityImageInputs(resolved, presetValues, request.parameters ?? {}, hasPreset);
-  merged[promptInputKey] = positivePrompt;
-  const negativePrompt = negativeInputKey ? request.negativePrompt?.trim() || promptPolicy.negativePrompt.trim() || defaultNegativePrompt : null;
-  if (negativeInputKey && negativePrompt !== null) merged[negativeInputKey] = negativePrompt;
-  const seedKey = Object.entries(inputSchema).find(([key, entry]) => String(entry.semantic ?? '').toLowerCase() === 'seed' || key.toLowerCase() === 'seed' || key.toLowerCase() === 'noise_seed')?.[0];
-  const configuredSeed = seedKey ? request.parameters?.[seedKey] : undefined;
-  const seed = request.seed ?? (typeof configuredSeed === 'number' && Number.isInteger(configuredSeed) && configuredSeed >= 0 && configuredSeed <= 2_147_483_647
-    ? configuredSeed : randomInt(0, 2_147_483_647));
-  if (seedKey && (seedKey in merged || inputSchema[seedKey]?.required)) merged[seedKey] = seed;
+  const { parameters: merged, negativePrompt, seed } = effective;
   if (mode === 'strict') validateRequiredValues(inputSchema, resolved.workflow.editorConfig, merged);
 
   const warnings: string[] = [];
-  let referenceAssetKey: string | null = request.referenceAssetKey ?? null;
+  let referenceAssetKey: string | null = request.referenceAssetKey ?? target.beat.renderSettings?.referenceAssetKey ?? null;
   let referenceArtifactId: string | null = null;
   let referenceInputKey: string | null = null;
   const supportedReferenceInput = referenceInput(resolved);
   if (referenceAssetKey) {
     const actorKeys = target.actor?.appearanceReferenceAssetKeys ?? [];
-    if (!target.actor || !actorKeys.includes(referenceAssetKey)) throw codedError('reference_asset_not_available', '所选参考图不属于当前镜头角色的已关联资料。');
+    if (!target.actor || !target.actors.some(actor => actor.id === target.actor!.id) || !actorKeys.includes(referenceAssetKey)) throw codedError('reference_asset_not_available', '所选参考图不属于当前镜头角色的已关联资料。');
     if (!supportedReferenceInput) throw codedError('reference_input_unsupported', '所选工作流没有声明可用的角色参考图输入能力。', 409);
     const asset = database.connection.prepare(`SELECT aa.artifact_id FROM activity_assets aa
       JOIN artifacts a ON a.id=aa.artifact_id WHERE aa.activity_id=? AND aa.asset_key=? AND aa.type='image' AND a.file_status='ready'
@@ -203,17 +224,17 @@ function normalizeOptions(database: ServiceDatabase, activityId: string, target:
   if (!referenceAssetKey && !loras.some((item) => item.enabled)) warnings.push('本次未使用参考图或 LoRA；角色信息仅以快照文字加入提示词。');
 
   const presetOptions = selection.presets;
-  const fields = parameterFields(resolved, merged);
+  const fields = activityVisualParameterFields(resolved, merged);
   const canSubmit = missingReferences.length === 0;
-  const planHash = hashAiSource({ activityId, stageId: target.stage.id, sceneId: target.scene.id, beatId: target.beat.id, sourceFingerprint,
+  const planHash = hashVisualPlan({ activityId, stageId: target.stage.id, sceneId: target.scene.id, beatId: target.beat.id, sourceFingerprint,
     purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, engineId: resolved.engine.id,
     presetId: selectedPresetId, presetRevision: selectedPresetRevision, inputs: merged, seed,
     referenceAssetKey, referenceArtifactId, referenceInputKey, loraPolicyRevision: loraPolicy.revision, loras });
-  const versionedPlanHash = hashAiSource({ planHash, promptPolicy });
+  const versionedPlanHash = hashVisualPlan({ planHash, configurationHash: effective.configurationHash });
   return { purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, presetId: selectedPresetId, presetRevision: selectedPresetRevision,
-    seed, positivePrompt, negativePrompt, parameters: merged,
+    seed, positivePrompt, negativePrompt, parameters: merged, stylePrompt: visual.stylePrompt, negativeOverride: visual.negativePrompt,
     referenceAssetKey, referenceArtifactId, referenceInputKey, sourceFingerprint, source, warnings, canSubmit,
-    resolved, planHash: versionedPlanHash, workflowOptions: availableWorkflows, presetOptions, fields, promptPolicy, optimizerReady,
+    resolved, planHash: versionedPlanHash, visualConfiguration: effective.provenance, workflowOptions: availableWorkflows, presetOptions, fields, promptPolicy, optimizerReady,
     loras, loraPolicyRevision: loraPolicy.revision };
 }
 
@@ -221,7 +242,8 @@ function previewResponse(_database: ServiceDatabase, draftVersion: number, plan:
   const finalGraph = buildActivityImageWorkflowSnapshot(plan.resolved, plan.parameters, plan.seed, plan.loras);
   const model = extractModelNames(finalGraph).join(', ') || null;
   return {
-    purpose: plan.purpose, planHash: plan.planHash, source: plan.source, positivePrompt: plan.positivePrompt, negativePrompt: plan.negativePrompt,
+    purpose: plan.purpose, planHash: plan.planHash, source: [...plan.source,
+      ...(plan.stylePrompt ? [{ label: '优化后追加的活动画风', value: plan.stylePrompt }] : [])], positivePrompt: plan.positivePrompt, negativePrompt: plan.negativePrompt,
     workflowId: plan.resolved.workflow.id, workflowName: plan.resolved.workflow.name, workflowVersion: plan.resolved.workflow.version,
     engineId: plan.resolved.engine.id, engineName: plan.resolved.engine.name, model,
     parameters: plan.parameters, referenceSupported: Boolean(referenceInput(plan.resolved)), referenceSelected: Boolean(plan.referenceAssetKey),
@@ -229,8 +251,10 @@ function previewResponse(_database: ServiceDatabase, draftVersion: number, plan:
     seed: plan.seed, selectedPresetId: plan.presetId, selectedPresetRevision: plan.presetRevision,
     canSubmit: plan.canSubmit && (!plan.promptPolicy.enabled || plan.optimizerReady),
     promptOptimization: { enabled: plan.promptPolicy.enabled, policyRevision: plan.promptPolicy.revision, profileReady: plan.optimizerReady },
+    promptAssembly: plan.resolved.workflow.editorConfig?.promptAssembly === 'service-finalized-v1' ? 'service-finalized-v1' : 'workflow-internal',
     workflowOptions: plan.workflowOptions, presetOptions: plan.presetOptions, fields: plan.fields,
-    warnings: [...plan.warnings, ...(plan.promptPolicy.enabled && !plan.optimizerReady ? ['活动文本模型未配置；提交将被阻止，避免未经优化直接生图。'] : [])], draftVersion,
+    warnings: [...plan.warnings, ...(plan.promptPolicy.enabled ? ['此处画面描述尚未经过本次自动优化；实际提交提示词请查看完成后的调用日志。'] : []),
+      ...(plan.promptPolicy.enabled && !plan.optimizerReady ? ['活动文本模型未配置；提交将被阻止，避免未经优化直接生图。'] : [])], draftVersion,
     loras: plan.loras, loraModels: [],
   };
 }
@@ -258,7 +282,7 @@ function updateBeatMedia(document: ContentDocument, stageId: string, sceneId: st
   return { ...document, scenes: [...allScenes, ...normalizedScenes], stages: document.stages.map((stage) => stage.id === stageId ? { ...stage, scenes: updated } : stage) };
 }
 
-function candidateFromRow(row: Record<string, unknown>, images: BeatRenderImage[] = []): BeatRenderCandidate {
+function candidateFromRow(row: Record<string, unknown>, images: BeatRenderImage[] = [], imageOperation?: BeatRenderCandidate['imageOperation']): BeatRenderCandidate {
   let progress: Record<string, unknown> | null = null;
   try { const parsed: unknown = JSON.parse(String(row.progress_json ?? 'null')); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) progress = parsed as Record<string, unknown>; } catch { /* legacy task progress */ }
   return {
@@ -274,6 +298,7 @@ function candidateFromRow(row: Record<string, unknown>, images: BeatRenderImage[
     autoApplyReason: row.auto_apply_reason == null ? null : String(row.auto_apply_reason),
     artifactSha256: row.artifact_sha256 == null ? null : String(row.artifact_sha256), progress,
     createdAt: String(row.created_at), adoptedAt: row.adopted_at == null ? null : String(row.adopted_at), error: row.error_message == null ? null : String(redactAiValue(row.error_message)),
+    ...(imageOperation ? { imageOperation } : {}),
   };
 }
 
@@ -369,12 +394,12 @@ function reconcileCandidateTasks(database: ServiceDatabase, activityId: string, 
     row.error_message ? { errorMessage: row.error_message } : {});
 }
 
-function selectCandidateImage(
+export function selectCandidateImage(
   database: ServiceDatabase, store: ActivityStore, artifactDirectory: string,
-  activityId: string, candidateId: string, artifactId: string, allowStaleSource = false,
+  activityId: string, candidateId: string, artifactId: string, allowStaleSource = false, withinTransaction = false,
 ): BeatRenderAdoptResponse {
   reconcileCandidateTasks(database, activityId, candidateId);
-  return database.transaction(() => {
+  const select = () => {
     const candidate = database.connection.prepare('SELECT * FROM activity_beat_render_candidates WHERE id=? AND activity_id=?')
       .get(candidateId, activityId) as Record<string, unknown> | undefined;
     if (!candidate) throw codedError('beat_render_candidate_not_found', '未找到此镜头历史图片。', 404);
@@ -410,7 +435,8 @@ function selectCandidateImage(
       activityId, stageId: candidate.stage_id, sceneId: candidate.scene_id, beatId: candidate.beat_id, artifactId: artifact.id,
     } });
     return { draftVersion: updated.draftVersion, mediaUrl, document: updated.document };
-  });
+  };
+  return withinTransaction ? select() : database.transaction(select);
 }
 
 function scopedBeatIdempotencyKey(activityId: string, idempotencyKey: string) {
@@ -470,18 +496,20 @@ export function recoverOrphanedBeatRenderCandidates(database: ServiceDatabase): 
   });
 }
 
-async function dispatchBeatRender(
+export async function dispatchBeatRender(
   config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch, store: ActivityStore,
   activityId: string, candidateId: string, request: BeatRenderSubmitRequest, submittedPlanHash: string, sourceFingerprint: string,
+  context?: StudioRenderContext & { onInsertTask(taskId: string, callId: string): void },
 ) {
   let optimizerCallId: string | null = null;
   try {
+    if (context && !context.canContinue()) throw codedError('studio_process_interrupted', '已停止后续提交，未发送 ComfyUI 任务。');
     const currentDraft = store.getDraft(activityId);
     const currentTarget = currentDraft && findBeatRenderTarget(currentDraft.document, request.stageId, request.sceneId, request.beatId);
     if (!currentDraft || !currentTarget || compileSource(currentTarget).sourceFingerprint !== sourceFingerprint) {
       throw codedError('beat_render_source_conflict', '提交后镜头内容发生变化，已取消本次生图。', 409);
     }
-    const plan = normalizeOptions(database, activityId, currentTarget, request);
+    const plan = normalizeOptions(database, activityId, currentTarget, request, context?.optimizerOverride);
     if (plan.planHash !== submittedPlanHash) throw codedError('beat_render_plan_conflict', '提交后提示词策略或生成配置发生变化，已取消本次生图。', 409);
     const candidate = database.connection.prepare('SELECT idempotency_key,status FROM activity_beat_render_candidates WHERE id=? AND activity_id=?')
       .get(candidateId, activityId) as { idempotency_key: string; status: string } | undefined;
@@ -492,16 +520,21 @@ async function dispatchBeatRender(
     const optimized = await optimizeActivityImagePrompt(database, secrets, {
       activityId, workflowId: plan.workflowId, workflowVersion: plan.workflowVersion, policy: plan.promptPolicy,
       sourcePrompt: plan.positivePrompt, existingNegativePrompt: plan.negativePrompt, idempotencyKey: scopedIdempotencyKey,
+      actorScope: currentTarget.actors.map((actor) => ({ actorId: actor.id, displayName: actor.displayName })),
+      ...(context ? { traceId: context.traceId, studioContext: context } : {}),
     }, fetcher);
     optimizerCallId = optimized.optimizerCallId;
-    const finalPrompt = appendLoraTriggerWords(optimized.optimizedPrompt, plan.loras);
+    if (context && !context.canContinue()) throw codedError('studio_process_interrupted', '已停止后续提交，未发送 ComfyUI 任务。');
+    const finalNegative = plan.negativeOverride ?? optimized.negativePrompt ?? plan.negativePrompt;
+    const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
+      v2FinalizeInputFrom(plan.resolved.workflow.editorConfig, optimized));
     database.connection.prepare(`UPDATE activity_beat_render_candidates SET call_id=?,positive_prompt=?,negative_prompt=?,prompt_optimization_status=?
-      WHERE id=? AND status='preparing'`).run(optimizerCallId, finalPrompt, optimized.negativePrompt ?? '', optimized.status, candidateId);
+      WHERE id=? AND status='preparing'`).run(optimizerCallId, finalPrompt, finalNegative ?? '', optimized.status, candidateId);
     const positiveKey = promptKey(plan.resolved.workflow.inputSchema as InputSchemaMap);
     if (!positiveKey) throw codedError('image_workflow_incompatible', '工作流没有绑定正向提示词输入。', 409);
     plan.parameters[positiveKey] = finalPrompt;
     const negativeKey = promptKey(plan.resolved.workflow.inputSchema as InputSchemaMap, true);
-    if (negativeKey && optimized.negativePrompt) plan.parameters[negativeKey] = optimized.negativePrompt;
+    if (negativeKey && finalNegative !== null) plan.parameters[negativeKey] = finalNegative;
     const task = await createGenerationTask(config, database, secrets, {
       appId: 'activities', purpose: plan.purpose, workflowId: plan.workflowId, workflowVersion: plan.workflowVersion, isInternal: true,
       presetId: plan.presetId, presetRevision: plan.presetRevision, inputs: plan.parameters,
@@ -510,10 +543,13 @@ async function dispatchBeatRender(
       seed: plan.seed, idempotencyKey: scopedIdempotencyKey, validationMode: 'strict',
       audit: { feature: 'beat-render', businessEvent: 'activity.beat.render', objectType: 'activity-beat',
         objectId: `${activityId}:${request.stageId}:${request.sceneId}:${request.beatId}`,
-        sourceUrl: `/apps/activities/${encodeURIComponent(activityId)}`, traceId: optimized.traceId, parentId: optimized.optimizerCallId },
+        sourceUrl: `/apps/activities/${encodeURIComponent(activityId)}`, traceId: optimized.traceId, parentId: optimized.optimizerCallId,
+        visualConfiguration: { ...plan.visualConfiguration, ...studioRenderAudit(context) } },
       onInsertTask: ({ taskId, callId }) => {
+        if (context && !context.canContinue()) throw codedError('studio_process_interrupted','已停止后续提交，未发送 ComfyUI 任务。');
         database.connection.prepare(`UPDATE activity_beat_render_candidates SET task_id=?,call_id=?,status='queued',positive_prompt=?,negative_prompt=?
-          WHERE id=? AND status='preparing'`).run(taskId, callId, finalPrompt, optimized.negativePrompt ?? '', candidateId);
+          WHERE id=? AND status='preparing'`).run(taskId, callId, finalPrompt, finalNegative ?? '', candidateId);
+        context?.onInsertTask(taskId, callId);
       },
     }, fetcher);
     linkPromptOptimizationTask(database, activityId, scopedIdempotencyKey, task.id);
@@ -525,7 +561,45 @@ async function dispatchBeatRender(
       auto_apply_reason=CASE WHEN auto_apply_state='pending' THEN '生成准备失败' ELSE auto_apply_reason END,call_id=COALESCE(?,call_id),error_message=?,
       prompt_optimization_status=CASE WHEN ? THEN 'failed' ELSE prompt_optimization_status END
       WHERE id=? AND status='preparing'`).run(callId, String(redactAiValue(value.message)), optimizationFailed ? 1 : 0, candidateId);
+    // The orchestrator needs the original error code to pause a stale plan rather than
+    // treating it as an ordinary image failure and submitting the next target.
+    if(context)throw error;
   }
+}
+
+/** Synchronous internal adapter. Caller owns the enclosing Studio transaction; runtime/model work stays in dispatchBeatRender. */
+export function previewStudioBeatRender(database:ServiceDatabase,activityId:string,request:BeatRenderSubmitRequest,optimizerOverride?:StudioOptimizerOverride){
+  const store=new ActivityStore(database),draft=store.getDraft(activityId),target=draft&&findBeatRenderTarget(draft.document,request.stageId,request.sceneId,request.beatId);
+  if(!draft||!target)throw codedError('studio_source_changed','镜头已经不存在。',409);
+  if(target.stage.locked)throw codedError('studio_target_locked','镜头所在阶段已锁定。',409);
+  const plan=normalizeOptions(database,activityId,target,request,optimizerOverride);
+  return {snapshot:previewResponse(database,draft.draftVersion,plan),sourceFingerprint:plan.sourceFingerprint,planHash:plan.planHash,
+    graph:buildActivityImageWorkflowSnapshot(plan.resolved,plan.parameters,plan.seed,plan.loras),engine:plan.resolved.engine,
+    referenceArtifactIds:plan.referenceArtifactId?[plan.referenceArtifactId]:[],empty:!target.beat.mediaUrl,name:`${target.scene.title}：${target.beat.action}`,actorIds:target.actors.map(actor=>actor.id)};
+}
+export function createStudioBeatCandidate(database: ServiceDatabase, activityId: string, request: BeatRenderSubmitRequest,optimizerOverride?:StudioOptimizerOverride) {
+  const store = new ActivityStore(database), draft = store.getDraft(activityId);
+  const target = draft && findBeatRenderTarget(draft.document,request.stageId,request.sceneId,request.beatId);
+  if (!draft || !target) throw codedError('studio_source_changed','镜头已经不存在。',409);
+  if (target.stage.locked) throw codedError('studio_target_locked','镜头所在阶段已锁定。',409);
+  const plan = normalizeOptions(database,activityId,target,request,optimizerOverride);
+  if (!plan.canSubmit) throw codedError('studio_workflow_incompatible',plan.warnings.join(' '),409);
+  if (plan.promptPolicy.enabled && !plan.optimizerReady) throw codedError('studio_profile_unavailable','提示词优化所需的活动文本模型未配置。',409);
+  const fingerprint = hashAiSource({ planHash: plan.planHash,sourceFingerprint: plan.sourceFingerprint,
+    ...(optimizerOverride ? { optimizerProfile: {id:optimizerOverride.profileId,hash:optimizerOverride.profileHash} } : {}) });
+  const old = database.connection.prepare('SELECT id,request_fingerprint FROM activity_beat_render_candidates WHERE activity_id=? AND idempotency_key=?').get(activityId,request.idempotencyKey);
+  if (old) {
+    if (old.request_fingerprint !== fingerprint) throw codedError('idempotency_conflict','内部绘制标识已用于不同配置。',409);
+    return { candidateId: String(old.id),planHash: plan.planHash,sourceFingerprint: plan.sourceFingerprint,seed: plan.seed,referenceArtifactIds: plan.referenceArtifactId ? [plan.referenceArtifactId] : [], snapshot: previewResponse(database,draft.draftVersion,plan) };
+  }
+  const candidateId = randomUUID();
+  database.connection.prepare(`INSERT INTO activity_beat_render_candidates
+    (id,activity_id,stage_id,scene_id,beat_id,idempotency_key,request_fingerprint,source_fingerprint,draft_version,status,
+      positive_prompt,negative_prompt,created_at,original_prompt,prompt_optimization_status,auto_apply_state,auto_apply_reason,auto_apply_draft_version)
+    VALUES (?,?,?,?,?,?,?,?,?,'preparing',?,?,?,?,?,'ineligible','智能制作：仅加入历史',?)`).run(candidateId,activityId,request.stageId,request.sceneId,request.beatId,
+      request.idempotencyKey,fingerprint,plan.sourceFingerprint,draft.draftVersion,plan.positivePrompt,plan.negativePrompt ?? '',nowIso(),plan.positivePrompt,
+      plan.promptPolicy.enabled ? 'optimizing' : 'skipped',draft.draftVersion);
+  return { candidateId,planHash: plan.planHash,sourceFingerprint: plan.sourceFingerprint,seed: plan.seed,referenceArtifactIds: plan.referenceArtifactId ? [plan.referenceArtifactId] : [], snapshot: previewResponse(database,draft.draftVersion,plan) };
 }
 
 export function registerBeatRenderRoutes(
@@ -615,9 +689,20 @@ export function registerBeatRenderRoutes(
       const loras = response.loras.map((lora) => ({ ...lora, available: !lora.enabled || models.includes(lora.model) }));
       const missingLora = response.loras.filter((lora) => lora.enabled && !models.includes(lora.model)).map((lora) => `LoRA 文件缺失：${lora.model}（请安装到当前实例的 models/loras 并刷新）。`);
       const inventoryIssue = inventory.error && response.loras.some((lora) => lora.enabled) ? [`无法读取此实例的 LoRA 文件清单：${inventory.error}`] : [];
-      const warnings = [...response.warnings, ...preflight.issues, ...missingLora, ...inventoryIssue];
-      const canSubmit = response.canSubmit && preflight.ok && !missingLora.length && !inventoryIssue.length;
-      return { ...response, loras, loraModels: models, canSubmit, warnings };
+      // 凭据缺口：`optimizerReady` 只看策略是否启用与模型名是否非空，判断不了凭据，
+      // 缺了这一步，凭据不可用时预览仍报 canSubmit=true，用户点下去才在派发阶段失败。
+      // 与漫画预览共用同一个只读探针，避免两条路径各写一份。
+      const optimizerIssue = response.promptOptimization.enabled
+        ? await inspectStudioTextProfile(database, secrets, activityTextProfileId(database))
+        : { ready: true, reason: null };
+      const credentialIssues = optimizerIssue.ready ? [] : [`提示词优化所需的活动文本模型不可用：${optimizerIssue.reason}`];
+      const warnings = [...response.warnings, ...preflight.issues, ...missingLora, ...inventoryIssue, ...credentialIssues];
+      const canSubmit = response.canSubmit && preflight.ok && !missingLora.length && !inventoryIssue.length && optimizerIssue.ready;
+      // `profileReady` 原来来自同步计划里的 `optimizerReady`，只表示「模型名非空」，
+      // 于是同一份响应里会出现 profileReady=true 而 canSubmit=false 的自相矛盾。
+      // 用本轮已经算出的真实探针结果覆盖它，让字段名与语义一致。
+      const promptOptimization = { ...response.promptOptimization, profileReady: optimizerIssue.ready };
+      return { ...response, loras, loraModels: models, canSubmit, warnings, promptOptimization };
     }
     catch (error) {
       const value = error as Error & { code?: string; statusCode?: number };
@@ -695,7 +780,8 @@ export function registerBeatRenderRoutes(
     const draft = store.getDraft(request.params.id);
     const target = draft && request.query.stageId && request.query.sceneId && request.query.beatId
       ? findBeatRenderTarget(draft.document, request.query.stageId, request.query.sceneId, request.query.beatId) : null;
-    return { items: rows.map((row) => candidateFromRow(row, candidateImages(database, row, config.artifactDirectory, target?.beat.mediaUrl))),
+    return { items: rows.map((row) => candidateFromRow(row, candidateImages(database, row, config.artifactDirectory, target?.beat.mediaUrl),
+      readImageOperationMetadata(database, String(row.id)))),
       total, imageTotal: outputImageCount + legacyImageCount, limit, offset, draftVersion: draft?.draftVersion ?? 0 };
   });
 
@@ -736,6 +822,14 @@ export function registerBeatRenderRoutes(
           JOIN generation_tasks t ON t.id=c.task_id LEFT JOIN ai_call_records call ON call.id=c.call_id
           WHERE c.id=? AND c.activity_id=? AND c.status IN ('succeeded','adopted')`)
           .get(request.params.candidateId, request.params.id) as Record<string, unknown> | undefined;
+        // Imported history keeps no executable queue link, so it must explain
+        // itself instead of being reported as an unready draw.
+        if (!source) {
+          const imported = database.connection.prepare('SELECT task_id FROM activity_beat_render_candidates WHERE id=? AND activity_id=?')
+            .get(request.params.candidateId, request.params.id) as { task_id: string | null } | undefined;
+          if (imported && imported.task_id == null) throw codedError('beat_render_read_only_history',
+            '这是导入的历史图片，只读保存，不能按原配置重绘；可在当前镜头重新绘制一张。', 409);
+        }
         if (!source) throw codedError('beat_render_candidate_not_ready', '只有已完成的镜头图片可以按原配置重绘。', 409);
         const saved = JSON.parse(String(source.request_params_json ?? '{}')) as Record<string, unknown>;
         const inputs = saved.inputs && typeof saved.inputs === 'object' ? { ...(saved.inputs as Record<string, unknown>) } : null;
@@ -816,7 +910,7 @@ export function registerLegacyBeatRenderRoute(
       }
       let initial: NormalizedOptions;
       try {
-        initial = normalizeOptions(database, request.params.id, { stage: stage!, ...target, actor: draft.document.actors.find((actor) => actor.id === target.beat.characterId) ?? null }, base);
+        initial = normalizeOptions(database, request.params.id, findBeatRenderTarget(draft.document, stage!.id, target.scene.id, target.beat.id)!, base);
       } catch (error) {
         const value = error as Error & { code?: string; statusCode?: number };
         if (value.code === 'generation_engine_unavailable' || value.code === 'comfy_engine_unavailable') {
@@ -838,7 +932,8 @@ export function registerLegacyBeatRenderRoute(
       }
       if (request.body.engineId && request.body.engineId !== initial.resolved.engine.id) return reply.code(409).send({ error: 'generation_engine_assignment_managed', message: '引擎由当前工作流绑定管理，请先调整生成配置。' });
       const previewRequest = { ...base, parameters };
-      const plan = normalizeOptions(database, request.params.id, { stage: stage!, ...target, actor: draft.document.actors.find((actor) => actor.id === target.beat.characterId) ?? null }, previewRequest);
+      const legacyTarget = findBeatRenderTarget(draft.document, stage!.id, target.scene.id, target.beat.id)!;
+      const plan = normalizeOptions(database, request.params.id, legacyTarget, previewRequest);
       try {
         const preflight = await inspectBeatPlanRuntime(plan, secrets, fetcher, true);
         if (!preflight.ok) throw blockOnRuntimeIssues(preflight.issues);
@@ -847,25 +942,28 @@ export function registerLegacyBeatRenderRoute(
           activityId: request.params.id, workflowId: plan.workflowId, workflowVersion: plan.workflowVersion,
           policy: plan.promptPolicy, sourcePrompt: plan.positivePrompt, existingNegativePrompt: plan.negativePrompt,
           idempotencyKey: legacyIdempotencyKey,
+          actorScope: legacyTarget.actors.map((actor) => ({ actorId: actor.id, displayName: actor.displayName })),
         }, fetcher);
-        const finalPrompt = appendLoraTriggerWords(optimized.optimizedPrompt, plan.loras);
+        const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
+          v2FinalizeInputFrom(plan.resolved.workflow.editorConfig, optimized));
+        const finalNegative = plan.negativeOverride ?? optimized.negativePrompt ?? plan.negativePrompt;
         const positiveKey = promptKey(plan.resolved.workflow.inputSchema as InputSchemaMap);
         if (!positiveKey) throw codedError('image_workflow_incompatible', '工作流没有绑定正向提示词输入。', 409);
         plan.parameters[positiveKey] = finalPrompt;
         const negativeKey = promptKey(plan.resolved.workflow.inputSchema as InputSchemaMap, true);
-        if (negativeKey && optimized.negativePrompt) plan.parameters[negativeKey] = optimized.negativePrompt;
+        if (negativeKey && finalNegative !== null) plan.parameters[negativeKey] = finalNegative;
         const created = await createGenerationTask(config, database, secrets, {
           appId: 'activities', purpose: plan.purpose, workflowId: plan.workflowId, workflowVersion: plan.workflowVersion, isInternal: true,
           presetId: plan.presetId, presetRevision: plan.presetRevision, inputs: plan.parameters, seed: plan.seed,
           activityLoras: plan.loras.filter((lora) => lora.enabled).map(({ model, strength, triggerWord, enabled }) => ({ model, strength, triggerWord, enabled })),
           idempotencyKey: legacyIdempotencyKey, validationMode: 'strict',
           audit: { feature: 'beat-render', businessEvent: 'activity.beat.render.legacy', objectType: 'activity-beat', objectId: `${request.params.id}:${request.body.stageId}:${target.scene.id}:${request.body.beatId}`,
-            traceId: optimized.traceId, parentId: optimized.optimizerCallId },
+            traceId: optimized.traceId, parentId: optimized.optimizerCallId, visualConfiguration: plan.visualConfiguration },
           onInsertTask: ({ taskId, callId }) => database.connection.prepare(`INSERT INTO activity_beat_render_candidates
             (id,activity_id,stage_id,scene_id,beat_id,idempotency_key,request_fingerprint,source_fingerprint,draft_version,task_id,call_id,status,positive_prompt,negative_prompt,created_at,original_prompt,prompt_optimization_status)
             VALUES (?,?,?,?,?,NULL,?,?,?,?,?,'queued',?,?,?,?,?)`).run(randomUUID(), request.params.id, stage!.id, target.scene.id, target.beat.id,
               hashAiSource({ planHash: plan.planHash, legacy: true }), plan.sourceFingerprint, draft.draftVersion, taskId, callId, finalPrompt,
-              optimized.negativePrompt ?? '', nowIso(), plan.positivePrompt, optimized.status),
+              finalNegative ?? '', nowIso(), plan.positivePrompt, optimized.status),
         }, fetcher);
         linkPromptOptimizationTask(database, request.params.id, legacyIdempotencyKey, created.id);
         const deadline = Date.now() + 150_000;

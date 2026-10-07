@@ -41,6 +41,9 @@ export async function inspectLinsheHostedReadiness(
   secrets: SecretStore,
   token: string | null | undefined,
   fetcher: typeof fetch = fetch,
+  // Linshe generates images with its own ComfyUI unless the project is
+  // explicitly configured to route them through the SthStart gateway.
+  imageViaGateway = false,
 ): Promise<LinsheHostedReadiness> {
   const missing: string[] = [];
   const app = database.connection.prepare('SELECT token_hash,capabilities_json FROM managed_apps WHERE id=? AND enabled=1')
@@ -67,20 +70,26 @@ export async function inspectLinsheHostedReadiness(
 
   let imageWorkflowId: string | null = null;
   let imageWorkflowVersion: number | null = null;
-  let imageReady = false;
-  try {
-    const resolved = resolveWorkflowAndEngine(database, 'linshe', { purpose: IMAGE_PURPOSE });
-    imageWorkflowId = resolved.workflow.id;
-    imageWorkflowVersion = resolved.workflow.version;
-    const category = resolved.workflow.category.toLowerCase();
-    const imageOutput = resolved.workflow.outputMediaTypes.some((mediaType) => mediaType === 'image' || mediaType.toLowerCase().startsWith('image/'));
-    const positivePrompt = hasBoundPositivePrompt(resolved.workflow.inputSchema, resolved.workflow.nodeBindings);
-    imageReady = category.includes('image') && imageOutput && positivePrompt;
-    if (!imageReady) {
-      missing.push(`用途 ${IMAGE_PURPOSE} 的工作流必须是已发布的图片工作流，声明图片输出并绑定正向提示词输入；请在生成配置中修复。`);
+  // When image hosting is off the Linshe agent talks to its own ComfyUI, so the
+  // binding is neither required nor reported as missing. The resolution code is
+  // kept dormant so re-enabling the switch restores the full check.
+  let imageReady = !imageViaGateway;
+  if (imageViaGateway) {
+    imageReady = false;
+    try {
+      const resolved = resolveWorkflowAndEngine(database, 'linshe', { purpose: IMAGE_PURPOSE });
+      imageWorkflowId = resolved.workflow.id;
+      imageWorkflowVersion = resolved.workflow.version;
+      const category = resolved.workflow.category.toLowerCase();
+      const imageOutput = resolved.workflow.outputMediaTypes.some((mediaType) => mediaType === 'image' || mediaType.toLowerCase().startsWith('image/'));
+      const positivePrompt = hasBoundPositivePrompt(resolved.workflow.inputSchema, resolved.workflow.nodeBindings);
+      imageReady = category.includes('image') && imageOutput && positivePrompt;
+      if (!imageReady) {
+        missing.push(`用途 ${IMAGE_PURPOSE} 的工作流必须是已发布的图片工作流，声明图片输出并绑定正向提示词输入；请在生成配置中修复。`);
+      }
+    } catch {
+      missing.push(`未为邻舍绑定用途 ${IMAGE_PURPOSE} 的已发布图片工作流；请在生成配置中完成绑定。`);
     }
-  } catch {
-    missing.push(`未为邻舍绑定用途 ${IMAGE_PURPOSE} 的已发布图片工作流；请在生成配置中完成绑定。`);
   }
 
   return {

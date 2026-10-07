@@ -219,3 +219,58 @@ test('AI call routes require admin auth and preserve detail after related genera
     rmSync(artifactDir, { recursive: true, force: true });
   }
 });
+
+// 计划 §1.1：日志要能读出“实际进入文本编码器的字符串”。活动生图把整张图直接存进
+// requestSnapshot（键是节点 id），配置试运行则存成 { workflow: 图 }；两种都必须认。
+test('AI call detail resolves encoded texts from both activity-graph and wrapped snapshots', async () => {
+  const database = new ServiceDatabase();
+  const app = Fastify({ logger: false });
+  registerAiCallRoutes(app, { adminToken: ADMIN_TOKEN } as ServiceConfig, database);
+  const headers = { 'x-sthstart-admin-token': ADMIN_TOKEN };
+  const graph = {
+    '2': { class_type: 'CLIPLoader', inputs: { clip_name: 'anima_baseV10_txt.safetensors', type: 'qwen_image' } },
+    '5': { class_type: 'EmptyLatentImage', inputs: { width: 768, height: 512 } },
+    '6': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: 'assembled positive prompt' } },
+    '7': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: 'assembled negative prompt' } },
+    '9': { class_type: 'KSampler', inputs: { positive: ['6', 0], negative: ['7', 0], seed: 20260101, steps: 31 } },
+  };
+  const activityCallId = createAiCallRecord(database, {
+    traceId: 'trace-encoded-activity', applicationId: 'activities', feature: 'beat-render',
+    businessEvent: 'activity.beat.render', objectType: 'activity', objectId: 'activity-1', callType: 'image',
+    requestSnapshot: graph,
+  });
+  const wrappedCallId = createAiCallRecord(database, {
+    traceId: 'trace-encoded-wrapped', applicationId: 'creative-center', feature: 'configuration-test',
+    businessEvent: 'generation.workflow.test', callType: 'image',
+    requestSnapshot: { workflow: graph, inputs: { prompt: 'ignored' } },
+  });
+  // 图内自行拼接、无法安全解析时不得编造文本。
+  const opaqueCallId = createAiCallRecord(database, {
+    traceId: 'trace-encoded-opaque', applicationId: 'activities', feature: 'beat-render',
+    businessEvent: 'activity.beat.render', callType: 'image',
+    requestSnapshot: {
+      '6': { class_type: 'CLIPTextEncode', inputs: { text: ['99', 0] } },
+      '9': { class_type: 'KSampler', inputs: { positive: ['6', 0] } },
+    },
+  });
+
+  try {
+    const activityDetail = await app.inject({ method: 'GET', url: `/api/v1/admin/ai-calls/${activityCallId}`, headers });
+    assert.equal(activityDetail.statusCode, 200, activityDetail.body);
+    assert.deepEqual(activityDetail.json().encodedTexts, [
+      { nodeId: '6', input: 'text', role: 'positive', text: 'assembled positive prompt' },
+      { nodeId: '7', input: 'text', role: 'negative', text: 'assembled negative prompt' },
+    ]);
+
+    const wrappedDetail = await app.inject({ method: 'GET', url: `/api/v1/admin/ai-calls/${wrappedCallId}`, headers });
+    assert.equal(wrappedDetail.statusCode, 200, wrappedDetail.body);
+    assert.deepEqual(wrappedDetail.json().encodedTexts, activityDetail.json().encodedTexts);
+
+    const opaqueDetail = await app.inject({ method: 'GET', url: `/api/v1/admin/ai-calls/${opaqueCallId}`, headers });
+    assert.equal(opaqueDetail.statusCode, 200, opaqueDetail.body);
+    assert.deepEqual(opaqueDetail.json().encodedTexts, [], '无法安全解析时必须返回空列表而不是猜一个文本');
+  } finally {
+    await app.close();
+    database.close();
+  }
+});

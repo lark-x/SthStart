@@ -1,0 +1,18 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>雪山回声 · 双引擎小样</title>
+<style>
+:root{--paper:#f5efdf;--ink:#101d28;--muted:#b9c2c7;--accent:#e2bc76}*{box-sizing:border-box}body{margin:0;background:var(--ink);color:var(--paper);font:16px system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:28px 24px}h1{font-size:28px;margin:0 0 12px}p{color:var(--muted);line-height:1.7}section{display:grid;grid-template-columns:1fr 1fr;gap:24px}article{min-width:0}h2{font-size:20px;margin:12px 0}video{display:block;width:100%;max-height:72vh;aspect-ratio:9/16;background:#000}nav{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:20px 0}button,a{color:var(--paper);font:inherit}button{background:transparent;border:1px solid var(--muted);border-radius:6px;padding:10px 16px;cursor:pointer}button:first-child{background:var(--accent);color:var(--ink);border-color:var(--accent)}label{display:flex;gap:8px;align-items:center}a{color:var(--accent)}#status{color:var(--muted)}@media(max-width:640px){section{grid-template-columns:1fr}main{padding:20px 16px}video{max-height:78vh}}
+</style>
+<main><h1>雪山回声 · 双引擎小样</h1><p>相同六张图、配音与时间线。比较演出和阅读体验；这不是新生成的图片，也尚未替换正式导出。</p>
+<nav><button id="play">同步播放</button><button id="pause">暂停</button><button id="restart">回到开头</button><label>听哪一版 <select id="listen"><option value="remotion">Remotion</option><option value="hyperframes">Hyperframes</option></select></label><span id="status"></span></nav>
+<section><article><h2>Remotion · React / 逐帧</h2><video id="remotion" src="/remotion.mp4" controls playsinline preload="metadata"></video><p><a href="/remotion.mp4" download>下载 Remotion MP4</a> · <a href="http://localhost:3090/SnowEcho">打开 Studio</a></p></article>
+<article><h2>Hyperframes · HTML / GSAP</h2><video id="hyperframes" src="/hyperframes.mp4" controls playsinline preload="metadata" muted></video><p><a href="/hyperframes.mp4" download>下载 Hyperframes MP4</a></p></article></section>
+<p>两版均为 1080 × 1920 / 30 fps / 约 68 秒。字幕是句级时间估算，并非逐字强制对齐；原图人物动作及试管细节的问题没有通过更换视频引擎解决。</p>
+<details><summary>上一版用于对照</summary><video src="/baseline.mp4" controls playsinline preload="none" style="max-width:420px;margin-top:16px"></video></details></main>
+<script>
+const a=document.querySelector('#remotion'),b=document.querySelector('#hyperframes'),status=document.querySelector('#status');
+document.querySelector('#listen').onchange=e=>{a.muted=e.target.value!=='remotion';b.muted=e.target.value!=='hyperframes'};
+document.querySelector('#play').onclick=async()=>{b.currentTime=a.currentTime;try{await Promise.all([a.play(),b.play()]);status.textContent='同步播放中'}catch(error){a.pause();b.pause();status.textContent='视频尚未就绪，请稍后再试'}};
+document.querySelector('#pause').onclick=()=>{a.pause();b.pause();status.textContent='已暂停'};
+document.querySelector('#restart').onclick=()=>{a.pause();b.pause();a.currentTime=0;b.currentTime=0;status.textContent='已回到开头'};
+</script></html>

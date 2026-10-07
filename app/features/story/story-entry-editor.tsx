@@ -99,6 +99,7 @@ export function StoryEntryEditor({
   zenMode,
   onToggleZen,
   onOpenDerivatives,
+  isReflection,
 }: {
   projectId: string;
   entry: StoryEntry;
@@ -113,6 +114,7 @@ export function StoryEntryEditor({
   zenMode?: boolean;
   onToggleZen?: () => void;
   onOpenDerivatives?: () => void;
+  isReflection?: boolean;
 }) {
   const draft = useStoryEntryDraft(projectId, entry, onSaved, onConflict);
   useEffect(() => {
@@ -148,7 +150,9 @@ export function StoryEntryEditor({
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const isCharacter = 'name' in entry;
   const kind = isCharacter ? 'character' : entry.kind;
-  const label = ({ outline: '大纲', world: '世界观', scene: '场景', chapter: '章节', character: '角色设定' } as const)[kind];
+  const label = isReflection
+    ? ({ outline: '思考纲要', world: '世界观', scene: '场景', chapter: '感想随笔', character: '角色设定' } as const)[kind]
+    : ({ outline: '大纲', world: '世界观', scene: '场景', chapter: '章节', character: '角色设定' } as const)[kind];
 
   const headings = useMemo(() => draft.body.split('\n').flatMap((line, index) => {
     const match = /^(#{1,3})\s+(.+)$/.exec(line);
@@ -515,12 +519,20 @@ export function StoryEntryEditor({
 
           {/* 视图模式切换 */}
           <div className="flex rounded-[var(--radius-control)] border border-border-default p-0.5 bg-surface" role="group" aria-label="编辑器视图">
-            {([
-              ['source', '源码'],
-              ['split', '分屏'],
-              ['preview', '预览'],
-              ['script', '剧本流'],
-            ] as const).map(([value, text]) => (
+            {(
+              isReflection
+                ? [
+                    ['source', '源码'],
+                    ['split', '分屏'],
+                    ['preview', '预览'],
+                  ] as const
+                : [
+                    ['source', '源码'],
+                    ['split', '分屏'],
+                    ['preview', '预览'],
+                    ['script', '剧本流'],
+                  ] as const
+            ).map(([value, text]) => (
               <button
                 key={value}
                 type="button"

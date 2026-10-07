@@ -1,4 +1,9 @@
 import { registerReworkRoutes } from './rework-routes.js';
+import { buildActivityGallery } from './gallery.js';
+import { registerArtDirectionRoutes } from './art-direction-routes.js';
+import { registerStudioRoutes } from './studio-routes.js';
+import { resolveVisualSettings } from './visual-settings.js';
+import { isActivityArtStylePayload, SaveImageConfigDraftRequestSchema, type SaveImageConfigDraftRequest } from '@sthstart/contracts';
 import { compileHyperFramesComposition } from '@sthstart/activity-playback';
 import { PreparePromptRecipeRequestSchema } from '@sthstart/contracts';
 import { fileURLToPath } from 'node:url';
@@ -129,6 +134,8 @@ export function registerActivityRoutes(
   registerBeatRenderRoutes(app, config, database, secrets, fetcher, store, checkAdmin);
   registerLegacyBeatRenderRoute(app, config, database, secrets, fetcher, store, checkAdmin);
   registerComicRoutes(app, config, database, secrets, checkAdmin, fetcher);
+  registerArtDirectionRoutes(app, database, store, checkAdmin);
+  registerStudioRoutes(app, config, database, secrets, checkAdmin, fetcher);
 
   // 0. External pipeline synchronization (Harness / CLI)
   app.post<{ Body: SyncExternalActivity }>('/api/v1/admin/activities/sync-external', async (request, reply) => {
@@ -1252,6 +1259,13 @@ export function registerActivityRoutes(
     return { items };
   });
 
+  // Read-only aggregate gallery across lens, comic and material histories.
+  app.get<{ Params: { id: string } }>('/api/v1/admin/activities/:id/gallery', async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    reply.header('cache-control', 'no-store');
+    return buildActivityGallery(database, request.params.id, config.artifactDirectory);
+  });
+
   // 23. Asset streaming read & HEAD (supports HTTP Range for video seeking!)
   const handleAssetStream = (request: FastifyRequest<{ Params: { id: string; assetKey: string } }>, reply: FastifyReply, isHead = false) => {
     const file = getActivityAssetFile(database, request.params.id, request.params.assetKey);
@@ -1467,15 +1481,17 @@ export function registerActivityRoutes(
     '/api/v1/admin/activities/:id/image-config/draft',
     async (request, reply) => {
       if (!checkAdmin(request, reply)) return;
+      if (!store.getActivity(request.params.id)) return reply.code(404).send({ error: 'activity_not_found' });
       return getImageConfigDraft(database, request.params.id);
     },
   );
 
   app.put<{
     Params: { id: string };
-    Body: { expectedDraftVersion: number; document: ImageConfigDocument };
-  }>('/api/v1/admin/activities/:id/image-config/draft', async (request, reply) => {
+    Body: SaveImageConfigDraftRequest;
+  }>('/api/v1/admin/activities/:id/image-config/draft', { schema: { body: SaveImageConfigDraftRequestSchema } }, async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
+    if (!store.getActivity(request.params.id)) return reply.code(404).send({ error: 'activity_not_found' });
     try {
       const updated = saveImageConfigDraft(
         database,
@@ -1486,7 +1502,7 @@ export function registerActivityRoutes(
       return updated;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('conflict')) {
+      if ((err as { statusCode?: number })?.statusCode === 409 || msg.includes('conflict')) {
         return reply.code(409).send({ error: 'draft_version_conflict', message: msg });
       }
       return reply.code(400).send({ error: 'save_image_config_failed', message: msg });
@@ -1504,6 +1520,8 @@ export function registerActivityRoutes(
     if (!checkAdmin(request, reply)) return;
     try {
       const activityId = request.params.id;
+      if (!store.getActivity(activityId)) return reply.code(404).send({ error: 'activity_not_found' });
+      const res = database.transaction(() => {
       let draft = getImageConfigDraft(database, activityId);
       if (request.body?.document) {
         draft = saveImageConfigDraft(
@@ -1511,20 +1529,23 @@ export function registerActivityRoutes(
           activityId,
           request.body.expectedDraftVersion ?? draft.draftVersion,
           request.body.document,
+          { skipTransaction: true },
         );
       }
       const activity = store.getActivity(activityId);
-      if (!activity) return reply.code(404).send({ error: 'activity_not_found' });
+      if (!activity) throw new Error('activity_not_found');
       const expDraftVer = request.body?.document ? draft.draftVersion : request.body?.expectedDraftVersion ?? draft.draftVersion;
       const expHeadVer = request.body?.expectedHeadVersion ?? activity.headVersion;
 
-      const res = commitImageConfigRevision(
+      return commitImageConfigRevision(
         database,
         store,
         activityId,
         expDraftVer,
         expHeadVer,
+        { skipTransaction: true },
       );
+      });
       return reply.code(201).send({
         ...res.revision,
         revision: res.revision,
@@ -1532,7 +1553,7 @@ export function registerActivityRoutes(
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('conflict')) {
+      if ((err as { statusCode?: number })?.statusCode === 409 || msg.includes('conflict')) {
         return reply.code(409).send({ error: 'revision_conflict', message: msg });
       }
       return reply.code(400).send({ error: 'commit_image_config_failed', message: msg });
@@ -1612,7 +1633,12 @@ export function registerActivityRoutes(
         if (ref.actorId && !contentRev.document.actors.some((actor) => actor.id === ref.actorId)) throw new Error('reference_actor_not_found');
         return { ...ref, artifactId: asset.artifactId, sha256: asset.sha256 || '' };
       });
-      const executionPlan = resolveImageExecutionPlan(database, references.length > 0, body.presetId, body.presetRevision);
+      const slotSettings = imageConfigDoc.slotConfigs.find(slot => slot.slotId === body.slotId);
+      const visual = resolveVisualSettings(imageConfigDoc, { ...slotSettings, parameters: slotSettings?.params,
+        ...(body.presetId ? { presetId: body.presetId, presetRevision: body.presetRevision } : {}),
+        ...(body.workflowId && !body.presetId ? { workflowId: body.workflowId, workflowVersion: body.workflowVersion, presetId: undefined, presetRevision: undefined } : {}),
+      });
+      const executionPlan = resolveImageExecutionPlan(database, references.length > 0, visual.selection.presetId, visual.selection.presetRevision, visual.selection);
       if (executionPlan && ((body.workflowId && body.workflowId !== executionPlan.workflowId)
           || (body.workflowVersion !== undefined && body.workflowVersion !== executionPlan.workflowVersion))) {
         return reply.code(409).send({ error: 'workflow_selection_conflict', message: '所选工作流与生成预设不一致，请重新选择。' });
@@ -2228,6 +2254,7 @@ export function registerActivityRoutes(
 
   app.post<{ Body: CreateActivityPresetInput }>('/api/v1/admin/activity-presets', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
+    if (isActivityArtStylePayload(request.body?.payload)) return reply.code(409).send({ error: 'art_style_route_required', message: '画风请使用专用编辑入口，以校验预设、图片和版本。' });
     if (!request.body?.name?.trim()) {
       return reply.code(400).send({ error: 'name_required', message: '预设名称不能为空' });
     }
@@ -2244,6 +2271,10 @@ export function registerActivityRoutes(
 
   app.patch<{ Params: { id: string }; Body: UpdateActivityPresetInput }>('/api/v1/admin/activity-presets/:id', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
+    const existing = getActivityPreset(database, request.params.id);
+    if (isActivityArtStylePayload(existing?.payload) || isActivityArtStylePayload(request.body?.payload)) {
+      return reply.code(409).send({ error: 'art_style_route_required', message: '画风请使用专用编辑入口并提供当前版本。' });
+    }
     try {
       const updated = updateActivityPreset(database, request.params.id, request.body);
       return updated;

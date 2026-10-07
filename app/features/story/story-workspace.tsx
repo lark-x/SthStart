@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown, ArrowLeft, ArrowUp, BookOpen, Check, FileClock, FolderOpen,
   Plus, Search, Settings2, ShieldCheck, MoreHorizontal, Terminal, UserPlus,
-  PanelLeftClose, PanelLeft, Sparkles,
+  PanelLeftClose, PanelLeft, Sparkles, Lightbulb,
 } from 'lucide-react';
 import type { StoryCharacter, StoryDocument, StoryEntry } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
@@ -22,11 +22,19 @@ import { StoryWorkCastDialog } from './components/story-work-cast-dialog';
 import { StoryDerivativesDialog } from './components/story-derivatives-dialog';
 import { fetchCharacters } from '@/app/features/characters/api';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
+import {CreatePublicationDialog} from './components/create-publication-dialog';
 
 type EntryRow = { kind: 'document'; item: StoryDocument } | { kind: 'character'; item: StoryCharacter };
 type NewKind = StoryDocument['kind'] | 'character';
 type ReviewTab = 'proposals' | 'revisions' | 'agent' | 'archive';
 const groupLabel: Record<NewKind, string> = { outline: '大纲', world: '世界观', scene: '场景', chapter: '章节', character: '角色' };
+const getEntryLabel = (kind: NewKind, isRefl = false) => {
+  if (isRefl) {
+    if (kind === 'outline') return '思考纲要';
+    if (kind === 'chapter') return '随笔篇目';
+  }
+  return groupLabel[kind];
+};
 const documentOf = (entry: StoryEntry): entry is StoryDocument => !('name' in entry);
 
 export function StoryWorkspace({ projectId }: { projectId: string }) {
@@ -70,6 +78,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
   const [derivativesOpen, setDerivativesOpen] = useState(false);
   const [navTab, setNavTab] = useState<'chapters' | 'bible'>('chapters');
   const flushRef = useRef<() => Promise<boolean>>(async () => true);
+  const [publicationOpen,setPublicationOpen]=useState(false);
 
   // Ctrl/Cmd + B 快捷切换左栏大纲
   useEffect(() => {
@@ -118,8 +127,12 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     ...(documents.data?.items ?? []).map((item) => ({ kind: 'document' as const, item })),
     ...(characters.data?.items ?? []).map((item) => ({ kind: 'character' as const, item })),
   ], [documents.data, characters.data]);
+  const isReflection = project.data?.projectType === 'reflection';
+  const outlineDoc = useMemo(() => {
+    return (documents.data?.items ?? []).find((item) => item.kind === 'outline');
+  }, [documents.data]);
   const activeEntry = entries.find((entry) => entry.kind === selected?.kind && entry.item.id === selected.id)?.item
-    ?? entries[0]?.item ?? null;
+    ?? (isReflection ? (outlineDoc ?? entries[0]?.item ?? null) : (entries[0]?.item ?? null));
   const activeId = activeEntry?.id;
   const activeKind = activeEntry ? documentOf(activeEntry) ? 'document' : 'character' : null;
   const pendingProposalCount = proposals.data?.items.filter((item) => item.status === 'pending').length ?? 0;
@@ -149,10 +162,12 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     if (row.item.id === activeId) { setTreeOpen(false); return; }
     if (!await flushCurrent()) { setNotice('当前文本尚未保存成功。处理保存状态后再切换条目。'); return; }
     setSelected({ kind: row.kind, id: row.item.id });
-    if (row.kind === 'document' && row.item.kind === 'chapter') {
-      setNavTab('chapters');
-    } else {
-      setNavTab('bible');
+    if (!isReflection) {
+      if (row.kind === 'document' && row.item.kind === 'chapter') {
+        setNavTab('chapters');
+      } else {
+        setNavTab('bible');
+      }
     }
     setNotice('');
     setTreeOpen(false);
@@ -169,10 +184,12 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
       else created = await storyApi.createDocument(projectId, { kind: newKind, title: newTitle.trim(), body: newBody });
       await refreshEntry();
       setSelected({ kind: newKind === 'character' ? 'character' : 'document', id: created.id });
-      setNavTab(newKind === 'chapter' ? 'chapters' : 'bible');
+      if (!isReflection) {
+        setNavTab(newKind === 'chapter' ? 'chapters' : 'bible');
+      }
       setNewKind(null); setNewTitle(''); setNewBody('');
       setTreeOpen(false);
-      setNotice(`${groupLabel[newKind]}已创建。`);
+      setNotice(`${getEntryLabel(newKind, isReflection)}已创建。`);
     } catch (cause) { setCreateError(cause instanceof Error ? cause.message : '创建失败。'); }
   };
 
@@ -265,16 +282,18 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted" />
           <Input
-            aria-label="搜索正文或设定"
+            aria-label={isReflection ? '搜索纲要或随笔' : '搜索正文或设定'}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="pl-8 text-xs h-8"
-            placeholder="搜索正文或设定…"
+            placeholder={isReflection ? '搜索纲要或随笔…' : '搜索正文或设定…'}
           />
         </div>
         <div className="mt-2 flex items-center justify-between text-xs">
           <span className="text-muted font-mono">
-            {chapters.length} 章节 · {totalChapterWords.toLocaleString('zh-CN')} 字
+            {isReflection
+              ? `${chapters.length} 篇随笔 · ${totalChapterWords.toLocaleString('zh-CN')} 字`
+              : `${chapters.length} 章节 · ${totalChapterWords.toLocaleString('zh-CN')} 字`}
           </span>
           {project.data?.workId ? (
             <span className="rounded bg-accent/10 px-1.5 py-0.5 font-medium text-accent">
@@ -293,46 +312,48 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               }}
               className="text-muted hover:text-accent underline"
             >
-              绑定作品
+              {isReflection ? '设置主题' : '绑定作品'}
             </button>
           )}
         </div>
 
-        {/* 核心双模切换：章节正文 vs 故事设定集 */}
-        <div className="mt-2.5 grid grid-cols-2 gap-1 rounded-[var(--radius-control)] bg-surface-muted/80 p-0.5" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={navTab === 'chapters'}
-            onClick={() => setNavTab('chapters')}
-            className={`flex items-center justify-center gap-1.5 rounded py-1.5 text-xs font-medium transition-all ${
-              navTab === 'chapters'
-                ? 'bg-surface font-semibold text-accent shadow-xs'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            <BookOpen className="size-3.5" />
-            <span>章节目录 ({chapters.length})</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={navTab === 'bible'}
-            onClick={() => setNavTab('bible')}
-            className={`flex items-center justify-center gap-1.5 rounded py-1.5 text-xs font-medium transition-all ${
-              navTab === 'bible'
-                ? 'bg-surface font-semibold text-accent shadow-xs'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            <Sparkles className="size-3.5" />
-            <span>设定集 ({bibleCount})</span>
-          </button>
-        </div>
+        {/* 核心双模切换：章节正文 vs 故事设定集（仅剧情项目） */}
+        {!isReflection && (
+          <div className="mt-2.5 grid grid-cols-2 gap-1 rounded-[var(--radius-control)] bg-surface-muted/80 p-0.5" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={navTab === 'chapters'}
+              onClick={() => setNavTab('chapters')}
+              className={`flex items-center justify-center gap-1.5 rounded py-1.5 text-xs font-medium transition-all ${
+                navTab === 'chapters'
+                  ? 'bg-surface font-semibold text-accent shadow-xs'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <BookOpen className="size-3.5" />
+              <span>章节目录 ({chapters.length})</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={navTab === 'bible'}
+              onClick={() => setNavTab('bible')}
+              className={`flex items-center justify-center gap-1.5 rounded py-1.5 text-xs font-medium transition-all ${
+                navTab === 'bible'
+                  ? 'bg-surface font-semibold text-accent shadow-xs'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <Sparkles className="size-3.5" />
+              <span>设定集 ({bibleCount})</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 滚动内容区 */}
-      <nav aria-label="正式剧情资料树" className="min-h-0 flex-1 overflow-y-auto p-3" data-autohide-scroll>
+      <nav aria-label={isReflection ? '思考与随笔目录' : '正式剧情资料树'} className="min-h-0 flex-1 overflow-y-auto p-3" data-autohide-scroll>
         {/* 全文搜索结果 */}
         {search.trim().length >= 2 && (
           <section className="mb-4 border-b border-border-default pb-3">
@@ -349,7 +370,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                 >
                   <span className="block truncate text-sm font-medium">{result.title}</span>
                   <span className="line-clamp-2 text-xs text-muted">
-                    {groupLabel[result.kind]} · {result.excerpt}
+                    {getEntryLabel(result.kind, isReflection)} · {result.excerpt}
                   </span>
                 </button>
               );
@@ -358,148 +379,102 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
           </section>
         )}
 
-        {/* 模式一：章节正文目录 (小说核心) */}
-        {navTab === 'chapters' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold tracking-wide text-muted">章节列表</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { openCreate('chapter'); setTreeOpen(false); }}
-                className="h-7 text-xs gap-1 text-accent border-accent/30 hover:bg-accent/10"
-              >
-                <Plus className="size-3.5" />
-                <span>新建章节</span>
-              </Button>
-            </div>
+        {/* 聚焦模式：感想随笔项目（仅思考纲要 + 感想随笔列表） */}
+        {isReflection ? (
+          <div className="space-y-4">
+            {/* 顶栏：思考纲要 */}
+            <section className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-semibold tracking-wide text-muted">思考纲要</h2>
+                {!outlineDoc && (
+                  <button
+                    type="button"
+                    aria-label="新增思考纲要"
+                    title="新增思考纲要"
+                    onClick={() => { openCreate('outline'); setTreeOpen(false); }}
+                    className="rounded p-1 text-muted hover:bg-surface-hover hover:text-accent"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                )}
+              </div>
+              {outlineDoc ? (
+                <div
+                  className={`group flex min-w-0 items-center rounded-[var(--radius-control)] border transition-all ${
+                    activeId === outlineDoc.id
+                      ? 'border-accent/50 bg-accent/10 text-accent shadow-xs'
+                      : 'border-transparent hover:border-border-default/60 hover:bg-surface-hover'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void chooseEntry({ kind: 'document', item: outlineDoc })}
+                    aria-current={activeId === outlineDoc.id ? 'true' : undefined}
+                    className="min-w-0 flex-1 px-2.5 py-2 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="truncate text-sm font-medium text-ink">
+                        {outlineDoc.title || '思考纲要'}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-muted font-mono">
+                        {[...outlineDoc.body.trim()].length}字
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted">
+                      v{outlineDoc.revision} · 顶层思考与框架梳理
+                    </div>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="rounded border border-dashed border-border-default/80 w-full px-2.5 py-2 text-center text-xs text-muted hover:border-accent hover:text-accent"
+                  onClick={() => { openCreate('outline'); setTreeOpen(false); }}
+                >
+                  + 创建思考纲要
+                </button>
+              )}
+            </section>
 
-            {filteredChapters.length === 0 ? (
-              <div className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-4 text-center">
-                <p className="text-xs text-muted">尚未创建小说章节。</p>
+            {/* 随笔篇目列表 */}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold tracking-wide text-muted">
+                  感想随笔 ({chapters.length})
+                </span>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => { openCreate('chapter'); setTreeOpen(false); }}
-                  className="mt-2 text-xs gap-1 text-accent"
+                  className="h-7 text-xs gap-1 text-accent border-accent/30 hover:bg-accent/10"
                 >
-                  <Plus className="size-3" />开始第一章
+                  <Plus className="size-3.5" />
+                  <span>新建随笔</span>
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                {filteredChapters.map((chapter) => {
-                  const active = activeId === chapter.id;
-                  const wordCount = chapter.body.trim().length;
-                  const wordLabel = wordCount >= 1000 ? `${(wordCount / 1000).toFixed(1)}k字` : `${wordCount}字`;
-                  const statusInfo = wordCount === 0
-                    ? { label: '构思', bg: 'bg-sky-500/10 text-sky-600 border-sky-500/20' }
-                    : wordCount < 1000
-                      ? { label: '草稿', bg: 'bg-amber-500/10 text-amber-600 border-amber-500/20' }
-                      : { label: '定稿', bg: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' };
 
-                  return (
-                    <div
-                      key={chapter.id}
-                      className={`group flex min-w-0 items-center rounded-[var(--radius-control)] border transition-all ${
-                        active
-                          ? 'border-accent/50 bg-accent/10 text-accent shadow-xs'
-                          : 'border-transparent hover:border-border-default/60 hover:bg-surface-hover'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => void chooseEntry({ kind: 'document', item: chapter })}
-                        aria-current={active ? 'true' : undefined}
-                        className="min-w-0 flex-1 px-2.5 py-2 text-left"
-                      >
-                        <div className="flex items-center justify-between gap-1.5">
-                          <span className="truncate text-sm font-medium text-ink">
-                            第 {chapter.position + 1} 章 · {chapter.title}
-                          </span>
-                          <span className="shrink-0 text-[10px] text-muted font-mono">
-                            {wordLabel}
-                          </span>
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
-                          <span className={`rounded-sm border px-1 py-0.2 text-[9px] font-medium ${statusInfo.bg}`}>
-                            {statusInfo.label}
-                          </span>
-                          <span>v{chapter.revision}</span>
-                        </div>
-                      </button>
-
-                      <span className="mr-1 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                        <button
-                          disabled={filteredChapters[0]?.id === chapter.id}
-                          title="上移章节"
-                          onClick={() => void reorderChapter(chapter.id, -1)}
-                          className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"
-                        >
-                          <ArrowUp className="size-3.5" />
-                        </button>
-                        <button
-                          disabled={filteredChapters.at(-1)?.id === chapter.id}
-                          title="下移章节"
-                          onClick={() => void reorderChapter(chapter.id, 1)}
-                          className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"
-                        >
-                          <ArrowDown className="size-3.5" />
-                        </button>
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 模式二：故事设定集 (Story Bible: 大纲/角色/世界观/场景) */}
-        {navTab === 'bible' && (
-          <div className="space-y-4">
-            {bibleGroups.map(({ kind, rows }) => {
-              const visible = rows.filter(filtered);
-              return (
-                <section key={kind} className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xs font-semibold tracking-wide text-muted">
-                      {groupLabel[kind]} <span className="font-normal font-mono">({rows.length})</span>
-                    </h2>
-                    <div className="flex items-center gap-1">
-                      {kind === 'character' && (
-                        <button
-                          type="button"
-                          aria-label="从角色库引入"
-                          title="从已有角色库按作品引入角色"
-                          onClick={() => setWorkCastOpen(true)}
-                          className="rounded p-1 text-muted hover:bg-surface-hover hover:text-accent"
-                        >
-                          <UserPlus className="size-3.5" />
-                        </button>
-                      )}
-                      {(kind !== 'outline' || rows.length === 0) && (
-                        <button
-                          type="button"
-                          aria-label={`新增${groupLabel[kind]}`}
-                          title={`新增${groupLabel[kind]}`}
-                          onClick={() => { openCreate(kind); setTreeOpen(false); }}
-                          className="rounded p-1 text-muted hover:bg-surface-hover hover:text-accent"
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {visible.map((row) => {
-                    const active = activeId === row.item.id;
-                    const isChar = row.kind === 'character';
-                    const charInfo = isChar ? castList.find((c) => c.id === row.item.id || c.name === row.item.name) : null;
+              {filteredChapters.length === 0 ? (
+                <div className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-4 text-center">
+                  <p className="text-xs text-muted">尚未记录对话感想。</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { openCreate('chapter'); setTreeOpen(false); }}
+                    className="mt-2 text-xs gap-1 text-accent"
+                  >
+                    <Plus className="size-3" />写下第一篇随笔
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredChapters.map((chapter) => {
+                    const active = activeId === chapter.id;
+                    const wordCount = chapter.body.trim().length;
+                    const wordLabel = wordCount >= 1000 ? `${(wordCount / 1000).toFixed(1)}k字` : `${wordCount}字`;
 
                     return (
                       <div
-                        key={row.item.id}
+                        key={chapter.id}
                         className={`group flex min-w-0 items-center rounded-[var(--radius-control)] border transition-all ${
                           active
                             ? 'border-accent/50 bg-accent/10 text-accent shadow-xs'
@@ -508,81 +483,286 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                       >
                         <button
                           type="button"
-                          onClick={() => void chooseEntry(row)}
+                          onClick={() => void chooseEntry({ kind: 'document', item: chapter })}
                           aria-current={active ? 'true' : undefined}
-                          className="min-w-0 flex-1 px-2.5 py-1.5 text-left"
+                          className="min-w-0 flex-1 px-2.5 py-2 text-left"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {isChar && (
-                              <div className="size-6 shrink-0 rounded-full overflow-hidden border border-border-default/80 bg-surface-muted flex items-center justify-center text-[11px] font-bold text-accent">
-                                {charInfo?.avatarUrl ? (
-                                  <img src={charInfo.avatarUrl} alt="" className="size-full object-cover" />
-                                ) : (
-                                  row.item.name.slice(0, 1)
-                                )}
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <span className="truncate block text-sm font-medium text-ink">
-                                {'name' in row.item ? row.item.name : row.item.title}
-                              </span>
-                              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
-                                {isChar && charInfo?.work && (
-                                  <span className="truncate rounded border border-border-default/60 bg-surface-muted px-1 py-0.2 text-[9px]">
-                                    {charInfo.work}
-                                  </span>
-                                )}
-                                <span>v{row.item.revision}</span>
-                              </div>
-                            </div>
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="truncate text-sm font-medium text-ink">
+                              第 {chapter.position + 1} 篇 · {chapter.title}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-muted font-mono">
+                              {wordLabel}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                            <span>v{chapter.revision}</span>
+                            <span className="truncate">更新于 {new Date(chapter.updatedAt).toLocaleDateString('zh-CN')}</span>
                           </div>
                         </button>
+
+                        <span className="mr-1 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                          <button
+                            disabled={filteredChapters[0]?.id === chapter.id}
+                            title="上移篇目"
+                            onClick={() => void reorderChapter(chapter.id, -1)}
+                            className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"
+                          >
+                            <ArrowUp className="size-3.5" />
+                          </button>
+                          <button
+                            disabled={filteredChapters.at(-1)?.id === chapter.id}
+                            title="下移篇目"
+                            onClick={() => void reorderChapter(chapter.id, 1)}
+                            className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"
+                          >
+                            <ArrowDown className="size-3.5" />
+                          </button>
+                        </span>
                       </div>
                     );
                   })}
-
-                  {rows.length === 0 && kind === 'outline' && (
-                    <button
-                      type="button"
-                      className="rounded border border-dashed border-border-default/80 w-full px-2.5 py-2 text-center text-xs text-muted hover:border-accent hover:text-accent"
-                      onClick={() => { openCreate('outline'); setTreeOpen(false); }}
-                    >
-                      + 创建项目主线大纲
-                    </button>
-                  )}
-                </section>
-              );
-            })}
+                </div>
+              )}
+            </section>
           </div>
+        ) : (
+          /* 剧情模式：原有两模切换 */
+          <>
+            {navTab === 'chapters' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold tracking-wide text-muted">章节列表</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { openCreate('chapter'); setTreeOpen(false); }}
+                    className="h-7 text-xs gap-1 text-accent border-accent/30 hover:bg-accent/10"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>新建章节</span>
+                  </Button>
+                </div>
+
+                {filteredChapters.length === 0 ? (
+                  <div className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-4 text-center">
+                    <p className="text-xs text-muted">尚未创建小说章节。</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { openCreate('chapter'); setTreeOpen(false); }}
+                      className="mt-2 text-xs gap-1 text-accent"
+                    >
+                      <Plus className="size-3" />开始第一章
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {filteredChapters.map((chapter) => {
+                      const active = activeId === chapter.id;
+                      const wordCount = chapter.body.trim().length;
+                      const wordLabel = wordCount >= 1000 ? `${(wordCount / 1000).toFixed(1)}k字` : `${wordCount}字`;
+                      const statusInfo = wordCount === 0
+                        ? { label: '构思', bg: 'bg-sky-500/10 text-sky-600 border-sky-500/20' }
+                        : wordCount < 1000
+                          ? { label: '草稿', bg: 'bg-amber-500/10 text-amber-600 border-amber-500/20' }
+                          : { label: '定稿', bg: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' };
+
+                      return (
+                        <div
+                          key={chapter.id}
+                          className={`group flex min-w-0 items-center rounded-[var(--radius-control)] border transition-all ${
+                            active
+                              ? 'border-accent/50 bg-accent/10 text-accent shadow-xs'
+                              : 'border-transparent hover:border-border-default/60 hover:bg-surface-hover'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void chooseEntry({ kind: 'document', item: chapter })}
+                            aria-current={active ? 'true' : undefined}
+                            className="min-w-0 flex-1 px-2.5 py-2 text-left"
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate text-sm font-medium text-ink">
+                                第 {chapter.position + 1} 章 · {chapter.title}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-muted font-mono">
+                                {wordLabel}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                              <span className={`rounded-sm border px-1 py-0.2 text-[9px] font-medium ${statusInfo.bg}`}>
+                                {statusInfo.label}
+                              </span>
+                              <span>v{chapter.revision}</span>
+                            </div>
+                          </button>
+
+                          <span className="mr-1 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                            <button
+                              disabled={filteredChapters[0]?.id === chapter.id}
+                              title="上移章节"
+                              onClick={() => void reorderChapter(chapter.id, -1)}
+                              className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"
+                            >
+                              <ArrowUp className="size-3.5" />
+                            </button>
+                            <button
+                              disabled={filteredChapters.at(-1)?.id === chapter.id}
+                              title="下移章节"
+                              onClick={() => void reorderChapter(chapter.id, 1)}
+                              className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"
+                            >
+                              <ArrowDown className="size-3.5" />
+                            </button>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {navTab === 'bible' && (
+              <div className="space-y-4">
+                {bibleGroups.map(({ kind, rows }) => {
+                  const visible = rows.filter(filtered);
+                  return (
+                    <section key={kind} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xs font-semibold tracking-wide text-muted">
+                          {groupLabel[kind]} <span className="font-normal font-mono">({rows.length})</span>
+                        </h2>
+                        <div className="flex items-center gap-1">
+                          {kind === 'character' && (
+                            <button
+                              type="button"
+                              aria-label="从角色库引入"
+                              title="从已有角色库按作品引入角色"
+                              onClick={() => setWorkCastOpen(true)}
+                              className="rounded p-1 text-muted hover:bg-surface-hover hover:text-accent"
+                            >
+                              <UserPlus className="size-3.5" />
+                            </button>
+                          )}
+                          {(kind !== 'outline' || rows.length === 0) && (
+                            <button
+                              type="button"
+                              aria-label={`新增${groupLabel[kind]}`}
+                              title={`新增${groupLabel[kind]}`}
+                              onClick={() => { openCreate(kind); setTreeOpen(false); }}
+                              className="rounded p-1 text-muted hover:bg-surface-hover hover:text-accent"
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {visible.map((row) => {
+                        const active = activeId === row.item.id;
+                        const isChar = row.kind === 'character';
+                        const charInfo = isChar ? castList.find((c) => c.id === row.item.id || c.name === row.item.name) : null;
+
+                        return (
+                          <div
+                            key={row.item.id}
+                            className={`group flex min-w-0 items-center rounded-[var(--radius-control)] border transition-all ${
+                              active
+                                ? 'border-accent/50 bg-accent/10 text-accent shadow-xs'
+                                : 'border-transparent hover:border-border-default/60 hover:bg-surface-hover'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => void chooseEntry(row)}
+                              aria-current={active ? 'true' : undefined}
+                              className="min-w-0 flex-1 px-2.5 py-1.5 text-left"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                {isChar && (
+                                  <div className="size-6 shrink-0 rounded-full overflow-hidden border border-border-default/80 bg-surface-muted flex items-center justify-center text-[11px] font-bold text-accent">
+                                    {charInfo?.avatarUrl ? (
+                                      <img src={charInfo.avatarUrl} alt="" className="size-full object-cover" />
+                                    ) : (
+                                      row.item.name.slice(0, 1)
+                                    )}
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <span className="truncate block text-sm font-medium text-ink">
+                                    {'name' in row.item ? row.item.name : row.item.title}
+                                  </span>
+                                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                                    {isChar && charInfo?.work && (
+                                      <span className="truncate rounded border border-border-default/60 bg-surface-muted px-1 py-0.2 text-[9px]">
+                                        {charInfo.work}
+                                      </span>
+                                    )}
+                                    <span>v{row.item.revision}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {rows.length === 0 && kind === 'outline' && (
+                        <button
+                          type="button"
+                          className="rounded border border-dashed border-border-default/80 w-full px-2.5 py-2 text-center text-xs text-muted hover:border-accent hover:text-accent"
+                          onClick={() => { openCreate('outline'); setTreeOpen(false); }}
+                        >
+                          + 创建项目主线大纲
+                        </button>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </nav>
 
-      {/* 底部全书统计与即时保存状态，彻底去除 DSH 遗留 */}
+      {/* 底部全书统计与即时保存状态 */}
       <div className="story-tree-footer shrink-0 border-t border-border-default/60 p-2.5 text-center text-[11px] text-muted font-mono">
-        本地私密创作空间 · 自动即时保存
+        {isReflection ? '对话感想空间 · 自动即时保存' : '本地私密创作空间 · 自动即时保存'}
       </div>
     </div>
   );
 
   return <main className="story-workspace-root flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink">
+    {!isReflection && (
+      <CreatePublicationDialog open={publicationOpen} onOpenChange={setPublicationOpen} projectId={projectId}
+        chapters={(documents.data?.items??[]).filter(d=>d.kind==='chapter')} activeId={activeId} flush={flushCurrent}/>
+    )}
     <WorkspaceHeader
       title={project.data.title}
       backHref="/apps/story"
-      backLabel="剧情项目"
+      backLabel={isReflection ? '全部项目' : '剧情项目'}
       status={
         <div className="flex items-center gap-1.5">
-          {project.data.workId && (
-            <span className="shrink-0 rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-              {project.data.workId}
-            </span>
-          )}
+          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${
+            isReflection
+              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              : 'bg-primary/10 text-primary'
+          }`}>
+            {isReflection ? (project.data.workId || '对话感想') : (project.data.workId || '剧情创作')}
+          </span>
           <span className="hidden xl:inline text-xs text-muted">
-            结构化大纲 · 章节正文 · 剧本流
+            {isReflection ? '思考纲要 · 对话随笔 · 认知洞察' : '结构化大纲 · 章节正文 · 剧本流'}
           </span>
         </div>
       }
       actions={
         <>
+          {!isReflection && (
+            <Button size="sm" variant="primary" onClick={()=>setPublicationOpen(true)}>制作作品</Button>
+          )}
           {/* 左栏大纲折叠/展开切换按钮 */}
           <Button
             size="sm"
@@ -647,7 +827,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               key={`${activeKind}:${activeId}`}
               projectId={projectId}
               entry={activeEntry}
-              castList={castList}
+              castList={isReflection ? [] : castList}
               prevChapter={prevChapter}
               nextChapter={nextChapter}
               onSwitchChapter={handleSwitchChapter}
@@ -657,26 +837,48 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               onRegisterFlush={registerFlush}
               zenMode={zenMode}
               onToggleZen={() => setZenMode((prev) => !prev)}
-              onOpenDerivatives={() => setDerivativesOpen(true)}
+              onOpenDerivatives={isReflection ? undefined : () => setDerivativesOpen(true)}
+              isReflection={isReflection}
             />
           </div>
         ) : (
           <div className="story-empty-state flex h-full min-h-0 items-center justify-center rounded-[var(--radius-panel)] bg-surface p-8 text-center">
-            <div className="max-w-md">
-              <BookOpen className="mx-auto size-10 text-accent/60" />
-              <h2 className="mt-4 text-xl font-semibold">从纯文字小说正文开始创作</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                左侧建立大纲、世界观或从既有作品引入角色。可通过外部智能体（Antigravity、Cursor）借助标准 MCP 协议协同构思，构思完成后一键生成剧本工程或活动对白流。
-              </p>
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-                <Button onClick={() => openCreate('outline')}>
-                  <Plus className="size-4" />创建项目大纲
-                </Button>
-                <Button variant="outline" onClick={() => setAgentConnectOpen(true)}>
-                  <Sparkles className="size-4 text-accent" />配置 AI 协作 (MCP)
-                </Button>
+            {isReflection ? (
+              <div className="max-w-md">
+                <Lightbulb className="mx-auto size-10 text-amber-500/80" />
+                <h2 className="mt-4 text-xl font-semibold">开始记录对话感想与思考</h2>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  左侧建立思考纲要或记录随笔篇目。可通过外部智能体（Antigravity、Cursor）借助标准 MCP 协议随时追加、查阅或提炼感想。
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <Button onClick={() => openCreate('outline')}>
+                    <Plus className="size-4" />创建思考纲要
+                  </Button>
+                  <Button variant="outline" onClick={() => openCreate('chapter')}>
+                    <Plus className="size-4" />写下第一篇随笔
+                  </Button>
+                  <Button variant="outline" onClick={() => setAgentConnectOpen(true)}>
+                    <Sparkles className="size-4 text-accent" />配置 AI 协作 (MCP)
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="max-w-md">
+                <BookOpen className="mx-auto size-10 text-accent/60" />
+                <h2 className="mt-4 text-xl font-semibold">从纯文字小说正文开始创作</h2>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  左侧建立大纲、世界观或从既有作品引入角色。可通过外部智能体（Antigravity、Cursor）借助标准 MCP 协议协同构思，构思完成后一键生成剧本工程或活动对白流。
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                  <Button onClick={() => openCreate('outline')}>
+                    <Plus className="size-4" />创建项目大纲
+                  </Button>
+                  <Button variant="outline" onClick={() => setAgentConnectOpen(true)}>
+                    <Sparkles className="size-4 text-accent" />配置 AI 协作 (MCP)
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -741,21 +943,32 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     </ResponsiveEditOverlay>
 
     {/* 新建条目弹窗 */}
-    <Dialog open={Boolean(newKind)} onOpenChange={(open) => { if (!open) { setNewKind(null); setCreateError(''); } }} title={newKind ? `新建${groupLabel[newKind]}` : '新建资料'} description="创建的内容会成为正式项目资料，并从 v1 开始记录修订。" size="md"
+    <Dialog open={Boolean(newKind)} onOpenChange={(open) => { if (!open) { setNewKind(null); setCreateError(''); } }} title={newKind ? `新建${getEntryLabel(newKind, isReflection)}` : '新建资料'} description="创建的内容会成为正式项目资料，并从 v1 开始记录修订。" size="md"
       footer={<><Button variant="outline" onClick={() => setNewKind(null)}>取消</Button><Button disabled={!newTitle.trim()} onClick={(event) => { void createEntry(event as unknown as React.FormEvent); }}><Plus className="size-4" />创建正式资料</Button></>}>
       <form className="space-y-3" onSubmit={(event) => void createEntry(event)}>
-        <label className="block text-sm font-medium">{newKind === 'character' ? '角色名称' : '条目标题'}<Input autoFocus value={newTitle} maxLength={120} onChange={(event) => setNewTitle(event.target.value)} className="mt-1" placeholder={`例如：${newKind === 'chapter' ? '第一章' : newKind === 'character' ? '主角姓名' : '核心设定'}`} /></label>
+        <label className="block text-sm font-medium">
+          {newKind === 'character' ? '角色名称' : isReflection ? (newKind === 'outline' ? '纲要标题' : '随笔标题') : '条目标题'}
+          <Input autoFocus value={newTitle} maxLength={120} onChange={(event) => setNewTitle(event.target.value)} className="mt-1"
+            placeholder={newKind === 'character' ? '主角姓名' : isReflection ? (newKind === 'chapter' ? '例如：关于智能体认知的若干反思' : '例如：核心思考脉络') : (newKind === 'chapter' ? '第一章' : '核心设定')} />
+        </label>
         <label className="block text-sm font-medium">初始正文（可选）<textarea value={newBody} maxLength={100000} onChange={(event) => setNewBody(event.target.value)} className="mt-1 min-h-48 w-full rounded-[var(--radius-control)] border border-border-control bg-surface p-3 font-mono text-sm leading-6 outline-none focus:border-accent" placeholder="Markdown 正文…" /></label>
         {createError && <p role="alert" className="text-sm text-red-700">{createError}</p>}
       </form>
     </Dialog>
 
     {/* 项目设置与作品绑定弹窗 */}
-    <Dialog open={projectSettingsOpen} onOpenChange={setProjectSettingsOpen} title="项目资料与作品绑定" description="项目简介与作品信息会提供给 AI 智能体创作上下文，并用于角色库筛选。" size="md"
+    <Dialog open={projectSettingsOpen} onOpenChange={setProjectSettingsOpen}
+      title={isReflection ? '项目资料与主题设置' : '项目资料与作品绑定'}
+      description={isReflection ? '项目简介与主题标签会提供给 AI 智能体提炼与查阅上下文。' : '项目简介与作品信息会提供给 AI 智能体创作上下文，并用于角色库筛选。'}
+      size="md"
       footer={<><Button variant="outline" onClick={() => setProjectSettingsOpen(false)}>取消</Button><Button disabled={!projectTitle.trim()} onClick={(event) => { void saveProject(event as unknown as React.FormEvent); }}>保存项目资料</Button></>}>
       <form className="space-y-3" onSubmit={(event) => void saveProject(event)}>
         <label className="block text-sm font-medium">项目名称<Input value={projectTitle} maxLength={120} onChange={(event) => setProjectTitle(event.target.value)} className="mt-1" /></label>
-        <label className="block text-sm font-medium">所属作品<Input value={projectWorkId} maxLength={120} onChange={(event) => setProjectWorkId(event.target.value)} className="mt-1" placeholder="例如：原神、崩坏：星穹铁道，或留空" /></label>
+        <label className="block text-sm font-medium">
+          {isReflection ? '关联主题标签' : '所属作品'}
+          <Input value={projectWorkId} maxLength={120} onChange={(event) => setProjectWorkId(event.target.value)} className="mt-1"
+            placeholder={isReflection ? '例如：智能体对话、系统架构哲学' : '例如：原神、崩坏：星穹铁道，或留空'} />
+        </label>
         <label className="block text-sm font-medium">项目简介<textarea value={projectSummary} maxLength={4000} onChange={(event) => setProjectSummary(event.target.value)} className="mt-1 min-h-32 w-full rounded-[var(--radius-control)] border border-border-control bg-surface p-3 text-sm leading-6" /></label>
       </form>
     </Dialog>

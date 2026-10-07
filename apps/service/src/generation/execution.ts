@@ -34,6 +34,8 @@ type PollAndCompleteTaskOptions = {
   pollTimeoutMs?: number;
   pollIntervalMs?: number;
   joinExisting?: boolean;
+  singleCheck?: boolean;
+  reconcileUnknown?: boolean;
 };
 
 export interface CreateTaskOptions {
@@ -42,6 +44,17 @@ export interface CreateTaskOptions {
   purpose?: string | null;
   workflowId?: string | null;
   workflowVersion?: number | null;
+  /**
+   * 指定已授权的引擎（规划 §12.4）。只有 `isInternal=true` 的服务端业务调用可用；
+   * 公共生成请求不接收该字段，普通调用不提供时行为完全不变。
+   */
+  engineId?: string | null;
+  /**
+   * 已授权参数基线（规划 §12.4）。只有服务端业务调用可用：细化把来源任务冻结的
+   * 加载器取值作为基线传入，使这些值不被预设锁定规则误判为“本次请求单独替换模型”。
+   * 基线不参与请求哈希，公开调用不提供该字段时行为完全不变。
+   */
+  presetValues?: Record<string, unknown>;
   /** 选择已授权的预设（服务端校验归属/启用/版本/连接后解析内部工作流与连接）。 */
   presetId?: string | null;
   presetRevision?: number | null;
@@ -58,7 +71,8 @@ export interface CreateTaskOptions {
   testMode?: boolean;
   priority?: GenerationPriority;
   audit?: { feature?: string; businessEvent?: string; objectType?: string | null; objectId?: string | null; sourceUrl?: string | null;
-    positivePrompt?: string | null; negativePrompt?: string | null; traceId?: string; parentId?: string | null };
+    positivePrompt?: string | null; negativePrompt?: string | null; traceId?: string; parentId?: string | null;
+    visualConfiguration?: Record<string, unknown> };
   onInsertTask?: (txParams: {
     taskId: string;
     callId: string;
@@ -164,12 +178,31 @@ export async function createGenerationTask(
   // 未选择时加载该用途的默认预设（旧配置没有默认预设，行为完全不变）。
   let presetValues: Record<string, unknown> = {};
   let selection: GenerationSelectionMeta | null = null;
+  // 服务端业务调用可传入已授权参数基线（细化：来源任务冻结的加载器取值）。
+  // 基线只影响“预设锁定”判定，不写入 canonicalPayload，因此不改变请求哈希。
+  if (options.presetValues && !options.isInternal) {
+    throw generationError('generation_engine_override_forbidden', '公共生成请求不能提供已授权参数基线。');
+  }
+  if (options.presetValues) presetValues = { ...options.presetValues };
   let resolveOptions: Parameters<typeof resolveWorkflowAndEngine>[2] = {
     purpose,
     isInternal: options.isInternal,
     workflowId: options.workflowId,
     workflowVersion: options.workflowVersion,
+    ...(options.engineId ? { engineId: options.engineId } : {}),
   };
+  // 指定引擎只对内部业务调用开放，且不能与预设解析出的引擎冲突：
+  // 越过预设的已授权连接会让“预览引擎”和“任务引擎”不再一致。
+  if (options.engineId && !options.isInternal) {
+    throw generationError('generation_engine_override_forbidden', '公共生成请求不能指定引擎，请通过已授权预设或工作流绑定选择。');
+  }
+  if (options.engineId && options.presetId) {
+    const presetEngine = database.connection.prepare('SELECT engine_id FROM generation_presets WHERE id=? AND app_id=?')
+      .get(options.presetId, options.appId) as { engine_id: string | null } | undefined;
+    if (presetEngine && presetEngine.engine_id && presetEngine.engine_id !== options.engineId) {
+      throw generationError('generation_engine_preset_conflict', '指定的引擎与预设绑定的引擎不一致，已拒绝提交。');
+    }
+  }
   if (options.presetId) {
     const resolved = resolveEnabledPreset(database, options.appId, purpose, options.presetId, options.presetRevision ?? null);
     presetValues = resolved.values;
@@ -379,7 +412,8 @@ export async function createGenerationTask(
       workflowVersion: resolved.workflow.version,
       retryOf: options.retryOf ?? null, traceId: options.audit?.traceId,
       parentId: options.audit?.parentId ?? (options.retryOf ? (database.connection.prepare('SELECT id FROM ai_call_records WHERE generation_task_id=?').get(options.retryOf) as { id: string } | undefined)?.id ?? null : null),
-      parameters: { purpose, seed: actualSeed, inputs: mergedInputs, inputArtifacts, ...(selection ? { selection } : {}) },
+      parameters: { purpose, seed: actualSeed, inputs: mergedInputs, inputArtifacts, ...(selection ? { selection } : {}),
+        ...(options.audit?.visualConfiguration ? { visualConfiguration: options.audit.visualConfiguration } : {}) },
       positivePrompt: options.audit?.positivePrompt ?? findPrompt(false),
       negativePrompt: options.audit?.negativePrompt ?? findPrompt(true),
       requestSnapshot: { workflow: workflowSnapshot, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, inputs: mergedInputs, inputArtifacts },
@@ -516,7 +550,7 @@ export async function executeQueuedTask(
     const claimResult = database.connection.prepare(`
       UPDATE generation_tasks
       SET status = 'submitting', lease_owner = ?, lease_expires_at = ?, started_at = COALESCE(started_at, ?), progress_json = ?, updated_at = ?
-      WHERE id = ? AND status = 'queued'
+      WHERE id = ? AND status = 'queued' AND COALESCE(error_code,'') != 'studio_resume_required'
     `).run(leaseOwner, leaseExpiresAt, now, JSON.stringify({ value: null, stage: 'submitting', source: 'generation' }), now, taskId);
 
     if (claimResult.changes > 0) {
@@ -873,7 +907,7 @@ export async function executeQueuedTask(
     }
     const nowErr = nowIso();
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '提交状态不确定，禁止自动重复提交', updated_at = ?, finished_at = ? WHERE id = ?",
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '提交状态不确定，禁止自动重复提交', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
     ).run(nowErr, nowErr, taskId);
     recordGenerationEvent(database, {
       taskId,
@@ -890,31 +924,35 @@ export async function executeQueuedTask(
     const rawMsg = errPayload ? String(errPayload.message ?? errPayload.error ?? `HTTP ${promptRes.status}`) : `HTTP ${promptRes.status}`;
     const safeMsg = sanitizeErrorMessage(rawMsg).slice(0, 300);
     const nowErr = nowIso();
+    // A gateway/server failure can occur after enqueueing. Only a definite rejection is retryable.
+    const uncertain=promptRes.status>=500||promptRes.status===408;
+    const status=uncertain?'abandoned':'failed',errorCode=uncertain?'submission_outcome_unknown':'upstream_rejected';
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'failed', error_code = 'upstream_rejected', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
-    ).run(safeMsg, nowErr, nowErr, taskId);
+      "UPDATE generation_tasks SET status = ?, error_code = ?, error_message = ?, upstream_may_continue = ?, cancellation_scope = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+    ).run(status,errorCode,safeMsg,uncertain?1:0,uncertain?'local-tracking':'none',nowErr,nowErr,taskId);
     recordGenerationEvent(database, {
       taskId,
       appId,
-      eventType: "failed",
-      payload: { errorCode: "upstream_rejected", errorMessage: safeMsg },
+      eventType: status,
+      payload: { errorCode, errorMessage: safeMsg },
     });
     setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
   }
 
   const promptData = await promptRes.json().catch(() => ({})) as { prompt_id?: string; task_id?: string };
-  const providerTaskId = promptData.prompt_id || promptData.task_id || "";
+  const providerTaskId = typeof promptData.prompt_id==='string'&&promptData.prompt_id.trim()?promptData.prompt_id:
+    typeof promptData.task_id==='string'&&promptData.task_id.trim()?promptData.task_id:"";
   if (!providerTaskId) {
     const nowErr = nowIso();
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'failed', error_code = 'image_missing_task_id', error_message = '引擎未返回任务 ID', updated_at = ?, finished_at = ? WHERE id = ?",
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '引擎已响应但未返回可追踪任务 ID；提交结果未知，禁止重复提交', upstream_may_continue = 1, cancellation_scope = 'local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
     ).run(nowErr, nowErr, taskId);
     recordGenerationEvent(database, {
       taskId,
       appId,
-      eventType: "failed",
-      payload: { errorCode: "image_missing_task_id", errorMessage: "引擎未返回任务 ID" },
+      eventType: "abandoned",
+      payload: { errorCode: "submission_outcome_unknown", errorMessage: "引擎未返回可追踪任务 ID；提交结果未知" },
     });
     setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
@@ -944,6 +982,8 @@ async function pollAndCompleteWorkerTask(
 ): Promise<void> {
   const taskRow = database.connection.prepare("SELECT * FROM generation_tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
   if (!taskRow) return;
+  const canReconcileUnknown=Boolean(options?.reconcileUnknown&&taskRow.status==='abandoned'&&taskRow.upstream_may_continue);
+  if(['succeeded','failed','cancelled','abandoned'].includes(String(taskRow.status))&&!canReconcileUnknown)return;
   const appId = String(taskRow.app_id);
   const workerTaskId = taskRow.provider_task_id ? String(taskRow.provider_task_id) : taskId;
   const engineRow = database.connection.prepare("SELECT * FROM generation_engines WHERE id = ?").get(String(taskRow.engine_id)) as Record<string, unknown> | undefined;
@@ -961,13 +1001,13 @@ async function pollAndCompleteWorkerTask(
   if (!secret) {
     const nowErr = nowIso();
     database.connection.prepare(
-      "UPDATE generation_tasks SET status = 'failed', error_code = 'worker_token_missing', error_message = 'Windows Worker 凭据未配置', updated_at = ?, finished_at = ? WHERE id = ?",
+      "UPDATE generation_tasks SET status = 'abandoned', error_code = 'worker_token_missing', error_message = 'Windows Worker 凭据不可用，无法核对已提交任务；上游可能仍执行', upstream_may_continue=1, cancellation_scope='local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
     ).run(nowErr, nowErr, taskId);
     recordGenerationEvent(database, {
       taskId,
       appId,
-      eventType: 'failed',
-      payload: { errorCode: 'worker_token_missing', errorMessage: 'Windows Worker 凭据未配置' },
+      eventType: 'abandoned',
+      payload: { errorCode: 'worker_token_missing', errorMessage: 'Windows Worker 凭据不可用，原任务未重投',upstreamMayContinue:true },
     });
     setImmediate(() => void scheduleQueuedTasks(config, database, secrets, fetcher));
     return;
@@ -978,8 +1018,9 @@ async function pollAndCompleteWorkerTask(
   const pollDeadline = Date.now() + pollTimeoutMs;
 
   while (Date.now() < pollDeadline && !generationExecutionsStopped(database)) {
-    const currentTask = database.connection.prepare("SELECT status, progress_json FROM generation_tasks WHERE id = ?").get(taskId) as { status: string; progress_json?: string } | undefined;
-    if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)) return;
+    const currentTask = database.connection.prepare("SELECT status, progress_json, upstream_may_continue FROM generation_tasks WHERE id = ?").get(taskId) as { status: string; progress_json?: string;upstream_may_continue?:number } | undefined;
+    const checkingUnknown=Boolean(options?.reconcileUnknown&&currentTask?.status==='abandoned'&&currentTask.upstream_may_continue);
+    if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)&&!checkingUnknown) return;
 
     try {
       const workerStatus = await getWorkerTaskStatus(engineBaseUrl, secret, workerTaskId, fetcher);
@@ -1011,7 +1052,7 @@ async function pollAndCompleteWorkerTask(
 
       if (status === 'running' && currentTask.status !== 'running') {
         const nowRunning = nowIso();
-        database.connection.prepare("UPDATE generation_tasks SET status = 'running', started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?").run(nowRunning, nowRunning, taskId);
+        database.connection.prepare("UPDATE generation_tasks SET status = 'running', upstream_may_continue=0, cancellation_scope='none', error_code=NULL, error_message=NULL, finished_at=NULL, started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?").run(nowRunning, nowRunning, taskId);
         if (!workerStatus.progress) updateTaskProgress(database, taskId, appId, { value: null, stage: 'running', source: 'windows-worker' });
         recordGenerationEvent(database, {
           taskId,
@@ -1021,13 +1062,17 @@ async function pollAndCompleteWorkerTask(
         });
       }
 
+      if(checkingUnknown&&['queued','accepted'].includes(status)){
+        database.connection.prepare("UPDATE generation_tasks SET status='accepted', upstream_may_continue=0, cancellation_scope='none', error_code=NULL, error_message=NULL, finished_at=NULL,updated_at=? WHERE id=?").run(nowIso(),taskId);
+      }
+
       if (status === 'succeeded' || status === 'confirmed') {
         if (status === 'confirmed') {
           const linked = database.connection.prepare('SELECT COUNT(*) as count FROM generation_task_artifacts WHERE task_id=?').get(taskId) as { count: number };
           if (Number(linked.count) > 0) {
             const nowDone = nowIso();
             database.connection.prepare(
-              "UPDATE generation_tasks SET status = 'succeeded', error_code = NULL, error_message = NULL, progress_json = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
+              "UPDATE generation_tasks SET status = 'succeeded', upstream_may_continue=0, cancellation_scope='none', error_code = NULL, error_message = NULL, progress_json = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
             ).run(JSON.stringify({ value: 1, stage: 'completed', current: 1, total: 1, source: 'windows-worker' }), nowDone, nowDone, taskId);
             break;
           }
@@ -1036,7 +1081,7 @@ async function pollAndCompleteWorkerTask(
         if (!outputs.length) {
           const nowDone = nowIso();
           database.connection.prepare(
-            "UPDATE generation_tasks SET status = 'failed', error_code = 'worker_outputs_missing', error_message = 'Windows Worker 未返回产物', progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+            "UPDATE generation_tasks SET status = 'failed', upstream_may_continue=0, cancellation_scope='none', error_code = 'worker_outputs_missing', error_message = 'Windows Worker 未返回产物', progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
           ).run(JSON.stringify({ value: null, stage: 'error', message: 'Windows Worker 未返回产物', source: 'windows-worker' }), nowDone, nowDone, taskId);
           recordGenerationEvent(database, {
             taskId,
@@ -1119,7 +1164,7 @@ async function pollAndCompleteWorkerTask(
             `).run(taskId, item.artifactId, item.outputName, item.sortOrder, nowDone);
           }
           database.connection.prepare(
-            "UPDATE generation_tasks SET status = 'succeeded', error_code = NULL, error_message = NULL, progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+            "UPDATE generation_tasks SET status = 'succeeded', upstream_may_continue=0, cancellation_scope='none', error_code = NULL, error_message = NULL, progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
           ).run(JSON.stringify({ value: 1, stage: 'completed', current: 1, total: 1, source: 'windows-worker' }), nowDone, nowDone, taskId);
         });
         recordGenerationEvent(database, {
@@ -1152,6 +1197,9 @@ async function pollAndCompleteWorkerTask(
       // The Worker may be restarting or briefly unavailable. Keep the task single-submission and continue polling.
     }
 
+    // A user's status check is one bounded probe, not a ten-minute tracking loop.
+    // An observation timeout/error is not evidence that the submitted task failed.
+    if(options?.singleCheck)return;
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
 
@@ -1211,8 +1259,9 @@ async function pollAndCompleteTaskInternal(
   const pollIntervalMs = options?.pollIntervalMs ?? 500;
   const pollDeadline = Date.now() + pollTimeoutMs;
   while (Date.now() < pollDeadline && !generationExecutionsStopped(database)) {
-    const currentTask = database.connection.prepare("SELECT status FROM generation_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
-    if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)) return;
+    const currentTask = database.connection.prepare("SELECT status,upstream_may_continue FROM generation_tasks WHERE id = ?").get(taskId) as { status: string; upstream_may_continue:number } | undefined;
+    const checkingUnknown=Boolean(options?.reconcileUnknown&&currentTask?.status==='abandoned'&&currentTask.upstream_may_continue);
+    if (!currentTask || ["succeeded", "failed", "cancelled", "abandoned"].includes(currentTask.status)&&!checkingUnknown) return;
 
     try {
       const historyRes = await fetcher(`${engineBaseUrl}/history/${providerTaskId}`, {
@@ -1235,16 +1284,17 @@ async function pollAndCompleteTaskInternal(
       }
 
       if (!historyRes.ok && historyRes.status >= 400 && historyRes.status < 500) {
+        if(checkingUnknown)return;
         const nowDone = nowIso();
         const safeMsg = `上游返回客户端错误 (HTTP ${historyRes.status})`;
         database.connection.prepare(
-          "UPDATE generation_tasks SET status = 'failed', error_code = 'upstream_client_error', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+          "UPDATE generation_tasks SET status = 'abandoned', upstream_may_continue=1,cancellation_scope='local-tracking',error_code = 'upstream_status_unavailable', error_message = ?, updated_at = ?, finished_at = ? WHERE id = ?",
         ).run(safeMsg, nowDone, nowDone, taskId);
         recordGenerationEvent(database, {
           taskId,
           appId,
-          eventType: "failed",
-          payload: { errorCode: "upstream_client_error", errorMessage: safeMsg },
+          eventType: "abandoned",
+          payload: { errorCode: "upstream_status_unavailable", errorMessage: safeMsg },
         });
         break;
       }
@@ -1276,7 +1326,7 @@ async function pollAndCompleteTaskInternal(
             }
             const safeErrMsg = sanitizeErrorMessage(detail || statusObj?.status_str || "执行错误").slice(0, 300);
             database.connection.prepare(
-              "UPDATE generation_tasks SET status = 'failed', error_code = 'execution_error', error_message = ?, progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+              "UPDATE generation_tasks SET status = 'failed', upstream_may_continue=0, error_code = 'execution_error', error_message = ?, progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
             ).run(safeErrMsg, JSON.stringify({ value: null, stage: 'error', message: safeErrMsg, source: 'comfyui' }), nowFailed, nowFailed, taskId);
             recordGenerationEvent(database, {
               taskId,
@@ -1392,7 +1442,7 @@ async function pollAndCompleteTaskInternal(
                   `).run(taskId, p.artifactId, p.outputName, p.sortOrder, nowDone);
                 }
                 database.connection.prepare(
-                  "UPDATE generation_tasks SET status = 'succeeded', error_code = NULL, error_message = NULL, progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
+                  "UPDATE generation_tasks SET status = 'succeeded', upstream_may_continue=0, error_code = NULL, error_message = NULL, progress_json = ?, updated_at = ?, finished_at = ? WHERE id = ?",
                 ).run(JSON.stringify({ value: 1, stage: 'completed', current: 1, total: 1, source: 'comfyui' }), nowDone, nowDone, taskId);
               });
 
@@ -1418,7 +1468,7 @@ async function pollAndCompleteTaskInternal(
         const runningSet = new Set(Array.isArray(qData.queue_running) ? qData.queue_running.map((item) => Array.isArray(item) ? String(item[1] ?? "") : "").filter(Boolean) : []);
         if (runningSet.has(providerTaskId) && currentTask.status !== "running") {
           const nowRunning = nowIso();
-          database.connection.prepare("UPDATE generation_tasks SET status = 'running', started_at = COALESCE(started_at, ?), progress_json = ?, updated_at = ? WHERE id = ?").run(nowRunning, JSON.stringify({ value: null, stage: 'running', source: 'comfyui' }), nowRunning, taskId);
+          database.connection.prepare("UPDATE generation_tasks SET status = 'running', upstream_may_continue=0, error_code=NULL,error_message=NULL,finished_at=NULL,started_at = COALESCE(started_at, ?), progress_json = ?, updated_at = ? WHERE id = ?").run(nowRunning, JSON.stringify({ value: null, stage: 'running', source: 'comfyui' }), nowRunning, taskId);
           recordGenerationEvent(database, {
             taskId,
             appId,
@@ -1431,6 +1481,7 @@ async function pollAndCompleteTaskInternal(
       // transient poll failure
     }
 
+    if(options?.singleCheck)return;
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
 
@@ -1703,7 +1754,7 @@ export async function scheduleQueuedTasks(
 ): Promise<void> {
   try {
   const queuedTasks = database.connection.prepare(
-    "SELECT id FROM generation_tasks WHERE status = 'queued' ORDER BY CASE priority WHEN 'interactive' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, created_at ASC",
+    "SELECT id FROM generation_tasks WHERE status = 'queued' AND COALESCE(error_code,'') != 'studio_resume_required' ORDER BY CASE priority WHEN 'interactive' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, created_at ASC",
   ).all() as Array<{ id: string }>;
 
   for (const row of queuedTasks) {
@@ -1802,7 +1853,7 @@ export async function reconcileGenerationTasks(
     const appId = String(task.app_id);
     const status = String(task.status);
 
-    if (status === "queued") {
+    if (status === "queued" && task.error_code !== 'studio_resume_required') {
       const p = (async () => {
         await processTaskExecution(config, database, secrets, taskId, fetcher);
       })()
@@ -1819,7 +1870,7 @@ export async function reconcileGenerationTasks(
     } else if (status === "submitting" && !task.provider_task_id) {
       const now = nowIso();
       database.connection.prepare(
-        "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '服务重启导致提交中断，状态未知，禁止自动重试', updated_at = ?, finished_at = ? WHERE id = ?",
+        "UPDATE generation_tasks SET status = 'abandoned', error_code = 'submission_outcome_unknown', error_message = '服务重启导致提交中断，状态未知，禁止自动重试', upstream_may_continue=1, cancellation_scope='local-tracking', updated_at = ?, finished_at = ? WHERE id = ?",
       ).run(now, now, taskId);
       recordGenerationEvent(database, {
         taskId,

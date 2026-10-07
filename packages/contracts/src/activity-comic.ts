@@ -1,5 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { SceneBeatRenderSettingsSchema } from './activities.js';
+import { BeatRenderParameterFieldSchema } from './ai-calls.js';
+import { ImageOperationMetadataSchema } from './activity-image-operations.js';
 
 export const ComicTemplateSchema = Type.Union([
   Type.Literal('single'), Type.Literal('duo'), Type.Literal('trio'), Type.Literal('quad'),
@@ -128,6 +130,7 @@ export const ComicHistoryImageSchema = Type.Object({
   unavailableReason: Type.Union([Type.String(), Type.Null()]), current: Type.Boolean(), sourceChanged: Type.Boolean(),
   sourceFingerprint: Type.Union([Type.String(), Type.Null()]),
   callId: Type.Union([Type.String(), Type.Null()]), previewUrl: Type.Union([Type.String(), Type.Null()]),
+  imageOperation: Type.Optional(ImageOperationMetadataSchema),
 });
 export type ComicHistoryImage = Static<typeof ComicHistoryImageSchema>;
 
@@ -184,7 +187,10 @@ export const ComicRenderPreviewSchema = Type.Object({
   seed: Type.Integer({ minimum: 0, maximum: 2_147_483_647 }), sourceFingerprint: Type.String(),
   presetId: Type.Union([Type.String(), Type.Null()]), presetRevision: Type.Union([Type.Integer(), Type.Null()]),
   promptPolicyRevision: Type.Integer({ minimum: 0 }), referenceSupported: Type.Boolean(), referenceSelected: Type.Boolean(),
+  /** 当前工作流版本的提示词组装模式（计划 §15.1：常用页要说明模式来自哪个工作流）。 */
+  promptAssembly: Type.Union([Type.Literal('service-finalized-v1'), Type.Literal('workflow-internal')]),
   parameters: Type.Record(Type.String(), Type.Unknown()), positivePrompt: Type.String(), negativePrompt: Type.String(),
+  fields: Type.Optional(Type.Array(BeatRenderParameterFieldSchema)),
   sources: Type.Array(Type.Object({ label: Type.String(), value: Type.String() })),
   loras: Type.Array(Type.Object({ model: Type.String(), strength: Type.Number(), enabled: Type.Boolean(), available: Type.Boolean() })),
   warnings: Type.Array(Type.String()),

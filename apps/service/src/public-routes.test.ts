@@ -213,8 +213,11 @@ test('image gateway handles submission errors, missing task ID, and upstream tim
   fetcher = async () => new Response('Invalid HTML page', { status: 200 });
   ({ app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher }));
   res = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'err-request-2' }, payload: { workflow: { 1: {} } } });
-  assert.equal(res.statusCode, 502);
-  assert.equal(res.json().error, 'image_missing_task_id');
+  // A success response without a trackable task ID is an uncertain submission,
+  // not a definite rejection: it must not be reported as safely retryable.
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.json().error, 'image_unavailable');
+  assert.match(res.json().message, /未返回|未知|任务 ID/);
   await app.close();
 
   // 3. Upstream network failure / timeout

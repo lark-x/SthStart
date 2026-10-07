@@ -17,6 +17,8 @@ import { generateAutoPlayback } from './playback.js';
 import type { ActivityStore } from './store.js';
 import { createZip, createZipToFile, type ZipEntryInput } from './zip.js';
 import { compileHyperFramesComposition } from '@sthstart/activity-playback';
+import {collectStudioArchive} from './studio-archive.js';
+import {redactAiValue} from '../ai-call-trace.js';
 
 export type ExportFormat = 'reader' | 'project' | 'hyperframes-project';
 
@@ -465,7 +467,7 @@ export async function collectExportEntries(
 
   // 1. Core Data
   const mediaDoc: MediaRevisionDocument | null = mediaRev
-    ? { schemaVersion: 1, slotBindings: mediaRev.slotBindings }
+    ? { schemaVersion: 1, slotBindings: mediaRev.slotBindings,...(mediaRev.imageConfigRevisionId?{imageConfigRevisionId:mediaRev.imageConfigRevisionId}:{}) }
     : null;
 
   const activityJson = JSON.stringify(activity, null, 2);
@@ -697,9 +699,9 @@ export async function collectExportEntries(
       { path: 'data/provenance/index.json', data: JSON.stringify(provenanceIndex, null, 2) },
       { path: 'data/provenance/image-configs.json', data: JSON.stringify(configs, null, 2) },
       { path: 'data/provenance/recipes.json', data: JSON.stringify(recipes, null, 2) },
-      { path: 'data/provenance/compilations.json', data: JSON.stringify(compilations, null, 2) },
+      { path: 'data/provenance/compilations.json', data: JSON.stringify(redactAiValue(compilations), null, 2) },
       { path: 'data/provenance/attempts.json', data: JSON.stringify(attempts, null, 2) },
-      { path: 'data/provenance/execution-snapshots.json', data: JSON.stringify(snapshots, null, 2) },
+      { path: 'data/provenance/execution-snapshots.json', data: JSON.stringify(redactAiValue(snapshots), null, 2) },
       { path: 'data/provenance/lineage.json', data: JSON.stringify(lineage, null, 2) },
     );
   }
@@ -816,6 +818,7 @@ export async function collectExportEntries(
   },null,2)});
 
   // 6. Manifest with SHA-256
+  if(format==='project'||format==='hyperframes-project')entries.push(...collectStudioArchive(database,config,activityId));
   const manifestFiles: ExportManifest['files'] = await Promise.all(entries.map(async (e) => {
     if (e.filePath) {
       const stat = statSync(e.filePath);

@@ -56,15 +56,18 @@ test('MCP Schema and Contract Verification Test', async (t) => {
   try {
     await client.connect(transport);
 
-    await t.test('1. 列出工具应严格包含 6 个核心工具且具备完整 inputSchema', async () => {
+    await t.test('1. 列出九个工具并保留核心工具 inputSchema', async () => {
       const { tools } = await client.listTools();
-      assert.equal(tools.length, 6);
+      assert.equal(tools.length, 9);
       const names = tools.map((t) => t.name).sort();
       assert.deepEqual(names, [
         'get_project',
         'get_proposal_status',
         'list_entries',
+        'list_entry_revisions',
+        'list_proposals',
         'read_entry',
+        'read_entry_revision',
         'search_entries',
         'submit_proposal',
       ]);

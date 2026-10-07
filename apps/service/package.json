@@ -18,6 +18,7 @@
     "@deepseek-ai/dsh-sdk-protocol": "0.1.7-rc.2",
     "@fastify/cors": "^11.1.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@napi-rs/canvas": "^1.0.10",
     "@sinclair/typebox": "^0.34.41",
     "@sthstart/activity-playback": "0.1.0",
     "@sthstart/contracts": "0.1.0",

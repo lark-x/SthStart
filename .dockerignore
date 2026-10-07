@@ -9,6 +9,7 @@ node_modules
 .zcode
 dist
 data
+artifacts
 *.log
 npm-debug.log*
 .env

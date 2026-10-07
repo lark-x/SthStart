@@ -19,6 +19,7 @@ import {
   Compass,
   Bookmark,
   ChevronRight,
+  ChevronDown,
   Layers,
   Users,
   PanelRightClose,
@@ -68,6 +69,12 @@ import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
 import { getEffectiveStageScenes } from '../scene-beat-utils';
+import { navigateActivityStudio, resolveActivityStudioRoute, type ActivityStudioRoute, type StudioTab } from '../studio-route';
+import { useImageConfigDraft } from '../queries';
+import { ArtDirectionDialog } from './art-direction-dialog';
+import { ComicWorkstation } from '../comic/comic-workstation';
+import { ActivityGallery } from './activity-gallery';
+import { StudioSmartDialog } from './studio-smart-dialog';
 
 interface ActivityStudioWorkspaceProps {
   activityId: string;
@@ -77,11 +84,9 @@ interface ActivityStudioWorkspaceProps {
 type PipelineStep = 'script' | 'playback' | 'media' | 'planning' | 'export';
 
 const PIPELINE_STEPS = [
-  { id: 'script' as const, label: '分镜漫剧', icon: MessageSquare, desc: '场次分镜流、动作对白与镜头绘制' },
-  { id: 'playback' as const, label: '视听剧场', icon: PlaySquare, desc: '动态立绘视窗、全景背景与互动回放' },
-  { id: 'media' as const, label: '视觉资产', icon: Camera, desc: '全书媒体槽位与画廊管理' },
-  { id: 'planning' as const, label: '企划设定', icon: Compass, desc: '活动主题、参与角色与阶段目标' },
-  { id: 'export' as const, label: '导出交付', icon: Download, desc: '离线漫画包与漫剧视频工程导出' },
+  { id: 'studio' as const, label: '创作工坊', icon: MessageSquare, desc: '剧情记录、分镜、漫画和素材制作' },
+  { id: 'theater' as const, label: '阅读与演播', icon: PlaySquare, desc: '漫画逐格阅读与原活动回放' },
+  { id: 'delivery' as const, label: '资产与交付', icon: Download, desc: '活动画廊与导出' },
 ] as const;
 
 function cleanStageTitle(title: string) {
@@ -92,16 +97,44 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const comicMode = searchParams.get('mode') === 'comic';
+  const [studioRoute, setStudioRoute] = useState<ActivityStudioRoute>(() => resolveActivityStudioRoute(searchParams.toString()).route);
+  const comicMode = studioRoute.view === 'comic' && studioRoute.tab === 'studio' || studioRoute.tab === 'theater' && studioRoute.mode === 'comic';
   const initialRouteHandled = useRef(false);
   const lastSynchronizedJobId = useRef(searchParams.get('jobId'));
 
   // 当前流水线步骤
-  const [currentStep, setCurrentStep] = useState<PipelineStep>('script');
+  const currentStep: PipelineStep = studioRoute.tab === 'theater' ? 'playback' : studioRoute.tab === 'delivery' ? 'export'
+    : studioRoute.view === 'assets' ? 'media' : 'script';
+  const comicFlush = useRef<(() => Promise<boolean>) | null>(null);
+  const mediaFlush = useRef<(() => Promise<boolean>) | null>(null);
+  const routeTransition = useRef(0);
+  const acceptedSearch = useRef(resolveActivityStudioRoute(searchParams.toString()).canonicalSearch);
 
   // 剧情创作内部的子视图（场次分镜流 / 群聊 / 朋友圈 / 剧情事实）
-  const [contentView, setContentView] = useState<'beats' | 'chat' | 'moments' | 'facts'>('beats');
+  const [contentView, setContentView] = useState<'beats' | 'chat' | 'moments' | 'facts'>(studioRoute.view === 'records' ? studioRoute.recordView : 'beats');
   const [mobileStagePickerOpen, setMobileStagePickerOpen] = useState(false);
+  const [moreViewsOpen, setMoreViewsOpen] = useState(false);
+  const moreViewsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!moreViewsOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreViewsRef.current && !moreViewsRef.current.contains(e.target as Node)) {
+        setMoreViewsOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMoreViewsOpen(false);
+      }
+    };
+    window.document.addEventListener('mousedown', handleClickOutside);
+    window.document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.document.removeEventListener('mousedown', handleClickOutside);
+      window.document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [moreViewsOpen]);
 
   // 当前聚焦的阶段 ID
   const [focusedStageId, setFocusedStageId] = useState<string | undefined>(
@@ -161,6 +194,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
   const draft = useStudioDraft(activityId, draftData?.draft);
   const { document, status: saveStatus } = draft;
+  const imageConfigQuery = useImageConfigDraft(activityId);
 
   // 定位锚点处理
   useEffect(() => {
@@ -301,35 +335,60 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
   };
 
   // 流水线步骤切换
-  const navigateStep = async (step: PipelineStep) => {
-    if ((step === 'media' || step === 'playback' || step === 'export') && !(await prepareContent()))
-      return;
-    setCurrentStep(step);
+  const navigateStudio = async (patch: Partial<ActivityStudioRoute>) => {
+    if (!(await draft.flush()) || comicFlush.current && !(await comicFlush.current()) || mediaFlush.current && !(await mediaFlush.current())) return;
+    setErrorMessage(null);
+    router.push(`${pathname}?${navigateActivityStudio(searchParams.toString(), patch)}`, { scroll: false });
   };
-
+  const navigateStep = (tab: StudioTab) => navigateStudio({ tab, panel: null });
+  const flushStudioInputs = async () => await draft.flush() && (!comicFlush.current || await comicFlush.current()) && (!mediaFlush.current || await mediaFlush.current());
+  const selectStudioJob = async (id: string | null) => {
+    if (!await flushStudioInputs()) return;
+    const params = new URLSearchParams(navigateActivityStudio(searchParams.toString(), { panel: 'smart-create' }));
+    if (id) params.set('studioJobId', id); else params.delete('studioJobId');
+    router.push(`${pathname}?${params}`, { scroll: false });
+  };
+  const changeContentView = (view: typeof contentView) => {
+    void navigateStudio({ tab: 'studio', view: view === 'beats' ? 'storyboard' : 'records',
+      ...(view === 'beats' ? {} : { recordView: view }) });
+  };
+  const selectFocusedStage = async (stageId: string) => {
+    if (!(await draft.flush()) || comicFlush.current && !(await comicFlush.current()) || mediaFlush.current && !(await mediaFlush.current())) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('stageId', stageId);
+    router.push(`${pathname}?${params}`, { scroll: false });
+  };
   useEffect(() => {
-    if (initialRouteHandled.current || !activityData?.activity || !draftData?.draft) return;
-    initialRouteHandled.current = true;
-    const tab = searchParams.get('tab');
-    const routeStep: PipelineStep = tab === 'settings' ? 'planning'
-      : tab === 'media' ? 'media'
-      : tab === 'playback' ? 'playback'
-      : tab === 'export' ? 'export'
-      : 'script';
-    if (tab === 'records') setContentView('chat');
-    if (routeStep === 'media' || routeStep === 'playback' || routeStep === 'export') {
+    if (!activityData?.activity || !draftData?.draft) return;
+    const synchronized = resolveActivityStudioRoute(searchParams.toString());
+    if (synchronized.canonicalSearch !== searchParams.toString()) {
+      router.replace(`${pathname}?${synchronized.canonicalSearch}`, { scroll: false });
+      return;
+    }
+    const transition = ++routeTransition.current;
+    if (synchronized.canonicalSearch !== acceptedSearch.current || JSON.stringify(synchronized.route) !== JSON.stringify(studioRoute)) {
       void (async () => {
-        if (await prepareContent()) setCurrentStep(routeStep);
+        const saved = await draft.flush() && (!comicFlush.current || await comicFlush.current()) && (!mediaFlush.current || await mediaFlush.current());
+        if (transition !== routeTransition.current) return;
+        if (!saved) {
+          setErrorMessage('先处理未保存输入或版本冲突，当前编辑内容已保留。');
+          router.replace(`${pathname}?${acceptedSearch.current}`, { scroll: false });
+          return;
+        }
+        acceptedSearch.current = synchronized.canonicalSearch;
+        setFocusedStageId(new URLSearchParams(synchronized.canonicalSearch).get('stageId') || undefined);
+        setStudioRoute(synchronized.route);
+        setContentView(synchronized.route.view === 'records' ? synchronized.route.recordView : 'beats');
       })();
-    } else {
-      setCurrentStep(routeStep);
     }
-    const requestedJobId = searchParams.get('jobId');
-    if (requestedJobId) {
-      setGenerationStageId(searchParams.get('stageId') || undefined);
-      setGenerationModalOpen(true);
+    if (!initialRouteHandled.current) {
+      initialRouteHandled.current = true;
+      if (searchParams.get('jobId')) {
+        setGenerationStageId(searchParams.get('stageId') || undefined);
+        setGenerationModalOpen(true);
+      }
     }
-  }, [activityData, draftData, searchParams]);
+  }, [activityData, draftData, searchParams, studioRoute]);
 
   const activity = activityData?.activity;
   const stages = document?.stages || [];
@@ -602,7 +661,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             {comfyEngine ? (
               <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 border border-emerald-500/20" title={`已连接 ${comfyEngine.name} (${comfyEngine.base_url})`}>
                 <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                ComfyUI 在线
+                ComfyUI 已配置
               </span>
             ) : (
               <Link href="/settings/generation" className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 border border-amber-500/20 hover:bg-amber-500/20" title="点击前往配置 ComfyUI">
@@ -617,7 +676,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         <nav aria-label="工坊产物阶段" className="hidden lg:flex items-center gap-1 bg-surface-muted p-1 rounded-[var(--radius-control)] border border-border-default shadow-2xs">
           {PIPELINE_STEPS.map((step) => {
             const Icon = step.icon;
-            const isActive = currentStep === step.id;
+            const isActive = studioRoute.tab === step.id;
             return (
               <button
                 key={step.id}
@@ -735,7 +794,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
       <nav aria-label="活动流程" className="lg:hidden flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface px-2 py-1.5">
         {PIPELINE_STEPS.map((step) => {
           const Icon = step.icon;
-          const active = currentStep === step.id;
+          const active = studioRoute.tab === step.id;
           return (
             <button key={step.id} type="button" onClick={() => void navigateStep(step.id)}
               aria-current={active ? 'step' : undefined}
@@ -745,6 +804,22 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           );
         })}
       </nav>
+
+      <section aria-label="活动美术与工作区" className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-surface px-3 py-2 sm:px-6">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {studioRoute.tab === 'studio' ? (['storyboard','comic','records','assets'] as const).map(view => <Button key={view} size="sm" variant={studioRoute.view === view ? 'accent' : 'ghost'} onClick={() => void navigateStudio({ view })}>
+            {{ storyboard: '分镜', comic: '漫画', records: '剧情记录', assets: '素材制作' }[view]}</Button>)
+            : studioRoute.tab === 'theater' ? (['activity','comic'] as const).map(mode => <Button key={mode} size="sm" variant={studioRoute.mode === mode ? 'accent' : 'ghost'} onClick={() => void navigateStudio({ mode })}>{mode === 'comic' ? '漫画阅读' : '活动回放'}</Button>)
+              : (['gallery','exports'] as const).map(deliveryView => <Button key={deliveryView} size="sm" variant={studioRoute.deliveryView === deliveryView ? 'accent' : 'ghost'} onClick={() => void navigateStudio({ deliveryView })}>{deliveryView === 'gallery' ? '活动画廊' : '导出'}</Button>)}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="hidden max-w-xs truncate text-xs text-muted sm:block">{imageConfigQuery.data?.document.artDirection
+            ? `${imageConfigQuery.data.document.artDirection.selectedStyle?.name ?? '自定义画风'} · ${imageConfigQuery.data.document.artDirection.quality === 'draft' ? '草图' : '成稿'} · ${imageConfigQuery.data.document.artDirection.canvas.width}×${imageConfigQuery.data.document.artDirection.canvas.height}` : '沿用原活动配置'}</span>
+          <Button size="sm" variant="outline" onClick={() => void navigateStudio({ panel: 'art-direction' })}>美术设置</Button>
+          <Button size="sm" variant="accent" onClick={() => void navigateStudio({ panel: 'smart-create' })}>智能制作</Button>
+          <Button size="sm" variant="ghost" onClick={() => void navigateStudio({ panel: 'activity-settings' })}>活动设置</Button>
+        </div>
+      </section>
 
 
 
@@ -779,20 +854,20 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
       <div className="relative flex-1 flex overflow-hidden min-h-0">
 
         {/* === 左侧：现代化紧凑场次导轨 (56px 胶卷导轨，悬停展开详细信息) === */}
-        {currentStep === 'script' && stages.length > 0 && (
+        {currentStep === 'script' && !comicMode && stages.length > 0 && (
           <StageRailNav
             stages={stages}
             scenes={document.scenes || []}
             activeStageId={effectiveStageId}
             onSelectStage={(stId) => {
-              setFocusedStageId(stId);
+              void selectFocusedStage(stId);
             }}
             onAddStage={handleAddStageInPlace}
           />
         )}
 
         {/* === 中间：沉浸核心工作台 (Flex-1) === */}
-        <main className={`flex-1 h-full min-h-0 flex flex-col bg-paper min-w-0 ${comicMode ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 h-full min-h-0 flex flex-col bg-paper min-w-0 ${comicMode || (currentStep === 'script' && contentView === 'beats') ? 'overflow-hidden' : 'overflow-y-auto'}`}>
 
           {/* 错误提示 */}
           {(errorMessage || draft.error) && (
@@ -805,7 +880,8 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           )}
 
           {/* 步骤 1：基础企划与阶段大纲 (Planning & Stages) */}
-          {currentStep === 'planning' && (
+          {studioRoute.panel === 'activity-settings' && (
+            <ResponsiveEditOverlay open onOpenChange={open => { if (!open) void navigateStudio({ panel: null }); }} title="活动设置" description="主题、演员和阶段目标；修改按原草稿队列保存，失败时保留输入。">
             <div className="p-6 max-w-5xl mx-auto w-full space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-border-default">
                 <div>
@@ -980,10 +1056,11 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                 </div>
               </details>
             </div>
+            </ResponsiveEditOverlay>
           )}
 
           {/* 步骤 2：剧情创作 (RecordsEditor - 释放垂直空间) */}
-          {currentStep === 'script' && (() => {
+          {currentStep === 'script' && !comicMode && (() => {
             const currentStage = effectiveStage;
             const stageIndex = stages.findIndex((s) => s.id === effectiveStageId);
 
@@ -999,8 +1076,8 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                 )}
                 {/* 阶段大纲目标与 Beats 卡片 */}
                 {currentStage && (
-                  <div className="border-b border-border-default bg-surface px-6 py-2.5 space-y-2 shrink-0">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="border-b border-border-default bg-surface px-4 py-1.5 space-y-1.5 shrink-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="px-2 py-0.5 rounded bg-accent/10 text-accent font-bold text-xs shrink-0">
                           第 {stageIndex >= 0 ? stageIndex + 1 : 1} 幕
@@ -1016,7 +1093,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                         )}
                         <button type="button" onClick={() => setMobileStagePickerOpen(!mobileStagePickerOpen)}
                           aria-expanded={mobileStagePickerOpen}
-                          className="xl:hidden rounded border border-border-default px-2 py-1 text-xs text-muted hover:text-ink">
+                          className="xl:hidden rounded border border-border-default px-2 py-0.5 text-xs text-muted hover:text-ink">
                           切换幕
                         </button>
                       </div>
@@ -1024,15 +1101,16 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] bg-surface-muted p-0.5 text-xs">
                           {([
-                            { id: 'beats' as const, label: `分镜 (${getEffectiveStageScenes(currentStage, document.scenes).length})` },
-                            { id: 'chat' as const, label: `对话台词 (${document.messages.filter(m => m.stageId === currentStage.id).length})` },
-                            { id: 'moments' as const, label: `朋友圈 (${document.posts.filter(p => p.stageId === currentStage.id).length})` },
-                            { id: 'facts' as const, label: `剧情事实 (${document.facts.filter(f => f.stageId === currentStage.id).length})` },
+                            { id: 'beats' as const, label: `分镜漫剧 (${getEffectiveStageScenes(currentStage, document.scenes).length})` },
+                            { id: 'chat' as const, label: `剧本对话 (${document.messages.filter(m => m.stageId === currentStage.id).length})` },
                           ]).map((v) => (
                             <button
                               key={v.id}
                               type="button"
-                              onClick={() => setContentView(v.id)}
+                              onClick={() => {
+                                changeContentView(v.id);
+                                setMoreViewsOpen(false);
+                              }}
                               className={`px-3 py-1 rounded-[var(--radius-control)] transition-colors cursor-pointer ${
                                 contentView === v.id
                                   ? 'bg-surface font-semibold text-ink shadow-2xs'
@@ -1042,15 +1120,77 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                               {v.label}
                             </button>
                           ))}
-                        </div>
 
+                          {/* 更多视图下拉菜单 (朋友圈 / 剧情事实) */}
+                          <div ref={moreViewsRef} className="relative inline-block">
+                            <button
+                              type="button"
+                              onClick={() => setMoreViewsOpen(!moreViewsOpen)}
+                              className={`px-2.5 py-1 rounded-[var(--radius-control)] transition-colors cursor-pointer flex items-center gap-1 ${
+                                (contentView === 'moments' || contentView === 'facts')
+                                  ? 'bg-surface font-semibold text-ink shadow-2xs'
+                                  : 'text-muted hover:text-ink'
+                              }`}
+                              title="更多视图 (朋友圈、剧情事实)"
+                              aria-haspopup="true"
+                              aria-expanded={moreViewsOpen}
+                            >
+                              <span>
+                                {contentView === 'moments'
+                                  ? `朋友圈 (${document.posts.filter(p => p.stageId === currentStage.id).length})`
+                                  : contentView === 'facts'
+                                  ? `剧情事实 (${document.facts.filter(f => f.stageId === currentStage.id).length})`
+                                  : '更多视图'}
+                              </span>
+                              <ChevronDown className={`h-3 w-3 transition-transform duration-150 ${moreViewsOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {moreViewsOpen && (
+                              <div className="absolute right-0 top-full mt-1 z-50 min-w-[130px] rounded-lg border border-border-default bg-surface p-1 shadow-md space-y-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    changeContentView('moments');
+                                    setMoreViewsOpen(false);
+                                  }}
+                                  className={`w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                                    contentView === 'moments'
+                                      ? 'bg-accent/10 font-bold text-accent'
+                                      : 'text-muted hover:text-ink hover:bg-surface-muted'
+                                  }`}
+                                >
+                                  <span>朋友圈</span>
+                                  <span className="font-mono text-[10px]">
+                                    ({document.posts.filter(p => p.stageId === currentStage.id).length})
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    changeContentView('facts');
+                                    setMoreViewsOpen(false);
+                                  }}
+                                  className={`w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                                    contentView === 'facts'
+                                      ? 'bg-accent/10 font-bold text-accent'
+                                      : 'text-muted hover:text-ink hover:bg-surface-muted'
+                                  }`}
+                                >
+                                  <span>剧情事实</span>
+                                  <span className="font-mono text-[10px]">
+                                    ({document.facts.filter(f => f.stageId === currentStage.id).length})
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
                     {mobileStagePickerOpen && (
                       <div className="xl:hidden flex gap-2 overflow-x-auto border-t border-border-subtle pt-2">
                         {stages.map((stage, index) => (
-                          <button key={stage.id} type="button" aria-pressed={stage.id === currentStage.id} onClick={() => { setFocusedStageId(stage.id); setMobileStagePickerOpen(false); }}
+                          <button key={stage.id} type="button" aria-pressed={stage.id === currentStage.id} onClick={() => { void selectFocusedStage(stage.id); setMobileStagePickerOpen(false); }}
                             className={`shrink-0 rounded-[var(--radius-control)] px-3 py-1.5 text-xs ${stage.id === currentStage.id ? 'bg-accent text-white' : 'bg-surface-muted text-ink'}`}>
                             第 {index + 1} 幕 · {cleanStageTitle(stage.title)}
                           </button>
@@ -1061,18 +1201,18 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
 
                     {/* 阶段指导说明与关键事件 (Beats) - 紧凑单行条 */}
                     {(currentStage.instruction || (currentStage.requiredBeats && currentStage.requiredBeats.length > 0)) && (
-                      <div className="flex items-center justify-between gap-3 text-xs text-muted pt-1.5 border-t border-border-subtle">
-                        <div className="flex items-center gap-2 min-w-0 truncate">
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted pt-1 border-t border-border-subtle/50">
+                        <div className="flex items-center gap-1.5 min-w-0 truncate">
                           {currentStage.instruction && (
-                            <span className="truncate" title={currentStage.instruction}>
-                              <span className="font-semibold text-ink">目标：</span>
-                              {currentStage.instruction}
+                            <span className="truncate inline-flex items-center gap-1" title={currentStage.instruction}>
+                              <span className="px-1.5 py-0.2 rounded bg-surface-muted text-ink font-semibold text-[11px] shrink-0">目标</span>
+                              <span className="truncate text-ink/80 text-[11px]">{currentStage.instruction}</span>
                             </span>
                           )}
                         </div>
                         {currentStage.requiredBeats && currentStage.requiredBeats.length > 0 && (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-muted">关键事件:</span>
+                          <div className="flex items-center gap-1 shrink-0 overflow-x-auto">
+                            <span className="text-[10px] font-semibold text-muted shrink-0">关键事件:</span>
                             {currentStage.requiredBeats.map((beat) => {
                               const isMentioned =
                                 document.messages.some((m) => m.stageId === currentStage.id && m.text.includes(beat.text)) ||
@@ -1081,14 +1221,14 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                                 <span
                                   key={beat.id}
                                   title={beat.text}
-                                  className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] ${
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] shrink-0 ${
                                     isMentioned
                                       ? 'bg-emerald-500/10 text-emerald-700 font-medium'
                                       : 'bg-surface-muted text-muted'
                                   }`}
                                 >
                                   <span>{isMentioned ? '✓' : '○'}</span>
-                                  <span className="max-w-[120px] truncate">{beat.text}</span>
+                                  <span className="max-w-[110px] truncate">{beat.text}</span>
                                 </span>
                               );
                             })}
@@ -1104,6 +1244,16 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                   {!currentStage ? null : contentView === 'beats' ? (
                     <SceneBeatEditor
                       activityId={activityId}
+                      focusedSceneId={new URLSearchParams(acceptedSearch.current).get('sceneId') || undefined}
+                      focusedBeatId={new URLSearchParams(acceptedSearch.current).get('beatId') || undefined}
+                      onFocusTarget={async (sceneId, beatId) => {
+                        if (!(await draft.flush())) return false;
+                        const params = new URLSearchParams(acceptedSearch.current);
+                        params.set('sceneId', sceneId);
+                        if (beatId) params.set('beatId', beatId); else params.delete('beatId');
+                        router.push(`${pathname}?${params}`, { scroll: false });
+                        return true;
+                      }}
                       stage={currentStage}
                       document={document}
                       actors={actors}
@@ -1118,13 +1268,13 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                       stages={stages}
                       actors={actors}
                       currentStageId={effectiveStageId}
-                      onSelectStage={setFocusedStageId}
+                      onSelectStage={stageId => void selectFocusedStage(stageId)}
                       hideStageSelector={true}
                       onUpdateDocument={handleUpdateDocument}
                       hideViewTabs
                       onOpenWorkbench={(slotId) => setWorkbenchSlotId(slotId)}
                       activeView={contentView}
-                      onActiveViewChange={(v) => setContentView(v === 'script' ? 'beats' : v)}
+                      onActiveViewChange={(v) => changeContentView(v === 'script' ? 'beats' : v)}
                     />
                   )}
                 </div>
@@ -1136,6 +1286,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           {currentStep === 'media' && (
             <div className="p-6 max-w-6xl mx-auto w-full">
               <MediaWorkstation
+                registerFlush={callback => { mediaFlush.current = callback; }}
                 activity={activity}
                 document={document}
                 currentMediaRevision={activityData.currentMediaRevision}
@@ -1145,7 +1296,14 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
             </div>
           )}
 
-          {currentStep === 'playback' && (
+          {comicMode && (
+            <div className="min-h-0 flex-1 overflow-hidden"><ComicWorkstation
+              activity={activity} content={document} actors={actors} readingOnly={studioRoute.tab === 'theater'}
+              registerFlush={callback => { comicFlush.current = callback; }}
+              onBack={() => void navigateStudio({ tab: 'studio', view: 'storyboard', mode: 'activity' })}
+              onEdit={() => void navigateStudio({ tab: 'studio', view: 'comic' })} /></div>
+          )}
+          {currentStep === 'playback' && !comicMode && (
             <div className={`flex-1 min-h-0 ${comicMode ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 sm:p-6'}`}>
               <PlaybackWorkstation
                 key={`${activity.id}:${activity.currentContentRevisionId || 'none'}:${activity.currentMediaRevisionId || 'none'}`}
@@ -1154,12 +1312,13 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                 currentPlaybackRevision={playbackRevision}
                 mediaRevision={activityData.currentMediaRevision || null}
                 actors={actors}
+                hideModeSwitcher
               />
             </div>
           )}
 
           {/* 步骤 4：导出交付 (ExportPanel) */}
-          {currentStep === 'export' && (
+          {currentStep === 'export' && studioRoute.deliveryView === 'exports' && (
             <div className="p-6 max-w-5xl mx-auto w-full">
               <ExportPanel
                 activity={activity}
@@ -1170,6 +1329,16 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
               />
             </div>
           )}
+          {currentStep === 'export' && studioRoute.deliveryView === 'gallery' && <ActivityGallery activityId={activity.id} onCreate={() => void navigateStudio({ tab: 'studio', view: 'assets' })} />}
+          <ArtDirectionDialog activity={activity} open={studioRoute.panel === 'art-direction'}
+            onOpenChange={open => { if (!open) void navigateStudio({ panel: null }); }}
+            beforeApply={() => draft.flush()} onApplied={async () => { await refetchActivity(); await imageConfigQuery.refetch(); }} />
+          <StudioSmartDialog key={activity.id} activityId={activity.id} content={document} open={studioRoute.panel === 'smart-create'}
+            stageId={focusedStageId} sceneId={new URLSearchParams(acceptedSearch.current).get('sceneId') ?? undefined}
+            beatId={new URLSearchParams(acceptedSearch.current).get('beatId') ?? undefined} panelId={new URLSearchParams(acceptedSearch.current).get('panelId') ?? undefined}
+            jobId={new URLSearchParams(acceptedSearch.current).get('studioJobId')}
+            onClose={() => void navigateStudio({ panel: null })} onSelectJob={id => void selectStudioJob(id)} beforeAction={flushStudioInputs}
+            onApplied={async () => { await refetchActivity(); await refetchDraft(); }} />
         </main>
 
         {/* === 右侧：统一 AI 伴侣侧栏 (Copilot Panel) === */}

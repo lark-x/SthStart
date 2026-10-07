@@ -80,6 +80,7 @@ export const activityKeys = {
   comicRevisions: (id: string) => [...activityKeys.all, 'comic', id, 'revisions'] as const,
   comicJob: (id: string, jobId: string) => [...activityKeys.all, 'comic', id, 'job', jobId] as const,
   assets: (id: string) => [...activityKeys.all, 'assets', id] as const,
+  gallery: (id: string) => [...activityKeys.all, 'gallery', id] as const,
   jobs: (id: string) => [...activityKeys.all, 'jobs', id] as const,
   job: (id: string, jobId: string) => [...activityKeys.all, 'job', id, jobId] as const,
   candidates: (id: string) => [...activityKeys.all, 'candidates', id] as const,

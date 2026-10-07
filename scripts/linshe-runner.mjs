@@ -23,7 +23,9 @@ if (!environment.agentReady || !environment.webReady) {
 
 try {
   serviceUrl = normalizeServiceUrl(process.env.STHSTART_SERVICE_URL);
-  hostedEnvironment = createLinsheHostedEnvironment(serviceUrl, appToken);
+  hostedEnvironment = createLinsheHostedEnvironment(serviceUrl, appToken, {
+    imageViaGateway: process.env.STHSTART_PUBLIC_IMAGE === 'true',
+  });
 } catch (error) {
   console.error(`[SthStart] ${error instanceof Error && error.message === 'missing_STHSTART_APP_TOKEN'
     ? '缺少 STHSTART_APP_TOKEN。请在项目 .env 中配置与 SthStart 公共服务邻舍身份匹配的令牌。'

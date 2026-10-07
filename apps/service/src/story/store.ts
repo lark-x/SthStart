@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import type {
   CreateNativeStoryProposal, CreateStoryCharacter, CreateStoryDocument, CreateStoryProject, CreateStoryProposal,
   StoryCharacter, StoryContextSettings, StoryDocument, StoryDocumentKind, StoryEntryRevision, StoryEntrySnapshot,
-  StoryMessage, StoryProject, StoryProposal, StoryProposalKind, StorySession, StorySearchResult,
+  StoryMessage, StoryProject, StoryProjectType, StoryProposal, StoryProposalKind, StorySession, StorySearchResult,
   UpdateStoryCharacter, UpdateStoryDocument, UpdateStoryProject,
 } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
@@ -35,6 +35,7 @@ function requiredText(value: string, label: string): string {
 
 function project(row: Row): StoryProject {
   return { id: str(row, 'id'), title: str(row, 'title'), summary: str(row, 'summary'), revision: num(row, 'revision'),
+    projectType: (row.project_type === null || row.project_type === undefined ? 'fiction' : String(row.project_type)) as StoryProjectType,
     contextSettings: JSON.parse(str(row, 'context_settings_json')) as StoryContextSettings,
     workId: row.work_id === null || row.work_id === undefined ? null : String(row.work_id),
     createdAt: str(row, 'created_at'), updatedAt: str(row, 'updated_at') };
@@ -104,13 +105,13 @@ export class StoryStore {
   }
   createProject(input: CreateStoryProject): StoryProject {
     const id = randomUUID(); const now = nowIso();
-    const workId = input.workId?.trim() || null;
+    const workId = input.workId?.trim() || null; const projectType = input.projectType ?? 'fiction'; const outlineTitle = projectType === 'reflection' ? '思考纲要' : '主线大纲';
     this.db.transaction(() => {
-      this.db.connection.prepare('INSERT INTO story_projects(id,title,summary,revision,context_settings_json,created_at,updated_at,work_id) VALUES (?,?,?,?,?,?,?,?)')
-        .run(id, requiredText(input.title, '项目名称'), input.summary?.trim() ?? '', 1, JSON.stringify(DEFAULT_STORY_CONTEXT), now, now, workId);
+      this.db.connection.prepare('INSERT INTO story_projects(id,title,summary,revision,context_settings_json,created_at,updated_at,work_id,project_type) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, requiredText(input.title, '项目名称'), input.summary?.trim() ?? '', 1, JSON.stringify(DEFAULT_STORY_CONTEXT), now, now, workId, projectType);
       const outlineId = randomUUID();
       this.db.connection.prepare('INSERT INTO story_documents VALUES (?,?,?,?,?,?,?,?,?)')
-        .run(outlineId, id, 'outline', '主线大纲', '', 0, 1, now, now);
+        .run(outlineId, id, 'outline', outlineTitle, '', 0, 1, now, now);
       this.recordRevision(id, this.getDocument(id, outlineId)!, 'manual');
     });
     return this.requireProject(id);
@@ -119,9 +120,10 @@ export class StoryStore {
     const old = this.requireProject(id);
     if (input.contextSettings) validateContextSettings(input.contextSettings);
     const workId = input.workId === undefined ? (old.workId ?? null) : (input.workId?.trim() || null);
-    const result = this.db.connection.prepare(`UPDATE story_projects SET title=?,summary=?,context_settings_json=?,work_id=?,revision=revision+1,updated_at=?
+    const projectType = input.projectType === undefined ? (old.projectType ?? 'fiction') : input.projectType;
+    const result = this.db.connection.prepare(`UPDATE story_projects SET title=?,summary=?,context_settings_json=?,work_id=?,project_type=?,revision=revision+1,updated_at=?
       WHERE id=? AND revision=?`).run(input.title === undefined ? old.title : requiredText(input.title, '项目名称'), input.summary?.trim() ?? old.summary,
-      JSON.stringify(input.contextSettings ?? old.contextSettings), workId, nowIso(), id, input.expectedRevision);
+      JSON.stringify(input.contextSettings ?? old.contextSettings), workId, projectType, nowIso(), id, input.expectedRevision);
     if (result.changes !== 1) throw new StoryError('story_revision_conflict', 409, '项目已被其他操作修改，请刷新后重试。');
     return this.requireProject(id);
   }
@@ -203,6 +205,19 @@ export class StoryStore {
   getEntryRevision(projectId: string, revisionId: string): StoryEntryRevision | null {
     const row = this.get('SELECT * FROM story_entry_revisions WHERE project_id=? AND id=?', projectId, revisionId);
     return row ? entryRevision(row) : null;
+  }
+  revisionPage(projectId:string,kind:StoryDocumentKind|'character',entryId:string,cursor=Number.MAX_SAFE_INTEGER,limit=20) {
+    this.requireEntry(projectId,kind,entryId);
+    const rows=this.all('SELECT rowid AS cursor,id,entry_kind,entry_id,revision,source,proposal_id,created_at FROM story_entry_revisions WHERE project_id=? AND entry_kind=? AND entry_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?',projectId,kind,entryId,cursor,limit+1),selected=rows.slice(0,limit);
+    return {items:selected.map(r=>({id:String(r.id),entryKind:kind,entryId,revision:Number(r.revision),source:String(r.source),proposalId:r.proposal_id?String(r.proposal_id):null,createdAt:String(r.created_at)})),nextCursor:rows.length>limit?Number(selected.at(-1)!.cursor):null};
+  }
+  proposalPage(projectId:string,q:{cursor?:number;limit?:number;status?:string;targetId?:string}) {
+    this.requireProject(projectId);const limit=q.limit??20;
+    const rows=this.all(`SELECT rowid AS cursor,id FROM story_proposals WHERE project_id=? AND rowid<? AND (?='' OR status=?) AND (?='' OR target_id=?) ORDER BY rowid DESC LIMIT ?`,projectId,q.cursor??Number.MAX_SAFE_INTEGER,q.status??'',q.status??'',q.targetId??'',q.targetId??'',limit+1),selected=rows.slice(0,limit);
+    return {items:selected.map(r=>{
+      const p=this.getProposal(projectId,String(r.id))!,target=p.targetId?(p.kind==='character'?this.getCharacter(projectId,p.targetId):this.getDocument(projectId,p.targetId)):null;
+      return {id:p.id,kind:p.kind,operation:p.operation,targetId:p.targetId,baseRevision:p.baseRevision,status:p.status,proposedTitle:p.proposedTitle,createdAt:p.createdAt,decidedAt:p.decidedAt,stale:p.status==='pending'&&p.operation==='update'&&(!target||target.revision!==p.baseRevision)};
+    }),nextCursor:rows.length>limit?Number(selected.at(-1)!.cursor):null};
   }
   private requireEntry(projectId: string, kind: StoryDocumentKind | 'character', entryId: string): StoryDocument | StoryCharacter {
     this.requireProject(projectId);

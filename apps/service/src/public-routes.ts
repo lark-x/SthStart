@@ -34,6 +34,7 @@ import { collectAiCallRedactionSecrets, createAiCallRecord, recordAiCallStream, 
 import type { LlmModelRole } from '@sthstart/contracts';
 import type { SecretStore } from './security.js';
 import { inspectLinsheHostedReadiness } from './linshe-hosted.js';
+import { RuntimeSettingsStore } from './runtime.js';
 
 function requireApp(database: ServiceDatabase, capability: 'llm' | 'vector' | 'image' | 'artifact' | 'generation' | 'persona', request: FastifyRequest, reply: FastifyReply) {
   const identity = authenticateApp(database, request);
@@ -215,14 +216,16 @@ function sanitizeMessage(input: string) {
     .replace(/\/\/[^:]+:[^@]+@/g, '//[REDACTED_AUTH]@');
 }
 
-export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
+export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch,
+  runtimeSettings: RuntimeSettingsStore = new RuntimeSettingsStore(database),
+) {
   app.get('/api/v1/app/hosted-readiness', async (request, reply) => {
     const identity = authenticateApp(database, request);
     if (!identity) return reply.code(401).send({ error: 'invalid_app_token' });
     if (identity.id !== 'linshe') return reply.code(403).send({ error: 'linshe_identity_required' });
     const authorization = request.headers.authorization;
     const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : null;
-    return inspectLinsheHostedReadiness(config, database, secrets, token, fetcher);
+    return inspectLinsheHostedReadiness(config, database, secrets, token, fetcher, runtimeSettings.get().linsheImageViaGateway);
   });
 
   app.get('/api/v1/app/config', async (request, reply) => {

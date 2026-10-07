@@ -25,6 +25,7 @@ import { StoryError, StoryStore } from './store.js';
 import { StoryRuntime } from './runtime.js';
 import { DshProcessManager } from './dsh-process-manager.js';
 import { StoryCompiler } from './compiler.js';
+import { registerStoryHarnessRoutes } from './harness-routes.js';
 
 const ProjectParams = Type.Object({ projectId: Type.String() });
 const ItemParams = Type.Object({ projectId: Type.String(), id: Type.String() });
@@ -67,6 +68,7 @@ export function registerStoryRoutes(app: FastifyInstance, config: ServiceConfig,
     return true;
   };
 
+  registerStoryHarnessRoutes(app,store,bridgeCheck);
   // Process-local capability: only the Story MCP subprocess for this project can read it.
   // The ordinary admin token is deliberately not accepted here.
   app.get<{ Params: { projectId: string } }>('/api/v1/internal/story/projects/:projectId/snapshot',

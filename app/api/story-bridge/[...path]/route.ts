@@ -13,6 +13,10 @@ function allowed(method: string, path: string[]) {
   if (method === 'GET' && tail.length === 3 && tail[0] === 'entries'
     && /^[a-z-]+$/.test(tail[1]!) && segment.test(tail[2]!)) return true;
   if (method === 'GET' && tail.length === 1 && tail[0] === 'search') return true;
+  if (method === 'GET' && tail.length === 1 && tail[0] === 'proposals') return true;
+  if (method === 'GET' && (tail.length === 4 || tail.length === 5) && tail[0] === 'entries'
+    && ['outline','world','scene','chapter','character'].includes(tail[1]!) && segment.test(tail[2]!)
+    && tail[3] === 'revisions' && (tail.length === 4 || segment.test(tail[4]!))) return true;
   if (method === 'POST' && tail.length === 1 && tail[0] === 'proposals') return true;
   if (method === 'GET' && tail.length === 2 && tail[0] === 'proposals' && segment.test(tail[1]!)) return true;
   return method === 'POST' && tail.length === 1 && tail[0] === 'heartbeat';

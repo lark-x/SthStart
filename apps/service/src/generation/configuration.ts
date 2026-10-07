@@ -511,6 +511,8 @@ export function parseEditorConfig(value: unknown): GenerationEditorConfig | null
       && typeof parsed.activityLoraInjection.targetInput === 'string'
       ? { targetNodeId: parsed.activityLoraInjection.targetNodeId, targetInput: parsed.activityLoraInjection.targetInput }
       : undefined,
+    // 组装方式是发布语义的一部分：只接受已知字面量，未知值按 legacy 处理而不是原样透传。
+    promptAssembly: parsed.promptAssembly === 'service-finalized-v1' ? 'service-finalized-v1' : undefined,
     sizePresets: Array.isArray(parsed.sizePresets)
       ? parsed.sizePresets.filter((preset): preset is { label: string; width: number; height: number } =>
         isRecord(preset) && typeof preset.label === 'string' && Number.isFinite(Number(preset.width)) && Number.isFinite(Number(preset.height)))

@@ -19,6 +19,7 @@ import { createArtifactReference, streamUploadArtifact } from '../artifacts.js';
 import type { ActivityStore } from './store.js';
 import { getDefaultImageConfigDocument } from './image-configs.js';
 import { readZip } from './zip.js';
+import {readStudioArchive,uploadStudioArchiveArtifacts,allocateStudioArchiveIds,importStudioArchive,remapStudioArchiveValue} from './studio-archive.js';
 
 export interface ImportPreview {
   title: string;
@@ -70,6 +71,7 @@ export async function stageActivityImport(
   });
 
   verifyImportManifest(files);
+  readStudioArchive(database,files);
 
   // 2. Check for records.json or activity.json
   const recordsBuf = files.get('data/records.json');
@@ -182,6 +184,7 @@ export async function commitActivityImport(
   const zipBuffer = readFileSync(meta.tempZipPath);
   const files = readZip(zipBuffer, { maxTotalBytes: 500 * 1024 * 1024, maxFileCount: 1000 });
   verifyImportManifest(files);
+  const studioArchive=readStudioArchive(database,files);
 
   const recordsBuf = files.get('data/records.json')!;
   const contentDoc = JSON.parse(new TextDecoder().decode(recordsBuf)) as ContentDocument;
@@ -206,6 +209,8 @@ export async function commitActivityImport(
   const commentIdMap = new Map<string, string>();
   const slotIdMap = new Map<string, string>();
   const factIdMap = new Map<string, string>();
+  const sceneIdMap = new Map<string, string>();
+  const beatIdMap = new Map<string, string>();
   const assetKeyMap = new Map<string, string>();
 
   // 1. Actors
@@ -322,6 +327,19 @@ export async function commitActivityImport(
   for(const message of newMessages)if(message.replyToMessageId)message.replyToMessageId=msgIdMap.get(message.replyToMessageId)||message.replyToMessageId;
   for(const comment of newComments)if(comment.replyToCommentId)comment.replyToCommentId=commentIdMap.get(comment.replyToCommentId)||comment.replyToCommentId;
 
+  // Scene/beat IDs live in their own namespace and must be allocated before
+  // provenance or comic sources are remapped. A copy never points at the original.
+  const copyScene=(scene:NonNullable<ContentDocument['scenes']>[number])=>{
+    const id=sceneIdMap.get(scene.id)??randomUUID();sceneIdMap.set(scene.id,id);
+    return {...scene,id,...(scene.stageId!==undefined?{stageId:stageIdMap.get(scene.stageId)||scene.stageId}:{}),beats:scene.beats.map(beat=>{
+      const id=beatIdMap.get(beat.id)??randomUUID();beatIdMap.set(beat.id,id);
+      return {...beat,id,...(beat.characterId!==undefined?{characterId:actorIdMap.get(beat.characterId)||beat.characterId}:{}),
+        ...(beat.actorIds?{actorIds:beat.actorIds.map(id=>actorIdMap.get(id)||id)}:{})};
+    })};
+  };
+  const newScenes=contentDoc.scenes?.map(copyScene);
+  newStages.forEach((stage,index)=>{if(contentDoc.stages[index].scenes)stage.scenes=contentDoc.stages[index].scenes!.map(copyScene);});
+
   // Rebuild ContentDocument
   const newContentDocument: ContentDocument = {
     schemaVersion: 1,
@@ -344,6 +362,7 @@ export async function commitActivityImport(
     mediaSlots: newMediaSlots,
     facts: newFacts,
     stageResults: newStageResults,
+    ...(newScenes?{scenes:newScenes}:{}),
     editingPolicy: contentDoc.editingPolicy ? {
       lockedRecords: (contentDoc.editingPolicy.lockedRecords || []).map((lr) => ({
         kind: lr.kind,
@@ -374,8 +393,10 @@ export async function commitActivityImport(
     if (filePath.startsWith('assets/media/') || filePath.startsWith('media/')) {
       const fileName = filePath.split('/').pop()!;
       const rawAssetKey = fileName.split('.')[0];
-      const isVideo = fileName.endsWith('.mp4') || fileName.endsWith('.webm');
-      const contentType = isVideo ? 'video/mp4' : 'image/png';
+      const extension=fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+      const mediaTypes:Record<string,string>={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.mp4':'video/mp4','.webm':'video/webm','.mov':'video/quicktime','.mp3':'audio/mpeg','.wav':'audio/wav','.ogg':'audio/ogg'};
+      const contentType=mediaTypes[extension]??'application/octet-stream';
+      const isVideo=contentType.startsWith('video/');
 
       const artifact = await streamUploadArtifact(config, database, {
         stream: Readable.from(fileBuf),
@@ -407,6 +428,17 @@ export async function commitActivityImport(
   const assetKeyToArtifactId = new Map<string, string>();
   for (const m of mediaToInsert) {
     assetKeyToArtifactId.set(m.newAssetKey, m.artifact.id);
+  }
+  // Actor reference images are stored by asset key. Copied actors must point at
+  // the copy's keys; leaving the old keys would silently break every future
+  // drawing that relies on a character reference.
+  for (const actor of newActors) {
+    if (Array.isArray(actor.appearanceReferenceAssetKeys)) {
+      actor.appearanceReferenceAssetKeys = actor.appearanceReferenceAssetKeys.map((key) => assetKeyMap.get(key) ?? key);
+    }
+    if (typeof actor.avatarAssetKey === 'string' && actor.avatarAssetKey) {
+      actor.avatarAssetKey = assetKeyMap.get(actor.avatarAssetKey) ?? actor.avatarAssetKey;
+    }
   }
 
   // 10b. Parse Provenance files if present
@@ -567,18 +599,29 @@ export async function commitActivityImport(
     }
   }
 
-  const effectiveImageConfigRevId = (mediaDoc as any)?.imageConfigRevisionId
-    ? (configRevIdMap.get((mediaDoc as any).imageConfigRevisionId) || activeImageConfigRevId)
+  const effectiveImageConfigRevId = mediaDoc?.imageConfigRevisionId
+    ? (configRevIdMap.get(mediaDoc.imageConfigRevisionId) ?? null)
     : activeImageConfigRevId;
+  if(mediaDoc?.imageConfigRevisionId&&!effectiveImageConfigRevId)throw new Error('invalid_import_archive: 媒体绑定的美术配置版本缺失。');
+  latestConfigDoc={...latestConfigDoc,slotConfigs:latestConfigDoc.slotConfigs.map(sc=>({...sc,slotId:slotIdMap.get(sc.slotId)??sc.slotId,referenceAssetKeys:sc.referenceAssetKeys?.map(key=>assetKeyMap.get(key)??key)}))};
 
   // 11. Atomic transaction to create activity, assets, draft, content revision, media revision, provenance
   const now = nowIso();
-  const initialContentHash = createHash('sha256')
-    .update(JSON.stringify(newContentDocument))
-    .digest('hex');
-
   const contentRevId = randomUUID();
   const mediaRevId = randomUUID();
+  const manifest=JSON.parse(files.get('manifest.json')!.toString()) as {activityId?:string;contentRevisionId?:string};
+  const studioIds=new Map([...actorIdMap,...stageIdMap,...sceneIdMap,...beatIdMap,...convIdMap,...msgIdMap,...postIdMap,...commentIdMap,...slotIdMap,...factIdMap,...configRevIdMap,...recipeIdMap,...compilationIdMap,...attemptIdMap]);
+  if(studioArchive){
+    if(manifest.activityId!==studioArchive.sourceActivityId)throw new Error('invalid_studio_archive: 活动归属与工程清单不一致。');
+    studioIds.set(studioArchive.sourceActivityId,newActivityId);
+    if(manifest.contentRevisionId)studioIds.set(manifest.contentRevisionId,contentRevId);
+    allocateStudioArchiveIds(studioArchive,studioIds);
+    const reused=new Map<string,string>();
+    for(const asset of studioArchive.assets??[]){const id=assetKeyToArtifactId.get(assetKeyMap.get(asset.assetKey)??asset.assetKey);if(id)reused.set(asset.artifactId,id);}
+    const artifacts=await uploadStudioArchiveArtifacts(database,config,files,studioArchive,reused);for(const [oldId,newId]of artifacts)studioIds.set(oldId,newId);
+    Object.assign(newContentDocument,remapStudioArchiveValue(newContentDocument,studioIds));
+    latestConfigDoc=remapStudioArchiveValue(latestConfigDoc,studioIds) as typeof latestConfigDoc;
+  }
 
   database.transaction(() => {
     // 1. Activities row (insert with NULL revisions initially to avoid FK cycle)
@@ -625,6 +668,14 @@ export async function commitActivityImport(
         refId: m.newAssetKey,
       });
     }
+    // Unavailable old assets keep their aliases too, without inventing files.
+    for(const asset of studioArchive?.assets??[]){
+      const key=assetKeyMap.get(asset.assetKey)??asset.assetKey,id=studioIds.get(asset.artifactId)!;
+      if(assetKeyToArtifactId.has(key))continue;
+      database.connection.prepare("INSERT INTO activity_assets(activity_id,asset_key,artifact_id,source,type,hash,created_at) VALUES (?,?,?,'upload','image','',?)").run(newActivityId,key,id,now);
+      assetKeyToArtifactId.set(key,id);
+      createArtifactReference(database,{artifactId:id,appId:'activities',refType:'activity_asset',refId:key});
+    }
 
     // 3. Content revision
     database.connection.prepare(`
@@ -635,21 +686,21 @@ export async function commitActivityImport(
       contentRevId,
       newActivityId,
       JSON.stringify(newContentDocument),
-      initialContentHash,
+      createHash('sha256').update(JSON.stringify(newContentDocument)).digest('hex'),
       now,
     );
 
     // 4. Image Config Revisions
     for (const c of importedConfigs) {
       const newConfigRevId = configRevIdMap.get(c.id)!;
-      const doc = {
+      const doc = remapStudioArchiveValue({
         ...c.document,
         slotConfigs: (c.document.slotConfigs || []).map((sc: any) => ({
           ...sc,
           slotId: slotIdMap.get(sc.slotId) || sc.slotId,
           referenceAssetKeys: (sc.referenceAssetKeys || []).map((k: string) => assetKeyMap.get(k) || k),
         })),
-      };
+      },studioIds) as typeof c.document;
       const hash = createHash('sha256').update(JSON.stringify(doc)).digest('hex');
       const parentId = c.parentId ? (configRevIdMap.get(c.parentId) || null) : null;
       database.connection.prepare(`
@@ -681,7 +732,7 @@ export async function commitActivityImport(
         ...ref,
         id: sourceRefIdMap.get(ref.id)!,
         activityId: newActivityId,
-        ownerRevisionId: ref.ownerKind === 'recipe' ? (recipeIdMap.get(ref.ownerRevisionId) || newRecipeId) : ref.ownerKind === 'content' ? contentRevId : (configRevIdMap.get(ref.ownerRevisionId) || ref.ownerRevisionId),
+        ownerRevisionId: ref.ownerKind === 'recipe' ? (recipeIdMap.get(ref.ownerRevisionId) || newRecipeId) : ref.ownerKind === 'content' ? (studioIds.get(ref.ownerRevisionId)??contentRevId) : (configRevIdMap.get(ref.ownerRevisionId) || ref.ownerRevisionId),
         entityId: ref.entityKind === 'actor'
           ? (actorIdMap.get(ref.entityId) || ref.entityId)
           : (ref.entityKind === 'stage'
@@ -700,7 +751,7 @@ export async function commitActivityImport(
       const newReferences = (r.references || []).map((ref: any) => ({
         ...ref,
         assetKey: assetKeyMap.get(ref.assetKey) || ref.assetKey,
-        artifactId: assetKeyToArtifactId.get(assetKeyMap.get(ref.assetKey) || ref.assetKey) || ref.artifactId,
+        artifactId: studioIds.get(ref.artifactId)??assetKeyToArtifactId.get(assetKeyMap.get(ref.assetKey) || ref.assetKey)??ref.artifactId,
         actorId: ref.actorId ? (actorIdMap.get(ref.actorId) || ref.actorId) : undefined,
         parentAttemptId: ref.parentAttemptId ? (attemptIdMap.get(ref.parentAttemptId) || ref.parentAttemptId) : undefined,
       }));
@@ -712,7 +763,7 @@ export async function commitActivityImport(
       `).run(
         newRecipeId,
         newActivityId,
-        contentRevId,
+        studioIds.get(r.contentRevisionId)??contentRevId,
         newImageConfigRevId,
         newSlotId,
         r.slotFingerprint,
@@ -751,7 +802,7 @@ export async function commitActivityImport(
 
     for (const comp of importedCompilations) {
       database.connection.prepare('UPDATE activity_prompt_compilations SET execution_plan_json = ? WHERE id = ?')
-        .run(JSON.stringify(comp.executionPlan || null), compilationIdMap.get(comp.id)!);
+        .run(JSON.stringify(remapStudioArchiveValue(comp.executionPlan || null,studioIds)), compilationIdMap.get(comp.id)!);
     }
 
     // 8. Attempts & Outputs
@@ -777,7 +828,7 @@ export async function commitActivityImport(
       `).run(
         newAttemptId,
         newActivityId,
-        contentRevId,
+        studioIds.get(a.baseContentRevisionId)??contentRevId,
         newConfigRevId,
         newSlotId,
         a.slotFingerprint,
@@ -786,20 +837,20 @@ export async function commitActivityImport(
         a.recipeHash,
         a.executionPlanHash,
         importedTaskId,
-        a.status || 'succeeded',
+        ['preparing','queued','submitting','accepted','running','result_unknown'].includes(a.status)?'abandoned':a.status||'succeeded',
         a.actualSeed || 0,
         newRetryOf,
         JSON.stringify(newParentAttemptIds),
         a.businessRequestHash || '',
-        a.errorCode || null,
-        a.errorMessage || null,
+        ['preparing','queued','submitting','accepted','running','result_unknown'].includes(a.status)?'studio_imported_read_only':a.errorCode||null,
+        ['preparing','queued','submitting','accepted','running','result_unknown'].includes(a.status)?'导入的生成历史只读，未恢复原请求。':a.errorMessage||null,
         a.createdAt || now,
         a.updatedAt || now,
       );
 
       for (const o of a.outputs || []) {
         const mappedAssetKey = assetKeyMap.get(o.assetKey) || o.assetKey;
-        const artId = assetKeyToArtifactId.get(mappedAssetKey);
+        const artId = studioIds.get(o.artifactId)??assetKeyToArtifactId.get(mappedAssetKey);
         if (artId) {
           database.connection.prepare(`
             INSERT INTO activity_image_attempt_outputs (
@@ -830,9 +881,9 @@ export async function commitActivityImport(
         `).run(
           newAttemptId,
           s.phase,
-          JSON.stringify(s.actualInputs || {}),
-          JSON.stringify(s.uploadedFileMappings || {}),
-          JSON.stringify(s.requestSummary || {}),
+          JSON.stringify(remapStudioArchiveValue(s.actualInputs || {},studioIds)),
+          JSON.stringify(remapStudioArchiveValue(s.uploadedFileMappings || {},studioIds)),
+          JSON.stringify(remapStudioArchiveValue(s.requestSummary || {},studioIds)),
           s.createdAt || now,
         );
       }
@@ -911,11 +962,21 @@ export async function commitActivityImport(
       now,
     );
 
+    if(studioArchive)importStudioArchive(database,studioArchive,studioIds,manifest.contentRevisionId??null);
+    if(studioArchive){
+      // Keep native history evidence under the real import record, not fake LLM
+      // calls or runnable generation rows in the receiving installation.
+      const metadata=JSON.parse(String(database.connection.prepare('SELECT model_metadata_json FROM activity_jobs WHERE id=?').get(jobId)!.model_metadata_json));
+      const executions=Object.fromEntries(Object.entries(studioArchive.executions).map(([id,evidence])=>[studioIds.get(id)??id,remapStudioArchiveValue(evidence,studioIds)]));
+      database.connection.prepare('UPDATE activity_jobs SET model_metadata_json=? WHERE id=?')
+        .run(JSON.stringify({...metadata,importedStudioEvidence:{sourceActivityId:studioArchive.sourceActivityId,executions}}),jobId);
+    }
+
     // Imported rework is dormant. Old executions are history, never restarted automatically.
     const reworkBytes=files.get('data/rework.json');
     if(reworkBytes){
       const rework=JSON.parse(reworkBytes.toString()) as {reviews?:Array<{data_json:string;decision:string}>;candidates?:ActivityCandidate[];applications?:Array<{candidate_id:string;unit_id:string;data_json:string;created_at:string}>};
-      const ids=new Map([...actorIdMap,...stageIdMap,...convIdMap,...msgIdMap,...postIdMap,...commentIdMap,...slotIdMap,...factIdMap]);
+      const ids=new Map([...actorIdMap,...stageIdMap,...sceneIdMap,...beatIdMap,...convIdMap,...msgIdMap,...postIdMap,...commentIdMap,...slotIdMap,...factIdMap]);
       const remap=(value:unknown):unknown=>typeof value==='string'?(ids.get(value)||value):Array.isArray(value)?value.map(remap):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[ids.get(k)||k,remap(v)])):value;
       const candidateIds=new Map<string,string>();
       const importedJobId=randomUUID();

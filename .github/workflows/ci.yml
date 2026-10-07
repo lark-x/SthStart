@@ -26,3 +26,32 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run ci:core
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deterministic-test-reports
+          path: artifacts/testing/
+          if-no-files-found: ignore
+
+  learning-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:learning
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: learning-browser-report
+          path: |
+            playwright-report/learning/
+            test-results/learning/
+          if-no-files-found: ignore

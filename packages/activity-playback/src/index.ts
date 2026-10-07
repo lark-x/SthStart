@@ -6,3 +6,5 @@ export * from './comic/layout.js';
 export * from './comic/text-layout.js';
 export * from './comic/renderer.js';
 export * from './comic/timeline.js';
+export * from './publication/timeline.js';
+export * from './publication/renderer.js';

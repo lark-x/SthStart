@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ActivityStudioWorkspace } from '@/app/features/activities/components/activity-studio-workspace';
+import { ActivityWorkspaceRouter } from '@/app/features/activities/publication/activity-workspace-router';
 
 export const metadata: Metadata = {
   title: '活动工作室 — SthStart',
@@ -12,5 +12,5 @@ export default async function ActivityWorkspacePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <ActivityStudioWorkspace key={id} activityId={id} />;
+  return <ActivityWorkspaceRouter key={id} activityId={id} />;
 }

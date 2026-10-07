@@ -7,6 +7,7 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import type { SQLInputValue } from 'node:sqlite';
 import { redactAiValue, summarizeAiCall } from './ai-call-trace.js';
+import { encodedTextEntries } from './activities/image-prompt-snapshot.js';
 
 export function registerAiCallRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase) {
   const authorized = (request: Parameters<typeof authenticateAdmin>[1], reply: import('fastify').FastifyReply) => {
@@ -113,10 +114,21 @@ export function registerAiCallRoutes(app: FastifyInstance, config: ServiceConfig
         requestedAt: call.requestedAt, endedAt: call.endedAt, durationMs: call.durationMs,
         models: call.models, errorCode: call.errorCode, error: call.error };
     });
+    const summary = summarizeAiCall(row);
+    // 两种快照形状都要认：配置试运行存成 `{ workflow: {...} }`，活动生图直接存整张图
+    // （键就是节点 id）。只认前者会让活动生图的“实际编码文本”永远是空的。
+    const snapshot = summary.requestSnapshot as Record<string, unknown> | null;
+    const workflowSnapshot = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) && 'workflow' in snapshot
+      ? (snapshot as { workflow?: unknown }).workflow
+      : snapshot;
+    const encodedTexts = encodedTextEntries(workflowSnapshot);
     return {
-      ...summarizeAiCall(row),
+      ...summary,
       traceCalls,
       artifactDetails: details,
+      // 计划 §1.1：生成记录要能看到“从中文来源到实际文本编码输入”的完整过程。
+      // 只从**实际派发**的工作流快照派生；读不出来就返回空数组，不猜文本。
+      encodedTexts,
       events: events.map((event) => {
         let detail: Record<string, unknown> = {};
         try { detail = JSON.parse(String(event.detail_json)) as Record<string, unknown>; } catch { /* malformed legacy event */ }

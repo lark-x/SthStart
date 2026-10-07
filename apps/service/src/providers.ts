@@ -44,6 +44,8 @@ async function hydrateFromModelProfile(row: Record<string, unknown>, secrets: Se
   const options = JSON.parse(String(row.options_json ?? '{}')) as Record<string, unknown>;
   const headers = JSON.parse(String(row.headers_json ?? '{}')) as Record<string, string>;
 
+  const { thinkingMode: _ignoredThinkingMode, ...cleanAdvanced } = advanced;
+
   return {
     id: String(row.id),
     name: String(row.name),
@@ -53,7 +55,7 @@ async function hydrateFromModelProfile(row: Record<string, unknown>, secrets: Se
     thinkingMode: (advanced.thinkingMode ?? 'omit') as 'enabled' | 'disabled' | 'omit',
     timeoutMs: Number(row.timeout_ms ?? 60000),
     headers,
-    extraBody: { ...(row.max_output_tokens ? { max_tokens: Number(row.max_output_tokens) } : {}), ...options, ...defaultParams, ...advanced },
+    extraBody: { ...(row.max_output_tokens ? { max_tokens: Number(row.max_output_tokens) } : {}), ...options, ...defaultParams, ...cleanAdvanced },
   } satisfies ResolvedProfile;
 }
 

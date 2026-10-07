@@ -49,6 +49,9 @@ interface SceneBeatEditorProps {
   onBeforeMediaGeneration?: () => Promise<boolean>;
   onAdoptMediaResult?: (document: ContentDocument, draftVersion: number) => void;
   onAutoAppliedCheck?: () => void;
+  focusedSceneId?: string;
+  focusedBeatId?: string;
+  onFocusTarget?: (sceneId: string, beatId?: string) => Promise<boolean>;
   disabled?: boolean;
 }
 
@@ -61,6 +64,9 @@ export function SceneBeatEditor({
   onBeforeMediaGeneration,
   onAdoptMediaResult,
   onAutoAppliedCheck,
+  focusedSceneId,
+  focusedBeatId,
+  onFocusTarget,
   disabled = false,
 }: SceneBeatEditorProps) {
   // Preview Drawer state
@@ -72,8 +78,8 @@ export function SceneBeatEditor({
 
   const toast = useToast();
   // Scheme B: Master-Detail selection & Inspector collapse state
-  const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
-  const [selectedBeatId, setSelectedBeatId] = useState<string | null>(null);
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(focusedSceneId ?? null);
+  const [selectedBeatId, setSelectedBeatId] = useState<string | null>(focusedBeatId ?? null);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [editBeatOpen, setEditBeatOpen] = useState(false);
@@ -148,6 +154,18 @@ export function SceneBeatEditor({
   }, [document.messages, stage.id]);
 
   // Active scene
+  React.useEffect(() => {
+    const targetScene = scenes.find(item => item.id === focusedSceneId);
+    if (!targetScene) return;
+    setActiveSceneId(targetScene.id);
+    if (targetScene.beats.some(item => item.id === focusedBeatId)) setSelectedBeatId(focusedBeatId!);
+  }, [focusedSceneId, focusedBeatId, stage.id]);
+  const focusTarget = async (scene: ActivityScene, beatId?: string) => {
+    if (onFocusTarget && !await onFocusTarget(scene.id, beatId)) return;
+    setActiveSceneId(scene.id);
+    setSelectedBeatId(beatId ?? scene.beats[0]?.id ?? null);
+    setIsInspectorCollapsed(false);
+  };
   const currentScene = useMemo(() => {
     if (scenes.length === 0) return null;
     if (activeSceneId) {
@@ -480,8 +498,7 @@ export function SceneBeatEditor({
                   key={s.id}
                   type="button"
                   onClick={() => {
-                    setActiveSceneId(s.id);
-                    setSelectedBeatId(s.beats[0]?.id || null);
+                    void focusTarget(s, s.beats[0]?.id);
                   }}
                   className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     isActive
@@ -514,27 +531,38 @@ export function SceneBeatEditor({
 
       {/* 2. 当前场次时空与操作栏 (Scene Header: 紧凑单行胶囊 + 操作收敛) */}
       {currentScene && (
-        <div className="rounded-xl bg-surface-muted/35 px-4 py-3 space-y-2.5 shrink-0">
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-              <span className="px-2 py-0.5 rounded bg-accent text-white font-bold text-xs shrink-0 shadow-2xs font-mono">
+        <div className="rounded-lg bg-surface-muted/40 px-3.5 py-1.5 shrink-0 border border-border-default/50">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
+              <span className="px-1.5 py-0.5 rounded bg-accent text-white font-bold text-[11px] shrink-0 shadow-2xs font-mono">
                 第 {currentSceneIndex + 1} 场
               </span>
-              <div className="min-w-0 space-y-1">
-                <h2 className="truncate text-sm font-semibold text-ink sm:text-base">
-                  {cleanSceneTitle(currentScene.title) || '未命名场次'}
-                </h2>
-                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                  <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5 shrink-0" />{currentScene.timeText || '未设置时间'}</span>
-                  <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3.5 w-3.5 shrink-0" /><span className="max-w-64 truncate">{currentScene.locationText || '未设置地点'}</span></span>
-                  {currentScene.environment?.trim() && <span className="inline-flex min-w-0 items-center gap-1"><Sparkles className="h-3.5 w-3.5 shrink-0" /><span className="max-w-80 truncate">{currentScene.environment}</span></span>}
-                </div>
-              </div>
+              <h2 className="truncate text-xs sm:text-sm font-bold text-ink max-w-[180px] sm:max-w-xs" title={cleanSceneTitle(currentScene.title) || '未命名场次'}>
+                {cleanSceneTitle(currentScene.title) || '未命名场次'}
+              </h2>
+              {currentScene.timeText && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-[11px] text-muted shrink-0">
+                  <Clock className="h-3 w-3 shrink-0 text-muted" />
+                  <span>{currentScene.timeText}</span>
+                </span>
+              )}
+              {currentScene.locationText && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-[11px] text-muted shrink-0 max-w-[140px]" title={currentScene.locationText}>
+                  <MapPin className="h-3 w-3 shrink-0 text-muted" />
+                  <span className="truncate">{currentScene.locationText}</span>
+                </span>
+              )}
+              {currentScene.environment?.trim() && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-[11px] text-muted shrink-0 max-w-[180px]" title={currentScene.environment}>
+                  <Sparkles className="h-3 w-3 shrink-0 text-accent/70" />
+                  <span className="truncate">{currentScene.environment}</span>
+                </span>
+              )}
             </div>
 
             {/* 场次右侧操作 */}
             <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
-              <Button type="button" variant="outline" size="sm" onClick={openSceneEditor} disabled={disabled} className="h-8 px-2.5 text-xs">
+              <Button type="button" variant="outline" size="sm" onClick={openSceneEditor} disabled={disabled} className="h-7 px-2.5 text-xs font-semibold cursor-pointer">
                 编辑场次
               </Button>
               <Button
@@ -613,7 +641,6 @@ export function SceneBeatEditor({
               )}
             </div>
           </div>
-
         </div>
       )}
 
@@ -691,7 +718,7 @@ export function SceneBeatEditor({
             </div>
 
             {/* 镜头列表（独立局部滚动，高度锁定） */}
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+            <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2">
               {currentScene.beats.length === 0 ? (
                 <div className="py-12 text-center text-xs text-muted border border-dashed border-border-default rounded-xl space-y-2">
                   <p>本场次暂无分镜动作</p>
@@ -716,8 +743,7 @@ export function SceneBeatEditor({
                       key={beat.id}
                       data-testid="activity-beat-card"
                       onClick={() => {
-                        setSelectedBeatId(beat.id);
-                        if (isInspectorCollapsed) setIsInspectorCollapsed(false);
+                        void focusTarget(currentScene, beat.id);
                       }}
                       className={`group relative rounded-xl border p-2.5 sm:p-3 transition-all cursor-pointer flex items-start gap-2.5 ${
                         isSelected
@@ -865,7 +891,7 @@ export function SceneBeatEditor({
 
           {/* 右侧：镜头视听工坊 (Studio & Inspector, 占 60% 黄金比例) */}
           {!isInspectorCollapsed && currentBeat && (
-            <aside className={`${isNarrowViewport ? 'w-full flex-none' : 'flex-1'} h-full min-w-0 flex flex-col bg-surface rounded-xl border border-border-default overflow-hidden shadow-2xs animate-in fade-in slide-in-from-right-2 duration-200`}>
+            <aside className={`${isNarrowViewport ? 'w-full flex-none' : 'flex-1'} h-full min-h-0 min-w-0 flex flex-col bg-surface rounded-xl border border-border-default overflow-hidden shadow-2xs animate-in fade-in slide-in-from-right-2 duration-200`}>
               {/* 镜头工作台：工作流预览、异步候选与人工采纳 */}
               <div className="px-4 py-2 border-b border-border-default bg-surface-muted/40 flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2">
@@ -873,7 +899,7 @@ export function SceneBeatEditor({
                     <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
                     <span>镜头 #{currentBeatIndex + 1} 视听工坊</span>
                   </span>
-                  <span className="text-[10px] text-muted font-mono truncate max-w-[120px]">{currentBeat.characterName || '旁白'}</span>
+                  <span className="text-[10px] text-muted font-mono truncate max-w-[120px]">{actors.find(actor => actor.id === currentBeat.characterId)?.displayName || currentBeat.characterName || '旁白'}</span>
                 </div>
                 <button
                   type="button"

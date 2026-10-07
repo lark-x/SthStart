@@ -59,8 +59,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
-# Optional FFmpeg installation for advanced video processing
-ARG INSTALL_FFMPEG=false
+# Publication audio duration checks and video exports require both tools.
+# Minimal installations may explicitly opt out; publication preflight then blocks video.
+ARG INSTALL_FFMPEG=true
 RUN if [ "$INSTALL_FFMPEG" = "true" ]; then \
       apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*; \
     fi

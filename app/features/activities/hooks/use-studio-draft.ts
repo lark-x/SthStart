@@ -68,7 +68,7 @@ export function useStudioDraft(id: string, incoming?: { document: ContentDocumen
     if (!state.current.blocked) setStatus('unsaved');
     try { sessionStorage.setItem(backupKey, JSON.stringify(next)); } catch { /* retain in memory */ }
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(), 1200);
+    timer.current = setTimeout(() => void flush(), 600);
   }
 
   function resolve(server: { document: ContentDocument; draftVersion: number }, keepLocal: boolean) {

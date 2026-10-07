@@ -1,0 +1,70 @@
+/** Real Portal/Service UI, synthetic models, memory database only. */
+import {chromium} from '@playwright/test';
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {resolve} from 'node:path';
+const token='activity-studio-fixture-token-not-production',headers={'x-sthstart-admin-token':token,'content-type':'application/json'};
+const fixture=await fetch('http://127.0.0.1:4289/fixture').then(r=>r.json());
+const output=resolve('artifacts/activity-studio-abc',`text-fallback-${new Date().toISOString().replaceAll(':','-')}`);await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1440,height:900},extraHTTPHeaders:{'x-sthstart-admin-token':token}});
+const page=await context.newPage(),errors=[],confirmations=[];
+page.on('pageerror',error=>errors.push(error.message));
+page.on('request',request=>{if(request.method()==='POST'&&/\/text-fallback$/.test(request.url()))confirmations.push(request.postDataJSON());});
+const root=`http://127.0.0.1:4289/api/v1/admin/activities/${fixture.activityId}`;
+const get=suffix=>fetch(`${root}${suffix}`,{headers}).then(r=>r.json());
+const post=async(url,payload={})=>{const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload)});assert.ok(response.ok,await response.clone().text());return response.json();};
+const arm=mode=>post('http://127.0.0.1:4289/fixture/fail-next-text',{mode});
+const info=()=>fetch('http://127.0.0.1:4289/fixture').then(r=>r.json());
+const noOverflow=async()=>assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'no document horizontal overflow');
+const outer=page.getByRole('dialog',{name:'智能制作',exact:true}),fallback=page.getByRole('dialog',{name:'备用文本模型',exact:true});
+const before=await get('/draft'),startCalls=(await info()).textModels.length;
+try{
+  await page.goto(`http://127.0.0.1:4199/apps/activities/${fixture.activityId}?tab=studio&view=storyboard&stageId=${fixture.stageId}&sceneId=${fixture.sceneId}`);
+  await page.getByRole('button',{name:'智能制作',exact:true}).waitFor({timeout:60000});await page.getByRole('button',{name:'智能制作',exact:true}).click();
+  const makeFailed=async(mode='bad_json')=>{await arm(mode);await outer.getByRole('textbox',{name:'分镜来源正文',exact:true}).fill('研究员观察结晶，低温下微光渐亮，再记录参数。');
+    await outer.getByRole('button',{name:'生成待审分镜',exact:true}).click();await outer.getByRole('button',{name:'选择备用文本模型',exact:true}).waitFor({timeout:30000});
+    return new URL(page.url()).searchParams.get('studioJobId');};
+  const parentId=await makeFailed();assert.ok(parentId);
+  await outer.getByRole('button',{name:'选择备用文本模型',exact:true}).click();
+  await fallback.getByRole('combobox',{name:'本次备用文本模型'}).selectOption('fixture-backup');
+  await fallback.getByRole('button',{name:'预览备用调用',exact:true}).click();
+  await fallback.getByText('本次 1 次文本模型调用 · 0 次图片调用 · 备用上限 1 次',{exact:true}).waitFor();
+  assert.equal((await info()).textModels.length,startCalls+1,'preview and candidates make zero model calls');
+  await page.screenshot({path:resolve(output,'desktop-text-fallback-preview.png'),fullPage:true});await noOverflow();
+  await page.setViewportSize({width:390,height:844});await fallback.getByRole('button',{name:'确认这一次备用尝试',exact:true}).waitFor();
+  await fallback.getByText('本次 1 次文本模型调用 · 0 次图片调用 · 备用上限 1 次',{exact:true}).waitFor();
+  await noOverflow();await page.screenshot({path:resolve(output,'mobile-text-fallback-preview.png'),fullPage:true});
+  await page.route('**/text-fallback',async route=>{await route.fetch();await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'synthetic_lost_confirmation',message:'模拟备用确认响应丢失；保留相同确认。'})});});
+  await fallback.getByRole('button',{name:'确认这一次备用尝试',exact:true}).click();
+  await fallback.getByText('模拟备用确认响应丢失；保留相同确认。',{exact:true}).waitFor();
+  assert.equal((await info()).textModels.length,startCalls+2);await page.screenshot({path:resolve(output,'mobile-text-fallback-lost-response.png'),fullPage:true});
+  await page.unroute('**/text-fallback');await page.reload();
+  await fallback.getByRole('button',{name:'重试相同确认',exact:true}).waitFor({timeout:60000});
+  await fallback.getByText('本次 1 次文本模型调用 · 0 次图片调用 · 备用上限 1 次',{exact:true}).waitFor();
+  await fallback.getByRole('button',{name:'重试相同确认',exact:true}).click();
+  await outer.getByRole('button',{name:'追加到活动',exact:true}).waitFor({timeout:30000});
+  const childId=new URL(page.url()).searchParams.get('studioJobId');assert.notEqual(childId,parentId);
+  assert.equal(confirmations.length,2);assert.deepEqual(confirmations[0],confirmations[1]);
+  assert.deepEqual(await get('/draft'),before);assert.equal((await info()).promptNumber,fixture.promptNumber);
+  assert.deepEqual((await info()).textModels.slice(startCalls),['fixture-model','fixture-backup-model']);
+  const child=await get(`/studio-jobs/${childId}`),parent=await get(`/studio-jobs/${parentId}`);assert.equal(child.parentJobId,parentId);assert.equal(child.traceId,parent.traceId);assert.notEqual(child.callId,parent.callId);
+  await outer.getByRole('button',{name:'查看原失败任务',exact:true}).click();
+  await outer.getByRole('button',{name:'选择备用文本模型',exact:true}).click();
+  await fallback.getByText(/已经使用过一次备用方案/).waitFor();assert.equal(await fallback.getByRole('combobox').count(),0);
+  await fallback.getByRole('button',{name:'取消',exact:true}).click();await noOverflow();
+  // A second independent root is allowed, but its fallback failure must pause,
+  // keep both logs and provide only a way back to the original root.
+  await page.setViewportSize({width:1440,height:900});await outer.getByRole('button',{name:'新建任务',exact:true}).click();
+  const failedRoot=await makeFailed();await outer.getByRole('button',{name:'选择备用文本模型',exact:true}).click();
+  await fallback.getByRole('combobox',{name:'本次备用文本模型'}).selectOption('fixture-backup');await fallback.getByRole('button',{name:'预览备用调用',exact:true}).click();
+  await fallback.getByRole('button',{name:'确认这一次备用尝试',exact:true}).waitFor();await arm('bad_json');await fallback.getByRole('button',{name:'确认这一次备用尝试',exact:true}).click();
+  await outer.getByRole('heading',{name:'已暂停',exact:true}).waitFor({timeout:30000});assert.equal(await outer.getByRole('button',{name:'选择备用文本模型',exact:true}).count(),0);
+  await page.screenshot({path:resolve(output,'desktop-text-fallback-paused.png'),fullPage:true});
+  // Unknown transport cannot be justified by another call in the same project.
+  await outer.getByRole('button',{name:'新建任务',exact:true}).click();const unknownRoot=await makeFailed('transport');
+  await outer.getByRole('button',{name:'选择备用文本模型',exact:true}).click();await fallback.getByText(/原模型请求的结果尚未明确/).waitFor();
+  assert.equal(await fallback.getByRole('combobox').count(),0);assert.ok(await fallback.getByRole('button',{name:'预览备用调用',exact:true}).isDisabled());
+  await page.setViewportSize({width:390,height:844});await noOverflow();await page.screenshot({path:resolve(output,'mobile-text-fallback-unknown-blocked.png'),fullPage:true});
+  assert.deepEqual(errors,[]);assert.deepEqual(await get('/draft'),before);assert.equal((await info()).promptNumber,fixture.promptNumber);
+  console.log(JSON.stringify({output,parentId,childId,failedRoot,unknownRoot,modelCalls:(await info()).textModels.length-startCalls,newImages:0,errors,stableConfirmations:confirmations.slice(0,2)},null,2));
+}finally{await browser.close();}

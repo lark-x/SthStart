@@ -3,19 +3,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { AlertTriangle, ExternalLink, ImagePlus, LoaderCircle, RefreshCw, Settings2, Sparkles, WandSparkles } from 'lucide-react';
+import { AlertTriangle, ExternalLink, LoaderCircle, Settings2, Sparkles, WandSparkles } from 'lucide-react';
 import type {
-  ActivityScene, ActorSnapshot, BeatRenderCandidate, BeatRenderPreview, BeatRenderPreviewRequest, ContentDocument, SceneBeat, SceneBeatRenderSettings,
+  ActivityScene, ActorSnapshot, BeatRenderCandidate, BeatRenderImage, BeatRenderPreview, BeatRenderPreviewRequest, ContentDocument, SceneBeat, SceneBeatRenderSettings,
 } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Button } from '@/app/components/ui/button';
-import { Dialog } from '@/app/components/ui/dialog';
-import { Drawer } from '@/app/components/ui/drawer';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useToast } from '@/app/providers/ui-provider';
 import { ApiClientError } from '@/app/lib/api-client';
 import { fetchDraft } from '../api';
 import { fetchBeatRenderCandidates, previewBeatRender, rerenderBeatRenderCandidate, selectBeatRenderImage, submitBeatRender } from '../beat-renders-api';
+import { StructuredDirectorControls, VisualParameterFields } from './visual-settings-controls';
+import { restoreVisualDefaults } from '../visual-settings';
+import { defaultCanvasHint, workflowOptionLabel } from '../lib/workflow-option-display';
+import { StudioHiresDialog } from './studio-hires-dialog';
 
 function statusLabel(status: string) {
   return ({ preparing: '准备中', queued: '排队中', running: '绘制中', succeeded: '已完成', failed: '绘制失败', adopted: '历史图片' } as Record<string, string>)[status] ?? status;
@@ -42,24 +45,22 @@ export function BeatRenderWorkbench({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState('');
-  const [numericDrafts, setNumericDrafts] = useState<Record<string, string>>({});
+  const [parametersValid, setParametersValid] = useState(true);
   const [unavailableMediaUrl, setUnavailableMediaUrl] = useState('');
-  const [narrowViewport, setNarrowViewport] = useState(false);
+  /** 待细化的历史图片；打开弹窗本身不提交草稿、不创建任务、不调用模型。 */
+  const [hiresSource, setHiresSource] = useState<{ candidate: BeatRenderCandidate; image: BeatRenderImage } | null>(null);
+  /** 细化结果的内联“查看来源图”。 */
+  const [sourcePreviewKey, setSourcePreviewKey] = useState('');
   const toast = useToast();
   const lastAutoAppliedVersion = useRef(0);
   const submitting = useRef(false);
   const drawAttempt = useRef<{ requestKey: string; idempotencyKey: string } | null>(null);
+  const previewSequence = useRef(0);
   const actor = useMemo(() => document.actors.find((item) => item.id === beat.characterId) as ActorSnapshot | undefined, [document.actors, beat.characterId]);
 
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)');
-    const update = () => setNarrowViewport(media.matches);
-    update(); media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
 
   useEffect(() => { setSettings(settingsFromBeat(beat)); }, [beat.id, beat.renderSettings]);
-  useEffect(() => { setPlan(null); setNumericDrafts({}); setError(''); setSettingsOpen(false); drawAttempt.current = null; }, [beat.id]);
+  useEffect(() => { setPlan(null); setError(''); setSettingsOpen(false); drawAttempt.current = null; }, [beat.id]);
 
   const candidateQuery = useInfiniteQuery({
     queryKey: ['activity-beat-renders', activityId, stageId, scene.id, beat.id],
@@ -100,6 +101,9 @@ export function BeatRenderWorkbench({
     parameters: configured.parameters,
     referenceAssetKey: configured.referenceAssetKey,
     loraOverrides: configured.loraOverrides,
+    quality: configured.quality,
+    director: configured.director,
+    composition: configured.composition,
     ...(typeof configured.parameters?.seed === 'number' ? { seed: configured.parameters.seed } : {}),
     ...overrides,
   });
@@ -112,18 +116,19 @@ export function BeatRenderWorkbench({
   };
 
   const loadSettingsPreview = async (configured: SceneBeatRenderSettings) => {
+    const sequence = ++previewSequence.current;
     setWorking('preview'); setError('');
     const request = makeRequestFromSettings(configured);
-    try { await fetchPreview(request); }
+    try { const result = await previewBeatRender(activityId, request); if (sequence === previewSequence.current) setPlan(result); }
     catch (cause) {
       const message = cause instanceof Error ? cause.message : '读取绘制配置失败';
       // Invalid saved overrides must not hide the very fields needed to repair them.
       if (Object.keys(request.parameters ?? {}).length) {
-        try { await fetchPreview({ ...request, parameters: undefined, seed: undefined }); }
-        catch { setPlan(null); }
-      } else setPlan(null);
-      setError(message);
-    } finally { setWorking(''); }
+        try { const result = await previewBeatRender(activityId, { ...request, parameters: {}, seed: undefined }); if (sequence === previewSequence.current) setPlan(result); }
+        catch { if (sequence === previewSequence.current) setPlan(null); }
+      } else if (sequence === previewSequence.current) setPlan(null);
+      if (sequence === previewSequence.current) setError(message);
+    } finally { if (sequence === previewSequence.current) setWorking(''); }
   };
 
   const handleOpenSettings = async () => {
@@ -132,11 +137,10 @@ export function BeatRenderWorkbench({
       const ok = await onBeforeAction();
       if (!ok) return;
     }
-    if (!plan) await loadSettingsPreview(settings);
+    await loadSettingsPreview(settings);
   };
 
   const changeWorkflowSettings = (next: SceneBeatRenderSettings) => {
-    setNumericDrafts({});
     setPlan(null);
     persistSettings(next);
     void loadSettingsPreview(next);
@@ -145,7 +149,7 @@ export function BeatRenderWorkbench({
   const handleDraw = async (baseRequest = makeRequest()) => {
     if (submitting.current || disabled || working || running) return;
     setError('');
-    if (Object.keys(numericDrafts).length) {
+    if (!parametersValid) {
       setShowAdvanced(true);
       setSettingsOpen(true);
       setError('请先将数值参数填写为工作流允许的值。');
@@ -225,9 +229,10 @@ export function BeatRenderWorkbench({
   const history = candidates.flatMap((candidate) => candidate.images.map((image) => ({ candidate, image })));
   const failuresOrProcessing = candidates.filter((candidate) => ['failed', 'preparing', 'queued', 'running'].includes(candidate.status));
   const running = candidates.some((candidate) => ['preparing', 'queued', 'running'].includes(candidate.status));
-  const selectedImage = history.find((item) => item.image.mediaUrl === beat.mediaUrl);
-  const selectedCandidate = selectedImage?.candidate ?? null;
   const settingsLabel = !settings.workflowId && !settings.presetId ? '使用活动默认配置' : plan?.presetOptions.find((item) => item.id === plan.selectedPresetId)?.name ?? plan?.workflowName ?? '使用本镜头配置';
+  // 工作流 ID 里的分辨率字样是历史命名；选择器旁必须显示真实默认尺寸，并推荐新工作流。
+  const selectedWorkflowOption = plan?.workflowOptions.find((item) => item.workflowId === (settings.workflowId ?? plan.workflowId)
+    && item.workflowVersion === (settings.workflowVersion ?? plan.workflowVersion));
 
   const settingFields = plan?.fields.filter((field) => !['prompt', 'long-text'].includes(field.type) && !/negative.?prompt/i.test(field.key))
     .sort((left, right) => (['width', 'height'].indexOf(left.key) < 0 ? 2 : ['width', 'height'].indexOf(left.key))
@@ -235,6 +240,7 @@ export function BeatRenderWorkbench({
   const settingContent = (
     <div className="space-y-4">
       <p className="text-sm text-muted">直接使用活动默认配置即可绘制。这里的调整仅用于当前镜头。</p>
+      <label className="block space-y-1.5"><span className="text-sm font-medium">品质覆盖</span><select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>
       <details className="rounded-[var(--radius-control)] border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
       <label className="mt-3 block space-y-1.5"><span className="text-sm font-medium text-ink">工作流</span>
         {plan?.workflowOptions.length ? <select aria-label="镜头工作流" value={`${settings.purpose ?? plan.purpose}|${settings.workflowId ?? plan.workflowId}|${settings.workflowVersion ?? plan.workflowVersion}`} onChange={(event) => {
@@ -242,8 +248,9 @@ export function BeatRenderWorkbench({
           if (item) changeWorkflowSettings({ ...settings, purpose: item.purpose, workflowId: item.workflowId, workflowVersion: item.workflowVersion,
             presetId: item.presetId ?? undefined, presetRevision: undefined, parameters: undefined });
         }} className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink">
-          {plan.workflowOptions.map((item) => <option key={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`} value={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`}>{item.workflowName} v{item.workflowVersion} · {item.engineName}</option>)}
+          {plan.workflowOptions.map((item) => <option key={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`} value={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`}>{workflowOptionLabel(item)}</option>)}
         </select> : <p className="rounded border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-muted">{settingsLabel}</p>}
+        {selectedWorkflowOption && <span className="block text-xs text-muted">{defaultCanvasHint(selectedWorkflowOption, selectedWorkflowOption.workflowId)}</span>}
       </label></details>
       {plan?.presetOptions.length ? <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">生成预设</span>
         <select aria-label="镜头绘制预设" value={settings.presetId ?? ''} onChange={(event) => {
@@ -254,10 +261,22 @@ export function BeatRenderWorkbench({
           <option value="">跟随活动默认配置</option>{plan.presetOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · 默认' : ''}</option>)}
         </select>
       </label> : null}
-      <div className="flex flex-wrap items-center gap-3"><Button type="button" size="sm" variant="ghost" disabled={Boolean(working)} onClick={() => changeWorkflowSettings({ customPrompt: settings.customPrompt })}>恢复活动默认</Button><Link href="/settings/generation" target="_blank" rel="noopener noreferrer" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link></div>
-      <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">补充提示词</span>
-        <Textarea rows={3} value={settings.customPrompt ?? ''} onChange={(event) => persistSettings({ ...settings, customPrompt: event.target.value })} placeholder="补充构图、光影或画风要求；镜头动作会自动带入" />
-      </label>
+      <div className="flex flex-wrap items-center gap-3"><Button type="button" size="sm" variant="ghost" disabled={Boolean(working)} onClick={() => changeWorkflowSettings(restoreVisualDefaults(settings))}>恢复活动默认</Button><Link href="/settings/generation" target="_blank" rel="noopener noreferrer" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link></div>
+      <div className="space-y-1.5">
+        <div className="text-sm font-medium text-ink">补充提示词</div>
+        <StructuredDirectorControls
+          value={settings.director}
+          onChange={(director) => persistSettings({ ...settings, director })}
+          disabled={disabled || Boolean(working) || running}
+        />
+        <Textarea
+          aria-label="补充提示词"
+          rows={3}
+          value={settings.customPrompt ?? ''}
+          onChange={(event) => persistSettings({ ...settings, customPrompt: event.target.value })}
+          placeholder="补充构图、光影或画风要求；镜头动作会自动带入"
+        />
+      </div>
       <details className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
         <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="text-xs text-muted">需要改变画风或角色特征时，再添加、调权或关闭。</p>
         {plan?.loras.map((item) => {
@@ -307,41 +326,28 @@ export function BeatRenderWorkbench({
       <details open={showAdvanced} onToggle={(event) => setShowAdvanced((event.currentTarget as HTMLDetailsElement).open)} className="rounded-[var(--radius-control)] border border-border-subtle p-3">
         <summary className="cursor-pointer select-none text-sm font-medium text-ink">高级设置：负向词、参考图、种子与采样参数</summary>
         <div className="mt-3 space-y-3">
-          {settingFields.length > 0 && <div className="grid gap-3 sm:grid-cols-2">{settingFields.map((field) => <label key={field.key} className="min-w-0 space-y-1"><span className="text-xs font-medium text-muted">{field.label}{field.required ? ' · 必填' : ''}</span>
-            {field.type === 'enum' && field.enumValues?.length ? <select aria-label={field.label} value={String(settings.parameters?.[field.key] ?? field.value ?? '')} onChange={(event) => persistSettings({ ...settings, parameters: { ...settings.parameters, [field.key]: event.target.value } })} className="h-10 w-full rounded border border-border-control bg-surface-raised px-3 text-sm text-ink">{field.enumValues.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-              : field.type === 'boolean' ? <input aria-label={field.label} type="checkbox" checked={Boolean(settings.parameters?.[field.key] ?? field.value)} onChange={(event) => persistSettings({ ...settings, parameters: { ...settings.parameters, [field.key]: event.target.checked } })} className="h-4 w-4 accent-[var(--color-accent)]" />
-                : <Input aria-label={field.label} type={['integer', 'number', 'seed'].includes(field.type) ? 'number' : 'text'} min={field.minimum} max={field.maximum} step={field.step} value={numericDrafts[field.key] ?? String(settings.parameters?.[field.key] ?? field.value ?? '')} onChange={(event) => {
-                  const raw = event.target.value;
-                  if (['integer', 'number', 'seed'].includes(field.type)) {
-                    const value = Number(raw);
-                    const valid = raw !== '' && Number.isFinite(value)
-                      && (field.type === 'number' || Number.isSafeInteger(value))
-                      && (field.minimum === undefined || value >= field.minimum)
-                      && (field.maximum === undefined || value <= field.maximum)
-                      && (field.step === undefined || Math.abs((value - (field.minimum ?? 0)) / field.step - Math.round((value - (field.minimum ?? 0)) / field.step)) < 1e-7);
-                    if (!valid) { setNumericDrafts((drafts) => ({ ...drafts, [field.key]: raw })); return; }
-                    setNumericDrafts((drafts) => { const next = { ...drafts }; delete next[field.key]; return next; });
-                    persistSettings({ ...settings, parameters: { ...settings.parameters, [field.key]: value } });
-                    return;
-                  }
-                  persistSettings({ ...settings, parameters: { ...settings.parameters, [field.key]: raw } });
-                }} />}
-          </label>)}</div>}
-          <label className="block space-y-1"><span className="text-xs font-medium text-muted">反向提示词</span><Textarea rows={3} value={settings.negativePrompt ?? ''} onChange={(event) => persistSettings({ ...settings, negativePrompt: event.target.value })} placeholder="留空时使用工作流/提示词策略默认值" /></label>
-          <label className="block space-y-1"><span className="text-xs font-medium text-muted">角色参考图</span><select aria-label="镜头参考图" value={settings.referenceAssetKey ?? ''} onChange={(event) => persistSettings({ ...settings, referenceAssetKey: event.target.value || undefined })} className="h-10 w-full rounded border border-border-control bg-surface-raised px-3 text-sm text-ink">
+          <VisualParameterFields key={`${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} recoveryKey={`sthstart:visual-input:beat:${activityId}:${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} fields={settingFields} values={settings.parameters ?? {}} onChange={parameters => persistSettings({ ...settings, parameters })} onValidityChange={setParametersValid} disabled={Boolean(working)} />
+          <label className="block space-y-1"><span className="text-xs font-medium text-muted">反向提示词 · {settings.negativePrompt === undefined ? '继承默认' : '仅此镜头'}</span><Textarea rows={3} value={settings.negativePrompt ?? ''} onChange={(event) => persistSettings({ ...settings, negativePrompt: event.target.value })} placeholder="未修改时继承默认；修改后留空表示明确清空" /><Button size="sm" variant="ghost" onClick={() => persistSettings({ ...settings, negativePrompt: undefined })}>恢复继承</Button></label>
+          <label className="block space-y-1"><span className="text-xs font-medium text-muted">角色参考图</span><select aria-label="镜头参考图" disabled={Boolean(plan && !plan.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={(event) => persistSettings({ ...settings, referenceAssetKey: event.target.value || undefined })} className="h-10 w-full rounded border border-border-control bg-surface-raised px-3 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60">
             <option value="">不使用参考图</option>{(actor?.appearanceReferenceAssetKeys ?? []).map((key) => <option key={key} value={key}>{key}</option>)}
-          </select></label>
+          </select>
+          {plan && !plan.referenceSupported && <span className="block text-xs text-muted">当前工作流未声明参考图输入能力：本次<b>仅文字描述</b>，角色形象不会被锁定，也不会伪装成已锁定。</span>}
+          {plan && plan.referenceSupported && <span className="block text-xs text-muted">该工作流声明了参考图输入，选择后会随本次绘制一起提交。</span>}
+          </label>
           {plan && <div className="space-y-2 rounded bg-surface-raised p-3 text-xs text-muted"><div className="font-semibold text-ink">提示词来源与工作流参数</div>
             <p>下列来源描述尚未经过本次自动优化；实际提交提示词会在生成记录中保留。</p>
             {plan.source.map((item) => <p key={item.label}><strong className="text-ink">{item.label}：</strong>{item.value}</p>)}
-            <p>提示词优化：{plan.promptOptimization.enabled ? `开启 · 策略 r${plan.promptOptimization.policyRevision}` : '关闭'}</p>
+            <p>提示词模式：{plan.promptAssembly === 'service-finalized-v1'
+              ? `服务端最终组装（${plan.workflowName} v${plan.workflowVersion}）：正负提示词直接绑定文本编码器，画风只追加一次`
+              : `工作流图内自行拼接（${plan.workflowName} v${plan.workflowVersion}）：服务端无法确定实际编码文本`}</p>
+            <p>提示词优化：{plan.promptOptimization.enabled ? `开启 · 策略 r${plan.promptOptimization.policyRevision}` : '关闭，不调用文本模型'}</p>
             <p>反向提示词：{plan.negativePrompt || '未绑定或使用默认值'}</p>
             {plan.warnings.map((warning) => <p key={warning} className="flex items-start gap-1.5 text-warning"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>)}
           </div>}
         </div>
       </details>
       {plan && !plan.canSubmit && <p role="status" className="text-sm text-warning">{plan.warnings.join(' ')} 修正后可直接再次绘制。</p>}
-      <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setSettingsOpen(false)}>完成</Button><Button type="button" variant="accent" disabled={disabled || Boolean(working) || running} onClick={() => void handleDraw()}>{working === 'submit' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}绘制新图</Button></div>
+      <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => { if (parametersValid) setSettingsOpen(false); else setError('请修正无效参数，当前输入已保留。'); }}>完成</Button><Button type="button" variant="accent" disabled={disabled || Boolean(working) || running} onClick={() => void handleDraw()}>{working === 'submit' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}绘制新图</Button></div>
     </div>
   );
 
@@ -352,7 +358,7 @@ export function BeatRenderWorkbench({
           <div className="min-w-0"><div className="text-xs font-semibold text-ink">当前镜头画面</div><div className="max-w-full truncate text-[11px] text-muted">{settingsLabel}</div></div>
           <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void handleOpenSettings()}><Settings2 className="mr-1 h-4 w-4" />绘制设置</Button>
         </div>
-        <div className={`relative aspect-video w-full overflow-hidden rounded-[var(--radius-control)] border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
+        <div className={`relative ${currentUrl ? 'aspect-video' : 'min-h-40 py-5'} w-full overflow-hidden rounded-[var(--radius-control)] border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
           {currentUrl ? unavailableMediaUrl === currentUrl
             ? <div role="status" className="p-4 text-center text-sm text-muted">当前画面文件不可用，历史图片仍可重新选择。</div>
             : beat.mediaType === 'video' ? <video src={currentUrl} controls onError={() => setUnavailableMediaUrl(currentUrl)} className="h-full w-full object-contain" />
@@ -371,26 +377,20 @@ export function BeatRenderWorkbench({
               </div>
             )}
         </div>
+
+        {/* 导演视觉胶囊：景别与光影快捷调控 */}
+        <StructuredDirectorControls
+          value={settings.director}
+          onChange={(director) => persistSettings({ ...settings, director })}
+          disabled={disabled || Boolean(working) || running}
+        />
+
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {selectedCandidate ? (
-            <>
-              <Button type="button" variant="accent" disabled={disabled || Boolean(working) || running} onClick={() => void rerender(selectedCandidate)}>
-                {working === 'rerender' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}换种子重抽
-              </Button>
-              <Button type="button" variant="outline" disabled={disabled || Boolean(working) || running} onClick={() => void handleOpenSettings()}>
-                <Settings2 className="mr-1 h-4 w-4" />微调提示词重绘
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button type="button" variant="accent" disabled={disabled || Boolean(working) || running || beat.mediaType === 'video'} onClick={() => void handleDraw()}>
-                {working === 'submit' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}一键极速绘制
-              </Button>
-              <Button type="button" variant="outline" disabled={disabled || Boolean(working) || running} onClick={() => void handleOpenSettings()}>
-                <Settings2 className="mr-1 h-4 w-4" />自定义工作流/画风
-              </Button>
-            </>
-          )}
+          <Button type="button" variant="accent" disabled={disabled || Boolean(working) || running || beat.mediaType === 'video'} onClick={() => void handleDraw()}>
+            {working === 'submit' ? <LoaderCircle className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}绘制新图
+          </Button>
+          {/* 这里曾有一个“换种子重抽”按钮，它和每张历史图的“按原配置重绘”调用同一个函数。
+              计划 §1.1 把“按原配置重绘”定位在历史图上，因此只保留历史图里的那一个入口，避免同义重复按钮。 */}
         </div>
         {beat.mediaType === 'video' && <p className="text-xs text-muted">当前引用是视频，本入口暂不支持图片绘制；请先在“编辑镜头”中更换或移除视频。</p>}
         {running && <p className="flex items-center gap-2 text-sm text-muted" role="status"><LoaderCircle className="h-4 w-4 animate-spin" />{candidates.some((item) => item.status === 'preparing') ? '正在准备提示词与绘制配置…' : candidates.some((item) => item.status === 'running') ? 'ComfyUI 正在绘制…' : '已提交，等待 ComfyUI 绘制…'}完成后图片会出现在下方。</p>}
@@ -406,12 +406,36 @@ export function BeatRenderWorkbench({
                 const isNew = candidate.status === 'succeeded' && !candidate.adoptedAt;
                 const isCurrent = image.mediaUrl === beat.mediaUrl;
                 const label = !image.available ? '文件不可用' : isCurrent ? '当前' : isNew ? '新图' : '历史';
-                return <button key={`${candidate.id}:${image.artifactId}`} type="button" disabled={disabled || working === 'select' || !image.available}
-                  onClick={() => void selectImage(candidate, image.artifactId)} aria-label={`${label}，绘制于 ${new Date(candidate.createdAt).toLocaleString()}`}
-                  className={`group relative h-20 w-28 flex-none overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-black'}`}>
-                  {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-[10px] text-muted">文件不可用</span>}
-                  <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isCurrent ? 'bg-accent text-white' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-white'}`}>{label}</span>
-                </button>;
+                const isHires = candidate.imageOperation?.operation === 'hires';
+                const itemKey = `${candidate.id}:${image.artifactId}`;
+                const parentArtifactId = candidate.imageOperation?.parentArtifactId ?? null;
+                const parent = parentArtifactId ? history.find((item) => item.image.artifactId === parentArtifactId) : null;
+                const actionBusy = disabled || Boolean(working) || running;
+                return <div key={itemKey} className="w-28 flex-none space-y-1 sm:w-32">
+                  <button type="button" disabled={disabled || working === 'select' || !image.available}
+                    onClick={() => void selectImage(candidate, image.artifactId)} aria-label={`${label}${isHires ? '（细化）' : ''}，绘制于 ${new Date(candidate.createdAt).toLocaleString()}`}
+                    className={`group relative block h-20 w-28 overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-black'}`}>
+                    {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-[10px] text-muted">文件不可用</span>}
+                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isCurrent ? 'bg-accent text-white' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-white'}`}>{label}</span>
+                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">细化</span>}
+                  </button>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                    <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
+                      onClick={() => void selectImage(candidate, image.artifactId)}>使用</button>
+                    <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy}
+                      onClick={() => void rerender(candidate)}>按原配置重绘</button>
+                    <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
+                      onClick={() => { setSourcePreviewKey(''); setHiresSource({ candidate, image }); }}>放大细化</button>
+                    {candidate.callId && <Link href={`/settings/ai-logs?callId=${encodeURIComponent(candidate.callId)}`} target="_blank" className="inline-flex items-center gap-0.5 text-accent hover:underline">日志<ExternalLink className="h-3 w-3" /></Link>}
+                    {isHires && <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!parent}
+                      title={parent ? '显示本次细化所用的来源图' : '来源图在更早的分页里，请先加载更早图片'}
+                      onClick={() => setSourcePreviewKey((current) => current === itemKey ? '' : itemKey)}>来源图</button>}
+                  </div>
+                  {isHires && sourcePreviewKey === itemKey && parent && <div className="overflow-hidden rounded border border-border-default">
+                    <img src={parent.image.mediaUrl} alt="细化来源图" className="h-auto w-full object-contain" />
+                    <p className="break-words px-1 py-0.5 text-[10px] text-muted">细化来源</p>
+                  </div>}
+                </div>;
               })}</div>}
         {candidateQuery.hasNextPage && <Button type="button" size="sm" variant="ghost" disabled={candidateQuery.isFetchingNextPage} onClick={() => void candidateQuery.fetchNextPage()}>{candidateQuery.isFetchingNextPage ? '正在加载…' : '加载更早图片'}</Button>}
         {failuresOrProcessing.length > 0 && <details className="rounded border border-border-subtle bg-surface-raised/50 p-2">
@@ -426,8 +450,19 @@ export function BeatRenderWorkbench({
         {history.some(({ candidate }) => candidate.callId) && <div className="flex flex-wrap gap-x-3 gap-y-1">{[...new Map(history.filter(({ candidate }) => candidate.callId).map(({ candidate }) => [candidate.id, candidate])).values()].slice(0, 4).map((candidate) => <Link key={candidate.id} href={`/settings/ai-logs?callId=${encodeURIComponent(candidate.callId!)}`} target="_blank" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">{new Date(candidate.createdAt).toLocaleString()} · 调用日志<ExternalLink className="h-3 w-3" /></Link>)}</div>}
       </section>
 
-      {narrowViewport ? <Drawer open={settingsOpen} onOpenChange={setSettingsOpen} position="bottom" title="绘制设置" description="默认配置保持简单；高级参数按需展开。" className="p-4">{settingContent}</Drawer>
-        : <Dialog open={settingsOpen} onOpenChange={setSettingsOpen} title="绘制设置" description="选择预设、补充画面要求，即可直接绘制。" size="lg">{settingContent}</Dialog>}
+      <ResponsiveEditOverlay open={settingsOpen} onOpenChange={open => { if (open || parametersValid) setSettingsOpen(open); else setError('请修正无效参数，当前输入已保留。'); }} title="绘制设置" description="选择预设、补充画面要求，即可直接绘制。">{settingContent}</ResponsiveEditOverlay>
+
+      <StudioHiresDialog
+        activityId={activityId}
+        target={{ kind: 'beat', stageId, sceneId: scene.id, beatId: beat.id }}
+        sourceArtifactId={hiresSource?.image.artifactId ?? null}
+        sourceImageUrl={hiresSource?.image.mediaUrl ?? null}
+        sourceLabel={hiresSource ? `${scene.title}：${beat.action}` : undefined}
+        open={Boolean(hiresSource)}
+        onOpenChange={(next) => { if (!next) setHiresSource(null); }}
+        beforePreview={onBeforeAction ?? (async () => true)}
+        onCreated={() => { void candidateQuery.refetch(); toast.success('已提交放大细化，可在历史记录中查看进度'); }}
+      />
     </div>
   );
 }

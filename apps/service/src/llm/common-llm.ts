@@ -38,6 +38,9 @@ export interface ExecuteTextLlmOptions {
     businessEvent: string;
     objectType?: string | null;
     objectId?: string | null;
+    parentId?: string | null;
+    retryOf?: string | null;
+    parameters?: Record<string,unknown>;
   };
 }
 
@@ -119,10 +122,12 @@ export async function executeTextLlm(options: ExecuteTextLlmOptions): Promise<st
           businessEvent: audit.businessEvent,
           objectType: audit.objectType,
           objectId: audit.objectId,
+          parentId: audit.parentId,
+          retryOf: audit.retryOf,
           callType: 'llm',
           provider: profile.name || profile.id || 'custom',
           models: [String(model)],
-          parameters: { temperature: effectiveTemperature, ...(jsonMode ? { jsonMode: true } : {}) },
+          parameters: { ...audit.parameters, temperature: effectiveTemperature, ...(jsonMode ? { jsonMode: true } : {}) },
           positivePrompt,
           redactionSecrets: collectAiCallRedactionSecrets({
             secret: profile.secret,

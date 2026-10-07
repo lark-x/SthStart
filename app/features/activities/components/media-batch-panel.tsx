@@ -1,5 +1,5 @@
 'use client';
-import { normalizeCreationProfile } from '@sthstart/contracts';
+import { isActivityArtStylePayload, normalizeCreationProfile } from '@sthstart/contracts';
 import { useSearchParams } from 'next/navigation';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -100,7 +100,7 @@ export function MediaBatchPanel({
   const [generationPresetId, setGenerationPresetId] = useState('__default__');
   const { data: presetsData } = useActivityPresets('production_preset');
   const createPresetMutation = useCreateActivityPreset();
-  const productionPresets = presetsData?.items || [];
+  const productionPresets = (presetsData?.items || []).filter(preset => !isActivityArtStylePayload(preset.payload));
 
   const handleSelectPreset = (presetId: string) => {
     setSelectedPresetId(presetId);

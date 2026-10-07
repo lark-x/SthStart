@@ -40,6 +40,9 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   autoOpenBrowser: false,
   useMirror: true,
   publicLlmEnabled: true,
+  // Linshe generates images with its own ComfyUI by default; SthStart is only a
+  // fallback gateway when this is explicitly enabled.
+  linsheImageViaGateway: false,
   comfyuiExecutable: DEFAULT_COMFYUI_EXECUTABLE,
   extraLoraFolders: [],
   maibotAutostart: false,
@@ -107,6 +110,7 @@ export class RuntimeSettingsStore {
       useMirror: typeof patch.useMirror === 'boolean' ? patch.useMirror : current.useMirror,
       // Project-managed Linshe always routes through the audited public gateway.
       publicLlmEnabled: true,
+      linsheImageViaGateway: typeof patch.linsheImageViaGateway === 'boolean' ? patch.linsheImageViaGateway : current.linsheImageViaGateway,
       comfyuiExecutable: typeof patch.comfyuiExecutable === 'string' ? patch.comfyuiExecutable.trim() : current.comfyuiExecutable,
       maibotAutostart: typeof patch.maibotAutostart === 'boolean' ? patch.maibotAutostart : current.maibotAutostart,
       maibotBrowserMaibot: typeof patch.maibotBrowserMaibot === 'boolean' ? patch.maibotBrowserMaibot : current.maibotBrowserMaibot,
@@ -557,7 +561,7 @@ export class RuntimeManager {
           STHSTART_APP_TOKEN: this.options.appToken ?? '',
           STHSTART_PUBLIC_LLM: 'true',
           STHSTART_PUBLIC_VECTOR: 'true',
-          STHSTART_PUBLIC_IMAGE: 'true',
+          STHSTART_PUBLIC_IMAGE: runtime.linsheImageViaGateway ? 'true' : 'false',
           STHSTART_GENERATION_PURPOSE: 'linshe-chat-image',
           STHSTART_PORTAL_URL: this.config.portalOrigins[0] ?? 'http://127.0.0.1:4173',
         } : {}),

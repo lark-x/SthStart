@@ -14,6 +14,7 @@ export interface RuntimeFormValues {
   autoStart: boolean;
   autoOpenBrowser: boolean;
   useMirror: boolean;
+  linsheImageViaGateway: boolean;
   comfyuiExecutable: string;
   extraLoraFolders: string;
   maibotAutostart: boolean;
@@ -40,6 +41,7 @@ export function RuntimeSettingsForm({
       autoStart: initialValues?.autoStart ?? true,
       autoOpenBrowser: initialValues?.autoOpenBrowser ?? true,
       useMirror: initialValues?.useMirror ?? true,
+      linsheImageViaGateway: initialValues?.linsheImageViaGateway ?? false,
       comfyuiExecutable: initialValues?.comfyuiExecutable ?? '',
       extraLoraFolders: initialValues?.extraLoraFolders?.join('\n') ?? '',
       maibotAutostart: initialValues?.maibotAutostart ?? false,
@@ -55,6 +57,7 @@ export function RuntimeSettingsForm({
         autoStart: initialValues.autoStart,
         autoOpenBrowser: initialValues.autoOpenBrowser,
         useMirror: initialValues.useMirror,
+        linsheImageViaGateway: initialValues.linsheImageViaGateway,
         comfyuiExecutable: initialValues.comfyuiExecutable,
         extraLoraFolders: initialValues.extraLoraFolders?.join('\n') ?? '',
         maibotAutostart: initialValues.maibotAutostart,
@@ -69,6 +72,7 @@ export function RuntimeSettingsForm({
       autoStart: data.autoStart,
       autoOpenBrowser: data.autoOpenBrowser,
       useMirror: data.useMirror,
+      linsheImageViaGateway: data.linsheImageViaGateway,
       comfyuiExecutable: data.comfyuiExecutable.trim(),
       extraLoraFolders: data.extraLoraFolders
         .split(/\r?\n/)
@@ -108,10 +112,15 @@ export function RuntimeSettingsForm({
               description="模型与依赖拉取时优先使用镜像。"
               {...register('useMirror')}
             />
+            <Switch
+              label="邻舍生图使用 SthStart 公共网关"
+              description="关闭时邻舍直连自己的 ComfyUI；其生图不会进入 SthStart 的生成队列与 AI 调用日志。启用前必须先为邻舍绑定 linshe-chat-image 已发布的图片工作流。"
+              {...register('linsheImageViaGateway')}
+            />
           </div>
 
           <div className="rounded border border-accent/25 bg-accent/10 px-3.5 py-3 text-sm text-ink">
-            本项目管理的邻舍始终通过 SthStart 公共网关使用 LLM、图片生成和向量服务。启动前会检查应用令牌、模型路由和图片用途绑定；配置不足时会列出需要补齐的项目。
+            本项目管理的邻舍始终通过 SthStart 公共网关使用 LLM 与向量服务；生图是否走公共网关由上方开关决定。启动前会检查应用令牌与模型路由，仅在生图开关打开时检查图片用途绑定；配置不足时会列出需要补齐的项目。
           </div>
 
           <div className="pt-4 border-t border-border-subtle space-y-4">

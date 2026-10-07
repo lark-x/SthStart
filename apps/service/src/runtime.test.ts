@@ -8,6 +8,8 @@ import { ServiceDatabase } from './database.js';
 import { RuntimeLogService, RuntimeManager, RuntimeSettingsStore } from './runtime.js';
 import { readConfig } from './config.js';
 import { createService } from './server.js';
+import { inspectLinsheHostedReadiness } from './linshe-hosted.js';
+import { SecretStore } from './security.js';
 
 async function availablePort() {
   const server = createServer();
@@ -31,7 +33,7 @@ test('runtime settings persist with bounded normalization', () => {
   database.close();
 });
 
-test('managed Linshe agent receives its identity and locked hosted service flags', async () => {
+test('managed Linshe agent receives its identity, the locked LLM/vector gateways, and no image gateway by default', async () => {
   const agentPort = await availablePort();
   const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-env-'));
   mkdirSync(resolve(root, 'agent-core'), { recursive: true });
@@ -45,9 +47,47 @@ test('managed Linshe agent receives its identity and locked hosted service flags
   await runtime.start('linshe-agent');
   for (let attempt = 0; attempt < 200 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
   assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), {
-    token: 'sth_app_runtime-test-token', llm: 'true', vector: 'true', image: 'true', purpose: 'linshe-chat-image',
+    token: 'sth_app_runtime-test-token', llm: 'true', vector: 'true', image: 'false', purpose: 'linshe-chat-image',
     url: 'http://127.0.0.1:44123', portalUrl: 'http://portal.test:4173',
   });
+  await runtime.close(); database.close();
+});
+
+test('the image gateway reaches the Linshe agent only when explicitly enabled', async () => {
+  const agentPort = await availablePort();
+  const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-env-image-'));
+  mkdirSync(resolve(root, 'agent-core'), { recursive: true });
+  const output = resolve(root, 'agent-core/runtime-env.json');
+  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync('runtime-env.json', JSON.stringify({ llm: process.env.STHSTART_PUBLIC_LLM, vector: process.env.STHSTART_PUBLIC_VECTOR, image: process.env.STHSTART_PUBLIC_IMAGE })); setInterval(() => {}, 1000);`);
+  const database = new ServiceDatabase(':memory:');
+  const settings = new RuntimeSettingsStore(database);
+  settings.update({ linsheImageViaGateway: true });
+  const logs = new RuntimeLogService(database, root, false);
+  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', LINSHE_AGENT_PORT: String(agentPort), PROBE_TIMEOUT_MS: '100' });
+  const runtime = new RuntimeManager(config, settings, logs, { appToken: 'sth_app_runtime-test-token' });
+  await runtime.start('linshe-agent');
+  for (let attempt = 0; attempt < 200 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+  assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), { llm: 'true', vector: 'true', image: 'true' });
+  await runtime.close(); database.close();
+});
+
+test('hosted readiness still blocks startup when the image gateway is on and the binding is missing', async () => {
+  const agentPort = await availablePort();
+  const root = mkdtempSync(resolve(tmpdir(), 'sthstart-linshe-preflight-image-'));
+  mkdirSync(resolve(root, 'agent-core'), { recursive: true });
+  const output = resolve(root, 'agent-core/should-not-start');
+  writeFileSync(resolve(root, 'agent-core/app.js'), `require('node:fs').writeFileSync(${JSON.stringify(output)}, 'started'); setInterval(() => {}, 1000);`);
+  const database = new ServiceDatabase(':memory:');
+  const settings = new RuntimeSettingsStore(database);
+  settings.update({ linsheImageViaGateway: true });
+  const logs = new RuntimeLogService(database, root, false);
+  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', LINSHE_AGENT_PORT: String(agentPort), PROBE_TIMEOUT_MS: '100' });
+  const runtime = new RuntimeManager(config, settings, logs, {
+    appToken: 'sth_app_runtime-test-token',
+    hostedReadiness: () => inspectLinsheHostedReadiness(config, database, new SecretStore(), 'sth_app_runtime-test-token', fetch, true),
+  });
+  await assert.rejects(runtime.start('linshe-agent'), /linshe_hosted_configuration_missing: .*linshe-chat-image/);
+  assert.equal(existsSync(output), false);
   await runtime.close(); database.close();
 });
 

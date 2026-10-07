@@ -13,6 +13,7 @@ import type { SecretStore } from './security.js';
 import { getGenerationTask } from './generation/task-store.js';
 import { createGenerationTask } from './generation/execution.js';
 import { assertNoWorkflowSecrets } from './generation/workflows.js';
+import { workflowUsesServiceFinalizedAssembly } from './activities/image-prompt-policies.js';
 import {
   analyzeComfyApiJson,
   analyzeConfigPackage,
@@ -196,7 +197,11 @@ export function registerGenerationConfigRoutes(
       } catch (error) {
         optimizer.message = error instanceof Error ? `文本模型配置不可用：${error.message}` : '文本模型配置不可用。';
       }
-      return { policy: resolveActivityImagePromptPolicy(database, workflowId, workflowVersion), optimizer };
+      return {
+        policy: resolveActivityImagePromptPolicy(database, workflowId, workflowVersion),
+        optimizer,
+        serviceFinalizedAssembly: workflowUsesServiceFinalizedAssembly(database, workflowId, workflowVersion),
+      };
     },
   );
 
@@ -215,7 +220,10 @@ export function registerGenerationConfigRoutes(
         } catch (error) {
           optimizer.message = error instanceof Error ? `文本模型配置不可用：${error.message}` : '文本模型配置不可用。';
         }
-        return { policy, optimizer };
+        return {
+          policy, optimizer,
+          serviceFinalizedAssembly: workflowUsesServiceFinalizedAssembly(database, policy.workflowId, policy.workflowVersion),
+        };
       } catch (error) {
         return sendConfigError(reply, error);
       }

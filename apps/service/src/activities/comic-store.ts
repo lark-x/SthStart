@@ -6,6 +6,8 @@ import { createArtifactReference, hasArtifactAccess, removeArtifactReference, re
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { validateComicDocument } from './comic-validation.js';
+import { updateAiCallRecord } from '../ai-call-trace.js';
+import { readImageOperationMetadata } from './studio-image-operation.js';
 
 type ComicJobKind = ComicJob['kind'];
 type NewComicJob = {
@@ -106,13 +108,13 @@ export class ComicStore {
     return row ? mapDraft(row) : null;
   }
 
-  createComicDraft(activityId: string, contentRevisionId: string): ComicDraft {
+  createComicDraft(activityId: string, contentRevisionId: string, options: { skipTransaction?: boolean } = {}): ComicDraft {
     const activity = this.connection.prepare('SELECT id FROM activities WHERE id=?').get(activityId);
     if (!activity) throw codedError('activity_not_found', '活动不存在。', 404);
     const revision = this.connection.prepare('SELECT id FROM activity_content_revisions WHERE id=? AND activity_id=?').get(contentRevisionId, activityId);
     if (!revision) throw codedError('comic_source_missing', '指定的活动内容版本不存在。', 404);
     const now = nowIso();
-    this.database.transaction(() => {
+    const insert = () => {
       const existing = this.connection.prepare('SELECT 1 FROM activity_comic_drafts WHERE activity_id=?').get(activityId);
       if (existing) return;
       const document: ComicDocument = {
@@ -120,7 +122,8 @@ export class ComicStore {
       };
       this.connection.prepare(`INSERT INTO activity_comic_drafts(activity_id,draft_version,document_json,base_revision_id,updated_at)
         VALUES (?,1,?,NULL,?)`).run(activityId, JSON.stringify(document), now);
-    });
+    };
+    if (options.skipTransaction) insert(); else this.database.transaction(insert);
     return this.getComicDraft(activityId)!;
   }
 
@@ -168,12 +171,12 @@ export class ComicStore {
     }
   }
 
-  saveComicDraft(activityId: string, expectedDraftVersion: number, document: ComicDocument): ComicDraft {
+  saveComicDraft(activityId: string, expectedDraftVersion: number, document: ComicDocument, options: { skipTransaction?: boolean } = {}): ComicDraft {
     const revision = this.connection.prepare('SELECT document_json FROM activity_content_revisions WHERE id=? AND activity_id=?')
       .get(document.contentRevisionId, activityId) as { document_json: string } | undefined;
     if (!revision) throw codedError('comic_source_missing', '漫画绑定的活动内容版本不存在。', 409);
     validateComicDocument(document, JSON.parse(revision.document_json) as import('@sthstart/contracts').ContentDocument);
-    this.database.transaction(() => {
+    const save = () => {
       const current = this.getComicDraft(activityId);
       if (!current) throw codedError('comic_draft_not_found', '漫画草稿不存在。', 404);
       if (current.draftVersion !== expectedDraftVersion) throw codedError('comic_draft_conflict', '漫画草稿已在其他位置更新；本地输入已保留。', 409);
@@ -183,7 +186,8 @@ export class ComicStore {
         .run(JSON.stringify(document), nowIso(), activityId, expectedDraftVersion);
       if (result.changes !== 1) throw codedError('comic_draft_conflict', '漫画草稿版本冲突；请刷新后比较。', 409);
       this.syncDraftReferences(activityId, current.document, document);
-    });
+    };
+    if (options.skipTransaction) save(); else this.database.transaction(save);
     return this.getComicDraft(activityId)!;
   }
 
@@ -228,11 +232,11 @@ export class ComicStore {
     return { items, nextCursor: hasMore && last ? encodeCursor(last.createdAt, last.id) : null };
   }
 
-  createComicJob(input: NewComicJob): { job: ComicJob; isExisting: boolean } {
+  createComicJob(input: NewComicJob, options: { skipTransaction?: boolean } = {}): { job: ComicJob; isExisting: boolean } {
     if (!this.connection.prepare('SELECT 1 FROM activities WHERE id=?').get(input.activityId)) throw codedError('activity_not_found', '活动不存在。', 404);
     const requestHash = hash({ kind: input.kind, panelId: input.panelId ?? null, request: input.request });
     const now = nowIso();
-    return this.database.transaction(() => {
+    const create = () => {
       const existing = this.connection.prepare('SELECT * FROM activity_comic_jobs WHERE activity_id=? AND idempotency_key=?')
         .get(input.activityId, input.idempotencyKey) as Record<string, unknown> | undefined;
       if (existing) {
@@ -246,7 +250,8 @@ export class ComicStore {
         id, input.activityId, input.kind, input.panelId ?? null, input.idempotencyKey, requestHash, JSON.stringify(input.request), input.traceId, now, now,
       );
       return { job: this.getComicJob(input.activityId, id)!, isExisting: false };
-    });
+    };
+    return options.skipTransaction ? create() : this.database.transaction(create);
   }
 
   getComicJob(activityId: string, jobId: string): ComicJob | null {
@@ -261,6 +266,8 @@ export class ComicStore {
   }
 
   claimComicJob(jobId: string): boolean {
+    const input=this.connection.prepare('SELECT input_json FROM activity_comic_jobs WHERE id=?').get(jobId);
+    if(input && jsonObject(String(input.input_json))?.readOnly===true)return false;
     const result = this.connection.prepare(`UPDATE activity_comic_jobs SET status='preparing',updated_at=? WHERE id=? AND status='queued'`)
       .run(nowIso(), jobId);
     return result.changes === 1;
@@ -305,7 +312,7 @@ export class ComicStore {
 
   selectComicPanelImage(input: {
     activityId: string; panelId: string; expectedDraftVersion: number; artifactId: string; artifactDirectory: string;
-    currentSourceFingerprint: string; allowStaleSource: boolean;
+    currentSourceFingerprint: string; allowStaleSource: boolean; withinTransaction?: boolean;
   }): ComicDraft {
     const draft = this.getComicDraft(input.activityId);
     if (!draft) throw codedError('comic_draft_not_found', '漫画草稿不存在。', 404);
@@ -358,7 +365,13 @@ export class ComicStore {
       ...item, selectedImage: { artifactId: input.artifactId, origin, renderJobId, sourceFingerprint },
       crop: { focalX: 0.5, focalY: 0.5, zoom: 1 },
     } : item) };
-    return this.saveComicDraft(input.activityId, input.expectedDraftVersion, nextDocument);
+    const saved=this.saveComicDraft(input.activityId, input.expectedDraftVersion, nextDocument,{skipTransaction:input.withinTransaction});
+    // Selection belongs to the producing task's timeline, so a reviewer can see
+    // which generated picture was used where. No model call is implied.
+    const callId=renderJobId?this.connection.prepare('SELECT call_id FROM activity_comic_jobs WHERE id=?').get(renderJobId):null;
+    if(callId&&(callId as {call_id:string|null}).call_id)updateAiCallRecord(this.database,String((callId as {call_id:string}).call_id),
+      {event:'comic_image_selected',detail:{activityId:input.activityId,panelId:input.panelId,artifactId:input.artifactId,origin,sourceChanged}});
+    return saved;
   }
 
   listComicJobs(activityId: string, panelId?: string | null, cursor?: string | null, limit = 20): ComicJobPage {
@@ -415,6 +428,7 @@ export class ComicStore {
     const pageRows = rows.slice(0, pageSize);
     const images: ComicHistoryImage[] = pageRows.map((row) => {
       const input = jsonObject(String(row.input_json)) ?? {};
+      const operation = readImageOperationMetadata(this.database, String(row.job_id));
       return {
         artifactId: String(row.artifact_id), origin: 'comic_render' as const, renderJobId: String(row.job_id), createdAt: String(row.created_at),
         available: String(row.file_status) === 'ready' && (String(row.media_type) === 'image' || String(row.media_type).startsWith('image/')),
@@ -425,6 +439,7 @@ export class ComicStore {
         sourceFingerprint: typeof input.sourceFingerprint === 'string' ? input.sourceFingerprint : null,
         callId: row.call_id ? String(row.call_id) : null,
         previewUrl: String(row.file_status) === 'ready' ? `/api/admin/artifacts/${encodeURIComponent(String(row.artifact_id))}/file` : null,
+        ...(operation ? { imageOperation: operation } : {}),
       };
     });
     const jobs = this.listComicJobs(activityId, panelId, null, 100).items;

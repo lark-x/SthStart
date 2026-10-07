@@ -1,10 +1,13 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { ActivityLoraOverrideSchema, ActivityLoraSchema } from './activities.js';
+import { ActivityRenderQualitySchema, DirectorSettingsSchema } from './activity-studio.js';
+import { ImageOperationMetadataSchema } from './activity-image-operations.js';
 
 export const AiCallStatusSchema = Type.Union([
   Type.Literal('requested'), Type.Literal('not_dispatched'), Type.Literal('submitted'),
   Type.Literal('accepted'), Type.Literal('running'), Type.Literal('succeeded'),
   Type.Literal('failed'), Type.Literal('abandoned'),
+  Type.Literal('unknown'),
 ]);
 export type AiCallStatus = Static<typeof AiCallStatusSchema>;
 
@@ -43,6 +46,13 @@ export const AiCallDetailSchema = Type.Intersect([
     parameters: Type.Record(Type.String(), Type.Unknown()),
     positivePrompt: Type.Union([Type.String(), Type.Null()]), negativePrompt: Type.Union([Type.String(), Type.Null()]),
     requestSnapshot: Type.Record(Type.String(), Type.Unknown()), responseText: Type.Union([Type.String(), Type.Null()]),
+    /**
+     * 从实际工作流快照里读出的文本编码输入（计划 §1.1：生成记录要能看到“从中文来源到实际文本编码输入”的完整过程）。
+     * 只读派生值，不新增日志数据库；没有快照或工作流由节点自行拼接时为空。
+     */
+    encodedTexts: Type.Array(Type.Object({
+      nodeId: Type.String(), input: Type.String(), role: Type.Union([Type.Literal('positive'), Type.Literal('negative')]), text: Type.String(),
+    })),
     usage: Type.Record(Type.String(), Type.Unknown()), sourceUrl: Type.Union([Type.String(), Type.Null()]),
     generationTaskId: Type.Union([Type.String(), Type.Null()]), events: Type.Array(AiCallEventSchema),
     traceCalls: Type.Array(AiCallTraceCallSchema),
@@ -76,6 +86,9 @@ export type AiCallStorageStats = Static<typeof AiCallStorageStatsSchema>;
 
 export const BeatRenderPreviewRequestSchema = Type.Object({
   stageId: Type.String(), sceneId: Type.String(), beatId: Type.String(),
+  quality: Type.Optional(ActivityRenderQualitySchema),
+  director: Type.Optional(DirectorSettingsSchema),
+  composition: Type.Optional(Type.String({ maxLength: 2_000 })),
   purpose: Type.Optional(Type.String()), workflowId: Type.Optional(Type.String()), workflowVersion: Type.Optional(Type.Integer({ minimum: 1 })),
   presetId: Type.Optional(Type.String()), presetRevision: Type.Optional(Type.Integer({ minimum: 1 })),
   customPrompt: Type.Optional(Type.String()), negativePrompt: Type.Optional(Type.String()),
@@ -90,6 +103,11 @@ export const BeatRenderWorkflowOptionSchema = Type.Object({
   purpose: Type.String(), workflowId: Type.String(), workflowName: Type.String(), workflowVersion: Type.Number(),
   engineId: Type.String(), engineName: Type.String(), modelSelection: Type.Union([Type.Literal('individual'), Type.Literal('preset-locked')]),
   presetId: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * 该工作流版本真实生效的默认画布尺寸。工作流 ID 里的分辨率字样（例如 1080p）
+   * 只是历史命名，不代表实际默认值，所以选择器旁必须显示这个真实值。
+   */
+  defaultWidth: Type.Optional(Type.Integer({ minimum: 1 })), defaultHeight: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 export type BeatRenderWorkflowOption = Static<typeof BeatRenderWorkflowOptionSchema>;
 
@@ -114,6 +132,12 @@ export const BeatRenderPreviewSchema = Type.Object({
   seed: Type.Integer({ minimum: 0, maximum: 2147483647 }),
   selectedPresetId: Type.Union([Type.String(), Type.Null()]), selectedPresetRevision: Type.Union([Type.Number(), Type.Null()]), canSubmit: Type.Boolean(),
   promptOptimization: Type.Object({ enabled: Type.Boolean(), policyRevision: Type.Integer({ minimum: 0 }), profileReady: Type.Boolean() }),
+  /**
+   * 当前工作流版本的提示词组装模式（计划 §15.1：常用页要说明模式来自哪个工作流）。
+   * `service-finalized-v1` = 正负提示词由服务端组装后直接绑定编码器；
+   * `workflow-internal` = 工作流图内自行拼接，服务端无法确定实际编码文本。
+   */
+  promptAssembly: Type.Union([Type.Literal('service-finalized-v1'), Type.Literal('workflow-internal')]),
   workflowOptions: Type.Array(BeatRenderWorkflowOptionSchema), presetOptions: Type.Array(BeatRenderPresetOptionSchema),
   loraModels: Type.Array(Type.String()),
   fields: Type.Array(BeatRenderParameterFieldSchema), warnings: Type.Array(Type.String()), draftVersion: Type.Number(),
@@ -157,6 +181,7 @@ export const BeatRenderCandidateSchema = Type.Object({
   autoApplyReason: Type.Union([Type.String(), Type.Null()]),
   artifactSha256: Type.Union([Type.String(), Type.Null()]), progress: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
   createdAt: Type.String(), adoptedAt: Type.Union([Type.String(), Type.Null()]), error: Type.Union([Type.String(), Type.Null()]),
+  imageOperation: Type.Optional(ImageOperationMetadataSchema),
 });
 export type BeatRenderCandidate = Static<typeof BeatRenderCandidateSchema>;
 

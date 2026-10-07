@@ -158,7 +158,9 @@ STHSTART_PUBLIC_VECTOR=false
 STHSTART_PUBLIC_IMAGE=false
 ```
 
-图片公共服务开关为独立设置。只有在已经配置图片工作流绑定且明确希望邻舍走 SthStart Generation 网关时才设为 `true`。托管模式下公共图片请求是单一调用链：公共服务不可达、Worker 不可用或上游返回错误时直接向用户报告，不会自动转投邻舍本地 ComfyUI；旧配置中的 `STHSTART_PUBLIC_IMAGE_FALLBACK` 不再改变这一行为。
+图片公共服务开关为独立设置，**默认 `false`**：邻舍默认使用自己的 ComfyUI 生图，项目托管启动与控制中心开关都不会自动把它切到 SthStart 网关。只有在已经配置图片工作流绑定、且明确希望邻舍走 SthStart Generation 网关时才在控制中心打开「邻舍生图使用 SthStart 公共网关」（或对独立运行显式设置 `STHSTART_PUBLIC_IMAGE=true`）。开启后公共图片请求是单一调用链：公共服务不可达、Worker 不可用或上游返回错误时直接向用户报告，不会自动转投邻舍本地 ComfyUI；旧配置中的 `STHSTART_PUBLIC_IMAGE_FALLBACK` 不再改变这一行为。
+
+关闭该开关时，邻舍生图不进入 SthStart 的生成队列与 AI 调用日志，且托管就绪检查不会要求 `linshe-chat-image` 绑定；邻舍与活动仍共用同一个 ComfyUI 实例和显存。
 
 独立使用 `dev:all` 时，`STHSTART_APP_TOKEN` 应保持为稳定的高熵令牌；通过 SthStart 控制中心托管邻舍时，公共服务会把当前令牌自动注入邻舍进程。
 
@@ -166,6 +168,7 @@ STHSTART_PUBLIC_IMAGE=false
 
 1. **托管模式 (`STHSTART_PUBLIC_LLM=true`)**：
    - 邻舍启动时接收 `STHSTART_PUBLIC_LLM=true` 与 `STHSTART_APP_TOKEN`。
+   - 图片网关是独立开关，默认关闭：控制中心「邻舍生图使用 SthStart 公共网关」决定是否下发 `STHSTART_PUBLIC_IMAGE=true`。
    - 邻舍设置页展示当前绑定的文本/多模态模板信息、模型 ID、连接状态及返回 SthStart 的控制台入口。
    - 邻舍本地 LLM 编辑器被屏蔽，任何本地配置写操作（包括 API Key、Base URL、免费鸡蛋开关、Profile 切换与新增）均直接拒绝（返回 403 `llm_managed_by_sthstart`）。
    - 邻舍所有对话和文本/生图辅助调用严格走 SthStart 公共网关，不发生隐式本地 Provider 回退。

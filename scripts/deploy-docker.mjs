@@ -92,6 +92,7 @@ if (status !== 'running') {
 const requiredRuntimePackages = [
   '@deepseek-ai/dsh', '@deepseek-ai/dsh-sdk-client',
   '@deepseek-ai/dsh-sdk-jsonrpc-server', '@deepseek-ai/dsh-sdk-protocol',
+  '@napi-rs/canvas',
 ];
 for (const packageName of requiredRuntimePackages) {
   // Some ESM-only packages intentionally do not export a package root, so
@@ -101,6 +102,14 @@ for (const packageName of requiredRuntimePackages) {
   const probe = run('docker', ['exec', container, 'node', '-e',
     `process.exit(require('node:fs').existsSync(${JSON.stringify(manifestPath)}) ? 0 : 1)`]);
   if (probe.status !== 0) fail(`容器缺少运行依赖 ${packageName}。先运行 docker compose up -d --build 更新镜像，再部署源码；尚未同步任何文件。`);
+}
+
+// A healthy portal alone does not prove paid speech can be persisted or a video
+// exported. Fail before syncing/restarting, not after the first billed request.
+const mediaProbe = run('docker', ['exec', container, 'node', '-e',
+  "const {execFileSync}=require('node:child_process');for(const tool of ['ffmpeg','ffprobe'])execFileSync(tool,['-version'],{stdio:'ignore'});require('@napi-rs/canvas').createCanvas(1,1)"]);
+if (mediaProbe.status !== 0) {
+  fail('容器缺少 FFmpeg、FFprobe 或 Canvas 运行依赖。先使用 INSTALL_FFMPEG=true 重建镜像；尚未同步任何文件。');
 }
 
 // 3. 全量同步。不做子集更新——dist 与 src 必须同时换，否则运行时会对不上。

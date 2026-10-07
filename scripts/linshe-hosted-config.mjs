@@ -4,16 +4,19 @@ export function normalizeServiceUrl(value) {
   return parsed.toString().replace(/\/+$/, '');
 }
 
-export function createLinsheHostedEnvironment(serviceUrl, appToken) {
+export function createLinsheHostedEnvironment(serviceUrl, appToken, { imageViaGateway = false } = {}) {
   if (!appToken?.trim()) throw new Error('missing_STHSTART_APP_TOKEN');
-  return {
+  const environment = {
     STHSTART_APP_TOKEN: appToken.trim(),
     STHSTART_SERVICE_URL: normalizeServiceUrl(serviceUrl),
     STHSTART_PUBLIC_LLM: 'true',
     STHSTART_PUBLIC_VECTOR: 'true',
-    STHSTART_PUBLIC_IMAGE: 'true',
+    // Linshe renders images with its own ComfyUI by default. The SthStart image
+    // gateway stays opt-in and must never be implied by the other gateways.
+    STHSTART_PUBLIC_IMAGE: imageViaGateway === true ? 'true' : 'false',
     STHSTART_GENERATION_PURPOSE: 'linshe-chat-image',
   };
+  return environment;
 }
 
 export function hostedReadinessFailure(payload) {

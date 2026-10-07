@@ -482,7 +482,7 @@ export function selectMediaForSlots(
     expectedHeadVersion: number;
     contentRevisionId?: string;
     slotBindings: MediaRevisionDocument['slotBindings'];
-  },
+  }, options: {withinTransaction?:boolean} = {},
 ) {
   const head = store.getActivity(activityId);
   if (!head) throw new Error('activity_not_found');
@@ -605,6 +605,7 @@ export function selectMediaForSlots(
     activityId,
     params.expectedHeadVersion,
     params.slotBindings,
+    {skipTransaction:options.withinTransaction},
   );
 
   const mediaRev = store.getMediaRevision(activityId, res.mediaRevisionId)!;

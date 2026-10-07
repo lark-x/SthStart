@@ -8,8 +8,15 @@ export const StoryContextSettingsSchema = Type.Object({
 });
 export type StoryContextSettings = Static<typeof StoryContextSettingsSchema>;
 
+export const StoryProjectTypeSchema = Type.Union([
+  Type.Literal('fiction'),
+  Type.Literal('reflection'),
+]);
+export type StoryProjectType = Static<typeof StoryProjectTypeSchema>;
+
 export const StoryProjectSchema = Type.Object({
   id: Type.String(), title: Type.String(), summary: Type.String(), revision: Type.Integer(),
+  projectType: Type.Optional(StoryProjectTypeSchema),
   contextSettings: StoryContextSettingsSchema,
   workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(), updatedAt: Type.String(),
@@ -18,6 +25,7 @@ export type StoryProject = Static<typeof StoryProjectSchema>;
 export const CreateStoryProjectSchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 120 }),
   summary: Type.Optional(Type.String({ maxLength: 4000 })),
+  projectType: Type.Optional(StoryProjectTypeSchema),
   workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type CreateStoryProject = Static<typeof CreateStoryProjectSchema>;
@@ -25,6 +33,7 @@ export const UpdateStoryProjectSchema = Type.Object({
   expectedRevision: Type.Integer({ minimum: 1 }),
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
   summary: Type.Optional(Type.String({ maxLength: 4000 })),
+  projectType: Type.Optional(StoryProjectTypeSchema),
   workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   contextSettings: Type.Optional(StoryContextSettingsSchema),
 });

@@ -7,6 +7,8 @@ type WorkflowNode = { class_type?: unknown; inputs?: unknown };
 export interface WorkflowRuntimePreflight {
   ok: boolean;
   issues: string[];
+  reachable: boolean | null;
+  checks: { graph: string[]; connection: string[]; nodes: string[]; models: string[] };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -65,12 +67,16 @@ export async function inspectWorkflowRuntime(
   refresh = true,
 ): Promise<WorkflowRuntimePreflight> {
   const { issues, nodes } = validateDefinition(snapshot);
-  if (issues.length) return { ok: false, issues: [...new Set(issues)] };
+  const checks:WorkflowRuntimePreflight['checks']={graph:[...issues],connection:[],nodes:[],models:[]};
+  const result=(reachable:boolean|null):WorkflowRuntimePreflight=>({ok:issues.length===0,issues:[...new Set(issues)],reachable,checks});
+  const unavailable=(message:string)=>{issues.push(message);checks.connection.push(message);return result(false);};
+  if (issues.length) return result(null);
 
   let secret: string | null = null;
   if (target.credentialAccount) {
     try { secret = (await secrets.get(target.credentialAccount)).value; }
-    catch { return { ok: false, issues: [`生成引擎「${target.id}」的凭据不可用，无法校验工作流依赖。`] }; }
+    catch { return unavailable(`生成引擎「${target.id}」的凭据不可用，无法校验工作流依赖。`); }
+    if(!secret)return unavailable(`生成引擎「${target.id}」的凭据不可用，无法校验工作流依赖。`);
   }
 
   const classTypes = [...new Set(nodes.map((node) => node.classType))];
@@ -80,25 +86,26 @@ export async function inspectWorkflowRuntime(
   if (target.kind === 'comfyui') {
     const result = await loadObjectInfo(target, secret, fetcher, refresh);
     if (!result.objectInfo) {
-      return { ok: false, issues: [`ComfyUI 暂不可用。请先启动 ComfyUI，再到「生成配置」测试连接后重试。连接检查：${result.error ?? '未返回有效的节点与模型清单'}。`] };
+      return unavailable(`ComfyUI 暂不可用。请先启动 ComfyUI，再到「生成配置」测试连接后重试。连接检查：${result.error ?? '未返回有效的节点与模型清单'}。`);
     }
     nodeDefinitions = new Map(Object.entries(result.objectInfo).map(([key, value]) => [key, asRecord(value) ?? {}]));
   } else if (target.kind === 'worker') {
-    if (classTypes.length > 64) return { ok: false, issues: ['工作流节点类型超过 Worker 可校验上限（64），已阻止提交。'] };
+    if (classTypes.length > 64) {const message='工作流节点类型超过 Worker 可校验上限（64），已阻止提交。';issues.push(message);checks.graph.push(message);return result(null);}
     const [nodeResult, inventory] = await Promise.all([
       getNodeDefinitions(target, secret, classTypes, fetcher),
       listModels(target, secret, { refresh }, fetcher),
     ]);
-    if (nodeResult.error) return { ok: false, issues: [`无法读取 Windows Worker「${target.id}」的节点清单：${nodeResult.error}；已阻止提交。`] };
-    if (inventory.error) return { ok: false, issues: [`无法读取 Windows Worker「${target.id}」的模型清单：${inventory.error}；已阻止提交。`] };
+    if (nodeResult.error) return unavailable(`无法读取 Windows Worker「${target.id}」的节点清单：${nodeResult.error}；已阻止提交。`);
+    if (inventory.error) return unavailable(`无法读取 Windows Worker「${target.id}」的模型清单：${inventory.error}；已阻止提交。`);
     nodeDefinitions = new Map(nodeResult.items.map((item) => [item.classType, { input: item.input }]));
     modelInventory = inventory;
   } else {
-    return { ok: false, issues: [`不支持校验生成引擎类型「${target.kind}」。`] };
+    return unavailable(`不支持校验生成引擎类型「${target.kind}」。`);
   }
 
   const missingClasses = classTypes.filter((classType) => !nodeDefinitions.has(classType));
   for (const classType of missingClasses) issues.push(`所选生成实例缺少工作流节点「${classType}」；请安装提供该节点的扩展后重试。`);
+  checks.nodes.push(...issues);
 
   for (const node of nodes) {
     const loader = LOADER_NODE_CATEGORIES[node.classType];
@@ -124,5 +131,6 @@ export async function inspectWorkflowRuntime(
     }
   }
 
-  return { ok: issues.length === 0, issues: [...new Set(issues)] };
+  checks.models.push(...issues.filter(issue=>!checks.nodes.includes(issue)));
+  return result(true);
 }

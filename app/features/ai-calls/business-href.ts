@@ -7,6 +7,10 @@ export function aiCallBusinessHref(call: Pick<AiCallSummary, 'applicationId' | '
     if (call.objectType === 'activity' || call.objectType === 'activity-beat') {
       return `/apps/activities/${encodeURIComponent(call.objectId.split(':')[0])}`;
     }
+    if (call.objectType === 'activity-studio-job') {
+      const [activityId, jobId] = call.objectId.split(':');
+      return jobId ? `/apps/activities/${encodeURIComponent(activityId)}?tab=studio&studioJobId=${encodeURIComponent(jobId)}` : null;
+    }
     return null;
   }
   if (call.applicationId === 'characters') return `/apps/characters/${encodeURIComponent(call.objectId)}`;

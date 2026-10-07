@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo } from 'lucide-react';
-import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp } from './navigation';
+import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo, ChevronDown } from 'lucide-react';
+import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp, type NavSection } from './navigation';
 import { EyeCareToggle } from './eye-care-toggle';
 import { AutoHideScrollbars } from './auto-hide-scrollbars';
 import { useOverlayAccessibility } from '../ui/overlay';
@@ -12,6 +12,23 @@ import { TaskDrawer } from './task-drawer';
 import { useGlobalTasks } from '@/app/features/tasks/queries';
 
 const COLLAPSE_KEY = 'sthstart_nav_collapsed';
+const COLLAPSED_SECTIONS_KEY = 'sthstart_nav_collapsed_sections';
+
+function readCollapsedSectionsPref(): Set<NavSection> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(COLLAPSED_SECTIONS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed as NavSection[]);
+    }
+  } catch {
+    /* ignore */
+  }
+  return new Set();
+}
+
 /** 1024–1439px 默认收窄为图标栏，用户显式选择过则沿用其偏好。 */
 const NARROW_QUERY = '(min-width: 1024px) and (max-width: 1439px)';
 
@@ -84,6 +101,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const collapsed = mobileCollapsed ?? collapsedPref;
+  const [collapsedSections, setCollapsedSections] = useState<Set<NavSection>>(new Set());
+
+  useEffect(() => {
+    setCollapsedSections(readCollapsedSectionsPref());
+  }, []);
+
+  const toggleSection = useCallback((section: NavSection) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      try {
+        localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(next)));
+      } catch {
+        /* 忽略持久化失败 */
+      }
+      return next;
+    });
+  }, []);
+
   const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
   const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
   const isNarrativeFocus = pathname === '/apps/narrative' && (searchParams.get('view') === 'review' || (!searchParams.has('project') && !['research', 'import'].includes(searchParams.get('mode') ?? 'read')));
@@ -178,26 +218,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {NAV_SECTIONS.map((section) => {
           const apps = NAV_APPS.filter((app) => app.navSection === section);
           if (apps.length === 0) return null;
+          const isSectionCollapsed = collapsedSections.has(section);
           return (
             <div key={section} className="shell-nav-group">
-              <p className="shell-nav-label">{section}</p>
-              {apps.map((app) => {
-                const selected = isActive(pathname, app);
-                return (
-                  <Link
-                    key={app.href}
-                    href={app.href}
-                    className="shell-nav-link"
-                    data-active={selected || undefined}
-                    aria-current={selected ? 'page' : undefined}
-                    title={collapsed ? navDisplayLabel(app) : undefined}
-                    onClick={() => closeDrawer(false)}
-                  >
-                    <app.icon className="shell-nav-icon" aria-hidden="true" />
-                    <span className="shell-nav-text">{navDisplayLabel(app)}</span>
-                  </Link>
-                );
-              })}
+              <button
+                type="button"
+                className="shell-nav-label-btn"
+                onClick={() => toggleSection(section)}
+                aria-expanded={!isSectionCollapsed}
+                aria-label={`${section}（${isSectionCollapsed ? '已折叠，点击展开' : '已展开，点击收起'}）`}
+                title={`${section}（${isSectionCollapsed ? '点击展开' : '点击收起'}）`}
+              >
+                <span className="shell-nav-label-text">{section}</span>
+                <ChevronDown className="shell-nav-chevron" aria-hidden="true" />
+              </button>
+              {(!isSectionCollapsed || collapsed) && (
+                <div className="shell-nav-list">
+                  {apps.map((app) => {
+                    const selected = isActive(pathname, app);
+                    return (
+                      <Link
+                        key={app.href}
+                        href={app.href}
+                        className="shell-nav-link"
+                        data-active={selected || undefined}
+                        aria-current={selected ? 'page' : undefined}
+                        title={collapsed ? navDisplayLabel(app) : undefined}
+                        onClick={() => closeDrawer(false)}
+                      >
+                        <app.icon className="shell-nav-icon" aria-hidden="true" />
+                        <span className="shell-nav-text">{navDisplayLabel(app)}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}

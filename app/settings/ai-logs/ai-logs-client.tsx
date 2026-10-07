@@ -8,6 +8,7 @@ import { Activity, ChevronDown, ChevronRight, ExternalLink, RefreshCw, Search, S
 import type { AiCallDetail, AiCallListQuery, AiCallSummary } from '@sthstart/contracts';
 import { fetchAiCall, fetchAiCalls, fetchAiCallStorageStats } from '@/app/features/ai-calls/api';
 import { aiCallBusinessHref } from '@/app/features/ai-calls/business-href';
+import { businessEventLabel, businessEventTitle, traceGroupTitle } from '@/app/features/ai-calls/business-event-label';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Drawer } from '@/app/components/ui/drawer';
@@ -93,10 +94,18 @@ function ArtifactPreview({ artifact }: { artifact: AiCallDetail['artifactDetails
   </li>;
 }
 
+/** 日志详情分组（计划 §15.3）：固定顺序的六个小节，每节带一句说明。 */
+function DetailGroup({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+  return <section className="rounded-[var(--radius-control)] border border-border-subtle p-3">
+    <div className="mb-2"><h3 className="text-sm font-semibold text-ink">{title}</h3><p className="mt-0.5 text-xs text-muted">{hint}</p></div>
+    <div className="space-y-3">{children}</div>
+  </section>;
+}
+
 function CallButton({ item, selectedId, selectCall }: { item: AiCallSummary; selectedId: string; selectCall: (id: string) => void }) {
   return <button type="button" onClick={() => selectCall(item.id)} aria-current={selectedId === item.id ? 'true' : undefined} className={`grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-1 px-4 py-3 text-left hover:bg-surface-muted/50 ${selectedId === item.id ? 'bg-accent/5' : ''}`}>
     <span className="min-w-0">
-      <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold text-ink">{item.businessEvent}</span><span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] text-muted">{statusLabels[item.status] ?? item.status}</span></span>
+      <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold text-ink">{businessEventTitle(item.businessEvent)}</span><span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] text-muted">{statusLabels[item.status] ?? item.status}</span></span>
       <span className="mt-1 block truncate text-xs text-muted">{item.applicationId} · {item.callType} · {item.models.join(', ') || item.provider || '模型待确认'}</span>
       <span className="mt-1 block truncate font-mono text-[11px] text-muted">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
     </span>
@@ -158,25 +167,55 @@ export function AiLogsClient() {
             : detail.isPending ? <div className="p-6 text-sm text-muted">正在读取调用详情…</div>
               : detail.isError ? <div role="alert" className="p-6 text-sm text-danger-fg">读取详情失败：{detail.error.message}</div>
                 : detail.data && <div className="min-w-0 space-y-4 pb-6">
-                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                    <div><div className="text-xs text-muted">来源 / 功能</div><div className="break-all font-medium text-ink">{detail.data.applicationId} / {detail.data.feature}</div></div>
-                    <div><div className="text-xs text-muted">业务事件</div><div className="break-all font-medium text-ink">{detail.data.businessEvent}</div></div>
-                    <div><div className="text-xs text-muted">调用类型 / 状态</div><div className="font-medium text-ink">{detail.data.callType} / {statusLabels[detail.data.status] ?? detail.data.status}</div></div>
-                    <div><div className="text-xs text-muted">模型</div><div className="break-all font-medium text-ink">{detail.data.models.join(', ') || '—'}</div></div>
-                    <div><div className="text-xs text-muted">工作流</div><div className="break-all font-medium text-ink">{detail.data.workflowId ? `${detail.data.workflowId} v${detail.data.workflowVersion}` : '—'}</div></div>
-                    <div><div className="text-xs text-muted">请求 / 结束</div><div className="font-medium text-ink">{time(detail.data.requestedAt)}<br />{time(detail.data.endedAt)}</div></div>
-                  </div>
-                  <div className="break-all rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-xs text-muted">追踪 ID：<span className="font-mono text-ink">{detail.data.traceId}</span></div>
-                  {(detail.data.error || detail.data.errorCode) && <div role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 p-3 text-sm text-danger-fg">{detail.data.errorCode && <strong>{detail.data.errorCode}: </strong>}{detail.data.error}</div>}
-                  <div><h3 className="mb-2 text-sm font-semibold text-ink">作业时间线（{detail.data.traceCalls.length} 次调用）</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.traceCalls.map((call, index) => <li key={call.id} className="relative text-sm"><span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${call.status === 'failed' ? 'bg-danger-fg' : 'bg-accent'}`} /><button type="button" onClick={() => selectCall(call.id)} className="font-medium text-ink hover:text-accent" aria-current={call.id === selectedId ? 'true' : undefined}>{index + 1}. {call.businessEvent} · {statusLabels[call.status] ?? call.status}</button><div className="text-xs text-muted">{time(call.requestedAt)}{call.durationMs != null ? ` · ${call.durationMs} ms` : ''}{call.models.length ? ` · ${call.models.join(', ')}` : ''}</div>{call.error && <div className="text-xs text-danger-fg">{call.errorCode ? `${call.errorCode}: ` : ''}{call.error}</div>}</li>)}</ol></div>
-                  <div><h3 className="mb-2 text-sm font-semibold text-ink">单次调用事件</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.events.map((event) => <li key={event.id} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-accent" /><div className="font-medium text-ink">{event.phase}</div><div className="text-xs text-muted">{time(event.createdAt)}</div>{Object.keys(event.detail).length > 0 && <div className="mt-1"><JsonBlock value={event.detail} /></div>}</li>)}</ol></div>
-                  {detail.data.artifactDetails.length > 0 && <div><h3 className="mb-2 text-sm font-semibold text-ink">生成产物</h3><ul className="space-y-2">{detail.data.artifactDetails.map((artifact) => <ArtifactPreview key={artifact.id} artifact={artifact} />)}</ul></div>}
-                  <details><summary className="cursor-pointer text-sm font-semibold text-ink">有效参数</summary><div className="mt-2"><JsonBlock value={detail.data.parameters} /></div></details>
-                  <details><summary className="cursor-pointer text-sm font-semibold text-ink">实际请求快照</summary><div className="mt-2"><JsonBlock value={detail.data.requestSnapshot} /></div></details>
-                  {detail.data.positivePrompt && <details><summary className="cursor-pointer text-sm font-semibold text-ink">正向提示词</summary><div className="mt-2"><JsonBlock value={detail.data.positivePrompt} /></div></details>}
-                  {detail.data.negativePrompt && <details><summary className="cursor-pointer text-sm font-semibold text-ink">反向提示词</summary><div className="mt-2"><JsonBlock value={detail.data.negativePrompt} /></div></details>}
-                  <div><h3 className="mb-2 text-sm font-semibold text-ink">文本响应</h3>{readableText ? <><JsonBlock value={readableText} /><details className="mt-2"><summary className="cursor-pointer text-xs font-medium text-muted">查看原始流响应</summary><div className="mt-2"><JsonBlock value={detail.data.responseText} /></div></details></> : <JsonBlock value={detail.data.responseText ?? '无文本响应（例如图片生成或向量调用）。'} />}</div>
-                  {Object.keys(detail.data.usage).length > 0 && <details><summary className="cursor-pointer text-sm font-semibold text-ink">用量</summary><div className="mt-2"><JsonBlock value={detail.data.usage} /></div></details>}
+                  {/* 计划 §15.3：来源 → 优化 → 规则 → 最终输入 → 实际图 → 产物，长 JSON 折叠但信息不删。 */}
+                  <DetailGroup title="来源" hint="这次调用由哪个业务对象、哪次作业发起。">
+                    <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                      <div><div className="text-xs text-muted">来源 / 功能</div><div className="break-all font-medium text-ink">{detail.data.applicationId} / {detail.data.feature}</div></div>
+                      <div><div className="text-xs text-muted">业务事件</div><div className="break-all font-medium text-ink">{businessEventLabel(detail.data.businessEvent)}</div><div className="break-all font-mono text-[11px] text-muted">{detail.data.businessEvent}</div></div>
+                      <div><div className="text-xs text-muted">调用类型 / 状态</div><div className="font-medium text-ink">{detail.data.callType} / {statusLabels[detail.data.status] ?? detail.data.status}</div></div>
+                      <div><div className="text-xs text-muted">请求 / 结束</div><div className="font-medium text-ink">{time(detail.data.requestedAt)}<br />{time(detail.data.endedAt)}</div></div>
+                    </div>
+                    <div className="break-all rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-xs text-muted">追踪 ID：<span className="font-mono text-ink">{detail.data.traceId}</span></div>
+                    {(detail.data.error || detail.data.errorCode) && <div role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 p-3 text-sm text-danger-fg">{detail.data.errorCode && <strong>{detail.data.errorCode}: </strong>}{detail.data.error}</div>}
+                  </DetailGroup>
+
+                  <DetailGroup title="优化" hint="文本模型的原始响应与用量，不做截断。">
+                    <div><h3 className="mb-2 text-sm font-semibold text-ink">文本响应</h3>{readableText ? <><JsonBlock value={readableText} /><details className="mt-2"><summary className="cursor-pointer text-xs font-medium text-muted">查看原始流响应</summary><div className="mt-2"><JsonBlock value={detail.data.responseText} /></div></details></> : <JsonBlock value={detail.data.responseText ?? '无文本响应（例如图片生成或向量调用）。'} />}</div>
+                    {Object.keys(detail.data.usage).length > 0 && <details><summary className="cursor-pointer text-sm font-semibold text-ink">用量</summary><div className="mt-2"><JsonBlock value={detail.data.usage} /></div></details>}
+                  </DetailGroup>
+
+                  <DetailGroup title="规则" hint="实际生效的参数与各执行阶段，含规则／知识诊断。">
+                    <div><h3 className="mb-2 text-sm font-semibold text-ink">作业时间线（{detail.data.traceCalls.length} 次调用）</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.traceCalls.map((call, index) => <li key={call.id} className="relative text-sm"><span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${call.status === 'failed' ? 'bg-danger-fg' : 'bg-accent'}`} /><button type="button" onClick={() => selectCall(call.id)} className="font-medium text-ink hover:text-accent" aria-current={call.id === selectedId ? 'true' : undefined}>{index + 1}. {businessEventLabel(call.businessEvent)} · {statusLabels[call.status] ?? call.status}</button><div className="text-xs text-muted">{time(call.requestedAt)}{call.durationMs != null ? ` · ${call.durationMs} ms` : ''}{call.models.length ? ` · ${call.models.join(', ')}` : ''}</div>{call.error && <div className="text-xs text-danger-fg">{call.errorCode ? `${call.errorCode}: ` : ''}{call.error}</div>}</li>)}</ol></div>
+                    <div><h3 className="mb-2 text-sm font-semibold text-ink">单次调用事件</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.events.map((event) => <li key={event.id} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-accent" /><div className="font-medium text-ink">{event.phase}</div><div className="text-xs text-muted">{time(event.createdAt)}</div>{Object.keys(event.detail).length > 0 && <div className="mt-1"><JsonBlock value={event.detail} /></div>}</li>)}</ol></div>
+                    <details><summary className="cursor-pointer text-sm font-semibold text-ink">有效参数</summary><div className="mt-2"><JsonBlock value={detail.data.parameters} /></div></details>
+                  </DetailGroup>
+
+                  <DetailGroup title="最终输入" hint="真正提交给生成实例的正负提示词与请求快照。">
+                    {detail.data.encodedTexts.length > 0 && <div>
+                      <h3 className="mb-2 text-sm font-semibold text-ink">实际文本编码输入</h3>
+                      <ul className="space-y-2">{detail.data.encodedTexts.map((entry) => <li key={`${entry.role}:${entry.nodeId}`} className="rounded-[var(--radius-control)] bg-surface-muted p-2">
+                        <div className="mb-1 text-xs text-muted">{entry.role === 'positive' ? '正向' : '负向'} · 节点 {entry.nodeId || '未确定'} · {entry.input}</div>
+                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">{entry.text}</pre>
+                      </li>)}</ul>
+                    </div>}
+                    {detail.data.encodedTexts.length === 0 && <p className="text-xs text-muted">无法从这次调用的工作流快照确定实际编码文本（例如工作流由节点自行拼接，或本次调用不生成图片）。</p>}
+                    <details open><summary className="cursor-pointer text-sm font-semibold text-ink">正向提示词</summary><div className="mt-2"><JsonBlock value={detail.data.positivePrompt ?? '本次调用没有正向提示词。'} /></div></details>
+                    <details open><summary className="cursor-pointer text-sm font-semibold text-ink">反向提示词</summary><div className="mt-2"><JsonBlock value={detail.data.negativePrompt ?? '本次调用没有反向提示词。'} /></div></details>
+                    <details><summary className="cursor-pointer text-sm font-semibold text-ink">实际请求快照</summary><div className="mt-2"><JsonBlock value={detail.data.requestSnapshot} /></div></details>
+                  </DetailGroup>
+
+                  <DetailGroup title="实际图" hint="这次调用实际使用的工作流、版本与模型。">
+                    <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                      <div><div className="text-xs text-muted">工作流</div><div className="break-all font-medium text-ink">{detail.data.workflowId ? `${detail.data.workflowId} v${detail.data.workflowVersion}` : '—'}</div></div>
+                      <div><div className="text-xs text-muted">模型</div><div className="break-all font-medium text-ink">{detail.data.models.join(', ') || '—'}</div></div>
+                    </div>
+                  </DetailGroup>
+
+                  <DetailGroup title="产物" hint="本次调用产生的图片与其哈希、可用性。">
+                    {detail.data.artifactDetails.length > 0
+                      ? <ul className="space-y-2">{detail.data.artifactDetails.map((artifact) => <ArtifactPreview key={artifact.id} artifact={artifact} />)}</ul>
+                      : <p className="text-sm text-muted">本次调用没有产物（文本或向量调用）。</p>}
+                  </DetailGroup>
                 </div>}
   </>);
   const callList = (
@@ -193,7 +232,7 @@ export function AiLogsClient() {
                     ? <CallButton key={calls[0].id} item={calls[0]} selectedId={selectedId} selectCall={selectCall} />
                     : <details key={traceId} open={calls.some((call) => call.id === selectedId)} className="group">
                       <summary className="cursor-pointer list-none px-4 py-3 hover:bg-surface-muted/50">
-                        <span className="flex items-start justify-between gap-3"><span className="min-w-0"><span className="block truncate font-semibold text-ink">{calls[0].businessEvent} · 多阶段作业</span><span className="mt-1 block text-xs text-muted">{calls.length} 次调用 · 追踪 {traceId}</span></span><span className="shrink-0 text-right text-xs text-muted">{time(calls[0].requestedAt)}<br /><span className="inline-flex items-center gap-1">展开时间线<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></span></span></span>
+                        <span className="flex items-start justify-between gap-3"><span className="min-w-0"><span className="block truncate font-semibold text-ink">{traceGroupTitle(calls)}</span><span className="mt-1 block text-xs text-muted">{calls.length} 次调用 · 追踪 {traceId}</span></span><span className="shrink-0 text-right text-xs text-muted">{time(calls[0].requestedAt)}<br /><span className="inline-flex items-center gap-1">展开时间线<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></span></span></span>
                       </summary>
                       <ol className="divide-y divide-border-subtle border-t border-border-subtle bg-surface-muted/30">{calls.map((item, index) => <li key={item.id} className="relative pl-3"><span className="absolute left-5 top-6 text-[10px] text-muted">{index + 1}</span><div className="pl-5"><CallButton item={item} selectedId={selectedId} selectCall={selectCall} /></div></li>)}</ol>
                     </details>)}

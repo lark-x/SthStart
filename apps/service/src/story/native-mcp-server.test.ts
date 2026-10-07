@@ -7,7 +7,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-test('native DSH stdio MCP exposes exactly six scoped tools and only submits proposals', async () => {
+test('native DSH stdio MCP exposes scoped read/history tools and only submits proposals', async () => {
   const received: Array<{ method: string; path: string; authorization: string; body?: unknown }> = [];
   const http = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
@@ -42,10 +42,15 @@ test('native DSH stdio MCP exposes exactly six scoped tools and only submits pro
     await client.connect(transport);
     const listed = await client.listTools();
     assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
-      'get_project', 'get_proposal_status', 'list_entries', 'read_entry', 'search_entries', 'submit_proposal',
+      'get_project', 'get_proposal_status', 'list_entries', 'list_entry_revisions', 'list_proposals', 'read_entry', 'read_entry_revision', 'search_entries', 'submit_proposal',
     ]);
     const project = await client.callTool({ name: 'get_project', arguments: {} });
     assert.match(JSON.stringify(project), /MCP 测试项目/);
+    for(const [name,args,path] of [
+      ['list_proposals',{status:'pending',limit:2},'/proposals?limit=2&status=pending'],
+      ['list_entry_revisions',{kind:'chapter',id:'ch-1',limit:2},'/entries/chapter/ch-1/revisions?limit=2'],
+      ['read_entry_revision',{kind:'chapter',id:'ch-1',revisionId:'rev-1',offset:10},'/entries/chapter/ch-1/revisions/rev-1?offset=10'],
+    ] as const){assert.ok(!(await client.callTool({name,arguments:args})).isError);assert.equal(received.at(-1)?.path,`/api/story-bridge/projects/project-test${path}`);}
     const proposal = await client.callTool({ name: 'submit_proposal', arguments: {
       operation: 'create', kind: 'chapter', targetId: null, baseRevision: null,
       proposedTitle: '第一章', proposedBody: '仅待审内容', reason: '测试提案权限边界',

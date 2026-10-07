@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {publicationBridgeAllowed} from './publication-bridge-policy';
+test('production proxy permits scoped discovery/media/edit/export but still prohibits approval and traversal',()=>{
+  const base=['projects','project-a','publications','activity-a'];
+  assert.equal(publicationBridgeAllowed('GET',['projects','project-a','sources']),true);
+  assert.equal(publicationBridgeAllowed('POST',[...base,'runs']),true);
+  assert.equal(publicationBridgeAllowed('POST',[...base,'runs','run-a','stop']),true);
+  assert.equal(publicationBridgeAllowed('POST',[...base,'shots','shot-a','select-image']),true);
+  for(const tail of ['approvals','bridge-grant','../admin','documents']) assert.equal(publicationBridgeAllowed('POST',[...base,tail]),false);
+  for(const tail of ['preview','validate','patch','exports'])assert.equal(publicationBridgeAllowed('POST',[...base,tail]),true);
+  for(const tail of ['runs','media','options'])assert.equal(publicationBridgeAllowed('GET',[...base,tail]),true);
+  assert.equal(publicationBridgeAllowed('GET',['projects','project-a','publications']),true);
+  assert.equal(publicationBridgeAllowed('GET',[...base,'artifacts','artifact-a']),true);
+  assert.equal(publicationBridgeAllowed('GET',[...base,'shots','shot-a','history']),true);
+  assert.equal(publicationBridgeAllowed('POST',[...base,'utterances','line-a','select-audio']),true);
+  assert.equal(publicationBridgeAllowed('GET',[...base,'artifacts','..']),false);
+  assert.equal(publicationBridgeAllowed('GET',[...base,'tasks','task-a','extra']),false);
+  assert.equal(publicationBridgeAllowed('DELETE',base),false);
+  assert.equal(publicationBridgeAllowed('GET',['projects','..','sources']),false);
+});

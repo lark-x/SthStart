@@ -474,8 +474,8 @@ export function useCommitActivityImport() {
 export function useSaveImageConfigDraft() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, document }: { id: string; document: ImageConfigDocument }) =>
-      saveImageConfigDraft(id, document),
+    mutationFn: ({ id, document, expectedDraftVersion }: { id: string; document: ImageConfigDocument; expectedDraftVersion?: number }) =>
+      saveImageConfigDraft(id, document, expectedDraftVersion),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: activityKeys.imageConfigDraft(variables.id) });
     },
@@ -485,8 +485,8 @@ export function useSaveImageConfigDraft() {
 export function useCommitImageConfigRevision() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, document }: { id: string; document: ImageConfigDocument }) =>
-      commitImageConfigRevision(id, document),
+    mutationFn: ({ id, document, expectedDraftVersion, expectedHeadVersion }: { id: string; document: ImageConfigDocument; expectedDraftVersion?: number; expectedHeadVersion?: number }) =>
+      commitImageConfigRevision(id, document, expectedDraftVersion, expectedHeadVersion),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: activityKeys.imageConfigDraft(variables.id) });
       queryClient.invalidateQueries({ queryKey: activityKeys.imageConfigRevisions(variables.id) });
@@ -538,8 +538,8 @@ export function useCreateImageAttempt() {
 export function useRetryImageAttempt() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, attemptId }: { id: string; attemptId: string }) =>
-      retryImageAttempt(id, attemptId),
+    mutationFn: ({ id, attemptId, seed }: { id: string; attemptId: string; seed?: number }) =>
+      retryImageAttempt(id, attemptId, seed),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: activityKeys.attempts(variables.id) });
       queryClient.invalidateQueries({ queryKey: activityKeys.attempt(variables.id, variables.attemptId) });

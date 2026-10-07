@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "node ../../scripts/testing/run.mjs --suite playback",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

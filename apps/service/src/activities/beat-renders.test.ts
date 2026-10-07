@@ -166,6 +166,10 @@ test('beat render preview is read-only, submit is idempotent, and adoption check
   assert.equal(refreshedPreviewResponse.statusCode, 200, refreshedPreviewResponse.body);
   preview = refreshedPreviewResponse.json() as BeatRenderPreview;
   assert.equal(preview.promptOptimization.policyRevision, 1);
+  // 计划 §15.1：常用页要说明模式来自哪个工作流；测试夹具的工作流在图内拼接提示词。
+  assert.equal(preview.promptAssembly, 'workflow-internal');
+  assert.equal(typeof preview.workflowName, 'string');
+  assert.equal(typeof preview.workflowVersion, 'number');
 
   updatePreset(database, beatPreset.id, { revision: beatPreset.revision, name: '镜头测试预设（修订）' });
   const stalePresetSubmission = await app.inject({ method: 'POST', url: endpoint, headers: adminHeaders, payload: {

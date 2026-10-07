@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
-import { buildCharacterVisualContext } from '@sthstart/contracts';
+import { buildCharacterVisualContext, DEFAULT_ACTIVITY_NEGATIVE_PROMPT } from '@sthstart/contracts';
 import type { ComicPanel, ComicRenderPreview, ContentDocument, ActivityLora } from '@sthstart/contracts';
 import {
   ComicHistoryPageSchema, ComicRenderPreviewRequestSchema, ComicRenderPreviewSchema, ComicRenderRequestSchema,
@@ -17,14 +17,18 @@ import { generationEventBus } from '../generation/events.js';
 import { resolveArtifactStoragePath } from '../artifacts.js';
 import { extractModelNames, hashAiSource, updateAiCallRecord } from '../ai-call-trace.js';
 import { linkPromptOptimizationTask, optimizeActivityImagePrompt, PromptOptimizationError } from './image-prompt-optimizer.js';
+import { studioRenderAudit, type StudioRenderContext } from './studio-render-context.js';
 import { resolveActivityImagePromptPolicy } from './image-prompt-policies.js';
+import { activityTextProfileId, inspectStudioTextProfile } from './studio-model-binding.js';
 import {
-  appendLoraTriggerWords, buildActivityImageWorkflowSnapshot, inspectActivityImageWorkflow, mergeActivityImageInputs,
+  activityVisualParameterFields, appendLoraTriggerWords, buildActivityImageWorkflowSnapshot, finalizeActivityVisualPrompt, hashVisualPlan, inspectActivityImageWorkflow, mergeActivityImageInputs, resolveEffectiveActivityVisualPlan,
   mergeActivityLoras, parseInputCapabilities, promptInputKey, readActivityLoraPolicy, referenceInputKey,
-  resolveActivityImageWorkflow,
+  resolveActivityImageWorkflow, v2FinalizeInputFrom,
 } from './image-render-common.js';
 import { ComicStore } from './comic-store.js';
 import { ActivityStore } from './store.js';
+import { getCommittedImageConfig, getCommittedImageConfigRevisionId } from './image-configs.js';
+import { compileDirectorPrompt, resolveVisualSettings } from './visual-settings.js';
 import type { ComicJob } from '@sthstart/contracts';
 
 type AdminCheck = (request: FastifyRequest, reply: FastifyReply) => boolean;
@@ -37,6 +41,9 @@ type ComicRenderPlan = {
   promptPolicy: ReturnType<typeof resolveActivityImagePromptPolicy>;
   parameters: Record<string, unknown>;
   positivePrompt: string;
+  stylePrompt: string;
+  visualConfiguration: Record<string, unknown>;
+  negativeOverride: string | undefined;
   negativePrompt: string;
   positiveKey: string;
   negativeKey: string | null;
@@ -74,6 +81,9 @@ export function compileComicPanelSource(input: { content: ContentDocument; panel
   positivePrompt: string; sourceFingerprint: string; sources: Array<{ label: string; value: string }>;
 } {
   const { content, panel } = input;
+  if (panel.renderSettings.director?.shotSize || panel.renderSettings.composition) {
+    throw codedError('comic_duplicate_direction', '漫画景别与构图请使用画格自身字段，不要在绘制设置重复指定。', 400);
+  }
   const selected = sceneFor(content, panel.source.stageId, panel.source.sceneId);
   if (!selected) throw codedError('comic_source_not_found', '画格引用的阶段或场次不在绑定的剧情版本中。', 409);
   const { stage, scene } = selected;
@@ -96,6 +106,9 @@ export function compileComicPanelSource(input: { content: ContentDocument; panel
     { label: '构图与主体位置', value: panel.composition },
     { label: '文字留白', value: safeAreaLabel[panel.textSafeArea] },
     { label: '用户补充', value: panel.renderSettings.customPrompt?.trim() ?? '' },
+    { label: '导演设置', value: compileDirectorPrompt(panel.renderSettings.director) },
+    { label: '补充视觉描述', value: panel.renderSettings.visualSupplement ?? '' },
+    { label: '表情要求', value: panel.renderSettings.expression ?? '' },
     { label: '绘制约束', value: '画面中不要生成任何可读文字、台词、水印、签名或漫画边框；台词由应用后期绘制。' },
   ].filter((item) => item.value.trim());
   const positivePrompt = values.map((item) => `${item.label}：${item.value}`).join('\n');
@@ -104,7 +117,9 @@ export function compileComicPanelSource(input: { content: ContentDocument; panel
     scene: { id: scene.id, title: scene.title, timeText: scene.timeText, locationText: scene.locationText, environment: scene.environment },
     beats: (beats as NonNullable<typeof beats[number]>[]).map((beat) => ({ id: beat.id, characterId: beat.characterId, action: beat.action, outcome: beat.outcome })),
     actors, panel: { actorIds: panel.actorIds, shotSize: panel.shotSize, visualDescription: panel.visualDescription, composition: panel.composition,
-      textSafeArea: panel.textSafeArea, customPrompt: panel.renderSettings.customPrompt ?? '' },
+      textSafeArea: panel.textSafeArea, customPrompt: panel.renderSettings.customPrompt ?? '',
+      visualSupplement: panel.renderSettings.visualSupplement ?? '',expression: panel.renderSettings.expression ?? '',
+      ...(panel.renderSettings.director ? { director: panel.renderSettings.director } : {}) },
   });
   return { positivePrompt, sourceFingerprint, sources: values };
 }
@@ -127,40 +142,24 @@ function buildComicRenderPlan(input: {
   const { database, activityId, content, panel, artifactDirectory } = input;
   const compiled = compileComicPanelSource({ content, panel });
   const referenceAssetKey = panel.renderSettings.referenceAssetKey ?? null;
-  const selection = resolveActivityImageWorkflow(database, {
-    purpose: panel.renderSettings.purpose, workflowId: panel.renderSettings.workflowId, workflowVersion: panel.renderSettings.workflowVersion,
-    presetId: panel.renderSettings.presetId, presetRevision: panel.renderSettings.presetRevision, referenceAssetKey,
-  });
+  const effective = resolveEffectiveActivityVisualPlan(database, { imageConfig: getCommittedImageConfig(database, activityId),
+    imageConfigRevisionId: getCommittedImageConfigRevisionId(database, activityId),
+    settings: panel.renderSettings, actors: content.actors.filter(actor => panel.actorIds.includes(actor.id)),
+    sourcePrompt: compiled.positivePrompt, seed: input.seed });
+  const { visual, selection } = effective;
   const { resolved, purpose, presetValues, hasPreset, selectedPresetId, selectedPresetRevision } = selection;
   const schema = resolved.workflow.inputSchema as import('../generation/configuration.js').InputSchemaMap;
   const positiveKey = promptInputKey(schema);
   if (!positiveKey) throw codedError('image_workflow_incompatible', '工作流没有声明正向提示词输入。', 409);
   const negativeKey = promptInputKey(schema, true);
   if (negativeKey && !resolved.workflow.nodeBindings[negativeKey]) throw codedError('negative_prompt_binding_missing', '工作流声明了反向提示词，但没有绑定到节点。', 409);
-  const promptPolicy = resolveActivityImagePromptPolicy(database, resolved.workflow.id, resolved.workflow.version);
-  const loraPolicy = readActivityLoraPolicy(database, resolved.workflow.id, resolved.workflow.version);
-  const roleLoras = panel.actorIds.flatMap((id) => content.actors.find((actor) => actor.id === id)?.visualLoras ?? []);
-  const loras = mergeActivityLoras(loraPolicy.entries, roleLoras, panel.renderSettings.loraOverrides ?? [], { rejectActorConflicts: true });
-  const injection = resolved.workflow.editorConfig?.activityLoraInjection;
-  if (loras.some((item) => item.enabled) && !injection) throw codedError('activity_lora_unsupported', '此工作流版本未声明动态 LoRA 插入点。', 409);
-  if (loras.some((item) => item.enabled) && Object.values(resolved.workflow.definition).some((raw) => {
-    const node = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-    return node.class_type === 'LoraLoader' || node.class_type === 'LoraLoaderModelOnly';
-  })) throw codedError('activity_lora_static_conflict', '此工作流含固定 LoRA 节点，不能同时注入活动 LoRA。', 409);
+  const { promptPolicy, loraPolicy, loras } = effective;
   const actorReference = referenceArtifact(database, activityId, content, panel, referenceAssetKey, artifactDirectory);
   const supportedReferenceKey = referenceInputKey(resolved);
   if (referenceAssetKey && !supportedReferenceKey) throw codedError('reference_input_unsupported', '所选工作流不支持角色参考图输入。', 409);
   const inputArtifacts = actorReference.artifactId && supportedReferenceKey ? [{ artifactId: actorReference.artifactId, inputKey: supportedReferenceKey }] : [];
-  const params = mergeActivityImageInputs(resolved, presetValues, panel.renderSettings.parameters ?? {}, hasPreset);
-  params[positiveKey] = compiled.positivePrompt;
-  const defaultNegative = '低清晰度，模糊，畸形肢体，错误手部，多余手指，文字，水印，签名，漫画边框';
-  const negativePrompt = negativeKey ? panel.renderSettings.negativePrompt?.trim() || promptPolicy.negativePrompt.trim() || defaultNegative : '';
-  if (negativeKey && negativePrompt) params[negativeKey] = negativePrompt;
-  const seedInput = Object.entries(schema).find(([key, entry]) => String(entry.semantic ?? '').toLowerCase() === 'seed' || ['seed', 'noise_seed'].includes(key.toLowerCase()))?.[0];
-  const configuredSeed = seedInput ? panel.renderSettings.parameters?.[seedInput] : undefined;
-  const seed = input.seed ?? (typeof configuredSeed === 'number' && Number.isInteger(configuredSeed) && configuredSeed >= 0 && configuredSeed <= 2_147_483_647
-    ? configuredSeed : randomInt(0, 2_147_483_647));
-  if (seedInput && (seedInput in params || schema[seedInput]?.required)) params[seedInput] = seed;
+  const { parameters: params, seed } = effective;
+  const negativePrompt = effective.negativePrompt ?? '';
   const warnings: string[] = [];
   const requiredReferences = Object.entries(parseInputCapabilities(resolved.workflow.inputCapabilities)).filter(([, capability]) => capability.required === true);
   const missingReferences = requiredReferences.filter(([key]) => !inputArtifacts.some((item) => item.inputKey === key));
@@ -169,15 +168,15 @@ function buildComicRenderPlan(input: {
   if (panel.actorIds.length > 1 && loras.some((item) => item.enabled)) warnings.push('同时加载多个角色 LoRA 不保证角色与画面位置一一对应。');
   const workflowSnapshot = buildActivityImageWorkflowSnapshot(resolved, params, seed, loras);
   const model = extractModelNames(workflowSnapshot).join(', ') || null;
-  const planHash = hashAiSource({ activityId, panelId: panel.id, contentRevisionId: panel.source.stageId + ':' + panel.source.sceneId,
+  const planHash = hashVisualPlan({ activityId, panelId: panel.id, configurationHash: effective.configurationHash,
     sourceFingerprint: compiled.sourceFingerprint, purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version,
     engineId: resolved.engine.id, presetId: selectedPresetId, presetRevision: selectedPresetRevision, parameters: params, seed,
-    referenceAssetKey, inputArtifacts, promptPolicy, loraPolicyRevision: loraPolicy.revision, loras });
+    referenceAssetKey, inputArtifacts, promptPolicy, loraPolicyRevision: loraPolicy.revision, loras, stylePrompt: visual.stylePrompt });
   return { purpose, workflow: resolved, presetId: selectedPresetId, presetRevision: selectedPresetRevision, promptPolicy,
-    parameters: params, positivePrompt: compiled.positivePrompt, negativePrompt, positiveKey, negativeKey, seed, model,
+    parameters: params, positivePrompt: compiled.positivePrompt, stylePrompt: visual.stylePrompt, negativeOverride: visual.negativePrompt, negativePrompt, positiveKey, negativeKey, seed, model,
     sourceFingerprint: compiled.sourceFingerprint, sources: compiled.sources, loras, loraPolicyRevision: loraPolicy.revision,
     referenceInputKey: supportedReferenceKey, inputArtifacts, warnings: [...warnings, ...(missingReferences.length ? ['缺少工作流必需输入，已阻止提交。'] : [])],
-    planHash, workflowSnapshot };
+    planHash, workflowSnapshot, visualConfiguration: effective.provenance };
 }
 
 function previewFromPlan(plan: ComicRenderPlan, canSubmit: boolean): ComicRenderPreview {
@@ -186,7 +185,9 @@ function previewFromPlan(plan: ComicRenderPlan, canSubmit: boolean): ComicRender
     workflowName: plan.workflow.workflow.name, engineId: plan.workflow.engine.id, engineName: plan.workflow.engine.name, model: plan.model,
     seed: plan.seed, sourceFingerprint: plan.sourceFingerprint, presetId: plan.presetId, presetRevision: plan.presetRevision,
     promptPolicyRevision: plan.promptPolicy.revision, referenceSupported: Boolean(plan.referenceInputKey), referenceSelected: plan.inputArtifacts.length > 0,
+    promptAssembly: plan.workflow.workflow.editorConfig?.promptAssembly === 'service-finalized-v1' ? 'service-finalized-v1' : 'workflow-internal',
     parameters: plan.parameters, positivePrompt: plan.positivePrompt, negativePrompt: plan.negativePrompt,
+    fields: activityVisualParameterFields(plan.workflow, plan.parameters),
     sources: plan.sources, loras: plan.loras, warnings: plan.warnings,
   };
 }
@@ -221,11 +222,11 @@ function mapTaskStatus(status: string): ComicJob['status'] {
   return 'unknown';
 }
 
-function syncComicRenderJob(database: ServiceDatabase, config: ServiceConfig, store: ComicStore, job: ComicJob) {
+export function syncComicRenderJob(database: ServiceDatabase, config: ServiceConfig, store: ComicStore, job: ComicJob) {
   if (job.kind !== 'render' || !job.generationTaskId) return;
   const task = getGenerationTask(database, job.generationTaskId, 'activities');
   if (!task) { store.updateComicJob(job.id, { status: 'unknown', errorCode: 'comic_generation_task_missing', errorMessage: '统一生成任务记录不存在，未自动重试。' }); return; }
-  const mapped = mapTaskStatus(task.status);
+  const mapped = task.upstreamMayContinue ? 'unknown' : mapTaskStatus(task.status);
   if (mapped === 'succeeded') {
     const rows = database.connection.prepare(`SELECT a.id,a.media_type FROM generation_task_artifacts ta
       JOIN artifacts a ON a.id=ta.artifact_id WHERE ta.task_id=? ORDER BY ta.sort_order`).all(task.id) as Array<{ id: string; media_type: string | null }>;
@@ -249,12 +250,15 @@ function syncComicRenderJob(database: ServiceDatabase, config: ServiceConfig, st
 export async function processComicRenderJob(options: {
   jobId: string; activityId: string; config: ServiceConfig; database: ServiceDatabase; secrets: SecretStore; fetcher?: typeof fetch;
   comicStore?: ComicStore; activityStore?: ActivityStore;
+  context?: StudioRenderContext & { onInsertTask(taskId: string,callId: string): void };
 }) {
   const store = options.comicStore ?? new ComicStore(options.database);
   if (!store.claimComicJob(options.jobId)) return;
   const job = store.getComicJob(options.activityId, options.jobId);
   if (!job || job.kind !== 'render') return;
+  let optimizerCallId: string | null = null;
   try {
+    if (options.context && !options.context.canContinue()) throw codedError('studio_process_interrupted','已停止后续提交，未发送 ComfyUI 任务。');
     const request = job.input as unknown as { panelId: string; expectedDraftVersion: number; planHash: string; seed: number; sourceFingerprint: string };
     const draft = store.getComicDraft(options.activityId);
     if (!draft || draft.draftVersion !== request.expectedDraftVersion) throw codedError('comic_draft_conflict', '漫画草稿已改变；本次任务未提交，请重新预览。', 409);
@@ -272,11 +276,19 @@ export async function processComicRenderJob(options: {
     const optimized = await optimizeActivityImagePrompt(options.database, options.secrets, {
       activityId: options.activityId, workflowId: plan.workflow.workflow.id, workflowVersion: plan.workflow.workflow.version,
       policy: plan.promptPolicy, sourcePrompt: plan.positivePrompt, existingNegativePrompt: plan.negativePrompt,
-      idempotencyKey: `comic:${options.activityId}:${job.id}`, traceId: job.traceId,
+      idempotencyKey: `comic:${options.activityId}:${job.id}`, traceId: options.context?.traceId ?? job.traceId,
+      studioContext: options.context,
+      actorScope: panel.actorIds.map((id) => ({
+        actorId: id, displayName: revision.document.actors.find((actor) => actor.id === id)?.displayName,
+      })),
     }, options.fetcher ?? fetch);
-    const finalPrompt = appendLoraTriggerWords(optimized.optimizedPrompt, plan.loras);
+    optimizerCallId = optimized.optimizerCallId;
+    if (options.context && !options.context.canContinue()) throw codedError('studio_process_interrupted','已停止后续提交，未发送 ComfyUI 任务。');
+    const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
+      v2FinalizeInputFrom(plan.workflow.workflow.editorConfig, optimized));
     const finalInputs = { ...plan.parameters, [plan.positiveKey]: finalPrompt };
-    if (plan.negativeKey && optimized.negativePrompt) finalInputs[plan.negativeKey] = optimized.negativePrompt;
+    const finalNegative = plan.negativeOverride ?? optimized.negativePrompt ?? plan.negativePrompt;
+    if (plan.negativeKey) finalInputs[plan.negativeKey] = finalNegative;
     const createTaskIdempotencyKey = `comic:${options.activityId}:${job.id}`;
     const task = await createGenerationTask(options.config, options.database, options.secrets, {
       appId: 'activities', purpose: plan.purpose, workflowId: plan.workflow.workflow.id, workflowVersion: plan.workflow.workflow.version,
@@ -285,9 +297,12 @@ export async function processComicRenderJob(options: {
       seed: plan.seed, idempotencyKey: createTaskIdempotencyKey,
       audit: { feature: 'activity-comic', businessEvent: 'activity.comic.panel.render', objectType: 'activity-comic-panel',
         objectId: `${options.activityId}:${panel.id}`, sourceUrl: `/apps/activities/${encodeURIComponent(options.activityId)}?tab=playback&mode=comic`,
-        traceId: job.traceId, parentId: optimized.optimizerCallId, positivePrompt: finalPrompt, negativePrompt: optimized.negativePrompt },
+        traceId: job.traceId, parentId: optimized.optimizerCallId, positivePrompt: finalPrompt, negativePrompt: finalNegative,
+        visualConfiguration: { ...plan.visualConfiguration, ...studioRenderAudit(options.context) } },
       onInsertTask: (snapshot) => {
+        if (options.context && !options.context.canContinue()) throw codedError('studio_process_interrupted','已停止后续提交，未发送 ComfyUI 任务。');
         store.updateComicJob(job.id, { status: 'queued', generationTaskId: snapshot.taskId, callId: snapshot.callId });
+        options.context?.onInsertTask(snapshot.taskId,snapshot.callId);
       },
     }, options.fetcher ?? fetch);
     const current = store.getComicJob(options.activityId, job.id);
@@ -299,11 +314,41 @@ export async function processComicRenderJob(options: {
     syncComicRenderJob(options.database, options.config, store, store.getComicJob(options.activityId, job.id)!);
   } catch (error) {
     const value = error as Error & { code?: string; optimizerCallId?: string | null };
-    const callId = value.optimizerCallId ?? options.database.connection.prepare(`SELECT id FROM ai_call_records WHERE trace_id=? ORDER BY requested_at DESC LIMIT 1`)
-      .get(job.traceId) as { id: string } | undefined;
-    store.updateComicJob(job.id, { status: 'failed', callId: typeof callId === 'string' ? callId : callId?.id ?? null,
+    const callId = value.optimizerCallId ?? optimizerCallId;
+    store.updateComicJob(job.id, { status: 'failed', callId,
       errorCode: value.code ?? 'comic_render_failed', errorMessage: value.message ?? '漫画画格绘制失败。' });
   }
+}
+
+/** Synchronous, source-bound history job creation for Studio's enclosing application transaction. */
+export function previewStudioComicRender(database:ServiceDatabase,activityId:string,panelId:string,artifactDirectory:string,seed:number,
+  settingsOverride?:Partial<import('@sthstart/contracts').SceneBeatRenderSettings>){
+  const draft=new ComicStore(database).getComicDraft(activityId),panel=draft?.document.panels.find(panel=>panel.id===panelId);
+  if(!draft||!panel)throw codedError('studio_source_changed','待绘制画格已经不存在。',409);
+  const activities=new ActivityStore(database),content=activities.getContentRevision(activityId,draft.document.contentRevisionId)?.document;
+  if(!content)throw codedError('studio_source_changed','画格绑定的剧情版本不存在。',409);
+  if(activities.getDraft(activityId)?.document.stages.find(stage=>stage.id===panel.source.stageId)?.locked)throw codedError('studio_target_locked','画格来源阶段已锁定。',409);
+  const plan=buildComicRenderPlan({database,activityId,content,panel:settingsOverride?{...panel,renderSettings:{...panel.renderSettings,...settingsOverride}}:panel,artifactDirectory,seed});
+  return {plan,name:panel.visualDescription,actorIds:panel.actorIds,empty:!panel.selectedImage};
+}
+export function createStudioComicRenderJob(database: ServiceDatabase, activityId: string, panelId: string, artifactDirectory: string,
+  seed: number,idempotencyKey: string,traceId: string,
+  settingsOverride?:Partial<import('@sthstart/contracts').SceneBeatRenderSettings>) {
+  const store = new ComicStore(database), draft = store.getComicDraft(activityId);
+  const panel = draft?.document.panels.find(panel => panel.id === panelId);
+  if (!draft || !panel) throw codedError('studio_source_changed','待绘制画格已经不存在。',409);
+  const content = new ActivityStore(database).getContentRevision(activityId,draft.document.contentRevisionId)?.document;
+  if (!content) throw codedError('studio_source_changed','画格绑定的剧情版本不存在。',409);
+  const effectivePanel=settingsOverride?{...panel,renderSettings:{...panel.renderSettings,...settingsOverride}}:panel;
+  const plan = buildComicRenderPlan({ database,activityId,content,panel:effectivePanel,artifactDirectory,seed });
+  const created = store.createComicJob({ activityId,kind: 'render',panelId,idempotencyKey,traceId,request: {
+    panelId,expectedDraftVersion: draft.draftVersion,planHash: plan.planHash,seed: plan.seed,sourceFingerprint: plan.sourceFingerprint,
+    renderSettings: effectivePanel.renderSettings,sourceRevisionId: draft.document.contentRevisionId,purpose: plan.purpose,
+    workflowId: plan.workflow.workflow.id,workflowVersion: plan.workflow.workflow.version,presetId: plan.presetId,presetRevision: plan.presetRevision,
+    engineId: plan.workflow.engine.id,model: plan.model,parameters: plan.parameters,originalPrompt: plan.positivePrompt,negativePrompt: plan.negativePrompt,
+    promptPolicyRevision: plan.promptPolicy.revision,loraPolicyRevision: plan.loraPolicyRevision,loras: plan.loras,inputArtifacts: plan.inputArtifacts,workflowSnapshot: plan.workflowSnapshot,
+  } },{ skipTransaction: true });
+  return { job: created.job,planHash: plan.planHash,sourceFingerprint: plan.sourceFingerprint,seed: plan.seed,referenceArtifactIds: plan.inputArtifacts.map(input => input.artifactId) };
 }
 
 export function registerComicRenderRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore,
@@ -335,9 +380,17 @@ export function registerComicRenderRoutes(app: FastifyInstance, config: ServiceC
       const plan = buildComicRenderPlan({ database, activityId: request.params.activityId, content: revision.document, panel,
         artifactDirectory: config.artifactDirectory, seed: body.seed });
       const preflight = await preflightPlan(plan, secrets, fetcher, true);
-      const response = previewFromPlan(plan, preflight.canSubmit);
-      const warnings = [...response.warnings, ...preflight.issues];
-      const finalResponse = { ...response, loras: preflight.loras, warnings, canSubmit: preflight.canSubmit };
+      // 凭据缺口：`preflightPlan` 只查工作流运行时与 LoRA 清单，判断不了文本模型凭据。
+      // 缺了这一步，凭据不可用时预览仍报 canSubmit=true，用户在界面上看到的是一个点下去就失败的按钮。
+      const issues = [...preflight.issues];
+      let canSubmit = preflight.canSubmit;
+      if (plan.promptPolicy.enabled) {
+        const readiness = await inspectStudioTextProfile(database, secrets, activityTextProfileId(database));
+        if (!readiness.ready) { canSubmit = false; issues.push(`提示词优化所需的活动文本模型不可用：${readiness.reason}`); }
+      }
+      const response = previewFromPlan(plan, canSubmit);
+      const warnings = [...response.warnings, ...issues];
+      const finalResponse = { ...response, loras: preflight.loras, warnings, canSubmit };
       if (!Value.Check(ComicRenderPreviewSchema, finalResponse)) return reply.code(500).send({ error: 'comic_render_preview_invalid' });
       return reply.send(finalResponse);
     } catch (error) {

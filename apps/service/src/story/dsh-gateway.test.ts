@@ -9,7 +9,7 @@ import test from 'node:test';
 import { DeepSeekHarness, HarnessClient } from '@deepseek-ai/dsh-sdk-client';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const storyDir = currentDir.includes('/dist/story') ? resolve(currentDir, '../../src/story') : currentDir;
+const storyDir = currentDir.replace(/\\/g, '/').includes('/dist/story') ? resolve(currentDir, '../../src/story') : currentDir;
 
 test('restricted DSH profile can use an OpenAI-compatible SthStart gateway and resume after restart', { timeout: 90_000 }, async () => {
   const requests: Array<{ authorization: string | undefined; body: Record<string, unknown> }> = [];

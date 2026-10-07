@@ -15,7 +15,7 @@ MCP 提供项目资料读取和待审提案工具；skill 指导模型如何使�
 
 ## 2. 当前可用工具
 
-原生桥接由 `native-mcp-server.ts` 提供六个工具，通过门户 Story bridge 调用服务：
+原生桥接由 `native-mcp-server.ts` 提供九个工具，通过门户 Story bridge 调用服务：
 
 | 工具 | 能力 |
 | --- | --- |
@@ -25,6 +25,11 @@ MCP 提供项目资料读取和待审提案工具；skill 指导模型如何使�
 | `search_entries` | 按 query 搜索，返回摘录和可继续读取的定位信息 |
 | `submit_proposal` | 提交新建或更新提案，等待作者审阅 |
 | `get_proposal_status` | 查询已有提案状态 |
+| `list_proposals` | 分页查待审/已接受/已拒绝提案、目标与过期状态 |
+| `list_entry_revisions` | 分页读取修订摘要，保留迁移基线标识 |
+| `read_entry_revision` | 按目标与修订 ID 分段读取历史正文 |
+
+历史列表的 cursor 是不透明的创建顺序游标，应原样传回；不要与旧 list_entries/search_entries 的偏移游标混用。制作 MCP 的完整工具清单与三个使用例子见 [Harness MCP 使用指南](HARNESS_MCP.md)。
 
 `kind` 支持 outline、world、scene、chapter、character。原生提案字段为 `operation`、`kind`、`targetId`、`baseRevision`、`proposedTitle`、`proposedBody`、`reason`：
 
@@ -94,7 +99,7 @@ skill 是否被发现和自动选择取决于客户端的发现机制、触发�
 
 - 仅修改 skill 或本指南：检查 frontmatter、触发描述、路径、工具名和参数，再执行同步与 `--check`。不因此部署、启动模型或提交真实提案。
 - 修改同步脚本：在临时目录检查同步、幂等、差异检测、只读行为，以及不会修改其他 skill。
-- 修改 MCP 实现或契约：运行 `npm run test:mcp`；该命令覆盖 `native-mcp-server.test.ts` 和 `mcp-schema.test.ts`。其他类型检查和测试按实际改动选择。
+- 修改 MCP 实现或契约：运行 `npm run test:mcp`，覆盖两套 stdio 适配器、历史/制作桥接业务及受限传输；`npm run test:mcp:dsh` 验证真实 DSH 插件与独立客户端、本地模型夹具及原生 Web 配置。其他类型检查和测试按实际改动选择。
 - 需要检查现场连接或交互报文时，可运行 `npm run mcp:inspect`。脚本可能发现项目、申请桥接令牌并通过 npx 启动 Inspector，属于连接调试，不是只读格式检查，也不是日常 skill 修改的必备步骤。
 
 没有可用服务或凭据时说明未验证的连接范围，不把语法检查通过当作真实创作链路已运行。不强制每次修改完成全部业务测试或实际 Agent 闭环。

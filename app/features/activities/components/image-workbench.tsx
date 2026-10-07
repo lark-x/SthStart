@@ -1,7 +1,9 @@
 'use client';
 
 import { SourceFieldEditor } from './source-field-editor';
-import { fetchActivity, saveMediaRevision, fetchPromptRecipe, fetchImageExecutionSnapshots, transferCharacterReferenceToActivity } from '../api';
+import { Value } from '@sinclair/typebox/value';
+import { ImageConfigDocumentSchema } from '@sthstart/contracts';
+import { fetchActivity, fetchImageConfigDraft, saveMediaRevision, fetchPromptRecipe, fetchImageExecutionSnapshots, transferCharacterReferenceToActivity } from '../api';
 import { fetchCharacterVisualReferences } from '@/app/features/characters/api';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SourceRef } from '@sthstart/contracts';
@@ -38,6 +40,7 @@ import type {
   ImageConfigDocument,
   SlotImageConfig,
   PromptBlock,
+  ActivitySlotVisualPreview,
 } from '@sthstart/contracts';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Button } from '@/app/components/ui/button';
@@ -65,6 +68,9 @@ import {
   useUploadActivityAsset,
 } from '../mutations';
 import { PromptSourcePanel } from './prompt-source-panel';
+import { previewActivitySlotVisual } from '../studio-api';
+import { StructuredDirectorControls, VisualParameterFields } from './visual-settings-controls';
+import { StudioHiresDialog } from './studio-hires-dialog';
 
 interface ImageWorkbenchProps {
   isOpen: boolean;
@@ -75,11 +81,13 @@ interface ImageWorkbenchProps {
   currentMediaRevision?: MediaRevision | null;
   onAdoptSlotAsset?: (slotId: string, assetKey: string) => Promise<void>;
   onLocateField?: (entityKind: string, entityId: string, fieldPath: string) => void;
+  registerFlush?(flush: (() => Promise<boolean>) | null): void;
 }
 
 export function ImageWorkbench({
   isOpen,
   onClose,
+  registerFlush,
   activity,
   document,
   initialSlotId,
@@ -132,12 +140,44 @@ export function ImageWorkbench({
   // Local Scope Editing State
   const [scopeTab, setScopeTab] = useState<'override' | 'slot' | 'global'>('slot');
   const [currentConfigDoc, setCurrentConfigDoc] = useState<ImageConfigDocument | null>(null);
+  const configVersion = useRef(0);
+  const configBaseline = useRef('');
+  const restoredConfig = useRef(false);
+  const recoveryKey = `sthstart:activity-image-config-editor:${activity.id}`;
+  const localDocument = useRef(currentConfigDoc);
+  localDocument.current = currentConfigDoc;
+  const [visualPreview, setVisualPreview] = useState<ActivitySlotVisualPreview | null>(null);
+  const [parametersValid, setParametersValid] = useState(true);
 
   useEffect(() => {
     if (configDraftData?.document) {
+      if (localDocument.current && JSON.stringify(localDocument.current) !== configBaseline.current) return;
+      if (!restoredConfig.current) {
+        restoredConfig.current = true;
+        try {
+          const serialized = sessionStorage.getItem(recoveryKey);
+          if (serialized) {
+            const stored = JSON.parse(serialized);
+            if (Number.isSafeInteger(stored.version) && typeof stored.baseline === 'string' && Value.Check(ImageConfigDocumentSchema, stored.document)) {
+              configVersion.current = stored.version; configBaseline.current = stored.baseline;
+              setCurrentConfigDoc(stored.document);
+              return;
+            }
+          }
+        } catch { /* unavailable browser recovery does not mutate server data */ }
+      }
+      configVersion.current = configDraftData.draftVersion;
+      configBaseline.current = JSON.stringify(configDraftData.document);
       setCurrentConfigDoc(configDraftData.document);
     }
   }, [configDraftData]);
+  useEffect(() => {
+    if (!currentConfigDoc) return;
+    try {
+      if (JSON.stringify(currentConfigDoc) === configBaseline.current) sessionStorage.removeItem(recoveryKey);
+      else sessionStorage.setItem(recoveryKey, JSON.stringify({ version: configVersion.current, baseline: configBaseline.current, document: currentConfigDoc }));
+    } catch { /* settings remain in memory when the browser store is unavailable */ }
+  }, [currentConfigDoc, recoveryKey]);
 
   const queryClient = useQueryClient();
   const [editingSource, setEditingSource] = useState<SourceRef | null>(null);
@@ -169,6 +209,9 @@ export function ImageWorkbench({
   const handleSelectReferenceAsset = (assetKey: string | null) => {
     setSelectedReferenceKey(assetKey);
     setSelectedGenerationPresetId('');
+    // A preset for text generation is not an implicit image-edit preset (or vice versa).
+    handleUpdateSlotConfig({ presetId: undefined, presetRevision: undefined, workflowId: undefined,
+      workflowVersion: undefined, purpose: undefined, params: undefined });
     setPreparedRecipe(null);
     setPreparedCompilation(null);
   };
@@ -176,6 +219,8 @@ export function ImageWorkbench({
   // Comparison State
   const [compareAttemptId, setCompareAttemptId] = useState<string | null>(null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+  /** 待细化的素材历史图；打开弹窗不提交草稿、不创建任务、不调用模型。 */
+  const [hiresAttempt, setHiresAttempt] = useState<{ artifactId: string; label: string } | null>(null);
   const [adoptingAssetKey, setAdoptingAssetKey] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -236,21 +281,45 @@ export function ImageWorkbench({
 
   // Save Draft
   const handleSaveDraft = async () => {
-    if (!currentConfigDoc) return;
+    if (!currentConfigDoc || !parametersValid) return false;
     try {
-      await saveDraftMutation.mutateAsync({ id: activity.id, document: currentConfigDoc });
+      const saved = await saveDraftMutation.mutateAsync({ id: activity.id, document: currentConfigDoc, expectedDraftVersion: configVersion.current });
+      configVersion.current = saved.draftVersion;
+      configBaseline.current = JSON.stringify(currentConfigDoc);
+      try { sessionStorage.removeItem(recoveryKey); } catch { /* optional recovery */ }
       setStatusMessage({ type: 'success', text: '图像配置草稿已保存' });
       setTimeout(() => setStatusMessage(null), 3000);
+      return true;
     } catch (err) {
       setStatusMessage({ type: 'error', text: '保存草稿失败: ' + String(err) });
+      return false;
     }
   };
+  const flushConfig = async () => {
+    if (!parametersValid) { setStatusMessage({ type: 'error', text: '请修正采样参数，输入仍保留。' }); return false; }
+    if (!currentConfigDoc || JSON.stringify(currentConfigDoc) === configBaseline.current) return true;
+    return handleSaveDraft();
+  };
+  useEffect(() => { registerFlush?.(flushConfig); return () => registerFlush?.(null); });
+  useEffect(() => {
+    if (!advanced || !isOpen || !currentConfigDoc || !activeSlot) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      void previewActivitySlotVisual(activity.id, { slotId: activeSlot.id, document: currentConfigDoc }).then(result => {
+        if (active) setVisualPreview(result);
+      }).catch(error => { if (active) setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : '配置检查失败' }); });
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [advanced, isOpen, currentConfigDoc, activeSlot?.id, activity.id]);
 
   // Commit Revision
   const handleCommitRevision = async () => {
     if (!currentConfigDoc) return;
     try {
-      await commitRevisionMutation.mutateAsync({ id: activity.id, document: currentConfigDoc });
+      await commitRevisionMutation.mutateAsync({ id: activity.id, document: currentConfigDoc, expectedDraftVersion: configVersion.current, expectedHeadVersion: (await fetchActivity(activity.id)).activity.headVersion });
+      const saved = await fetchImageConfigDraft(activity.id);
+      configVersion.current = saved.draftVersion; configBaseline.current = JSON.stringify(currentConfigDoc);
+      try { sessionStorage.removeItem(recoveryKey); } catch { /* optional recovery */ }
       setStatusMessage({ type: 'success', text: '图像配置新版本已提交发布' });
       setTimeout(() => setStatusMessage(null), 3000);
     } catch (err) {
@@ -274,7 +343,13 @@ export function ImageWorkbench({
   const handlePrepareRecipe = async (quiet = false) => {
     if (!activeSlot || !activity.currentContentRevisionId) return;
     try {
-      const configRevision = currentConfigDoc ? await commitRevisionMutation.mutateAsync({ id: activity.id, document: currentConfigDoc }) : null;
+      if (!parametersValid) throw new Error('请先修正采样参数。');
+      const configRevision = currentConfigDoc ? await commitRevisionMutation.mutateAsync({ id: activity.id, document: currentConfigDoc,
+        expectedDraftVersion: configVersion.current, expectedHeadVersion: (await fetchActivity(activity.id)).activity.headVersion }) : null;
+      if (currentConfigDoc) {
+        configVersion.current = (await fetchImageConfigDraft(activity.id)).draftVersion; configBaseline.current = JSON.stringify(currentConfigDoc);
+        try { sessionStorage.removeItem(recoveryKey); } catch { /* optional recovery */ }
+      }
       const fresh = await fetchActivity(activity.id);
       const res = await prepareRecipeMutation.mutateAsync({
         id: activity.id,
@@ -403,7 +478,7 @@ export function ImageWorkbench({
   return (
     <Drawer
       open={isOpen}
-      onOpenChange={(open) => !open && onClose()}
+      onOpenChange={(open) => { if (!open) void flushConfig().then(saved => { if (saved) onClose(); }); }}
       title="素材绘制"
       className="max-w-[1100px] w-full flex flex-col p-2 sm:p-4 overflow-hidden bg-surface text-ink"
     >
@@ -813,6 +888,9 @@ export function ImageWorkbench({
 
           {/* Execution Plan Hash & Seed Input */}
           <div className="bg-surface/60 border border-border-default rounded-lg p-3 space-y-2.5">
+            <label className="block space-y-1 text-sm text-muted">品质覆盖<select aria-label="素材绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-ink" value={activeSlotConfig.quality ?? ''} onChange={event => handleUpdateSlotConfig({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>
+            {advanced && <><StructuredDirectorControls value={activeSlotConfig.director} onChange={director => handleUpdateSlotConfig({ director })} />
+              {visualPreview && <VisualParameterFields key={`${activeSlot.id}:${visualPreview.workflowId}:${visualPreview.workflowVersion}`} recoveryKey={`sthstart:visual-input:slot:${activity.id}:${activeSlot.id}:${visualPreview.workflowId}:${visualPreview.workflowVersion}`} fields={visualPreview.fields} values={activeSlotConfig.params ?? {}} onChange={params => handleUpdateSlotConfig({ params })} onValidityChange={setParametersValid} />}</>}
             <div className="space-y-1.5">
               <label htmlFor="activity-image-generation-preset" className="text-sm text-muted font-medium">图片模型与参数预设</label>
               <select
@@ -821,6 +899,9 @@ export function ImageWorkbench({
                 value={selectedGenerationPreset ? selectedGenerationPreset.id : ''}
                 onChange={(event) => {
                   setSelectedGenerationPresetId(event.target.value);
+                  const preset = generationPresetOptions.find(preset => preset.id === event.target.value);
+                  handleUpdateSlotConfig({ presetId: preset?.id, presetRevision: preset?.revision, purpose: preset?.purpose,
+                    workflowId: preset?.workflowId, workflowVersion: preset?.workflowVersion, params: undefined });
                   setPreparedRecipe(null);
                   setPreparedCompilation(null);
                 }}
@@ -953,6 +1034,13 @@ export function ImageWorkbench({
                         <span className="text-sm text-muted font-mono">
                           Seed: {attempt.actualSeed}
                         </span>
+                        {attempt.imageOperation?.operation === 'hires' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-medium border bg-sky-950 text-sky-300 border-sky-800" title="放大细化结果，沿用来源图的实际参数">细化</span>
+                        )}
+                        {attempt.imageOperation?.operation === 'hires' && attempt.imageOperation.parentArtifactId && (
+                          <a className="text-xs text-accent hover:underline" target="_blank" rel="noreferrer"
+                            href={`/api/admin/artifacts/${encodeURIComponent(attempt.imageOperation.parentArtifactId)}/file`}>来源图 ↗</a>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -994,6 +1082,34 @@ export function ImageWorkbench({
                           >
                             <SplitSquareVertical className="w-2.5 h-2.5 mr-1" />
                             对比
+                          </Button>
+                        )}
+                        {isSucceeded && output && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-5 text-sm px-1.5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHiresAttempt({ artifactId: output.artifactId, label: `${activeSlot?.id ?? ''} · ${new Date(attempt.createdAt).toLocaleString()}` });
+                            }}
+                          >
+                            放大细化
+                          </Button>
+                        )}
+                        {/* 按原配置重绘（计划 §1.1）：复用该次尝试的配方，换一个新种子。 */}
+                        {isSucceeded && output && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-5 text-sm px-1.5"
+                            title="复用这张图的配方与参数，换一个新种子重新绘制"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              retryAttemptMutation.mutate({ id: activity.id, attemptId: attempt.id, seed: Math.floor(Math.random() * 2_147_483_647) });
+                            }}
+                          >
+                            按原配置重绘
                           </Button>
                         )}
                       </div>
@@ -1142,6 +1258,17 @@ export function ImageWorkbench({
           )}
         </div>
       </div>
+      <StudioHiresDialog
+        activityId={activity.id}
+        target={{ kind: 'media_slot', slotId: activeSlot?.id ?? '' }}
+        sourceArtifactId={hiresAttempt?.artifactId ?? null}
+        sourceImageUrl={hiresAttempt ? `/api/admin/artifacts/${encodeURIComponent(hiresAttempt.artifactId)}/file` : null}
+        sourceLabel={hiresAttempt?.label}
+        open={Boolean(hiresAttempt)}
+        onOpenChange={(next) => { if (!next) setHiresAttempt(null); }}
+        beforePreview={async () => true}
+        onCreated={() => { void refetchAttempts(); }}
+      />
     </Drawer>
   );
 }

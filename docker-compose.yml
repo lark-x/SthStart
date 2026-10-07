@@ -6,6 +6,7 @@ services:
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
         HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+        INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
     image: sthstart:latest
     container_name: sthstart
     restart: unless-stopped

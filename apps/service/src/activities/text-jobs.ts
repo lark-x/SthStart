@@ -291,7 +291,8 @@ export async function callLlm(
   prompt: string,
   fetchFn: typeof fetch,
   signal?: AbortSignal,
-  audit?: { database: ServiceDatabase; traceId?: string; businessEvent: string; objectType?: string | null; objectId?: string | null; feature?: string; applicationId?: string },
+  audit?: { database: ServiceDatabase; traceId?: string; businessEvent: string; objectType?: string | null; objectId?: string | null; feature?: string; applicationId?: string;
+    parentId?:string|null;retryOf?:string|null;parameters?:Record<string,unknown> },
   customOptions?: { systemPrompt?: string; temperature?: number; jsonMode?: boolean }
 ): Promise<string> {
   return executeTextLlm({
@@ -311,6 +312,7 @@ export async function callLlm(
           businessEvent: audit.businessEvent,
           objectType: audit.objectType,
           objectId: audit.objectId,
+          parentId:audit.parentId,retryOf:audit.retryOf,parameters:audit.parameters,
         }
       : undefined,
   });

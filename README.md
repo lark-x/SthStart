@@ -53,7 +53,7 @@ npm run dev:all
 
 打开 `/settings/control-center` 可托管邻舍、迁移 EXE 运行配置并查看有界实时日志；打开 `/settings/public-services` 可创建应用令牌、供应商配置和通用角色模板。供应商密钥优先保存到 macOS Keychain、Windows Credential Manager 或 Linux Secret Service；系统安全存储不可用时只能通过明确的环境变量提供，不会静默写入明文文件。
 
-邻舍默认仍按原项目逻辑运行。需要逐模块迁移时，在根目录 `.env` 配置稳定的 `STHSTART_APP_TOKEN`，再依次打开 `STHSTART_PUBLIC_LLM`、`STHSTART_PUBLIC_VECTOR`、`STHSTART_PUBLIC_IMAGE`；通过 SthStart 控制中心托管邻舍时令牌会自动注入。`dev:all` 会把根环境传给邻舍；公共 LLM 托管模式发生故障时会明确报错，不会静默切回邻舍旧模型配置，关闭对应公共服务开关即可恢复独立运行模式。
+邻舍默认仍按原项目逻辑运行，并**用自己的 ComfyUI 生图**。需要逐模块迁移时，在根目录 `.env` 配置稳定的 `STHSTART_APP_TOKEN`，再按需打开 `STHSTART_PUBLIC_LLM`、`STHSTART_PUBLIC_VECTOR`、`STHSTART_PUBLIC_IMAGE`（三者相互独立，默认关闭）；通过 SthStart 控制中心托管邻舍时令牌会自动注入，LLM 与向量固定走公共网关，生图则由控制中心的「邻舍生图使用 SthStart 公共网关」开关控制。`dev:all` 会把根环境传给邻舍；公共 LLM 托管模式发生故障时会明确报错，不会静默切回邻舍旧模型配置，关闭对应公共服务开关即可恢复独立运行模式。
 
 ## 邻舍 Fork 与同步
 

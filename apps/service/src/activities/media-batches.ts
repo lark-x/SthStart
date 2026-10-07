@@ -1,4 +1,6 @@
 import { currentReviewValues, valueHash, reviewTarget } from './change-impact.js';
+import { isActivityArtStylePayload } from '@sthstart/contracts';
+import { resolveVisualSettings } from './visual-settings.js';
 import type { ActivityReviewItem } from '@sthstart/contracts';
 import { randomUUID, createHash } from 'node:crypto';
 import type {
@@ -39,8 +41,8 @@ const processing = new WeakMap<ServiceDatabase, Set<string>>();
 function batchError(code: string, message: string, statusCode = 400): never {
   throw Object.assign(new Error(message), { code, statusCode });
 }
-function compileBatchSlot(database: ServiceDatabase, store: ActivityStore, activityId: string,
-  input: PrepareMediaBatchInput, slotId: string) {
+export function compileBatchSlot(database: ServiceDatabase, store: ActivityStore, activityId: string,
+  input: PrepareMediaBatchInput, slotId: string, presetOverride?: { presetId: string; presetRevision?: number }) {
   const content = store.getContentRevision(activityId, input.contentRevisionId);
   const config = getImageConfigRevision(database, activityId, input.imageConfigRevisionId);
   if (!content || !config) batchError('revision_not_found', '请先发布活动内容与图像配置。');
@@ -50,7 +52,10 @@ function compileBatchSlot(database: ServiceDatabase, store: ActivityStore, activ
   if (current.editingPolicy?.lockedMediaSlotIds.includes(slotId)) batchError('media_slot_locked', '该图片槽位已锁定。');
   const slotConfig = config.document.slotConfigs?.find(s => s.slotId === slotId);
   const keys = [...new Set(slotConfig?.referenceAssetKeys ?? content.document.actors.filter(a => slot.actorIds.includes(a.id)).flatMap(a => a.appearanceReferenceAssetKeys || []))];
-  const plan = resolveImageExecutionPlan(database, keys.length > 0, input.generationPresetId);
+  const visual = resolveVisualSettings(config.document, { ...slotConfig, parameters: slotConfig?.params,
+    ...(presetOverride ? { presetId: presetOverride.presetId, ...(presetOverride.presetRevision != null ? { presetRevision: presetOverride.presetRevision } : {}) }
+      : input.generationPresetId ? { presetId: input.generationPresetId, presetRevision: undefined } : {}) });
+  const plan = resolveImageExecutionPlan(database, keys.length > 0, visual.selection.presetId, visual.selection.presetRevision, visual.selection);
   if (!plan) batchError('assignment_missing', '请配置活动文生图/图生图用途。');
   const inputKeys = plan.inputCapabilities ? Object.keys(plan.inputCapabilities).filter(key => plan.nodeBindings[key]) : plan.nodeBindings.sourceImage ? ['sourceImage'] : [];
   if (keys.length > inputKeys.length) batchError('reference_binding_missing', '工作流无法接收全部参考图，请在单图工作台调整参考图配置。');
@@ -394,7 +399,7 @@ export async function createMediaBatch(
   const imageConfigDoc: ImageConfigDocument = imageConfigRev.document;
 
   const preset = input.productionPresetId ? getActivityPreset(database, input.productionPresetId) : null;
-  if (input.productionPresetId && (!preset || preset.kind !== 'production_preset')) batchError('preset_not_found', '生产预设不存在，请重新选择。');
+  if (input.productionPresetId && (!preset || preset.kind !== 'production_preset' || isActivityArtStylePayload(preset.payload))) batchError('preset_not_found', '生产预设不存在，请重新选择。');
   const slotMap = new Map((contentDoc.mediaSlots || []).map((s) => [s.id, s]));
   const batchId = randomUUID();
   const now = nowIso();

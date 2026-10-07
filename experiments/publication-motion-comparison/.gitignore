@@ -1,0 +1,8 @@
+**/node_modules/
+**/public/media/
+**/assets/
+**/.hyperframes/
+**/renders/
+**/out/
+**/build/
+**/.cache/

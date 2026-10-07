@@ -9,6 +9,7 @@ import type {
   PlaybackDocument,
   PlaybackRevision,
   ActivityAsset,
+  ActivityGallery,
   ActivityCandidate,
   ActivityCheckpoint,
   ActivityJob,
@@ -45,6 +46,7 @@ import type {
   InstantiateTemplateInput,
   UpdateActivityPresetInput,
 } from '@sthstart/contracts';
+import { ActivityGallerySchema } from '@sthstart/contracts';
 
 export interface ActivityCapabilities {
   llm: boolean;
@@ -245,6 +247,11 @@ export async function generateAutoPlayback(
 // 4. Assets & Media Workstation
 export async function fetchActivityAssets(id: string): Promise<{ items: ActivityAsset[] }> {
   return getJson(`/api/admin/activities/${encodeURIComponent(id)}/assets`);
+}
+
+/** Aggregate read-only gallery. The contract validates the response shape. */
+export async function fetchActivityGallery(id: string): Promise<ActivityGallery> {
+  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/gallery`, undefined, ActivityGallerySchema);
 }
 
 export async function transferCharacterReferenceToActivity(
@@ -595,8 +602,9 @@ export async function fetchImageAttempt(id: string, attemptId: string): Promise<
   return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}`);
 }
 
-export async function retryImageAttempt(id: string, attemptId: string): Promise<GenerationAttempt> {
-  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}/retry`, {});
+/** 重试一次素材绘制。传 seed 时按“复用原配置、换种子”重绘；不传则沿用原种子（失败重试）。 */
+export async function retryImageAttempt(id: string, attemptId: string, seed?: number): Promise<GenerationAttempt> {
+  return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts/${encodeURIComponent(attemptId)}/retry`, seed === undefined ? {} : { seed });
 }
 
 export async function cancelImageAttempt(id: string, attemptId: string): Promise<{ cancelled: boolean; status: string }> {

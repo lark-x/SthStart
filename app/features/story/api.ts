@@ -17,9 +17,10 @@ const sessionPath = (projectId: string, sessionId: string) => `${projectPath(pro
 
 export const storyApi = {
   listProjects: () => getJson<{ items: import('@sthstart/contracts').StoryProject[] }>(root, undefined, StoryProjectListSchema),
-  createProject: (title: string, summary = '', workId?: string) => postJson<import('@sthstart/contracts').StoryProject>(root, { title, summary, workId: workId || undefined }, undefined, StoryProjectSchema),
+  createProject: (title: string, summary = '', workId?: string, projectType?: import('@sthstart/contracts').StoryProjectType) =>
+    postJson<import('@sthstart/contracts').StoryProject>(root, { title, summary, workId: workId || undefined, projectType }, undefined, StoryProjectSchema),
   getProject: (id: string) => getJson<import('@sthstart/contracts').StoryProject>(projectPath(id), undefined, StoryProjectSchema),
-  updateProject: (id: string, expectedRevision: number, patch: { title?: string; summary?: string; workId?: string | null; contextSettings?: StoryContextSettings }) =>
+  updateProject: (id: string, expectedRevision: number, patch: { title?: string; summary?: string; workId?: string | null; projectType?: import('@sthstart/contracts').StoryProjectType; contextSettings?: StoryContextSettings }) =>
     putJson<import('@sthstart/contracts').StoryProject>(projectPath(id), { expectedRevision, ...patch }, undefined, StoryProjectSchema),
   listDocuments: (id: string) => getJson<{ items: import('@sthstart/contracts').StoryDocument[] }>(`${projectPath(id)}/documents`, undefined, StoryDocumentListSchema),
   createDocument: (id: string, input: CreateStoryDocument) => postJson<import('@sthstart/contracts').StoryDocument>(`${projectPath(id)}/documents`, input, undefined, StoryDocumentSchema),

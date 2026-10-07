@@ -27,6 +27,9 @@ interface ComicWorkstationProps {
   content: ContentDocument;
   actors: ActorSnapshot[];
   onBack(): void;
+  onEdit?(): void;
+  readingOnly?: boolean;
+  registerFlush?(callback: (() => Promise<boolean>) | null): void;
 }
 
 const templatePanelCounts: Record<ComicPage['template'], number> = { single: 1, duo: 2, trio: 3, quad: 4 };
@@ -36,20 +39,26 @@ const emptyComicDocument: ComicDocument = {
 };
 
 function newPanelFromBeat(beat: NonNullable<ReturnType<typeof getEffectiveStageScenes>[number]['beats'][number]>, stageId: string, sceneId: string): ComicPanel {
+  const { composition: inheritedComposition, director, ...renderSettings } = beat.renderSettings ?? {};
+  const { shotSize: inheritedShotSize, ...otherDirection } = director ?? {};
   return {
-    id: crypto.randomUUID(), source: { stageId, sceneId, beatIds: [beat.id] }, actorIds: beat.characterId ? [beat.characterId] : [],
-    shotSize: 'medium', visualDescription: '', composition: '', textSafeArea: 'none', selectedImage: null,
+    id: crypto.randomUUID(), source: { stageId, sceneId, beatIds: [beat.id] }, actorIds: beat.actorIds ?? (beat.characterId && beat.characterId !== 'narrator' ? [beat.characterId] : []),
+    shotSize: inheritedShotSize && inheritedShotSize !== 'full_body' ? inheritedShotSize : 'medium', visualDescription: '', composition: inheritedComposition ?? '', textSafeArea: 'none', selectedImage: null,
     crop: { focalX: 0.5, focalY: 0.5, zoom: 1 }, bubbles: [],
-    presentation: { camera: 'none', impact: 'none', holdMs: null }, renderSettings: beat.renderSettings ?? {},
+    presentation: { camera: 'none', impact: 'none', holdMs: null }, renderSettings: { ...renderSettings, director: otherDirection },
   };
 }
 
 function busy(job: ComicJob | undefined) { return Boolean(job && ['queued', 'preparing', 'running'].includes(job.status)); }
 
-export function ComicWorkstation({ activity, content, actors, onBack }: ComicWorkstationProps) {
+export function ComicWorkstation({ activity, content, actors, onBack, onEdit, readingOnly = false, registerFlush }: ComicWorkstationProps) {
   const revisionId = activity.currentContentRevisionId || '';
   const queryClient = useQueryClient();
   const draftState = useComicDraft(activity.id, revisionId);
+  useEffect(() => {
+    registerFlush?.(draftState.flush);
+    return () => registerFlush?.(null);
+  }, [registerFlush, draftState.flush]);
   const comic = draftState.document;
   const boundRevision = useActivityContentRevision(activity.id, comic?.contentRevisionId);
   const boundContent = boundRevision.data?.document ?? null;
@@ -355,11 +364,11 @@ export function ComicWorkstation({ activity, content, actors, onBack }: ComicWor
   if (draftState.status === 'error' && !comic) return <div role="alert" className="grid h-full min-h-0 place-items-center p-6 text-sm text-danger">{draftState.error ?? '漫画草稿读取失败。'}</div>;
   if (boundRevision.isError) return <div role="alert" className="grid h-full min-h-0 place-items-center p-6 text-sm text-danger">漫画绑定的剧情版本读取失败，请刷新后重试。</div>;
   if (draftState.loading || !comic || !boundContent) return <div className="grid h-full min-h-0 place-items-center text-sm text-muted">正在载入漫画草稿…</div>;
-  if (readingMode) return <div className="flex h-full min-h-0 flex-col bg-surface">
+  if (readingOnly || readingMode) return <div className="flex h-full min-h-0 flex-col bg-surface">
     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-default px-3 py-2">
-      <Button size="sm" variant="ghost" onClick={onBack}>← 原回放</Button>
+      <Button size="sm" variant="ghost" onClick={onBack}>← 创作工坊</Button>
       <span className="text-sm font-semibold text-ink">漫画逐格阅读</span>
-      <Button size="sm" variant="outline" onClick={() => setReadingMode(false)}>返回编辑</Button>
+      <Button size="sm" variant="outline" onClick={() => readingOnly ? onEdit?.() : setReadingMode(false)}>返回编辑</Button>
     </div>
     <div className="min-h-0 flex-1"><ComicReader document={comic} fontReady={fontReady} assets={comicAssets.assets} loading={comicAssets.loading} missingArtifactIds={comicAssets.missingArtifactIds} /></div>
   </div>;

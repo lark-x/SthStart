@@ -1,7 +1,9 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import type { CreateNativeStoryProposal } from '@sthstart/contracts';
+import { StoryHarnessTools, type CreateNativeStoryProposal } from '@sthstart/contracts';
+import { Value } from '@sinclair/typebox/value';
+import { mcpJson,mcpError } from '../mcp-http.js';
 
 const portalUrl = process.env.STHSTART_STORY_PORTAL_URL;
 const projectId = process.env.STHSTART_STORY_PROJECT_ID;
@@ -10,6 +12,7 @@ if (!portalUrl || !projectId || !token) throw new Error('Story bridge configurat
 const root = `${portalUrl.replace(/\/$/, '')}/api/story-bridge/projects/${encodeURIComponent(projectId)}`;
 
 const tools = [
+  ...StoryHarnessTools,
   { name: 'get_project', description: 'Read the current canonical SthStart project title, summary and revision. Use list_entries and read_entry to inspect specific story material.', inputSchema: { type: 'object' as const, properties: {} } },
   { name: 'list_entries', description: 'List canonical entries and their current revisions. Use cursor for another page. This tool does not change story data.', inputSchema: { type: 'object' as const, properties: { kind: { type: 'string', enum: ['outline', 'world', 'scene', 'chapter', 'character'] }, cursor: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 200 } } } },
   { name: 'read_entry', description: 'Read a canonical entry. Long bodies can be retrieved in chunks using offset; response includes totalLength and truncated.', inputSchema: { type: 'object' as const, properties: { kind: { type: 'string', enum: ['outline', 'world', 'scene', 'chapter', 'character'] }, id: { type: 'string' }, offset: { type: 'integer', minimum: 0 } }, required: ['kind', 'id'] } },
@@ -23,17 +26,11 @@ const tools = [
 ];
 
 async function request(path: string, init: RequestInit = {}) {
-  const response = await fetch(`${root}${path}`, {
+  return mcpJson(`${root}${path}`, {
     ...init,
     headers: { authorization: `Bearer ${token}`, accept: 'application/json', ...init.headers },
     cache: 'no-store', signal: AbortSignal.timeout(20_000),
   });
-  const payload = await response.json().catch(() => null) as unknown;
-  if (!response.ok) {
-    const error = payload && typeof payload === 'object' ? payload as { message?: string; error?: string } : {};
-    throw new Error(`${error.error ?? 'story_bridge_error'}: ${error.message ?? `HTTP ${response.status}`}`);
-  }
-  return payload;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -60,7 +57,16 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
     const args = asObject(params.arguments ?? {});
     let result: unknown;
+    const extra=StoryHarnessTools.find(t=>t.name===params.name);
+    if(extra&&!Value.Check(extra.inputSchema,args))throw new Error('工具参数不符合Schema。');
     switch (params.name) {
+      case 'list_proposals': {
+        const q=new URLSearchParams();for(const k of ['cursor','limit','status','targetId'])if(args[k]!==undefined)q.set(k,String(args[k]));result=await request(`/proposals${q.size?`?${q}`:''}`);break;
+      }
+      case 'list_entry_revisions':case 'read_entry_revision': {
+        const q=new URLSearchParams();for(const k of params.name==='list_entry_revisions'?['cursor','limit']:['offset'])if(args[k]!==undefined)q.set(k,String(args[k]));
+        result=await request(`/entries/${encodeURIComponent(kind(args.kind))}/${encodeURIComponent(text(args.id,'id'))}/revisions${params.name==='read_entry_revision'?`/${encodeURIComponent(text(args.revisionId,'revisionId'))}`:''}${q.size?`?${q}`:''}`);break;
+      }
       case 'get_project': result = await request(''); break;
       case 'list_entries': {
         const params = new URLSearchParams();
@@ -115,7 +121,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     }
     return { content: [{ type: 'text' as const, text: render(result) }] };
   } catch (error) {
-    return { isError: true, content: [{ type: 'text' as const, text: error instanceof Error ? error.message : '剧情桥接调用失败。' }] };
+    return mcpError(error);
   }
 });
 

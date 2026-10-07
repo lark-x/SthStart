@@ -1,5 +1,6 @@
 'use client';
 import { CreationProfileEditor } from './creation-profile-picker';
+import { isActivityArtStylePayload } from '@sthstart/contracts';
 
 import React, { useState } from 'react';
 import {
@@ -59,7 +60,7 @@ export function ActivityPresetsModal({
   const updatePresetMutation = useUpdateActivityPreset();
   const deletePresetMutation = useDeleteActivityPreset();
 
-  const presets = presetsData?.items || [];
+  const presets = (presetsData?.items || []).filter(preset => !isActivityArtStylePayload(preset.payload));
   const filteredPresets = manageKindFilter === 'all'
     ? presets
     : presets.filter((p) => p.kind === manageKindFilter);

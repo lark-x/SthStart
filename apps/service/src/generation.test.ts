@@ -264,13 +264,15 @@ test("Generation security: error messages and event payloads sanitize sensitive 
     url: `/api/v1/generation/tasks/${taskId}`,
     headers: { authorization: `Bearer ${token}` },
   });
-  assert.equal(lookup.json().status, "failed");
-  assert.equal(lookup.json().errorCode, "upstream_rejected");
+  // HTTP 500 may follow a successful enqueue; sanitization must also hold for uncertain submissions.
+  assert.equal(lookup.json().status, "abandoned");
+  assert.equal(lookup.json().errorCode, "submission_outcome_unknown");
+  assert.equal(lookup.json().upstreamMayContinue,true);
   assert.doesNotMatch(lookup.json().errorMessage, /sk-secret/);
   assert.doesNotMatch(lookup.json().errorMessage, /\/Users\/dev/);
 
   // Check event payload in database is also sanitized
-  const events = database.connection.prepare("SELECT * FROM generation_events WHERE task_id = ? AND event_type = ?").all(taskId, "failed") as Array<{ payload_json: string }>;
+  const events = database.connection.prepare("SELECT * FROM generation_events WHERE task_id = ? AND event_type = ?").all(taskId, "abandoned") as Array<{ payload_json: string }>;
   assert.equal(events.length, 1);
   assert.doesNotMatch(events[0].payload_json, /sk-secret/);
   assert.doesNotMatch(events[0].payload_json, /\/Users\/dev/);
@@ -574,9 +576,10 @@ test('Generation recovery: reconcileGenerationTasks cleans up submitting tasks o
   const res = await reconcileGenerationTasks(config, database, new SecretStore({}));
   assert.equal(res.recoveredCount, 1);
 
-  const task = database.connection.prepare('SELECT status, error_code FROM generation_tasks WHERE id = ?').get('t-stale') as { status: string; error_code: string };
+  const task = database.connection.prepare('SELECT status, error_code,upstream_may_continue FROM generation_tasks WHERE id = ?').get('t-stale') as { status: string; error_code: string;upstream_may_continue:number };
   assert.equal(task.status, 'abandoned');
   assert.equal(task.error_code, 'submission_outcome_unknown');
+  assert.equal(task.upstream_may_continue,1,'restart uncertainty must not become a safe failed retry');
 
   database.close();
 });
@@ -1296,6 +1299,28 @@ test("Generation worker: submits once, polls, persists output, and confirms remo
   assert.ok(calls.some((call) => call.startsWith('POST http://worker.test:9000/v1/worker/tasks')));
   assert.ok(calls.some((call) => call.endsWith('/output/output-1')));
   assert.ok(calls.some((call) => call.endsWith('/confirm')));
+
+  // A status button must query a known Worker ID once, including after an
+  // uncertain local timeout. It must never create a replacement Worker task.
+  let probeStatus:'forbidden'|'queued'|'confirmed'='forbidden',probes=0;
+  const probeFetcher:typeof fetch=async(input)=>{
+    assert.ok(String(input).endsWith('/worker-task-1/status'));probes++;
+    return probeStatus==='forbidden'?Response.json({error:'not allowed'},{status:403})
+      :Response.json({taskId:'worker-task-1',status:probeStatus,outputs:[]});
+  };
+  const unknown=()=>database.connection.prepare("UPDATE generation_tasks SET status='abandoned',upstream_may_continue=1,cancellation_scope='local-tracking' WHERE id=?").run(taskId);
+  const state=()=>database.connection.prepare('SELECT status,upstream_may_continue FROM generation_tasks WHERE id=?').get(taskId)!;
+  unknown();await pollAndCompleteTask(config,database,secrets,taskId,probeFetcher,{singleCheck:true,reconcileUnknown:true});
+  assert.equal(probes,1);assert.equal(state().status,'abandoned');assert.equal(state().upstream_may_continue,1);
+  probeStatus='queued';await pollAndCompleteTask(config,database,secrets,taskId,probeFetcher,{singleCheck:true,reconcileUnknown:true});
+  assert.equal(probes,2);assert.equal(state().status,'accepted');assert.equal(state().upstream_may_continue,0);
+  await secrets.delete('engine:eng-worker');
+  await pollAndCompleteTask(config,database,secrets,taskId,probeFetcher,{singleCheck:true,reconcileUnknown:true});
+  assert.equal(state().status,'abandoned','missing credentials cannot prove an already submitted task failed');assert.equal(state().upstream_may_continue,1);assert.equal(probes,2);
+  await secrets.set('engine:eng-worker','worker-secret-that-is-long-enough-123456');probeStatus='confirmed';
+  await pollAndCompleteTask(config,database,secrets,taskId,probeFetcher,{singleCheck:true,reconcileUnknown:true});
+  assert.equal(probes,3);assert.equal(state().status,'succeeded');assert.equal(state().upstream_may_continue,0);
+  assert.equal(calls.filter(call=>call==='POST http://worker.test:9000/v1/worker/tasks').length,1);
 
   await app.close();
   database.close();

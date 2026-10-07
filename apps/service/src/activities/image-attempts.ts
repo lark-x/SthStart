@@ -11,8 +11,6 @@ import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
-import { mergeGenerationValues, type InputSchemaMap } from '../generation/configuration.js';
-import { renderWorkflowSnapshot } from '../generation/workflows.js';
 import { inspectWorkflowRuntime } from '../generation/runtime-preflight.js';
 import { createArtifactReference } from '../artifacts.js';
 import {
@@ -25,6 +23,12 @@ import { getPromptRecipe, resolveImageExecutionPlan } from './image-prompt-compi
 import { linkPromptOptimizationTask, optimizeActivityImagePrompt } from './image-prompt-optimizer.js';
 import { recordAssetLineage } from './image-lineage.js';
 import type { ActivityStore } from './store.js';
+import { getImageConfigRevision } from './image-configs.js';
+import { buildActivityImageWorkflowSnapshot, finalizeActivityVisualPrompt, v2FinalizeInputFrom, mergeActivityImageInputs, mergeActivityLoras, promptInputKey, readActivityLoraPolicy, resolveEffectiveActivityVisualPlan } from './image-render-common.js';
+import type { InputSchemaMap } from '../generation/configuration.js';
+import { resolveVisualSettings } from './visual-settings.js';
+import { studioRenderAudit, type StudioRenderContext } from './studio-render-context.js';
+import { readImageOperationMetadata } from './studio-image-operation.js';
 
 export interface CreateImageAttemptParams {
   recipeId: string;
@@ -36,6 +40,8 @@ export interface CreateImageAttemptParams {
   retryOfAttemptId?: string | null;
   customInputs?: Record<string, unknown>;
   purpose?: string;
+  /** Internal Studio adapter only; never accepted from a browser request. */
+  studioContext?: StudioRenderContext & { onInsertTask(taskId:string,callId:string,attemptId:string):void };
 }
 
 export function computeBusinessRequestHash(params: {
@@ -59,6 +65,7 @@ export async function createImageGenerationAttempt(
   params: CreateImageAttemptParams,
   fetcher: typeof fetch = fetch,
 ): Promise<GenerationAttempt> {
+  if(params.studioContext&&!params.studioContext.canContinue())throw Object.assign(new Error('已停止后续提交。'),{code:'studio_process_interrupted'});
   const activity = store.getActivity(activityId);
   if (!activity) {
     throw new Error('activity_not_found');
@@ -114,9 +121,20 @@ export async function createImageGenerationAttempt(
   }
 
   const currentPlan = resolveImageExecutionPlan(database, recipe.references.length > 0, compilation.executionPlan?.presetId ?? undefined,
-    compilation.executionPlan?.presetRevision ?? undefined);
+    compilation.executionPlan?.presetRevision ?? undefined, compilation.executionPlan ? {
+      purpose: compilation.executionPlan.purpose,
+      ...(!compilation.executionPlan.presetId && promptInputKey((compilation.executionPlan.inputSchemaSnapshot ?? {}) as InputSchemaMap)
+        ? { workflowId: compilation.executionPlan.workflowId, workflowVersion: compilation.executionPlan.workflowVersion } : {}),
+    } : undefined);
   if (!currentPlan) throw Object.assign(new Error('assignment_missing: 请配置活动生图工作流'), { code: 'assignment_missing' });
-  if (!compilation.executionPlan || JSON.stringify(currentPlan) !== JSON.stringify(compilation.executionPlan)
+  const comparisonPlan = { ...currentPlan };
+  // Older frozen recipes did not record these fields. Keep them readable without manufacturing snapshots.
+  if (!compilation.executionPlan?.inputSchemaSnapshot) delete comparisonPlan.inputSchemaSnapshot;
+  if (compilation.executionPlan?.loraPolicyRevision === undefined) {
+    delete comparisonPlan.loraPolicyRevision;
+    delete comparisonPlan.loraPolicySnapshot;
+  }
+  if (!compilation.executionPlan || JSON.stringify(comparisonPlan) !== JSON.stringify(compilation.executionPlan)
       || (params.compilationId && params.compilationId !== compilation.id)
       || (params.executionPlanHash && params.executionPlanHash !== compilation.executionPlanHash)
       || (params.purpose && params.purpose !== currentPlan.purpose)) {
@@ -140,12 +158,30 @@ export async function createImageGenerationAttempt(
     engineId: currentPlan.engineId,
     isInternal: true,
   });
-  const inputSchema = resolvedWorkflow.workflow.inputSchema as InputSchemaMap;
-  const validationMode = resolvedWorkflow.workflow.configFormatVersion >= 2 ? 'strict' : 'lenient';
-  const mergedInputs = mergeGenerationValues(inputSchema, resolvedWorkflow.workflow.editorConfig,
-    currentPlan.presetValues ?? {}, inputs, validationMode).values;
-  const preflightSnapshot = renderWorkflowSnapshot(resolvedWorkflow.workflow.definition,
-    resolvedWorkflow.workflow.nodeBindings, mergedInputs, resolvedSeed);
+  const content = store.getContentRevision(activityId, recipe.contentRevisionId)?.document;
+  const slot = content?.mediaSlots.find(item => item.id === recipe.slotId);
+  if (!content || !slot) throw Object.assign(new Error('绘制来源已不存在'), { code: 'source_not_found', statusCode: 409 });
+  const imageConfig = getImageConfigRevision(database, activityId, recipe.imageConfigRevisionId)?.document;
+  if (!imageConfig) throw Object.assign(new Error('图像配置版本不存在'), { code: 'revision_not_found', statusCode: 409 });
+  const slotSettings = imageConfig.slotConfigs.find(item => item.slotId === slot.id);
+  const visual = resolveVisualSettings(imageConfig, { ...slotSettings, parameters: slotSettings?.params });
+  const schema = resolvedWorkflow.workflow.inputSchema as InputSchemaMap;
+  const positiveKey = promptInputKey(schema) ?? Object.keys(compilation.channels).find(key => ['prompt', 'positive', 'positivePrompt'].includes(key));
+  const negativeKey = promptInputKey(schema, true) ?? Object.keys(compilation.channels).find(key => ['negative', 'negativePrompt'].includes(key));
+  const sourcePrompt = positiveKey ? String(inputs[positiveKey] ?? '') : '';
+  if (!sourcePrompt.trim()) throw Object.assign(new Error('prompt_missing: 已编译配方没有正向提示词。'), { code: 'prompt_missing' });
+  const effective = imageConfig.artDirection ? resolveEffectiveActivityVisualPlan(database, {
+    imageConfig, imageConfigRevisionId: recipe.imageConfigRevisionId,
+    settings: { ...slotSettings, purpose: currentPlan.purpose, workflowId: currentPlan.workflowId, workflowVersion: currentPlan.workflowVersion,
+      presetId: currentPlan.presetId ?? undefined, presetRevision: currentPlan.presetRevision ?? undefined,
+      parameters: compilation.effectiveParams }, actors: content.actors.filter(actor => slot.actorIds.includes(actor.id)), sourcePrompt, seed: resolvedSeed,
+  }) : null;
+  const loraPolicy = readActivityLoraPolicy(database, currentPlan.workflowId, currentPlan.workflowVersion);
+  const loras = effective?.loras ?? mergeActivityLoras(loraPolicy.entries, content.actors.filter(actor => slot.actorIds.includes(actor.id))
+    .flatMap(actor => actor.visualLoras ?? []), [], { rejectActorConflicts: true });
+  const mergedInputs = effective ? { ...effective.parameters, ...compilation.channels } : mergeActivityImageInputs(resolvedWorkflow, currentPlan.presetValues ?? {}, inputs, true);
+  Object.assign(inputs, mergedInputs);
+  const preflightSnapshot = buildActivityImageWorkflowSnapshot(resolvedWorkflow, mergedInputs, resolvedSeed, loras);
   const preflight = await inspectWorkflowRuntime(resolvedWorkflow.engine, preflightSnapshot, secrets, fetcher, true);
   if (!preflight.ok) {
     throw Object.assign(new Error(`当前 ComfyUI 实例无法满足此工作流：${preflight.issues.join(' ')}`), {
@@ -163,17 +199,20 @@ export async function createImageGenerationAttempt(
     : `act_${activityId}_${attemptId}`;
 
   const policy = currentPlan.promptPolicySnapshot as unknown as ActivityImagePromptPolicy;
-  const sourcePrompt = String(inputs.prompt ?? inputs.positive ?? inputs.positivePrompt ?? '');
-  if (!sourcePrompt.trim()) throw Object.assign(new Error('prompt_missing: 已编译配方没有正向提示词。'), { code: 'prompt_missing' });
-  const sourceNegative = String(inputs.negativePrompt ?? inputs.negative ?? '');
+  const sourceNegative = negativeKey ? String(inputs[negativeKey] ?? '') : '';
   const optimized = await optimizeActivityImagePrompt(database, secrets, {
     activityId, workflowId: currentPlan.workflowId, workflowVersion: currentPlan.workflowVersion, policy,
     sourcePrompt, existingNegativePrompt: sourceNegative, idempotencyKey: scopedIdempotencyKey,
+    actorScope: (slot?.actorIds ?? []).map((id) => ({ actorId: id, displayName: content?.actors.find((actor) => actor.id === id)?.displayName })),
+    ...(params.studioContext?{traceId:params.studioContext.traceId,studioContext:params.studioContext}:{}),
   }, fetcher);
-  for (const key of Object.keys(compilation.channels)) {
-    if (['prompt', 'positive', 'positivePrompt'].includes(key)) inputs[key] = optimized.optimizedPrompt;
-    if (['negative', 'negativePrompt'].includes(key) && optimized.negativePrompt) inputs[key] = optimized.negativePrompt;
-  }
+  if(params.studioContext&&!params.studioContext.canContinue())throw Object.assign(new Error('已停止后续提交，未发送图片任务。'),{code:'studio_process_interrupted'});
+  const style = imageConfig.artDirection ? recipe.blocks.filter(block => block.kind === 'style').map(block => block.renderedText).join(', ') : '';
+  const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, style, loras,
+    v2FinalizeInputFrom(resolvedWorkflow.workflow.editorConfig, optimized));
+  const finalNegative = visual.negativePrompt ?? optimized.negativePrompt ?? sourceNegative;
+  if (positiveKey) inputs[positiveKey] = finalPrompt;
+  if (negativeKey) inputs[negativeKey] = finalNegative;
 
   // Call createGenerationTask with atomic onInsertTask callback
   const genTask = await createGenerationTask(
@@ -183,15 +222,23 @@ export async function createImageGenerationAttempt(
     {
       appId: 'activities',
       purpose: targetPurpose,
+      workflowId: currentPlan.workflowId,
+      workflowVersion: currentPlan.workflowVersion,
+      isInternal: true,
       presetId: currentPlan.presetId ?? undefined,
       presetRevision: currentPlan.presetRevision ?? undefined,
       inputs,
+      activityLoras: loras,
       inputArtifacts,
       seed: resolvedSeed,
       idempotencyKey: scopedIdempotencyKey,
       audit: { feature: 'activities', businessEvent: 'activity.media_slot.generate', objectType: 'activity', objectId: activityId,
-        sourceUrl: `/apps/activities/${encodeURIComponent(activityId)}`, traceId: optimized.traceId, parentId: optimized.optimizerCallId },
+        sourceUrl: `/apps/activities/${encodeURIComponent(activityId)}`, traceId: optimized.traceId, parentId: optimized.optimizerCallId,
+        positivePrompt: finalPrompt, negativePrompt: finalNegative,
+        visualConfiguration: { ...(effective?.provenance ?? { imageConfigRevisionId: recipe.imageConfigRevisionId, selectionSource: 'legacy' }),
+          ...studioRenderAudit(params.studioContext) } },
       onInsertTask: (txParams) => {
+        if(params.studioContext&&!params.studioContext.canContinue())throw Object.assign(new Error('已停止后续提交，未发送图片任务。'),{code:'studio_process_interrupted'});
         // Atomic insertion in same transaction!
         database.connection.prepare(`
           INSERT INTO activity_image_attempts (
@@ -254,6 +301,7 @@ export async function createImageGenerationAttempt(
           attemptId,
           now,
         );
+        params.studioContext?.onInsertTask(txParams.taskId,txParams.callId,attemptId);
       },
     },
     fetcher,
@@ -455,6 +503,7 @@ export function getImageAttempt(
     height: o.height ?? undefined,
   }));
 
+  const operation = readImageOperationMetadata(database, attemptId);
   return {
     id: String(row.id),
     activityId: String(row.activity_id),
@@ -478,6 +527,7 @@ export function getImageAttempt(
     errorMessage: row.error_message ? String(row.error_message) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    ...(operation ? { imageOperation: operation } : {}),
   };
 }
 

@@ -10,7 +10,7 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { fetchActivityImagePromptPolicy, saveActivityImagePromptPolicy } from '../api';
 import type { Workflow } from '../types';
 
-type PromptPolicyDraft = Pick<ActivityImagePromptPolicy, 'enabled' | 'instructions' | 'positiveSuffix' | 'negativePrompt'> & { revision: number };
+type PromptPolicyDraft = Pick<ActivityImagePromptPolicy, 'enabled' | 'instructions' | 'positiveSuffix' | 'negativePrompt' | 'outputFormat' | 'knowledgeMode'> & { revision: number };
 
 const NEIGHBOR_STYLE = '@ebora, masterpiece, best quality, score_9, score_8, highres, absurdres, anime screenshot, year 2025';
 const NEIGHBOR_NEGATIVE = 'score_1, score_2, score_3, bad anatomy, bad proportions, deformed anatomy, deformed face, deformed eyes, text, multiple fingers, watermark, artist name, censor, mosaic';
@@ -23,6 +23,7 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
   const [selection, setSelection] = useState('');
   const [draft, setDraft] = useState<PromptPolicyDraft | null>(null);
   const [optimizer, setOptimizer] = useState<ActivityImagePromptPolicyResponse['optimizer'] | null>(null);
+  const [styleManagedByActivity, setStyleManagedByActivity] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -48,7 +49,9 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
     setSaved(false);
     void fetchActivityImagePromptPolicy(selected.id, selected.version).then((response) => {
       if (!active) return;
-      setDraft(toDraft(response.policy));
+      // 画风由活动画风管理时，策略里的画师标签一律清空，避免与服务端组装重复。
+      setStyleManagedByActivity(response.serviceFinalizedAssembly);
+      setDraft(toDraft(response.policy, response.serviceFinalizedAssembly));
       setOptimizer(response.optimizer);
     }).catch((cause) => {
       if (active) setError(cause instanceof Error ? cause.message : '读取提示词策略失败。');
@@ -61,13 +64,17 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
     setSaving(true);
     setError('');
     setSaved(false);
-    const request: SaveActivityImagePromptPolicyRequest = { workflowId: selected.id, workflowVersion: selected.version, ...draft };
+    const request: SaveActivityImagePromptPolicyRequest = { workflowId: selected.id, workflowVersion: selected.version, ...draft,
+      // 服务端组装模式下必须提交空画风，否则会因 409 被拒绝。
+      ...(styleManagedByActivity ? { positiveSuffix: '' } : {}) };
     try {
       const response = await saveActivityImagePromptPolicy(request);
-      setDraft(toDraft(response.policy));
+      setStyleManagedByActivity(response.serviceFinalizedAssembly);
+      setDraft(toDraft(response.policy, response.serviceFinalizedAssembly));
       setOptimizer(response.optimizer);
       setSaved(true);
     } catch (cause) {
+      // 409 冲突已经带有明确原因，只展示，不自动重发，避免覆盖他人的新版本。
       setError(cause instanceof Error ? cause.message : '保存提示词策略失败。');
     } finally { setSaving(false); }
   };
@@ -97,17 +104,40 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
         </div>}
 
         {loading || !draft ? <div className="py-10 text-center text-sm text-muted" role="status">正在读取此工作流版本的策略…</div> : <div className="max-w-4xl space-y-4">
+          <div className="space-y-2"><span className="text-sm font-medium text-ink">提示词组织方式</span>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant={draft.outputFormat === 'prose' ? 'accent' : 'outline'}
+                onClick={() => setDraft({ ...draft, outputFormat: 'prose', knowledgeMode: 'none' })}>原有描述</Button>
+              <Button type="button" size="sm" variant={draft.outputFormat === 'tags' ? 'accent' : 'outline'}
+                onClick={() => setDraft({ ...draft, outputFormat: 'tags' })}>结构化混合</Button>
+            </div>
+            <p className="text-xs text-muted">{draft.outputFormat === 'tags'
+              ? '文本模型按角色、相机、场景与细节分槽返回，服务端按固定顺序组装并逐角色去重；该模式只对声明了服务端组装的工作流开放。'
+              : '沿用单段自然语言描述，服务端不重排、不去重。'}</p>
+          </div>
+          <Checkbox checked={draft.knowledgeMode === 'keyword'} disabled={draft.outputFormat !== 'tags'}
+            onChange={(event) => setDraft({ ...draft, knowledgeMode: event.target.checked ? 'keyword' : 'none' })}
+            label="关键词补全标签" description={draft.outputFormat === 'tags'
+              ? '按来源文本在本地通用词表里做关键词召回，只补充该作用域的可选措辞；不使用向量检索。'
+              : '结构化混合模式下才可用。'} />
+          {styleManagedByActivity && <Alert variant="info" title="画风由活动画风管理">
+            该工作流版本声明了服务端组装，画师与质量标签来自活动画风，策略里的画风字段已清空并停用；如需修改请到活动画风设置。
+          </Alert>}
           <div className="space-y-2"><span className="text-sm font-medium text-ink">一键画风</span>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant={draft.positiveSuffix === NEIGHBOR_STYLE ? 'accent' : 'outline'} onClick={() => setDraft({ ...draft, positiveSuffix: NEIGHBOR_STYLE, negativePrompt: NEIGHBOR_NEGATIVE })}>邻舍画风 · @ebora</Button>
-              <Button type="button" size="sm" variant={draft.positiveSuffix === ANIMA_STANDARD_STYLE ? 'accent' : 'outline'} onClick={() => setDraft({ ...draft, positiveSuffix: ANIMA_STANDARD_STYLE })}>Anima 基础画风</Button>
-              <Button type="button" size="sm" variant={!draft.positiveSuffix ? 'accent' : 'outline'} onClick={() => setDraft({ ...draft, positiveSuffix: '' })}>不追加画风</Button>
+              <Button type="button" size="sm" disabled={styleManagedByActivity} variant={draft.positiveSuffix === NEIGHBOR_STYLE ? 'accent' : 'outline'} onClick={() => setDraft({ ...draft, positiveSuffix: NEIGHBOR_STYLE, negativePrompt: NEIGHBOR_NEGATIVE })}>邻舍画风 · @ebora</Button>
+              <Button type="button" size="sm" disabled={styleManagedByActivity} variant={draft.positiveSuffix === ANIMA_STANDARD_STYLE ? 'accent' : 'outline'} onClick={() => setDraft({ ...draft, positiveSuffix: ANIMA_STANDARD_STYLE })}>Anima 基础画风</Button>
+              <Button type="button" size="sm" disabled={styleManagedByActivity} variant={!draft.positiveSuffix ? 'accent' : 'outline'} onClick={() => setDraft({ ...draft, positiveSuffix: '' })}>不追加画风</Button>
             </div>
-            <p className="text-xs text-muted">邻舍画风复制其画师与质量标签；当前工作流自带的通用质量词仍会保留，所以不是逐节点完全相同。点击后还需保存。</p>
+            <p className="text-xs text-muted">{styleManagedByActivity
+              ? '该工作流的画风来自活动画风，这里不再追加任何画师或质量标签。'
+              : '邻舍画风复制其画师与质量标签；当前工作流自带的通用质量词仍会保留，所以不是逐节点完全相同。点击后还需保存。'}</p>
           </div>
           <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">画师与质量标签</span>
-            <Textarea rows={2} value={draft.positiveSuffix} onChange={(event) => setDraft({ ...draft, positiveSuffix: event.target.value })} placeholder="例如：@ebora, masterpiece, best quality" />
-            <span className="block text-xs text-muted">可自行修改；这些词追加在画面描述之后，最终提交内容可在 AI 调用日志中核对。</span>
+            <Textarea rows={2} value={draft.positiveSuffix} disabled={styleManagedByActivity} onChange={(event) => setDraft({ ...draft, positiveSuffix: event.target.value })} placeholder={styleManagedByActivity ? '由活动画风管理' : '例如：@ebora, masterpiece, best quality'} />
+            <span className="block text-xs text-muted">{styleManagedByActivity
+              ? '已停用：重复追加会让同一串质量词出现两次，最终提交内容可在 AI 调用日志中核对。'
+              : '可自行修改；这些词追加在画面描述之后，最终提交内容可在 AI 调用日志中核对。'}</span>
           </label>
           <Checkbox checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
             label="自动整理画面描述" description="开启时先用活动文本模型整理人物与动作；关闭时直接使用原描述，但仍追加上方画风。" />
@@ -135,7 +165,11 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
   );
 }
 
-function toDraft(policy: ActivityImagePromptPolicy | null): PromptPolicyDraft {
-  return policy ? { revision: policy.revision, enabled: policy.enabled, instructions: policy.instructions, positiveSuffix: policy.positiveSuffix, negativePrompt: policy.negativePrompt }
-    : { revision: 0, enabled: true, instructions: DEFAULT_ACTIVITY_IMAGE_PROMPT_INSTRUCTIONS, positiveSuffix: '', negativePrompt: '' };
+function toDraft(policy: ActivityImagePromptPolicy | null, styleManagedByActivity = false): PromptPolicyDraft {
+  const positiveSuffix = styleManagedByActivity ? '' : policy?.positiveSuffix ?? '';
+  return policy
+    ? { revision: policy.revision, enabled: policy.enabled, instructions: policy.instructions, positiveSuffix,
+      negativePrompt: policy.negativePrompt, outputFormat: policy.outputFormat, knowledgeMode: policy.knowledgeMode }
+    : { revision: 0, enabled: true, instructions: DEFAULT_ACTIVITY_IMAGE_PROMPT_INSTRUCTIONS, positiveSuffix: '',
+      negativePrompt: '', outputFormat: 'prose', knowledgeMode: 'none' };
 }

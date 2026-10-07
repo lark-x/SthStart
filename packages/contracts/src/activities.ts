@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { ActivityRenderQualitySchema, DirectorSettingsSchema } from './activity-studio.js';
 
 export const GenerationModeSchema = Type.Union([
   Type.Literal('autonomous'),
@@ -35,6 +36,11 @@ export const ActivityLoraOverrideSchema = Type.Object({
 export type ActivityLoraOverride = Static<typeof ActivityLoraOverrideSchema>;
 
 export const SceneBeatRenderSettingsSchema = Type.Object({
+  quality: Type.Optional(ActivityRenderQualitySchema),
+  director: Type.Optional(DirectorSettingsSchema),
+  composition: Type.Optional(Type.String({ maxLength: 2_000 })),
+  visualSupplement: Type.Optional(Type.String({ maxLength: 2_000 })),
+  expression: Type.Optional(Type.String({ maxLength: 500 })),
   purpose: Type.Optional(Type.String()),
   workflowId: Type.Optional(Type.String()),
   workflowVersion: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -72,6 +78,7 @@ export type ActorSnapshot = Static<typeof ActorSnapshotSchema>;
 
 export const SceneBeatSchema = Type.Object({
   id: Type.String(),
+  actorIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 8, uniqueItems: true })),
   sceneId: Type.Optional(Type.String()),
   stageId: Type.Optional(Type.String()),
   characterId: Type.String(),
@@ -291,6 +298,7 @@ export type SlotBinding = Static<typeof SlotBindingSchema>;
 export const MediaRevisionDocumentSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   slotBindings: Type.Array(SlotBindingSchema),
+  imageConfigRevisionId: Type.Optional(Type.String()),
 });
 export type MediaRevisionDocument = Static<typeof MediaRevisionDocumentSchema>;
 
@@ -409,6 +417,29 @@ export const ActivityAssetSchema = Type.Object({
   createdAt: Type.String(),
 });
 export type ActivityAsset = Static<typeof ActivityAssetSchema>;
+
+// Read-only aggregate of every image an activity has produced, so the delivery
+// gallery can show lens, comic and material results in one place. It never
+// carries draw parameters or triggers a new picture.
+export const ActivityGalleryItemSchema = Type.Object({
+  artifactId: Type.String(),
+  kind: Type.Union([Type.Literal('beat'), Type.Literal('comic'), Type.Literal('material'), Type.Literal('upload')]),
+  label: Type.String(),
+  available: Type.Boolean(),
+  width: Type.Union([Type.Number(), Type.Null()]),
+  height: Type.Union([Type.Number(), Type.Null()]),
+  createdAt: Type.String(),
+  objectLabel: Type.Union([Type.String(), Type.Null()]),
+});
+export type ActivityGalleryItem = Static<typeof ActivityGalleryItemSchema>;
+
+export const ActivityGallerySchema = Type.Object({
+  items: Type.Array(ActivityGalleryItemSchema),
+  counts: Type.Object({ beat: Type.Integer({ minimum: 0 }), comic: Type.Integer({ minimum: 0 }),
+    material: Type.Integer({ minimum: 0 }), upload: Type.Integer({ minimum: 0 }) }),
+  truncated: Type.Boolean(),
+});
+export type ActivityGallery = Static<typeof ActivityGallerySchema>;
 
 export const ContentRevisionSchema = Type.Object({
   id: Type.String(),

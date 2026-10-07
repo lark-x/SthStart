@@ -12,6 +12,7 @@ type Fetcher = typeof fetch;
 const runtimeSettingsBody = Type.Partial(Type.Object({
   autoStart: Type.Boolean(), autoOpenBrowser: Type.Boolean(), useMirror: Type.Boolean(),
   publicLlmEnabled: Type.Boolean(),
+  linsheImageViaGateway: Type.Boolean(),
   comfyuiExecutable: Type.String({ maxLength: 4_096 }), extraLoraFolders: Type.Array(Type.String({ maxLength: 4_096 }), { maxItems: 128 }),
   maibotAutostart: Type.Boolean(), maibotBrowserMaibot: Type.Boolean(), maibotBrowserSnowluma: Type.Boolean(),
   creative: Type.Record(Type.String(), Type.Unknown()),

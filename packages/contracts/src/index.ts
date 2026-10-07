@@ -1,7 +1,14 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { ActivityLoraSchema, SceneBeatRenderSettingsSchema } from './activities.js';
+import { ActivityArtDirectionSchema, ActivityRenderQualitySchema, DirectorSettingsSchema } from './activity-studio.js';
+import { BeatRenderParameterFieldSchema } from './ai-calls.js';
+import { ImageOperationMetadataSchema } from './activity-image-operations.js';
+export * from './activity-studio.js';
+export * from './activity-studio-jobs.js';
 export * from './ai-calls.js';
 export * from './activity-image-prompts.js';
+export * from './activity-image-operations.js';
+export * from './activity-image-hires.js';
 export * from './activity-comic.js';
 export * from './story.js';
 export * from './activities.js';
@@ -759,6 +766,14 @@ export const ActivityLoraInjectionSchema = Type.Object({
 export type ActivityLoraInjection = Static<typeof ActivityLoraInjectionSchema>;
 
 /**
+ * 提示词组装方式。缺失表示 legacy：服务端只合成一次，工作流仍可能自行追加固定串。
+ * `service-finalized-v1` 表示服务端组装出完整最终文本，工作流只负责编码与生成，
+ * 正／负提示词必须直接绑定到文本编码器节点的 text 输入。
+ */
+export const PromptAssemblySchema = Type.Union([Type.Literal('service-finalized-v1')]);
+export type PromptAssembly = Static<typeof PromptAssemblySchema>;
+
+/**
  * editor_config_json 的结构说明（V2）。它只描述“如何呈现”，不是第二份参数源；
  * 默认值、min/max、枚举唯一存于 input_schema_json，实际路径只存于 node_bindings_json。
  */
@@ -771,6 +786,7 @@ export const GenerationEditorConfigSchema = Type.Object({
     strengthKey: Type.String(),
   })),
   activityLoraInjection: Type.Optional(ActivityLoraInjectionSchema),
+  promptAssembly: Type.Optional(PromptAssemblySchema),
   sizePresets: Type.Array(GenerationSizePresetSchema),
   constraints: Type.Object({
     maxPixels: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -2593,6 +2609,7 @@ export const RuntimeSettingsSchema = Type.Object({
   autoOpenBrowser: Type.Boolean(),
   useMirror: Type.Boolean(),
   publicLlmEnabled: Type.Boolean(),
+  linsheImageViaGateway: Type.Boolean(),
   comfyuiExecutable: Type.String(),
   extraLoraFolders: Type.Array(Type.String()),
   maibotAutostart: Type.Boolean(),
@@ -3638,6 +3655,7 @@ export type ActorSnapshot = Static<typeof ActorSnapshotSchema>;
 
 export const SceneBeatSchema = Type.Object({
   id: Type.String(),
+  actorIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { maxItems: 8, uniqueItems: true })),
   sceneId: Type.Optional(Type.String()),
   stageId: Type.Optional(Type.String()),
   characterId: Type.String(),
@@ -3975,6 +3993,7 @@ export type SlotBinding = Static<typeof SlotBindingSchema>;
 export const MediaRevisionDocumentSchema = Type.Object({
   schemaVersion: Type.Literal(1),
   slotBindings: Type.Array(SlotBindingSchema),
+  imageConfigRevisionId: Type.Optional(Type.String()),
 });
 export type MediaRevisionDocument = Static<typeof MediaRevisionDocumentSchema>;
 
@@ -4293,6 +4312,13 @@ export type ReferenceInput = Static<typeof ReferenceInputSchema>;
 
 export const SlotImageConfigSchema = Type.Object({
   slotId: Type.String(),
+  quality: Type.Optional(ActivityRenderQualitySchema),
+  director: Type.Optional(DirectorSettingsSchema),
+  visualSupplement: Type.Optional(Type.String({ maxLength: 2_000 })),
+  expression: Type.Optional(Type.String({ maxLength: 500 })),
+  purpose: Type.Optional(Type.String()),
+  presetId: Type.Optional(Type.String()),
+  presetRevision: Type.Optional(Type.Integer({ minimum: 1 })),
   shotType: Type.Optional(Type.String()),
   composition: Type.Optional(Type.String()),
   viewpoint: Type.Optional(Type.String()),
@@ -4309,6 +4335,7 @@ export type SlotImageConfig = Static<typeof SlotImageConfigSchema>;
 
 export const ImageConfigDocumentSchema = Type.Object({
   schemaVersion: Type.Literal(1),
+  artDirection: Type.Optional(ActivityArtDirectionSchema),
   stylePreset: Type.String(),
   globalStylePrompt: Type.String(),
   globalNegativePrompt: Type.String(),
@@ -4319,6 +4346,18 @@ export const ImageConfigDocumentSchema = Type.Object({
 });
 export type ImageConfigDocument = Static<typeof ImageConfigDocumentSchema>;
 
+/** Read-only projection for the slot settings editor; never saves or creates a recipe. */
+export const ActivitySlotVisualPreviewRequestSchema = Type.Object({
+  slotId: Type.String({ minLength: 1 }), document: ImageConfigDocumentSchema,
+}, { additionalProperties: false });
+export type ActivitySlotVisualPreviewRequest = Static<typeof ActivitySlotVisualPreviewRequestSchema>;
+export const ActivitySlotVisualPreviewSchema = Type.Object({
+  workflowId: Type.String(), workflowVersion: Type.Integer(), fields: Type.Array(BeatRenderParameterFieldSchema),
+  parameters: Type.Record(Type.String(), Type.Unknown()), quality: ActivityRenderQualitySchema,
+  canvas: Type.Union([Type.Object({ width: Type.Integer(), height: Type.Integer() }), Type.Null()]),
+});
+export type ActivitySlotVisualPreview = Static<typeof ActivitySlotVisualPreviewSchema>;
+
 export const ImageConfigDraftSchema = Type.Object({
   activityId: Type.String(),
   draftVersion: Type.Number(),
@@ -4327,6 +4366,11 @@ export const ImageConfigDraftSchema = Type.Object({
   updatedAt: Type.String(),
 });
 export type ImageConfigDraft = Static<typeof ImageConfigDraftSchema>;
+export const SaveImageConfigDraftRequestSchema = Type.Object({
+  expectedDraftVersion: Type.Integer({ minimum: 1 }),
+  document: ImageConfigDocumentSchema,
+}, { additionalProperties: false });
+export type SaveImageConfigDraftRequest = Static<typeof SaveImageConfigDraftRequestSchema>;
 
 export const ImageConfigRevisionSchema = Type.Object({
   id: Type.String(),
@@ -4337,6 +4381,19 @@ export const ImageConfigRevisionSchema = Type.Object({
   createdAt: Type.String(),
 });
 export type ImageConfigRevision = Static<typeof ImageConfigRevisionSchema>;
+
+export const CommitActivityArtDirectionRequestSchema = Type.Object({
+  expectedHeadVersion: Type.Integer({ minimum: 1 }),
+  expectedImageConfigDraftVersion: Type.Integer({ minimum: 1 }),
+  document: ImageConfigDocumentSchema,
+}, { additionalProperties: false });
+export type CommitActivityArtDirectionRequest = Static<typeof CommitActivityArtDirectionRequestSchema>;
+export const CommitActivityArtDirectionResponseSchema = Type.Object({
+  activity: ActivitySchema,
+  draft: ImageConfigDraftSchema,
+  revision: ImageConfigRevisionSchema,
+});
+export type CommitActivityArtDirectionResponse = Static<typeof CommitActivityArtDirectionResponseSchema>;
 
 export const PromptRecipeOverrideSchema = Type.Object({
   id: Type.String(),
@@ -4390,6 +4447,9 @@ export const ImageExecutionPlanSchema = Type.Object({
   presetValues: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   promptPolicyRevision: Type.Optional(Type.Integer({ minimum: 0 })),
   promptPolicySnapshot: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  loraPolicyRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  loraPolicySnapshot: Type.Optional(Type.Array(ActivityLoraSchema)),
+  inputSchemaSnapshot: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
   inputCapabilities: Type.Optional(WorkflowInputCapabilitiesSchema),
 });
 export type ImageExecutionPlan = Static<typeof ImageExecutionPlanSchema>;
@@ -4458,6 +4518,7 @@ export const GenerationAttemptSchema = Type.Object({
   errorMessage: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(),
   updatedAt: Type.String(),
+  imageOperation: Type.Optional(ImageOperationMetadataSchema),
 });
 export type GenerationAttempt = Static<typeof GenerationAttemptSchema>;
 
@@ -6178,6 +6239,8 @@ export const ActivityReusablePresetSchema = Type.Object({
   updatedAt: Type.String(),
 });
 export type ActivityReusablePreset = Static<typeof ActivityReusablePresetSchema>;
+export const ActivityArtStylesResponseSchema = Type.Object({ items: Type.Array(ActivityReusablePresetSchema) });
+export type ActivityArtStylesResponse = Static<typeof ActivityArtStylesResponseSchema>;
 
 export const CreateActivityPresetInputSchema = Type.Object({
   kind: ActivityPresetKindSchema,
@@ -6288,3 +6351,5 @@ export function normalizeCreationProfile(value:Record<string,unknown>):CreationP
     playbackMode:['by_stage','story_order','chat_only','moments_only'].includes(String(value.playbackMode))?value.playbackMode as CreationProfileValues['playbackMode']:'by_stage',expandMedia:value.expandMedia!==false,
     exportFormat:['reader','project','hyperframes-project'].includes(String(value.exportFormat))?value.exportFormat as CreationProfileValues['exportFormat']:'hyperframes-project'};
 }
+export * from './activity-publication.js';
+export * from './harness-mcp.js';

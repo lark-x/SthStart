@@ -484,9 +484,9 @@ export class ActivityStore {
 
       // 2. Write MediaRevision
       this.connection.prepare(
-        `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, slot_bindings_json, hash, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(mediaRevId, activityId, contentRevId, JSON.stringify(migratedBindings), mediaHash, now);
+        `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, image_config_revision_id, slot_bindings_json, hash, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(mediaRevId, activityId, contentRevId, currentMediaRev?.imageConfigRevisionId ?? null, JSON.stringify(migratedBindings), mediaHash, now);
 
       // 3. Write Checkpoint
       const checkpointId = crypto.randomUUID();
@@ -497,11 +497,12 @@ export class ActivityStore {
       ).run(checkpointId, activityId, `草稿保存提交 (v${newHeadVersion})`, newHeadVersion, contentRevId, mediaRevId, now);
 
       // 4. Update Activity head pointers and increment head_version
-      this.connection.prepare(
+      const headUpdate = this.connection.prepare(
         `UPDATE activities
          SET head_version = ?, current_content_revision_id = ?, current_media_revision_id = ?, current_playback_revision_id = NULL, updated_at = ?, title = ?, theme = ?, location = ?, rules = ?
          WHERE id = ? AND head_version = ?`
       ).run(newHeadVersion, contentRevId, mediaRevId, now, draft.document.activity.title, draft.document.activity.theme, draft.document.activity.location, draft.document.activity.rules, activityId, expectedHeadVersion);
+      if(Number(headUpdate.changes)!==1)throw Object.assign(new Error('Activity head version conflict'),{code:'revision_conflict',statusCode:409});
 
       // 5. Update draft base_content_revision_id and reset draft_version to 1
       this.connection.prepare(
@@ -834,7 +835,7 @@ export class ActivityStore {
   saveMediaSelection(
     activityId: string,
     expectedHeadVersion: number,
-    slotBindings: MediaRevisionDocument['slotBindings']
+    slotBindings: MediaRevisionDocument['slotBindings'], options: {skipTransaction?:boolean} = {}
   ): { activity: Activity; mediaRevisionId: string } {
     const act = this.getActivity(activityId);
     if (!act) throw new Error('Activity not found');
@@ -860,7 +861,7 @@ export class ActivityStore {
     const hash = hashDocument(mediaDoc);
     const newHeadVersion = act.headVersion + 1;
 
-    return this.db.transaction(() => {
+    const save = () => {
       this.connection.prepare(
         `INSERT INTO activity_media_revisions(id, activity_id, content_revision_id, image_config_revision_id, slot_bindings_json, hash, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -869,17 +870,19 @@ export class ActivityStore {
       resolveImageReviews(this.connection,activityId,this.getContentRevision(activityId,act.currentContentRevisionId!)!.document,slotBindings);
       recordPlaybackImpact(this.connection, activityId, '采用的媒体已改变', newMediaRevId);
       // Invalidate current_playback_revision_id because media revision has changed!
-      this.connection.prepare(
+      const changed = this.connection.prepare(
         `UPDATE activities
          SET head_version = ?, current_media_revision_id = ?, current_playback_revision_id = NULL, updated_at = ?
          WHERE id = ? AND head_version = ?`
-      ).run(newHeadVersion, newMediaRevId, now, activityId, expectedHeadVersion);
+      ).run(newHeadVersion, newMediaRevId, now, activityId, expectedHeadVersion).changes;
+      if(changed!==1)throw Object.assign(new Error('Activity head version conflict'),{statusCode:409,code:'revision_conflict'});
 
       return {
         activity: this.getActivity(activityId)!,
         mediaRevisionId: newMediaRevId,
       };
-    });
+    };
+    return options.skipTransaction ? save() : this.db.transaction(save);
   }
 
   savePlaybackRevision(

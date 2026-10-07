@@ -7,12 +7,10 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { hashToken, issueToken, type SecretStore } from './security.js';
-import { assertNoWorkflowSecrets, subscribeGenerationEvents, validateWorkflowVersionStructure, validateCloudRecipeStructure } from './generation.js';
+import { assertNoWorkflowSecrets, subscribeGenerationEvents } from './generation.js';
 import { defaultWorkerSettings, workerHealth } from './worker.js';
 import { cachedConnectionStatus } from './generation/comfy-discovery.js';
-import { applyWorkflowPresetTemplates, markDraftSynced } from './generation/configuration-store.js';
-import { validateEditorConfig } from './generation/configuration.js';
-import { validateActivityLoraInjection } from './generation/workflows.js';
+import { publishWorkflowVersion, importWorkflow } from './generation/workflow-publish.js';
 import { registerGenerationConfigRoutes } from './generation-config-routes.js';
 import { registerConnectionRoutes, hydrateConnection } from './connections-routes.js';
 import { registerModelRoutes, hydrateModelProfile } from './models-routes.js';
@@ -889,115 +887,26 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       editorConfig?: unknown;
     };
   }>('/api/v1/admin/generation/workflows/:id/versions', async (request, reply) => {
-    const wf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(request.params.id) as { id: string; latest_version: number; engine_kind: string; category?: string } | undefined;
-    if (!wf) return reply.code(404).send({ error: 'workflow_not_found', message: '指定的工作流不存在。' });
-
-    const targetEngineId = request.body?.engineId?.trim() || null;
-    if (targetEngineId) {
-      const engine = database.connection.prepare('SELECT * FROM generation_engines WHERE id = ?').get(targetEngineId) as { id: string; kind: string } | undefined;
-      if (!engine) {
-        return reply.code(404).send({ error: 'engine_not_found', message: `指定的生成引擎 ${targetEngineId} 不存在。` });
-      }
-      if (engine.kind !== wf.engine_kind) {
-        return reply.code(400).send({ error: 'engine_kind_mismatch', message: `生成引擎类型 (${engine.kind}) 与工作流类型 (${wf.engine_kind}) 不匹配。` });
-      }
-    }
-
-    let validated: {
-      validatedDefinition: Record<string, unknown>;
-      validatedInputSchema: Record<string, unknown>;
-      validatedNodeBindings: Record<string, unknown>;
-      validatedOutputDeclarations: string[];
-    };
+    // 校验与写入统一走 generation/workflow-publish.ts，与配置注册脚本共用同一条发布路径。
     try {
-      if (wf.engine_kind === 'cloud') {
-        validated = validateCloudRecipeStructure(
-          request.body?.definition,
-          request.body?.inputSchema ?? {},
-          request.body?.nodeBindings ?? {},
-          request.body?.outputDeclarations ?? ['image'],
-        );
-      } else {
-        validated = validateWorkflowVersionStructure(
-          request.body?.definition,
-          request.body?.inputSchema ?? {},
-          request.body?.nodeBindings ?? {},
-          request.body?.outputDeclarations ?? [],
-        );
-      }
+      const published = publishWorkflowVersion(database, {
+        workflowId: request.params.id,
+        engineId: request.body?.engineId?.trim() || null,
+        definition: request.body?.definition,
+        inputSchema: request.body?.inputSchema ?? {},
+        nodeBindings: request.body?.nodeBindings ?? {},
+        outputDeclarations: request.body?.outputDeclarations ?? [],
+        inputCapabilities: request.body?.inputCapabilities,
+        outputMediaTypes: request.body?.outputMediaTypes,
+        outputSchema: request.body?.outputSchema,
+        editorConfig: request.body?.editorConfig,
+      });
+      return reply.code(201).send(published);
     } catch (err) {
       const code = (err as { code?: string })?.code || 'invalid_workflow_format';
-      return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
+      const status = code === 'workflow_not_found' || code === 'engine_not_found' ? 404 : 400;
+      return reply.code(status).send({ error: code, message: err instanceof Error ? err.message : String(err) });
     }
-
-    // 新编辑器保存 V2（规划 §11.1）：editorConfig 仅描述呈现，不新增并行参数源。
-    let editorConfigJson: string | null = null;
-    let configFormatVersion = 1;
-    if (request.body?.editorConfig !== undefined && request.body?.editorConfig !== null) {
-      try {
-        const editorConfig = validateEditorConfig(request.body.editorConfig);
-        if (wf.engine_kind !== 'cloud') {
-          validateActivityLoraInjection(validated.validatedDefinition, editorConfig);
-        }
-        editorConfigJson = JSON.stringify(editorConfig);
-        configFormatVersion = 2;
-      } catch (err) {
-        return reply.code(400).send({ error: 'invalid_editor_config', message: err instanceof Error ? err.message : String(err) });
-      }
-    }
-
-    const version = Number(wf.latest_version) + 1;
-    const now = nowIso();
-    const inputCapabilities = jsonObject(request.body?.inputCapabilities);
-    const defaultOutputTypes = wf.category === 'video' ? ['video/mp4'] : wf.category === 'audio' ? ['audio/wav'] : ['image/png'];
-    const outputMediaTypes = jsonArray(request.body?.outputMediaTypes, defaultOutputTypes);
-    if (!outputMediaTypes.length || outputMediaTypes.some((value) => !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(value))) {
-      return reply.code(400).send({ error: 'invalid_output_media_types', message: 'outputMediaTypes 必须是非空 MIME 类型数组。' });
-    }
-    const outputSchema = jsonObject(request.body?.outputSchema);
-
-    database.transaction(() => {
-      database.connection.prepare(`
-        INSERT INTO generation_workflow_versions (
-          workflow_id, version, engine_id, input_schema_json, node_bindings_json,
-          output_declarations_json, definition_json, input_capabilities_json,
-          output_media_types_json, output_schema_json, config_format_version, editor_config_json,
-          is_published, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-      `).run(
-        request.params.id,
-        version,
-        targetEngineId,
-        JSON.stringify(validated.validatedInputSchema),
-        JSON.stringify(validated.validatedNodeBindings),
-        JSON.stringify(validated.validatedOutputDeclarations),
-        JSON.stringify(validated.validatedDefinition),
-        JSON.stringify(inputCapabilities),
-        JSON.stringify(outputMediaTypes),
-        JSON.stringify(outputSchema),
-        configFormatVersion,
-        editorConfigJson,
-        now,
-      );
-      database.connection.prepare(`
-        INSERT INTO generation_workflow_media_versions
-          (workflow_id, version, category, input_capabilities_json, output_media_types_json, output_schema_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(workflow_id, version) DO UPDATE SET category=excluded.category,
-          input_capabilities_json=excluded.input_capabilities_json,
-          output_media_types_json=excluded.output_media_types_json,
-          output_schema_json=excluded.output_schema_json,
-          updated_at=excluded.updated_at
-      `).run(request.params.id, version, wf.category ?? 'image', JSON.stringify(inputCapabilities), JSON.stringify(outputMediaTypes), JSON.stringify(outputSchema), now);
-      database.connection.prepare('UPDATE generation_workflows SET latest_version = ?, updated_at = ? WHERE id = ?')
-        .run(version, now, request.params.id);
-      markDraftSynced(database, request.params.id, version);
-      if (targetEngineId) applyWorkflowPresetTemplates(database, request.params.id, version, targetEngineId);
-    });
-
-    const appliedTemplates = database.connection.prepare(`SELECT COUNT(*) AS count FROM generation_workflow_preset_templates
-      WHERE workflow_id=? AND applied_workflow_version=?`).get(request.params.id, version) as { count: number };
-    return reply.code(201).send({ workflowId: request.params.id, version, configFormatVersion, createdPresetCount: Number(appliedTemplates.count) });
   });
 
   app.post<{
@@ -1015,6 +924,8 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       outputMediaTypes?: string[];
       outputSchema?: Record<string, unknown>;
       definition?: unknown;
+      /** V2 编辑器配置（含提示词组装方式）；旧导入请求可以省略。 */
+      editorConfig?: unknown;
       workflow?: {
         id?: string;
         name?: string;
@@ -1031,6 +942,7 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         outputMediaTypes?: string[];
         outputSchema?: Record<string, unknown>;
         definition?: unknown;
+        editorConfig?: unknown;
       };
     };
   }>('/api/v1/admin/generation/workflows/import', async (request, reply) => {
@@ -1092,79 +1004,21 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
     const nodeBindings = rawBody.nodeBindings ?? versionObj.nodeBindings ?? {};
     const outputDeclarations = rawBody.outputDeclarations ?? versionObj.outputDeclarations ?? [];
 
-    let validated: {
-      validatedDefinition: Record<string, unknown>;
-      validatedInputSchema: Record<string, unknown>;
-      validatedNodeBindings: Record<string, unknown>;
-      validatedOutputDeclarations: string[];
-    };
+    // 导入与配置注册脚本共用同一条发布路径（generation/workflow-publish.ts）。
     try {
-      if (engineKind === 'cloud') {
-        validated = validateCloudRecipeStructure(
-          definition,
-          inputSchema,
-          nodeBindings,
-          Array.isArray(outputDeclarations) && outputDeclarations.length > 0 ? outputDeclarations : ['image'],
-        );
-      } else {
-        validated = validateWorkflowVersionStructure(definition, inputSchema, nodeBindings, outputDeclarations);
-      }
+      const imported = importWorkflow(database, {
+        id, name, description, engineKind, category, engineId: targetEngineId,
+        definition, inputSchema, nodeBindings, outputDeclarations,
+        inputCapabilities: rawBody.inputCapabilities ?? versionObj.inputCapabilities,
+        outputMediaTypes: rawBody.outputMediaTypes ?? versionObj.outputMediaTypes,
+        outputSchema: rawBody.outputSchema ?? versionObj.outputSchema,
+        editorConfig: rawBody.editorConfig ?? versionObj.editorConfig,
+      });
+      return reply.code(201).send({ ok: true, id: imported.id, workflowId: imported.workflowId, version: imported.version, category: imported.category, engineKind: imported.engineKind });
     } catch (err) {
       const code = (err as { code?: string })?.code || 'invalid_workflow_format';
       return reply.code(400).send({ error: code, message: err instanceof Error ? err.message : String(err) });
     }
-
-    const existingWf = database.connection.prepare('SELECT * FROM generation_workflows WHERE id = ?').get(id) as { id: string; latest_version: number; engine_kind: string; category?: string } | undefined;
-    const version = Number(existingWf?.latest_version ?? 0) + 1;
-    const now = nowIso();
-    const inputCapabilities = jsonObject(rawBody.inputCapabilities ?? versionObj.inputCapabilities);
-    const defaultOutputTypes = category === 'video' ? ['video/mp4'] : category === 'audio' ? ['audio/wav'] : ['image/png'];
-    const outputMediaTypes = jsonArray(rawBody.outputMediaTypes ?? versionObj.outputMediaTypes, defaultOutputTypes);
-    if (!outputMediaTypes.length || outputMediaTypes.some((value) => !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(value))) {
-      return reply.code(400).send({ error: 'invalid_output_media_types', message: 'outputMediaTypes 必须是非空 MIME 类型数组。' });
-    }
-    const outputSchema = jsonObject(rawBody.outputSchema ?? versionObj.outputSchema);
-
-    database.transaction(() => {
-      database.connection.prepare(`
-        INSERT INTO generation_workflows (id, name, description, engine_kind, category, latest_version, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, engine_kind=excluded.engine_kind, category=excluded.category, latest_version=excluded.latest_version, updated_at=excluded.updated_at
-      `).run(id, name, description, engineKind, category, version, now, now);
-
-      database.connection.prepare(`
-        INSERT INTO generation_workflow_versions (
-          workflow_id, version, engine_id, input_schema_json, node_bindings_json,
-          output_declarations_json, definition_json, input_capabilities_json,
-          output_media_types_json, output_schema_json, is_published, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-      `).run(
-        id,
-        version,
-        targetEngineId,
-        JSON.stringify(validated.validatedInputSchema),
-        JSON.stringify(validated.validatedNodeBindings),
-        JSON.stringify(validated.validatedOutputDeclarations),
-        JSON.stringify(validated.validatedDefinition),
-        JSON.stringify(inputCapabilities),
-        JSON.stringify(outputMediaTypes),
-        JSON.stringify(outputSchema),
-        now,
-      );
-
-      database.connection.prepare(`
-        INSERT INTO generation_workflow_media_versions
-          (workflow_id, version, category, input_capabilities_json, output_media_types_json, output_schema_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(workflow_id, version) DO UPDATE SET category=excluded.category,
-          input_capabilities_json=excluded.input_capabilities_json,
-          output_media_types_json=excluded.output_media_types_json,
-          output_schema_json=excluded.output_schema_json,
-          updated_at=excluded.updated_at
-      `).run(id, version, category, JSON.stringify(inputCapabilities), JSON.stringify(outputMediaTypes), JSON.stringify(outputSchema), now);
-    });
-
-    return reply.code(201).send({ ok: true, id, workflowId: id, version, category, engineKind });
   });
 
   // ── Generation Assignments Admin ──

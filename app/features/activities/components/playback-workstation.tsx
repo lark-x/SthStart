@@ -49,6 +49,7 @@ interface PlaybackWorkstationProps {
   mediaRevision?: MediaRevision | null;
   actors: ActorSnapshot[];
   disabled?: boolean;
+  hideModeSwitcher?: boolean;
 }
 
 export function PlaybackWorkstation({
@@ -58,6 +59,7 @@ export function PlaybackWorkstation({
   mediaRevision,
   actors,
   disabled,
+  hideModeSwitcher = false,
 }: PlaybackWorkstationProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -363,7 +365,7 @@ export function PlaybackWorkstation({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {modeSwitcher}
+        {!hideModeSwitcher && modeSwitcher}
       <div className="min-h-0 flex-1 overflow-y-auto space-y-4">
       {/*
        * 单一工具栏：标题、主动作与全部参数收在一块，不再分成「标题卡 + 设置行」两段，

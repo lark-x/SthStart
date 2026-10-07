@@ -47,6 +47,7 @@ interface MediaWorkstationProps {
   actors: ActorSnapshot[];
   onUpdateDocument: (doc: ContentDocument) => void;
   disabled?: boolean;
+  registerFlush?(flush: (() => Promise<boolean>) | null): void;
 }
 
 export function MediaWorkstation({
@@ -56,6 +57,7 @@ export function MediaWorkstation({
   actors,
   onUpdateDocument,
   disabled,
+  registerFlush,
 }: MediaWorkstationProps) {
   const {data:reviews}=useQuery({queryKey:['activity-review',activity.id,activity.headVersion],queryFn:()=>getJson<{items:ActivityReviewItem[]}>(`/api/admin/activities/${activity.id}/review-items`)});
   const [reworkOnly,setReworkOnly]=useState(false);
@@ -500,6 +502,7 @@ export function MediaWorkstation({
       {/* Image Workbench Modal */}
       {workbenchSlotId && (
         <ImageWorkbench
+          registerFlush={registerFlush}
           isOpen={Boolean(workbenchSlotId)}
           onClose={() => setWorkbenchSlotId(null)}
           activity={activity}

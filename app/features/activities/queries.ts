@@ -10,6 +10,7 @@ import {
   fetchMediaRevision,
   fetchPlaybackRevision,
   fetchActivityAssets,
+  fetchActivityGallery,
   fetchActivityJobs,
   fetchActivityJob,
   fetchCandidate,
@@ -93,6 +94,15 @@ export function useActivityAssets(id?: string) {
   return useQuery({
     queryKey: activityKeys.assets(id ?? ''),
     queryFn: () => fetchActivityAssets(id!),
+    enabled: Boolean(id),
+    staleTime: 10_000,
+  });
+}
+
+export function useActivityGallery(id?: string) {
+  return useQuery({
+    queryKey: activityKeys.gallery(id ?? ''),
+    queryFn: () => fetchActivityGallery(id!),
     enabled: Boolean(id),
     staleTime: 10_000,
   });

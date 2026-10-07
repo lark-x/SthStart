@@ -45,7 +45,7 @@ apps/service/src/story/native-mcp-server.ts
 
 ## 桥接权限边界
 
-每个项目最多一个有效桥接凭据；数据库只存 SHA-256 哈希，状态接口不返回 Token。DSH 使用的六个 MCP 工具为 `get_project`、`list_entries`、`read_entry`、`search_entries`、`submit_proposal`、`get_proposal_status`。项目 ID 固定在启动器环境中，模型不能指定其他项目。
+每个项目最多一个有效桥接凭据；数据库只存 SHA-256 哈希，状态接口不返回 Token。DSH 使用九个 MCP 工具：`get_project`、`list_entries`、`read_entry`、`search_entries`、`submit_proposal`、`get_proposal_status`、`list_proposals`、`list_entry_revisions`、`read_entry_revision`。项目 ID 固定在启动器环境中，模型不能指定其他项目。历史工具与制作工具见 [Harness MCP 使用指南](HARNESS_MCP.md)。
 
 桥接只允许读取项目摘要与资料、分段读取正文、搜索、提交待审提案、查询本项目提案和发送心跳。长正文每次最多读取 20,000 字符；搜索最多 20 条短摘录；过大的提案会报错而不是静默截断。桥接没有正式内容写入路由，管理员 Token 也不能替代项目桥接 Token。Portal 仅代理明确白名单路径和方法，不转发管理员 Cookie。
 

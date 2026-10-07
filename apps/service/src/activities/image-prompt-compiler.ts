@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { SceneBeatRenderSettings } from '@sthstart/contracts';
+import { compileDirectorPrompt, resolveVisualSettings } from './visual-settings.js';
+import { mapActivityVisualInputs, promptInputKey, readActivityLoraPolicy, resolveActivityImageWorkflow } from './image-render-common.js';
+import type { InputSchemaMap } from '../generation/configuration.js';
 import type {
   ActorSnapshot,
   ContentDocument,
@@ -18,10 +22,11 @@ import type { ImageExecutionPlan } from '@sthstart/contracts';
 import { resolveDefaultPreset, resolveEnabledPreset } from '../generation/configuration-store.js';
 import { resolveActivityImagePromptPolicy } from './image-prompt-policies.js';
 
-export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferences: boolean, selectedPresetId?: string, selectedPresetRevision?: number): ImageExecutionPlan | null {
+export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferences: boolean, selectedPresetId?: string, selectedPresetRevision?: number,
+  selection?: Pick<SceneBeatRenderSettings, 'purpose' | 'workflowId' | 'workflowVersion'>): ImageExecutionPlan | null {
   const preferred = hasReferences ? 'activity_image_edit' : 'activity_image_text';
   const assigned = database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE app_id = ? AND purpose = ?').get('activities', preferred);
-  const purpose = assigned ? preferred : 'activity_media_slot';
+  const purpose = selection?.purpose || (assigned ? preferred : 'activity_media_slot');
   if (!database.connection.prepare('SELECT 1 FROM app_generation_assignments WHERE app_id = ? AND purpose = ?').get('activities', purpose)) return null;
   const selectedPreset = selectedPresetId
     ? resolveEnabledPreset(database, 'activities', purpose, selectedPresetId, selectedPresetRevision)
@@ -29,7 +34,9 @@ export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferenc
   const resolved = selectedPreset
     ? resolveWorkflowAndEngine(database, 'activities', { purpose, workflowId: selectedPreset.preset.workflowId,
       workflowVersion: selectedPreset.preset.workflowVersion, engineId: selectedPreset.preset.engineId, isInternal: true })
-    : resolveWorkflowAndEngine(database, 'activities', { purpose });
+    : selection?.workflowId
+      ? resolveActivityImageWorkflow(database, { ...selection, purpose }).resolved
+      : resolveWorkflowAndEngine(database, 'activities', { purpose });
   const capabilityRow = database.connection.prepare(`SELECT v.input_capabilities_json, m.input_capabilities_json AS legacy_input_capabilities_json
     FROM generation_workflow_versions v
     LEFT JOIN generation_workflow_media_versions m ON m.workflow_id=v.workflow_id AND m.version=v.version
@@ -40,6 +47,7 @@ export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferenc
   try { legacyCapabilities = JSON.parse(capabilityRow?.legacy_input_capabilities_json ?? '{}') as Record<string, unknown>; } catch { legacyCapabilities = {}; }
   const inputCapabilities = Object.keys(directCapabilities).length ? directCapabilities : legacyCapabilities;
   const promptPolicy = resolveActivityImagePromptPolicy(database, resolved.workflow.id, resolved.workflow.version);
+  const loraPolicy = readActivityLoraPolicy(database, resolved.workflow.id, resolved.workflow.version);
   return { purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, engineId: resolved.engine.id,
     definitionHash: createHash('sha256').update(JSON.stringify(resolved.workflow.definition)).digest('hex'), nodeBindings: resolved.workflow.nodeBindings,
     presetId: selectedPreset?.preset.id ?? null,
@@ -47,6 +55,9 @@ export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferenc
     presetValues: selectedPreset?.values ?? {},
     promptPolicyRevision: promptPolicy.revision,
     promptPolicySnapshot: promptPolicy as unknown as Record<string, unknown>,
+    loraPolicyRevision: loraPolicy.revision,
+    loraPolicySnapshot: loraPolicy.entries,
+    inputSchemaSnapshot: resolved.workflow.inputSchema,
     ...(Object.keys(inputCapabilities).length ? { inputCapabilities: inputCapabilities as ImageExecutionPlan['inputCapabilities'] } : {}) };
 }
 
@@ -84,7 +95,7 @@ export function computeSlotFingerprint(slot: MediaSlot, contentDoc: ContentDocum
     caption: slot.caption,
     shotDescription: slot.shotDescription,
     stage: stage ? { id: stage.id, title: stage.title, location: stage.location } : null,
-    actors: actors.map((a) => ({ id: a.id, name: a.displayName, role: a.activityRole, outfit: a.outfitDescription })),
+    actors: actors.map((a) => ({ id: a.id, name: a.displayName, role: a.activityRole, outfit: a.outfitDescription, persona: a.persona })),
     facts: facts.map((f) => ({ id: f.id, text: f.text })),
   };
 
@@ -337,6 +348,9 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   if (slotConfig?.composition) compositionParts.push(slotConfig.composition);
   if (slotConfig?.viewpoint) compositionParts.push(slotConfig.viewpoint);
   if (slotConfig?.lighting) compositionParts.push(slotConfig.lighting);
+  if (slotConfig?.director) compositionParts.push(compileDirectorPrompt(slotConfig.director));
+  if (slotConfig?.visualSupplement) compositionParts.push(`补充视觉描述：${slotConfig.visualSupplement}`);
+  if (slotConfig?.expression) compositionParts.push(`表情要求：${slotConfig.expression}`);
 
   if (compositionParts.length > 0) {
     const compText = compositionParts.join(', ');
@@ -399,7 +413,9 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   const negParts: string[] = [];
   if (imageConfigDoc.globalNegativePrompt) negParts.push(imageConfigDoc.globalNegativePrompt);
   if (slotConfig?.negativePrompt) negParts.push(slotConfig.negativePrompt);
-  const negativeText = negParts.join(', ');
+  const negativeText = imageConfigDoc.artDirection
+    ? slotConfig?.negativePrompt ?? imageConfigDoc.globalNegativePrompt
+    : negParts.join(', ');
 
   const negSourceRef = createSourceRef({
     activityId,
@@ -464,7 +480,7 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   }
 
   // Assemble full positive prompt from non-negative blocks
-  const positiveBlocks = blocks.filter((b) => b.kind !== 'negative');
+  const positiveBlocks = blocks.filter((b) => b.kind !== 'negative' && (!imageConfigDoc.artDirection || b.kind !== 'style'));
   const positivePrompt = positiveBlocks.map((b) => b.renderedText).filter(Boolean).join(', ');
 
   const channels: Record<string, string> = {
@@ -475,8 +491,7 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   };
 
   const effectiveParams: Record<string, unknown> = {
-    ...imageConfigDoc.defaultParams,
-    ...slotConfig?.params,
+    ...resolveVisualSettings(imageConfigDoc, { quality: slotConfig?.quality, parameters: slotConfig?.params }).parameters,
     ...customParams,
   };
 
@@ -497,8 +512,25 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   // Only advertise inputs that the frozen workflow can actually consume.
   if (options.executionPlan) {
     const bindings = options.executionPlan.nodeBindings;
+    const declaredSchema = options.executionPlan.inputSchemaSnapshot as InputSchemaMap | undefined;
+    // V1 workflows may bind prompt directly without a semantic input schema.
+    const schema = declaredSchema && promptInputKey(declaredSchema) ? declaredSchema : undefined;
+    if (schema) {
+      const positiveKey = promptInputKey(schema);
+      const negativeKey = promptInputKey(schema, true);
+      for (const key of Object.keys(channels)) delete channels[key];
+      if (positiveKey) channels[positiveKey] = positivePrompt;
+      if (negativeKey) channels[negativeKey] = renderedNegative.trim();
+      if (!negativeKey && renderedNegative.trim() && imageConfigDoc.artDirection) {
+        throw Object.assign(new Error('当前工作流没有反向提示词输入，不能应用非空负向词。'), { code: 'negative_prompt_unsupported', statusCode: 409 });
+      }
+      const mapped = mapActivityVisualInputs(schema, effectiveParams);
+      for (const key of Object.keys(effectiveParams)) delete effectiveParams[key];
+      Object.assign(effectiveParams, mapped);
+    }
     for (const key of Object.keys(channels)) if (!bindings[key]) delete channels[key];
-    if (!Object.keys(channels).some((key) => key === 'prompt' || key === 'positive')) {
+    if (!(schema ? promptInputKey(schema) && channels[promptInputKey(schema)!] !== undefined
+      : Object.keys(channels).some((key) => key === 'prompt' || key === 'positive'))) {
       throw new Error('prompt_binding_missing: 工作流缺少 prompt/positive 节点绑定');
     }
     for (const key of Object.keys(effectiveParams)) {

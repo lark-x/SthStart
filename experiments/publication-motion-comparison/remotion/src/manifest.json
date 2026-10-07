@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "title": "雪山回声",
+  "subtitle": "阿贝多 × 砂糖 · 雪夜观察记录",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "introMs": 2400,
+  "outroMs": 2200,
+  "shots": [
+    {
+      "index": 0,
+      "id": "prod-shot-1",
+      "image": "shot-1.png",
+      "imageWidth": 768,
+      "imageHeight": 548,
+      "originalCrop": {
+        "x": 0,
+        "y": 238,
+        "w": 768,
+        "h": 548
+      },
+      "audio": "voice-1.mp3",
+      "audioStartMs": 2760,
+      "audioMs": 8544,
+      "startMs": 2400,
+      "durationMs": 9533.333333333334,
+      "endMs": 11933.333333333334,
+      "speaker": "旁白",
+      "text": "风雪又一次封住了山路，营地的灯却还亮着。新的结晶在试管里发出微光，和往常的反应不太一样。",
+      "captions": [
+        {
+          "text": "风雪又一次封住了山路，营地的灯却还亮着。",
+          "startMs": 2760,
+          "endMs": 6644,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "新的结晶在试管里发出微光，和往常的反应不太一样。",
+          "startMs": 6644,
+          "endMs": 11304,
+          "timestampMs": null,
+          "confidence": null
+        }
+      ],
+      "chapter": "风雪未停",
+      "headline": "营地的灯，还亮着。",
+      "accent": "#e2bc76"
+    },
+    {
+      "index": 1,
+      "id": "prod-shot-2",
+      "image": "shot-2.png",
+      "imageWidth": 768,
+      "imageHeight": 806,
+      "originalCrop": {
+        "x": 0,
+        "y": 118,
+        "w": 768,
+        "h": 806
+      },
+      "audio": "voice-2.mp3",
+      "audioStartMs": 12293.333333333334,
+      "audioMs": 11616,
+      "startMs": 11933.333333333334,
+      "durationMs": 12600,
+      "endMs": 24533.333333333336,
+      "speaker": "阿贝多",
+      "text": "温度还在下降，晶体的亮度却没有减弱。先别加热，我想看看它在自然条件下会发生什么。",
+      "captions": [
+        {
+          "text": "温度还在下降，晶体的亮度却没有减弱。",
+          "startMs": 12293,
+          "endMs": 17521,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "先别加热，我想看看它在自然条件下会发生什么。",
+          "startMs": 17521,
+          "endMs": 23909,
+          "timestampMs": null,
+          "confidence": null
+        }
+      ],
+      "chapter": "观察",
+      "headline": "温度下降，亮度不减。",
+      "accent": "#e2bc76"
+    },
+    {
+      "index": 2,
+      "id": "prod-shot-3",
+      "image": "shot-3.png",
+      "imageWidth": 768,
+      "imageHeight": 995,
+      "originalCrop": {
+        "x": 0,
+        "y": 20,
+        "w": 768,
+        "h": 995
+      },
+      "audio": "voice-3.mp3",
+      "audioStartMs": 24893.333333333336,
+      "audioMs": 8736,
+      "startMs": 24533.333333333336,
+      "durationMs": 9700,
+      "endMs": 34233.333333333336,
+      "speaker": "砂糖",
+      "text": "前几次实验都没有出现这种变化。会不会是催化剂失稳？我把每一次闪光的时间都记下来。",
+      "captions": [
+        {
+          "text": "前几次实验都没有出现这种变化。",
+          "startMs": 24893,
+          "endMs": 28169,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "会不会是催化剂失稳？",
+          "startMs": 28169,
+          "endMs": 30353,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "我把每一次闪光的时间都记下来。",
+          "startMs": 30353,
+          "endMs": 33629,
+          "timestampMs": null,
+          "confidence": null
+        }
+      ],
+      "chapter": "记录",
+      "headline": "每一次闪光，都留下证据。",
+      "accent": "#98c6b0"
+    },
+    {
+      "index": 3,
+      "id": "prod-shot-4",
+      "image": "shot-4.png",
+      "imageWidth": 230,
+      "imageHeight": 210,
+      "originalCrop": {
+        "x": 200,
+        "y": 620,
+        "w": 230,
+        "h": 210
+      },
+      "audio": "voice-4.mp3",
+      "audioStartMs": 34593.333333333336,
+      "audioMs": 8568,
+      "startMs": 34233.333333333336,
+      "durationMs": 9533.333333333334,
+      "endMs": 43766.66666666667,
+      "speaker": "旁白",
+      "text": "微弱的蓝光一明一暗。闪光之间的间隔，竟然和营地外一阵阵掠过的风声渐渐重合。",
+      "captions": [
+        {
+          "text": "微弱的蓝光一明一暗。",
+          "startMs": 34593,
+          "endMs": 36909,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "闪光之间的间隔，竟然和营地外一阵阵掠过的风声渐渐重合。",
+          "startMs": 36909,
+          "endMs": 43161,
+          "timestampMs": null,
+          "confidence": null
+        }
+      ],
+      "chapter": "发现",
+      "headline": "蓝光，正在回应风声。",
+      "accent": "#e2bc76"
+    },
+    {
+      "index": 4,
+      "id": "prod-shot-5",
+      "image": "shot-5.png",
+      "imageWidth": 768,
+      "imageHeight": 668,
+      "originalCrop": {
+        "x": 0,
+        "y": 178,
+        "w": 768,
+        "h": 668
+      },
+      "audio": "voice-5.mp3",
+      "audioStartMs": 44126.66666666667,
+      "audioMs": 9624,
+      "startMs": 43766.66666666667,
+      "durationMs": 10600,
+      "endMs": 54366.66666666667,
+      "speaker": "阿贝多",
+      "text": "别急着给它取名字。砂糖，把风声也记下来。我们看到的也许不是不稳定，而是还没有理解的规律。",
+      "captions": [
+        {
+          "text": "别急着给它取名字。",
+          "startMs": 44127,
+          "endMs": 46095,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "砂糖，把风声也记下来。",
+          "startMs": 46095,
+          "endMs": 48501,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "我们看到的也许不是不稳定，而是还没有理解的规律。",
+          "startMs": 48501,
+          "endMs": 53751,
+          "timestampMs": null,
+          "confidence": null
+        }
+      ],
+      "chapter": "理解",
+      "headline": "不是失稳，是未知的规律。",
+      "accent": "#e2bc76"
+    },
+    {
+      "index": 5,
+      "id": "prod-shot-6",
+      "image": "shot-6.png",
+      "imageWidth": 768,
+      "imageHeight": 558,
+      "originalCrop": {
+        "x": 0,
+        "y": 233,
+        "w": 768,
+        "h": 558
+      },
+      "audio": "voice-6.mp3",
+      "audioStartMs": 54726.66666666667,
+      "audioMs": 10344,
+      "startMs": 54366.66666666667,
+      "durationMs": 11333.333333333334,
+      "endMs": 65700,
+      "speaker": "砂糖",
+      "text": "明白了。今天先保留观察结果，不继续加热。这个问题就留给下一次实验吧——雪山似乎也在回答我们。",
+      "captions": [
+        {
+          "text": "明白了。",
+          "startMs": 54727,
+          "endMs": 55626,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "今天先保留观察结果，不继续加热。",
+          "startMs": 55626,
+          "endMs": 59224,
+          "timestampMs": null,
+          "confidence": null
+        },
+        {
+          "text": "这个问题就留给下一次实验吧——雪山似乎也在回答我们。",
+          "startMs": 59224,
+          "endMs": 65071,
+          "timestampMs": null,
+          "confidence": null
+        }
+      ],
+      "chapter": "未完",
+      "headline": "把答案，留给下一次实验。",
+      "accent": "#98c6b0"
+    }
+  ],
+  "sourceActivityId": "5df698a8-d7ab-4c91-8f4d-9c47c27c4c88",
+  "sourceDraftVersion": 15,
+  "captionTiming": "Sentence duration proportional to character count; not word-level forced alignment",
+  "soundtrack": "Existing Step TTS, plus locally synthesized wind and crystal tones; no third-party music",
+  "durationInFrames": 2038,
+  "durationMs": 67933.33333333334
+}

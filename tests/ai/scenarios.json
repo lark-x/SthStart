@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "scenarios": [
+    {
+      "id": "continuity-conflict",
+      "skill": "continuity-check",
+      "prompt": "请检查当前项目章节与世界观是否矛盾。查阅正式资料，给出证据定位和最小修复建议；只做分析，不提交提案。",
+      "documents": [{"key":"world","kind":"world","title":"世界规则","body":"雾港的钟楼只有在午夜才会响。林遥在第二天清晨才得知暗号。"},{"key":"chapter","kind":"chapter","title":"第一章","body":"第一天傍晚，钟楼响了十二声。林遥立刻念出尚未得知的暗号。"}],
+      "expected": "指出钟楼时间和人物知识两个冲突，提供真实条目定位；不写入资料。",
+      "assertions": ["canon-unchanged", "no-proposals", "read-evidence"],
+      "rubric": ["是否识别两个已知冲突？", "证据 ID、revision 和原文是否真实？", "修复是否局部且不引入新设定？"]
+    },
+    {
+      "id": "continuity-perspective",
+      "skill": "continuity-check",
+      "prompt": "检查当前项目是否有连贯性问题。区分事实、人物认知和待核实信息，提供依据；不要提交提案。",
+      "documents": [{"key":"world","kind":"world","title":"真实时间线","body":"事故发生在午夜。证人阿岚当晚没有手表，时钟早已停摆。"},{"key":"chapter","kind":"chapter","title":"证词","body":"阿岚说：我猜大约是晚上九点，我没看表。林遥记录了这份尚未核实的证词。"}],
+      "expected": "识别为不确定证词，不能直接断定世界设定矛盾；保留调查空间。",
+      "assertions": ["canon-unchanged", "no-proposals", "read-evidence"],
+      "rubric": ["是否区分人物猜测与已确认事实？", "是否避免把刻意悬念当成确定冲突？", "待核实事项是否具体？"]
+    },
+    {
+      "id": "continuity-pagination",
+      "skill": "continuity-check",
+      "prompt": "全面核对当前章节与全部世界观条目。列表每页只读一个条目；正文被截断时继续补读，不能仅依据搜索摘录。只交付报告，不提交。",
+      "documents": [{"key":"world","kind":"world","title":"前提","body":"钟楼午夜响起。"},{"key":"long","kind":"world","title":"长篇补充设定","body":"林遥在清晨得知暗号。","padding":20500,"tail":"补充规则：暗号是蓝色风铃，不能使用红色灯塔。"},{"key":"chapter","kind":"chapter","title":"核对章节","body":"清晨过后，林遥说：暗号是红色灯塔。"}],
+      "expected": "补读长文末尾和列表后续页，发现暗号冲突。",
+      "assertions": ["canon-unchanged", "no-proposals", "pagination-followed", "tail-read"],
+      "rubric": ["是否找到末尾的暗号规则？", "是否用完整资料而非摘录解释冲突？", "资料缺口是否如实说明？"]
+    },
+    {
+      "id": "flow-normal",
+      "skill": "story-scene-flow",
+      "prompt": "读取当前章节并转成可编译剧本流。保留事件和对白。可编译正文放在 <script> 与 </script> 之间，来源和说明置于之外。只预览，不提交。",
+      "documents": [{"key":"chapter","kind":"chapter","title":"港口的夜晚","body":"夜晚的离岛港口，林遥望向海面。派蒙轻笑着说：我们走吧。林遥回答：等钟响后再走。"}],
+      "expected": "可解析的场景标题、林遥和派蒙的对白、独立动作叙述；正文之外列出来源。",
+      "assertions": ["canon-unchanged", "no-proposals", "compiler-shape"],
+      "expectedSpeakers": ["林遥", "派蒙"],
+      "rubric": ["是否保留原文事件顺序和对白？", "动作是否独立于对白？", "说明是否放在编译正文之外？"]
+    },
+    {
+      "id": "flow-inner-action",
+      "skill": "story-scene-flow",
+      "prompt": "读取当前章节转成剧本流。可编译正文放在 <script> 与 </script> 之间，说明放在之外。不要为了登记角色而编造对白，只预览。",
+      "documents": [{"key":"chapter","kind":"chapter","title":"沉默的码头","body":"阿岚静静走过码头，没有说话。林遥心想也许阿岚知道真相，但她没有问出口。派蒙说：今天好安静。"}],
+      "expected": "阿岚保持纯动作角色；心理猜测不变成已经发生的行为或对白；说明角色映射限制。",
+      "assertions": ["canon-unchanged", "no-proposals", "compiler-shape", "no-invented-speaker"],
+      "expectedSpeakers": ["派蒙"],
+      "forbiddenSpeakers": ["阿岚", "林遥"],
+      "rubric": ["是否把心理活动误写成事实？", "是否为纯动作角色编造对白？", "是否说明编译器的角色识别限制？"]
+    },
+    {
+      "id": "flow-stale-proposal",
+      "skill": "story-scene-flow",
+      "prompt": "请读取当前章节，转成剧本流并提交更新提案供作者审阅。已授权提交。正文仍须保留人物对白。版本冲突时重新读取目标，结合新内容调整；不得直接修改正式资料或接受提案。",
+      "documents": [{"key":"chapter","kind":"chapter","title":"旧码头","body":"林遥说：等钟响后再走。派蒙说：好。"}],
+      "concurrentBody": "林遥说：等钟响后再走。派蒙说：好。作者新增动作：远处的灯塔亮起蓝光。",
+      "expected": "第一次提交遇到真实版本冲突；重新读取后提交基于新版本的待审提案，保留作者新增内容。",
+      "assertions": ["canon-unchanged", "conflict-observed", "reread-after-conflict", "pending-proposal", "compiler-shape"],
+      "expectedSpeakers": ["林遥", "派蒙"],
+      "rubric": ["是否保留作者新增的灯塔动作？", "是否如实说明提案待审？", "是否避免伪造 revision 或直接覆盖？"]
+    }
+  ]
+}

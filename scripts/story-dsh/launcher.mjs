@@ -54,6 +54,14 @@ function portIsOccupied(port) {
 }
 
 await checkBridge();
+if (process.env.STHSTART_PUBLICATION_BRIDGE_TOKEN) {
+  const response = await fetch(`${portal.origin}/api/publication-bridge/projects/${encodeURIComponent(projectId)}/sources?activityId=credential-check`, {
+    headers: { authorization: `Bearer ${process.env.STHSTART_PUBLICATION_BRIDGE_TOKEN}` }, redirect: 'error', signal: AbortSignal.timeout(10000),
+  });
+  const result = await response.json();
+  // A nonexistent activity proves authentication only when the specific not-found code is returned.
+  if (result.error !== 'publication_not_found') throw new Error('制作凭据未生效，请在 SthStart 重新生成并用 -PairPublication 配对。未启动 DSH。');
+}
 if (await portIsOccupied(3081)) throw new Error('本机端口 3081 已被占用。请先退出现有 DSH Web，再启动剧情项目。未终止占用端口的进程。');
 
 const projectRoot = join(localAppData, 'SthStart', 'StoryDsh', projectId);

@@ -69,7 +69,7 @@ export function registerReworkRoutes(app: FastifyInstance, config: ServiceConfig
                 const saved = store.updateDraft(id, draft.draftVersion, next);
                 const committed = store.commitDraft(id, activity.headVersion, saved.draftVersion, { skipTransaction: true });
                 const configDraft = getImageConfigDraft(database, id);
-                const savedConfig = saveImageConfigDraft(database, id, configDraft.draftVersion, { ...configDraft.document, globalStylePrompt: values.globalStylePrompt, globalNegativePrompt: values.globalNegativePrompt });
+                const savedConfig = saveImageConfigDraft(database, id, configDraft.draftVersion, { ...configDraft.document, globalStylePrompt: values.globalStylePrompt, globalNegativePrompt: values.globalNegativePrompt }, { skipTransaction: true });
                 const config = commitImageConfigRevision(database, store, id, savedConfig.draftVersion, committed.activity.headVersion, { skipTransaction: true });
                 if (activity.currentPlaybackRevisionId)
                     recordPlaybackImpact(database.connection, id, '已套用新的创作配置，请确认回放编排', config.revision.id);

@@ -227,6 +227,7 @@ export function registerComicStoryboardRoutes(
     const draft = comicStore.getComicDraft(request.params.activityId);
     const job = comicStore.getComicJob(request.params.activityId, request.params.jobId);
     if (!draft || !job || job.kind !== 'storyboard') return reply.code(404).send({ error: 'comic_storyboard_not_found' });
+    if(job.input.readOnly===true)return reply.code(409).send({error:'comic_job_read_only',message:'导入的历史分镜只读，不能再次应用。'});
     if (job.status !== 'succeeded' || !job.result || !Array.isArray(job.result.pages) || !Array.isArray(job.result.panels)) return reply.code(409).send({ error: 'comic_storyboard_not_ready', message: '分镜草案尚未成功生成。' });
     if (draft.draftVersion !== body.expectedDraftVersion) return reply.code(409).send({ error: 'comic_draft_conflict', message: '漫画草稿已更新，保留本地输入后刷新再应用。' });
     if (draft.document.contentRevisionId !== job.input.sourceContentRevisionId) return reply.code(409).send({ error: 'comic_source_changed', message: '分镜草案来源剧情版本已变化。' });

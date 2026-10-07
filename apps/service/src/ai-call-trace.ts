@@ -273,6 +273,7 @@ export async function fetchAuditedAiResponse(
   fetcher: typeof fetch,
   url: string,
   init: RequestInit,
+  hooks?: { onRecord?(callId: string): void },
 ): Promise<{ response: Response; callId: string; redactionSecrets: string[] }> {
   const body = typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body) as unknown; } catch { return init.body; } })() : init.body;
   const redactionSecrets = currentSecrets(input.redactionSecrets);
@@ -281,8 +282,18 @@ export async function fetchAuditedAiResponse(
     redactionSecrets,
     requestSnapshot: { url: redactAiValue(url, '', redactionSecrets), method: init.method ?? 'GET', headerNames: Object.keys(init.headers ?? {}), body },
     models: input.models ?? (body && typeof body === 'object' && !Array.isArray(body) && typeof (body as Record<string, unknown>).model === 'string' ? [String((body as Record<string, unknown>).model)] : []),
-    sourceUrl: url,
+    // Keep the business return link. The actual upstream URL already belongs
+    // to requestSnapshot and must not replace navigation back to the source.
+    sourceUrl: input.sourceUrl ?? url,
   });
+  // Bind durable business state to this exact call before touching the network.
+  // A rejected binding is explicitly not dispatched, not a transport failure.
+  try { hooks?.onRecord?.(callId); }
+  catch (error) {
+    updateAiCallRecord(database, callId, { status: 'not_dispatched', event: 'binding_rejected',
+      errorCode: 'call_binding_rejected', errorMessage: error instanceof Error ? error.message : String(error), redactionSecrets });
+    throw error;
+  }
   updateAiCallRecord(database, callId, { status: 'submitted', event: 'submitted', detail: { method: init.method ?? 'GET' }, redactionSecrets });
   try {
     const response = await fetcher(url, init);

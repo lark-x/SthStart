@@ -51,6 +51,7 @@ import { inspectLinsheHostedReadiness } from './linshe-hosted.js';
 import { StoryStore } from './story/store.js';
 import { StoryRuntime } from './story/runtime.js';
 import { registerStoryRoutes } from './story/routes.js';
+import { registerPublicationRoutes } from './publication/routes.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -105,7 +106,7 @@ export async function createService(options: ServiceOptions = {}) {
   const runtimeManager = new RuntimeManager(config, runtimeSettings, runtimeLogs, {
     appToken: linsheAppToken,
     fetcher: options.fetcher,
-    hostedReadiness: () => inspectLinsheHostedReadiness(config, database, secrets, linsheAppToken, options.fetcher),
+    hostedReadiness: () => inspectLinsheHostedReadiness(config, database, secrets, linsheAppToken, options.fetcher, runtimeSettings.get().linsheImageViaGateway),
   });
   // 云备份：仓库、目标、计划、运行、恢复与定时调度都跟随服务进程。
   const backupStore = new BackupStore(database);
@@ -240,6 +241,7 @@ export async function createService(options: ServiceOptions = {}) {
     provider: new LocalNarrativeCorpusProvider(narrativeDatabase),
   });
   registerActivityRoutes(app, config, database, secrets, options.fetcher);
+  registerPublicationRoutes(app, config, database, secrets, options.fetcher);
   const storyStore = new StoryStore(database);
   registerStoryRoutes(app, config, storyStore, new StoryRuntime(config, database, storyStore, storyAppToken));
   registerCalendarRoutes(app, config, database);
@@ -248,7 +250,7 @@ export async function createService(options: ServiceOptions = {}) {
   registerResearchRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerTopicRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   registerKnowledgeRoutes(app, { config, database, narrativeDatabase, secrets, fetcher: options.fetcher });
-  registerPublicRoutes(app, config, database, secrets, options.fetcher);
+  registerPublicRoutes(app, config, database, secrets, options.fetcher, runtimeSettings);
   registerTaskRoutes(app, { config, database, secrets, fetcher: options.fetcher, narrativeDatabase });
   registerBackupRoutes(app, {
     config, database, store: backupStore, vaults: backupVaults, runner: backupRunner,
