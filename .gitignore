@@ -49,6 +49,15 @@ yarn-error.log*
 /星铁人设卡_skill/
 /角色人设卡/
 
+# 本地实验工程与阶段性开发记录：保留在磁盘上，可按需从 Git 历史取回。
+/experiments/
+/docs/development/plans/
+/docs/development/logs/
+
+# 由 scripts/collect-genshin-character-catalog.mjs 生成的抓取结果（跨项目内容）。
+/docs/development/reviews/genshin-character-card-catalog.json
+/docs/development/reviews/genshin-character-card-catalog.md
+
 # deployment and generated files
 .vercel
 next-env.d.ts
