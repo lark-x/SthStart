@@ -1,80 +1,11 @@
-# dependencies
-/node_modules
-**/.venv/
-__pycache__/
-*.pyc
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-/playwright-report/
-/test-results/
-
-# next.js
-/.next/
-/.vinext/
-/out/
-
-# misc
-.DS_Store
-*.pem
-pelican-bike-animation.html
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# local environment
-.env*
+node_modules
+dist
+.output
+.tanstack
+.wrangler
+.vite
+.env
+.env.*
 !.env.example
-!.env.docker.example
-
-# local application data
-/data/
-/workers/windows-worker/data/
-/upstream/linshe/agent-core/data/
-/upstream/linshe/vector-service/chroma_data/
-
-# 独立内容工程的产物（人设卡提取结果）。这些 Markdown 属于另一个内容项目，
-# 保留在本地磁盘即可，不进入 SthStart 代码仓库。
-/角色人设卡_skill/
-/星铁人设卡_skill/
-/角色人设卡/
-
-# 本地实验工程与阶段性开发记录：保留在磁盘上，可按需从 Git 历史取回。
-/experiments/
-/docs/development/plans/
-/docs/development/logs/
-
-# 由 scripts/collect-genshin-character-catalog.mjs 生成的抓取结果（跨项目内容）。
-/docs/development/reviews/genshin-character-card-catalog.json
-/docs/development/reviews/genshin-character-card-catalog.md
-
-# deployment and generated files
-.vercel
-next-env.d.ts
-/dist/
-**/dist/
-*.tsbuildinfo
-/.wrangler/
-/outputs/
-/work/
-/artifacts/
-/scratch/
-/temp_harness_output/
-/dsh-mcp-servers/
-.zcode/
-.pai/
-
-# local rehearsal databases and their SQLite sidecars
-.codex/**/*.db
-.codex/**/*.db-shm
-.codex/**/*.db-wal
+.dev.vars
+.DS_Store

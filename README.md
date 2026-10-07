@@ -1,96 +1,44 @@
-# SthStart
+# Httpsgithubcomlark-xSthStart 为什么无法导入
 
-SthStart 是一个本地优先的互动应用门户。当前接入完整的邻舍.EXE，并提供 TypeScript 公共服务层，可让邻舍和之后的新应用共享 LLM、向量、生图、通用角色模板、运行管理与日志诊断能力。
+https://github.com/lark-x/SthStart
+为什么无法导入？
 
-## 结构
+Generated with [MonstarX](https://github.com/) — a full-stack **TanStack Start** app (React 19, TanStack Router, server functions, Tailwind CSS v4).
 
-```text
-app/                 SthStart 门户与邻舍内嵌页
-apps/service/        本地公共服务（Fastify + TypeScript）
-packages/contracts/  共享 API 类型
-upstream/linshe/     邻舍 Git Submodule
-```
+## Run locally
 
-当前包含三个应用入口：
-
-- 邻舍.EXE：保持独立 Submodule 与原技术栈，通过公共服务渐进接入。
-- 创作笔记：React 移动端适配应用，用于记录日记、灵感、剧情素材、角色设定和世界资料，支持文本、图片及链接块。
-- 叙事档案：多作品剧情回顾与研究应用，支持任务树、连续阅读、全文检索、可预览的增量导入和带原文快照的笔记摘录。
-
-叙事档案的数据模型、JSON 导入契约和 MCP 连接器边界见 [`docs/NARRATIVE_ARCHIVE.md`](docs/NARRATIVE_ARCHIVE.md)。
-本地生产启动、常驻运行、数据备份与手机访问边界见 [`docs/LOCAL_DEPLOYMENT.md`](docs/LOCAL_DEPLOYMENT.md)。
-多媒体中央存储、Windows Worker、H3 视频生成、工作流导入与灾难恢复完整指南见 [`docs/OPERATIONS_AND_BACKUP.md`](docs/OPERATIONS_AND_BACKUP.md)。
-当前模块状态、待开发事项、待修复问题和阶段开发日志见 [`docs/development/README.md`](docs/development/README.md)。
-
-邻舍仍保持独立数据和前端，门户在 `/apps/linshe` 使用 iframe 加载其原始页面。正式本地运行时可由控制中心托管邻舍进程并通过公开配置接口应用常用设置；SthStart 不直接访问邻舍 SQLite。
-
-## 开始使用
-
-环境要求：Node.js 22、npm 11、Python 3.10+（仅邻舍向量服务需要）、Git，以及按需运行的 ComfyUI。
+Local development runs the app in Cloudflare's Workers runtime with a local D1 database.
 
 ```bash
-cp .env.example .env
-npm run setup
+npm install
+cp .dev.vars.example .dev.vars   # set BETTER_AUTH_SECRET
+npm run db:migrate:local         # creates the tables in the local D1 database
+npm run dev                      # http://localhost:3000
 ```
 
-先用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 分别生成管理令牌和图片签名密钥，填入 `.env` 的 `STHSTART_ADMIN_TOKEN` 与 `STHSTART_IMAGE_SIGNING_SECRET`。两者少于 32 个字符时服务会拒绝启动。
-
-`setup` 会初始化 Submodule、安装三组 Node 依赖、创建 Python 虚拟环境并下载约 164 MB 的 Jina 模型。若只想先运行不带长期向量记忆的降级版本，可设置 `STHSTART_SKIP_VECTOR=1`；之后再执行 `npm run setup:vector` 即可补齐。
-
-仅启动门户和公共服务：
+## Deploy to Cloudflare Workers
 
 ```bash
-npm run dev
+npx wrangler login
+npx wrangler d1 create httpsgithubcomlark-xsthstart-db   # copy the database_id into wrangler.jsonc
+npm run db:migrate                                 # applies migrations/ to the remote database
+npx wrangler secret put BETTER_AUTH_SECRET
+npm run deploy
 ```
 
-开发时仍可使用旧的三进程启动方式：
+Data lives in the D1 database bound as `DB` (see `src/lib/db.ts`); user accounts use Better Auth
+(`src/lib/auth.ts`) with tables created by `migrations/0000_monstarx_auth.sql`.
 
-```bash
-npm run dev:all
-```
+## Project layout
 
-默认地址：门户 `http://127.0.0.1:4173`，公共服务 `http://127.0.0.1:4100`，邻舍开发前端 `http://127.0.0.1:5173`。
-
-打开 `/settings/control-center` 可托管邻舍、迁移 EXE 运行配置并查看有界实时日志；打开 `/settings/public-services` 可创建应用令牌、供应商配置和通用角色模板。供应商密钥优先保存到 macOS Keychain、Windows Credential Manager 或 Linux Secret Service；系统安全存储不可用时只能通过明确的环境变量提供，不会静默写入明文文件。
-
-邻舍默认仍按原项目逻辑运行，并**用自己的 ComfyUI 生图**。需要逐模块迁移时，在根目录 `.env` 配置稳定的 `STHSTART_APP_TOKEN`，再按需打开 `STHSTART_PUBLIC_LLM`、`STHSTART_PUBLIC_VECTOR`、`STHSTART_PUBLIC_IMAGE`（三者相互独立，默认关闭）；通过 SthStart 控制中心托管邻舍时令牌会自动注入，LLM 与向量固定走公共网关，生图则由控制中心的「邻舍生图使用 SthStart 公共网关」开关控制。`dev:all` 会把根环境传给邻舍；公共 LLM 托管模式发生故障时会明确报错，不会静默切回邻舍旧模型配置，关闭对应公共服务开关即可恢复独立运行模式。
-
-## 邻舍 Fork 与同步
-
-当前 Submodule 指向 `lark-x/galgame-with-comfyUI` Fork 的 `lark` 分支。若在新的克隆或重新初始化的仓库中需要修复该配置，可运行：
-
-```bash
-npm run linshe:use-fork
-git submodule update --init --recursive
-```
-
-Fork 的 `main` 只跟随原作者上游，定制修改放在 `lark`。SthStart 只更新经过测试的 Submodule commit，不直接修改 `upstream/linshe`。
-
-第三方来源和分发注意事项见 [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md)。
-
-仓库内包含两层自动同步：
-
-1. Fork 的 `lark` 分支内置 `sync-upstream.yml`，每日用 Fork 自己的 `GITHUB_TOKEN` 把原项目同步到 `main`，并在有新提交时创建 `main → lark` 审核 PR。
-2. 合并该 PR 后，`update-linshe.yml` 会为 SthStart 创建更新 Submodule 指针的 PR。
-
-不需要额外保存个人访问 Token。上游更新不会直接覆盖自定义改动，冲突会留在 Fork PR 中人工处理；通过邻舍冒烟检查并合并后，SthStart 才会更新固定指针。
-
-## 公共服务
-
-- `GET /api/v1/health`
-- `GET /api/v1/capabilities`
-- `GET /api/v1/apps`
-- `GET /api/v1/apps/linshe`
-- `GET /v1/models`、`POST /v1/chat/completions`
-- `POST /api/v1/vector/{embed,search,upsert,upsert-batch,delete}`
-- `/api/v1/images/tasks` 与短期签名产物 URL
-- 通用生成任务与可选 `workers/windows-worker` Windows/ComfyUI 桥接
-- `/api/v1/personas` 与应用内固定版本快照
-- `/api/v1/logs`（带 `logs` 能力的应用写入自身结构化日志）
-- `/api/v1/admin/runtime/*`、`/api/v1/admin/logs*` 与脱敏诊断导出
-- `/api/v1/admin/*`（仅由门户服务端 BFF 注入管理令牌）
-
-服务强制只绑定回环地址。公共能力使用独立应用 Bearer Token，管理接口使用单独的服务端令牌；浏览器不会取得管理令牌。完整协议、数据边界与迁移说明见 [`docs/PUBLIC_SERVICES.md`](docs/PUBLIC_SERVICES.md)。
-Windows Worker 的安装、令牌、IP 白名单、重启恢复和确认清理协议见 [`docs/PUBLIC_SERVICES.md`](docs/PUBLIC_SERVICES.md)；Worker 本身可在 `workers/windows-worker` 目录用 `npm start` 启动。
-H3 FL2VA、Ref2VA、云端 H3 和 2K 输出的实验边界见 [`docs/EXPERIMENTAL_MEDIA.md`](docs/EXPERIMENTAL_MEDIA.md)；未验证能力不会出现在公共生成入口中。
-内置应用包括邻舍入口、创作笔记与叙事档案。叙事档案的多作品数据模型、JSON 导入契约和 MCP 连接器边界见 [docs/NARRATIVE_ARCHIVE.md](docs/NARRATIVE_ARCHIVE.md)。
+- `src/routes/` – file-based routes (`index.tsx` → `/`, `about.tsx` → `/about`, `blog.$slug.tsx` → `/blog/:slug`)
+- `src/routes/__root.tsx` – document shell and global layout
+- `src/server/` – server functions (`createServerFn`)
+- `src/components/` – UI components
+- `src/db/schema.ts` – Drizzle schema; `migrations/` – SQL migrations applied with wrangler
+- `MONSTARX.md` – how the built-in services work (accounts, database, email, storage, AI), kept up to date by MonstarX
+- `src/lib/db.ts`, `src/lib/auth.ts`, `src/lib/session.ts`, `src/lib/session.server.ts` – database and accounts plumbing
+- `src/lib/email.ts` – sendEmail(); works inside MonstarX (previews and published apps). Self-hosted, set `MONSTARX_MAIL_URL` + `MONSTARX_DATA_TOKEN` from your MonstarX host or replace the file with your own provider
+- `src/lib/monstarx/country-data.ts` – countryData.call(); live public country data (weather, transport, registries…) for the countries switched on in Backend → Country data. Self-hosted, set `MONSTARX_COUNTRY_DATA_URL` + `MONSTARX_DATA_TOKEN` from your MonstarX host
+- `src/styles.css` – Tailwind v4 entry point and design tokens
+- `src/routeTree.gen.ts` – generated by TanStack Router (do not edit)

@@ -3,6 +3,7 @@ import { defineConfig, type Plugin } from 'vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { cloudflare } from '@cloudflare/vite-plugin'
 
 // monstarx:tailwind-sources
 // Tailwind makes a stylesheet from the class names it finds in every file under the project, and it only
@@ -50,8 +51,12 @@ function tailwindAppSources(): Plugin {
 }
 // /monstarx:tailwind-sources
 
+// Used by `npm run deploy`: builds the app as a Cloudflare Worker (SSR in workerd).
 export default defineConfig({
   resolve: { tsconfigPaths: true },
+  // Keep MapLibre out of Vite's dependency pre-bundler in dev. The managed <Map> component
+  // imports its worker with ?worker&url so published builds emit the worker and its shared module.
   optimizeDeps: { exclude: ['maplibre-gl'] },
-  plugins: [tailwindAppSources(), tailwindcss(), tanstackStart(), viteReact()],
+  // tailwindAppSources must come before tailwindcss: both run first ("pre"), in this order.
+  plugins: [cloudflare({ viteEnvironment: { name: 'ssr' } }), tailwindAppSources(), tailwindcss(), tanstackStart(), viteReact()],
 })
