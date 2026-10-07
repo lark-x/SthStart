@@ -1,6 +1,8 @@
 # dependencies
 /node_modules
 **/.venv/
+__pycache__/
+*.pyc
 /.pnp
 .pnp.*
 .yarn/*
@@ -41,6 +43,12 @@ yarn-error.log*
 /upstream/linshe/agent-core/data/
 /upstream/linshe/vector-service/chroma_data/
 
+# 独立内容工程的产物（人设卡提取结果）。这些 Markdown 属于另一个内容项目，
+# 保留在本地磁盘即可，不进入 SthStart 代码仓库。
+/角色人设卡_skill/
+/星铁人设卡_skill/
+/角色人设卡/
+
 # deployment and generated files
 .vercel
 next-env.d.ts
@@ -56,3 +64,8 @@ next-env.d.ts
 /dsh-mcp-servers/
 .zcode/
 .pai/
+
+# local rehearsal databases and their SQLite sidecars
+.codex/**/*.db
+.codex/**/*.db-shm
+.codex/**/*.db-wal
