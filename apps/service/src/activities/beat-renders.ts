@@ -45,6 +45,7 @@ type NormalizedOptions = {
   seed: number; positivePrompt: string; negativePrompt: string | null; parameters: Record<string, unknown>;
   stylePrompt: string;
   visualConfiguration: Record<string, unknown>;
+  finalPositivePrompt?: string;
   negativeOverride: string | undefined;
   referenceAssetKey: string | null; referenceArtifactId: string | null; referenceInputKey: string | null;
   sourceFingerprint: string; source: Array<{ label: string; value: string }>;
@@ -232,7 +233,7 @@ function normalizeOptions(database: ServiceDatabase, activityId: string, target:
     referenceAssetKey, referenceArtifactId, referenceInputKey, loraPolicyRevision: loraPolicy.revision, loras });
   const versionedPlanHash = hashVisualPlan({ planHash, configurationHash: effective.configurationHash });
   return { purpose, workflowId: resolved.workflow.id, workflowVersion: resolved.workflow.version, presetId: selectedPresetId, presetRevision: selectedPresetRevision,
-    seed, positivePrompt, negativePrompt, parameters: merged, stylePrompt: visual.stylePrompt, negativeOverride: visual.negativePrompt,
+    seed, positivePrompt, finalPositivePrompt: visual.finalPositivePrompt, negativePrompt, parameters: merged, stylePrompt: visual.stylePrompt, negativeOverride: visual.negativePrompt,
     referenceAssetKey, referenceArtifactId, referenceInputKey, sourceFingerprint, source, warnings, canSubmit,
     resolved, planHash: versionedPlanHash, visualConfiguration: effective.provenance, workflowOptions: availableWorkflows, presetOptions, fields, promptPolicy, optimizerReady,
     loras, loraPolicyRevision: loraPolicy.revision };
@@ -519,14 +520,14 @@ export async function dispatchBeatRender(
     const scopedIdempotencyKey = scopedBeatIdempotencyKey(activityId, request.idempotencyKey);
     const optimized = await optimizeActivityImagePrompt(database, secrets, {
       activityId, workflowId: plan.workflowId, workflowVersion: plan.workflowVersion, policy: plan.promptPolicy,
-      sourcePrompt: plan.positivePrompt, existingNegativePrompt: plan.negativePrompt, idempotencyKey: scopedIdempotencyKey,
+      sourcePrompt: plan.finalPositivePrompt ?? plan.positivePrompt, existingNegativePrompt: plan.negativePrompt, idempotencyKey: scopedIdempotencyKey,
       actorScope: currentTarget.actors.map((actor) => ({ actorId: actor.id, displayName: actor.displayName })),
       ...(context ? { traceId: context.traceId, studioContext: context } : {}),
     }, fetcher);
     optimizerCallId = optimized.optimizerCallId;
     if (context && !context.canContinue()) throw codedError('studio_process_interrupted', '已停止后续提交，未发送 ComfyUI 任务。');
     const finalNegative = plan.negativeOverride ?? optimized.negativePrompt ?? plan.negativePrompt;
-    const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
+    const finalPrompt = plan.finalPositivePrompt ?? finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
       v2FinalizeInputFrom(plan.resolved.workflow.editorConfig, optimized));
     database.connection.prepare(`UPDATE activity_beat_render_candidates SET call_id=?,positive_prompt=?,negative_prompt=?,prompt_optimization_status=?
       WHERE id=? AND status='preparing'`).run(optimizerCallId, finalPrompt, finalNegative ?? '', optimized.status, candidateId);
@@ -940,11 +941,11 @@ export function registerLegacyBeatRenderRoute(
         const legacyIdempotencyKey = `beat-legacy-${randomUUID()}`;
         const optimized = await optimizeActivityImagePrompt(database, secrets, {
           activityId: request.params.id, workflowId: plan.workflowId, workflowVersion: plan.workflowVersion,
-          policy: plan.promptPolicy, sourcePrompt: plan.positivePrompt, existingNegativePrompt: plan.negativePrompt,
+          policy: plan.promptPolicy, sourcePrompt: plan.finalPositivePrompt ?? plan.positivePrompt, existingNegativePrompt: plan.negativePrompt,
           idempotencyKey: legacyIdempotencyKey,
           actorScope: legacyTarget.actors.map((actor) => ({ actorId: actor.id, displayName: actor.displayName })),
         }, fetcher);
-        const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
+        const finalPrompt = plan.finalPositivePrompt ?? finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
           v2FinalizeInputFrom(plan.resolved.workflow.editorConfig, optimized));
         const finalNegative = plan.negativeOverride ?? optimized.negativePrompt ?? plan.negativePrompt;
         const positiveKey = promptKey(plan.resolved.workflow.inputSchema as InputSchemaMap);

@@ -31,6 +31,9 @@ export function registerArtDirectionRoutes(app: FastifyInstance, database: Servi
       const plan = resolveEffectiveActivityVisualPlan(database, { imageConfig: request.body.document, settings: { ...settings, parameters: settings?.params },
         actors: content.actors.filter(actor => slot.actorIds.includes(actor.id)), sourcePrompt: slot.shotDescription || slot.caption || '素材画面', seed: 0 });
       return { workflowId: plan.selection.resolved.workflow.id, workflowVersion: plan.selection.resolved.workflow.version,
+        promptAssembly: plan.selection.resolved.workflow.editorConfig?.promptAssembly,
+        positivePrompt: plan.visual.finalPositivePrompt ?? String(plan.parameters[plan.positiveKey] ?? ''),
+        promptOptimization: { enabled: plan.promptPolicy.enabled },
         fields: activityVisualParameterFields(plan.selection.resolved, plan.parameters), parameters: plan.parameters,
         quality: plan.visual.quality, canvas: request.body.document.artDirection?.canvas ?? null };
     } catch (error) { return failure(reply, error); }

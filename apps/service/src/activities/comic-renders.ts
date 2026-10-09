@@ -44,6 +44,7 @@ type ComicRenderPlan = {
   stylePrompt: string;
   visualConfiguration: Record<string, unknown>;
   negativeOverride: string | undefined;
+  finalPositivePrompt?: string;
   negativePrompt: string;
   positiveKey: string;
   negativeKey: string | null;
@@ -173,7 +174,7 @@ function buildComicRenderPlan(input: {
     engineId: resolved.engine.id, presetId: selectedPresetId, presetRevision: selectedPresetRevision, parameters: params, seed,
     referenceAssetKey, inputArtifacts, promptPolicy, loraPolicyRevision: loraPolicy.revision, loras, stylePrompt: visual.stylePrompt });
   return { purpose, workflow: resolved, presetId: selectedPresetId, presetRevision: selectedPresetRevision, promptPolicy,
-    parameters: params, positivePrompt: compiled.positivePrompt, stylePrompt: visual.stylePrompt, negativeOverride: visual.negativePrompt, negativePrompt, positiveKey, negativeKey, seed, model,
+    parameters: params, positivePrompt: compiled.positivePrompt, finalPositivePrompt: visual.finalPositivePrompt, stylePrompt: visual.stylePrompt, negativeOverride: visual.negativePrompt, negativePrompt, positiveKey, negativeKey, seed, model,
     sourceFingerprint: compiled.sourceFingerprint, sources: compiled.sources, loras, loraPolicyRevision: loraPolicy.revision,
     referenceInputKey: supportedReferenceKey, inputArtifacts, warnings: [...warnings, ...(missingReferences.length ? ['缺少工作流必需输入，已阻止提交。'] : [])],
     planHash, workflowSnapshot, visualConfiguration: effective.provenance };
@@ -181,6 +182,7 @@ function buildComicRenderPlan(input: {
 
 function previewFromPlan(plan: ComicRenderPlan, canSubmit: boolean): ComicRenderPreview {
   return {
+    promptOptimization: { enabled: plan.promptPolicy.enabled },
     planHash: plan.planHash, canSubmit, workflowId: plan.workflow.workflow.id, workflowVersion: plan.workflow.workflow.version,
     workflowName: plan.workflow.workflow.name, engineId: plan.workflow.engine.id, engineName: plan.workflow.engine.name, model: plan.model,
     seed: plan.seed, sourceFingerprint: plan.sourceFingerprint, presetId: plan.presetId, presetRevision: plan.presetRevision,
@@ -275,7 +277,7 @@ export async function processComicRenderJob(options: {
     store.updateComicJob(job.id, { status: 'running' });
     const optimized = await optimizeActivityImagePrompt(options.database, options.secrets, {
       activityId: options.activityId, workflowId: plan.workflow.workflow.id, workflowVersion: plan.workflow.workflow.version,
-      policy: plan.promptPolicy, sourcePrompt: plan.positivePrompt, existingNegativePrompt: plan.negativePrompt,
+      policy: plan.promptPolicy, sourcePrompt: plan.finalPositivePrompt ?? plan.positivePrompt, existingNegativePrompt: plan.negativePrompt,
       idempotencyKey: `comic:${options.activityId}:${job.id}`, traceId: options.context?.traceId ?? job.traceId,
       studioContext: options.context,
       actorScope: panel.actorIds.map((id) => ({
@@ -284,7 +286,7 @@ export async function processComicRenderJob(options: {
     }, options.fetcher ?? fetch);
     optimizerCallId = optimized.optimizerCallId;
     if (options.context && !options.context.canContinue()) throw codedError('studio_process_interrupted','已停止后续提交，未发送 ComfyUI 任务。');
-    const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
+    const finalPrompt = plan.finalPositivePrompt ?? finalizeActivityVisualPrompt(optimized.optimizedPrompt, plan.stylePrompt, plan.loras,
       v2FinalizeInputFrom(plan.workflow.workflow.editorConfig, optimized));
     const finalInputs = { ...plan.parameters, [plan.positiveKey]: finalPrompt };
     const finalNegative = plan.negativeOverride ?? optimized.negativePrompt ?? plan.negativePrompt;

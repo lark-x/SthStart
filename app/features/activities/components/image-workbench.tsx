@@ -67,6 +67,8 @@ import {
   useCancelImageAttempt,
   useUploadActivityAsset,
 } from '../mutations';
+import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
+import { ImagePromptOverride } from '@/app/features/generation/components/image-prompt-override';
 import { PromptSourcePanel } from './prompt-source-panel';
 import { previewActivitySlotVisual } from '../studio-api';
 import { StructuredDirectorControls, VisualParameterFields } from './visual-settings-controls';
@@ -96,7 +98,7 @@ export function ImageWorkbench({
   onLocateField,
 }: ImageWorkbenchProps) {
   const mediaSlots = document.mediaSlots || [];
-  const [advanced, setAdvanced] = useState(false);
+  const [advanced, setAdvanced] = useImageAdvancedMode('activity-image');
   const [drawing, setDrawing] = useState(false);
   const drawLock = useRef(false);
   const pendingDraw = useRef<{ signature: string; recipe: PromptRecipe; compilation: PromptCompilation; headVersion: number; idempotencyKey: string } | null>(null);
@@ -565,7 +567,7 @@ export function ImageWorkbench({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-default px-4 py-2">
         <p className="text-sm text-muted">使用活动默认配置，点击绘制即可。提示词准备与配置检查会自动完成。</p>
-        <Button size="sm" variant="outline" onClick={() => setAdvanced((value) => !value)}>{advanced ? '收起详细配置' : '详细配置与提示词来源'}</Button>
+        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={Object.keys(activeSlotConfig.params ?? {}).length + (activeSlotConfig.finalPositivePrompt !== undefined ? 1 : 0)} />
       </div>
       {/* Main body */}
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-0 min-w-0 min-h-0 overflow-y-auto xl:overflow-hidden">
@@ -587,7 +589,7 @@ export function ImageWorkbench({
               </Button>
               <Button
                 size="sm"
-                className="h-6 text-sm px-2 bg-sky-600 hover:bg-sky-500 text-white"
+                className="h-6 text-sm px-2 bg-accent hover:bg-accent/90 text-paper"
                 onClick={handleCommitRevision}
                 disabled={commitRevisionMutation.isPending}
               >
@@ -601,7 +603,7 @@ export function ImageWorkbench({
             <button
               type="button"
               className={`flex-1 py-1 text-center rounded font-medium transition ${
-                scopeTab === 'override' ? 'bg-sky-600 text-white shadow-sm' : 'text-muted hover:text-ink'
+                scopeTab === 'override' ? 'bg-accent text-paper shadow-sm' : 'text-muted hover:text-ink'
               }`}
               onClick={() => setScopeTab('override')}
             >
@@ -610,7 +612,7 @@ export function ImageWorkbench({
             <button
               type="button"
               className={`flex-1 py-1 text-center rounded font-medium transition ${
-                scopeTab === 'slot' ? 'bg-sky-600 text-white shadow-sm' : 'text-muted hover:text-ink'
+                scopeTab === 'slot' ? 'bg-accent text-paper shadow-sm' : 'text-muted hover:text-ink'
               }`}
               onClick={() => setScopeTab('slot')}
             >
@@ -619,7 +621,7 @@ export function ImageWorkbench({
             <button
               type="button"
               className={`flex-1 py-1 text-center rounded font-medium transition ${
-                scopeTab === 'global' ? 'bg-sky-600 text-white shadow-sm' : 'text-muted hover:text-ink'
+                scopeTab === 'global' ? 'bg-accent text-paper shadow-sm' : 'text-muted hover:text-ink'
               }`}
               onClick={() => setScopeTab('global')}
             >
@@ -761,7 +763,7 @@ export function ImageWorkbench({
             </span>
             <Button
               size="sm"
-              className={`${advanced ? '' : 'hidden'} h-7 text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium`}
+              className={`${advanced ? '' : 'hidden'} h-7 text-sm bg-accent hover:bg-accent/90 text-paper font-medium`}
               disabled={prepareRecipeMutation.isPending || drawing}
               onClick={() => void handlePrepareRecipe()}
             >
@@ -867,6 +869,10 @@ export function ImageWorkbench({
           </div>
 
           {/* Prompt Source Panel */}
+          <ImagePromptOverride advanced={advanced} finalPositivePrompt={activeSlotConfig.finalPositivePrompt}
+            promptOptimization={activeSlotConfig.promptOptimization} finalSupported={visualPreview?.promptAssembly === 'service-finalized-v1'}
+            sourcePrompt={visualPreview?.positivePrompt ?? ''} effectiveAI={visualPreview?.promptOptimization?.enabled ?? true}
+            disabled={drawing} onChange={patch => { handleUpdateSlotConfig(patch); setPreparedRecipe(null); setPreparedCompilation(null); }} />
           <div className={`${advanced ? '' : 'hidden'} bg-surface/40 border border-border-default rounded-[var(--radius-panel)] p-3`}>
             <PromptSourcePanel
               activityId={activity.id}
@@ -1140,7 +1146,7 @@ export function ImageWorkbench({
 
                           <Button
                             size="sm"
-                            className="h-6 text-sm px-2 bg-sky-600 hover:bg-sky-500 text-white font-medium"
+                            className="h-6 text-sm px-2 bg-accent hover:bg-accent/90 text-paper font-medium"
                             disabled={adoptingAssetKey === output.assetKey}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1211,7 +1217,7 @@ export function ImageWorkbench({
                     {currentAttempt.outputs?.[0] && (
                       <Button
                         size="sm"
-                        className="w-full bg-sky-600 hover:bg-sky-500 text-white text-sm h-7"
+                        className="w-full bg-accent hover:bg-accent/90 text-paper text-sm h-7"
                         onClick={() => {
                           handleAdopt(currentAttempt.outputs[0].assetKey);
                           setCompareAttemptId(null);
@@ -1242,7 +1248,7 @@ export function ImageWorkbench({
                     {compareAttempt.outputs?.[0] && (
                       <Button
                         size="sm"
-                        className="w-full bg-sky-600 hover:bg-sky-500 text-white text-sm h-7"
+                        className="w-full bg-accent hover:bg-accent/90 text-paper text-sm h-7"
                         onClick={() => {
                           handleAdopt(compareAttempt.outputs[0].assetKey);
                           setCompareAttemptId(null);

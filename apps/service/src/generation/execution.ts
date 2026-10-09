@@ -271,7 +271,12 @@ export async function createGenerationTask(
       throw generationError('input_binding_not_found', `工作流没有为输入 ${input.inputKey} 配置节点绑定。`);
     }
   }
-  const actualSeed = options.seed ?? Math.floor(Math.random() * 1_000_000_000);
+  const seedSchema = resolved.workflow.inputSchema as Record<string, { semantic?: string; type?: string }>;
+  const seedKey = Object.keys(seedSchema).find(key => seedSchema[key].semantic === 'seed')
+    ?? (Object.hasOwn(mergedInputs, 'seed') ? 'seed' : Object.keys(seedSchema).find(key => seedSchema[key].type === 'seed'));
+  const inputSeed = seedKey ? mergedInputs[seedKey] : undefined;
+  const actualSeed = options.seed ?? (typeof inputSeed === 'number' && Number.isSafeInteger(inputSeed) && inputSeed >= 0
+    ? inputSeed : Math.floor(Math.random() * 1_000_000_000));
   const renderInputs = { ...mergedInputs };
   for (const input of inputArtifacts) delete renderInputs[input.inputKey];
   const workflowSnapshot = injectActivityLoras(renderWorkflowSnapshot(
@@ -279,6 +284,7 @@ export async function createGenerationTask(
     resolved.workflow.nodeBindings,
     renderInputs,
     actualSeed,
+    seedKey,
   ), resolved.workflow.editorConfig, options.activityLoras);
 
   const canonicalPayload: Record<string, unknown> = {

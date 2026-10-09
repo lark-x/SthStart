@@ -63,46 +63,7 @@ export type AnalyzedInput = WorkflowAnalyzeResponse['inputs'][number];
 /** 连接发现返回的模型条目。 */
 export type ModelEntry = GenerationModelEntry;
 
-/** 创作中心选项投影。 */
-export type CreativePurposeOptions = {
-  purpose: string;
-  ready: boolean;
-  status: string;
-  workflow: { id: string; name: string; version: number; category?: string } | null;
-  engine: { id: string; name: string; kind: string; enabled: boolean } | null;
-  defaultPresetId: string | null;
-  presets: Array<{
-    id: string;
-    name: string;
-    description: string;
-    revision: number;
-    isDefault: boolean;
-    workflowId: string;
-    workflowName: string;
-    workflowVersion: number;
-    modelSummary: string | null;
-    values: Record<string, unknown>;
-  }>;
-  fields: FieldContract[];
-  modelChoices: ModelEntry[] | null;
-  modelChoicesStale?: boolean;
-};
-
-export type FieldContract = {
-  key: string;
-  label: string;
-  description: string | null;
-  type: 'text' | 'long-text' | 'integer' | 'number' | 'boolean' | 'enum' | 'model' | 'seed';
-  section: 'basic' | 'advanced';
-  order: number;
-  defaultValue: unknown;
-  minimum?: number;
-  maximum?: number;
-  step?: number;
-  enumValues?: string[];
-  required: boolean;
-  modelCategory?: string;
-};
+export type { CreativePurposeOptions, GenerationFieldContract as FieldContract } from '@sthstart/contracts';
 
 export function versionKey(workflowId: string, version: number) {
   return `${workflowId}::${version}`;

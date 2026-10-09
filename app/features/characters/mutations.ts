@@ -108,7 +108,7 @@ export function useUploadCharacterAvatar() {
 }
 
 export function useGenerateCharacterAvatar() {
-  return useMutation({ mutationFn: ({ id, prompt }: { id: string; prompt?: string }) => generateCharacterAvatar(id, prompt) });
+  return useMutation({ mutationFn: ({ id, prompt, input }: { id: string; prompt?: string; input?: import('@sthstart/contracts').CharacterAvatarGenerationRequest }) => generateCharacterAvatar(id, input ?? prompt) });
 }
 
 export function useApplyCharacterAvatar() {

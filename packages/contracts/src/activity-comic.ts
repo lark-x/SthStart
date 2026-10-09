@@ -182,6 +182,7 @@ export type ComicStoryboardAppliedResponse = Static<typeof ComicStoryboardApplie
 export const ComicRenderPreviewRequestSchema = Type.Object({ expectedDraftVersion: Type.Integer({ minimum: 1 }), seed: Type.Optional(Type.Integer({ minimum: 0, maximum: 2_147_483_647 })) });
 export type ComicRenderPreviewRequest = Static<typeof ComicRenderPreviewRequestSchema>;
 export const ComicRenderPreviewSchema = Type.Object({
+  promptOptimization: Type.Optional(Type.Object({ enabled: Type.Boolean() })),
   planHash: Type.String(), canSubmit: Type.Boolean(), workflowId: Type.String(), workflowVersion: Type.Integer(),
   workflowName: Type.String(), engineId: Type.String(), engineName: Type.String(), model: Type.Union([Type.String(), Type.Null()]),
   seed: Type.Integer({ minimum: 0, maximum: 2_147_483_647 }), sourceFingerprint: Type.String(),

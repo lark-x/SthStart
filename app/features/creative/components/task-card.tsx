@@ -55,6 +55,14 @@ export function TaskCard({
           <div className="h-1.5 overflow-hidden rounded-full bg-ink/10"><div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${typeof task.progress.value === 'number' ? Math.max(4, task.progress.value * 100) : 24}%` }} /></div>
         </div>
       )}
+      <details className="mt-3 border-t border-border-subtle pt-2">
+        <summary className="cursor-pointer text-xs text-muted">本次实际参数</summary>
+        <dl className="mt-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+          <dt className="text-muted">工作流版本</dt><dd className="break-words text-ink">{task.workflowId} v{task.workflowVersion}</dd>
+          <dt className="text-muted">实际种子</dt><dd className="text-ink">{task.actualSeed ?? '未记录'}</dd>
+          {Object.entries(task.replay.inputs).map(([key, value]) => <div key={key} className="contents"><dt className="break-words text-muted">{({ prompt: '正面提示词', negativePrompt: '负面提示词', width: '宽度', height: '高度', steps: '步数', cfg: 'CFG', seed: '种子' } as Record<string, string>)[key] ?? key}</dt><dd className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-ink">{value === '' ? '（空）' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}
+        </dl>
+      </details>
       {task.artifacts.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {task.artifacts.map((artifact) => (
@@ -64,7 +72,7 @@ export function TaskCard({
               ) : artifact.mediaKind === 'audio' || artifact.contentType?.startsWith('audio/') ? (
                 <div className="flex h-full items-center justify-center text-accent-dark"><FileAudio className="h-9 w-9" aria-label="音频结果" /></div>
               ) : (
-                <img src={artifact.url} alt={`生成结果 ${artifact.outputName}`} className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]" />
+                <img src={artifact.url} alt={`生成结果 ${artifact.outputName}`} className="h-full w-full object-contain transition-transform group-hover:scale-[1.03]" />
               )}
             </a>
           ))}

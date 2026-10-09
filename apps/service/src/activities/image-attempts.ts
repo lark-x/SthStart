@@ -198,17 +198,21 @@ export async function createImageGenerationAttempt(
     ? `act_${activityId}_${params.idempotencyKey}`
     : `act_${activityId}_${attemptId}`;
 
-  const policy = currentPlan.promptPolicySnapshot as unknown as ActivityImagePromptPolicy;
+  const storedPolicy = currentPlan.promptPolicySnapshot as unknown as ActivityImagePromptPolicy;
+  if (visual.finalPositivePrompt !== undefined && (!visual.finalPositivePrompt.trim() || resolvedWorkflow.workflow.editorConfig?.promptAssembly !== 'service-finalized-v1'))
+    throw Object.assign(new Error('完整提示词覆盖需要支持最终文本绑定的工作流。'), { code: 'final_prompt_unsupported', statusCode: 409 });
+  const policy = { ...storedPolicy, enabled: visual.finalPositivePrompt !== undefined ? false : visual.promptOptimization ?? storedPolicy.enabled,
+    ...(visual.finalPositivePrompt !== undefined ? { positiveSuffix: '' } : {}) };
   const sourceNegative = negativeKey ? String(inputs[negativeKey] ?? '') : '';
   const optimized = await optimizeActivityImagePrompt(database, secrets, {
     activityId, workflowId: currentPlan.workflowId, workflowVersion: currentPlan.workflowVersion, policy,
-    sourcePrompt, existingNegativePrompt: sourceNegative, idempotencyKey: scopedIdempotencyKey,
+    sourcePrompt: visual.finalPositivePrompt ?? sourcePrompt, existingNegativePrompt: sourceNegative, idempotencyKey: scopedIdempotencyKey,
     actorScope: (slot?.actorIds ?? []).map((id) => ({ actorId: id, displayName: content?.actors.find((actor) => actor.id === id)?.displayName })),
     ...(params.studioContext?{traceId:params.studioContext.traceId,studioContext:params.studioContext}:{}),
   }, fetcher);
   if(params.studioContext&&!params.studioContext.canContinue())throw Object.assign(new Error('已停止后续提交，未发送图片任务。'),{code:'studio_process_interrupted'});
   const style = imageConfig.artDirection ? recipe.blocks.filter(block => block.kind === 'style').map(block => block.renderedText).join(', ') : '';
-  const finalPrompt = finalizeActivityVisualPrompt(optimized.optimizedPrompt, style, loras,
+  const finalPrompt = visual.finalPositivePrompt ?? finalizeActivityVisualPrompt(optimized.optimizedPrompt, style, loras,
     v2FinalizeInputFrom(resolvedWorkflow.workflow.editorConfig, optimized));
   const finalNegative = visual.negativePrompt ?? optimized.negativePrompt ?? sourceNegative;
   if (positiveKey) inputs[positiveKey] = finalPrompt;

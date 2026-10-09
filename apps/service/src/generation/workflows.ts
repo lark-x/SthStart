@@ -155,6 +155,7 @@ export function renderWorkflowSnapshot(
   nodeBindings: Record<string, string[]>,
   inputs: Record<string, unknown>,
   actualSeed?: number | null,
+  primarySeedKey = 'seed',
 ): Record<string, unknown> {
   const cloned = JSON.parse(JSON.stringify(definition)) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
   for (const [inputKey, pathSegments] of Object.entries(nodeBindings)) {
@@ -163,9 +164,19 @@ export function renderWorkflowSnapshot(
     if (pathSegments.length === 3 && cloned[nodeId] && category === 'inputs' && cloned[nodeId].inputs) cloned[nodeId].inputs[paramName] = inputs[inputKey];
   }
   if (actualSeed !== undefined && actualSeed !== null) {
-    for (const node of Object.values(cloned)) {
-      if (node?.inputs && 'seed' in node.inputs) node.inputs.seed = actualSeed;
-      if (node?.inputs && 'noise_seed' in node.inputs) node.inputs.noise_seed = actualSeed;
+    const seedBindings = Object.entries(nodeBindings).filter(([, path]) => path[1] === 'inputs' && ['seed', 'noise_seed'].includes(path[2]));
+    if (seedBindings.length) {
+      const primary = seedBindings.find(([key]) => key === primarySeedKey)?.[0] ?? seedBindings[0][0];
+      for (const [key, [nodeId, , name]] of seedBindings) {
+        // Explicit secondary-stage seeds stay independent. The primary seed is authoritative.
+        if (cloned[nodeId]?.inputs && (key === primary)) cloned[nodeId].inputs[name] = actualSeed;
+      }
+    } else {
+      // Legacy graphs did not declare seed bindings. Keep their established behavior.
+      for (const node of Object.values(cloned)) {
+        if (node?.inputs && 'seed' in node.inputs) node.inputs.seed = actualSeed;
+        if (node?.inputs && 'noise_seed' in node.inputs) node.inputs.noise_seed = actualSeed;
+      }
     }
   }
   return cloned;

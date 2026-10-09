@@ -15,6 +15,8 @@ import { useToast } from '@/app/providers/ui-provider';
 import { ApiClientError } from '@/app/lib/api-client';
 import { fetchDraft } from '../api';
 import { fetchBeatRenderCandidates, previewBeatRender, rerenderBeatRenderCandidate, selectBeatRenderImage, submitBeatRender } from '../beat-renders-api';
+import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
+import { ImagePromptOverride } from '@/app/features/generation/components/image-prompt-override';
 import { StructuredDirectorControls, VisualParameterFields } from './visual-settings-controls';
 import { restoreVisualDefaults } from '../visual-settings';
 import { defaultCanvasHint, workflowOptionLabel } from '../lib/workflow-option-display';
@@ -43,7 +45,7 @@ export function BeatRenderWorkbench({
   const [plan, setPlan] = useState<BeatRenderPreview | null>(null);
   const [working, setWorking] = useState<'preview' | 'submit' | 'select' | 'rerender' | ''>('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useImageAdvancedMode('activity-beat');
   const [error, setError] = useState('');
   const [parametersValid, setParametersValid] = useState(true);
   const [unavailableMediaUrl, setUnavailableMediaUrl] = useState('');
@@ -239,9 +241,13 @@ export function BeatRenderWorkbench({
       - (['width', 'height'].indexOf(right.key) < 0 ? 2 : ['width', 'height'].indexOf(right.key))) ?? [];
   const settingContent = (
     <div className="space-y-4">
+      <ImageModeSwitch advanced={showAdvanced} onChange={setShowAdvanced} modifiedCount={Object.keys(settings.parameters ?? {}).length + (settings.finalPositivePrompt !== undefined ? 1 : 0)} />
       <p className="text-sm text-muted">直接使用活动默认配置即可绘制。这里的调整仅用于当前镜头。</p>
+      <ImagePromptOverride advanced={showAdvanced} finalPositivePrompt={settings.finalPositivePrompt} promptOptimization={settings.promptOptimization}
+        effectiveAI={plan?.promptOptimization.enabled ?? true} finalSupported={plan?.promptAssembly === 'service-finalized-v1'} sourcePrompt={plan?.positivePrompt ?? ''}
+        disabled={Boolean(working)} onChange={patch => persistSettings({ ...settings, ...patch })} />
       <label className="block space-y-1.5"><span className="text-sm font-medium">品质覆盖</span><select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>
-      <details className="rounded-[var(--radius-control)] border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
+      <details hidden={!showAdvanced} className="rounded-[var(--radius-control)] border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
       <label className="mt-3 block space-y-1.5"><span className="text-sm font-medium text-ink">工作流</span>
         {plan?.workflowOptions.length ? <select aria-label="镜头工作流" value={`${settings.purpose ?? plan.purpose}|${settings.workflowId ?? plan.workflowId}|${settings.workflowVersion ?? plan.workflowVersion}`} onChange={(event) => {
           const item = plan.workflowOptions.find((option) => `${option.purpose}|${option.workflowId}|${option.workflowVersion}` === event.target.value);
@@ -277,7 +283,7 @@ export function BeatRenderWorkbench({
           placeholder="补充构图、光影或画风要求；镜头动作会自动带入"
         />
       </div>
-      <details className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
+      <details hidden={!showAdvanced} className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
         <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="text-xs text-muted">需要改变画风或角色特征时，再添加、调权或关闭。</p>
         {plan?.loras.map((item) => {
           const existing = (settings.loraOverrides ?? []).find((override) => override.model === item.model);
@@ -323,7 +329,7 @@ export function BeatRenderWorkbench({
         }}><WandSparkles className="mr-1 h-4 w-4" />添加或覆盖</Button>
       </details>
       {error && <p role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 px-3 py-2 text-sm text-danger-fg">{error}</p>}
-      <details open={showAdvanced} onToggle={(event) => setShowAdvanced((event.currentTarget as HTMLDetailsElement).open)} className="rounded-[var(--radius-control)] border border-border-subtle p-3">
+      <details hidden={!showAdvanced} open={showAdvanced} onToggle={(event) => setShowAdvanced((event.currentTarget as HTMLDetailsElement).open)} className="rounded-[var(--radius-control)] border border-border-subtle p-3">
         <summary className="cursor-pointer select-none text-sm font-medium text-ink">高级设置：负向词、参考图、种子与采样参数</summary>
         <div className="mt-3 space-y-3">
           <VisualParameterFields key={`${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} recoveryKey={`sthstart:visual-input:beat:${activityId}:${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} fields={settingFields} values={settings.parameters ?? {}} onChange={parameters => persistSettings({ ...settings, parameters })} onValidityChange={setParametersValid} disabled={Boolean(working)} />

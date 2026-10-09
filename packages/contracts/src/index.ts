@@ -960,8 +960,26 @@ export const GenerationFieldContractSchema = Type.Object({
   enumValues: Type.Optional(Type.Array(Type.String())),
   required: Type.Boolean(),
   modelCategory: Type.Optional(Type.String()),
+  modelEditable: Type.Optional(Type.Boolean()),
+  allowedModels: Type.Optional(Type.Array(Type.String())),
 });
 export type GenerationFieldContract = Static<typeof GenerationFieldContractSchema>;
+
+export const ImageConfigurationSchema = Type.Object({
+  inputCapabilities: Type.Optional(WorkflowInputCapabilitiesSchema),
+  referenceInputKey: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  configurationHash: Type.String(),
+  outputFormat: Type.Union([Type.Literal('tags'), Type.Literal('prose')]),
+  fields: Type.Array(GenerationFieldContractSchema),
+  sizePresets: Type.Array(Type.Object({ label: Type.String(), width: Type.Integer(), height: Type.Integer() })),
+  promptMode: Type.Union([Type.Literal('service-finalized-v1'), Type.Literal('workflow-internal')]),
+  promptKey: Type.Union([Type.String(), Type.Null()]),
+  negativePromptKey: Type.Union([Type.String(), Type.Null()]),
+  modelChoices: Type.Array(GenerationModelEntrySchema),
+  modelChoicesStale: Type.Boolean(),
+  warnings: Type.Array(Type.String()),
+});
+export type ImageConfiguration = Static<typeof ImageConfigurationSchema>;
 
 export const CreativePresetOptionSchema = Type.Object({
   id: Type.String(),
@@ -974,6 +992,8 @@ export const CreativePresetOptionSchema = Type.Object({
   workflowVersion: Type.Integer(),
   modelSummary: Type.Union([Type.String(), Type.Null()]),
   values: Type.Record(Type.String(), Type.Unknown()),
+  configuration: Type.Optional(ImageConfigurationSchema),
+  unavailableReason: Type.Optional(Type.String()),
 });
 export type CreativePresetOption = Static<typeof CreativePresetOptionSchema>;
 
@@ -999,6 +1019,7 @@ export const CreativePurposeOptionsSchema = Type.Object({
   fields: Type.Array(GenerationFieldContractSchema),
   modelChoices: Type.Union([Type.Array(GenerationModelEntrySchema), Type.Null()]),
   modelChoicesStale: Type.Optional(Type.Boolean()),
+  configuration: Type.Optional(ImageConfigurationSchema),
 });
 export type CreativePurposeOptions = Static<typeof CreativePurposeOptionsSchema>;
 
@@ -4311,6 +4332,8 @@ export const ReferenceInputSchema = Type.Object({
 export type ReferenceInput = Static<typeof ReferenceInputSchema>;
 
 export const SlotImageConfigSchema = Type.Object({
+  finalPositivePrompt: Type.Optional(Type.String({ minLength: 1, maxLength: 20_000 })),
+  promptOptimization: Type.Optional(Type.Boolean()),
   slotId: Type.String(),
   quality: Type.Optional(ActivityRenderQualitySchema),
   director: Type.Optional(DirectorSettingsSchema),
@@ -4352,6 +4375,9 @@ export const ActivitySlotVisualPreviewRequestSchema = Type.Object({
 }, { additionalProperties: false });
 export type ActivitySlotVisualPreviewRequest = Static<typeof ActivitySlotVisualPreviewRequestSchema>;
 export const ActivitySlotVisualPreviewSchema = Type.Object({
+  promptAssembly: Type.Optional(PromptAssemblySchema),
+  positivePrompt: Type.Optional(Type.String()),
+  promptOptimization: Type.Optional(Type.Object({ enabled: Type.Boolean() })),
   workflowId: Type.String(), workflowVersion: Type.Integer(), fields: Type.Array(BeatRenderParameterFieldSchema),
   parameters: Type.Record(Type.String(), Type.Unknown()), quality: ActivityRenderQualitySchema,
   canvas: Type.Union([Type.Object({ width: Type.Integer(), height: Type.Integer() }), Type.Null()]),
@@ -6353,3 +6379,4 @@ export function normalizeCreationProfile(value:Record<string,unknown>):CreationP
 }
 export * from './activity-publication.js';
 export * from './harness-mcp.js';
+export * from './image-generation.js';

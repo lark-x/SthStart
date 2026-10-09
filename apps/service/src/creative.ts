@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { imageGenerationAudit, buildImagePurposeOptions, resolveImageConfiguration } from './generation/image-configuration.js';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -37,6 +38,9 @@ type CreativeMode = 'text-to-image' | 'image-to-image' | 'h3-t2v' | 'h3-i2v' | '
 type H3Purpose = 'h3-t2v' | 'h3-i2v' | 'h3-fl2va';
 
 interface CreativeTaskBody {
+  configurationHash?: string;
+  optimizerCallId?: string;
+  sourceDescription?: string;
   mode?: unknown;
   prompt?: unknown;
   negativePrompt?: unknown;
@@ -298,6 +302,7 @@ function safeStatusBinding(database: ServiceDatabase, purpose: string) {  const 
  * 库存视图与允许列表的交集投影，缺失时返回 null 由界面显示模型组合摘要。
  */
 function buildPurposeOptions(database: ServiceDatabase, purpose: string): CreativePurposeOptions {
+  if (purpose === CREATIVE_TEXT_PURPOSE || purpose === CREATIVE_IMAGE_PURPOSE) return buildImagePurposeOptions(database, CREATIVE_APP_ID, purpose);
   const binding = safeStatusBinding(database, purpose);
   const presets = listPresets(database, { appId: CREATIVE_APP_ID, purpose }).filter((preset) => preset.enabled);
   const assignment = database.connection.prepare(
@@ -404,7 +409,7 @@ function sendCreativeError(reply: FastifyReply, error: unknown) {
   const code = (error as { code?: string })?.code || (error instanceof Error ? error.message : 'creative_request_failed');
   const safeCode = /^[a-z][a-z0-9_]{2,80}$/.test(code) ? code : 'creative_request_failed';
   const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error)).slice(0, 300);
-  return reply.code(errorStatus(safeCode)).send({ error: safeCode, message });
+  return reply.code((error as { statusCode?: number }).statusCode ?? errorStatus(safeCode)).send({ error: safeCode, message });
 }
 
 export function ensureCreativeApp(database: ServiceDatabase) {
@@ -607,12 +612,15 @@ export function registerCreativeRoutes(
   app.post<{ Body: CreativeTaskBody }>('/api/v1/admin/creative/tasks', async (request, reply) => {
     try {
       const body = request.body ?? {};
+      if (body.configurationHash !== undefined && (typeof body.configurationHash !== 'string' || !/^[a-f0-9]{64}$/.test(body.configurationHash))) throw errorWithCode('invalid_configuration_hash', '生成配置标识无效，请刷新后重试。');
+      if (body.optimizerCallId !== undefined && typeof body.optimizerCallId !== 'string') throw errorWithCode('invalid_optimizer_call', '提示词记录标识无效。');
+      if (body.sourceDescription !== undefined && (typeof body.sourceDescription !== 'string' || body.sourceDescription.length > 10000)) throw errorWithCode('invalid_source_description', '原始画面描述格式不正确。');
       const mode = normalizeMode(body.mode);
       if (!mode) throw errorWithCode('invalid_mode', '请选择有效的生成模式。');
       const isVideo = mode.startsWith('h3-');
       // 预设路径下提示词可以来自 parameters；旧路径仍要求顶层提示词。
       const presetIdEarly = typeof body.presetId === 'string' && body.presetId.trim();
-      const prompt = parsePrompt(body.prompt, '提示词', !presetIdEarly);
+      const prompt = parsePrompt(body.prompt, '提示词', !presetIdEarly && !body.configurationHash);
       const negativePrompt = parsePrompt(body.negativePrompt, '反向提示词');
       const seed = body.seed === undefined || body.seed === null || body.seed === ''
         ? null
@@ -640,7 +648,7 @@ export function registerCreativeRoutes(
             throw errorWithCode('ambiguous_parameter', `字段 "${key}" 同时出现在顶层输入与 parameters 中，请只提供一处。`);
           }
         }
-      } else if (parameters && Object.keys(parameters).length) {
+      } else if (parameters && Object.keys(parameters).length && !body.configurationHash) {
         throw errorWithCode('parameters_require_preset', 'parameters 必须与 presetId 一起提交；旧请求请继续使用顶层字段。');
       }
 
@@ -658,7 +666,12 @@ export function registerCreativeRoutes(
       if (mode === 'h3-fl2va' && (!firstFrameId || !lastFrameId)) throw errorWithCode('source_artifact_required', '首尾帧视频需要同时提供首帧和尾帧图片。');
 
       const inputArtifacts = [];
-      if (sourceArtifactId && mode === 'image-to-image') inputArtifacts.push({ artifactId: sourceArtifactId, inputKey: 'sourceImage' });
+      if (sourceArtifactId && mode === 'image-to-image') {
+        const resolvedImage = body.configurationHash ? resolveImageConfiguration(database, { appId: CREATIVE_APP_ID, purpose: modePurpose(mode), presetId, presetRevision }) : null;
+        const inputKey = resolvedImage ? resolvedImage.configuration.referenceInputKey : 'sourceImage';
+        if (!inputKey) throw errorWithCode('input_binding_not_found', '当前生成方案没有映射参考图片输入。');
+        inputArtifacts.push({ artifactId: sourceArtifactId, inputKey });
+      }
       else if (mode === 'h3-i2v') {
         const id = firstFrameId || sourceArtifactId;
         if (id) inputArtifacts.push({ artifactId: id, inputKey: 'firstFrame' });
@@ -685,10 +698,13 @@ export function registerCreativeRoutes(
       // 与校验在共享生成入口 createGenerationTask 内执行，V2 工作流启用 strict。
       const userValues = isVideo
         ? { prompt, duration, aspectRatio }
-        : presetId
+        : presetId || body.configurationHash
           ? { ...collectProvidedTopLevel(body, false), ...parameters }
           : collectProvidedTopLevel(body, false);
 
+      const imageAudit = !isVideo && (body.configurationHash || body.optimizerCallId)
+        ? imageGenerationAudit(database, { appId: CREATIVE_APP_ID, purpose: modePurpose(mode), presetId, presetRevision }, body.configurationHash, body.optimizerCallId, body.sourceDescription)
+        : {};
       const task = await createGenerationTask(config, database, secrets, {
         appId: CREATIVE_APP_ID,
         idempotencyKey: requestIdempotencyKey(request, body),
@@ -699,7 +715,7 @@ export function registerCreativeRoutes(
         seed,
         priority: 'interactive',
         validationMode: 'strict',
-        audit: { feature: 'creative', businessEvent: `creative.${mode}.generate`, objectType: 'creative-task' },
+        audit: { feature: 'creative', businessEvent: `creative.${mode}.generate`, objectType: 'creative-task', ...imageAudit },
       }, fetcher);
       return reply.code(202).send(safeTask(database, task.id) ?? task);
     } catch (error) {

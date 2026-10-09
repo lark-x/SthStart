@@ -2,6 +2,8 @@ import { browseCharacters, characterWorks, editCharacterOrganization, normalizeO
 import type { OrganizationEdit } from './characters/organization.js';
 import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
+import { CharacterAvatarGenerationRequestSchema, type CharacterAvatarGenerationRequest } from '@sthstart/contracts';
+import { imageGenerationAudit, mergeImageParameters, resolveImageConfiguration } from './generation/image-configuration.js';
 import { existsSync } from 'node:fs';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -854,20 +856,29 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     } catch (error) { return reply.code(502).send({ error: 'generation_failed', message: error instanceof Error ? error.message : String(error) }); }
   });
 
-  app.post<{ Params: { id: string }; Body: { prompt?: string; seed?: number | null } }>('/api/v1/admin/characters/:id/generate-avatar', async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: CharacterAvatarGenerationRequest }>('/api/v1/admin/characters/:id/generate-avatar', {
+    preValidation: async request => { request.body ??= {}; },
+    schema: { body: CharacterAvatarGenerationRequestSchema },
+  }, async (request, reply) => {
     const row = database.connection.prepare('SELECT draft_json FROM character_profiles WHERE id=?').get(request.params.id) as { draft_json: string } | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
     const draft = normalizeCharacterDraft(JSON.parse(row.draft_json));
-    const prompt = text(request.body?.prompt, 4_000) || characterAvatarPrompt(draft);
+    const prompt = text(request.body?.prompt, 10_000) || characterAvatarPrompt(draft);
     if (prompt.length < 2) return reply.code(400).send({ error: 'appearance_required', message: '请先补充角色外观描述。' });
     const seed = request.body?.seed == null ? null : Number(request.body.seed);
     if (seed !== null && (!Number.isSafeInteger(seed) || seed < 0)) return reply.code(400).send({ error: 'invalid_seed' });
     const header = request.headers['idempotency-key'];
     try {
+      const body = request.body ?? {};
+      const audit = body.configurationHash || body.optimizerCallId
+        ? imageGenerationAudit(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }, body.configurationHash, body.optimizerCallId, body.sourceDescription) : {};
+      const avatarInputs = body.parameters ? mergeImageParameters(resolveImageConfiguration(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }), body.parameters) : { prompt };
       const task = await createGenerationTask(config, database, secrets, {
         appId: 'characters', purpose: 'character-avatar',
-        inputs: { prompt, width: 768, height: 1024, steps: 24, characterId: request.params.id },
-        seed, priority: 'interactive', idempotencyKey: typeof header === 'string' ? header : null,
+        inputs: { ...avatarInputs, characterId: request.params.id },
+        presetId: body.presetId, presetRevision: body.presetRevision,
+        audit: { feature: 'character-avatar', ...audit },
+        seed, priority: 'interactive', idempotencyKey: typeof header === 'string' ? header : body.idempotencyKey ?? null,
       }, fetcher);
       return reply.code(202).send(task);
     } catch (error) { return generationError(reply, error); }

@@ -7,13 +7,7 @@ import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { fetchGenerationPresets, setDefaultGenerationPreset, updateGenerationPreset } from '../api';
 import type { Assignment, GenerationPreset, Workflow } from '../types';
-import { ActivityImagePromptPolicyPanel } from './activity-image-prompt-policy-panel';
 
-const RESOLUTIONS = [
-  { label: '标准横图', width: 768, height: 512 },
-  { label: '清晰横图', width: 1024, height: 768 },
-  { label: '方图', width: 1024, height: 1024 },
-] as const;
 
 function isAvailableImagePreset(preset: GenerationPreset, workflows: Workflow[]) {
   const workflow = workflows.find((item) => item.id === preset.workflowId);
@@ -23,15 +17,16 @@ function isAvailableImagePreset(preset: GenerationPreset, workflows: Workflow[])
 
 function dimensionLimit(workflow: Workflow | undefined, versionNumber: number, key: 'width' | 'height') {
   const version = workflow?.versions.find((item) => item.version === versionNumber);
-  const schema = version?.inputSchema[key] as { minimum?: number; maximum?: number } | undefined;
-  return { minimum: schema?.minimum ?? 256, maximum: schema?.maximum ?? 4096 };
+  const schema = version?.inputSchema[key] as { minimum?: number; maximum?: number; step?: number } | undefined;
+  return { minimum: schema?.minimum ?? 1, maximum: schema?.maximum ?? Number.MAX_SAFE_INTEGER, step: schema?.step ?? 1 };
 }
 
 /** Common settings use published presets; raw workflow graphs remain in advanced configuration. */
-export function ActivityImageQuickSettings({ workflows, assignments, onDataChanged }: {
+export function ActivityImageQuickSettings({ workflows, assignments, onDataChanged, onManagePrompts }: {
   workflows: Workflow[];
   assignments: Assignment[];
   onDataChanged: () => Promise<void>;
+  onManagePrompts?: () => void;
 }) {
   const [presets, setPresets] = useState<GenerationPreset[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -45,9 +40,12 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
   const available = useMemo(() => presets.filter((item) => isAvailableImagePreset(item, workflows)), [presets, workflows]);
   const selected = available.find((item) => item.id === selectedId);
   const selectedWorkflow = workflows.find((item) => item.id === selected?.workflowId);
+  const selectedVersion = selectedWorkflow?.versions.find(item => item.version === selected?.workflowVersion);
+  const resolutions = selectedVersion?.editorConfig?.sizePresets ?? [];
+  const dimensionDefault = (key: 'width' | 'height') => selected?.values[key] ?? (selectedVersion?.inputSchema[key] as { default?: unknown } | undefined)?.default ?? '';
   const widthLimit = dimensionLimit(selectedWorkflow, selected?.workflowVersion ?? 0, 'width');
   const heightLimit = dimensionLimit(selectedWorkflow, selected?.workflowVersion ?? 0, 'height');
-  const dimensionsDirty = Boolean(selected && (width !== String(selected.values.width ?? 768) || height !== String(selected.values.height ?? 512)));
+  const dimensionsDirty = Boolean(selected && (width !== String(dimensionDefault('width')) || height !== String(dimensionDefault('height'))));
   const defaultPreset = available.find((item) => item.id === assignment?.default_preset_id);
 
   const reload = async () => {
@@ -67,16 +65,15 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
   useEffect(() => {
     if (!available.length || available.some((item) => item.id === selectedId)) return;
     const preferred = available.find((item) => item.id === assignment?.default_preset_id)
-      ?? [...available].filter((item) => item.workflowId === 'anima-activity' && /base/i.test(item.name))
-        .sort((left, right) => right.workflowVersion - left.workflowVersion)[0]
+
       ?? available[0];
     setSelectedId(preferred.id);
   }, [available, selectedId, assignment?.default_preset_id]);
 
   useEffect(() => {
     if (!selected) return;
-    setWidth(String(selected.values.width ?? 768));
-    setHeight(String(selected.values.height ?? 512));
+    setWidth(String(dimensionDefault('width')));
+    setHeight(String(dimensionDefault('height')));
   }, [selected?.id, selected?.revision]);
 
   const applyDefault = async () => {
@@ -112,7 +109,7 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
   return <div className="space-y-4">
     <section className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-6" aria-labelledby="activity-image-default-title">
       <h2 id="activity-image-default-title" className="text-base font-semibold text-ink">默认绘制模式</h2>
-      <p className="mt-1 text-sm text-muted">像邻舍一样，先选绘制模式和尺寸。高级工作流节点不需要日常修改。</p>
+      <p className="mt-1 text-sm text-muted">这里管理活动默认方案。创作中心和角色头像的默认方案在“预设与用途”中分别设置。</p>
       <p className="mt-3 rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-sm text-ink">
         当前活动默认：{defaultPreset ? `${defaultPreset.name} · v${defaultPreset.workflowVersion}` : assignment ? `${workflows.find((item) => item.id === assignment.workflow_id)?.name ?? assignment.workflow_id} v${assignment.workflow_version}（未绑定预设）` : '未配置'}
       </p>
@@ -126,7 +123,7 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
           </Select>
         </label>
         {selected && <>
-          <div className="flex flex-wrap gap-2">{RESOLUTIONS.filter((item) => item.width <= widthLimit.maximum && item.height <= heightLimit.maximum).map((item) => <Button type="button" key={item.label} size="sm" variant={width === String(item.width) && height === String(item.height) ? 'accent' : 'outline'} onClick={() => { setWidth(String(item.width)); setHeight(String(item.height)); }}>{item.label} · {item.width}×{item.height}</Button>)}</div>
+          <div className="flex flex-wrap gap-2">{resolutions.filter((item) => item.width <= widthLimit.maximum && item.height <= heightLimit.maximum).map((item) => <Button type="button" key={item.label} size="sm" variant={width === String(item.width) && height === String(item.height) ? 'accent' : 'outline'} onClick={() => { setWidth(String(item.width)); setHeight(String(item.height)); }}>{item.label} · {item.width}×{item.height}</Button>)}</div>
           <details className="max-w-xl rounded-[var(--radius-control)] border border-border-subtle px-3 py-2"><summary className="cursor-pointer text-sm text-muted">自定义宽高</summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="space-y-1 text-sm text-ink">宽度<Input type="number" min={widthLimit.minimum} max={widthLimit.maximum} step="8" value={width} onChange={(event) => setWidth(event.target.value)} /></label><label className="space-y-1 text-sm text-ink">高度<Input type="number" min={heightLimit.minimum} max={heightLimit.maximum} step="8" value={height} onChange={(event) => setHeight(event.target.value)} /></label></div>
           </details>
@@ -137,6 +134,6 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
       {notice && <p role="status" className="mt-3 text-sm text-success">{notice}</p>}
       {error && <Alert variant="danger" title="常用设置未保存">{error}</Alert>}
     </section>
-    <ActivityImagePromptPolicyPanel workflows={workflows} preferredWorkflow={selected ? { id: selected.workflowId, version: selected.workflowVersion } : undefined} />
+    <Button variant="outline" onClick={onManagePrompts}>管理提示词策略</Button>
   </div>;
 }

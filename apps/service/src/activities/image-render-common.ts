@@ -254,7 +254,9 @@ export function v2FinalizeInputFrom(
 export function buildActivityImageWorkflowSnapshot(
   resolved: ReturnType<typeof resolveWorkflowAndEngine>, parameters: Record<string, unknown>, seed: number, loras: ActivityLora[],
 ) {
-  const base = renderWorkflowSnapshot(resolved.workflow.definition, resolved.workflow.nodeBindings, parameters, seed);
+  const schema = resolved.workflow.inputSchema as InputSchemaMap;
+  const primarySeedKey = Object.keys(schema).find(key => schema[key].semantic === 'seed') ?? 'seed';
+  const base = renderWorkflowSnapshot(resolved.workflow.definition, resolved.workflow.nodeBindings, parameters, seed, primarySeedKey);
   return injectActivityLoras(base, resolved.workflow.editorConfig, loras.filter((item) => item.enabled));
 }
 
@@ -348,7 +350,12 @@ export function resolveEffectiveActivityVisualPlan(database: ServiceDatabase, in
   if (negativeKey && !resolved.workflow.nodeBindings[negativeKey]) {
     throw Object.assign(new Error('工作流声明了反向提示词但缺少节点绑定。'), { code: 'negative_prompt_binding_missing', statusCode: 409 });
   }
-  const promptPolicy = resolveActivityImagePromptPolicy(database, resolved.workflow.id, resolved.workflow.version);
+  const storedPromptPolicy = resolveActivityImagePromptPolicy(database, resolved.workflow.id, resolved.workflow.version);
+  const promptPolicy = { ...storedPromptPolicy, enabled: visual.finalPositivePrompt !== undefined ? false : visual.promptOptimization ?? storedPromptPolicy.enabled,
+    ...(visual.finalPositivePrompt !== undefined ? { positiveSuffix: '' } : {}) };
+  if (visual.finalPositivePrompt !== undefined && (!visual.finalPositivePrompt.trim() || resolved.workflow.editorConfig?.promptAssembly !== 'service-finalized-v1')) {
+    throw Object.assign(new Error('完整提示词覆盖需要直接绑定最终文本的工作流，且内容不能为空。'), { code: 'final_prompt_unsupported', statusCode: 409 });
+  }
   const loraPolicy = readActivityLoraPolicy(database, resolved.workflow.id, resolved.workflow.version);
   const loras = mergeActivityLoras(loraPolicy.entries, input.actors.flatMap(actor => actor.visualLoras ?? []),
     input.settings.loraOverrides ?? [], { rejectActorConflicts: true });
@@ -370,6 +377,8 @@ export function resolveEffectiveActivityVisualPlan(database: ServiceDatabase, in
     ? configured : randomInt(0, 2147483647));
   if (seedKey && (seedKey in parameters || schema[seedKey].required)) parameters[seedKey] = seed;
   const provenance = {
+    ...(visual.finalPositivePrompt !== undefined ? { finalPositivePrompt: visual.finalPositivePrompt } : {}),
+    ...(visual.promptOptimization !== undefined ? { promptOptimization: visual.promptOptimization } : {}),
     imageConfigRevisionId: input.imageConfigRevisionId ?? null,
     quality: visual.quality, style: input.imageConfig?.artDirection?.selectedStyle ?? null,
     canvas: input.imageConfig?.artDirection?.canvas ?? null,

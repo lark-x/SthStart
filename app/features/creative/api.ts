@@ -15,6 +15,10 @@ import type {
 } from '@sthstart/contracts';
 
 export type CreativeTaskInput = {
+  configurationHash?: string;
+  optimizerCallId?: string;
+  sourceDescription?: string;
+  idempotencyKey?: string;
   mode: 'text-to-image' | 'image-to-image' | 'h3-t2v' | 'h3-i2v' | 'h3-fl2va';
   prompt?: string;
   negativePrompt?: string;

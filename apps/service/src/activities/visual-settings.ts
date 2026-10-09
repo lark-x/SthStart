@@ -14,6 +14,8 @@ export function resolveVisualSettings(document: ImageConfigDocument | null, loca
     ...(!direction ? { workflowId: document?.defaultWorkflowId, workflowVersion: document?.defaultWorkflowVersion } : {}),
   };
   return {
+    finalPositivePrompt: local.finalPositivePrompt,
+    promptOptimization: local.promptOptimization,
     quality, selection,
     parameters: {
       ...(!direction ? document?.defaultParams : {}),

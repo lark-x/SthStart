@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { registerImagePreparationRoutes } from './generation/image-preparation.js';
 import type { FastifyInstance } from 'fastify';
 import type { GenerationAnalyzedInput } from '@sthstart/contracts';
 import {
@@ -176,6 +177,7 @@ export function registerGenerationConfigRoutes(
   secrets: SecretStore,
   fetcher: typeof fetch = fetch,
 ) {
+  registerImagePreparationRoutes(app, database, secrets, fetcher);
   app.get<{ Querystring: { workflowId?: string; workflowVersion?: string } }>(
     '/api/v1/admin/generation/activity-image-prompt-policy',
     { schema: { response: { 200: ActivityImagePromptPolicyResponseSchema } } },

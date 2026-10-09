@@ -1,5 +1,10 @@
 'use client';
 
+import { useQuery } from '@tanstack/react-query';
+import type { GenerationTaskDescriptor } from '@sthstart/contracts';
+import { ImageGenerationPanel } from '@/app/features/generation/components/image-generation-panel';
+import { fetchImageGenerationOptions } from '@/app/features/generation/image-api';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -90,6 +95,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [aiAvatarDialogOpen, setAiAvatarDialogOpen] = useState(false);
   const [aiAvatarPrompt, setAiAvatarPrompt] = useState('');
+  const [avatarResult, setAvatarResult] = useState<GenerationTaskDescriptor | null>(null);
+  const avatarOptions = useQuery({ queryKey: ['generation', 'image-options', 'characters', 'character-avatar'],
+    queryFn: () => fetchImageGenerationOptions('characters', 'character-avatar'), enabled: aiAvatarDialogOpen });
   const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
   const [newVariantName, setNewVariantName] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -101,6 +109,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
   // AI Avatar Task
   const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
+  const [avatarPollError, setAvatarPollError] = useState('');
 
   // Form
   const {
@@ -149,11 +158,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   }, [detailData, reset]);
 
   // AI Avatar Generation Polling
-  const applyAvatarRef = useRef(applyAvatarMutation);
-  useEffect(() => {
-    applyAvatarRef.current = applyAvatarMutation;
-  }, [applyAvatarMutation]);
-
   useEffect(() => {
     if (!avatarTaskId || !characterId) return;
     let stopped = false;
@@ -162,19 +166,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       try {
         const task = await fetchCharacterGenerationTask(characterId, avatarTaskId);
         if (stopped) return;
+        setAvatarPollError('');
         if (task.status === 'succeeded') {
-          setAvatarTaskId(null);
-          try {
-            await applyAvatarRef.current.mutateAsync({ id: characterId, taskId: avatarTaskId });
-            if (!stopped) {
-              await refetchDetail();
-              toast.success('AI 头像已成功生成并应用！');
-            }
-          } catch (applyErr) {
-            if (!stopped) {
-              toast.error('应用 AI 头像失败', applyErr instanceof Error ? applyErr.message : String(applyErr));
-            }
-          }
+          setAvatarTaskId(null); setAvatarResult(task); setAvatarPollError('');
+          toast.success('头像生成完成，请预览后选择是否应用。');
           return;
         }
         if (['failed', 'cancelled', 'abandoned'].includes(task.status)) {
@@ -185,8 +180,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         timer = window.setTimeout(() => void poll(), 1500);
       } catch (err) {
         if (!stopped) {
-          setAvatarTaskId(null);
-          toast.error('查询头像生成状态失败', err instanceof Error ? err.message : String(err));
+          setAvatarPollError(err instanceof Error ? err.message : String(err));
+          timer = window.setTimeout(() => void poll(), 5000);
         }
       }
     };
@@ -337,27 +332,12 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       draft.work,
       draft.appearance.baseText,
       draft.appearance.defaultOutfitText,
-      'masterpiece, best quality, anime portrait, official art',
+      '角色头像，突出面部特征，保持角色身份和服装一致',
     ]
       .filter(Boolean)
       .join(', ');
     setAiAvatarPrompt(defaultPrompt);
     setAiAvatarDialogOpen(true);
-  };
-
-  const handleStartAiAvatarGeneration = async () => {
-    if (!characterId) return;
-    try {
-      setAiAvatarDialogOpen(false);
-      const task = await generateAvatarMutation.mutateAsync({
-        id: characterId,
-        prompt: aiAvatarPrompt.trim() || undefined,
-      });
-      setAvatarTaskId(task.id);
-      toast.success('AI 头像生成任务已提交，正在生成中…');
-    } catch (err: unknown) {
-      toast.error('提交 AI 头像生成失败', err instanceof Error ? err.message : String(err));
-    }
   };
 
   // Handle Export Tavern Card
@@ -674,14 +654,13 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={!characterId || avatarTaskId !== null}
-                loading={avatarTaskId !== null}
+                disabled={!characterId}
                 onClick={handleTriggerAiAvatar}
                 className="justify-start text-xs h-9"
                 title="基于外观与服装特征通过 ComfyUI 生成专属头像"
               >
                 <Palette className="h-3.5 w-3.5 mr-1 text-indigo-500" aria-hidden="true" />
-                <span>AI 生成头像</span>
+                <span>{avatarTaskId ? '查看头像生成进度' : avatarResult ? '预览新头像' : 'AI 生成头像'}</span>
               </Button>
 
               {/* 图片链接导入 */}
@@ -1123,39 +1102,33 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
       </Dialog>
 
-      {/* AI 头像生成确认对话框 */}
-      <Dialog
-        open={aiAvatarDialogOpen}
-        onOpenChange={setAiAvatarDialogOpen}
-        title="AI 一键生成头像"
-        description="系统已根据角色的外貌与代表性装扮自动合成提示词，您可以根据需要进行微调。"
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setAiAvatarDialogOpen(false)}>
-              取消
-            </Button>
-            <Button
-              size="sm"
-              variant="accent"
-              disabled={generateAvatarMutation.isPending}
-              loading={generateAvatarMutation.isPending}
-              onClick={handleStartAiAvatarGeneration}
-            >
-              开始生成
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-3 py-2">
-          <label className="block text-xs font-semibold text-ink">生图提示词 (Prompt)</label>
-          <Textarea
-            rows={4}
-            value={aiAvatarPrompt}
-            onChange={(e) => setAiAvatarPrompt(e.target.value)}
-            className="text-sm font-mono"
-          />
+      <ResponsiveEditOverlay open={aiAvatarDialogOpen} onOpenChange={setAiAvatarDialogOpen}
+        title="生成角色头像" description="根据角色外观生成图片，预览后再应用为头像。">
+        <div className="space-y-4">
+          <ImageGenerationPanel appId="characters" purpose="character-avatar" contextKey={`character-avatar:${characterId}`}
+            options={avatarOptions.data} loading={avatarOptions.isLoading} initialDescription={aiAvatarPrompt}
+            onRefresh={() => { void avatarOptions.refetch(); }}
+            blockedReason={avatarTaskId ? '已有头像任务正在生成，完成后可预览结果。' : undefined}
+            onGenerate={async input => {
+              if (!characterId) throw new Error('请先保存角色。');
+              const task = await generateAvatarMutation.mutateAsync({ id: characterId, input });
+              setAvatarTaskId(task.id); toast.success('头像任务已提交');
+            }} />
+          {avatarPollError && <p role="status" className="text-sm text-muted">状态暂时无法读取，正在重试：{avatarPollError}</p>}
+          {avatarTaskId && <p role="status" className="text-sm text-muted">头像正在生成，可关闭面板继续编辑角色。</p>}
+          {avatarResult && <section aria-label="头像生成结果" className="space-y-3">
+            {avatarResult.artifacts.filter(item => item.mediaKind === 'image').map(item => <img key={item.artifactId}
+              src={`/api/admin/artifacts/${encodeURIComponent(item.artifactId)}/file`} alt="新生成的角色头像" className="mx-auto max-h-80 max-w-full rounded-[var(--radius-panel)] object-contain" />)}
+            <Button variant="accent" loading={applyAvatarMutation.isPending} onClick={async () => {
+              if (!characterId) return;
+              try {
+                await applyAvatarMutation.mutateAsync({ id: characterId, taskId: avatarResult.id });
+                await refetchDetail(); setAvatarResult(null); setAiAvatarDialogOpen(false); toast.success('已应用新头像');
+              } catch (error) { toast.error('应用头像失败', error instanceof Error ? error.message : String(error)); }
+            }}>应用为头像</Button>
+          </section>}
         </div>
-      </Dialog>
+      </ResponsiveEditOverlay>
 
       {/* 新增衍生形态对话框 */}
       <Dialog

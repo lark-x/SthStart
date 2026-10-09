@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { RefreshCw, Sparkles, ImagePlus } from 'lucide-react';
-import type { ArtifactDescriptor, CreativeTaskResponse } from '@sthstart/contracts';
+import type { ArtifactDescriptor, CreativeTaskResponse, ImageConfiguration } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
-import { Dialog } from '@/app/components/ui/dialog';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { SplitPanes } from '@/app/components/shared/split-panes';
@@ -23,6 +22,7 @@ import {
 } from '@/app/features/creative/api';
 import { useCreativeArtifacts, useCreativeGenerationOptions, useCreativeStatus, useCreativeTasks } from '@/app/features/creative/queries';
 import {
+  creativeImageAccept,
   creativeImageAllowed,
   creativeInputMaxBytes,
   formatByteLimit,
@@ -32,9 +32,10 @@ import {
 } from '@/app/features/creative/types';
 import { useGenerationEvents } from '@/app/features/creative/events';
 import { CreativeStatusCard } from '@/app/features/creative/components/status-card';
-import { ImageGenerator } from '@/app/features/creative/components/image-generator';
-import { PresetGenerator } from '@/app/features/creative/components/preset-generator';
+import { ImageGenerationPanel, type ImageGenerationInitial } from '@/app/features/generation/components/image-generation-panel';
+import { ArtifactPicker } from '@/app/features/creative/components/artifact-picker';
 import { VideoGenerator } from '@/app/features/creative/components/video-generator';
+import { ImageResultPreview } from '@/app/features/creative/components/image-result-preview';
 import { TaskList } from '@/app/features/creative/components/task-list';
 import { MediaGallery } from '@/app/features/creative/components/media-gallery';
 import { creativeKeys } from '@/app/lib/query-keys';
@@ -72,79 +73,9 @@ export function CreativeClient() {
   const imageOptions = mode === 'text-to-image' || mode === 'image-to-image'
     ? optionsQuery.data?.purposes.find((item) => item.purpose === mode)
     : undefined;
-  const presetFlow = Boolean(imageOptions && imageOptions.presets.length > 0);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
-  const [selectedPresetId, setSelectedPresetId] = useState('');
-  const [presetValues, setPresetValues] = useState<Record<string, unknown>>({});
-  const [presetInitial, setPresetInitial] = useState<Record<string, unknown>>({});
-  const [presetOverride, setPresetOverride] = useState<Array<string> | null>(null);
-  const pendingPresetRef = useRef<{ presetId: string; workflowId?: string } | null>(null);
-  const presetInitKeyRef = useRef('');
-  const pendingReplayRef = useRef<Record<string, unknown> | null>(null);
-
-  useEffect(() => {
-    const options = imageOptions;
-    if (!options || !options.presets.length) return;
-    const stillValid = options.presets.some((preset) => preset.id === selectedPresetId);
-    if (stillValid) return;
-    const fallback = options.presets.find((preset) => preset.id === options.defaultPresetId) ?? options.presets[0];
-    // 与服务端选项同步默认选择；选项数据是外部系统状态，首次到达时回填一次。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedWorkflowId(fallback.workflowId);
-    setSelectedPresetId(fallback.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageOptions]);
-
-  // 选中预设（或其 revision）变化时初始化参数：字段默认 → 预设覆盖值。
-  useEffect(() => {
-    const options = imageOptions;
-    if (!options || !selectedPresetId) return;
-    const preset = options.presets.find((item) => item.id === selectedPresetId);
-    if (!preset) return;
-    const initKey = `${selectedPresetId}@${preset.revision}`;
-    if (presetInitKeyRef.current === initKey) return;
-    presetInitKeyRef.current = initKey;
-    const defaults: Record<string, unknown> = {};
-    for (const field of options.fields) {
-      if (field.defaultValue != null) defaults[field.key] = field.defaultValue;
-    }
-    const replay = pendingReplayRef.current;
-    pendingReplayRef.current = null;
-    const initial = { ...defaults, ...preset.values, ...(replay ?? {}) };
-    setPresetValues(initial);
-    setPresetInitial({ ...defaults, ...preset.values });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPresetId, imageOptions?.presets]);
-
-  const applyPresetSwitch = () => {
-    const pending = pendingPresetRef.current;
-    if (!pending) return;
-    if (pending.workflowId) setSelectedWorkflowId(pending.workflowId);
-    setSelectedPresetId(pending.presetId);
-    presetInitKeyRef.current = '';
-    pendingPresetRef.current = null;
-    setPresetOverride(null);
-  };
-
-  // 切换预设只替换它明确包含的值；会覆盖用户已编辑值时先展示差异并确认（规划 §8.3）。
-  const requestPresetSwitch = (presetId: string, workflowId?: string) => {
-    const target = imageOptions?.presets.find((item) => item.id === presetId);
-    if (!target) return;
-    const editedKeys = new Set(Object.keys(presetValues).filter((key) => {
-      const current = presetValues[key];
-      const initial = presetInitial[key];
-      return JSON.stringify(current ?? null) !== JSON.stringify(initial ?? null);
-    }));
-    const overridden = Object.keys(target.values).filter((key) => editedKeys.has(key));
-    if (overridden.length) {
-      pendingPresetRef.current = { presetId, workflowId };
-      setPresetOverride(overridden);
-      return;
-    }
-    if (workflowId) setSelectedWorkflowId(workflowId);
-    presetInitKeyRef.current = '';
-    setSelectedPresetId(presetId);
-  };
+  const [selectedImageConfiguration, setSelectedImageConfiguration] = useState<ImageConfiguration>();
+  const [imageInitial, setImageInitial] = useState<ImageGenerationInitial | null>(null);
+  const [mobilePane, setMobilePane] = useState<'configuration' | 'results'>('configuration');
   // 上传是异步的，完成回填前必须确认模式没有变化，否则图生图的参考图
   // 会以幽灵状态残留进文生图模式，导致后续提交被服务端拒绝且无法移除。
   const modeRef = useRef(mode);
@@ -184,6 +115,8 @@ export function CreativeClient() {
     : mode === 'h3-i2v' ? 'h3I2v'
     : 'h3Fl2va'
   ];
+  const imageReferenceKey = selectedImageConfiguration?.referenceInputKey ?? 'sourceImage';
+  const referenceBinding = selectedImageConfiguration ? { ...binding, inputCapabilities: selectedImageConfiguration.inputCapabilities } as typeof binding : binding;
   const ready = Boolean(binding?.ready);
   const serviceError = statusQuery.error ?? tasksQuery.error ?? artifactsQuery.error;
   const sortedTasks = useMemo(() => tasks.slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [tasks]);
@@ -213,6 +146,8 @@ export function CreativeClient() {
 
   const handleModeChange = (nextMode: CreativeMode) => {
     setMode(nextMode);
+    setImageInitial(null);
+    setSelectedImageConfiguration(undefined);
     setPageError('');
     if (nextMode === 'text-to-image' || nextMode === 'h3-t2v') {
       setSourceArtifact(null);
@@ -226,9 +161,9 @@ export function CreativeClient() {
 
   const handleFrameUpload = async (file: File | undefined, target: 'first' | 'last') => {
     if (!file) return;
-    const inputKey = target === 'last' ? 'lastFrame' : mode === 'image-to-image' ? 'sourceImage' : 'firstFrame';
-    const maxBytes = creativeInputMaxBytes(binding, inputKey);
-    if (!creativeImageAllowed(binding, inputKey, file.type)) {
+    const inputKey = target === 'last' ? 'lastFrame' : mode === 'image-to-image' ? imageReferenceKey : 'firstFrame';
+    const maxBytes = creativeInputMaxBytes(mode === 'image-to-image' ? referenceBinding : binding, inputKey);
+    if (!creativeImageAllowed(mode === 'image-to-image' ? referenceBinding : binding, inputKey, file.type)) {
       setPageError('当前工作流不接受这种图片格式，请按输入框提示选择文件。');
       return;
     }
@@ -266,44 +201,6 @@ export function CreativeClient() {
 
   const handleCreate = async () => {
     setPageError('');
-    if (presetFlow && imageOptions && (mode === 'text-to-image' || mode === 'image-to-image')) {
-      const preset = imageOptions.presets.find((item) => item.id === selectedPresetId);
-      if (!preset) {
-        setPageError('请先选择一个生成预设。');
-        return;
-      }
-      const missing = imageOptions.fields.filter((field) => field.required
-        && (presetValues[field.key] == null || presetValues[field.key] === ''));
-      if (missing.length) {
-        setPageError(`请先填写：${missing.map((field) => field.label).join('、')}。`);
-        return;
-      }
-      if (mode === 'image-to-image' && !sourceArtifact) {
-        setPageError('图生图需要先上传参考图片。');
-        return;
-      }
-      setSubmitting(true);
-      try {
-        const payload: CreativeTaskInput = {
-          mode,
-          ...(typeof presetValues.seed === 'number' ? { seed: presetValues.seed } : {}),
-          ...(mode === 'image-to-image' && sourceArtifact ? { sourceArtifactId: sourceArtifact.id } : {}),
-          presetId: preset.id,
-          presetRevision: preset.revision,
-          parameters: presetValues,
-        };
-        await createCreativeTask(payload);
-        setResultView('tasks');
-        toast.success('创作任务已提交，将在后台执行');
-        void statusQuery.refetch();
-        void tasksQuery.refetch();
-      } catch (err) {
-        setPageError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setSubmitting(false);
-      }
-      return;
-    }
     if (!form.prompt.trim()) {
       setPageError('请先写下提示词。');
       return;
@@ -320,43 +217,18 @@ export function CreativeClient() {
       setPageError('首尾帧视频需要同时上传尾帧图片。');
       return;
     }
-    // 提交走 onClick 而非 form submit，输入框的 min/max 不会生效，这里补上基本校验。
-    const width = Number(form.width);
-    const height = Number(form.height);
-    const steps = Number(form.steps);
     const duration = Number(form.duration);
-    if (!isVideoMode && (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0)) {
-      setPageError('请填写有效的宽度和高度。');
-      return;
-    }
-    if (!isVideoMode && (!Number.isFinite(steps) || steps <= 0)) {
-      setPageError('请填写有效的采样步数。');
-      return;
-    }
-    if (isVideoMode && (!Number.isFinite(duration) || duration <= 0)) {
+    if (!Number.isFinite(duration) || duration <= 0) {
       setPageError('请填写有效的视频时长。');
       return;
     }
     setSubmitting(true);
     try {
-      const payload: CreativeTaskInput = isVideoMode ? {
-        mode,
-        prompt: form.prompt.trim(),
-        duration,
-        aspectRatio: form.aspectRatio.trim() || '16:9',
+      const payload: CreativeTaskInput = {
+        mode: mode as 'h3-t2v' | 'h3-i2v' | 'h3-fl2va',
+        prompt: form.prompt.trim(), duration, aspectRatio: form.aspectRatio.trim() || '16:9',
         seed: form.seed.trim() ? Number(form.seed) : null,
-        firstFrameId: sourceArtifact?.id,
-        lastFrameId: lastFrameArtifact?.id,
-      } : {
-        mode: mode as 'text-to-image' | 'image-to-image',
-        prompt: form.prompt.trim(),
-        negativePrompt: form.negativePrompt.trim(),
-        width,
-        height,
-        steps,
-        seed: form.seed.trim() ? Number(form.seed) : null,
-        // 上传竞态可能在文生图模式残留参考图状态；只有图生图才随请求发送。
-        sourceArtifactId: mode === 'image-to-image' ? sourceArtifact?.id : undefined,
+        firstFrameId: sourceArtifact?.id, lastFrameId: lastFrameArtifact?.id,
       };
       await createCreativeTask(payload);
       setResultView('tasks');
@@ -393,14 +265,9 @@ export function CreativeClient() {
   const handleReplay = (task: CreativeTaskResponse) => {
     const values = task.replay.inputs;
     setMode(task.replay.mode);
-    // 预设任务回放：切回对应预设并带入快照参数；旧任务走固定表单。
-    if (task.replay.presetId) {
-      pendingReplayRef.current = values;
-      presetInitKeyRef.current = '';
-      setSelectedPresetId(task.replay.presetId);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      toast.info('已载入任务参数', '你可以修改参数后再次生成。');
-      return;
+    if (!task.replay.mode.startsWith('h3-')) {
+      setImageInitial({ presetId: task.replay.presetId ?? undefined, parameters: values, seed: task.actualSeed });
+      setMobilePane('configuration');
     }
     setForm({
       prompt: String(values.prompt ?? ''),
@@ -465,7 +332,7 @@ export function CreativeClient() {
         <PageHeader
           title="创作中心"
           description="把灵感变成图片与视频，保存到你的媒体库。"
-          actions={<Button size="sm" variant="outline" onClick={() => { void statusQuery.refetch(); void tasksQuery.refetch(); void artifactsQuery.refetch(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>}
+          actions={<Button size="sm" variant="outline" onClick={() => { void statusQuery.refetch(); void optionsQuery.refetch(); void tasksQuery.refetch(); void artifactsQuery.refetch(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>}
         />
         {(pageError || serviceError) && (
           <Alert
@@ -487,7 +354,13 @@ export function CreativeClient() {
          * 宽屏左参数区 320–400px，右侧结果/预览（§8.6）。
          * 两栏各自滚动：参数区内容多时自己滚，结果区不会把参数区拉长（§4.4）。
          */}
+        <div className="flex gap-2 xl:hidden" role="group" aria-label="生图工作区">
+          <Button size="sm" variant={mobilePane === 'configuration' ? 'accent' : 'outline'} aria-pressed={mobilePane === 'configuration'} onClick={() => setMobilePane('configuration')}>配置</Button>
+          <Button size="sm" variant={mobilePane === 'results' ? 'accent' : 'outline'} aria-pressed={mobilePane === 'results'} onClick={() => setMobilePane('results')}>结果</Button>
+        </div>
         <SplitPanes
+          leftClassName={mobilePane === 'configuration' ? '' : 'hidden xl:block'}
+          rightClassName={mobilePane === 'results' ? '' : 'hidden xl:block'}
           className="gap-5 xl:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]"
           from="xl"
           labels={{ left: '生成参数', right: '生成结果' }}
@@ -526,49 +399,35 @@ export function CreativeClient() {
                 onLastFrameSelect={(file) => { void handleFrameUpload(file, 'last'); }}
                 onLastFrameRemove={() => { setLastFrameArtifact(null); setLastFramePreview(null); }}
               />
-            ) : presetFlow && imageOptions ? (
-              <PresetGenerator
-                mode={mode as 'text-to-image' | 'image-to-image'}
-                options={imageOptions}
-                selectedWorkflowId={selectedWorkflowId}
-                selectedPresetId={selectedPresetId}
-                values={presetValues}
-                sourceArtifact={sourceArtifact}
-                sourcePreview={sourcePreview}
-                uploading={uploading}
-                submitting={submitting}
-                onWorkflowChange={(workflowId) => {
-                  const preset = imageOptions.presets.find((item) => item.workflowId === workflowId
-                    && item.id === imageOptions.defaultPresetId)
-                    ?? imageOptions.presets.find((item) => item.workflowId === workflowId);
-                  if (preset) requestPresetSwitch(preset.id, workflowId);
-                }}
-                onPresetChange={(presetId) => requestPresetSwitch(presetId)}
-                onValueChange={(key, value) => setPresetValues((current) => ({ ...current, [key]: value }))}
-                onSubmit={() => { void handleCreate(); }}
-                onSourceSelect={(file) => { void handleFrameUpload(file, 'first'); }}
-                onSourceRemove={() => { setSourceArtifact(null); setSourcePreview(null); }}
-              />
             ) : (
-              <ImageGenerator
-                form={form}
-                mode={mode as 'text-to-image' | 'image-to-image'}
-                binding={binding}
-                sourceArtifact={sourceArtifact}
-                sourcePreview={sourcePreview}
-                uploading={uploading}
-                submitting={submitting}
-                onFormChange={updateForm}
-                onSubmit={() => { void handleCreate(); }}
-                onSourceSelect={(file) => { void handleFrameUpload(file, 'first'); }}
-                onSourceRemove={() => { setSourceArtifact(null); setSourcePreview(null); }}
+              <ImageGenerationPanel
+                key={mode}
+                appId="creative-center" purpose={mode} contextKey={`creative:${mode}`}
+                onConfigurationChange={setSelectedImageConfiguration}
+                options={imageOptions} loading={optionsQuery.isLoading} initial={imageInitial}
+                onRefresh={() => { void optionsQuery.refetch(); }}
+                blockedReason={uploading ? '参考图片正在上传…' : mode === 'image-to-image' && !sourceArtifact ? '请先添加参考图片。' : mode === 'image-to-image' && sourceArtifact && (!creativeImageAllowed(referenceBinding, imageReferenceKey, sourceArtifact.contentType ?? '') || sourceArtifact.byteSize > creativeInputMaxBytes(referenceBinding, imageReferenceKey)) ? '现有参考图片不符合所选方案的格式或大小限制，请重新选择。' : undefined}
+                referenceInput={mode === 'image-to-image' ? <ArtifactPicker id="creative-source" label="参考图片"
+                  hint={`最大 ${formatByteLimit(creativeInputMaxBytes(referenceBinding, imageReferenceKey))}；保持主体描述与参考图一致。`}
+                  accept={creativeImageAccept(referenceBinding, imageReferenceKey)} artifact={sourceArtifact} previewUrl={sourcePreview} uploading={uploading}
+                  onSelect={file => { void handleFrameUpload(file, 'first'); }} onRemove={() => { setSourceArtifact(null); setSourcePreview(null); }} /> : undefined}
+                onGenerate={async input => {
+                  const { parameters, ...selection } = input;
+                  await createCreativeTask({ mode: mode as 'text-to-image' | 'image-to-image', ...selection,
+                    parameters,
+                    ...(mode === 'image-to-image' && sourceArtifact ? { sourceArtifactId: sourceArtifact.id } : {}) });
+                  setResultView('tasks'); setMobilePane('results');
+                  toast.success('图片任务已提交');
+                  void tasksQuery.refetch(); void statusQuery.refetch();
+                }}
               />
             )}
           </div>
           }
           right={
           <div className="min-w-0 space-y-3">
-            <div className="flex gap-2" aria-label="创作结果视图">
+            {!isVideoMode && <ImageResultPreview tasks={sortedTasks.filter(task => !task.replay.mode.startsWith('h3-'))} onReplay={handleReplay} />}
+            <div className="flex flex-wrap gap-2" aria-label="创作结果视图">
               <Button size="sm" variant={resultView === 'media' ? 'primary' : 'outline'} aria-pressed={resultView === 'media'} onClick={() => setResultView('media')}>媒体库（{artifactsTotal}）</Button>
               <Button size="sm" variant={resultView === 'tasks' ? 'primary' : 'outline'} aria-pressed={resultView === 'tasks'} onClick={() => setResultView('tasks')}>生成任务（{sortedTasks.length}）</Button>
             </div>
@@ -585,20 +444,7 @@ export function CreativeClient() {
           </div>
           }
         />
-        <Dialog
-          open={presetOverride !== null}
-          onOpenChange={(open) => { if (!open) { setPresetOverride(null); pendingPresetRef.current = null; } }}
-          title="切换预设将覆盖已编辑的参数"
-          description={`以下字段会被新预设替换为它保存的值：${(presetOverride ?? []).map((key) => imageOptions?.fields.find((field) => field.key === key)?.label ?? key).join('、')}`}
-          footer={(
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setPresetOverride(null); pendingPresetRef.current = null; }}>继续编辑</Button>
-              <Button variant="primary" onClick={applyPresetSwitch}>覆盖并切换</Button>
-            </div>
-          )}
-        >
-          <p className="text-sm text-muted">未列出的已编辑内容会保留；切换后可以继续修改。</p>
-        </Dialog>
+
     </PageContainer>
   );
 }

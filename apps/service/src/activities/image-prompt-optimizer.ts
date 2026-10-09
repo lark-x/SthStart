@@ -164,7 +164,7 @@ export async function optimizeActivityImagePrompt(
     // 旧运行没有结构化快照：只按“旧模式，无结构化记录”返回，不冒充。
     const snapshot = readCompilationSnapshot(database, row.id);
     return { traceId: row.trace_id, optimizerCallId: String(row.optimizer_call_id), originalPrompt: input.sourcePrompt,
-      optimizedPrompt: row.optimized_prompt, negativePrompt: input.existingNegativePrompt?.trim() || input.policy.negativePrompt || null,
+      optimizedPrompt: row.optimized_prompt, negativePrompt: input.existingNegativePrompt ?? (input.policy.negativePrompt || null),
         status: row.status === 'succeeded' ? 'optimized' : 'skipped', policyRevision: Number(row.policy_revision ?? 0),
       structuredPrompt: snapshot.structuredPrompt, visualBlocks: snapshot.visualBlocks,
       knowledgeHits: snapshot.knowledgeHits, knowledgeVersion: snapshot.knowledgeVersion,
@@ -187,7 +187,8 @@ export async function optimizeActivityImagePrompt(
     });
     const existingNegative = input.existingNegativePrompt?.trim() || '';
     const policyNegative = input.policy.negativePrompt.trim();
-    const negativePrompt = existingNegative || policyNegative || null;
+    const negativePrompt = input.existingNegativePrompt !== undefined && input.existingNegativePrompt !== null
+      ? input.existingNegativePrompt : policyNegative || null;
     // 声明服务端组装方式的工作流由活动画风提供风格串，策略里的画风后缀不再参与组装，
     // 避免同一串在“策略后缀 + 活动画风”两处重复出现。
     const policySuffix = workflowUsesServiceFinalizedAssembly(database, input.workflowId, input.workflowVersion)

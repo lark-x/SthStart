@@ -1,11 +1,13 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LoaderCircle, Sparkles } from 'lucide-react';
 import type { HiresPreviewResponse, StudioJob, StudioTarget, StudioVersionContext } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { HIRES_MAX_SIZE_DEFAULT, HIRES_DENOISE_DEFAULT, HIRES_DENOISE_MIN, HIRES_DENOISE_MAX } from '@sthstart/contracts';
+import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
 import { canSubmitHires, hiresBlockedReason, hiresIdempotencyKey } from '../lib/hires-request';
 import { createStudioHires, fetchStudioVersions, previewStudioHires } from '../studio-api';
 
@@ -19,7 +21,7 @@ import { createStudioHires, fetchStudioVersions, previewStudioHires } from '../s
  */
 
 const MAX_SIZE_OPTIONS = [1536, 2000, 2048];
-const DENOISE_DEFAULT = 0.2;
+
 
 export function StudioHiresDialog({ activityId, target, sourceArtifactId, sourceImageUrl, sourceLabel, open, onOpenChange, beforePreview, onCreated }: {
   activityId: string;
@@ -33,8 +35,23 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
   beforePreview(): Promise<boolean>;
   onCreated(job: StudioJob): void;
 }) {
-  const [maxSize, setMaxSize] = useState(2000);
-  const [denoise, setDenoise] = useState(DENOISE_DEFAULT);
+  const [advanced, setAdvanced] = useImageAdvancedMode('image-hires');
+  const [maxSize, setMaxSize] = useState(HIRES_MAX_SIZE_DEFAULT);
+  const [denoise, setDenoise] = useState(HIRES_DENOISE_DEFAULT);
+  const draftKey = `sthstart:hires-draft:${activityId}:${sourceArtifactId ?? 'none'}`;
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const draft = JSON.parse(sessionStorage.getItem(draftKey) ?? 'null') as { maxSize?: number; denoise?: number } | null;
+      // Recover browser drafts when the responsive activity shell remounts this overlay.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (draft?.maxSize && MAX_SIZE_OPTIONS.includes(draft.maxSize)) setMaxSize(draft.maxSize);
+      if (typeof draft?.denoise === 'number' && draft.denoise >= HIRES_DENOISE_MIN && draft.denoise <= HIRES_DENOISE_MAX) setDenoise(draft.denoise);
+    } catch { /* Session storage is optional. */ }
+  }, [draftKey, open]);
+  const saveDraft = (patch: { maxSize?: number; denoise?: number }) => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ maxSize, denoise, ...patch })); } catch { /* Preserve the in-memory draft. */ }
+  };
   const [preview, setPreview] = useState<HiresPreviewResponse | null>(null);
   const [versions, setVersions] = useState<StudioVersionContext | null>(null);
   /** 幂等键在本次弹窗会话内生成一次并保持不变：响应丢失时用同一个键重发，不新建任务。 */
@@ -117,8 +134,9 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
         </Button>
       </>}>
       <div className="space-y-5">
-        <div className="flex flex-wrap gap-4">
-          <div className="w-full max-w-[240px] space-y-1.5">
+        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={denoise !== HIRES_DENOISE_DEFAULT ? 1 : 0} />
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <div className="w-full space-y-1.5 sm:max-w-[240px] sm:shrink-0">
             <span className="text-sm font-medium text-ink">原图</span>
             <div className="overflow-hidden rounded-[var(--radius-control)] border border-border-default bg-surface-muted">
               {sourceImageUrl
@@ -127,19 +145,19 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
             </div>
             {sourceLabel && <p className="break-words text-xs text-muted">{sourceLabel}</p>}
           </div>
-          <div className="min-w-0 flex-1 space-y-4">
+          <div className="min-w-0 w-full space-y-4 sm:flex-1">
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-ink">最长边</span>
               <select aria-label="细化最长边" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink"
-                value={maxSize} onChange={(event) => { setMaxSize(Number(event.target.value)); setPreview(null); setPreviewError(''); }}>
+                value={maxSize} onChange={(event) => { setMaxSize(Number(event.target.value)); saveDraft({ maxSize: Number(event.target.value) }); setPreview(null); setPreviewError(''); }}>
                 {MAX_SIZE_OPTIONS.map((value) => <option key={value} value={value}>{value} 像素</option>)}
               </select>
               <span className="block text-xs text-muted">实际输出按原图比例计算并向下取 8 的倍数；所选尺寸不大于原图最长边时会被拒绝。</span>
             </label>
-            <label className="block space-y-1.5">
+            <label hidden={!advanced} className="block space-y-1.5">
               <span className="text-sm font-medium text-ink">重绘幅度</span>
-              <input aria-label="细化重绘幅度" type="number" min={0.05} max={0.35} step={0.05} value={denoise}
-                onChange={(event) => { setDenoise(Number(event.target.value)); setPreview(null); setPreviewError(''); }}
+              <input aria-label="细化重绘幅度" type="number" min={HIRES_DENOISE_MIN} max={HIRES_DENOISE_MAX} step={0.05} value={denoise}
+                onChange={(event) => { setDenoise(Number(event.target.value)); saveDraft({ denoise: Number(event.target.value) }); setPreview(null); setPreviewError(''); }}
                 className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink" />
               <span className="block text-xs text-muted">建议 0.2；越高越偏离原图，范围 0.05–0.35。</span>
             </label>
@@ -157,7 +175,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
         {preview?.transparencyHint && <Alert variant="info" title="透明图处理">{preview.transparencyHint}</Alert>}
         {preview?.sourceChanged && <Alert variant="warning" title="来源描述已变化">原图基于更早的描述生成；本次沿用原图实际参数，不会自动采纳新描述，也不写回草稿。</Alert>}
 
-        {preview && <details className="rounded-[var(--radius-control)] border border-border-subtle p-3">
+        {advanced && preview && <details className="rounded-[var(--radius-control)] border border-border-subtle p-3">
           <summary className="cursor-pointer text-sm font-medium text-ink">高级：实际继承的配置（只读）</summary>
           <dl className="mt-3 space-y-2 text-xs">
             <div><dt className="font-medium text-ink">加载器</dt><dd className="break-words text-muted">UNET {preview.loaders.unetName ?? '未声明'} · CLIP {preview.loaders.clipName ?? '未声明'} · VAE {preview.loaders.vaeName ?? '未声明'}</dd></div>

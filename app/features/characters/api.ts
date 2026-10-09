@@ -221,10 +221,10 @@ export async function updateCharacterModelAssignments(id: string, input: { textP
   return putJson(`characters/${id}/model-assignments`, input);
 }
 
-export async function generateCharacterAvatar(id: string, prompt?: string): Promise<GenerationTaskDescriptor> {
+export async function generateCharacterAvatar(id: string, input?: string | import('@sthstart/contracts').CharacterAvatarGenerationRequest): Promise<GenerationTaskDescriptor> {
   return postJson<GenerationTaskDescriptor>(
     `characters/${id}/generate-avatar`,
-    prompt?.trim() ? { prompt: prompt.trim() } : undefined,
+    typeof input === 'string' ? { prompt: input.trim() } : input ?? {},
     undefined,
     GenerationTaskDescriptorSchema,
   );

@@ -36,6 +36,8 @@ export const ActivityLoraOverrideSchema = Type.Object({
 export type ActivityLoraOverride = Static<typeof ActivityLoraOverrideSchema>;
 
 export const SceneBeatRenderSettingsSchema = Type.Object({
+  finalPositivePrompt: Type.Optional(Type.String({ minLength: 1, maxLength: 20_000 })),
+  promptOptimization: Type.Optional(Type.Boolean()),
   quality: Type.Optional(ActivityRenderQualitySchema),
   director: Type.Optional(DirectorSettingsSchema),
   composition: Type.Optional(Type.String({ maxLength: 2_000 })),
