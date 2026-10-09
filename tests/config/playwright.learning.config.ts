@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 const directory = mkdtempSync(join(tmpdir(), 'sthstart-browser-learning-'));
 process.env.STHSTART_LEARNING_E2E_DIRECTORY = directory;
@@ -21,13 +24,13 @@ const env = { ...process.env, PORTAL_PORT: portalPort, SERVICE_PORT: servicePort
   STHSTART_LAN_ACCESS: 'false' };
 
 export default defineConfig({
-  testDir: './tests/e2e', testMatch: 'learning-story.spec.ts', workers: 1, retries: 0, timeout: 45000,
-  outputDir: 'test-results/learning', reporter: [['list'], ['html', { outputFolder: 'playwright-report/learning', open: 'never' }]],
+  testDir: join(projectRoot, 'tests/e2e'), testMatch: 'learning-story.spec.ts', workers: 1, retries: 0, timeout: 45000,
+  outputDir: join(projectRoot, 'test-results/learning'), reporter: [['list'], ['html', { outputFolder: join(projectRoot, 'playwright-report/learning'), open: 'never' }]],
   use: { baseURL: portalUrl, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
-    { command: `npx vinext start --port ${portalPort} --hostname 127.0.0.1`, url: portalUrl, env, reuseExistingServer: false, timeout: 60000 },
-    { command: 'node --import tsx/esm apps/service/src/start.ts', url: `${serviceUrl}/api/v1/health`, env, reuseExistingServer: false, timeout: 60000 },
+    { cwd: projectRoot, command: `npx vinext start --port ${portalPort} --hostname 127.0.0.1`, url: portalUrl, env, reuseExistingServer: false, timeout: 60000 },
+    { cwd: projectRoot, command: 'node --import tsx/esm apps/service/src/start.ts', url: `${serviceUrl}/api/v1/health`, env, reuseExistingServer: false, timeout: 60000 },
   ],
-  globalTeardown: './tests/e2e/learning-teardown.ts',
+  globalTeardown: join(projectRoot, 'tests/e2e/learning-teardown.ts'),
 });

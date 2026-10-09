@@ -44,7 +44,7 @@
     "test:coverage": "c8 --all --include app/lib/** --include app/features/** --include apps/service/src/** --include packages/**/src/** --exclude **/*.test.* --exclude **/*.exercise.* --exclude **/dist/** --reporter=text --reporter=html --reporter=lcov node scripts/testing/run.mjs --suite quick",
     "test:ai:live": "node --import tsx/esm scripts/testing/ai-eval.ts live",
     "test:ai:compare": "node --import tsx/esm scripts/testing/ai-eval.ts compare",
-    "test:e2e:learning": "npm run build && playwright test --config playwright.learning.config.ts",
+    "test:e2e:learning": "npm run build && playwright test --config tests/config/playwright.learning.config.ts",
     "test:contracts": "npm run test --workspace @sthstart/contracts",
     "test:linshe-contract": "node --import tsx/esm --test apps/service/src/linshe-contract.test.ts",
     "test:mcp": "node --import tsx/esm --test apps/service/src/story/native-mcp-server.test.ts apps/service/src/story/mcp-schema.test.ts apps/service/src/publication/mcp-server.test.ts apps/service/src/publication/harness.test.ts apps/service/src/story/harness.test.ts apps/service/src/mcp-http.test.ts",
