@@ -196,8 +196,9 @@ export function CalendarView() {
                     <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${isToday ? 'bg-accent text-white' : ''}`}>{cell.day}</span>
                     <span className="mt-1 flex flex-col gap-0.5">
                       {events.slice(0, 3).map((event) => (
-                        <span key={event.id} className={`block truncate rounded px-1 ${event.kind === 'birthday' ? 'bg-warning-bg text-warning-fg' : 'bg-info-bg text-info-fg'}`}>
-                          {event.kind === 'birthday' ? '🎂 ' : '🎬 '}{event.title}
+                        <span key={event.id} className={`block truncate rounded px-1 flex items-center gap-1 ${event.kind === 'birthday' ? 'bg-warning-bg text-warning-fg' : 'bg-info-bg text-info-fg'}`}>
+                          {event.kind === 'birthday' ? <Cake className="size-3 shrink-0" /> : <Film className="size-3 shrink-0" />}
+                          <span className="truncate">{event.title}</span>
                         </span>
                       ))}
                       {events.length > 3 && <span className="px-1 text-muted">还有 {events.length - 3} 项</span>}

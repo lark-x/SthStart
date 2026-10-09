@@ -46,7 +46,7 @@ export function WorkspaceHeader({
   return (
     <header
       className={cn(
-        'min-h-12 sm:min-h-14 px-3 sm:px-4 py-1 shrink-0 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 border-b border-border-default bg-surface/90 backdrop-blur-xs select-none z-20',
+        'min-h-12 sm:min-h-14 px-3 sm:px-4 py-1.5 shrink-0 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 border-b border-border-subtle/80 bg-surface/85 backdrop-blur-md shadow-xs select-none z-20',
         className
       )}
     >
@@ -55,7 +55,7 @@ export function WorkspaceHeader({
         {backHref && (
           <Link
             href={backHref}
-            className="inline-flex h-11 w-11 sm:h-9 sm:w-auto items-center justify-center gap-1 px-2 rounded-[var(--radius-control)] text-xs font-medium text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors shrink-0"
+            className="inline-flex h-11 w-11 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2.5 rounded-[var(--radius-control)] text-xs font-medium text-muted hover:text-ink hover:bg-surface-sunken transition-[background-color,color,transform] duration-150 active:scale-[0.98] shrink-0"
             aria-label={`返回${backLabel}`}
             title={`返回 ${backLabel}`}
           >
@@ -79,7 +79,7 @@ export function WorkspaceHeader({
         <button
           type="button"
           onClick={handleOpenNav}
-          className="inline-flex h-11 w-11 sm:h-9 sm:w-auto items-center justify-center gap-1 px-2.5 rounded-[var(--radius-control)] border border-border-default bg-surface text-xs font-medium text-ink hover:bg-surface-muted/60 hover:border-accent transition-colors"
+          className="inline-flex h-11 w-11 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2.5 rounded-[var(--radius-control)] border border-border-subtle/80 bg-surface text-xs font-medium text-ink hover:bg-surface-sunken hover:border-border-default active:scale-[0.98] shadow-xs transition-[background-color,border-color,color,transform] duration-150"
           title="全站导航"
           aria-label="打开全站导航"
         >
@@ -90,7 +90,7 @@ export function WorkspaceHeader({
         <button
           type="button"
           onClick={handleOpenTasks}
-          className="relative inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-ink hover:bg-surface-muted/60 hover:border-accent transition-colors"
+          className="relative inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-[var(--radius-control)] border border-border-subtle/80 bg-surface text-ink hover:bg-surface-sunken hover:border-border-default active:scale-[0.98] shadow-xs transition-[background-color,border-color,color,transform] duration-150"
           title="全局任务抽屉"
           aria-label="打开全局任务抽屉"
         >

@@ -29,6 +29,7 @@ import {
   Clock,
   User,
   SlidersHorizontal,
+  MapPin,
 } from 'lucide-react';
 import type {
   ActorSnapshot,
@@ -408,7 +409,8 @@ export function RecordsEditor({
               </h2>
               {currentStage?.location && (
                 <span className="text-xs text-muted shrink-0 flex items-center gap-1">
-                  📍 {currentStage.location}
+                  <MapPin className="size-3 text-muted" />
+                  <span>{currentStage.location}</span>
                 </span>
               )}
               {currentStage?.stagePremise && (
@@ -851,7 +853,10 @@ export function RecordsEditor({
                           <Heart className="h-3.5 w-3.5" />
                           <span>{postLikes.length} 赞</span>
                         </button>
-                        <span className="text-muted">💬 {postComments.length} 条互动</span>
+                        <span className="text-muted flex items-center gap-1">
+                          <MessageSquare className="size-3.5" />
+                          <span>{postComments.length} 条互动</span>
+                        </span>
                       </div>
                     </div>
                   </div>

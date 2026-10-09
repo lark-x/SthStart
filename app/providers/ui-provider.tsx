@@ -198,12 +198,12 @@ function ToastCard({
       onFocus={pause}
       onBlur={resume}
       className={cn(
-        'pointer-events-auto flex items-start gap-3 rounded-lg border bg-surface-raised p-4 text-ink shadow-floating transition-colors animate-in fade-in slide-in-from-bottom-2',
-        item.variant === 'success' && 'border-success-border',
-        item.variant === 'danger' && 'border-danger-border',
-        item.variant === 'warning' && 'border-warning-border',
-        item.variant === 'info' && 'border-info-border',
-        (!item.variant || item.variant === 'default') && 'border-border-default'
+        'pointer-events-auto flex items-start gap-3 rounded-xl border bg-surface/95 backdrop-blur-md p-4 text-ink shadow-floating transition-all duration-200 hover:-translate-y-0.5 animate-in fade-in slide-in-from-bottom-2',
+        item.variant === 'success' && 'border-success-border/80 shadow-[0_6px_22px_-4px_rgba(63,138,92,0.18)]',
+        item.variant === 'danger' && 'border-danger-border/80 shadow-[0_6px_22px_-4px_rgba(187,69,48,0.22)]',
+        item.variant === 'warning' && 'border-warning-border/80 shadow-[0_6px_22px_-4px_rgba(184,135,31,0.18)]',
+        item.variant === 'info' && 'border-info-border/80 shadow-[0_6px_22px_-4px_rgba(63,95,138,0.18)]',
+        (!item.variant || item.variant === 'default') && 'border-border-default/80'
       )}
     >
       <div className="flex-shrink-0 pt-0.5">

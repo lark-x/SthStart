@@ -85,7 +85,7 @@ export function PurposesPanel({
     setSavingAppId(appId);
     try {
       await updateLlmAssignments(appId, sel);
-      toast.success('应用模型绑定已保存喵。');
+      toast.success('应用模型绑定已保存。');
       await onRefresh();
     } catch (err) {
       toast.error('保存失败', err instanceof Error ? err.message : String(err));
@@ -103,7 +103,7 @@ export function PurposesPanel({
         targetType: 'model',
         targetId: bindingTargetId,
       });
-      toast.success('用途覆盖已生效喵。');
+      toast.success('用途覆盖已生效。');
       setBindingOpen(false);
       setBindingPurpose('');
       await onRefresh();
@@ -115,12 +115,12 @@ export function PurposesPanel({
   };
 
   const handleDeletePurposeBinding = async (b: PurposeBinding) => {
-    if (!window.confirm(`确认删除应用 ${b.appId} 在用途 ${b.purposeKey} 上的覆盖绑定喵？`)) {
+    if (!window.confirm(`确认删除应用 ${b.appId} 在用途 ${b.purposeKey} 上的覆盖绑定？`)) {
       return;
     }
     try {
       await deletePurposeBinding(b.appId, b.purposeKey);
-      toast.success('用途绑定已清除喵。');
+      toast.success('用途绑定已清除。');
       await onRefresh();
     } catch (err) {
       toast.error('删除失败', err instanceof Error ? err.message : String(err));
@@ -132,7 +132,7 @@ export function PurposesPanel({
       {/* 提示条 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted">
-          为各个业务应用指定默认的文本推理模型与视觉多模态模型；支持针对特定用途配置粒度覆盖喵。
+          为各个业务应用指定默认的文本推理模型与视觉多模态模型；支持针对特定用途配置粒度覆盖。
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
@@ -291,7 +291,7 @@ export function PurposesPanel({
               placeholder="e.g. story:dsh / activities:chat / research:synthesize"
               required
             />
-            <p className="text-2xs text-muted mt-1">业务模块在调用公共 AI 内核时指定的特定用途名称喵。</p>
+            <p className="text-2xs text-muted mt-1">业务模块在调用公共 AI 内核时指定的特定用途名称。</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-ink mb-1">绑定模型</label>

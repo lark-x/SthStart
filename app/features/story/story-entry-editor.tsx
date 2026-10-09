@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold, Code2, Film, Heading2, Italic, List, Quote, RotateCcw, Save, Sparkles,
   AlignLeft, Type, Palette, MessageSquare, Check, User, ChevronLeft, ChevronRight, Plus,
-  SlidersHorizontal, ClipboardPaste,
+  SlidersHorizontal, ClipboardPaste, X,
 } from 'lucide-react';
 import type { StoryDocument, StoryEntry } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
@@ -311,14 +311,14 @@ export function StoryEntryEditor({
     try {
       const text = await navigator.clipboard.readText();
       if (!text || !text.trim()) {
-        alert('剪贴板中暂无文本可采纳喵');
+        alert('剪贴板中暂无文本可采纳。');
         return;
       }
       const current = draft.body;
       if (!current.trim()) {
         draft.update({ body: text.trim() });
       } else {
-        const append = window.confirm('点击【确定】追加到文末，点击【取消】替换全文喵？');
+        const append = window.confirm('点击【确定】追加到文末，点击【取消】替换全文。');
         if (append) {
           draft.update({ body: `${current}\n\n${text.trim()}` });
         } else {
@@ -326,7 +326,7 @@ export function StoryEntryEditor({
         }
       }
     } catch {
-      alert('请使用键盘快捷键直接粘贴喵');
+      alert('请使用键盘快捷键直接粘贴。');
     }
   }, [draft]);
 
@@ -386,9 +386,10 @@ export function StoryEntryEditor({
                   <button
                     type="button"
                     onClick={() => setShowPreferences(false)}
-                    className="text-xs text-muted hover:text-ink"
+                    className="p-1 rounded-sm text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+                    aria-label="关闭排版偏好"
                   >
-                    ✕
+                    <X className="size-3.5" />
                   </button>
                 </div>
 

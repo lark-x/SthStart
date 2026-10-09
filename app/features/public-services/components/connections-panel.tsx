@@ -145,7 +145,7 @@ export function ConnectionsPanel({
       try {
         parsedHeaders = JSON.parse(formData.headers);
       } catch {
-        setFormError('Headers 必须为有效的 JSON 对象喵。');
+        setFormError('Headers 必须为有效的 JSON 对象。');
         setFormSaving(false);
         return;
       }
@@ -166,7 +166,7 @@ export function ConnectionsPanel({
       if (res.warning) {
         toast.warning('连接已保存', res.warning);
       } else {
-        toast.success(editingConn ? '服务连接已更新喵。' : '服务连接已创建喵。');
+        toast.success(editingConn ? '服务连接已更新。' : '服务连接已创建。');
       }
       setFormOpen(false);
       await onRefresh();
@@ -180,12 +180,12 @@ export function ConnectionsPanel({
   };
 
   const handleDeleteConnection = async (conn: ServiceConnection) => {
-    if (!window.confirm(`确认删除服务连接“${conn.name}”？已绑定的模型配置需先解绑或删除喵。`)) {
+    if (!window.confirm(`确认删除服务连接“${conn.name}”？已绑定的模型配置需先解绑或删除。`)) {
       return;
     }
     try {
       await deleteConnection(conn.id);
-      toast.success('服务连接已删除喵。');
+      toast.success('服务连接已删除。');
       await onRefresh();
     } catch (err) {
       toast.error('删除失败', err instanceof Error ? err.message : String(err));
@@ -206,7 +206,7 @@ export function ConnectionsPanel({
       const res = await testConnectionProbe({ connectionId });
       setTestResult(res);
       if (res.success) {
-        toast.success('连通性测试通过喵。');
+        toast.success('连通性测试通过。');
       } else {
         toast.warning('连通性测试未通过', res.message || undefined);
       }
@@ -215,7 +215,7 @@ export function ConnectionsPanel({
         success: false,
         latencyMs: 0,
         statusCode: null,
-        message: err instanceof Error ? err.message : '连接异常喵。',
+        message: err instanceof Error ? err.message : '连接异常。',
       });
     } finally {
       setTesting(false);
@@ -237,7 +237,7 @@ export function ConnectionsPanel({
       const res = await discoverConnectionModels({ connectionId });
       setDiscovered(res);
       setSelectedDiscovered(new Set(res.models));
-      toast.success(`成功发现 ${res.models.length} 个远端模型喵。`);
+      toast.success(`成功发现 ${res.models.length} 个远端模型。`);
     } catch (err) {
       toast.error('模型发现失败', err instanceof Error ? err.message : String(err));
     } finally {
@@ -276,7 +276,7 @@ export function ConnectionsPanel({
           // 忽略单个重复错误
         }
       }
-      toast.success(`成功导入 ${successCount} 个模型配置喵。`);
+      toast.success(`成功导入 ${successCount} 个模型配置。`);
       setDiscoverDrawerOpen(false);
       await onRefresh();
     } catch (err) {
@@ -328,7 +328,7 @@ export function ConnectionsPanel({
       {/* 连接列表卡片网格 */}
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-muted">
-          <p className="text-sm">暂无匹配的服务连接喵。点击上方“新建连接”添加一个喵。</p>
+          <p className="text-sm">暂无匹配的服务连接。点击上方“新建连接”添加一个。</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -432,7 +432,7 @@ export function ConnectionsPanel({
               disabled={Boolean(editingConn)}
               placeholder="e.g. openai-main"
             />
-            <p className="text-2xs text-muted mt-1">创建后作为标识符，不可修改喵。</p>
+            <p className="text-2xs text-muted mt-1">创建后作为标识符，不可修改。</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -477,7 +477,7 @@ export function ConnectionsPanel({
               onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
               placeholder={editingConn ? '••••••••' : 'sk-...'}
             />
-            <p className="text-2xs text-muted mt-1">凭据安全存入本地系统钥匙串或加密库，不以明文回显喵。</p>
+            <p className="text-2xs text-muted mt-1">凭据安全存入本地系统钥匙串或加密库，不以明文回显。</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -548,7 +548,7 @@ export function ConnectionsPanel({
           {testing ? (
             <div className="p-8 text-center text-sm text-muted">
               <Spinner className="h-6 w-6 mx-auto mb-2" />
-              正在向远端节点发起轻量探测请求喵...
+              正在向远端节点发起轻量探测请求...
             </div>
           ) : testResult ? (
             <div className="space-y-3">
@@ -599,7 +599,7 @@ export function ConnectionsPanel({
               )}
             </div>
           ) : (
-            <div className="text-xs text-muted">准备就绪，点击上方按钮开始探测喵。</div>
+            <div className="text-xs text-muted">准备就绪，点击上方按钮开始探测。</div>
           )}
         </div>
       </Drawer>
@@ -628,7 +628,7 @@ export function ConnectionsPanel({
           {discovering ? (
             <div className="p-8 text-center text-sm text-muted">
               <Spinner className="h-6 w-6 mx-auto mb-2" />
-              正在查询远端模型目录喵...
+              正在查询远端模型目录...
             </div>
           ) : discovered ? (
             <div className="space-y-3">
@@ -683,7 +683,7 @@ export function ConnectionsPanel({
               </Button>
             </div>
           ) : (
-            <div className="text-xs text-muted">尚未发现模型，请点击刷新开始喵。</div>
+            <div className="text-xs text-muted">尚未发现模型，请点击刷新开始。</div>
           )}
         </div>
       </Drawer>

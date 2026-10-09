@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   PanelLeftClose,
   PanelLeft,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { NoteKind } from '@sthstart/contracts';
 import { useNotes } from '../queries';
@@ -102,6 +103,8 @@ export function NotebookWorkspace({
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [page, setPage] = useState(Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1));
   const [filters, setFilters] = useState({ work: searchParams.get('work') ?? '', character: searchParams.get('character') ?? '', usage: searchParams.get('usage') ?? '', nature: searchParams.get('nature') ?? '', category: searchParams.get('category') ?? '' });
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const [activeId, setActiveId] = useState<string | null>(initialNoteId ?? null);
   const [isCreating, setIsCreating] = useState<boolean>(isNew);
   // 用户在移动端点过“返回笔记列表”后不再被 initialNoteId 自动拉回编辑器：
@@ -347,22 +350,63 @@ export function NotebookWorkspace({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 px-3 pb-3">
-            {([
-              ['work', '作品', (data?.facets?.works ?? []).map((v) => [v, v])],
-              ['character', '角色', (data?.facets?.characters ?? []).map((v) => [v, v])],
-              ['usage', '用途', Object.entries(usageLabels)],
-              ['nature', '资料性质', Object.entries(natureLabels)],
-              ['category', '内容分类', Object.entries(categoryLabels)],
-            ] as [keyof typeof filters, string, string[][]][]).map(([key, label, options]) => (
-              <select key={key} aria-label={label} value={filters[key]}
-                className="min-w-0 rounded border border-border-control bg-surface px-2 py-1 text-sm"
-                onChange={(event) => { setFilters((current) => ({ ...current, [key]: event.target.value })); setPage(1); }}>
-                <option value="">全部{label}</option>
-                {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-              </select>
-            ))}
+          {/* Advanced Filter Toggle & Drawer */}
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle bg-surface/50 text-xs">
+            <button
+              type="button"
+              onClick={() => setFilterPanelOpen((v) => !v)}
+              className={`inline-flex items-center gap-1.5 py-1 px-2 rounded-md font-medium transition-colors cursor-pointer ${
+                filterPanelOpen || activeFilterCount > 0
+                  ? 'bg-accent/10 text-accent font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span>高级筛选{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+            </button>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters({ work: '', character: '', usage: '', nature: '', category: '' });
+                  setPage(1);
+                }}
+                className="text-muted hover:text-accent cursor-pointer"
+              >
+                重置
+              </button>
+            )}
           </div>
+
+          {filterPanelOpen && (
+            <div className="grid grid-cols-2 gap-2 p-3 bg-surface-muted/50 border-b border-border-subtle anim-zoom-in-95">
+              {([
+                ['work', '作品', (data?.facets?.works ?? []).map((v) => [v, v])],
+                ['character', '角色', (data?.facets?.characters ?? []).map((v) => [v, v])],
+                ['usage', '用途', Object.entries(usageLabels)],
+                ['nature', '资料性质', Object.entries(natureLabels)],
+                ['category', '内容分类', Object.entries(categoryLabels)],
+              ] as [keyof typeof filters, string, string[][]][]).map(([key, label, options]) => (
+                <select
+                  key={key}
+                  aria-label={label}
+                  value={filters[key]}
+                  className="min-w-0 rounded-md border border-border-control bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  onChange={(event) => {
+                    setFilters((current) => ({ ...current, [key]: event.target.value }));
+                    setPage(1);
+                  }}
+                >
+                  <option value="">全部{label}</option>
+                  {options.map(([value, text]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              ))}
+            </div>
+          )}
 
           {isError && <Alert variant="danger" className="m-3 text-sm" title="资料列表加载失败">
             {error instanceof Error ? error.message : '暂时无法读取服务端资料。'}

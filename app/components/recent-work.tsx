@@ -125,12 +125,14 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
               <li key={item.id}>
                 <Link
                   href={item.href}
-                  className="recent-work-row flex items-center gap-3 rounded-xl bg-surface-sunken/45 px-3 py-3 transition-colors hover:bg-accent/8"
+                  className="recent-work-row group flex items-center gap-3 rounded-xl border border-transparent bg-surface-sunken/40 px-3.5 py-2.5 transition-[background-color,border-color,transform] duration-150 ease-[var(--motion-ease)] hover:border-accent/20 hover:bg-surface-sunken/80 hover:translate-x-0.5 active:scale-[0.99]"
                 >
                   {/* 每行图标随条目类型变化，类型由真实数据决定，故同样按动态内容遮罩。 */}
-                  <span className="recent-work-icon flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-surface text-accent shadow-sm"><Icon className="h-4 w-4" aria-hidden="true" data-visual-dynamic="true" /></span>
+                  <span className="recent-work-icon flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-surface text-accent shadow-xs border border-border-subtle/50 transition-transform duration-150 group-hover:scale-105">
+                    <Icon className="h-4 w-4" aria-hidden="true" data-visual-dynamic="true" />
+                  </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink" data-visual-dynamic="true">{item.title}</span>
-                  <span className="flex-none text-xs text-fg-subtle" data-visual-dynamic="true">{item.kind}</span>
+                  <span className="flex-none text-[11px] font-medium px-2 py-0.5 rounded-full bg-surface text-fg-subtle border border-border-subtle/50" data-visual-dynamic="true">{item.kind}</span>
                   {updated && <time className="hidden flex-none text-xs text-fg-subtle sm:inline" dateTime={item.updatedAt} data-visual-dynamic="true">{updated}</time>}
                 </Link>
               </li>

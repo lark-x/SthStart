@@ -550,19 +550,59 @@ export function NoteEditor({
 
       {/* Editor Structured Document Canvas */}
       <div className={`notebook-editor-frame mx-auto px-5 sm:px-8 py-4 space-y-3.5 transition-all ${zenMode ? 'zen-workspace max-w-3xl' : 'max-w-3xl'}`}>
-        {/* Short metadata is summarized here and edited together, leaving the writing area uncluttered. */}
-        {!zenMode && (
-          <section className="notebook-meta-bar flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted/60 px-4 py-3" aria-label="页面属性">
-            <div className="min-w-0">
-              <div className="truncate text-xs font-medium text-muted">{kindLabels[note.kind]} · {stageLabels[note.stage]}</div>
-              <div className="mt-1 truncate text-sm text-ink">{note.title.trim() || '未命名笔记'}{note.tags.length ? <span className="ml-2 text-xs text-muted">{note.tags.slice(0, 3).join(' · ')}</span> : null}</div>
+        {/* Document Header Canvas: Direct Inline Title & Attributes */}
+        <section className="notebook-doc-header space-y-3 pb-3 border-b border-border-subtle" aria-label="文档标题与元信息">
+          <input
+            type="text"
+            value={note.title}
+            onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
+            placeholder="无标题笔记"
+            className="w-full text-2xl sm:text-3xl font-bold bg-transparent border-b border-transparent hover:border-border-default focus:border-accent outline-none text-ink placeholder:text-muted/40 py-1 transition-colors"
+          />
+
+          {!zenMode && (
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              {/* Kind Selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted text-[11px]">类型:</span>
+                <select
+                  aria-label="资料分类"
+                  value={note.kind}
+                  onChange={(e) => updateNoteState((prev) => ({ ...prev, kind: e.target.value as NoteKind }))}
+                  className="rounded-md border border-border-default/60 bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                >
+                  {Object.entries(kindLabels).map(([k, label]) => (
+                    <option key={k} value={k}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Stage Selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted text-[11px]">阶段:</span>
+                <select
+                  aria-label="阶段状态"
+                  value={note.stage}
+                  onChange={(e) => updateNoteState((prev) => ({ ...prev, stage: e.target.value as NoteStage }))}
+                  className="rounded-md border border-border-default/60 bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                >
+                  {Object.entries(stageLabels).map(([s, label]) => (
+                    <option key={s} value={s}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tags Input */}
+              <div className="flex-1 min-w-[200px]">
+                <TagsInput
+                  value={note.tags}
+                  onChange={(newTags) => updateNoteState((prev) => ({ ...prev, tags: newTags }))}
+                  placeholder="添加标签，按回车确定..."
+                />
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="notebook-local-hint text-xs text-fg-subtle">自动保存在本机</span>
-              <Button type="button" size="sm" variant="outline" onClick={openMetaEditor}>编辑资料</Button>
-            </div>
-          </section>
-        )}
+          )}
+        </section>
 
         {/* 资料属性：默认收起，只在这里显式修改，不会因正文编辑被清空。 */}
         {!zenMode && (

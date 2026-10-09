@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles } from 'lucide-react';
+import { Star, Plus, Search, Upload, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
@@ -278,7 +278,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           </div>
           {busy && (
             <div className="flex items-center justify-center gap-2 py-4 text-muted">
-              <span className="animate-spin text-lg">⏳</span>
+              <Loader2 className="size-4 animate-spin text-accent" />
               <span>正在批量匹配与下载官方头像，请稍候…</span>
             </div>
           )}

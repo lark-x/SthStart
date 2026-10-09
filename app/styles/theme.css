@@ -130,11 +130,13 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* ---------- 阴影：内容面板默认无重投影 ---------- */
-  --shadow-sm: 0 2px 8px rgb(23 33 46 / 6%);
-  --shadow-panel: 0 4px 18px rgb(49 39 25 / 5%), 0 1px 3px rgb(49 39 25 / 4%);
-  --shadow-floating: 0 14px 36px rgb(23 33 46 / 16%);
-  --shadow-dialog: 0 28px 80px rgb(23 33 46 / 25%);
+  /* ---------- 阴影：多级复合环境光与直射光 ---------- */
+  --shadow-xs: 0 1px 2px rgb(23 33 46 / 4%);
+  --shadow-sm: 0 1px 3px rgb(23 33 46 / 6%), 0 1px 2px rgb(23 33 46 / 4%);
+  --shadow-panel: 0 1px 3px rgb(23 33 46 / 4%), 0 6px 16px -2px rgb(23 33 46 / 5%);
+  --shadow-panel-hover: 0 3px 6px rgb(23 33 46 / 4%), 0 12px 28px -4px rgb(23 33 46 / 9%);
+  --shadow-floating: 0 8px 24px -4px rgb(23 33 46 / 12%), 0 4px 12px -2px rgb(23 33 46 / 6%);
+  --shadow-dialog: 0 24px 60px -12px rgb(23 33 46 / 22%), 0 8px 24px -4px rgb(23 33 46 / 10%);
 
   /* ---------- 外框尺寸 ---------- */
   --shell-sidebar: 224px;
@@ -168,10 +170,12 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* ---------- 过渡 ---------- */
+  /* ---------- 过渡与微动效 ---------- */
   --motion-fast: 120ms;
-  --motion-base: 180ms;
-  --motion-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-spring: cubic-bezier(0.175, 0.885, 0.32, 1.12);
 
   /*
    * ---------- 滚动条 ----------
@@ -228,10 +232,12 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --surface-hover: rgb(36 41 35 / 5%);
   --surface-input: #ffffff;
   --surface-dark: #1b211e;
-  --shadow-sm: 0 2px 8px rgb(49 39 25 / 6%);
-  --shadow-panel: 0 4px 16px rgb(61 46 27 / 5%), 0 1px 3px rgb(61 46 27 / 3%);
-  --shadow-floating: 0 14px 38px rgb(45 39 29 / 15%);
-  --shadow-dialog: 0 28px 80px rgb(45 39 29 / 24%);
+  --shadow-xs: 0 1px 2px rgb(49 39 25 / 5%);
+  --shadow-sm: 0 1px 3px rgb(49 39 25 / 6%), 0 1px 2px rgb(49 39 25 / 4%);
+  --shadow-panel: 0 1px 3px rgb(49 39 25 / 4%), 0 6px 16px -2px rgb(61 46 27 / 6%);
+  --shadow-panel-hover: 0 3px 6px rgb(49 39 25 / 5%), 0 12px 28px -4px rgb(61 46 27 / 10%);
+  --shadow-floating: 0 8px 24px -4px rgb(45 39 29 / 14%), 0 4px 12px -2px rgb(45 39 29 / 7%);
+  --shadow-dialog: 0 24px 60px -12px rgb(45 39 29 / 24%), 0 8px 24px -4px rgb(45 39 29 / 10%);
 
   --fg-default: #242923;
   /* 同样满足 4.5:1；暖底比中性底更暗，需要一并下调并保持层级。 */
@@ -337,11 +343,13 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --color-info-solid: var(--info-solid);
   --color-info-on-solid: var(--info-on-solid);
 
-  --shadow-sm: 0 1px 2px rgb(23 33 46 / 6%);
-  --shadow-panel: 0 1px 2px rgb(23 33 46 / 5%);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-panel: var(--shadow-panel);
+  --shadow-panel-hover: var(--shadow-panel-hover);
   --shadow-editorial: var(--shadow-editorial);
-  --shadow-floating: 0 8px 24px rgb(23 33 46 / 12%);
-  --shadow-dialog: 0 24px 64px rgb(23 33 46 / 22%);
+  --shadow-floating: var(--shadow-floating);
+  --shadow-dialog: var(--shadow-dialog);
 
   --font-serif: Georgia, "Songti SC", "STSong", "SimSun", serif;
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;

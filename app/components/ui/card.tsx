@@ -1,11 +1,21 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 
-export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  interactive?: boolean;
+  variant?: 'default' | 'raised' | 'sunken' | 'glass';
+}
+
+export function Card({ className, interactive, variant = 'default', children, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-[var(--radius-panel)] border border-border-subtle/70 bg-surface p-5 shadow-[var(--shadow-panel)] transition-[transform,box-shadow] duration-200',
+        'rounded-[var(--radius-panel)] border p-5 shadow-panel transition-[transform,box-shadow,border-color] duration-200 ease-[var(--motion-ease)]',
+        variant === 'default' && 'border-border-subtle/80 bg-surface',
+        variant === 'raised' && 'border-border-subtle bg-surface-raised shadow-floating',
+        variant === 'sunken' && 'border-border-subtle/60 bg-surface-sunken/60 shadow-xs',
+        variant === 'glass' && 'border-border-subtle/80 bg-surface/85 backdrop-blur-md shadow-panel',
+        interactive && 'cursor-pointer hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-panel-hover active:translate-y-0',
         className
       )}
       {...props}

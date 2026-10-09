@@ -30,6 +30,9 @@ import {
   ExternalLink,
   Menu,
   ListTodo,
+  MoreHorizontal,
+  Settings,
+  Palette,
 } from 'lucide-react';
 import type { Activity, ContentDocument, ActivityReviewItem } from '@sthstart/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -135,6 +138,27 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
       window.document.removeEventListener('keydown', handleKeyDown);
     };
   }, [moreViewsOpen]);
+
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
+        setHeaderMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHeaderMenuOpen(false);
+    };
+    window.document.addEventListener('mousedown', handleClickOutside);
+    window.document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.document.removeEventListener('mousedown', handleClickOutside);
+      window.document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [headerMenuOpen]);
 
   // 当前聚焦的阶段 ID
   const [focusedStageId, setFocusedStageId] = useState<string | undefined>(
@@ -697,63 +721,119 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
           })}
         </nav>
 
-        {/* 顶部动作栏：常用操作直接常驻，移除原生 details 折叠 */}
+        {/* 顶部动作栏：主行动高亮，次级管理收拢至更多菜单 */}
         <div className="flex items-center gap-2 shrink-0">
-          {document.activity.planningBasis?.inspiration && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setInspirationOpen(!inspirationOpen)}
-              className="h-8 text-xs hidden lg:inline-flex items-center gap-1"
-            >
-              <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
-              <span>灵感来源</span>
-            </Button>
-          )}
-
           {reviewCount > 0 && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => setReworkOpen(true)}
-              className="h-8 text-xs bg-amber-500/10 text-amber-600 border-amber-500/30 font-medium"
+              className="h-8 text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 font-medium"
             >
-              <span className="hidden sm:inline">{reviewCount} 项变化待审</span>
+              <span>{reviewCount} 项待审</span>
             </Button>
           )}
 
+          {/* 主要行动：智能制作 */}
           <Button
-            variant="outline"
             size="sm"
-            onClick={() => setHistoryDrawerOpen(true)}
-            className="h-8 px-2 sm:px-2.5 text-xs text-muted hover:text-ink flex items-center gap-1"
-            title="查看与回溯历史版本"
+            variant="accent"
+            onClick={() => void navigateStudio({ panel: 'smart-create' })}
+            className="h-8 px-3 text-xs font-semibold flex items-center gap-1.5 shadow-xs"
+            title="智能生成与制作活动内容"
           >
-            <History className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">版本回溯</span>
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>智能制作</span>
           </Button>
 
+          {/* 保存新版本 */}
           <Button
+            size="sm"
             variant="outline"
-            size="sm"
-            onClick={() => setPresetsModalOpen(true)}
-            className="h-8 px-2 sm:px-2.5 text-xs text-muted hover:text-ink flex items-center gap-1"
-            title="预设与模板管理"
-          >
-            <Bookmark className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">预设模板</span>
-          </Button>
-
-          <Button
-            size="sm"
             onClick={handleCommitDraft}
             disabled={committing || saveStatus === 'conflict' || saveStatus === 'error'}
             aria-label={committing ? '正在保存新版本' : '保存新版本'}
-            className="h-8 px-3 text-xs bg-accent text-white hover:bg-accent-dark font-semibold flex items-center gap-1.5 shadow-xs"
+            className="h-8 px-2.5 text-xs text-ink hover:text-accent font-medium flex items-center gap-1"
+            title="将当前工作台内容沉淀为新版本"
           >
             <Save className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{committing ? '保存中…' : '保存新版本'}</span>
+            <span className="hidden sm:inline">{committing ? '保存中...' : '保存版本'}</span>
           </Button>
+
+          {/* 更多管理操作菜单 */}
+          <div className="relative" ref={headerMenuRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHeaderMenuOpen((v) => !v)}
+              className="h-8 px-2 text-xs text-muted hover:text-ink flex items-center gap-1"
+              title="更多操作与配置"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">更多</span>
+            </Button>
+            {headerMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-44 rounded-lg border border-border-default bg-surface p-1 shadow-lg anim-zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderMenuOpen(false);
+                    void navigateStudio({ panel: 'art-direction' });
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-2 text-ink"
+                >
+                  <Palette className="h-3.5 w-3.5 text-muted" />
+                  <span>美术画风设置</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderMenuOpen(false);
+                    void navigateStudio({ panel: 'activity-settings' });
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-2 text-ink"
+                >
+                  <Settings className="h-3.5 w-3.5 text-muted" />
+                  <span>活动基础设置</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderMenuOpen(false);
+                    setHistoryDrawerOpen(true);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-2 text-ink"
+                >
+                  <History className="h-3.5 w-3.5 text-muted" />
+                  <span>版本历史与回溯</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderMenuOpen(false);
+                    setPresetsModalOpen(true);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-2 text-ink"
+                >
+                  <Bookmark className="h-3.5 w-3.5 text-muted" />
+                  <span>预设与模板管理</span>
+                </button>
+                {document.activity.planningBasis?.inspiration && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setInspirationOpen((v) => !v);
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-2 text-ink border-t border-border-subtle mt-0.5 pt-1.5"
+                  >
+                    <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+                    <span>灵感来源依据</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* AI Copilot 侧栏开关 */}
           <Button
@@ -805,19 +885,76 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
         })}
       </nav>
 
-      <section aria-label="活动美术与工作区" className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-surface px-3 py-2 sm:px-6">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {studioRoute.tab === 'studio' ? (['storyboard','comic','records','assets'] as const).map(view => <Button key={view} size="sm" variant={studioRoute.view === view ? 'accent' : 'ghost'} onClick={() => void navigateStudio({ view })}>
-            {{ storyboard: '分镜', comic: '漫画', records: '剧情记录', assets: '素材制作' }[view]}</Button>)
-            : studioRoute.tab === 'theater' ? (['activity','comic'] as const).map(mode => <Button key={mode} size="sm" variant={studioRoute.mode === mode ? 'accent' : 'ghost'} onClick={() => void navigateStudio({ mode })}>{mode === 'comic' ? '漫画阅读' : '活动回放'}</Button>)
-              : (['gallery','exports'] as const).map(deliveryView => <Button key={deliveryView} size="sm" variant={studioRoute.deliveryView === deliveryView ? 'accent' : 'ghost'} onClick={() => void navigateStudio({ deliveryView })}>{deliveryView === 'gallery' ? '活动画廊' : '导出'}</Button>)}
+      <section aria-label="工作区子视图" className="flex shrink-0 items-center justify-between gap-x-4 border-b border-border-default/60 bg-surface px-3 py-1.5 sm:px-6">
+        <div className="flex items-center gap-1 bg-surface-muted p-0.5 rounded-lg border border-border-default/60">
+          {studioRoute.tab === 'studio' ? (
+            (['storyboard', 'comic', 'records', 'assets'] as const).map((view) => {
+              const label = { storyboard: '分镜', comic: '漫画', records: '剧情记录', assets: '素材制作' }[view];
+              const active = studioRoute.view === view;
+              return (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => void navigateStudio({ view })}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    active ? 'bg-surface text-accent shadow-xs font-semibold' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })
+          ) : studioRoute.tab === 'theater' ? (
+            (['activity', 'comic'] as const).map((mode) => {
+              const label = mode === 'comic' ? '漫画阅读' : '活动回放';
+              const active = studioRoute.mode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => void navigateStudio({ mode })}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    active ? 'bg-surface text-accent shadow-xs font-semibold' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })
+          ) : (
+            (['gallery', 'exports'] as const).map((deliveryView) => {
+              const label = deliveryView === 'gallery' ? '活动画廊' : '导出产物';
+              const active = studioRoute.deliveryView === deliveryView;
+              return (
+                <button
+                  key={deliveryView}
+                  type="button"
+                  onClick={() => void navigateStudio({ deliveryView })}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    active ? 'bg-surface text-accent shadow-xs font-semibold' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })
+          )}
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="hidden max-w-xs truncate text-xs text-muted sm:block">{imageConfigQuery.data?.document.artDirection
-            ? `${imageConfigQuery.data.document.artDirection.selectedStyle?.name ?? '自定义画风'} · ${imageConfigQuery.data.document.artDirection.quality === 'draft' ? '草图' : '成稿'} · ${imageConfigQuery.data.document.artDirection.canvas.width}×${imageConfigQuery.data.document.artDirection.canvas.height}` : '沿用原活动配置'}</span>
-          <Button size="sm" variant="outline" onClick={() => void navigateStudio({ panel: 'art-direction' })}>美术设置</Button>
-          <Button size="sm" variant="accent" onClick={() => void navigateStudio({ panel: 'smart-create' })}>智能制作</Button>
-          <Button size="sm" variant="ghost" onClick={() => void navigateStudio({ panel: 'activity-settings' })}>活动设置</Button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void navigateStudio({ panel: 'art-direction' })}
+            className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted hover:text-accent transition-colors py-1 px-2 rounded-md hover:bg-surface-muted cursor-pointer"
+            title="点击修改美术画风配置"
+          >
+            <Palette className="h-3.5 w-3.5 text-accent" />
+            <span className="max-w-xs truncate">
+              {imageConfigQuery.data?.document.artDirection
+                ? `${imageConfigQuery.data.document.artDirection.selectedStyle?.name ?? '自定义画风'} · ${imageConfigQuery.data.document.artDirection.quality === 'draft' ? '草图' : '成稿'} · ${imageConfigQuery.data.document.artDirection.canvas.width}×${imageConfigQuery.data.document.artDirection.canvas.height}`
+                : '沿用原活动画风'}
+            </span>
+          </button>
         </div>
       </section>
 
@@ -1086,10 +1223,10 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                           {cleanStageTitle(currentStage.title)}
                         </h2>
                         {currentStage.location && (
-                          <span className="text-xs text-muted shrink-0">📍 {currentStage.location}</span>
+                          <span className="text-xs text-muted shrink-0">地点: {currentStage.location}</span>
                         )}
                         {currentStage.endCondition && (
-                          <span className="text-xs text-muted shrink-0 hidden xl:inline">🏁 {currentStage.endCondition}</span>
+                          <span className="text-xs text-muted shrink-0 hidden xl:inline">完结条件: {currentStage.endCondition}</span>
                         )}
                         <button type="button" onClick={() => setMobileStagePickerOpen(!mobileStagePickerOpen)}
                           aria-expanded={mobileStagePickerOpen}
@@ -1401,7 +1538,7 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                         const isAssigned = p.id === assignedTextProfileId;
                         return (
                           <option key={p.id} value={p.id}>
-                            🤖 {p.name} ({p.model || '未设定具体模型名'}){isAssigned ? ' [应用默认]' : ''}
+                            {p.name} ({p.model || '未设定具体模型名'}){isAssigned ? ' [应用默认]' : ''}
                           </option>
                         );
                       })}
@@ -1432,10 +1569,10 @@ export function ActivityStudioWorkspace({ activityId }: ActivityStudioWorkspaceP
                   <label className="text-[11px] font-bold text-muted">生成目标内容</label>
                   <div className="grid grid-cols-2 gap-1.5 text-xs font-medium">
                     {[
-                      { id: 'shot' as const, label: '🎬 配图描述' },
-                      { id: 'continue-chat' as const, label: '💬 续写对话' },
-                      { id: 'moment' as const, label: '📸 朋友圈文案' },
-                      { id: 'stage' as const, label: '📑 本幕对话与动态' },
+                      { id: 'shot' as const, label: '配图描述' },
+                      { id: 'continue-chat' as const, label: '续写对话' },
+                      { id: 'moment' as const, label: '朋友圈文案' },
+                      { id: 'stage' as const, label: '本幕对话与动态' },
                     ].map((t) => (
                       <button
                         key={t.id}

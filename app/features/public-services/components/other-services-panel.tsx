@@ -26,14 +26,14 @@ export function OtherServicesPanel({
       name,
       capabilities: ['llm', 'vector', 'image', 'persona', 'logs'],
     });
-    toast.success('应用令牌已生成喵。');
+    toast.success('应用令牌已生成。');
     await onRefresh();
     return created.token;
   };
 
   const handleSaveOther = async (payload: unknown) => {
     await createProfileMutation.mutateAsync(payload);
-    toast.success('能力配置已保存喵。');
+    toast.success('能力配置已保存。');
     await onRefresh();
   };
 
@@ -41,7 +41,7 @@ export function OtherServicesPanel({
     <div className="space-y-6">
       {overview && !overview.keyring.available && (
         <Alert variant="warning" title="安全存储未连接">
-          配置 KEYRING_FILE_MASTER_KEY 可启用容器内加密存储，或使用环境变量提供模型密钥喵。
+          配置 KEYRING_FILE_MASTER_KEY 可启用容器内加密存储，或使用环境变量提供模型密钥。
         </Alert>
       )}
 

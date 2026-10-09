@@ -48,7 +48,7 @@ export function Drawer({
       className="fixed inset-0 z-50 flex"
     >
       <div
-        className="fixed inset-0 bg-ink/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-ink/50 backdrop-blur-sm transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -57,11 +57,11 @@ export function Drawer({
         ref={drawerRef}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex flex-col bg-surface shadow-floating transition-transform',
+          'relative z-50 flex flex-col bg-surface shadow-dialog transition-transform',
           position === 'right' &&
-            'ml-auto h-full w-full max-w-md border-l border-border-default p-6 animate-in slide-in-from-right',
+            'ml-auto h-full w-full max-w-md border-l border-border-default/80 p-6 animate-in slide-in-from-right',
           position === 'bottom' &&
-            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-default p-6 safe-area-bottom animate-in slide-in-from-bottom',
+            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-default/80 p-6 safe-area-bottom animate-in slide-in-from-bottom',
           className
         )}
       >

@@ -129,7 +129,7 @@ export function PublicServicesSettings() {
   const handleRefreshAll = async () => {
     setDataLoading(true);
     const [, loaded] = await Promise.all([refetchOverview(), loadData()]);
-    if (loaded) toast.success('配置数据已同步刷新喵。');
+    if (loaded) toast.success('配置数据已同步刷新。');
   };
 
   useEffect(() => {
@@ -148,7 +148,7 @@ export function PublicServicesSettings() {
     <PageContainer width="settings" className="py-5 space-y-4">
       <PageHeader
         title="模型与公共服务"
-        description="分层管理服务连接凭据、文本模型推理、云端与本地生图引擎，并为各应用配置业务用途绑定喵。"
+        description="分层管理服务连接凭据、文本模型推理、云端与本地生图引擎，并为各应用配置业务用途绑定。"
       />
 
       {/* 服务概况横条 */}
@@ -188,13 +188,13 @@ export function PublicServicesSettings() {
 
       {queryError && (
         <Alert variant="danger" title="公共服务数据读取失败">
-          {queryError instanceof Error ? queryError.message : String(queryError)}。已有配置安全无损喵。
+          {queryError instanceof Error ? queryError.message : String(queryError)}。已有配置安全无损。
         </Alert>
       )}
 
       {errorMsg && (
         <Alert variant="warning" title="数据提示">
-          {errorMsg}喵。
+          {errorMsg}
         </Alert>
       )}
 

@@ -94,10 +94,10 @@ button.primary-action:hover {
   gap: 14px;
   margin: 0;
   padding: 10px 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 4px 14px 4px 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
   background: var(--surface);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow-xs);
   font-size: 12px;
 }
 
@@ -190,7 +190,7 @@ button.primary-action:hover {
   justify-content: center;
   padding: 0 18px;
   border: 1px solid rgb(244 240 231 / 18%);
-  border-radius: 3px 14px 3px 3px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--paper);
   font-size: 14px;
@@ -624,3 +624,101 @@ button.primary-action:hover {
 .notebook-focused .notebook-master-pane, .notebook-focused .notebook-detail-pane {
   height: 100%; min-height: 0; overflow-y: auto;
 }
+
+/* ==================== 现代微动效体系（原生 CSS 硬件加速） ==================== */
+@keyframes anim-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes anim-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes anim-zoom-in-95 {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes anim-zoom-out-95 {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+}
+
+@keyframes anim-slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes anim-slide-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes anim-slide-in-bottom-2 {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes anim-slide-in-top-2 {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes anim-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-in {
+  animation-duration: var(--motion-base);
+  animation-timing-function: var(--motion-ease);
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: anim-fade-in;
+}
+
+.zoom-in-95 {
+  animation-name: anim-zoom-in-95;
+  animation-timing-function: var(--motion-spring);
+}
+
+.fade-in.zoom-in-95 {
+  animation-name: anim-zoom-in-95;
+  animation-timing-function: var(--motion-spring);
+}
+
+.slide-in-from-right {
+  animation-name: anim-slide-in-right;
+  animation-timing-function: var(--motion-ease);
+}
+
+.slide-in-from-bottom {
+  animation-name: anim-slide-in-bottom;
+  animation-timing-function: var(--motion-ease);
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: anim-slide-in-bottom-2;
+  animation-timing-function: var(--motion-spring);
+}
+
+.slide-in-from-top-2 {
+  animation-name: anim-slide-in-top-2;
+  animation-timing-function: var(--motion-spring);
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--fg-default) 6%, transparent) 0%,
+    color-mix(in srgb, var(--fg-default) 14%, transparent) 50%,
+    color-mix(in srgb, var(--fg-default) 6%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: anim-shimmer 1.8s ease-in-out infinite;
+}
+

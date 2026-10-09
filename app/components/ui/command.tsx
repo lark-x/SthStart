@@ -85,7 +85,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4"
     >
       <div
-        className="fixed inset-0 bg-ink/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-ink/50 backdrop-blur-sm transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -94,7 +94,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
         ref={dialogRef}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[var(--radius-panel)] border border-border-default bg-surface shadow-2xl animate-in zoom-in-95"
+        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[var(--radius-panel)] border border-border-default/80 bg-surface shadow-dialog animate-in zoom-in-95"
       >
         <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3 bg-surface">
           <Search className="h-5 w-5 text-muted" aria-hidden="true" />

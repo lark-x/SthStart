@@ -312,8 +312,8 @@ export function MediaWorkstation({
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-sm uppercase font-mono">
-                      {slot.kind === 'video' ? '🎬 视频' : '📷 照片'}
+                    <Badge variant="outline" className="text-sm uppercase font-mono flex items-center gap-1">
+                      {slot.kind === 'video' ? <><Video className="size-3.5" />视频</> : <><Camera className="size-3.5" />照片</>}
                     </Badge>
                     <span className="text-sm font-semibold text-ink">{slot.caption}</span>
                     {isSlotLocked && (

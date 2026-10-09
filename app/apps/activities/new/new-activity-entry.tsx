@@ -78,7 +78,7 @@ export function NewActivityEntry() {
     try {
       const project = projects.find((p) => p.id === selectedProjectId);
       const chapter = chapters.find((c) => c.id === selectedChapterId);
-      if (!chapter) throw new Error('未找到所选章节喵');
+      if (!chapter) throw new Error('未找到所选章节');
 
       // 提取章节中的对话角色（剥离表情动作括号）
       const detectedActors = (chapter.body.match(/^([^\n:：]{1,20})[:：]/gm) || [])
@@ -102,7 +102,7 @@ export function NewActivityEntry() {
 
       router.push(`/apps/activities/${res.activity.id}`);
     } catch (err) {
-      setDeriveError(err instanceof Error ? err.message : '从小说派生失败喵');
+      setDeriveError(err instanceof Error ? err.message : '从小说派生失败');
     } finally {
       setDeriving(false);
     }
@@ -131,7 +131,7 @@ export function NewActivityEntry() {
 
       router.push(`/apps/activities/${res.activity.id}`);
     } catch (err) {
-      setQuickError(err instanceof Error ? err.message : '创建活动失败喵');
+      setQuickError(err instanceof Error ? err.message : '创建活动失败');
     } finally {
       setQuickCreating(false);
     }
@@ -152,7 +152,7 @@ export function NewActivityEntry() {
       });
       router.push(`/apps/activities/${res.activity.id}`);
     } catch (err) {
-      setQuickError(err instanceof Error ? err.message : '创建空白活动失败喵');
+      setQuickError(err instanceof Error ? err.message : '创建空白活动失败');
     } finally {
       setQuickCreating(false);
     }
@@ -239,7 +239,7 @@ export function NewActivityEntry() {
               选择要视觉化的小说章节
             </h3>
             <p className="text-xs text-muted">
-              系统会自动抽取小说中的分幕、角色台词与情境，一键装配为分镜漫画格与视听工坊喵。
+              系统会自动抽取小说中的分幕、角色台词与情境，一键装配为分镜漫画格与视听工坊。
             </p>
           </div>
 
@@ -313,7 +313,7 @@ export function NewActivityEntry() {
               挑选出镜角色与设定
             </h3>
             <p className="text-xs text-muted">
-              直接复用已清洗的 120+ 角色人设外貌与 LoRA 资产，确保 ComfyUI 生图高度一致喵。
+              直接复用已清洗的 120+ 角色人设外貌与 LoRA 资产，确保 ComfyUI 生图高度一致。
             </p>
           </div>
 
@@ -395,7 +395,7 @@ export function NewActivityEntry() {
           <div className="space-y-1 max-w-sm mx-auto">
             <h3 className="text-base font-bold text-ink">快速建立空白视觉工坊</h3>
             <p className="text-xs text-muted">
-              不预设剧情与模板，直接进入自由分镜与漫画连环画排版画布喵。
+              不预设剧情与模板，直接进入自由分镜与漫画连环画排版画布。
             </p>
           </div>
           {quickError && <p className="text-xs text-danger-fg">{quickError}</p>}

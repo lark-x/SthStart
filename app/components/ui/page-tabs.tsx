@@ -62,7 +62,10 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={handleKeyDown}
-      className={cn('page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-[var(--radius-panel)] bg-surface-muted p-1', className)}
+      className={cn(
+        'page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-[var(--radius-control)] border border-border-subtle/50 bg-surface-sunken/80 p-1 backdrop-blur-xs',
+        className
+      )}
     >
       {tabs.map((tab, index) => {
         const selected = tab.id === value;
@@ -80,11 +83,11 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'inline-flex h-11 sm:h-9 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              'inline-flex h-9 sm:h-8 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-control)-3px)] px-3 text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-[var(--motion-ease)] active:scale-[0.98]',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
               selected
-                ? 'bg-surface text-accent font-semibold'
-                : 'text-muted hover:bg-surface-hover hover:text-ink',
+                ? 'bg-surface text-ink font-semibold shadow-xs shadow-ink/5 border border-border-subtle/60'
+                : 'text-muted hover:bg-surface-hover/80 hover:text-ink',
               tab.disabled && 'pointer-events-none opacity-50'
             )}
           >

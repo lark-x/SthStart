@@ -186,7 +186,7 @@ export function ScenePreviewDrawer({
           </div>
           {scene.environment && (
             <div className="text-muted text-[11px] italic truncate max-w-sm" title={scene.environment}>
-              🌫️ {scene.environment}
+              环境：{scene.environment}
             </div>
           )}
         </div>

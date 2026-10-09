@@ -44,7 +44,7 @@ const ALL_CAPABILITIES: Array<{ id: LlmModelCapability; label: string }> = [
 ];
 
 const PRESET_PROMPTS = [
-  { label: '自我介绍', prompt: '你好！请用一两句话介绍你自己喵。' },
+  { label: '自我介绍', prompt: '你好！请用一两句话介绍你自己。' },
   { label: 'JSON 结构化', prompt: '请输出包含 greeting 和 timestamp 字段的纯 JSON 对象，不要附加任何 Markdown 标记。' },
   { label: '推理问答', prompt: '树上有 5 只鸟，猎人开枪打中 1 只，树上还剩下几只鸟？请简要推理回答。' },
 ];
@@ -153,7 +153,7 @@ export function TextModelsPanel({
     setFormError('');
 
     if (formData.capabilities.length === 0) {
-      setFormError('请至少选择一个模型能力标签喵。');
+      setFormError('请至少选择一个模型能力标签。');
       setFormSaving(false);
       return;
     }
@@ -170,7 +170,7 @@ export function TextModelsPanel({
         enabled: formData.enabled,
       });
 
-      toast.success(editingModel ? '模型配置已更新喵。' : '模型配置已创建喵。');
+      toast.success(editingModel ? '模型配置已更新。' : '模型配置已创建。');
       setFormOpen(false);
       await onRefresh();
     } catch (err) {
@@ -188,7 +188,7 @@ export function TextModelsPanel({
     }
     try {
       await deleteModelProfile(m.id);
-      toast.success('模型配置已删除喵。');
+      toast.success('模型配置已删除。');
       await onRefresh();
     } catch (err) {
       toast.error('删除失败', err instanceof Error ? err.message : String(err));
@@ -210,7 +210,7 @@ export function TextModelsPanel({
     if (type === 'json') {
       setPrompt('请输出包含 status: "ok" 与 message: "connected" 的合法 JSON 对象。');
     } else if (type === 'vision') {
-      setPrompt('请识别所提供图片中的内容，并简要回复图片描述与颜色喵。');
+      setPrompt('请识别所提供图片中的内容，并简要回复图片描述与颜色。');
     } else {
       setPrompt(PRESET_PROMPTS[0].prompt);
     }
@@ -223,7 +223,7 @@ export function TextModelsPanel({
       const res = await testModelInference(testingModel.id, prompt.trim(), testType);
       setTestResult(res);
       if (res.success) {
-        toast.success('模型推理成功喵。');
+        toast.success('模型推理成功。');
       } else {
         toast.warning('模型推理失败', res.error || undefined);
       }
@@ -234,7 +234,7 @@ export function TextModelsPanel({
         latencyMs: 0,
         output: null,
         tokenUsage: null,
-        error: err instanceof Error ? err.message : '请求异常喵。',
+        error: err instanceof Error ? err.message : '请求异常。',
         aiCallId: null,
       });
     } finally {
@@ -284,7 +284,7 @@ export function TextModelsPanel({
       {/* 模型列表 */}
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-muted">
-          <p className="text-sm">暂无匹配的模型配置喵。点击上方“新建模型配置”添加一个喵。</p>
+          <p className="text-sm">暂无匹配的模型配置。点击上方“新建模型配置”添加一个。</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -576,13 +576,13 @@ export function TextModelsPanel({
             onClick={runInferenceTest}
           >
             {testing ? <Spinner className="h-3.5 w-3.5 mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
-            {testing ? '正在执行推理测试喵...' : '开始测试推理'}
+            {testing ? '正在执行推理测试...' : '开始测试推理'}
           </Button>
 
           {testing && (
             <div className="p-8 text-center text-sm text-muted">
               <Spinner className="h-6 w-6 mx-auto mb-2" />
-              正在调用公共 LLM 内核执行推理测试喵...
+              正在调用公共 LLM 内核执行推理测试...
             </div>
           )}
 
@@ -638,7 +638,7 @@ export function TextModelsPanel({
                       className="text-muted hover:text-ink"
                       onClick={() => {
                         void navigator.clipboard.writeText(testResult.output || '');
-                        toast.success('已复制到剪贴板喵。');
+                        toast.success('已复制到剪贴板。');
                       }}
                     >
                       <Copy className="h-3.5 w-3.5" />

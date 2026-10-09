@@ -24,6 +24,10 @@ import {
   Layers,
   FolderInput,
   RotateCcw,
+  MoreHorizontal,
+  Camera,
+  User,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { CharacterDraftV2, CharacterVariant } from '@sthstart/contracts';
 import { PageContainer } from '@/app/components/shared/page-layout';
@@ -32,21 +36,17 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Dialog } from '@/app/components/ui/dialog';
-import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
-import { FormField } from '@/app/components/ui/form-field';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { TagsInput } from '@/app/components/shared/tags-input';
 import { useToast } from '@/app/providers/ui-provider';
-import { useCharacterDetail, useCharacters, useCharacterAssets } from '../queries';
+import { useCharacterDetail, useCharacterAssets } from '../queries';
 import {
   useCreateCharacter,
   useUpdateCharacter,
-  useUploadCharacterAvatar,
   useUploadCharacterAsset,
   useSetCharacterActiveAsset,
-  useMatchOfficialAvatar,
   useFetchAvatarFromUrl,
   useGenerateCharacterAvatar,
   useApplyCharacterAvatar,
@@ -65,23 +65,27 @@ const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT_V2);
 
 const PERSONA_PLACEHOLDER = [
   '### 身份与经历',
-  '她的社会身份、对外形象与核心经历。',
+  '社会身份、对外形象与核心经历。',
   '',
   '### 性格与处世',
   '- 语气特征与日常处世风格',
   '- 话语与内在情感的反差',
   '',
   '### 好恶与动机',
-  '- 喜欢：…',
-  '- 不喜欢：…',
-  '- 核心内在动机：…',
+  '- 喜欢：...',
+  '- 不喜欢：...',
+  '- 核心内在动机：...',
 ].join('\n');
+
+type EditorTab = 'persona' | 'visual' | 'lora';
 
 export function CharacterEditor({ characterId }: { characterId?: string }) {
   const router = useRouter();
   const toast = useToast();
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const portraitInputRef = useRef<HTMLInputElement>(null);
+  const uploadMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   // Status & UI state
   const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
@@ -89,23 +93,40 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const [tags, setTags] = useState<string[]>([]);
   const [variants, setVariants] = useState<CharacterVariant[]>([]);
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<EditorTab>('persona');
 
-  // Dialogs state
+  // Menus & Dialogs state
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [aiAvatarDialogOpen, setAiAvatarDialogOpen] = useState(false);
   const [aiAvatarPrompt, setAiAvatarPrompt] = useState('');
   const [avatarResult, setAvatarResult] = useState<GenerationTaskDescriptor | null>(null);
-  const avatarOptions = useQuery({ queryKey: ['generation', 'image-options', 'characters', 'character-avatar'],
-    queryFn: () => fetchImageGenerationOptions('characters', 'character-avatar'), enabled: aiAvatarDialogOpen });
+  const avatarOptions = useQuery({
+    queryKey: ['generation', 'image-options', 'characters', 'character-avatar'],
+    queryFn: () => fetchImageGenerationOptions('characters', 'character-avatar'),
+    enabled: aiAvatarDialogOpen,
+  });
   const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
   const [newVariantName, setNewVariantName] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [multiSourceDialogOpen, setMultiSourceDialogOpen] = useState(false);
-  const [identityOpen, setIdentityOpen] = useState(false);
-  const [identityDiscardOpen, setIdentityDiscardOpen] = useState(false);
-  const [identityDraft, setIdentityDraft] = useState({ displayName: '', work: '', tags: [] as string[] });
   const [assetFilter, setAssetFilter] = useState<'all' | 'avatar' | 'portrait'>('all');
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target as Node)) {
+        setUploadMenuOpen(false);
+      }
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // AI Avatar Task
   const [avatarTaskId, setAvatarTaskId] = useState<string | null>(null);
@@ -139,10 +160,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   // Mutations
   const createMutation = useCreateCharacter();
   const updateMutation = useUpdateCharacter();
-  const uploadAvatarMutation = useUploadCharacterAvatar();
   const uploadAssetMutation = useUploadCharacterAsset();
   const setActiveAssetMutation = useSetCharacterActiveAsset();
-  const matchOfficialAvatarMutation = useMatchOfficialAvatar();
   const fetchAvatarFromUrlMutation = useFetchAvatarFromUrl();
   const generateAvatarMutation = useGenerateCharacterAvatar();
   const applyAvatarMutation = useApplyCharacterAvatar();
@@ -168,8 +187,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         if (stopped) return;
         setAvatarPollError('');
         if (task.status === 'succeeded') {
-          setAvatarTaskId(null); setAvatarResult(task); setAvatarPollError('');
-          toast.success('头像生成完成，请预览后选择是否应用。');
+          setAvatarTaskId(null);
+          setAvatarResult(task);
+          setAvatarPollError('');
+          toast.success('头像生成完成，请预览后选择是否应用');
           return;
         }
         if (['failed', 'cancelled', 'abandoned'].includes(task.status)) {
@@ -208,7 +229,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
     try {
       if (characterId) {
-        // 更新既有角色
         const res = await updateMutation.mutateAsync({
           id: characterId,
           draft: currentDraft,
@@ -217,11 +237,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           expectedDraftRevision: detailData?.draftRevision,
         });
         setStatus('saved');
-        toast.success('角色已保存');
+        toast.success('角色档案已保存');
         await refetchDetail();
         return res.id;
       } else {
-        // 新建角色
         const res = await createMutation.mutateAsync({
           displayName: currentDraft.displayName.trim(),
           draft: currentDraft,
@@ -229,7 +248,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           variants,
         });
         setStatus('saved');
-        toast.success('角色创建成功');
+        toast.success('角色档案创建成功');
         router.push(`/apps/characters/${res.id}`);
         return res.id;
       }
@@ -241,26 +260,6 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       return null;
     }
   }, [getValues, clearErrors, setError, toast, characterId, updateMutation, tags, variants, detailData?.draftRevision, refetchDetail, createMutation, router]);
-
-  const openIdentityEditor = () => {
-    setIdentityDraft({ displayName: getValues('displayName'), work: getValues('work'), tags: [...tags] });
-    setIdentityOpen(true);
-  };
-  const requestCloseIdentityEditor = () => {
-    const changed = identityDraft.displayName !== getValues('displayName')
-      || identityDraft.work !== getValues('work')
-      || JSON.stringify(identityDraft.tags) !== JSON.stringify(tags);
-    if (changed) setIdentityDiscardOpen(true);
-    else setIdentityOpen(false);
-  };
-  const saveIdentityEditor = () => {
-    clearErrors('displayName');
-    setValue('displayName', identityDraft.displayName, { shouldDirty: true, shouldValidate: true });
-    setValue('work', identityDraft.work, { shouldDirty: true });
-    setTags(identityDraft.tags);
-    setStatus('dirty');
-    setIdentityOpen(false);
-  };
 
   // Handle Asset Upload (Avatar or Portrait)
   const handleUploadAsset = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'avatar' | 'portrait') => {
@@ -281,25 +280,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     if (!characterId) return;
     try {
       await setActiveAssetMutation.mutateAsync({ id: characterId, payload: { assetId, kind } });
-      toast.success(`已成功切换当前${kind === 'portrait' ? '主立绘' : '主头像'}`);
+      toast.success(`已切换当前${kind === 'portrait' ? '主立绘' : '主头像'}`);
       await Promise.all([refetchDetail(), refetchAssets()]);
     } catch (err) {
       toast.error(`切换${kind === 'portrait' ? '立绘' : '头像'}失败`, err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  // Handle Match Official Avatar
-  const handleMatchOfficial = async () => {
-    if (!characterId) {
-      toast.warning('请先保存角色档案后再抓取官方头像');
-      return;
-    }
-    try {
-      await matchOfficialAvatarMutation.mutateAsync(characterId);
-      toast.success('已成功抓取并应用官方高清头像！');
-      await refetchDetail();
-    } catch (err: unknown) {
-      toast.error('官方头像抓取失败', err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -312,7 +296,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     if (!customAvatarUrl.trim()) return;
     try {
       await fetchAvatarFromUrlMutation.mutateAsync({ id: characterId, url: customAvatarUrl.trim() });
-      toast.success('已成功从链接导入头像！');
+      toast.success('已成功从链接导入头像');
       setUrlDialogOpen(false);
       setCustomAvatarUrl('');
       await refetchDetail();
@@ -445,7 +429,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
   return (
     <PageContainer className="pb-16 pt-2">
-      {/* 顶部页头：无版本号、无草稿/已发布标签 */}
+      {/* 顶部页头 */}
       <PageHeader
         backHref="/apps/characters"
         backLabel="角色资料库"
@@ -464,7 +448,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               }`}
             >
               {status === 'saving' ? (
-                '正在保存…'
+                '正在保存...'
               ) : status === 'saved' ? (
                 <>
                   <Check className="h-3 w-3" />
@@ -493,7 +477,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               className="px-4 font-semibold shadow-sm"
             >
               <Save className="h-4 w-4 mr-1.5" aria-hidden="true" />
-              <span>保存角色</span>
+              <span>保存档案</span>
             </Button>
           </div>
         }
@@ -507,23 +491,23 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
       )}
 
-      {/* 双栏工作台：左栏卡片与工具，右栏精简人设与外观 */}
+      {/* 双栏工作台：左栏立绘卡片与资产管理，右栏沉浸式档案创作 */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">
-        {/* ================= 左栏：角色卡预览、头像工具、衍生形态 ================= */}
-        <div className="space-y-6 lg:sticky lg:top-6">
+        {/* ================= 左栏：角色卡预览、上下文微操作、资产库、衍生形态 ================= */}
+        <div className="space-y-5 lg:sticky lg:top-6">
           {/* 角色卡牌预览 */}
-          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-4">
+          <div className="rounded-xl border border-border-default bg-surface p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">
-                角色卡牌预览
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+                视觉预览
               </span>
               <span className="inline-flex items-center rounded-md bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                {currentVariant ? `形态: ${currentVariant.name}` : '默认形态'}
+                {currentVariant ? `形态: ${currentVariant.name}` : '主档案形态'}
               </span>
             </div>
 
-            {/* 角色卡牌预览：立绘为主，头像为辅 */}
-            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-border-default/80 bg-surface-muted shadow-inner flex items-center justify-center">
+            {/* 立绘与头像展示区 */}
+            <div className="group relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-border-default/80 bg-surface-muted shadow-inner flex items-center justify-center">
               {currentPortraitUrl ? (
                 <Image
                   src={currentPortraitUrl}
@@ -538,21 +522,19 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   alt={draft.displayName || '角色头像'}
                   fill
                   unoptimized
-                  className="object-cover opacity-80"
+                  className="object-cover opacity-85"
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center text-muted">
-                  <span className="text-5xl font-bold opacity-40">
-                    {draft.displayName ? draft.displayName.slice(0, 1) : '角'}
-                  </span>
-                  <span className="mt-2 text-xs text-fg-subtle">暂未设置立绘与头像</span>
+                  <User className="h-12 w-12 opacity-30" />
+                  <span className="mt-2 text-xs text-muted">暂无立绘与头像</span>
                 </div>
               )}
 
-              {/* 头像徽章（左上角浮动小圆图） */}
+              {/* 头像徽章（左上角微圆图） */}
               {currentAvatarUrl && (
-                <div className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-surface/90 backdrop-blur-md p-1 pr-2.5 shadow-md border border-border-default/60">
-                  <div className="relative h-9 w-9 overflow-hidden rounded-full border border-border-default bg-surface-muted">
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-surface/90 backdrop-blur-md p-1 pr-2 shadow-sm border border-border-default/60">
+                  <div className="relative h-7 w-7 overflow-hidden rounded-full border border-border-default bg-surface-muted">
                     <Image
                       src={currentAvatarUrl}
                       alt={draft.displayName || '角色头像'}
@@ -561,147 +543,139 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                       className="object-cover"
                     />
                   </div>
-                  <div className="text-[11px] leading-tight">
-                    <span className="block font-bold text-ink">当前头像</span>
-                  </div>
+                  <span className="text-[10px] font-semibold text-ink">当前头像</span>
                 </div>
               )}
 
-              {/* 立绘状态标签（右上角） */}
+              {/* 立绘标记（右上角） */}
               {currentPortraitUrl && (
-                <div className="absolute top-3 right-3 rounded-md bg-surface/80 backdrop-blur-md px-2 py-0.5 text-[11px] font-medium text-ink shadow-sm border border-border-default/50">
+                <div className="absolute top-2.5 right-2.5 rounded-md bg-surface/85 backdrop-blur-md px-1.5 py-0.5 text-[10px] font-medium text-ink shadow-sm border border-border-default/50">
                   当前立绘
                 </div>
               )}
             </div>
 
-            {/* 角色基本信息预览 */}
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold text-ink truncate">
-                {draft.displayName || '未命名角色'}
-              </h3>
-              <p className="text-xs font-medium text-fg-subtle">
-                {draft.work || '原创世界'}
-                {draft.originType === 'ip' ? ' · IP 角色' : ' · 原创'}
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-muted line-clamp-3">
-                {draft.summary || draft.personaText || '尚未填写一句话人设概述。'}
-              </p>
-            </div>
-
-            {/* 标签 */}
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border-subtle">
-                {tags.slice(0, 5).map((t) => (
-                  <span key={t} className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 头像与角色卡多源获取工具 */}
-          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-3">
-            <h4 className="text-sm font-bold text-ink">获取头像与立绘</h4>
-            <p className="text-xs text-muted leading-relaxed">
-              支持多源（Enka CDN、百科 Wiki 等）自动匹配、AI 生图、本地上传与酒馆卡交互。
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              {/* 多源获取头像与立绘 (重点入口) */}
+            {/* 紧凑微操作工具行（替代原 7 按钮平铺） */}
+            <div className="grid grid-cols-4 gap-1.5 pt-1">
               <Button
                 type="button"
                 size="sm"
-                variant="accent"
-                disabled={!characterId}
+                variant="outline"
                 onClick={() => setMultiSourceDialogOpen(true)}
-                className="col-span-2 justify-center text-xs h-9 font-semibold shadow-sm"
+                disabled={!characterId}
+                className="flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-accent transition-colors"
                 title="自动探测 Enka CDN、Fandom Wiki 等官方资源库"
               >
-                <Sparkles className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-                <span>多源获取头像与立绘</span>
+                <Sparkles className="h-3.5 w-3.5 text-accent" />
+                <span>多源获取</span>
               </Button>
 
-              {/* 本地上传立绘 */}
+              <div className="relative" ref={uploadMenuRef}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setUploadMenuOpen((v) => !v)}
+                  disabled={!characterId || uploadAssetMutation.isPending}
+                  className="w-full flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-accent transition-colors"
+                  title="上传本地图片"
+                >
+                  <Upload className="h-3.5 w-3.5 text-muted" />
+                  <span>本地上传</span>
+                </Button>
+                {uploadMenuOpen && (
+                  <div className="absolute left-0 bottom-full mb-1.5 z-50 w-36 rounded-lg border border-border-default bg-surface p-1 shadow-lg anim-zoom-in-95">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false);
+                        portraitInputRef.current?.click();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-1.5 text-ink"
+                    >
+                      <Camera className="h-3.5 w-3.5 text-muted" />
+                      <span>上传立绘大图</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenuOpen(false);
+                        avatarInputRef.current?.click();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-1.5 text-ink"
+                    >
+                      <User className="h-3.5 w-3.5 text-muted" />
+                      <span>上传头像图标</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={!characterId || uploadAssetMutation.isPending}
-                onClick={() => portraitInputRef.current?.click()}
-                className="justify-start text-xs h-9"
-              >
-                <Upload className="h-3.5 w-3.5 mr-1 text-purple-500" aria-hidden="true" />
-                <span>上传立绘大图</span>
-              </Button>
-
-              {/* 本地上传头像 */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!characterId || uploadAssetMutation.isPending}
-                onClick={() => avatarInputRef.current?.click()}
-                className="justify-start text-xs h-9"
-              >
-                <Upload className="h-3.5 w-3.5 mr-1 text-emerald-500" aria-hidden="true" />
-                <span>上传头像图标</span>
-              </Button>
-
-              {/* AI 生成头像 */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!characterId}
                 onClick={handleTriggerAiAvatar}
-                className="justify-start text-xs h-9"
-                title="基于外观与服装特征通过 ComfyUI 生成专属头像"
-              >
-                <Palette className="h-3.5 w-3.5 mr-1 text-indigo-500" aria-hidden="true" />
-                <span>{avatarTaskId ? '查看头像生成进度' : avatarResult ? '预览新头像' : 'AI 生成头像'}</span>
-              </Button>
-
-              {/* 图片链接导入 */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
                 disabled={!characterId}
-                onClick={() => setUrlDialogOpen(true)}
-                className="justify-start text-xs h-9"
+                className="flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-accent transition-colors"
+                title="基于外观与服装特征生成头像"
               >
-                <Globe className="h-3.5 w-3.5 mr-1 text-sky-500" aria-hidden="true" />
-                <span>从链接获取</span>
+                <Palette className="h-3.5 w-3.5 text-indigo-500" />
+                <span>{avatarTaskId ? '生成中...' : avatarResult ? '预览新图' : 'AI 生图'}</span>
               </Button>
 
-              {/* 导入酒馆卡 */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setImportDialogOpen(true)}
-                className="justify-start text-xs h-9"
-                title="导入 Tavern Card V2 (PNG/JSON)"
-              >
-                <FolderInput className="h-3.5 w-3.5 mr-1 text-amber-500" aria-hidden="true" />
-                <span>导入酒馆卡</span>
-              </Button>
-
-              {/* 导出酒馆卡 */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!characterId}
-                onClick={handleExportTavern}
-                className="justify-start text-xs h-9"
-                title="导出为标准 Tavern Card V2 JSON"
-              >
-                <Download className="h-3.5 w-3.5 mr-1 text-purple-500" aria-hidden="true" />
-                <span>导出酒馆卡</span>
-              </Button>
+              <div className="relative" ref={moreMenuRef}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setMoreMenuOpen((v) => !v)}
+                  className="w-full flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-ink transition-colors"
+                  title="更多导入导出操作"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5 text-muted" />
+                  <span>更多</span>
+                </Button>
+                {moreMenuOpen && (
+                  <div className="absolute right-0 bottom-full mb-1.5 z-50 w-40 rounded-lg border border-border-default bg-surface p-1 shadow-lg anim-zoom-in-95">
+                    <button
+                      type="button"
+                      disabled={!characterId}
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        setUrlDialogOpen(true);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-1.5 text-ink disabled:opacity-40"
+                    >
+                      <Globe className="h-3.5 w-3.5 text-muted" />
+                      <span>从图片链接导入</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        setImportDialogOpen(true);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-1.5 text-ink"
+                    >
+                      <FolderInput className="h-3.5 w-3.5 text-muted" />
+                      <span>导入酒馆角色卡</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!characterId}
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        void handleExportTavern();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-surface-muted transition-colors flex items-center gap-1.5 text-ink disabled:opacity-40"
+                    >
+                      <Download className="h-3.5 w-3.5 text-muted" />
+                      <span>导出酒馆卡 (JSON)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 隐藏的本地图片选择器 */}
@@ -721,29 +695,26 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             />
           </div>
 
-          {/* 形象资产库 (Asset Gallery) */}
-          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-3">
+          {/* 形象资产库 */}
+          <div className="rounded-xl border border-border-default bg-surface p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-ink flex items-center gap-1.5">
-                <Layers className="h-4 w-4 text-accent" />
+              <h4 className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-accent" />
                 <span>形象资产库</span>
               </h4>
-              <span className="text-xs text-muted">
-                {assetsData?.items ? `${assetsData.items.length} 个资产` : '加载中…'}
+              <span className="text-[11px] text-muted">
+                {assetsData?.items ? `${assetsData.items.length} 个` : '读取中...'}
               </span>
             </div>
-            <p className="text-xs text-muted">
-              管理该角色的所有头像与立绘，可随时一键切换当前生效的立绘或头像。
-            </p>
 
-            {/* 过滤 Tab */}
-            <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg text-xs">
+            {/* 分类切换 */}
+            <div className="flex items-center gap-1 bg-surface-muted p-0.5 rounded-lg text-xs">
               {(['all', 'portrait', 'avatar'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setAssetFilter(tab)}
-                  className={`flex-1 py-1 rounded-md transition-colors font-medium ${
+                  className={`flex-1 py-1 rounded-md transition-colors text-[11px] font-medium ${
                     assetFilter === tab
                       ? 'bg-surface text-ink shadow-xs'
                       : 'text-muted hover:text-ink'
@@ -756,67 +727,50 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
             {/* 资产列表 */}
             {filteredAssets.length === 0 ? (
-              <div className="py-6 text-center text-xs text-muted border border-dashed border-border-default rounded-lg">
-                暂无此分类资产，可通过「多源获取」或「上传」添加
+              <div className="py-4 text-center text-xs text-muted border border-dashed border-border-default rounded-lg">
+                暂无此类资产
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2.5 max-h-[360px] overflow-y-auto p-0.5">
+              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                 {filteredAssets.map((asset) => {
-                  const isCurrentAvatar = asset.id === detailData?.avatarAssetId;
-                  const isCurrentPortrait = asset.id === detailData?.portraitAssetId;
+                  const isCurrentAvatar = currentAvatarUrl === asset.url;
+                  const isCurrentPortrait = currentPortraitUrl === asset.url;
                   return (
                     <div
                       key={asset.id}
-                      className="group relative rounded-lg border border-border-default bg-surface-muted/30 p-2 space-y-2 hover:border-border-hover transition-all"
+                      className={`group relative aspect-square rounded-lg overflow-hidden border bg-surface-muted transition-all ${
+                        isCurrentAvatar || isCurrentPortrait
+                          ? 'border-accent ring-1 ring-accent'
+                          : 'border-border-default hover:border-border-default/80'
+                      }`}
                     >
-                      <div className="relative aspect-[3/4] w-full rounded overflow-hidden bg-surface-muted flex items-center justify-center">
-                        <Image
-                          src={asset.url}
-                          alt="角色资产"
-                          fill
-                          unoptimized
-                          className="object-contain"
-                        />
-                        {/* 状态徽章 */}
-                        <div className="absolute top-1 left-1 flex flex-col gap-1">
-                          {isCurrentAvatar && (
-                            <span className="rounded bg-emerald-500/90 text-white text-[9px] px-1 py-0.5 font-bold shadow-xs">
-                              主头像
-                            </span>
-                          )}
-                          {isCurrentPortrait && (
-                            <span className="rounded bg-accent/90 text-white text-[9px] px-1 py-0.5 font-bold shadow-xs">
-                              主立绘
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 切换按钮 */}
-                      <div className="flex flex-col gap-1">
+                      <Image
+                        src={asset.url}
+                        alt="资产缩略图"
+                        fill
+                        unoptimized
+                        className="object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 p-1">
                         {!isCurrentAvatar && (
-                          <Button
+                          <button
                             type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-[11px] px-1.5 w-full"
+                            className="text-[9px] w-full py-0.5 px-1 rounded bg-surface/90 text-ink font-medium hover:bg-surface"
                             onClick={() => handleSetActiveAsset(asset.id, 'avatar')}
                             disabled={setActiveAssetMutation.isPending}
                           >
-                            设为主头像
-                          </Button>
+                            设为头像
+                          </button>
                         )}
                         {!isCurrentPortrait && (
-                          <Button
+                          <button
                             type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-[11px] px-1.5 w-full"
+                            className="text-[9px] w-full py-0.5 px-1 rounded bg-surface/90 text-ink font-medium hover:bg-surface"
                             onClick={() => handleSetActiveAsset(asset.id, 'portrait')}
                             disabled={setActiveAssetMutation.isPending}
                           >
-                            设为主立绘
-                          </Button>
+                            设为立绘
+                          </button>
                         )}
                       </div>
                     </div>
@@ -826,48 +780,43 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             )}
           </div>
 
-          {/* 衍生形态管理 (Variant Cards) */}
-          <div className="rounded-xl border border-border-default bg-surface p-5 shadow-sm space-y-3">
+          {/* 衍生形态管理 */}
+          <div className="rounded-xl border border-border-default bg-surface p-4 shadow-sm space-y-2.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Layers className="h-4 w-4 text-accent" />
-                <h4 className="text-sm font-bold text-ink">衍生形态</h4>
-              </div>
+              <h4 className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-accent" />
+                <span>衍生形态</span>
+              </h4>
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
                 onClick={() => setAddVariantDialogOpen(true)}
-                className="h-7 px-2 text-xs text-accent hover:bg-accent/10"
+                className="h-6 px-1.5 text-xs text-accent hover:bg-accent/10"
               >
-                <Plus className="h-3.5 w-3.5 mr-1" />
-                <span>新增形态</span>
+                <Plus className="h-3 w-3 mr-0.5" />
+                <span>新增</span>
               </Button>
             </div>
-            <p className="text-xs text-muted">
-              原角色档案为固定主体；各形态拥有专属人设微调、换装外观与角色卡。
-            </p>
 
-            <div className="space-y-1.5 pt-1">
-              {/* 默认主体形态 */}
+            <div className="space-y-1">
               <button
                 type="button"
                 onClick={() => setActiveVariantId(null)}
-                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                   activeVariantId === null
                     ? 'bg-accent/10 text-accent border border-accent/30'
                     : 'bg-surface-muted text-ink hover:bg-surface-elevated'
                 }`}
               >
-                <span>默认形态 (主档案)</span>
-                {activeVariantId === null && <Check className="h-3.5 w-3.5 text-accent" />}
+                <span>默认主档案</span>
+                {activeVariantId === null && <Check className="h-3 w-3 text-accent" />}
               </button>
 
-              {/* 用户自定义的衍生形态列表 */}
               {variants.map((v) => (
                 <div
                   key={v.id}
-                  className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${
+                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
                     activeVariantId === v.id
                       ? 'bg-accent/10 text-accent border border-accent/30 font-medium'
                       : 'bg-surface-muted text-ink hover:bg-surface-elevated'
@@ -886,7 +835,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                     className="ml-2 text-muted hover:text-danger p-0.5"
                     title={`删除形态「${v.name}」`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3 w-3" />
                   </button>
                 </div>
               ))}
@@ -894,180 +843,310 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
         </div>
 
-        {/* ================= 右栏：精简人设与外观表单 ================= */}
-        <div className="rounded-xl border border-border-default bg-surface p-6 shadow-sm space-y-6 max-w-[760px] w-full min-w-0">
-          <div className="flex items-center justify-between pb-4 border-b border-border-subtle">
-            <div>
-              <h2 className="text-lg font-bold text-ink">
-                {currentVariant ? `编辑衍生形态：${currentVariant.name}` : '编辑基础档案与外观'}
-              </h2>
-              <p className="text-xs text-muted mt-0.5">
-                {currentVariant
-                  ? '该形态独立拥有定制的人设与外观服装描述。'
-                  : '字段已精简为人设与外观两大核心，保存即生效。'}
-              </p>
+        {/* ================= 右栏：行内档案头 + 分段创作画布 ================= */}
+        <div className="rounded-xl border border-border-default bg-surface p-6 shadow-sm space-y-6 max-w-[780px] w-full min-w-0">
+          {/* 行内原生档案头 (无需点击弹窗直接编辑) */}
+          <div className="space-y-3 pb-5 border-b border-border-subtle">
+            <div className="flex items-center justify-between gap-3">
+              <input
+                type="text"
+                {...register('displayName', {
+                  required: true,
+                  onChange: () => {
+                    clearErrors('displayName');
+                    setStatus('dirty');
+                  },
+                })}
+                placeholder="角色名称（例如：芙宁娜）"
+                className={`w-full text-2xl sm:text-3xl font-bold bg-transparent border-b border-transparent hover:border-border-default focus:border-accent outline-none text-ink placeholder:text-muted/40 py-1 transition-colors ${
+                  errors.displayName ? 'border-danger focus:border-danger' : ''
+                }`}
+              />
+              {currentVariant && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveVariantId(null)}
+                  className="shrink-0 text-xs"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  <span>返回主档案</span>
+                </Button>
+              )}
             </div>
-            {currentVariant && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setActiveVariantId(null)}
-                className="text-xs"
-              >
-                <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                <span>返回主档案</span>
-              </Button>
+            {errors.displayName && (
+              <p className="text-xs text-danger">请填写角色名称</p>
             )}
-          </div>
 
-          <section className="flex min-w-0 items-start justify-between gap-4 rounded-[var(--radius-panel)] bg-surface-muted px-4 py-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-semibold text-ink">{draft.displayName || '未命名角色'}</h3>
-              <p className="mt-1 truncate text-sm text-muted">{draft.work || '未设置所属作品'}{tags.length ? ` · ${tags.slice(0, 3).join('、')}` : ''}</p>
+            {/* 属性微胶囊行 */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <div className="flex items-center gap-1.5 text-xs text-muted">
+                <span>所属作品:</span>
+                <input
+                  type="text"
+                  {...register('work', { onChange: () => setStatus('dirty') })}
+                  placeholder="如：原神、星穹铁道、原创世界"
+                  className="h-7 px-2.5 text-xs bg-surface-muted border border-border-default/60 rounded-md text-ink placeholder:text-muted/50 focus:outline-none focus:border-accent w-48"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const current = getValues('originType');
+                  setValue('originType', current === 'ip' ? 'original' : 'ip', { shouldDirty: true });
+                  setStatus('dirty');
+                }}
+                className={`h-7 px-2.5 rounded-md border text-xs font-medium transition-colors cursor-pointer ${
+                  draft.originType === 'ip'
+                    ? 'border-accent/40 bg-accent/10 text-accent'
+                    : 'border-border-default/60 bg-surface-muted text-muted hover:text-ink'
+                }`}
+              >
+                {draft.originType === 'ip' ? 'IP 角色' : '原创角色'}
+              </button>
             </div>
-            <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={openIdentityEditor}>编辑身份资料</Button>
-          </section>
 
-          {/* 2. 角色人设 (Persona) */}
-          <div className="space-y-4 pt-4">
-            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
-                2
-              </span>
-              角色人设 (Persona)
-            </h3>
-
-            <label className="block text-xs font-semibold text-ink">
-              <span>一句话概述（卡片与列表展示）</span>
-              <Textarea
-                rows={2}
-                {...register('summary')}
-                placeholder="枫丹前水神，聚光灯下华丽戏剧化，内心敏感孤单的戏剧家。"
-                className="mt-1 text-base"
+            {/* 角色标签行内编辑 */}
+            <div className="pt-1">
+              <TagsInput
+                value={tags}
+                onChange={(nextTags) => {
+                  setTags(nextTags);
+                  setStatus('dirty');
+                }}
+                placeholder="添加角色特征标签，回车完成（如：枫丹、水神、戏剧家）"
               />
-            </label>
-
-            <label className="block text-xs font-semibold text-ink">
-              <span>详细人设背景（身份、经历、性格、好恶）</span>
-              <Textarea
-                rows={12}
-                {...register('personaText')}
-                placeholder={PERSONA_PLACEHOLDER}
-                className="mt-1 text-base font-mono leading-relaxed"
-              />
-            </label>
+            </div>
           </div>
 
-          {/* 3. 角色外观 (Appearance) */}
-          <div className="space-y-4 pt-4">
-            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-xs text-accent">
-                3
-              </span>
-              角色外观 (Appearance)
-            </h3>
+          {/* 分段创作画布导航 (替代纵向无脑连续堆叠) */}
+          <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg border border-border-default/60">
+            <button
+              type="button"
+              onClick={() => setActiveTab('persona')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'persona'
+                  ? 'bg-surface text-accent shadow-xs font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <User className="h-3.5 w-3.5" />
+              <span>人设档案 (Persona)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('visual')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'visual'
+                  ? 'bg-surface text-accent shadow-xs font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <Camera className="h-3.5 w-3.5" />
+              <span>外貌与服装 (Visual)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('lora')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'lora'
+                  ? 'bg-surface text-accent shadow-xs font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span>视觉 LoRA ({visualLoraFields.length})</span>
+            </button>
+          </div>
 
-            <label className="block text-xs font-semibold text-ink">
-              <span>基础外貌（面部、发型发色、体貌特征）</span>
-              <Textarea
-                rows={4}
-                {...register('appearance.baseText')}
-                placeholder="蓝白相间中长发，双色渐变微卷发尾；水蓝色异色瞳孔；身形娇小玲珑，神情灵动。"
-                className="mt-1 text-base leading-relaxed"
-              />
-            </label>
+          {/* ================= 视图 1：人设档案 ================= */}
+          {activeTab === 'persona' && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="char-summary" className="font-semibold text-ink">
+                    一句话概述
+                  </label>
+                  <span className="text-muted text-[11px]">用于卡片预览与人物列表</span>
+                </div>
+                <Textarea
+                  id="char-summary"
+                  rows={2}
+                  {...register('summary', { onChange: () => setStatus('dirty') })}
+                  placeholder="例如：枫丹前水神，聚光灯下华丽戏剧化，内心敏感孤单的戏剧家。"
+                  className="text-sm"
+                />
+              </div>
 
-            <label className="block text-xs font-semibold text-ink">
-              <span>代表性装扮（默认服装、配饰细节）</span>
-              <Textarea
-                rows={4}
-                {...register('appearance.defaultOutfitText')}
-                placeholder="华丽的深蓝与白色枫丹礼服礼帽，精致蕾丝领结，左眼单片水滴装饰。"
-                className="mt-1 text-base leading-relaxed"
-              />
-            </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="char-persona" className="font-semibold text-ink">
+                    详细人设背景
+                  </label>
+                  <div className="flex items-center gap-3 text-muted text-[11px]">
+                    <span>Markdown 结构化语法</span>
+                    <span className="font-mono">{draft.personaText?.length || 0} 字</span>
+                  </div>
+                </div>
+                <Textarea
+                  id="char-persona"
+                  rows={14}
+                  {...register('personaText', { onChange: () => setStatus('dirty') })}
+                  placeholder={PERSONA_PLACEHOLDER}
+                  className="font-mono text-sm leading-relaxed"
+                />
+              </div>
+            </div>
+          )}
 
-            <details className="rounded-[var(--radius-control)] bg-surface-muted p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-ink">角色 LoRA · {visualLoraFields.length} 项（可选）</summary>
-              <div className="mt-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <p className="max-w-[var(--shell-reading)] text-xs leading-relaxed text-muted">活动镜头使用此角色时，会把这些 LoRA 叠加到活动画风设置上。文件名需与 ComfyUI 的 models/loras 清单一致。</p>
-                <Button type="button" size="sm" variant="outline" onClick={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}>
-                  <Plus className="h-3.5 w-3.5" />添加
+          {/* ================= 视图 2：外貌与服装 ================= */}
+          {activeTab === 'visual' && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="char-appearance-base" className="font-semibold text-ink">
+                    基础外貌特征
+                  </label>
+                  <span className="text-muted text-[11px]">面部、发型发色、身形与体貌特征</span>
+                </div>
+                <Textarea
+                  id="char-appearance-base"
+                  rows={5}
+                  {...register('appearance.baseText', { onChange: () => setStatus('dirty') })}
+                  placeholder="例如：蓝白相间中长发，双色渐变微卷发尾；水蓝色异色瞳孔；身形娇小玲珑，神情灵动。"
+                  className="text-sm leading-relaxed"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="char-outfit" className="font-semibold text-ink">
+                    代表性装扮与配饰
+                  </label>
+                  <span className="text-muted text-[11px]">默认服装、经典礼服或随身配饰</span>
+                </div>
+                <Textarea
+                  id="char-outfit"
+                  rows={5}
+                  {...register('appearance.defaultOutfitText', { onChange: () => setStatus('dirty') })}
+                  placeholder="例如：华丽的深蓝与白色枫丹礼服礼帽，精致蕾丝领结，左眼单片水滴装饰。"
+                  className="text-sm leading-relaxed"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ================= 视图 3：视觉 LoRA ================= */}
+          {activeTab === 'lora' && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
+                <div>
+                  <h4 className="text-sm font-semibold text-ink">角色专属 LoRA 模型</h4>
+                  <p className="text-xs text-muted mt-0.5">
+                    活动镜头使用此角色时，会自动将这些 LoRA 叠加到画风设置中。
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  <span>添加 LoRA</span>
                 </Button>
               </div>
-              {visualLoraFields.length === 0 ? <p className="rounded border border-dashed border-border-default px-3 py-3 text-center text-xs text-muted">尚未配置角色 LoRA。</p> : (
+
+              {visualLoraFields.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border-default p-8 text-center text-xs text-muted">
+                  暂未配置角色 LoRA，生图时将采用全局与活动画风默认模型。
+                </div>
+              ) : (
                 <div className="space-y-3">
                   {visualLoraFields.map((field, index) => (
-                    <div key={field.id} className="grid grid-cols-1 gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface p-3 sm:grid-cols-[minmax(0,1.5fr)_100px_minmax(0,1fr)_auto] sm:items-end">
-                      <label className="block min-w-0 text-xs font-medium text-muted">LoRA 文件名
-                        <Input {...register(`visualLoras.${index}.model`)} placeholder="character-style.safetensors" className="mt-1 bg-surface" />
+                    <div
+                      key={field.id}
+                      className="grid grid-cols-1 gap-2.5 rounded-lg border border-border-default bg-surface p-3 sm:grid-cols-[minmax(0,1.5fr)_90px_minmax(0,1fr)_auto] sm:items-end"
+                    >
+                      <label className="block min-w-0 text-xs font-medium text-muted">
+                        LoRA 文件名
+                        <Input
+                          {...register(`visualLoras.${index}.model`)}
+                          placeholder="character-lora.safetensors"
+                          className="mt-1 bg-surface h-8 text-xs"
+                        />
                       </label>
-                      <label className="block text-xs font-medium text-muted">强度
-                        <Input type="number" min={-10} max={10} step={0.05} {...register(`visualLoras.${index}.strength`, { valueAsNumber: true })} className="mt-1 bg-surface" />
+                      <label className="block text-xs font-medium text-muted">
+                        强度
+                        <Input
+                          type="number"
+                          min={-10}
+                          max={10}
+                          step={0.05}
+                          {...register(`visualLoras.${index}.strength`, { valueAsNumber: true })}
+                          className="mt-1 bg-surface h-8 text-xs"
+                        />
                       </label>
-                      <label className="block min-w-0 text-xs font-medium text-muted">触发词
-                        <Input {...register(`visualLoras.${index}.triggerWord`)} placeholder="角色或画风触发词" className="mt-1 bg-surface" />
+                      <label className="block min-w-0 text-xs font-medium text-muted">
+                        触发词
+                        <Input
+                          {...register(`visualLoras.${index}.triggerWord`)}
+                          placeholder="触发关键词"
+                          className="mt-1 bg-surface h-8 text-xs"
+                        />
                       </label>
-                      <div className="flex items-center justify-between gap-2 sm:justify-end">
-                        <label className="inline-flex items-center gap-1.5 text-xs text-muted"><input type="checkbox" {...register(`visualLoras.${index}.enabled`)} className="h-4 w-4 accent-[var(--color-accent)]" />启用</label>
-                        <Button type="button" size="sm" variant="ghost" aria-label={`移除第 ${index + 1} 个角色 LoRA`} onClick={() => removeVisualLora(index)}><Trash2 className="h-3.5 w-3.5 text-muted" /></Button>
+                      <div className="flex items-center justify-between gap-2 sm:justify-end pb-0.5">
+                        <label className="inline-flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                          <input
+                            type="checkbox"
+                            {...register(`visualLoras.${index}.enabled`)}
+                            className="h-4 w-4 rounded accent-accent"
+                          />
+                          <span>启用</span>
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`移除第 ${index + 1} 个角色 LoRA`}
+                          onClick={() => removeVisualLora(index)}
+                          className="h-8 w-8 p-0 text-muted hover:text-danger"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-              </div>
-            </details>
-          </div>
+            </div>
+          )}
 
-          {/* 底部保存条 */}
-          <div className="pt-6 border-t border-border-subtle flex items-center justify-between">
+          {/* 底部保存状态栏 */}
+          <div className="pt-4 border-t border-border-subtle flex items-center justify-between">
             <span className="text-xs text-muted">
-              保存后即刻生效，无需繁琐的发布与版本号确认。
+              {status === 'dirty' || isDirty
+                ? '档案有未保存更改'
+                : status === 'saved'
+                ? '全部更改已保存到本地数据库'
+                : '档案处于就绪状态'}
             </span>
             <Button
               type="button"
               variant="accent"
-              size="lg"
+              size="sm"
               onClick={() => void handleSave()}
               loading={status === 'saving'}
-              className="px-6 font-semibold"
+              className="px-5 font-semibold"
             >
-              <Save className="h-4 w-4 mr-2" />
-              <span>保存角色</span>
+              <Save className="h-4 w-4 mr-1.5" />
+              <span>保存档案</span>
             </Button>
           </div>
         </div>
       </div>
-
-      <ResponsiveEditOverlay
-        open={identityOpen}
-        onOpenChange={(open) => { if (open) setIdentityOpen(true); else requestCloseIdentityEditor(); }}
-        title="编辑身份资料"
-        description="这些资料用于角色列表、检索和活动选人。保存到角色前仍需点击页面上的“保存角色”。"
-        footer={<><Button type="button" variant="outline" onClick={requestCloseIdentityEditor}>取消</Button><Button type="button" disabled={!identityDraft.displayName.trim()} onClick={saveIdentityEditor}>应用到表单</Button></>}
-      >
-        <div className="space-y-5">
-          <FormField label="角色名称" required error={errors.displayName ? '角色名称不能为空' : undefined}>
-            <Input value={identityDraft.displayName} maxLength={120} onChange={(event) => setIdentityDraft((value) => ({ ...value, displayName: event.target.value }))} placeholder="例如：芙宁娜" />
-          </FormField>
-          <FormField label="所属作品"><Input value={identityDraft.work} maxLength={120} onChange={(event) => setIdentityDraft((value) => ({ ...value, work: event.target.value }))} placeholder="例如：原神" /></FormField>
-          <FormField label="角色标签" hint="用于搜索和角色库筛选。">
-            <TagsInput value={identityDraft.tags} onChange={(nextTags) => setIdentityDraft((value) => ({ ...value, tags: nextTags }))} placeholder="枫丹、水神、戏剧家" />
-          </FormField>
-        </div>
-      </ResponsiveEditOverlay>
-      <ConfirmDialog
-        open={identityDiscardOpen}
-        onOpenChange={setIdentityDiscardOpen}
-        title="放弃身份资料修改？"
-        description="弹窗中的临时修改尚未应用到角色表单，关闭后将丢弃。"
-        cancelLabel="继续编辑"
-        confirmLabel="放弃修改"
-        onConfirm={() => setIdentityOpen(false)}
-      />
 
       {/* URL 导入头像对话框 */}
       <Dialog
@@ -1102,31 +1181,74 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
       </Dialog>
 
-      <ResponsiveEditOverlay open={aiAvatarDialogOpen} onOpenChange={setAiAvatarDialogOpen}
-        title="生成角色头像" description="根据角色外观生成图片，预览后再应用为头像。">
+      {/* AI 头像生成浮层 */}
+      <ResponsiveEditOverlay
+        open={aiAvatarDialogOpen}
+        onOpenChange={setAiAvatarDialogOpen}
+        title="生成角色头像"
+        description="根据角色外观生成图片，预览后再应用为头像。"
+      >
         <div className="space-y-4">
-          <ImageGenerationPanel appId="characters" purpose="character-avatar" contextKey={`character-avatar:${characterId}`}
-            options={avatarOptions.data} loading={avatarOptions.isLoading} initialDescription={aiAvatarPrompt}
-            onRefresh={() => { void avatarOptions.refetch(); }}
+          <ImageGenerationPanel
+            appId="characters"
+            purpose="character-avatar"
+            contextKey={`character-avatar:${characterId}`}
+            options={avatarOptions.data}
+            loading={avatarOptions.isLoading}
+            initialDescription={aiAvatarPrompt}
+            onRefresh={() => {
+              void avatarOptions.refetch();
+            }}
             blockedReason={avatarTaskId ? '已有头像任务正在生成，完成后可预览结果。' : undefined}
-            onGenerate={async input => {
+            onGenerate={async (input) => {
               if (!characterId) throw new Error('请先保存角色。');
               const task = await generateAvatarMutation.mutateAsync({ id: characterId, input });
-              setAvatarTaskId(task.id); toast.success('头像任务已提交');
-            }} />
-          {avatarPollError && <p role="status" className="text-sm text-muted">状态暂时无法读取，正在重试：{avatarPollError}</p>}
-          {avatarTaskId && <p role="status" className="text-sm text-muted">头像正在生成，可关闭面板继续编辑角色。</p>}
-          {avatarResult && <section aria-label="头像生成结果" className="space-y-3">
-            {avatarResult.artifacts.filter(item => item.mediaKind === 'image').map(item => <img key={item.artifactId}
-              src={`/api/admin/artifacts/${encodeURIComponent(item.artifactId)}/file`} alt="新生成的角色头像" className="mx-auto max-h-80 max-w-full rounded-[var(--radius-panel)] object-contain" />)}
-            <Button variant="accent" loading={applyAvatarMutation.isPending} onClick={async () => {
-              if (!characterId) return;
-              try {
-                await applyAvatarMutation.mutateAsync({ id: characterId, taskId: avatarResult.id });
-                await refetchDetail(); setAvatarResult(null); setAiAvatarDialogOpen(false); toast.success('已应用新头像');
-              } catch (error) { toast.error('应用头像失败', error instanceof Error ? error.message : String(error)); }
-            }}>应用为头像</Button>
-          </section>}
+              setAvatarTaskId(task.id);
+              toast.success('头像任务已提交');
+            }}
+          />
+          {avatarPollError && (
+            <p role="status" className="text-sm text-muted">
+              状态暂时无法读取，正在重试：{avatarPollError}
+            </p>
+          )}
+          {avatarTaskId && (
+            <p role="status" className="text-sm text-muted">
+              头像正在生成，可关闭面板继续编辑角色。
+            </p>
+          )}
+          {avatarResult && (
+            <section aria-label="头像生成结果" className="space-y-3">
+              {avatarResult.artifacts
+                .filter((item) => item.mediaKind === 'image')
+                .map((item) => (
+                  <img
+                    key={item.artifactId}
+                    src={`/api/admin/artifacts/${encodeURIComponent(item.artifactId)}/file`}
+                    alt="新生成的角色头像"
+                    className="mx-auto max-h-80 max-w-full rounded-[var(--radius-panel)] object-contain"
+                  />
+                ))}
+              <Button
+                variant="accent"
+                loading={applyAvatarMutation.isPending}
+                onClick={async () => {
+                  if (!characterId) return;
+                  try {
+                    await applyAvatarMutation.mutateAsync({ id: characterId, taskId: avatarResult.id });
+                    await refetchDetail();
+                    setAvatarResult(null);
+                    setAiAvatarDialogOpen(false);
+                    toast.success('已应用新头像');
+                  } catch (error) {
+                    toast.error('应用头像失败', error instanceof Error ? error.message : String(error));
+                  }
+                }}
+              >
+                应用为头像
+              </Button>
+            </section>
+          )}
         </div>
       </ResponsiveEditOverlay>
 

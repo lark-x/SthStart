@@ -123,7 +123,7 @@ export function ImageModelsPanel({
         enabled: formData.enabled,
       });
 
-      toast.success(editingEngine ? '绘图引擎已更新喵。' : '绘图引擎已创建喵。');
+      toast.success(editingEngine ? '绘图引擎已更新。' : '绘图引擎已创建。');
       setFormOpen(false);
       await onRefresh();
     } catch (err) {
@@ -149,7 +149,7 @@ export function ImageModelsPanel({
       const res = await testGenerationEngine(engineId);
       setTestResult(res);
       if (res.ok) {
-        toast.success('引擎连通性测试通过喵。');
+        toast.success('引擎连通性测试通过。');
       } else {
         toast.warning('引擎连通性测试未通过', res.errorMessage || undefined);
       }
@@ -162,7 +162,7 @@ export function ImageModelsPanel({
         summary: null,
         discoverySupported: null,
         errorCode: 'probe_error',
-        errorMessage: err instanceof Error ? err.message : '连接异常喵。',
+        errorMessage: err instanceof Error ? err.message : '连接异常。',
       });
     } finally {
       setTesting(false);
@@ -217,7 +217,7 @@ export function ImageModelsPanel({
       <div className="p-3.5 rounded-lg border border-border-default bg-surface-raised flex items-center justify-between gap-3 text-xs text-muted">
         <div className="flex items-center gap-2">
           <Cpu className="h-4 w-4 text-accent shrink-0" />
-          <span>支持本地 ComfyUI GPU 算力集群与 OpenAI 兼容云端生图接口（DALL-E 3、聚合绘图等）双模调度喵。</span>
+          <span>支持本地 ComfyUI GPU 算力集群与 OpenAI 兼容云端生图接口（DALL-E 3、聚合绘图等）双模调度。</span>
         </div>
         <Link href="/settings/generation" className="text-accent hover:underline shrink-0">
           管理生图配方与工作流 &rarr;
@@ -227,7 +227,7 @@ export function ImageModelsPanel({
       {/* 引擎列表 */}
       {filtered.length === 0 ? (
         <Card className="p-8 text-center text-muted">
-          <p className="text-sm">暂无匹配的绘图引擎喵。点击上方“新建绘图引擎”添加一个喵。</p>
+          <p className="text-sm">暂无匹配的绘图引擎。点击上方“新建绘图引擎”添加一个。</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -414,7 +414,7 @@ export function ImageModelsPanel({
           {testing ? (
             <div className="p-8 text-center text-sm text-muted">
               <Spinner className="h-6 w-6 mx-auto mb-2" />
-              正在探测绘图引擎接口喵...
+              正在探测绘图引擎接口...
             </div>
           ) : testResult ? (
             <div className="space-y-3">
@@ -448,7 +448,7 @@ export function ImageModelsPanel({
               )}
             </div>
           ) : (
-            <div className="text-xs text-muted">准备就绪，点击上方按钮开始探测喵。</div>
+            <div className="text-xs text-muted">准备就绪，点击上方按钮开始探测。</div>
           )}
         </div>
       </Drawer>

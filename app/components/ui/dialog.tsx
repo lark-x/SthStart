@@ -59,7 +59,7 @@ export function Dialog({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-ink/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-ink/50 backdrop-blur-sm transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -69,7 +69,7 @@ export function Dialog({
         ref={dialogRef}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-[var(--radius-dialog)] border border-border-default bg-surface p-6 shadow-floating transition-colors focus:outline-none animate-in zoom-in-95',
+          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-[var(--radius-dialog)] border border-border-default/80 bg-surface p-6 shadow-dialog focus:outline-none animate-in zoom-in-95',
           sizeClassName[size],
           className
         )}

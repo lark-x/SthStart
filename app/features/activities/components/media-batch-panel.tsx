@@ -702,8 +702,9 @@ export function MediaBatchPanel({
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs font-mono">
-                              📷 镜头
+                            <Badge variant="outline" className="text-xs font-mono flex items-center gap-1">
+                              <Camera className="size-3" />
+                              <span>镜头</span>
                             </Badge>
                             <span className="text-xs font-semibold text-ink">{slot.caption}</span>
                           </div>

@@ -236,7 +236,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                 toast.error('重新生成总稿失败', result.reason ?? '');
                 return;
               }
-              toast.success('已生成新的总稿版本喵');
+              toast.success('已生成新的总稿版本');
               await refresh();
             }}
           />
