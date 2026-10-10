@@ -2,10 +2,9 @@
 
 import Link from 'next/link';
 import { CalendarDays, PenLine, Users } from 'lucide-react';
-import { useActivities } from '../features/activities/queries';
-import { useNotes } from '../features/notebook/queries';
 import { useQuery } from '@tanstack/react-query';
-import { browseCharacters } from '../features/characters/api';
+import { fetchRecentWork } from '../features/workspace/api';
+import { useLocalNotebookNotes } from '../features/notebook/hooks';
 import { Skeleton } from './ui/skeleton';
 
 interface WorkItem {
@@ -37,29 +36,38 @@ function formatUpdated(value: string) {
 
 /** 工作台主区：按更新时间合并展示最近处理过的活动、笔记与角色。 */
 export function RecentWork({ limit = 8 }: { limit?: number }) {
-  const activities = useActivities();
-  const notes = useNotes();
-  const characters = useQuery({
-    queryKey: ['work-overview', 'characters'],
-    queryFn: ({ signal }) => browseCharacters({ page: 1, pageSize: 8, sort: 'updated' }, signal),
-    staleTime: 30_000,
+  const visibleLimit = Math.min(50, Math.max(1, Math.trunc(limit) || 8));
+  const localNotes = useLocalNotebookNotes();
+  const deleted = new Set(localNotes.filter(record => record.status === 'deleted').map(record => record.noteId));
+  const requestLimit = Math.min(50, visibleLimit + deleted.size);
+  const recent = useQuery({
+    queryKey: ['workspace', 'recent', requestLimit],
+    queryFn: ({ signal }) => fetchRecentWork(requestLimit, signal),
+    staleTime: 0,
   });
-
-  const queries = [activities, notes, characters];
-  const items: WorkItem[] = [
-    ...(activities.data?.items ?? [])
-      .filter((item) => !item.archived)
-      .map((item) => ({ id: `activity-${item.id}`, title: item.title || '未命名活动', href: `/apps/activities/${item.id}`, kind: '活动' as const, updatedAt: item.updatedAt ?? '' })),
-    ...(notes.data?.items ?? [])
-      .map((item) => ({ id: `note-${item.id}`, title: item.title || '未命名笔记', href: `/apps/notebook/${item.id}`, kind: '笔记' as const, updatedAt: item.updatedAt ?? '' })),
-    ...(characters.data?.items ?? [])
-      .map((item) => ({ id: `character-${item.id}`, title: item.displayName || '未命名角色', href: `/apps/characters/${item.id}`, kind: '角色' as const, updatedAt: item.updatedAt ?? '' })),
-  ]
+  const kinds = { activity: '活动', note: '笔记', character: '角色' } as const;
+  const paths = { activity: 'activities', note: 'notebook', character: 'characters' } as const;
+  const merged = new Map<string, WorkItem>((recent.data?.items ?? [])
+    .filter(item => item.kind !== 'note' || !deleted.has(item.id))
+    .map(item => [`${item.kind}-${item.id}`, {
+      id: `${item.kind}-${item.id}`, title: item.title || `未命名${kinds[item.kind]}`,
+      href: `/apps/${paths[item.kind]}/${encodeURIComponent(item.id)}`, kind: kinds[item.kind], updatedAt: item.updatedAt,
+    }]));
+  // Pending local drafts remain visible even before the background sync finishes.
+  for (const record of localNotes) {
+    if (record.status === 'deleted' || (record.status === 'synced' && !recent.isError)) continue;
+    const id = `note-${record.noteId}`;
+    if (record.status === 'synced' && merged.has(id)) continue;
+    merged.set(id, { id, title: record.note.title || '未命名笔记', kind: '笔记',
+      href: `/apps/notebook/${encodeURIComponent(record.noteId)}`,
+      updatedAt: record.status === 'synced' ? record.note.updatedAt ?? '' : new Date(record.updatedAt).toISOString() });
+  }
+  const items = [...merged.values()]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, limit);
+    .slice(0, visibleLimit);
 
-  const loading = queries.some((query) => query.isLoading);
-  const failed = queries.every((query) => query.isError);
+  const loading = recent.isLoading;
+  const failed = recent.isError && items.length === 0;
 
   /*
    * 载入态用与真实列表同构的骨架占位：高度与行距和加载完成后一致，
@@ -67,7 +75,7 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
    */
   const skeletonRows = (
     <ul className="space-y-1.5" aria-hidden="true">
-      {Array.from({ length: limit }, (_, index) => (
+      {Array.from({ length: visibleLimit }, (_, index) => (
         <li key={index} className="flex items-center gap-3 rounded-xl bg-surface-sunken/45 px-3 py-2.5">
           <Skeleton className="h-4 w-4 flex-none" />
           <Skeleton className="h-4 min-w-0 flex-1" data-visual-dynamic="true" />
@@ -87,6 +95,11 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
         </Link>
       </div>
 
+      {recent.isError && items.length > 0 && <p role="status" className="mb-3 text-xs text-muted">
+        暂时无法刷新服务端最近工作，当前显示缓存与本机笔记。
+        <button type="button" className="ml-2 underline" onClick={() => void recent.refetch()}>重试</button>
+      </p>}
+
       {loading && items.length === 0 ? (
         <>
           <p role="status" className="sr-only">正在读取…</p>
@@ -95,7 +108,7 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
       ) : failed ? (
         <button
           type="button"
-          onClick={() => void Promise.all(queries.map((query) => query.refetch()))}
+          onClick={() => void recent.refetch()}
           className="text-sm font-medium text-accent-dark"
         >
           读取失败，点击重试

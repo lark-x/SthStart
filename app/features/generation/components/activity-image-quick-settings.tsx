@@ -109,7 +109,7 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
   return <div className="space-y-4">
     <section className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-6" aria-labelledby="activity-image-default-title">
       <h2 id="activity-image-default-title" className="text-base font-semibold text-ink">默认绘制模式</h2>
-      <p className="mt-1 text-sm text-muted">这里管理活动默认方案。创作中心和角色头像的默认方案在“预设与用途”中分别设置。</p>
+      <p className="mt-1 text-sm text-muted">这里管理活动默认方案。图像工坊和角色头像的默认方案在“预设与用途”中分别设置。</p>
       <p className="mt-3 rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-sm text-ink">
         当前活动默认：{defaultPreset ? `${defaultPreset.name} · v${defaultPreset.workflowVersion}` : assignment ? `${workflows.find((item) => item.id === assignment.workflow_id)?.name ?? assignment.workflow_id} v${assignment.workflow_version}（未绑定预设）` : '未配置'}
       </p>

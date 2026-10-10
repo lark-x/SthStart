@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
-import type { NoteKnowledge } from '@sthstart/contracts';
+import { NoteWriteRequestSchema, type NoteWriteRequest, type NoteKnowledge } from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
@@ -214,42 +214,64 @@ export function registerNotebookRoutes(app: FastifyInstance, config: ServiceConf
     items: knowledgeStore.listReferencesFor('note', request.params.id),
   }));
 
-  app.put<{ Params: { id: string }; Body: NoteBody }>('/api/v1/admin/notebook/notes/:id', async (request, reply) => {
+  app.put<{ Params: { id: string }; Body: NoteWriteRequest }>('/api/v1/admin/notebook/notes/:id', {
+    schema: { body: NoteWriteRequestSchema },
+  }, async (request, reply) => {
     if (!/^[A-Za-z0-9_-]{8,128}$/.test(request.params.id)) return reply.code(400).send({ error: 'invalid_note_id' });
-    const existing = database.connection.prepare('SELECT created_at,revision FROM creative_notes WHERE id=?').get(request.params.id) as { created_at: string; revision: number } | undefined;
-    const note = validate(request.body ?? {});
-    const now = nowIso();
-    const requestedKnowledge = (request.body as NoteBody | undefined)?.knowledge;
-    // 缺省 = 不改动已有元数据（旧客户端同步不会把它清掉）；null = 显式清空。
-    const previous = knowledgeStore.readKnowledge(request.params.id);
-    if (!existing) {
-      database.connection.prepare(`INSERT INTO creative_notes
-        (id,title,kind,summary,content_json,tags_json,stage,favorite,created_at,updated_at,revision)
-        VALUES (?,?,?,?,?,?,?,?,?,?,1)`)
-        .run(request.params.id, note.title, note.kind, note.summary, JSON.stringify(note.content), JSON.stringify(note.tags), note.stage, note.favorite ? 1 : 0, now, now);
+    const outcome = database.transaction(() => {
+      const existing = database.connection.prepare('SELECT created_at,revision FROM creative_notes WHERE id=?').get(request.params.id) as { created_at: string; revision: number } | undefined;
+      const note = validate(request.body ?? {});
+      const now = nowIso();
+      const requestedKnowledge = (request.body as NoteBody | undefined)?.knowledge;
+      // Legacy clients that send the complete response already carry `revision`.
+      // A request without either precondition can only create a new note.
+      const expectedRevision = request.body.expectedRevision ?? request.body.revision;
+      const conflict = () => ({ status: 409, payload: { error: 'note_revision_conflict', revision: existing?.revision ?? 0,
+        message: existing ? '服务端笔记已变化，本机内容已保留，请处理版本冲突。' : '服务端笔记已删除，本机内容已保留，请另存副本。' } });
+      if (existing && expectedRevision == null) return { status: 428, payload: { error: 'note_revision_required',
+        message: '保存已有笔记需要提供编辑时的版本号，请更新客户端；本机内容不会被覆盖。' } };
+      if (existing && expectedRevision !== Number(existing.revision)) {
+        // A lost HTTP response may retry an already completed write. Identical
+        // content is safe to acknowledge without advancing the revision again.
+        const current = database.connection.prepare('SELECT * FROM creative_notes WHERE id=?').get(request.params.id) as Record<string, unknown>;
+        if (requestedKnowledge === undefined && JSON.stringify(validate(mapNote(current, null))) === JSON.stringify(note))
+          return { status: 200, payload: mapNote(current, knowledgeStore.readKnowledge(request.params.id)) };
+        return conflict();
+      }
+      if (!existing && expectedRevision != null && expectedRevision !== 0) return conflict();
+      // 缺省 = 不改动已有元数据（旧客户端同步不会把它清掉）；null = 显式清空。
+      const previous = knowledgeStore.readKnowledge(request.params.id);
+      if (!existing) {
+        database.connection.prepare(`INSERT INTO creative_notes
+          (id,title,kind,summary,content_json,tags_json,stage,favorite,created_at,updated_at,revision)
+          VALUES (?,?,?,?,?,?,?,?,?,?,1)`)
+          .run(request.params.id, note.title, note.kind, note.summary, JSON.stringify(note.content), JSON.stringify(note.tags), note.stage, note.favorite ? 1 : 0, now, now);
+        linkNoteAssets(database, request.params.id, note.content);
+        if (requestedKnowledge === null) knowledgeStore.deleteKnowledge(request.params.id);
+        else if (requestedKnowledge !== undefined) {
+          knowledgeStore.writeKnowledge(request.params.id, { ...normalizeKnowledge(requestedKnowledge, { fallback: previous }), contentHash: knowledgeContentHash(note), contentRevision: 1 });
+        }
+        const row = database.connection.prepare('SELECT * FROM creative_notes WHERE id=?').get(request.params.id) as Record<string, unknown>;
+        return { status: 201, payload: mapNote(row, knowledgeStore.readKnowledge(request.params.id)) };
+      }
+      const updated = database.connection.prepare(`UPDATE creative_notes SET title=?,kind=?,summary=?,content_json=?,tags_json=?,stage=?,favorite=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?`)
+        .run(note.title, note.kind, note.summary, JSON.stringify(note.content), JSON.stringify(note.tags), note.stage, note.favorite ? 1 : 0, now, request.params.id, existing.revision);
+      if (Number(updated.changes) !== 1) return conflict();
       linkNoteAssets(database, request.params.id, note.content);
-      if (requestedKnowledge === null) knowledgeStore.deleteKnowledge(request.params.id);
-      else if (requestedKnowledge !== undefined) {
-        knowledgeStore.writeKnowledge(request.params.id, { ...normalizeKnowledge(requestedKnowledge, { fallback: previous }), contentHash: knowledgeContentHash(note), contentRevision: 1 });
+      const revision = Number(existing.revision ?? 1) + 1;
+      if (requestedKnowledge === null) {
+        knowledgeStore.deleteKnowledge(request.params.id);
+      } else if (requestedKnowledge !== undefined) {
+        const knowledge = normalizeKnowledge(requestedKnowledge, { fallback: previous });
+        knowledgeStore.writeKnowledge(request.params.id, { ...knowledge, contentHash: knowledgeContentHash(note), contentRevision: revision });
+      } else if (previous) {
+        // 正文变了但元数据没带过来：只更新内容标记，来源关联与参考状态保持。
+        knowledgeStore.writeKnowledge(request.params.id, { ...previous, contentHash: knowledgeContentHash(note), contentRevision: revision });
       }
       const row = database.connection.prepare('SELECT * FROM creative_notes WHERE id=?').get(request.params.id) as Record<string, unknown>;
-      return reply.code(201).send(mapNote(row, knowledgeStore.readKnowledge(request.params.id)));
-    }
-    database.connection.prepare(`UPDATE creative_notes SET title=?,kind=?,summary=?,content_json=?,tags_json=?,stage=?,favorite=?,updated_at=?,revision=revision+1 WHERE id=?`)
-      .run(note.title, note.kind, note.summary, JSON.stringify(note.content), JSON.stringify(note.tags), note.stage, note.favorite ? 1 : 0, now, request.params.id);
-    linkNoteAssets(database, request.params.id, note.content);
-    const revision = Number(existing.revision ?? 1) + 1;
-    if (requestedKnowledge === null) {
-      knowledgeStore.deleteKnowledge(request.params.id);
-    } else if (requestedKnowledge !== undefined) {
-      const knowledge = normalizeKnowledge(requestedKnowledge, { fallback: previous });
-      knowledgeStore.writeKnowledge(request.params.id, { ...knowledge, contentHash: knowledgeContentHash(note), contentRevision: revision });
-    } else if (previous) {
-      // 正文变了但元数据没带过来：只更新内容标记，来源关联与参考状态保持。
-      knowledgeStore.writeKnowledge(request.params.id, { ...previous, contentHash: knowledgeContentHash(note), contentRevision: revision });
-    }
-    const row = database.connection.prepare('SELECT * FROM creative_notes WHERE id=?').get(request.params.id) as Record<string, unknown>;
-    return mapNote(row, knowledgeStore.readKnowledge(request.params.id));
+      return { status: 200, payload: mapNote(row, knowledgeStore.readKnowledge(request.params.id)) };
+    });
+    return reply.code(outcome.status).send(outcome.payload);
   });
 
   app.delete<{ Params: { id: string } }>('/api/v1/admin/notebook/notes/:id', async (request, reply) => {

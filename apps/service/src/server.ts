@@ -52,6 +52,7 @@ import { StoryStore } from './story/store.js';
 import { StoryRuntime } from './story/runtime.js';
 import { registerStoryRoutes } from './story/routes.js';
 import { registerPublicationRoutes } from './publication/routes.js';
+import { registerWorkspaceRoutes } from './workspace.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -229,6 +230,7 @@ export async function createService(options: ServiceOptions = {}) {
   registerManagementRoutes(app, config, database, secrets, options.fetcher);
   registerCreativeRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
+  registerWorkspaceRoutes(app, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
   /*

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo, ChevronDown } from 'lucide-react';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp, type NavSection } from './navigation';
-import { EyeCareToggle } from './eye-care-toggle';
+import { ThemeSwitcher } from './theme-switcher';
 import { AutoHideScrollbars } from './auto-hide-scrollbars';
 import { useOverlayAccessibility } from '../ui/overlay';
 import { TaskDrawer } from './task-drawer';
@@ -32,7 +32,7 @@ function readCollapsedSectionsPref(): Set<NavSection> {
 /** 1024–1439px 默认收窄为图标栏，用户显式选择过则沿用其偏好。 */
 const NARROW_QUERY = '(min-width: 1024px) and (max-width: 1439px)';
 
-/** 邻舍嵌入模式：使用精简外框，由页面自身提供退回全站导航的动作。 */
+/** 邻舍与工作区嵌入模式：使用精简外框，由页面自身提供退回全站导航的动作。 */
 const EMBED_PREFIXES = ['/apps/linshe'];
 
 function isActive(pathname: string, app: NavApp) {
@@ -46,8 +46,6 @@ function currentApp(pathname: string): NavApp | undefined {
 
 /**
  * 导航偏好以外部存储形式读取：localStorage 记忆用户选择，未选择时按视口宽度决定。
- * 用 useSyncExternalStore 订阅，避免在 effect 中同步 setState 造成二次渲染，
- * 也保证服务端首帧与客户端首帧一致。
  */
 const navPrefListeners = new Set<() => void>();
 
@@ -83,9 +81,7 @@ function serverCollapsedPref() {
 }
 
 /**
- * 全站应用外框：负责导航、移动端页头与抽屉，并承载页面内容。
- *
- * 不持有任何业务草稿状态；主题切换、导航收起等 UI 偏好不会导致页面重挂载。
+ * 全站应用外框：负责导航、48px 顶部指令条与抽屉，并承载页面内容。
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -166,7 +162,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     initialFocusRef: closeButtonRef,
   });
 
-  // 手机旋转/窗口放大进入桌面后，移除遮罩并释放滚动锁（非全屏工作区模式）。
   useEffect(() => {
     if (!drawerOpen || embed) return;
     const desktop = window.matchMedia('(min-width: 1024px)');
@@ -178,7 +173,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [drawerOpen, embed, closeDrawer]);
 
   const active = currentApp(pathname);
-  const pageTitle = active ? active.title : NAV_PORTAL.title;
 
   const navContent = (
     <>
@@ -259,25 +253,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="shell-sidebar-foot">
-        <button
-          type="button"
-          className="shell-collapse-btn w-full justify-between"
-          onClick={() => setTaskDrawerOpen(true)}
-          title="全局任务中心"
-          aria-label="全局任务中心"
-        >
-          <span className="flex items-center gap-2 min-w-0">
-            <ListTodo className="shell-nav-icon text-accent" aria-hidden="true" />
-            <span className="shell-nav-text">任务中心</span>
-          </span>
-          {activeTasksCount > 0 && (
-            <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              {activeTasksCount}
-            </span>
-          )}
-        </button>
-        <EyeCareToggle className="w-full justify-start" />
+        <ThemeSwitcher className="w-full" compact={collapsed} dropDirection="up" variant="sidebar" />
         <button
           type="button"
           className="shell-collapse-btn"
@@ -307,7 +283,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 ref={closeButtonRef}
                 type="button"
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
                 onClick={() => closeDrawer()}
                 aria-label="关闭导航"
               >
@@ -334,47 +310,78 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="shell-main">
-        <div className="shell-mobilebar">
-          <button
-            ref={triggerRef}
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-ink"
-            aria-label="打开导航"
-            aria-expanded={drawerOpen}
-            onClick={() => setDrawerOpen(true)}
-          >
-            <Menu className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <span className="shell-mobilebar-title">{pageTitle}</span>
-          <div className="flex items-center gap-1.5">
+        {/* Slim 48px Top Command Header */}
+        <header className="shell-command-header" aria-label="全局指令条">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              ref={triggerRef}
+              type="button"
+              className="lg:hidden inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-default/70 bg-surface/70 text-ink transition-colors hover:bg-surface-hover"
+              aria-label="打开导航"
+              aria-expanded={drawerOpen}
+              onClick={() => setDrawerOpen(true)}
+            >
+              <Menu className="h-4 w-4" aria-hidden="true" />
+            </button>
+
+            {/* Breadcrumb Hierarchy */}
+            <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted font-sans">
+              {pathname === '/' ? (
+                <span className="font-serif font-bold text-sm tracking-tight text-ink">工作台</span>
+              ) : active ? (
+                <>
+                  <span className="hidden sm:inline hover:text-ink transition-colors">{active.navSection}</span>
+                  <span className="hidden sm:inline text-muted/60">/</span>
+                  <span className="font-medium text-ink truncate">{active.title}</span>
+                </>
+              ) : pathname.startsWith('/settings') ? (
+                <>
+                  <span className="hidden sm:inline hover:text-ink transition-colors">系统与应用</span>
+                  <span className="hidden sm:inline text-muted/60">/</span>
+                  <span className="font-medium text-ink truncate">系统设置</span>
+                </>
+              ) : (
+                <span className="font-serif font-bold text-sm tracking-tight text-ink">工作台</span>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Access Control Capsules */}
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="relative inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-ink"
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-default/70 bg-surface/70 px-2.5 text-xs text-muted hover:text-ink hover:border-border-default transition-colors"
+              onClick={() => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
+              }}
+              title="搜索与命令 (Cmd+K)"
+              aria-label="搜索与命令快捷键"
+            >
+              <Search className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden md:inline">搜索与命令</span>
+              <kbd className="hidden md:inline font-mono text-[10px] text-muted bg-surface-sunken px-1 rounded border border-border-subtle">⌘K</kbd>
+            </button>
+
+            <button
+              type="button"
+              className="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-default/70 bg-surface/70 px-2.5 text-xs text-muted hover:text-ink hover:border-border-default transition-colors"
               aria-label="打开任务中心"
               title="全局任务中心"
               onClick={() => setTaskDrawerOpen(true)}
             >
-              <ListTodo className="h-4 w-4 text-accent" aria-hidden="true" />
+              <ListTodo className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+              <span className="hidden sm:inline">任务</span>
               {activeTasksCount > 0 && (
-                <span className="absolute top-2 right-2 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+                <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  {activeTasksCount}
                 </span>
               )}
             </button>
-            <button
-              type="button"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
-              aria-label="搜索与命令"
-              title="搜索与命令（Ctrl/Cmd + K）"
-              onClick={() => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
-              }}
-            >
-              <Search className="h-4 w-4" aria-hidden="true" />
-            </button>
+
+            <ThemeSwitcher />
           </div>
-        </div>
+        </header>
 
         <main className="shell-content" id="shell-content">{children}</main>
       </div>
@@ -386,7 +393,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               ref={closeButtonRef}
               type="button"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
               onClick={() => closeDrawer()}
               aria-label="关闭导航"
             >

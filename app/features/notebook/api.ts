@@ -7,6 +7,7 @@ import {
   NoteAssetResponseSchema,
   NoteDeleteResponseSchema,
   type CreativeNote,
+  type NoteWriteRequest,
   type KnowledgeRecommendation,
   type KnowledgeReferenceCheckResponse,
   type KnowledgeSearchItem,
@@ -59,19 +60,28 @@ export async function fetchNotes(filters?: NoteListFilters): Promise<{
   return getJson('notebook/notes' + (qs ? '?' + qs : ''), undefined, CreativeNotesResponseSchema);
 }
 
-export async function fetchNoteDetail(id: string): Promise<CreativeNote> {
-  return getJson<CreativeNote>('notebook/notes/' + id, undefined, CreativeNoteSchema);
+export async function fetchNoteDetail(id: string, signal?: AbortSignal): Promise<CreativeNote> {
+  return getJson<CreativeNote>('notebook/notes/' + id, { signal }, CreativeNoteSchema);
 }
 
 export async function createNote(payload: Partial<CreativeNote>): Promise<CreativeNote> {
   return postJson<CreativeNote>('notebook/notes', payload, undefined, CreativeNoteSchema);
 }
 
-export async function updateNote(id: string, payload: Partial<CreativeNote>): Promise<CreativeNote> {
-  return putJson<CreativeNote>('notebook/notes/' + id, payload, undefined, CreativeNoteSchema);
+export async function updateNote(id: string, payload: NoteWriteRequest): Promise<CreativeNote> {
+  return putJson<CreativeNote>('notebook/notes/' + id, {
+    ...payload, expectedRevision: payload.expectedRevision ?? payload.revision ?? 0,
+  }, undefined, CreativeNoteSchema);
 }
 
 export const upsertNote = updateNote;
+
+/** Download an owned notebook image when preserving an independent local copy. */
+export async function fetchNoteAssetBlob(assetId: string): Promise<Blob> {
+  const response = await adminFetch(`notebook/assets/${encodeURIComponent(assetId)}`, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new ApiClientError('无法保留笔记图片，请稍后重试。', { status: response.status });
+  return response.blob();
+}
 
 export async function deleteNote(id: string): Promise<{ ok: boolean }> {
   return deleteJson<{ ok: boolean }>('notebook/notes/' + id, undefined, NoteDeleteResponseSchema);

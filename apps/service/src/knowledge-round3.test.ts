@@ -169,6 +169,7 @@ test('round3: 引用更新检查能区分内容更新与元数据变化', async 
 
   // 只改收藏，不改正文 → 不算内容更新。
   await app.inject({ method: 'PUT', url: '/api/v1/admin/notebook/notes/' + note.id, headers: adminHeaders, payload: {
+    expectedRevision: note.revision,
     title: '生日习俗', kind: 'note', stage: 'reference', summary: '习俗', content: [{ id: 'b1', type: 'text', text: '第一版内容。' }], tags: [], favorite: true,
   } });
   const afterFavorite = await app.inject({ method: 'POST', url: '/api/v1/admin/knowledge/references/check', headers: adminHeaders, payload: { snapshot } });
@@ -176,6 +177,7 @@ test('round3: 引用更新检查能区分内容更新与元数据变化', async 
 
   // 改正文 → 算内容更新。
   await app.inject({ method: 'PUT', url: '/api/v1/admin/notebook/notes/' + note.id, headers: adminHeaders, payload: {
+    expectedRevision: Number(note.revision) + 1,
     title: '生日习俗', kind: 'note', stage: 'reference', summary: '习俗', content: [{ id: 'b1', type: 'text', text: '第二版：补充了礼物。' }], tags: [], favorite: true,
   } });
   const afterEdit = await app.inject({ method: 'POST', url: '/api/v1/admin/knowledge/references/check', headers: adminHeaders, payload: { snapshot } });

@@ -4,7 +4,13 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { X, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { generateId } from '../lib/uuid';
-import { applyThemeMode, readThemeMode } from '../lib/theme-preference';
+import {
+  applyThemeId,
+  readThemeId,
+  type ColorMode,
+  type ThemeId,
+  type ThemeTone,
+} from '../lib/theme-preference';
 
 export type ToastVariant = 'default' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -21,6 +27,11 @@ export interface ToastItem {
 
 interface UIContextType {
   toasts: ToastItem[];
+  themeId: ThemeId;
+  colorMode: ColorMode;
+  themeTone: ThemeTone;
+  setThemeId: (themeId: ThemeId) => void;
+  toggleColorMode: () => void;
   eyeCare: boolean;
   toggleEyeCare: (enabled?: boolean) => void;
   showToast: (toast: Omit<ToastItem, 'id'>) => string;
@@ -47,29 +58,92 @@ const DEFAULT_DURATION: Record<ToastVariant, number> = {
   danger: 8000,
 };
 
+function toneFromThemeId(id: ThemeId): ThemeTone {
+  if (id === 'light-paper') return 'paper';
+  if (id === 'light-zinc') return 'zinc';
+  if (id === 'dark-espresso') return 'espresso';
+  return 'obsidian';
+}
+
+function modeFromThemeId(id: ThemeId): ColorMode {
+  return id.startsWith('dark') ? 'dark' : 'light';
+}
+
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  // 初始值必须与 SSR 渲染一致（暖杏）：localStorage 在挂载后再同步，
-  // 否则客户端首帧与服务端 HTML 不匹配，触发 React 水合失配。
-  const [eyeCare, setEyeCare] = useState(true);
+  // 初始值必须与 SSR 渲染一致（light-paper）：localStorage 在挂载后再同步
+  const [themeId, setThemeIdState] = useState<ThemeId>('light-paper');
 
   useEffect(() => {
-    let mode: 'warm' | 'neutral' = 'warm';
-    try { mode = readThemeMode((key) => localStorage.getItem(key)); } catch { /* 存储不可用时沿用默认暖杏 */ }
-    setEyeCare(mode === 'warm');
-    applyThemeMode(document.documentElement, mode);
+    let initial: ThemeId = 'light-paper';
+    try {
+      const darkQuery = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      initial = readThemeId((key) => localStorage.getItem(key), darkQuery);
+    } catch {
+      /* 存储不可用时沿用默认 */
+    }
+    setThemeIdState(initial);
+    applyThemeId(document.documentElement, initial);
   }, []);
 
-  const toggleEyeCare = useCallback((enabled?: boolean) => {
-    setEyeCare((prev) => {
-      const next = typeof enabled === 'boolean' ? enabled : !prev;
+  const setThemeId = useCallback((nextId: ThemeId) => {
+    setThemeIdState(nextId);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('sthstart_theme_id', nextId);
+        localStorage.setItem('sthstart_theme', nextId);
+        localStorage.setItem('sthstart_eye_care_mode', nextId === 'light-paper' ? 'true' : 'false');
+      } catch {
+        /* ignore */
+      }
+      applyThemeId(document.documentElement, nextId);
+    }
+  }, []);
+
+  const toggleColorMode = useCallback(() => {
+    setThemeIdState((curr) => {
+      let next: ThemeId;
+      if (curr === 'light-paper') next = 'dark-espresso';
+      else if (curr === 'light-zinc') next = 'dark-obsidian';
+      else if (curr === 'dark-espresso') next = 'light-paper';
+      else next = 'light-zinc';
+
       if (typeof window !== 'undefined') {
-        localStorage.setItem('sthstart_theme', next ? 'warm' : 'neutral');
-        applyThemeMode(document.documentElement, next ? 'warm' : 'neutral');
+        try {
+          localStorage.setItem('sthstart_theme_id', next);
+          localStorage.setItem('sthstart_theme', next);
+          localStorage.setItem('sthstart_eye_care_mode', next === 'light-paper' ? 'true' : 'false');
+        } catch {
+          /* ignore */
+        }
+        applyThemeId(document.documentElement, next);
       }
       return next;
     });
   }, []);
+
+  const eyeCare = themeId === 'light-paper';
+
+  const toggleEyeCare = useCallback((enabled?: boolean) => {
+    setThemeIdState((prev) => {
+      const shouldEnable = typeof enabled === 'boolean' ? enabled : prev !== 'light-paper';
+      const next: ThemeId = shouldEnable ? 'light-paper' : 'light-zinc';
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('sthstart_theme_id', next);
+          localStorage.setItem('sthstart_theme', next);
+          localStorage.setItem('sthstart_eye_care_mode', shouldEnable ? 'true' : 'false');
+        } catch {
+          /* ignore */
+        }
+        applyThemeId(document.documentElement, next);
+      }
+      return next;
+    });
+  }, []);
+
+  const colorMode = useMemo(() => modeFromThemeId(themeId), [themeId]);
+  const themeTone = useMemo(() => toneFromThemeId(themeId), [themeId]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));
@@ -111,13 +185,18 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       toasts,
+      themeId,
+      colorMode,
+      themeTone,
+      setThemeId,
+      toggleColorMode,
       eyeCare,
       toggleEyeCare,
       showToast,
       dismissToast,
       toast,
     }),
-    [toasts, eyeCare, toggleEyeCare, showToast, dismissToast, toast]
+    [toasts, themeId, colorMode, themeTone, setThemeId, toggleColorMode, eyeCare, toggleEyeCare, showToast, dismissToast, toast]
   );
 
   return (
@@ -134,6 +213,11 @@ export function useUI() {
     throw new Error('useUI must be used within a UIProvider');
   }
   return context;
+}
+
+export function useTheme() {
+  const { themeId, colorMode, themeTone, setThemeId, toggleColorMode } = useUI();
+  return { themeId, colorMode, themeTone, setThemeId, toggleColorMode };
 }
 
 export function useToast() {

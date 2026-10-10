@@ -101,7 +101,10 @@ export function editCharacterOrganization(database: ServiceDatabase, input: Orga
       if (input.groups) organization.groups = [...new Set([...(input.replaceGroups ? [] : organization.groups), ...list(input.groups, 50)])].slice(0, 50);
       const tags = input.tags ? [...new Set([...(input.replaceTags ? [] : JSON.parse(String(row.tags_json)) as string[]), ...list(input.tags, 50)])].slice(0, 50) : JSON.parse(String(row.tags_json));
       const changedDraft = JSON.stringify(draft) !== String(row.draft_json);
-      database.connection.prepare('UPDATE character_profiles SET draft_json=?,tags_json=?,organization_json=?,draft_revision=draft_revision+?,updated_at=? WHERE id=?').run(JSON.stringify(draft), JSON.stringify(tags), JSON.stringify(organization), changedDraft ? 1 : 0, nowIso(), id);
+      // Tags are included in the editor's full save, so batch tag edits must
+      // invalidate the same revision as persona edits.
+      const changedTags = JSON.stringify(tags) !== String(row.tags_json);
+      database.connection.prepare('UPDATE character_profiles SET draft_json=?,tags_json=?,organization_json=?,draft_revision=draft_revision+?,updated_at=? WHERE id=?').run(JSON.stringify(draft), JSON.stringify(tags), JSON.stringify(organization), changedDraft || changedTags ? 1 : 0, nowIso(), id);
       if (changedDraft) upsertCharacterBirthday(database, id, draft);
     }
     return { updated: ids.length };

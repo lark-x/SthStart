@@ -1,6 +1,6 @@
 # SthStart 前端核心规则
 
-适用于 `app/` 的页面、组件与样式开发。具体布局与浏览器验证流程参照项目的 `frontend-ui-standards` skill；检查范围参照 `project-verifier` skill。以下保留各类页面共同需要的约束。
+适用于 `app/` 的页面、组件与样式开发。具体视觉美学与设计系统参照项目的 `frontend-design-aesthetics` skill；工作台架构与交互工程参照 `frontend-workspace-interaction` skill；浏览器视觉验证流程参照 `frontend-visual-verification` skill；检查范围参照 `project-verifier` skill。以下保留各类页面共同需要的约束。
 
 - 优先复用现有共享布局、UI 组件和语义化设计 token，避免为单个页面增加重复的外框或主题系统。
 - 普通列表、详情和表单默认自然滚动；需要持续操作的多栏工作台使用可用视口内的独立滚动。工作台内容链保留 `min-h-0`，自适应 Flex/Grid 子项保留 `min-w-0`，长内容不能撑高相邻栏。

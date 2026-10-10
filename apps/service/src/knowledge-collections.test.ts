@@ -446,6 +446,7 @@ test('collections: 整理草稿可以新建资料，目标被编辑时拒绝静�
 
   // 生成期间目标被编辑 → 拒绝静默覆盖。
   await app.inject({ method: 'PUT', url: '/api/v1/admin/notebook/notes/' + target.json().id, headers: adminHeaders, payload: {
+    expectedRevision: draft2.baseRevision,
     title: '既有关系资料', kind: 'note', stage: 'reference', summary: '用户改过的内容',
     content: [{ id: 'b1', type: 'text', text: '用户自己改写的正文。' }], tags: [], favorite: false,
   } });

@@ -3,7 +3,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { CreativeNote } from '@sthstart/contracts';
 
-export type NotebookSyncStatus = 'pending' | 'syncing' | 'synced' | 'error' | 'deleted';
+export type NotebookSyncStatus = 'pending' | 'syncing' | 'synced' | 'error' | 'conflict' | 'deleted';
 
 export interface LocalNoteRecord {
   noteId: string;
@@ -99,10 +99,11 @@ export async function saveLocalNote(note: CreativeNote, status: NotebookSyncStat
     noteId: note.id,
     note: { ...note, id: note.id, updatedAt: note.updatedAt ?? new Date().toISOString() },
     localVersion: (existing?.localVersion ?? 0) + 1,
-    status,
+    status: existing?.status === 'conflict' && status === 'pending' ? 'conflict' : status,
     updatedAt: Date.now(),
     attemptCount: status === 'pending' ? 0 : (existing?.attemptCount ?? 0),
     nextAttemptAt: 0,
+    ...(existing?.status === 'conflict' && status === 'pending' ? { error: existing.error } : {}),
   };
   await transaction.store.put(record);
   await transaction.done;
@@ -178,23 +179,56 @@ export async function completeLocalNoteSync(noteId: string, localVersion: number
     record.error = undefined;
     record.updatedAt = Date.now();
   } else {
-    record.status = 'pending';
+    if (record.status !== 'deleted' && record.status !== 'conflict') record.status = 'pending';
     if (serverNote?.revision) record.note.revision = serverNote.revision;
   }
   await db.put('notes', record);
   announce(noteId);
 }
 
-export async function failLocalNoteSync(noteId: string, localVersion: number, message: string) {
+export async function failLocalNoteSync(noteId: string, localVersion: number, message: string, conflict = false) {
   const db = await database();
   const record = await db.get('notes', noteId);
   if (!record || record.localVersion !== localVersion) return;
-  record.status = 'error';
+  if (record.status !== 'deleted') record.status = conflict ? 'conflict' : 'error';
   record.error = message;
   record.attemptCount += 1;
   record.nextAttemptAt = Date.now() + Math.min(5 * 60_000, 5_000 * (2 ** Math.min(record.attemptCount, 6)));
   await db.put('notes', record);
   announce(noteId);
+}
+
+/** Keep the complete local draft before accepting the server's version. */
+export async function preserveConflictCopy(noteId: string, localVersion: number, copyId: string, serverNote: CreativeNote | null, copyContent?: CreativeNote['content']) {
+  const db = await database();
+  const transaction = db.transaction(['notes', 'assets'], 'readwrite');
+  const notes = transaction.objectStore('notes');
+  const record = await notes.get(noteId);
+  if (!record || record.localVersion !== localVersion || record.status !== 'conflict') {
+    await transaction.done;
+    throw new Error('本机草稿已变化，请重新处理冲突。');
+  }
+  const now = new Date().toISOString();
+  const copy: CreativeNote = { ...record.note, id: copyId, revision: undefined,
+    content: copyContent ?? record.note.content,
+    title: `${record.note.title || '未命名笔记'}（本机副本）`, createdAt: now, updatedAt: now };
+  await notes.put({ noteId: copyId, note: copy, localVersion: 1, status: 'pending',
+    updatedAt: Date.now(), attemptCount: 0, nextAttemptAt: 0 });
+  // Local image blobs must survive later deletion of the original note.
+  for (const block of copy.content) {
+    const assetId = block.type === 'image' ? localAssetId(block.src) : null;
+    if (!assetId) continue;
+    const asset = await transaction.objectStore('assets').get(assetId);
+    if (asset) await transaction.objectStore('assets').put({ ...asset, noteId: copyId });
+  }
+  if (serverNote) {
+    await notes.put({ noteId, note: serverNote, localVersion: localVersion + 1, status: 'synced',
+      updatedAt: Date.now(), attemptCount: 0, nextAttemptAt: 0 });
+  } else await notes.delete(noteId);
+  await transaction.done;
+  if (!serverNote) deletedNoteTombstones.add(noteId);
+  announce(noteId); announce(copyId);
+  return copy;
 }
 
 export async function removeLocalNote(noteId: string) {
@@ -213,6 +247,7 @@ export async function pendingLocalNotes(force = false, noteId?: string) {
   return records.filter((record) =>
     (!noteId || record.noteId === noteId)
     && record.status !== 'synced'
+    && record.status !== 'conflict'
     && (record.status !== 'syncing' || record.updatedAt < now - 60_000)
     && (force || record.nextAttemptAt <= now));
 }
@@ -261,7 +296,7 @@ export async function replaceLocalAssetReference(noteId: string, assetId: string
         : block),
     };
     record.localVersion += 1;
-    record.status = 'pending';
+    if (record.status !== 'conflict') record.status = 'pending';
     record.updatedAt = Date.now();
     await transaction.objectStore('notes').put(record);
   }

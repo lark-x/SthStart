@@ -3230,6 +3230,16 @@ export const CreativeNoteSchema = Type.Object({
 });
 export type CreativeNote = Static<typeof CreativeNoteSchema>;
 
+/** 0 means create only; updates must name the server revision being edited. */
+export const NoteWriteRequestSchema = Type.Composite([
+  Type.Partial(Type.Omit(CreativeNoteSchema, ['knowledge'])),
+  Type.Object({
+    expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+    knowledge: Type.Optional(Type.Union([NoteKnowledgeSchema, Type.Null()])),
+  }),
+]);
+export type NoteWriteRequest = Static<typeof NoteWriteRequestSchema>;
+
 export const CreativeNotesResponseSchema = Type.Object({
   items: Type.Array(CreativeNoteSchema),
   /** 服务端分页信息；旧消费者只读 items 仍然可用。 */
@@ -6380,3 +6390,4 @@ export function normalizeCreationProfile(value:Record<string,unknown>):CreationP
 export * from './activity-publication.js';
 export * from './harness-mcp.js';
 export * from './image-generation.js';
+export * from './workspace.js';

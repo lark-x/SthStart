@@ -23,7 +23,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" data-theme="light-paper" data-color-mode="light" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

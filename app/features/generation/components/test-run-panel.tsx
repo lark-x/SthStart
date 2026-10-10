@@ -238,7 +238,7 @@ export function TestRunPanel({
       <Button variant="primary" onClick={() => { void submit(); }} loading={submitting || uploading}>
         <Play className="h-3.5 w-3.5" aria-hidden="true" />保存并试生成
       </Button>
-      <p className="text-sm text-muted">先保存为不可变工作流版本，再创建真实任务；保存版本不会自动开放到创作中心。</p>
+      <p className="text-sm text-muted">先保存为不可变工作流版本，再创建真实任务；保存版本不会自动开放到图像工坊。</p>
 
       {detail && (
         <section className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3" data-testid="test-run-detail">

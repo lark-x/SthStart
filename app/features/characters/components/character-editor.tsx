@@ -5,7 +5,7 @@ import type { GenerationTaskDescriptor } from '@sthstart/contracts';
 import { ImageGenerationPanel } from '@/app/features/generation/components/image-generation-panel';
 import { fetchImageGenerationOptions } from '@/app/features/generation/image-api';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -29,7 +29,7 @@ import {
   User,
   SlidersHorizontal,
 } from 'lucide-react';
-import type { CharacterDraftV2, CharacterVariant } from '@sthstart/contracts';
+import type { CharacterVariant } from '@sthstart/contracts';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Button } from '@/app/components/ui/button';
@@ -41,6 +41,7 @@ import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { TagsInput } from '@/app/components/shared/tags-input';
 import { useToast } from '@/app/providers/ui-provider';
+import { ApiClientError } from '@/app/lib/api-client';
 import { useCharacterDetail, useCharacterAssets } from '../queries';
 import {
   useCreateCharacter,
@@ -79,6 +80,15 @@ const PERSONA_PLACEHOLDER = [
 
 type EditorTab = 'persona' | 'visual' | 'lora';
 
+function subscribeRecovery(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener('sthstart:character-recovery', callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener('sthstart:character-recovery', callback);
+  };
+}
+
 export function CharacterEditor({ characterId }: { characterId?: string }) {
   const router = useRouter();
   const toast = useToast();
@@ -86,10 +96,19 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const portraitInputRef = useRef<HTMLInputElement>(null);
   const uploadMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const baseline = useRef<{ id?: string; snapshot: string; revision?: number } | null>(null);
+  const liveSnapshot = useRef('');
+  const saving = useRef(false);
+  const recovering = useRef(false);
 
   // Status & UI state
   const [status, setStatus] = useState<'clean' | 'dirty' | 'saving' | 'saved' | 'error'>('clean');
   const [errorMessage, setErrorMessage] = useState('');
+  const [revisionConflict, setRevisionConflict] = useState(false);
+  const recoveryKey = `sthstart:character-recovery:${characterId ?? 'new'}`;
+  const recoveryAvailable = useSyncExternalStore(subscribeRecovery, useCallback(() => {
+    try { return Boolean(sessionStorage.getItem(recoveryKey)); } catch { return false; }
+  }, [recoveryKey]), () => false);
   const [tags, setTags] = useState<string[]>([]);
   const [variants, setVariants] = useState<CharacterVariant[]>([]);
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
@@ -152,6 +171,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const draft = characterFormValuesToDraft(
     (watchedValues ?? EMPTY_FORM_VALUES) as CharacterFormValues
   );
+  useEffect(() => {
+    liveSnapshot.current = JSON.stringify({ values: getValues(), tags, variants });
+  });
 
   // Queries
   const { data: detailData, error: detailError, refetch: refetchDetail } = useCharacterDetail(characterId);
@@ -169,12 +191,24 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   // Populate data when detailData loads
   useEffect(() => {
     if (detailData) {
-      reset(characterDraftToFormValues(detailData.draft));
+      if (recovering.current) return;
+      const values = characterDraftToFormValues(detailData.draft);
+      const snapshot = JSON.stringify({ values, tags: detailData.tags || [], variants: detailData.variants || [] });
+      const previous = baseline.current;
+      if (previous && previous.id === characterId) {
+        if ((detailData.draftRevision ?? 0) < (previous.revision ?? 0)) return;
+        if (previous.snapshot === snapshot && previous.revision === detailData.draftRevision) return;
+        // A background refresh may update the avatar while text is still dirty.
+        // Preserve both the input and the revision on which it was based.
+        if (JSON.stringify({ values: getValues(), tags, variants }) !== previous.snapshot) return;
+      }
+      baseline.current = { id: characterId, snapshot, revision: detailData.draftRevision };
+      reset(values);
       setTags(detailData.tags || []);
       setVariants(detailData.variants || []);
       setStatus('saved');
     }
-  }, [detailData, reset]);
+  }, [characterId, detailData, getValues, reset, tags, variants]);
 
   // AI Avatar Generation Polling
   useEffect(() => {
@@ -215,6 +249,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
   // Handle Save
   const handleSave = useCallback(async () => {
+    if (saving.current) return null;
     const currentValues = getValues();
     const currentDraft = characterFormValuesToDraft(currentValues);
     if (!currentDraft.displayName.trim()) {
@@ -224,7 +259,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       return null;
     }
     clearErrors('displayName');
+    const submittedSnapshot = JSON.stringify({ values: currentValues, tags, variants });
+    saving.current = true;
     setErrorMessage('');
+    setRevisionConflict(false);
     setStatus('saving');
 
     try {
@@ -234,9 +272,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           draft: currentDraft,
           tags,
           variants,
-          expectedDraftRevision: detailData?.draftRevision,
+          expectedDraftRevision: baseline.current?.revision,
         });
-        setStatus('saved');
+        const savedValues = characterDraftToFormValues(res.draft);
+        baseline.current = { id: characterId, revision: res.draftRevision,
+          snapshot: JSON.stringify({ values: savedValues, tags: res.tags, variants: res.variants || [] }) };
+        if (liveSnapshot.current === submittedSnapshot) {
+          reset(savedValues); setTags(res.tags); setVariants(res.variants || []);
+          setStatus('saved');
+        } else setStatus('dirty');
         toast.success('角色档案已保存');
         await refetchDetail();
         return res.id;
@@ -254,12 +298,52 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       }
     } catch (err: unknown) {
       setStatus('error');
-      const msg = err instanceof Error ? err.message : '保存失败，请检查网络或稍后重试';
+      setRevisionConflict(err instanceof ApiClientError && err.code === 'draft_revision_conflict');
+      const msg = err instanceof ApiClientError && err.code === 'draft_revision_conflict'
+        ? '角色已在其他页面更新，当前未保存输入仍保留。请保留草稿后载入最新版本，再合并修改。'
+        : err instanceof Error ? err.message : '保存失败，请检查网络或稍后重试';
       setErrorMessage(msg);
       toast.error('保存失败', msg);
       return null;
-    }
-  }, [getValues, clearErrors, setError, toast, characterId, updateMutation, tags, variants, detailData?.draftRevision, refetchDetail, createMutation, router]);
+    } finally { saving.current = false; }
+  }, [getValues, clearErrors, setError, toast, characterId, updateMutation, tags, variants, refetchDetail, createMutation, router, reset]);
+
+  const preserveAndReload = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    recovering.current = true;
+    setStatus('saving');
+    const snapshot = JSON.stringify({ values: getValues(), tags, variants });
+    try {
+      // Do not replace the form unless its complete local draft was preserved.
+      sessionStorage.setItem(recoveryKey, JSON.stringify({ characterId,
+        draft: characterFormValuesToDraft(getValues()), tags, variants }));
+      window.dispatchEvent(new Event('sthstart:character-recovery'));
+      const latest = await refetchDetail();
+      if (latest.error || !latest.data) throw latest.error ?? new Error('无法载入最新角色档案。');
+      if (liveSnapshot.current !== snapshot) throw new Error('载入期间又有新修改，已保留当前输入，请重新操作。');
+      const values = characterDraftToFormValues(latest.data.draft);
+      baseline.current = { id: characterId, revision: latest.data.draftRevision,
+        snapshot: JSON.stringify({ values, tags: latest.data.tags, variants: latest.data.variants || [] }) };
+      reset(values); setTags(latest.data.tags); setVariants(latest.data.variants || []);
+      setStatus('saved'); setErrorMessage(''); setRevisionConflict(false);
+      toast.success('已载入最新版本', '原有本机草稿已保留，可下载后对照合并。');
+    } catch (error) {
+      setStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally { saving.current = false; recovering.current = false; }
+  };
+
+  const downloadRecovery = () => {
+    try {
+      const backup = sessionStorage.getItem(recoveryKey);
+      if (!backup) throw new Error('未找到保留的本机草稿。');
+      const url = URL.createObjectURL(new Blob([backup], { type: 'application/json' }));
+      const anchor = document.createElement('a');
+      anchor.href = url; anchor.download = `character-${characterId ?? 'new'}-local-draft.json`; anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) { toast.error('草稿下载失败', error instanceof Error ? error.message : String(error)); }
+  };
 
   // Handle Asset Upload (Avatar or Portrait)
   const handleUploadAsset = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'avatar' | 'portrait') => {
@@ -487,9 +571,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         <div className="mt-4">
           <Alert variant="danger" onDismiss={() => setErrorMessage('')}>
             {errorMessage}
+            {revisionConflict && <Button className="mt-2" size="sm" variant="outline" loading={status === 'saving'} onClick={() => void preserveAndReload()}>
+              保留本机草稿并载入最新版
+            </Button>}
           </Alert>
         </div>
       )}
+      {recoveryAvailable && <Alert className="mt-4" variant="info" title="本机会话中保留了一份角色草稿">
+        <button type="button" className="underline" onClick={downloadRecovery}>下载保留的草稿，供对照合并</button>
+      </Alert>}
 
       {/* 双栏工作台：左栏立绘卡片与资产管理，右栏沉浸式档案创作 */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">

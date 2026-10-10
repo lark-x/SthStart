@@ -206,7 +206,7 @@ export function TopicLibraryView() {
     <div className="w-full bg-paper text-ink">
     <PageContainer className="topic-library-page space-y-5 py-6 text-ink">
         <PageHeader
-          title="话题素材库"
+          title="灵感素材"
           description="后台定时搜集关注作品的新梗与讨论；勾选素材后可以让模型生成活动点子，再带入企划。"
           actions={(
             <div className="flex flex-wrap items-center gap-2">
@@ -336,9 +336,24 @@ export function TopicLibraryView() {
               <p className="text-sm text-muted">勾选 1～3 条素材效果最好，最多 5 条。可以跨页勾选。</p>
               <p className="text-sm">已选 {selected.length} 条{selected.length > MAX_SELECTED ? '（超过上限，请去掉一些）' : ''}</p>
               {!!selectedTopics.length && (
-                <ul className="space-y-1 text-xs text-muted">
-                  {selectedTopics.map((topic) => <li key={topic.id} className="flex items-center gap-2">· {topic.title}<Button size="sm" variant="ghost" onClick={() => setSelected(current => current.filter(id => id !== topic.id))}>移除</Button></li>)}
-                </ul>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {selectedTopics.map((topic) => (
+                    <span
+                      key={topic.id}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border-default/70 bg-surface-sunken/60 px-2.5 py-1 text-xs text-ink"
+                    >
+                      <span className="max-w-[180px] truncate">{topic.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelected((current) => current.filter((id) => id !== topic.id))}
+                        className="text-muted transition-colors hover:text-danger-fg"
+                        aria-label={`移除 ${topic.title}`}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold text-ink">可选要求</span>

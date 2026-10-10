@@ -330,14 +330,14 @@ export function CreativeClient() {
   return (
     <PageContainer className="space-y-4 py-6">
         <PageHeader
-          title="创作中心"
-          description="把灵感变成图片与视频，保存到你的媒体库。"
+          title="图像工坊"
+          description="高质量文本生图、图生图与创作媒体资产库。"
           actions={<Button size="sm" variant="outline" onClick={() => { void statusQuery.refetch(); void optionsQuery.refetch(); void tasksQuery.refetch(); void artifactsQuery.refetch(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>}
         />
         {(pageError || serviceError) && (
           <Alert
             variant="danger"
-            title={pageError ? '创作中心操作未完成' : '创作中心暂时无法完成操作'}
+            title={pageError ? '图像工坊操作未完成' : '图像工坊暂时无法完成操作'}
             onDismiss={pageError ? () => setPageError('') : undefined}
           >
             {pageError || (serviceError instanceof Error ? serviceError.message : String(serviceError))}

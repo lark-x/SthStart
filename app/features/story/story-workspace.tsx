@@ -749,7 +749,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
           <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${
             isReflection
               ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-              : 'bg-primary/10 text-primary'
+              : 'bg-accent/10 text-accent'
           }`}>
             {isReflection ? (project.data.workId || '对话感想') : (project.data.workId || '剧情创作')}
           </span>

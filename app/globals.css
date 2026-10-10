@@ -19,7 +19,14 @@
 
   html {
     background: var(--bg-app);
+  }
+
+  html[data-color-mode="light"] {
     color-scheme: light;
+  }
+
+  html[data-color-mode="dark"] {
+    color-scheme: dark;
   }
 
   body {
@@ -39,10 +46,6 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: var(--focus-ring-offset);
   }
-}
-
-html:not([data-theme="neutral"]):not([data-app="linshe"]) body {
-  background: var(--bg-app);
 }
 
 @media (prefers-reduced-motion: reduce) {

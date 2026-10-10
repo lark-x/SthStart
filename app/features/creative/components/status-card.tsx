@@ -22,7 +22,7 @@ export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeSta
             <span className="sr-only">刷新</span>
           </Button>
         </div>
-        <CardDescription>创作中心只使用 SthStart 分配的工作流。模板、引擎与密钥不会出现在创作页面。</CardDescription>
+        <CardDescription>图像工坊只使用 SthStart 分配的工作流。模板、引擎与密钥不会出现在创作页面。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {modes ? (

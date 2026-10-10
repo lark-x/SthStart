@@ -777,7 +777,7 @@ activity.studio.select_image
 任务：
 
 - 记录 git status、HEAD、迁移最大版本；逐个读取重叠的已修改／未跟踪文件。
-- 完整读取本项目 contract-first-api、db-migration-backup、frontend-ui-standards、project-verifier。
+- 完整读取本项目 contract-first-api、db-migration-backup、frontend-design-aesthetics、frontend-workspace-interaction、project-verifier。
 - 把本计划映射到真实函数、Schema 导出与管理 API；记录镜头／漫画／素材当前配置解析及写回差异。
 - 保留已存在的导演标签和提示词组合器，确定需要改造的行为，不重新生成覆盖文件。
 - 运行对应现有靶向测试作为基线；记录旧失败。契约公共导出、角色快照、多角色、提示词归一化重点核查。

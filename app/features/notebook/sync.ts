@@ -68,7 +68,7 @@ async function uploadLocalAssets(noteId: string) {
 
 async function syncRecord(noteId: string, queryClient?: QueryClient) {
   let record = await getLocalNote(noteId);
-  if (!record) return;
+  if (!record || record.status === 'conflict') return;
 
   if (record.status === 'deleted') {
     if (!await setLocalNoteSyncing(noteId, record.localVersion)) return;
@@ -84,10 +84,13 @@ async function syncRecord(noteId: string, queryClient?: QueryClient) {
 
   await uploadLocalAssets(noteId);
   record = await getLocalNote(noteId);
-  if (!record || record.status === 'deleted') return;
+  if (!record || record.status === 'deleted' || record.status === 'conflict') return;
   const version = record.localVersion;
   if (!await setLocalNoteSyncing(noteId, version)) return;
-  const serverNote = await upsertNote(noteId, record.note);
+  // Existing notes edit knowledge through its dedicated endpoint. A stale
+  // offline content snapshot must not write back an older knowledge object.
+  const payload = record.note.revision ? { ...record.note, knowledge: undefined } : record.note;
+  const serverNote = await upsertNote(noteId, payload);
   await completeLocalNoteSync(noteId, version, serverNote);
   updateNoteCaches(queryClient, serverNote);
 }
@@ -104,6 +107,7 @@ async function runSync(queryClient?: QueryClient, options?: { force?: boolean; n
         record.noteId,
         latest.localVersion,
         error instanceof Error ? error.message : String(error),
+        error instanceof ApiClientError && (error.status === 409 || error.status === 428),
       );
     }
   }

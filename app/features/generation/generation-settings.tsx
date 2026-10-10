@@ -71,7 +71,7 @@ export function GenerationSettingsFeature() {
     <PageContainer width="wide" className="space-y-4 py-6">
       <PageHeader
         backHref="/apps/creative"
-        backLabel="返回创作中心"
+        backLabel="返回图像工坊"
         title="生成配置"
         description="管理连接、工作流、生成方案与提示词策略。生图页面中的修改仅用于本次任务；这里保存的设置用于后续任务。"
         actions={(
@@ -114,7 +114,7 @@ export function GenerationSettingsFeature() {
                 setSavePresetRequest({ workflowId, workflowVersion, values });
                 setSection('advanced');
                 setAdvancedSection('presets');
-                toast.info('请在预设面板确认参数', '已带入试运行参数，保存后可在创作中心选择。');
+                toast.info('请在预设面板确认参数', '已带入试运行参数，保存后可在图像工坊选择。');
               }}
             />
           </div>
@@ -131,7 +131,7 @@ export function GenerationSettingsFeature() {
             />
           </div>
           <div id="generation-advanced-prompts" role="tabpanel" hidden={advancedSection !== 'prompts'} className="space-y-3">
-            <p className="text-sm text-muted">策略按工作流版本保存；创作中心与角色头像使用各自应用绑定的文本模型，活动使用活动文本模型。手动最终提示词会跳过 AI 改写。</p>
+            <p className="text-sm text-muted">策略按工作流版本保存；图像工坊与角色头像使用各自应用绑定的文本模型，活动使用活动文本模型。手动最终提示词会跳过 AI 改写。</p>
             <ActivityImagePromptPolicyPanel workflows={workflows} />
           </div>
           <div id="generation-advanced-loras" role="tabpanel" hidden={advancedSection !== 'loras'}>

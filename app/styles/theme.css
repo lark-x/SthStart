@@ -1,38 +1,41 @@
 /*
  * SthStart 设计变量（唯一语义定义源）
  *
- * 两套主题：
- *   - 默认：暖杏创作桌面。背景、内容表面、输入表面分三层，
- *     强调色只用于主动作与当前位置，不铺满整块面板。
- *   - 中性：html[data-theme="neutral"] 时启用，通过变量整体切换，
- *     不使用全屏滤镜或透明度叠加。
+ * 底层四维主题矩阵（对标 Claude 与 Codex 级别）：
+ *   - 白天 (Light Mode):
+ *     1. light-paper (Claude 暖白纸意): 温暖纸意底色、陶土赤金强调色、人文典雅。
+ *     2. light-zinc (Codex 纯净冷白): 冷白锌灰底色、电光蓝靛强调色、现代科技。
+ *   - 黑夜 (Dark Mode):
+ *     3. dark-espresso (Claude 暖黑深咖): 低对比温润黑咖啡色底、温润暖阳强调色。
+ *     4. dark-obsidian (Codex 曜石冷黑): 深空曜石纯黑底、电光紫靛强调色。
  *
  * 兼容说明：--paper / --ink / --muted / --accent / --accent-dark 等旧变量名继续保留，
- * 值由新语义变量派生，避免一次性改动全部业务类名。
+ * 值由新语义变量派生；兼容旧选择器 html[data-theme="warm"] 与 html[data-theme="neutral"]。
  */
 
 :root {
-  /* ---------- 品牌基色 ---------- */
-  --accent: #b84420;
-  --accent-dark: #963517;
-  --accent-soft: #fff1eb;
-  --accent-ring: rgb(184 68 32 / 32%);
+  /* ---------- 基础色阶默认值（回退至 Claude 暖白纸意） ---------- */
+  color-scheme: light;
+  --accent: #c2410c;
+  --accent-dark: #9a3412;
+  --accent-soft: #fff7ed;
+  --accent-ring: rgb(194 65 12 / 32%);
 
   /* ---------- 应用背景三层 ---------- */
-  --bg-app: #f5f6f8;
-  --bg-nav: #eceff3;
-  --nav-surface: #1e2631;
-  --nav-foreground: #f5f4ef;
-  --nav-muted: #b8c2ce;
-  --nav-hover: rgb(255 255 255 / 8%);
-  --nav-selected: #fffefa;
-  --nav-selected-text: #253345;
-  --nav-border: rgb(255 255 255 / 8%);
-  --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 14%);
+  --bg-app: #faf9f5;
+  --bg-nav: #f3f1ea;
+  --nav-surface: #262421;
+  --nav-foreground: #f6f0e5;
+  --nav-muted: #aba69b;
+  --nav-hover: rgb(255 252 245 / 8%);
+  --nav-selected: #ffffff;
+  --nav-selected-text: #1f1e1d;
+  --nav-border: rgb(255 252 245 / 8%);
+  --shadow-nav-active: 0 5px 16px rgb(23 31 25 / 16%);
   --shadow-hero: 0 16px 40px rgb(40 47 39 / 8%);
-  --shadow-editorial: 0 2px 12px -2px rgb(23 33 46 / 5%), 0 1px 3px 0 rgb(23 33 46 / 3%);
-  --ambient-glow: color-mix(in srgb, var(--accent) 6%, transparent);
-  --shadow-control-inset: inset 0 1px 1px rgb(23 33 46 / 3%);
+  --shadow-editorial: 0 2px 12px -2px rgb(31 30 29 / 5%), 0 1px 3px 0 rgb(31 30 29 / 3%);
+  --ambient-glow: color-mix(in srgb, var(--accent) 7%, transparent);
+  --shadow-control-inset: inset 0 1px 1px rgb(31 30 29 / 3%);
   --hero-start: #233143;
   --hero-mid: #304355;
   --hero-end: #445366;
@@ -45,35 +48,25 @@
   --hero-dot: #d3a987;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f0f3f7;
-  --surface-muted: rgb(240 243 247 / 78%);
-  --surface-hover: rgb(23 33 46 / 5%);
+  --surface-sunken: #f3f1ea;
+  --surface-muted: rgb(243 241 234 / 75%);
+  --surface-hover: rgb(31 30 29 / 5%);
   --surface-input: #ffffff;
-  --surface-dark: #161d27;
-  --hairline: rgb(23 33 46 / 8%);
+  --surface-dark: #1b1a18;
+  --hairline: rgb(31 30 29 / 8%);
 
   /* ---------- 文字 ---------- */
-  --fg-default: #17212e;
-  --fg-muted: #566273;
-  /*
-   * 辅助元信息在 12px 下属于普通文字，必须满足 4.5:1（计划 §11.3）。
-   * 原值 #6f7b8a 在 surface-sunken 上仅 3.87:1，逐级加深到实测最差 4.65:1，
-   * 仍比 --fg-muted 浅，保持“正文 > 次要 > 辅助”的层级。
-   */
-  --fg-subtle: #606c78;
-  --fg-inverse: #f7f9fb;
+  --fg-default: #1f1e1d;
+  --fg-muted: #6b6860;
+  --fg-subtle: #7a766c;
+  --fg-inverse: #faf9f5;
   --fg-on-accent: #ffffff;
 
   /* ---------- 边框 ---------- */
-  --border-subtle: #e2e7ed;
-  --border-default: #cfd6df;
-  --border-strong: #8994a3;
-  /*
-   * 表单控件的填充色与面板底色相同，边框是唯一能识别控件的信息，
-   * 因此按 WCAG 1.4.11 需要 ≥3:1；实测最差 3.01:1（surface-sunken）。
-   * 纯装饰分隔线继续用 --border-subtle，不套用该要求。
-   */
-  --border-control: #848d9b;
+  --border-subtle: #e8e6df;
+  --border-default: #d8d5cb;
+  --border-strong: #8f8b80;
+  --border-control: #8a867a;
 
   /* ---------- 状态色 ---------- */
   --success: #3f8a5c;
@@ -130,23 +123,23 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* ---------- 阴影：多级复合环境光与直射光 ---------- */
-  --shadow-xs: 0 1px 2px rgb(23 33 46 / 4%);
-  --shadow-sm: 0 1px 3px rgb(23 33 46 / 6%), 0 1px 2px rgb(23 33 46 / 4%);
-  --shadow-panel: 0 1px 3px rgb(23 33 46 / 4%), 0 6px 16px -2px rgb(23 33 46 / 5%);
-  --shadow-panel-hover: 0 3px 6px rgb(23 33 46 / 4%), 0 12px 28px -4px rgb(23 33 46 / 9%);
-  --shadow-floating: 0 8px 24px -4px rgb(23 33 46 / 12%), 0 4px 12px -2px rgb(23 33 46 / 6%);
-  --shadow-dialog: 0 24px 60px -12px rgb(23 33 46 / 22%), 0 8px 24px -4px rgb(23 33 46 / 10%);
+  /* ---------- 阴影 ---------- */
+  --shadow-xs: 0 1px 2px rgb(31 30 29 / 4%);
+  --shadow-sm: 0 1px 3px rgb(31 30 29 / 6%), 0 1px 2px rgb(31 30 29 / 4%);
+  --shadow-panel: 0 1px 3px rgb(31 30 29 / 4%), 0 6px 16px -2px rgb(31 30 29 / 5%);
+  --shadow-panel-hover: 0 3px 6px rgb(31 30 29 / 4%), 0 12px 28px -4px rgb(31 30 29 / 9%);
+  --shadow-floating: 0 8px 24px -4px rgb(31 30 29 / 12%), 0 4px 12px -2px rgb(31 30 29 / 6%);
+  --shadow-dialog: 0 24px 60px -12px rgb(31 30 29 / 22%), 0 8px 24px -4px rgb(31 30 29 / 10%);
 
   /* ---------- 外框尺寸 ---------- */
-  --shell-sidebar: 224px;
+  --shell-sidebar: 236px;
   --shell-sidebar-collapsed: 72px;
-  --shell-topbar: 64px;
-  --shell-topbar-mobile: 56px;
+  --shell-topbar: 48px;
+  --shell-topbar-mobile: 48px;
   --shell-gutter: 24px;
   --shell-gutter-lg: 32px;
   --shell-gutter-sm: 16px;
-  --shell-reading: 720px;
+  --shell-reading: 760px;
   --shell-content-max: 1600px;
   --shell-settings-max: 1120px;
   --shell-aside: 300px;
@@ -177,15 +170,14 @@
   --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-spring: cubic-bezier(0.175, 0.885, 0.32, 1.12);
 
-  /*
-   * ---------- 滚动条 ----------
-   *
-   * 只改颜色，不改宽度：显式给滚动条设宽度会让浏览器从 overlay 切到占位滚动条，
-   * 所有滚动容器会凭空多出十几像素的沟槽，页面版式随之位移。
-   * 所以这里靠 `scrollbar-color` 把滑块调成透明来实现「不滑动时看不见」。
-   */
-  --scrollbar-thumb: rgb(23 33 46 / 30%);
-  --scrollbar-thumb-hover: rgb(23 33 46 / 48%);
+  /* ---------- 滚动条 ---------- */
+  --scrollbar-thumb: rgb(31 30 29 / 24%);
+  --scrollbar-thumb-hover: rgb(31 30 29 / 44%);
+
+  /* ---------- Claude 风格双轨字体体系 ---------- */
+  --font-serif: "Newsreader", "Iowan Old Style", "Charter", Georgia, "Songti SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
 
   /* ---------- 旧变量兼容别名 ---------- */
   --ink: var(--fg-default);
@@ -193,93 +185,303 @@
   --paper: var(--bg-app);
 }
 
-/* 暖杏为首次打开默认；旧 data-eye-care 仅保留兼容，邻舍内部不注入主题。 */
-html:not([data-theme="neutral"]):not([data-app="linshe"]) {
-  --accent: #ae421f;
-  --accent-dark: #923619;
-  --accent-soft: #fbeadf;
-  --accent-ring: rgb(174 66 31 / 32%);
+/* ==================== 1. Claude 暖白纸意 (light-paper / warm) ==================== */
+:root,
+html[data-theme="light-paper"],
+html[data-theme="warm"] {
+  color-scheme: light;
+  --accent: #c2410c;
+  --accent-dark: #9a3412;
+  --accent-soft: #fff7ed;
+  --accent-ring: rgb(194 65 12 / 32%);
 
-  --nav-surface: #252e28;
+  --bg-app: #faf9f5;
+  --bg-nav: #f3f1ea;
+  --nav-surface: #262421;
   --nav-foreground: #f6f0e5;
-  --nav-muted: #bdc6b8;
-  --nav-hover: rgb(255 252 245 / 9%);
-  --nav-selected: #f7ebd9;
-  --nav-selected-text: #2d382f;
+  --nav-muted: #aba69b;
+  --nav-hover: rgb(255 252 245 / 8%);
+  --nav-selected: #ffffff;
+  --nav-selected-text: #1f1e1d;
   --nav-border: rgb(255 252 245 / 8%);
-  --shadow-nav-active: 0 5px 16px rgb(23 31 25 / 22%);
-  --shadow-hero: 0 16px 40px rgb(39 48 39 / 8%);
-  --shadow-editorial: 0 2px 12px -2px rgb(36 41 35 / 5%), 0 1px 3px 0 rgb(36 41 35 / 3%);
-  --ambient-glow: color-mix(in srgb, var(--accent) 7%, transparent);
-  --shadow-control-inset: inset 0 1px 1px rgb(36 41 35 / 3%);
-  --hero-start: #29372f;
-  --hero-mid: #354238;
-  --hero-end: #4a4d3e;
-  --hero-foreground: #fbf4e8;
-  --hero-muted: rgb(251 244 232 / 78%);
-  --hero-eyebrow: #d9c8a8;
-  --hero-glow: rgb(212 167 105 / 23%);
-  --hero-orbit: rgb(250 241 221 / 18%);
-  --hero-orbit-soft: rgb(250 241 221 / 12%);
-  --hero-dot: #e3a078;
+  --shadow-nav-active: 0 5px 16px rgb(23 31 25 / 16%);
 
-  --bg-app: #f7f6f2;
-  --bg-nav: #f2eee6;
   --surface: #ffffff;
-  --surface-raised: #fbfbf9;
-  --surface-sunken: #f0eee8;
-  --surface-muted: rgb(240 238 232 / 70%);
-  --surface-hover: rgb(36 41 35 / 5%);
+  --surface-raised: #ffffff;
+  --surface-sunken: #f3f1ea;
+  --surface-muted: rgb(243 241 234 / 75%);
+  --surface-hover: rgb(31 30 29 / 5%);
   --surface-input: #ffffff;
-  --surface-dark: #1b211e;
-  --shadow-xs: 0 1px 2px rgb(49 39 25 / 5%);
-  --shadow-sm: 0 1px 3px rgb(49 39 25 / 6%), 0 1px 2px rgb(49 39 25 / 4%);
-  --shadow-panel: 0 1px 3px rgb(49 39 25 / 4%), 0 6px 16px -2px rgb(61 46 27 / 6%);
-  --shadow-panel-hover: 0 3px 6px rgb(49 39 25 / 5%), 0 12px 28px -4px rgb(61 46 27 / 10%);
-  --shadow-floating: 0 8px 24px -4px rgb(45 39 29 / 14%), 0 4px 12px -2px rgb(45 39 29 / 7%);
-  --shadow-dialog: 0 24px 60px -12px rgb(45 39 29 / 24%), 0 8px 24px -4px rgb(45 39 29 / 10%);
+  --surface-dark: #1b1a18;
+  --hairline: rgb(31 30 29 / 8%);
 
-  --fg-default: #242923;
-  /* 同样满足 4.5:1；暖底比中性底更暗，需要一并下调并保持层级。 */
-  --fg-muted: #575f57;
-  --fg-subtle: #60675d;
-  --fg-inverse: #f4efe4;
+  --fg-default: #1f1e1d;
+  --fg-muted: #6b6860;
+  --fg-subtle: #7a766c;
+  --fg-inverse: #faf9f5;
+  --fg-on-accent: #ffffff;
 
-  --border-subtle: #eae6de;
-  --border-default: #dcd6cb;
-  --border-strong: #8c9186;
-  --border-control: #838779;
-  --hairline: rgb(36 41 35 / 8%);
+  --border-subtle: #e8e6df;
+  --border-default: #d8d5cb;
+  --border-strong: #8f8b80;
+  --border-control: #8a867a;
 
-  --success: #3f8558;
-  --success-fg: #2c6642;
-  --success-bg: rgb(63 133 88 / 10%);
-  --success-border: rgb(63 133 88 / 36%);
-  --success-solid: #3f8558;
+  --success: #3f8a5c;
+  --success-fg: #2f6d47;
+  --success-bg: rgb(63 138 92 / 10%);
+  --success-border: rgb(63 138 92 / 32%);
+  --success-solid: #3f8a5c;
 
-  --warning: #a8801d;
-  --warning-fg: #6f5610;
-  --warning-bg: rgb(168 128 29 / 12%);
-  --warning-border: rgb(168 128 29 / 44%);
-  --warning-solid: #a8801d;
+  --warning: #b8871f;
+  --warning-fg: #7a5e10;
+  --warning-bg: rgb(184 135 31 / 12%);
+  --warning-border: rgb(184 135 31 / 40%);
+  --warning-solid: #b8871f;
 
-  --danger: #b04a2f;
-  --danger-fg: #963d22;
-  --danger-bg: rgb(176 74 47 / 10%);
-  --danger-border: rgb(176 74 47 / 42%);
-  --danger-solid: #9c3d22;
+  --danger: #bb4530;
+  --danger-fg: #9c3a26;
+  --danger-bg: rgb(187 69 48 / 10%);
+  --danger-border: rgb(187 69 48 / 38%);
+  --danger-solid: #a83c28;
 
-  --info: #3f5c7f;
-  --info-fg: #35485e;
-  --info-bg: rgb(63 92 127 / 10%);
-  --info-border: rgb(63 92 127 / 36%);
-  --info-solid: #3f5c7f;
+  --info: #3f5f8a;
+  --info-fg: #33496b;
+  --info-bg: rgb(63 95 138 / 10%);
+  --info-border: rgb(63 95 138 / 30%);
+  --info-solid: #3f5f8a;
 
-  --focus-ring: #315dce;
+  --scrollbar-thumb: rgb(31 30 29 / 24%);
+  --scrollbar-thumb-hover: rgb(31 30 29 / 44%);
+}
 
-  /* 暖底更吃深色，滑块同比例压深以保持可见度。 */
-  --scrollbar-thumb: rgb(36 41 35 / 32%);
-  --scrollbar-thumb-hover: rgb(36 41 35 / 50%);
+/* ==================== 2. Codex 纯净冷白 (light-zinc / neutral) ==================== */
+html[data-theme="light-zinc"],
+html[data-theme="neutral"] {
+  color-scheme: light;
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-ring: rgb(37 99 235 / 32%);
+
+  --bg-app: #f4f4f5;
+  --bg-nav: #eceff3;
+  --nav-surface: #18181b;
+  --nav-foreground: #f4f4f5;
+  --nav-muted: #a1a1aa;
+  --nav-hover: rgb(255 255 255 / 8%);
+  --nav-selected: #ffffff;
+  --nav-selected-text: #09090b;
+  --nav-border: rgb(255 255 255 / 8%);
+  --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 14%);
+
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e4e4e7;
+  --surface-muted: rgb(228 228 231 / 75%);
+  --surface-hover: rgb(9 9 11 / 5%);
+  --surface-input: #ffffff;
+  --surface-dark: #18181b;
+  --hairline: rgb(9 9 11 / 8%);
+
+  --fg-default: #09090b;
+  --fg-muted: #71717a;
+  --fg-subtle: #52525b;
+  --fg-inverse: #f4f4f5;
+  --fg-on-accent: #ffffff;
+
+  --border-subtle: #e4e4e7;
+  --border-default: #d4d4d8;
+  --border-strong: #a1a1aa;
+  --border-control: #71717a;
+
+  --success: #3f8a5c;
+  --success-fg: #2f6d47;
+  --success-bg: rgb(63 138 92 / 10%);
+  --success-border: rgb(63 138 92 / 32%);
+  --success-solid: #3f8a5c;
+
+  --warning: #b8871f;
+  --warning-fg: #7a5e10;
+  --warning-bg: rgb(184 135 31 / 12%);
+  --warning-border: rgb(184 135 31 / 40%);
+  --warning-solid: #b8871f;
+
+  --danger: #bb4530;
+  --danger-fg: #9c3a26;
+  --danger-bg: rgb(187 69 48 / 10%);
+  --danger-border: rgb(187 69 48 / 38%);
+  --danger-solid: #a83c28;
+
+  --info: #3f5f8a;
+  --info-fg: #33496b;
+  --info-bg: rgb(63 95 138 / 10%);
+  --info-border: rgb(63 95 138 / 30%);
+  --info-solid: #3f5f8a;
+
+  --scrollbar-thumb: rgb(23 33 46 / 24%);
+  --scrollbar-thumb-hover: rgb(23 33 46 / 44%);
+}
+
+/* ==================== 3. Claude 暖黑深咖 (dark-espresso) ==================== */
+html[data-theme="dark-espresso"] {
+  color-scheme: dark;
+  --accent: #ea580c;
+  --accent-dark: #c2410c;
+  --accent-soft: rgb(234 88 12 / 16%);
+  --accent-ring: rgb(234 88 12 / 32%);
+
+  --bg-app: #1b1a18;
+  --bg-nav: #141312;
+  --nav-surface: #171614;
+  --nav-foreground: #eceae5;
+  --nav-muted: #8a867e;
+  --nav-hover: rgb(255 255 255 / 6%);
+  --nav-selected: #2e2d29;
+  --nav-selected-text: #ffffff;
+  --nav-border: rgb(255 255 255 / 6%);
+  --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 30%);
+
+  --surface: #262522;
+  --surface-raised: #2e2d29;
+  --surface-sunken: #151413;
+  --surface-muted: rgb(38 37 34 / 80%);
+  --surface-hover: rgb(255 255 255 / 5%);
+  --surface-input: #262522;
+  --surface-dark: #151413;
+  --hairline: rgb(255 255 255 / 6%);
+
+  --fg-default: #eceae5;
+  --fg-muted: #9c978e;
+  --fg-subtle: #88837a;
+  --fg-inverse: #1b1a18;
+  --fg-on-accent: #ffffff;
+
+  --border-subtle: #383632;
+  --border-default: #4a4742;
+  --border-strong: #736e65;
+  --border-control: #68635b;
+
+  --success: #4ade80;
+  --success-fg: #4ade80;
+  --success-bg: rgb(74 222 128 / 14%);
+  --success-border: rgb(74 222 128 / 32%);
+  --success-solid: #22c55e;
+  --success-on-solid: #052e16;
+
+  --warning: #fbbf24;
+  --warning-fg: #fbbf24;
+  --warning-bg: rgb(251 191 36 / 14%);
+  --warning-border: rgb(251 191 36 / 32%);
+  --warning-solid: #f59e0b;
+  --warning-on-solid: #451a03;
+
+  --danger: #f87171;
+  --danger-fg: #f87171;
+  --danger-bg: rgb(248 113 113 / 14%);
+  --danger-border: rgb(248 113 113 / 32%);
+  --danger-solid: #ef4444;
+  --danger-on-solid: #ffffff;
+
+  --info: #60a5fa;
+  --info-fg: #60a5fa;
+  --info-bg: rgb(96 165 250 / 14%);
+  --info-border: rgb(96 165 250 / 32%);
+  --info-solid: #3b82f6;
+  --info-on-solid: #ffffff;
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 20%);
+  --shadow-panel: 0 1px 3px rgb(0 0 0 / 25%), 0 6px 16px -2px rgb(0 0 0 / 35%);
+  --shadow-panel-hover: 0 3px 6px rgb(0 0 0 / 30%), 0 12px 28px -4px rgb(0 0 0 / 45%);
+  --shadow-editorial: 0 2px 12px -2px rgb(0 0 0 / 30%), 0 1px 3px 0 rgb(0 0 0 / 20%);
+  --shadow-floating: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 4px 12px -2px rgb(0 0 0 / 35%);
+  --shadow-dialog: 0 24px 60px -12px rgb(0 0 0 / 70%), 0 8px 24px -4px rgb(0 0 0 / 40%);
+  --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
+  --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+
+  --scrollbar-thumb: rgb(236 234 229 / 24%);
+  --scrollbar-thumb-hover: rgb(236 234 229 / 44%);
+}
+
+/* ==================== 4. Codex 曜石冷黑 (dark-obsidian) ==================== */
+html[data-theme="dark-obsidian"] {
+  color-scheme: dark;
+  --accent: #6366f1;
+  --accent-dark: #4f46e5;
+  --accent-soft: rgb(99 102 241 / 16%);
+  --accent-ring: rgb(99 102 241 / 32%);
+
+  --bg-app: #09090b;
+  --bg-nav: #050506;
+  --nav-surface: #09090b;
+  --nav-foreground: #fafafa;
+  --nav-muted: #71717a;
+  --nav-hover: rgb(255 255 255 / 6%);
+  --nav-selected: #27272a;
+  --nav-selected-text: #ffffff;
+  --nav-border: rgb(255 255 255 / 6%);
+  --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 30%);
+
+  --surface: #18181b;
+  --surface-raised: #27272a;
+  --surface-sunken: #0c0c0e;
+  --surface-muted: rgb(24 24 27 / 80%);
+  --surface-hover: rgb(255 255 255 / 5%);
+  --surface-input: #18181b;
+  --surface-dark: #09090b;
+  --hairline: rgb(255 255 255 / 6%);
+
+  --fg-default: #fafafa;
+  --fg-muted: #a1a1aa;
+  --fg-subtle: #8e8e93;
+  --fg-inverse: #09090b;
+  --fg-on-accent: #ffffff;
+
+  --border-subtle: #27272a;
+  --border-default: #3f3f46;
+  --border-strong: #71717a;
+  --border-control: #52525b;
+
+  --success: #34d399;
+  --success-fg: #34d399;
+  --success-bg: rgb(52 211 153 / 14%);
+  --success-border: rgb(52 211 153 / 32%);
+  --success-solid: #10b981;
+  --success-on-solid: #064e3b;
+
+  --warning: #fbbf24;
+  --warning-fg: #fbbf24;
+  --warning-bg: rgb(251 191 36 / 14%);
+  --warning-border: rgb(251 191 36 / 32%);
+  --warning-solid: #f59e0b;
+  --warning-on-solid: #451a03;
+
+  --danger: #f87171;
+  --danger-fg: #f87171;
+  --danger-bg: rgb(248 113 113 / 14%);
+  --danger-border: rgb(248 113 113 / 32%);
+  --danger-solid: #ef4444;
+  --danger-on-solid: #ffffff;
+
+  --info: #818cf8;
+  --info-fg: #818cf8;
+  --info-bg: rgb(129 140 248 / 14%);
+  --info-border: rgb(129 140 248 / 32%);
+  --info-solid: #6366f1;
+  --info-on-solid: #ffffff;
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 20%);
+  --shadow-panel: 0 1px 3px rgb(0 0 0 / 25%), 0 6px 16px -2px rgb(0 0 0 / 35%);
+  --shadow-panel-hover: 0 3px 6px rgb(0 0 0 / 30%), 0 12px 28px -4px rgb(0 0 0 / 45%);
+  --shadow-editorial: 0 2px 12px -2px rgb(0 0 0 / 30%), 0 1px 3px 0 rgb(0 0 0 / 20%);
+  --shadow-floating: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 4px 12px -2px rgb(0 0 0 / 35%);
+  --shadow-dialog: 0 24px 60px -12px rgb(0 0 0 / 70%), 0 8px 24px -4px rgb(0 0 0 / 40%);
+  --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
+  --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+
+  --scrollbar-thumb: rgb(250 250 250 / 24%);
+  --scrollbar-thumb-hover: rgb(250 250 250 / 44%);
 }
 
 @theme {
@@ -289,6 +491,8 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
   --color-accent-soft: var(--accent-soft);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--fg-on-accent);
 
   --color-fg-default: var(--fg-default);
   --color-fg-muted: var(--fg-muted);
@@ -351,7 +555,7 @@ html:not([data-theme="neutral"]):not([data-app="linshe"]) {
   --shadow-floating: var(--shadow-floating);
   --shadow-dialog: var(--shadow-dialog);
 
-  --font-serif: Georgia, "Songti SC", "STSong", "SimSun", serif;
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-serif: "Newsreader", "Iowan Old Style", "Charter", Georgia, "Songti SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
 }

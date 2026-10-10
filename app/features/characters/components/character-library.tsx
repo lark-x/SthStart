@@ -4,10 +4,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, Loader2 } from 'lucide-react';
+import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
+import { FloatingActionBar } from '@/app/components/ui/floating-action-bar';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { CharacterImportDialog } from './character-import-dialog';
@@ -102,9 +103,126 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
       </div>}
     />
     {(error || browser.error) && <p role="alert" className="text-sm text-accent-dark">{error || String(browser.error)}</p>}
-    <CharacterFilters filter={browser.filter} onChange={browser.change} onReset={browser.reset} facets={browser.facets} actions={<><span className="text-sm text-muted">{selectionMode ? `已选 ${Object.keys(selected).length} 位` : `共 ${browser.data?.total ?? '—'} 位角色`}{browser.isFetching ? ' · 筛选中…' : ''}</span>{selectionMode ? <><Button size="sm" variant="ghost" onClick={() => setSelected(current => ({ ...current, ...Object.fromEntries((browser.data?.items || []).map(c => [c.id, c.displayName])) }))}>选择本页</Button><Button size="sm" variant="ghost" onClick={() => setSelected({})}>取消选择</Button><Button size="sm" variant="outline" disabled={!Object.keys(selected).length} onClick={() => { setError(''); setBatchAvatarScope('selected'); setBatchAvatarResult(null); setBatchAvatarOpen(true); }}><Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />获取所选头像</Button><Button size="sm" variant="outline" disabled={!Object.keys(selected).length} onClick={() => { setError(''); setOrganizeOpen(true); }}>批量整理</Button><Button size="sm" variant="ghost" onClick={() => { setSelectionMode(false); setSelected({}); }}>退出</Button></> : <><Button size="sm" variant="ghost" onClick={() => { setError(''); setBatchOpen(true); }}><Upload className="h-4 w-4" aria-hidden="true" />批量导入</Button><Button size="sm" variant="ghost" onClick={() => setSelectionMode(true)}>批量管理</Button></>}</>} />
+    <CharacterFilters
+      filter={browser.filter}
+      onChange={browser.change}
+      onReset={browser.reset}
+      facets={browser.facets}
+      actions={
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted">
+            共 {browser.data?.total ?? '—'} 位角色{browser.isFetching ? ' · 筛选中…' : ''}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setError('');
+              setBatchOpen(true);
+            }}
+          >
+            <Upload className="size-4" aria-hidden="true" />
+            <span>批量导入</span>
+          </Button>
+          <Button
+            size="sm"
+            variant={selectionMode ? 'secondary' : 'ghost'}
+            onClick={() => {
+              const nextMode = !selectionMode;
+              setSelectionMode(nextMode);
+              if (!nextMode) setSelected({});
+            }}
+          >
+            <CheckSquare className="size-4 text-muted" aria-hidden="true" />
+            <span>{selectionMode ? '退出管理' : '批量管理'}</span>
+          </Button>
+        </div>
+      }
+    />
 
-    {Object.keys(selected).length > 0 && <details className="text-sm"><summary className="cursor-pointer text-muted">查看跨页已选名单</summary><div className="mt-2 flex flex-wrap gap-2">{Object.entries(selected).map(([id, name]) => <button key={id} type="button" className="rounded bg-accent/10 px-2 py-1" onClick={() => setSelected(current => { const next = { ...current }; delete next[id]; return next; })}>{name} ×</button>)}</div></details>}
+    {Object.keys(selected).length > 0 && (
+      <details className="text-xs text-muted">
+        <summary className="cursor-pointer hover:text-ink">
+          查看已选名单（跨页保留共 {Object.keys(selected).length} 位）
+        </summary>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {Object.entries(selected).map(([id, name]) => (
+            <button
+              key={id}
+              type="button"
+              className="inline-flex items-center gap-1 rounded-[var(--radius-control)] border border-border-default/60 bg-surface px-2 py-0.5 text-xs text-ink hover:border-accent/50"
+              onClick={() =>
+                setSelected((current) => {
+                  const next = { ...current };
+                  delete next[id];
+                  return next;
+                })
+              }
+            >
+              <span>{name}</span>
+              <span className="text-muted hover:text-danger-fg">×</span>
+            </button>
+          ))}
+        </div>
+      </details>
+    )}
+
+    <FloatingActionBar
+      open={selectionMode || Object.keys(selected).length > 0}
+      selectedCount={Object.keys(selected).length}
+      unit="位角色"
+      selectionActions={
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 px-2.5 text-xs text-muted hover:text-ink"
+          onClick={() =>
+            setSelected((current) => ({
+              ...current,
+              ...Object.fromEntries(
+                (browser.data?.items || []).map((c) => [c.id, c.displayName])
+              ),
+            }))
+          }
+        >
+          全选本页
+        </Button>
+      }
+      onClear={() => setSelected({})}
+      onClose={() => {
+        setSelectionMode(false);
+        setSelected({});
+      }}
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 gap-1.5 px-3 text-xs"
+        disabled={!Object.keys(selected).length}
+        onClick={() => {
+          setError('');
+          setBatchAvatarScope('selected');
+          setBatchAvatarResult(null);
+          setBatchAvatarOpen(true);
+        }}
+      >
+        <Sparkles className="size-3.5 text-accent" aria-hidden="true" />
+        <span>获取所选头像</span>
+      </Button>
+      <Button
+        size="sm"
+        variant="primary"
+        className="h-8 gap-1.5 px-3 text-xs"
+        disabled={!Object.keys(selected).length}
+        onClick={() => {
+          setError('');
+          setOrganizeOpen(true);
+        }}
+      >
+        <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+        <span>批量整理</span>
+      </Button>
+    </FloatingActionBar>
     {/* 角色卡牌网格：精简展示（仅头像、角色名、所属作品） */}
     {browser.isLoading ? (
       <p className="py-12 text-center text-muted">正在加载角色…</p>
@@ -305,7 +423,9 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               <div key={item.id} className="flex items-center justify-between py-1 px-2 rounded hover:bg-surface-muted/50">
                 <span className="font-medium text-ink">{item.displayName}</span>
                 {item.success ? (
-                  <span className="text-emerald-600 font-medium">✓ 已更新</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                    <Check className="h-3 w-3" aria-hidden="true" />已更新
+                  </span>
                 ) : (
                   <span className="text-muted">{item.error || '未匹配到'}</span>
                 )}

@@ -15,6 +15,14 @@ import { ImageParameterFields } from './image-parameter-fields';
 
 export type ImageGenerationInitial = { presetId?: string; parameters: Record<string, unknown>; description?: string; seed?: number | null };
 
+const SCENE_STYLE_PRESETS = [
+  { id: 'free', label: '默认自由', promptSuffix: '' },
+  { id: 'anime', label: '动漫立绘', promptSuffix: '，精致二次元动漫立绘，细腻光影，高完成度角色设计' },
+  { id: 'storyboard', label: '连环分镜', promptSuffix: '，连环分镜漫画构图，电影景深镜头，动感与戏剧张力' },
+  { id: 'cinematic', label: '电影胶片', promptSuffix: '，电影胶片质感，真实光影，情绪电影感色调，大师级氛围' },
+  { id: 'painterly', label: '厚涂插画', promptSuffix: '，艺术厚涂插画，油画肌理，饱满层次与细腻笔触' },
+];
+
 /** One form for all image consumers. Mode changes only presentation, never generation state. */
 export function ImageGenerationPanel({ appId, purpose, contextKey, options, initial, initialDescription = '', referenceInput,
   onGenerate, onRefresh, onConfigurationChange, loading = false, blockedReason, submitLabel = '开始生成' }: {
@@ -26,6 +34,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   blockedReason?: string; submitLabel?: string;
 }) {
   const id = useId();
+  const [activeStyle, setActiveStyle] = useState<string>('free');
   const [advanced, setAdvanced] = useImageAdvancedMode(contextKey);
   const [description, setDescription] = useState(initialDescription);
   const [presetId, setPresetId] = useState<string | null>(null);
@@ -36,11 +45,12 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   const [phase, setPhase] = useState<'idle' | 'preparing' | 'submitting'>('idle');
   const [error, setError] = useState('');
   const [pendingPreset, setPendingPreset] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   const restored = useRef(false);
   const running = useRef(false);
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const storageKey = `sthstart:image-draft:${contextKey}`;
+  const hydrated = hydratedKey === storageKey;
   const effectivePresetId = presetId ?? options?.defaultPresetId ?? null;
   const selected = effectivePresetId ? options?.presets.find(item => item.id === effectivePresetId) : undefined;
   const configuration = selected?.configuration ?? (!effectivePresetId ? options?.configuration : undefined);
@@ -67,22 +77,30 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
         setDescription(saved.description); setOverrides(saved.overrides as Record<string, unknown>);
         setPresetId(typeof saved.presetId === 'string' ? saved.presetId : null);
         setAi(saved.ai !== false); setManual(saved.manual === true);
+        if (typeof saved.activeStyle === 'string' && SCENE_STYLE_PRESETS.some(style => style.id === saved.activeStyle)) {
+          setActiveStyle(saved.activeStyle);
+        } else {
+          // Older drafts included the selected suffix in the description itself.
+          const previousStyle = saved.manual !== true ? SCENE_STYLE_PRESETS.find(style => style.promptSuffix && (saved.description as string).endsWith(style.promptSuffix)) : undefined;
+          setActiveStyle(previousStyle?.id ?? 'free');
+          if (previousStyle) setDescription(saved.description.slice(0, -previousStyle.promptSuffix.length));
+        }
       }
     } catch { /* Storage is optional; leave the current in-memory draft intact. */ }
     restored.current = true;
-    setHydrated(true);
+    setHydratedKey(storageKey);
   }, [storageKey]);
   useEffect(() => {
     if (!hydrated || !restored.current) return;
-    try { sessionStorage.setItem(storageKey, JSON.stringify({ description, overrides, presetId, ai, manual })); } catch { /* In-memory draft remains usable. */ }
-  }, [hydrated, storageKey, description, overrides, presetId, ai, manual]);
+    try { sessionStorage.setItem(storageKey, JSON.stringify({ description, overrides, presetId, ai, manual, activeStyle })); } catch { /* In-memory draft remains usable. */ }
+  }, [hydrated, storageKey, description, overrides, presetId, ai, manual, activeStyle]);
   useEffect(() => {
     if (!initial) return;
     // Replaying a task is an explicit user action. Do not run its prompt through AI again.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOverrides({ ...initial.parameters, ...(initial.seed != null ? { seed: initial.seed } : {}) });
     setPresetId(initial.presetId ?? null); setDescription(initial.description ?? String(initial.parameters.prompt ?? ''));
-    setManual(true); setPrepared(null); setError('');
+    setManual(true); setActiveStyle('free'); setPrepared(null); setError('');
   }, [initial]);
 
   const update = (key: string, value: unknown) => {
@@ -106,9 +124,10 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   const run = async (submit: boolean, forcePrepare = false) => {
     if (running.current || !hydrated || !configuration || !positiveKey) return;
     setError('');
-    const prompt = manual && !forcePrepare ? String(Object.hasOwn(overrides, positiveKey) ? values[positiveKey] ?? '' : description) : description;
+    const styledDescription = description + (SCENE_STYLE_PRESETS.find(style => style.id === activeStyle)?.promptSuffix ?? '');
+    const prompt = manual && !forcePrepare ? String(Object.hasOwn(overrides, positiveKey) ? values[positiveKey] ?? '' : description) : styledDescription;
     let submittingTask = false;
-    if (!prompt.trim()) { setError('请先描述想生成的画面。'); return; }
+    if (!prompt.trim() || ((!manual || forcePrepare) && !description.trim())) { setError('请先描述想生成的画面。'); return; }
     running.current = true;
     const fingerprint = JSON.stringify({ preset: selected?.id, revision: selected?.revision, values, prompt, ai: ai && (!manual || forcePrepare), configurationHash: configuration.configurationHash });
     if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, key: `image-${generateId()}` };
@@ -141,7 +160,34 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
     <div className="border-b border-border-subtle p-4"><ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={modified.length} disabled={busy || !hydrated} /></div>
     <fieldset disabled={busy || !hydrated} className="min-w-0 space-y-5 p-4">
       <div className="space-y-2">
-        <label htmlFor={`${id}-description`} className="text-sm font-semibold text-ink">描述你的画面</label>
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
+          <label htmlFor={`${id}-description`} className="text-sm font-semibold text-ink">描述你的画面</label>
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="画风情境预设">
+            {SCENE_STYLE_PRESETS.map((style) => (
+              <button
+                key={style.id}
+                type="button"
+                aria-pressed={activeStyle === style.id}
+                disabled={manual}
+                onClick={() => {
+                  const nextStyle = activeStyle === style.id ? 'free' : style.id;
+                  if (nextStyle === activeStyle) return;
+                  setActiveStyle(nextStyle);
+                  setPrepared(null);
+                  setError('');
+                }}
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 ${
+                  activeStyle === style.id
+                    ? 'bg-accent/15 text-accent font-semibold'
+                    : 'bg-surface-sunken/60 text-muted hover:bg-surface-sunken hover:text-ink'
+                }`}
+              >
+                {style.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {manual && <p className="text-xs text-muted">当前直接使用手动提示词，画风选项已暂停。编辑画面描述后可重新选择。</p>}
         <Textarea id={`${id}-description`} rows={5} maxLength={10000} value={description} placeholder="用中文描述人物、动作、场景和想要的氛围…"
           onChange={event => { setDescription(event.target.value); setManual(false); setPrepared(null); setError(''); }} />
         <label className="flex items-start gap-2 text-sm text-ink"><input type="checkbox" checked={ai} onChange={event => { setAi(event.target.checked); setPrepared(null); }} className="mt-1" />

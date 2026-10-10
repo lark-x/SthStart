@@ -33,6 +33,7 @@ test('现有模型解析只读且不迁移，未配置模型明确不可用', as
   const path = join(directory, 'source.db');
   try {
     const db = new ServiceDatabase(path);
+    db.connection.prepare(`INSERT INTO managed_apps VALUES ('story','剧情工作室','token-hash','["llm"]',1,'now','now')`).run();
     db.connection.prepare(`INSERT INTO provider_profiles VALUES ('learning','Learning','llm','http://127.0.0.1:1/v1','fake-model',NULL,1,'now','now')`).run();
     db.connection.prepare(`INSERT INTO app_llm_assignments(app_id,role,profile_id,updated_at) VALUES ('story','text','learning','now')`).run();
     db.close();

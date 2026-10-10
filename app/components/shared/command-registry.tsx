@@ -1,13 +1,19 @@
 import React from 'react';
-import { Eye, Plus, Terminal } from 'lucide-react';
+import { Sun, Moon, Plus, Terminal, Palette } from 'lucide-react';
 import type { CommandItem } from '../ui/command';
-import { NAV_APPS, NAV_PORTAL } from './navigation';
+import { NAV_APPS, NAV_PORTAL, SETTINGS_SUB_PAGES } from './navigation';
+import { THEMES, type ThemeId } from '@/app/lib/theme-preference';
 
 /**
- * 命令面板注册表：应用入口全部由统一导航注册表生成（§4.1），
- * 保证与应用切换器名称、覆盖范围一致；这里只补充偏好与快捷操作。
+ * 命令面板注册表：
+ * 应用入口全部由统一导航注册表生成，
+ * 包含偏好主题切换与快捷操作。
  */
-export function createCommandRegistry(push: (href: string) => void, toggleEyeCare?: () => void): CommandItem[] {
+export function createCommandRegistry(
+  push: (href: string) => void,
+  toggleColorModeOrEyeCare?: () => void,
+  setThemeId?: (id: ThemeId) => void,
+): CommandItem[] {
   const groupCategory: Record<string, string> = {
     '创作': '应用',
     '应用': '应用',
@@ -33,27 +39,39 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
       icon: <app.icon className="h-4 w-4" />,
       action: () => push(app.href),
     })),
+    ...SETTINGS_SUB_PAGES.map((app) => ({
+      id: `app-sub-${app.id}`,
+      title: `${app.title} (系统设置)`,
+      description: app.description,
+      category: '设置',
+      keywords: app.keywords,
+      icon: <app.icon className="h-4 w-4" />,
+      action: () => push(app.href),
+    })),
+  ];
+
+  const themeActions: CommandItem[] = [
+    {
+      id: 'action-toggle-dark-mode',
+      title: '切换日间 / 夜间模式',
+      description: '在当前白天与黑夜基调之间快速翻转',
+      category: '偏好',
+      keywords: ['theme', 'dark', 'light', '黑夜', '白天', '日间', '夜间', '暗色', '模式'],
+      icon: <Sun className="h-4 w-4 text-warning-fg" />,
+      action: () => toggleColorModeOrEyeCare?.(),
+    },
+    ...THEMES.map((theme) => ({
+      id: `action-theme-${theme.id}`,
+      title: `主题：${theme.name}`,
+      description: `${theme.category} · ${theme.description}`,
+      category: '偏好',
+      keywords: ['theme', '主题', theme.name, theme.id, theme.category],
+      icon: <Palette className="h-4 w-4" style={{ color: theme.accent }} />,
+      action: () => setThemeId ? setThemeId(theme.id) : toggleColorModeOrEyeCare?.(),
+    })),
   ];
 
   const quickActions: CommandItem[] = [
-    {
-      id: 'action-toggle-eyecare',
-      title: '切换主题（暖杏／中性）',
-      description: '在暖杏创作桌面与中性浅色主题之间切换',
-      category: '偏好',
-      keywords: ['eyecare', '主题', '中性', '暖杏', '羊皮纸', 'theme', '模式'],
-      icon: <Eye className="h-4 w-4 text-accent" />,
-      action: () => toggleEyeCare?.(),
-    },
-    {
-      id: 'action-new-story',
-      title: '进入剧情创作（Story Studio）',
-      description: '编剧工作室、大纲世界观与角色设定',
-      category: '快捷操作',
-      keywords: ['new', 'story', '剧情', '剧本', '大纲', '小说'],
-      icon: <Plus className="h-4 w-4" />,
-      action: () => push('/apps/story'),
-    },
     {
       id: 'action-new-activity',
       title: '新建互动活动',
@@ -62,6 +80,15 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
       keywords: ['new', 'activity', '新建活动', '活动'],
       icon: <Plus className="h-4 w-4" />,
       action: () => push('/apps/activities/new'),
+    },
+    {
+      id: 'action-new-story',
+      title: '进入剧情创作 (Story Studio)',
+      description: '编剧工作室、大纲世界观与角色设定',
+      category: '快捷操作',
+      keywords: ['new', 'story', '剧情', '剧本', '大纲', '小说'],
+      icon: <Plus className="h-4 w-4" />,
+      action: () => push('/apps/story'),
     },
     {
       id: 'action-new-character',
@@ -73,22 +100,22 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
       action: () => push('/apps/characters/new'),
     },
     {
+      id: 'action-new-creative',
+      title: '进入图像工坊 (生图)',
+      description: '高质量文本生图、图生图与创作媒体资产库',
+      category: '快捷操作',
+      keywords: ['image', 'creative', '生图', '绘图', '画画', '图像工坊'],
+      icon: <Plus className="h-4 w-4" />,
+      action: () => push('/apps/creative'),
+    },
+    {
       id: 'action-new-note',
-      title: '新建笔记',
+      title: '新建创作笔记',
       description: '随手记录新的灵感或设定',
       category: '快捷操作',
       keywords: ['new', 'note', '新建笔记'],
       icon: <Plus className="h-4 w-4" />,
       action: () => push('/apps/notebook/new'),
-    },
-    {
-      id: 'action-new-creative',
-      title: '新建生图任务',
-      description: '文本生图与图生图创作',
-      category: '快捷操作',
-      keywords: ['image', 'creative', '生图', '绘图', '画画'],
-      icon: <Plus className="h-4 w-4" />,
-      action: () => push('/apps/creative'),
     },
     {
       id: 'action-logs',
@@ -101,5 +128,5 @@ export function createCommandRegistry(push: (href: string) => void, toggleEyeCar
     },
   ];
 
-  return [...quickActions, ...appItems];
+  return [...themeActions, ...quickActions, ...appItems];
 }

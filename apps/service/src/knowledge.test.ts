@@ -61,7 +61,7 @@ test('knowledge: 旧客户端保存正文不会清空已有元数据', async () 
   // 旧客户端只提交正文：元数据必须保留。
   const legacy = await app.inject({
     method: 'PUT', url: '/api/v1/admin/notebook/notes/' + note.id, headers: adminHeaders,
-    payload: { title: '钟离的人物关系', kind: 'note', stage: 'reference', summary: '改过的摘要', content: [{ id: 'b1', type: 'text', text: '钟离与旅行者在璃月相识，后来一起过节。' }], tags: ['原神'], favorite: false },
+    payload: { expectedRevision: note.revision, title: '钟离的人物关系', kind: 'note', stage: 'reference', summary: '改过的摘要', content: [{ id: 'b1', type: 'text', text: '钟离与旅行者在璃月相识，后来一起过节。' }], tags: ['原神'], favorite: false },
   });
   assert.equal(legacy.statusCode, 200);
   const knowledge = legacy.json().knowledge;
@@ -167,7 +167,7 @@ test('knowledge: 引用快照冻结内容，源笔记更新后快照不变', asy
   // 修改源笔记后，旧快照内容不变。
   await app.inject({
     method: 'PUT', url: '/api/v1/admin/notebook/notes/' + note.id, headers: adminHeaders,
-    payload: { title: '生日习俗整理', kind: 'note', stage: 'reference', summary: '习俗', content: [{ id: 'b1', type: 'text', text: '第二版：还要准备礼物。' }], tags: [] },
+    payload: { expectedRevision: note.revision, title: '生日习俗整理', kind: 'note', stage: 'reference', summary: '习俗', content: [{ id: 'b1', type: 'text', text: '第二版：还要准备礼物。' }], tags: [] },
   });
   assert.equal(frozen.excerpt, '习俗\n第一版：生日要准备蛋糕。', '快照不随源笔记更新');
 

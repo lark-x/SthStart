@@ -4,12 +4,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CommandPalette, type CommandItem } from '../ui/command';
 import { createCommandRegistry } from './command-registry';
-import { useEyeCare } from '@/app/providers/ui-provider';
+import { useTheme } from '@/app/providers/ui-provider';
 
 export function GlobalCommandPalette() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
-  const { toggleEyeCare } = useEyeCare();
+  const { toggleColorMode, setThemeId } = useTheme();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -32,7 +32,10 @@ export function GlobalCommandPalette() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const items: CommandItem[] = useMemo(() => createCommandRegistry(router.push, toggleEyeCare), [router, toggleEyeCare]);
+  const items: CommandItem[] = useMemo(
+    () => createCommandRegistry(router.push, toggleColorMode, setThemeId),
+    [router, toggleColorMode, setThemeId]
+  );
 
   return <CommandPalette open={open} onOpenChange={setOpen} items={items} />;
 }

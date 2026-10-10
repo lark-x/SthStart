@@ -24,7 +24,9 @@ import { useNoteDetail } from '../queries';
 import { useCharacters } from '@/app/features/characters/queries';
 import { kindLabels, stageLabels, newBlock, summaryFromBlocks } from '../schemas';
 import { notebookKeys } from '@/app/lib/query-keys';
-import { addLocalAsset, getLocalNote, localAssetId, markLocalNoteDeleted, saveLocalNote, subscribeNotebookLocalChanges } from '../local-store';
+import { addLocalAsset, getLocalNote, localAssetId, markLocalNoteDeleted, saveLocalNote, subscribeNotebookLocalChanges, preserveConflictCopy, removeLocalAsset } from '../local-store';
+import { fetchNoteDetail, fetchNoteAssetBlob } from '../api';
+import { ApiClientError } from '@/app/lib/api-client';
 import { useLocalNotebookNote } from '../hooks';
 import { syncPendingNotebookData } from '../sync';
 import { Button } from '@/app/components/ui/button';
@@ -81,6 +83,9 @@ export function NoteEditor({
   const [savingLocal, setSavingLocal] = useState(false);
   const [online, setOnline] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [resolvingConflict, setResolvingConflict] = useState(false);
+  const resolvingRef = useRef(false);
+  const [preservedCopyId, setPreservedCopyId] = useState<string | null>(null);
   const [zenMode, setZenMode] = useState(false);
   const [metaEditorOpen, setMetaEditorOpen] = useState(false);
   const [discardMetaOpen, setDiscardMetaOpen] = useState(false);
@@ -236,7 +241,12 @@ export function NoteEditor({
           }
           return block;
         });
-        return changed ? { ...prev, content } : prev;
+        const sameContent = record.note.title === (prev.title.trim() || '未命名笔记')
+          && record.note.kind === prev.kind && record.note.stage === prev.stage && record.note.favorite === prev.favorite
+          && JSON.stringify(record.note.tags) === JSON.stringify(prev.tags)
+          && JSON.stringify(record.note.content) === JSON.stringify(content);
+        const revision = sameContent && record.status !== 'conflict' ? record.note.revision : prev.revision;
+        return changed || revision !== prev.revision ? { ...prev, content, revision } : prev;
       });
     });
   }, [effectiveNoteId]);
@@ -245,6 +255,49 @@ export function NoteEditor({
     editVersionRef.current += 1;
     setNote((prev) => updater(prev));
     setDirty(true);
+  };
+
+  const resolveConflict = async () => {
+    if (resolvingRef.current) return;
+    resolvingRef.current = true;
+    setResolvingConflict(true);
+    const copiedAssets: string[] = [];
+    let preserved = false;
+    try {
+      const saved = await persistLocal(true);
+      if (!saved) return;
+      let remote: CreativeNote | null;
+      try { remote = await fetchNoteDetail(effectiveNoteId, AbortSignal.timeout(30_000)); }
+      catch (error) {
+        if (error instanceof ApiClientError && error.status === 404) remote = null;
+        else throw error;
+      }
+      const copyId = generateId();
+      const content: CreativeNote['content'] = [];
+      for (const block of saved.note.content) {
+        const match = block.type === 'image' ? block.src.match(/^\/api\/(?:v1\/)?admin\/notebook\/assets\/([A-Za-z0-9_-]+)$/) : null;
+        if (block.type === 'image' && match) {
+          const src = await addLocalAsset(copyId, await fetchNoteAssetBlob(match[1]), 'preserved-note-image');
+          copiedAssets.push(localAssetId(src)!);
+          content.push({ ...block, src });
+        } else content.push(block);
+      }
+      const copy = await preserveConflictCopy(effectiveNoteId, saved.localVersion, copyId, remote, content);
+      preserved = true;
+      dirtyRef.current = false;
+      setDirty(false);
+      setPreservedCopyId(copy.id!);
+      if (remote) { setNote(remote); updateNoteCaches(remote); }
+      else router.replace(`/apps/notebook/${copy.id}`);
+      void syncPendingNotebookData(queryClient, { force: true, noteId: copy.id });
+      toast.success('本机草稿已另存为副本', remote ? '当前页面已载入服务端版本。' : '原笔记已删除，已打开本机副本。');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!preserved) await Promise.allSettled(copiedAssets.map(id => removeLocalAsset(id)));
+      resolvingRef.current = false;
+      setResolvingConflict(false);
+    }
   };
 
   const openMetaEditor = () => {
@@ -423,7 +476,7 @@ export function NoteEditor({
   }
 
   return (
-    <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
+    <MainTag inert={resolvingConflict} aria-busy={resolvingConflict} className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
       {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
       {/* Top sticky action bar */}
       <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-surface/95 backdrop-blur-md border-b border-border-subtle">
@@ -449,6 +502,8 @@ export function NoteEditor({
                   ? online ? 'bg-success' : 'bg-muted'
                   : localRecord?.status === 'error'
                   ? 'bg-danger'
+                  : localRecord?.status === 'conflict'
+                  ? 'bg-warning'
                   : 'bg-success'
               }`} />
               <span>
@@ -462,6 +517,8 @@ export function NoteEditor({
                   ? online ? '本机已保存 · 等待同步' : '离线 · 待同步'
                   : localRecord?.status === 'error'
                   ? '本机已保存 · 同步失败'
+                  : localRecord?.status === 'conflict'
+                  ? '本机已保存 · 版本冲突'
                   : localRecord?.status === 'synced'
                   ? '已同步'
                   : '本地笔记'}
@@ -482,6 +539,8 @@ export function NoteEditor({
               ? online ? '本机已保存 · 等待同步' : '离线 · 待同步'
               : localRecord?.status === 'error'
               ? '本机已保存 · 同步失败'
+              : localRecord?.status === 'conflict'
+              ? '本机已保存 · 版本冲突'
               : localRecord?.status === 'synced'
               ? '已同步'
               : '本地笔记'}
@@ -544,6 +603,24 @@ export function NoteEditor({
             >
               立即重试
             </button>
+          </Alert>
+        </div>
+      )}
+
+      {localRecord?.status === 'conflict' && (
+        <div className="notebook-editor-message max-w-4xl mx-auto px-5 sm:px-8 pt-2">
+          <Alert variant="warning" title="笔记版本冲突，本机内容已保留">
+            <p>{localRecord.error} 自动同步已暂停；继续编辑不会覆盖服务端内容。</p>
+            <Button className="mt-2" size="sm" variant="outline" loading={resolvingConflict} onClick={() => void resolveConflict()}>
+              保留本机副本并载入服务端版本
+            </Button>
+          </Alert>
+        </div>
+      )}
+      {preservedCopyId && (
+        <div className="notebook-editor-message max-w-4xl mx-auto px-5 sm:px-8 pt-2">
+          <Alert variant="info" title="本机草稿已保留为独立笔记">
+            <Link className="underline" href={`/apps/notebook/${preservedCopyId}`}>打开保留的副本</Link>
           </Alert>
         </div>
       )}

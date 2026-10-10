@@ -19,6 +19,8 @@ import {
   ExternalLink,
   CalendarDays,
   Lightbulb,
+  MoreHorizontal,
+  ArrowRight,
 } from 'lucide-react';
 import { useActivities } from '@/app/features/activities/queries';
 import {
@@ -43,6 +45,7 @@ export default function ActivitiesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   const { data, isLoading, error } = useActivities({
     archived: showArchived,
@@ -211,37 +214,118 @@ export default function ActivitiesPage() {
           <EmptyState
             icon={Compass}
             title={showArchived ? '暂无已归档活动' : '暂无活动记录'}
-            description="点击上方“新建活动”设定主题与初始阶段，或“导入活动”载入已有的工程包。"
+            description="选择起步模板快速生成分镜漫剧，或创建全新空白活动工程。"
             actions={
               !showArchived && (
-                <Link
-                  href="/apps/activities/new"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-control)] bg-accent text-white hover:bg-accent-dark font-semibold text-xs transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                  新建活动
-                </Link>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <Link
+                    href="/apps/activities/new"
+                    className="inline-flex items-center gap-2 rounded-[var(--radius-control)] border border-border-default/80 bg-surface px-4 py-2 text-xs font-semibold text-ink shadow-xs transition-colors hover:border-accent hover:text-accent"
+                  >
+                    <Sparkles className="size-3.5 text-accent" />
+                    <span>四幕分镜漫剧模板</span>
+                  </Link>
+                  <Link
+                    href="/apps/activities/new"
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-control)] bg-accent px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-accent-dark"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>新建空白活动</span>
+                  </Link>
+                </div>
               )
             }
           />
         ) : (
-          <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))]">
+          <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))]">
             {filtered.map((act) => (
               <div
                 key={act.id}
-                className="activity-card group flex min-h-[230px] flex-col justify-between p-5 rounded-[var(--radius-panel)] bg-surface transition-all duration-200"
+                onClick={() => router.push(`/apps/activities/${act.id}`)}
+                className="activity-card group relative flex min-h-[200px] cursor-pointer flex-col justify-between rounded-[var(--radius-panel)] border border-border-default/60 bg-surface p-5 transition-all duration-150 hover:border-border-default hover:shadow-xs"
               >
                 <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <Link
                       href={`/apps/activities/${act.id}`}
-                      className="text-base font-bold text-ink group-hover:text-accent transition-colors line-clamp-2 leading-snug"
+                      onClick={(e) => e.stopPropagation()}
+                      className="line-clamp-2 text-base font-bold text-ink transition-colors group-hover:text-accent"
                     >
                       {act.title}
                     </Link>
-                    <Badge variant="secondary" className="shrink-0 font-mono text-xs">
-                      v{act.headVersion}
-                    </Badge>
+
+                    <div
+                      className="flex items-center gap-1.5 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        v{act.headVersion}
+                      </Badge>
+                      <div className="relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`管理活动 ${act.title}`}
+                          className="h-7 w-7 p-0 text-muted hover:text-ink"
+                          onClick={() => setActiveMenuId(activeMenuId === act.id ? null : act.id)}
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                        {activeMenuId === act.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setActiveMenuId(null)}
+                            />
+                            <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-[var(--radius-control)] border border-border-default bg-surface p-1 shadow-lg">
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-ink transition-colors hover:bg-surface-sunken"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void handleDuplicate(act.id);
+                                }}
+                              >
+                                <Copy className="size-3.5 text-muted" />
+                                <span>复制副本</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-ink transition-colors hover:bg-surface-sunken"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void handleToggleArchive(act);
+                                }}
+                              >
+                                {act.archived ? (
+                                  <>
+                                    <ArchiveRestore className="size-3.5 text-muted" />
+                                    <span>恢复活动</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Archive className="size-3.5 text-muted" />
+                                    <span>归档活动</span>
+                                  </>
+                                )}
+                              </button>
+                              <div className="my-1 h-px bg-border-subtle" />
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-danger-fg transition-colors hover:bg-danger/10"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void handleDelete(act.id, act.title);
+                                }}
+                              >
+                                <Trash2 className="size-3.5 text-danger-fg" />
+                                <span>删除活动</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
@@ -262,58 +346,25 @@ export default function ActivitiesPage() {
                     ) : null}
                   </div>
 
-                  {act.location && <p className="flex items-center gap-2 text-sm text-muted"><Calendar className="size-3.5 shrink-0 text-accent" />{act.location}</p>}
+                  {act.location && (
+                    <p className="flex items-center gap-1.5 text-xs text-muted">
+                      <Calendar className="size-3.5 shrink-0 text-accent" />
+                      <span>{act.location}</span>
+                    </p>
+                  )}
                   {act.rules && (
-                    <p className="text-sm text-muted line-clamp-2 leading-relaxed">
+                    <p className="line-clamp-2 text-xs leading-relaxed text-muted">
                       {act.rules}
                     </p>
                   )}
                 </div>
 
-                {/* Footer and Actions */}
-                <div className="activity-card-footer mt-5 flex items-center justify-between gap-2 rounded-xl bg-surface-sunken/55 px-2 py-1.5 text-xs text-muted">
-                  <span className="activity-card-date">更新于 {new Date(act.updatedAt).toLocaleDateString('zh-CN')}</span>
-                  <div className="flex items-center gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDuplicate(act.id)}
-                      title="复制活动副本"
-                      aria-label={"复制活动 " + act.title}
-                      className="h-7 w-7 p-0 text-muted hover:text-ink"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleToggleArchive(act)}
-                      title={act.archived ? '取消归档' : '归档活动'}
-                      aria-label={(act.archived ? '取消归档' : '归档') + '活动 ' + act.title}
-                      className="h-7 w-7 p-0 text-muted hover:text-ink"
-                    >
-                      {act.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(act.id, act.title)}
-                      title="删除活动"
-                      aria-label={"删除活动 " + act.title}
-                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-
-                    <Link
-                      href={`/apps/activities/${act.id}`}
-                      className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-dark"
-                    >
-                      <span>进入</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </Link>
+                {/* Footer */}
+                <div className="mt-4 flex items-center justify-between border-t border-border-subtle/60 pt-3 text-xs text-muted">
+                  <span>更新于 {new Date(act.updatedAt).toLocaleDateString('zh-CN')}</span>
+                  <div className="flex items-center gap-1 font-medium text-muted transition-colors group-hover:text-accent">
+                    <span>进入工作室</span>
+                    <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
               </div>

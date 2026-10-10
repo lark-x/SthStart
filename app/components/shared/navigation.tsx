@@ -18,15 +18,14 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 /**
- * 单一导航注册表（计划 §4.1 / F06）：
- * 侧栏、命令面板、门户目录都从这里取路由，避免各自维护一份互相遗漏的名单。
- * 新增页面时在此登记，各导航界面自动获得入口。
+ * 单一导航注册表：
+ * 侧栏、命令面板、门户目录都从这里取路由。
+ * 重构后分为 3 大核心集群：'创作' | '资料' | '系统'。
  */
 
 export type NavGroup = '创作' | '应用' | '管理';
 
-/** 侧栏分组：与 NavGroup 分离，避免改变既有命令面板分类口径。 */
-export type NavSection = '创作' | '资料' | '应用' | '设置';
+export type NavSection = '创作工坊' | '知识素材' | '系统与应用';
 
 export interface NavApp {
   id: string;
@@ -46,20 +45,22 @@ export const NAV_PORTAL: NavApp = {
   id: 'portal',
   title: '门户',
   navLabel: '工作台',
-  navSection: '创作',
+  navSection: '创作工坊',
   href: '/',
   group: '应用',
   icon: Home,
   description: '返回门户首页与全部应用入口',
-  keywords: ['home', 'portal', '门户', '首页'],
+  keywords: ['home', 'portal', '门户', '首页', '工作台'],
 };
 
+/** 侧栏展示的核心应用入口（三大高内聚集群） */
 export const NAV_APPS: NavApp[] = [
+  // 1. 创作工坊
   {
     id: 'activities',
     title: '活动工作室',
     navLabel: '活动',
-    navSection: '创作',
+    navSection: '创作工坊',
     href: '/apps/activities',
     group: '创作',
     icon: ListChecks,
@@ -70,7 +71,7 @@ export const NAV_APPS: NavApp[] = [
     id: 'story',
     title: '剧情工作室',
     navLabel: '剧情',
-    navSection: '创作',
+    navSection: '创作工坊',
     href: '/apps/story',
     group: '创作',
     icon: BookOpen,
@@ -78,32 +79,10 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['story', '剧情', '大纲', '世界观', '会话'],
   },
   {
-    id: 'inspiration',
-    title: '话题素材库',
-    navLabel: '话题素材',
-    navSection: '资料',
-    href: '/apps/inspiration',
-    group: '创作',
-    icon: Lightbulb,
-    description: '定时搜集作品新梗与讨论，生成活动点子并带入企划',
-    keywords: ['inspiration', '话题', '素材', '灵感', '新梗', 'topic'],
-  },
-  {
-    id: 'creative',
-    title: '创作中心',
-    navLabel: '图像与视频',
-    navSection: '创作',
-    href: '/apps/creative',
-    group: '创作',
-    icon: Sparkles,
-    description: '文本生图、图生图与中央图片媒体库',
-    keywords: ['creative', '创作', '生图', '图片', 'artifact'],
-  },
-  {
     id: 'characters',
     title: '角色资料库',
     navLabel: '角色',
-    navSection: '创作',
+    navSection: '创作工坊',
     href: '/apps/characters',
     group: '创作',
     icon: Users,
@@ -111,32 +90,45 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['characters', '角色', '人物', 'dossier'],
   },
   {
-    id: 'calendar',
-    title: '角色日历',
-    navLabel: '日历',
-    navSection: '创作',
-    href: '/apps/calendar',
+    id: 'creative',
+    title: '图像工坊',
+    navLabel: '图像工坊',
+    navSection: '创作工坊',
+    href: '/apps/creative',
     group: '创作',
-    icon: CalendarDays,
-    description: '查看角色生日与活动日程安排',
-    keywords: ['calendar', '日历', '生日', '日程'],
+    icon: Sparkles,
+    description: '高质量文本生图、图生图与创作媒体资产库',
+    keywords: ['creative', '图像工坊', '生图', '图生图', '媒体库', 'artifact'],
+  },
+
+  // 2. 知识素材
+  {
+    id: 'inspiration',
+    title: '灵感素材',
+    navLabel: '灵感素材',
+    navSection: '知识素材',
+    href: '/apps/inspiration',
+    group: '创作',
+    icon: Lightbulb,
+    description: '定时搜集作品新梗与灵感讨论，生成活动点子并无缝带入企划',
+    keywords: ['inspiration', '灵感素材', '话题', '素材', '灵感', '新梗', 'topic'],
   },
   {
     id: 'notebook',
-    title: '创作资料库',
-    navLabel: '资料库',
-    navSection: '资料',
+    title: '创作笔记',
+    navLabel: '创作笔记',
+    navSection: '知识素材',
     href: '/apps/notebook',
     group: '创作',
     icon: BookOpen,
     description: '资料、日记、灵感与世界设定；标为可参考后可在企划中引用',
-    keywords: ['notebook', '笔记', '资料库', '资料', '灵感', '日记', '知识'],
+    keywords: ['notebook', '创作笔记', '笔记', '资料库', '日记', '知识'],
   },
   {
     id: 'narrative',
     title: '叙事档案',
     navLabel: '叙事档案',
-    navSection: '资料',
+    navSection: '知识素材',
     href: '/apps/narrative',
     group: '创作',
     icon: FileText,
@@ -144,10 +136,23 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['narrative', '叙事', '剧情', '档案'],
   },
   {
+    id: 'calendar',
+    title: '创作日历',
+    navLabel: '创作日历',
+    navSection: '知识素材',
+    href: '/apps/calendar',
+    group: '创作',
+    icon: CalendarDays,
+    description: '查看角色生日与互动活动日程安排',
+    keywords: ['calendar', '创作日历', '日历', '生日', '日程'],
+  },
+
+  // 3. 系统与应用
+  {
     id: 'linshe',
     title: '邻舍.EXE',
     navLabel: '邻舍',
-    navSection: '应用',
+    navSection: '系统与应用',
     href: '/apps/linshe',
     group: '应用',
     icon: Compass,
@@ -155,10 +160,25 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['linshe', '邻舍', 'agent'],
   },
   {
+    id: 'settings',
+    title: '系统设置',
+    navLabel: '系统设置',
+    navSection: '系统与应用',
+    href: '/settings',
+    group: '管理',
+    icon: Settings,
+    description: '模型服务、生成引擎、运行控制、审计与备份设置中心',
+    keywords: ['settings', '系统设置', '设置', '配置', '模型', '备份'],
+  },
+];
+
+/** 设置中心子页面列表（供命令面板 Cmd+K 深度直达） */
+export const SETTINGS_SUB_PAGES: NavApp[] = [
+  {
     id: 'public-services',
     title: '公共服务',
     navLabel: '模型与公共服务',
-    navSection: '设置',
+    navSection: '系统与应用',
     href: '/settings/public-services',
     group: '管理',
     icon: Settings,
@@ -169,7 +189,7 @@ export const NAV_APPS: NavApp[] = [
     id: 'generation',
     title: '生成配置',
     navLabel: '生成配置',
-    navSection: '设置',
+    navSection: '系统与应用',
     href: '/settings/generation',
     group: '管理',
     icon: SlidersHorizontal,
@@ -177,21 +197,10 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['generation', '生成配置', '引擎', 'workflow'],
   },
   {
-    id: 'ai-logs',
-    title: 'AI 调用记录',
-    navLabel: 'AI 调用记录',
-    navSection: '设置',
-    href: '/settings/ai-logs',
-    group: '管理',
-    icon: Activity,
-    description: '查看业务模型调用、生成工作流与脱敏响应记录',
-    keywords: ['ai logs', 'AI 调用', '审计', '模型请求', '生成记录'],
-  },
-  {
     id: 'control-center',
     title: '控制中心',
     navLabel: '运行与日志',
-    navSection: '设置',
+    navSection: '系统与应用',
     href: '/settings/control-center',
     group: '管理',
     icon: Server,
@@ -199,10 +208,21 @@ export const NAV_APPS: NavApp[] = [
     keywords: ['control center', '控制中心', '运行', '服务', 'runtime'],
   },
   {
+    id: 'ai-logs',
+    title: 'AI 调用记录',
+    navLabel: 'AI 调用记录',
+    navSection: '系统与应用',
+    href: '/settings/ai-logs',
+    group: '管理',
+    icon: Activity,
+    description: '查看业务模型调用、生成工作流与脱敏响应记录',
+    keywords: ['ai logs', 'AI 调用', '审计', '模型请求', '生成记录'],
+  },
+  {
     id: 'backups',
     title: '云备份',
     navLabel: '云备份',
-    navSection: '设置',
+    navSection: '系统与应用',
     href: '/settings/backups',
     group: '管理',
     icon: CloudUpload,
@@ -213,16 +233,16 @@ export const NAV_APPS: NavApp[] = [
 
 export const NAV_GROUPS: readonly NavGroup[] = ['创作', '应用', '管理'];
 
-/** 侧栏分组顺序。 */
-export const NAV_SECTIONS: readonly NavSection[] = ['创作', '资料', '应用', '设置'];
+/** 侧栏分组顺序（收敛为 3 大逻辑集群） */
+export const NAV_SECTIONS: readonly NavSection[] = ['创作工坊', '知识素材', '系统与应用'];
 
 /** 侧栏显示名：优先短标签。 */
 export function navDisplayLabel(app: NavApp): string {
   return app.navLabel ?? app.title;
 }
 
-/** 全部可导航应用（含门户），供需要扁平列表的场景使用。 */
-export const NAV_ALL: NavApp[] = [NAV_PORTAL, ...NAV_APPS];
+/** 全部可导航应用（含门户及设置子项），供命令面板等需要完整扁平列表的场景使用。 */
+export const NAV_ALL: NavApp[] = [NAV_PORTAL, ...NAV_APPS, ...SETTINGS_SUB_PAGES];
 
 export function NavAppIcon({ app, className }: { app: NavApp; className?: string }) {
   const Icon = app.icon;

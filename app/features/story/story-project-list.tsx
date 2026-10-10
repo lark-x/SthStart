@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Lightbulb, Plus } from 'lucide-react';
+import { BookOpen, Lightbulb, Plus, Compass, ArrowRight } from 'lucide-react';
 import type { StoryProjectType } from '@sthstart/contracts';
 import { storyApi } from './api';
 import { Button } from '@/app/components/ui/button';
 import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { Input } from '@/app/components/ui/input';
+import { EmptyState } from '@/app/components/ui/empty-state';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
@@ -45,47 +46,91 @@ export function StoryProjectList() {
             <Link
               key={item.id}
               href={`/apps/story/${item.id}`}
-              className="story-project-card group rounded-[var(--radius-panel)] border border-border-default/60 bg-surface p-5 transition-all hover:border-border-default hover:shadow-xs"
+              className="story-project-card group flex min-h-[170px] flex-col justify-between rounded-[var(--radius-panel)] border border-border-default/60 bg-surface p-5 transition-all hover:border-border-default hover:shadow-xs"
             >
-              <div className="flex items-center justify-between gap-3 font-semibold">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="story-project-icon">
-                    {isReflection ? (
-                      <Lightbulb className="size-5 text-amber-500" />
-                    ) : (
-                      <BookOpen className="size-5 text-accent" />
-                    )}
-                  </span>
-                  <span className="truncate">{item.title}</span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      isReflection
-                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                        : 'bg-primary/10 text-primary'
-                    }`}
-                  >
-                    {isReflection ? '对话感想' : '剧情创作'}
-                  </span>
-                  {item.workId && (
-                    <span className="rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                      {item.workId}
+              <div>
+                <div className="flex items-center justify-between gap-3 font-semibold">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="story-project-icon">
+                      {isReflection ? (
+                        <Lightbulb className="size-5 text-amber-500" />
+                      ) : (
+                        <BookOpen className="size-5 text-accent" />
+                      )}
                     </span>
-                  )}
+                    <span className="truncate text-ink transition-colors group-hover:text-accent">
+                      {item.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-medium ${
+                        isReflection
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                          : 'bg-accent/10 text-accent'
+                      }`}
+                    >
+                      {isReflection ? '对话感想' : '剧情创作'}
+                    </span>
+                    {item.workId && (
+                      <span className="rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                        {item.workId}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-2.5 line-clamp-2 text-xs leading-relaxed text-muted">
+                  {item.summary || (isReflection ? '暂无感想记录描述' : '尚未填写项目简介')}
+                </p>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between border-t border-border-subtle/50 pt-3 text-xs text-muted">
+                <span>更新于 {new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
+                <div className="flex items-center gap-1 font-medium text-muted transition-colors group-hover:text-accent">
+                  <span>进入工作台</span>
+                  <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
               </div>
-              <p className="mt-2 line-clamp-2 text-sm text-muted">
-                {item.summary || (isReflection ? '暂无感想记录描述' : '尚未填写项目简介')}
-              </p>
-              <p className="mt-4 text-xs text-muted">
-                更新于 {new Date(item.updatedAt).toLocaleString('zh-CN')}
-              </p>
             </Link>
           );
         })}
       </div>
-      {projects.data?.items.length === 0 && <p className="story-empty-state rounded-[var(--radius-panel)] p-8 text-center text-muted">从新建项目开始，再整理大纲、随笔或世界观设定。</p>}
+
+      {projects.data?.items.length === 0 && (
+        <EmptyState
+          icon={Compass}
+          title="暂无剧情项目"
+          description="从结构化小说大纲或对话感想记录开始，支持 AI 辅助构思与标准 MCP 协议协作。"
+          actions={
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                variant="outline"
+                className="gap-2 text-xs"
+                onClick={() => {
+                  setError('');
+                  setProjectType('fiction');
+                  setCreateOpen(true);
+                }}
+              >
+                <BookOpen className="size-3.5 text-accent" />
+                <span>新建剧情创作工程</span>
+              </Button>
+              <Button
+                variant="secondary"
+                className="gap-2 text-xs"
+                onClick={() => {
+                  setError('');
+                  setProjectType('reflection');
+                  setCreateOpen(true);
+                }}
+              >
+                <Lightbulb className="size-3.5 text-amber-500" />
+                <span>新建对话感想记录</span>
+              </Button>
+            </div>
+          }
+        />
+      )}
       <ResponsiveEditOverlay
         open={createOpen}
         onOpenChange={(open) => { if (!open) closeCreate(); }}

@@ -340,7 +340,7 @@ export function PresetPanel({
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {presets.length === 0 && <p className="text-sm text-fg-subtle">还没有预设。为常用场景（如「角色立绘」「横向场景图」）各建一个，创作中心即可按预设生成。</p>}
+          {presets.length === 0 && <p className="text-sm text-fg-subtle">还没有预设。为常用场景（如「角色立绘」「横向场景图」）各建一个，图像工坊即可按预设生成。</p>}
           {presets.map((preset) => {
             const workflow = workflowById.get(preset.workflowId);
             const engine = engines.find((item) => item.id === preset.engineId);
