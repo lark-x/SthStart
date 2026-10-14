@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { generateId } from '@/app/lib/uuid';
-import type { CreativePurposeOptions, ImagePreparationResponse, ImageConfiguration } from '@sthstart/contracts';
+import type { CreativePurposeOptions, ImagePreparationResponse, ImageConfiguration, ImageContextSelection } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
@@ -12,6 +12,9 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { prepareImageGeneration, type ImageGenerationSubmission } from '../image-api';
 import { ImageModeSwitch, useImageAdvancedMode } from './image-mode-switch';
 import { ImageParameterFields } from './image-parameter-fields';
+import { fetchCharacters } from '@/app/features/characters/api';
+import { fetchNotes } from '@/app/features/notebook/api';
+import { imageFieldGroup, imageProfessionalChanges } from '../image-settings';
 
 export type ImageGenerationInitial = { presetId?: string; parameters: Record<string, unknown>; description?: string; seed?: number | null };
 
@@ -24,21 +27,38 @@ const SCENE_STYLE_PRESETS = [
 ];
 
 /** One form for all image consumers. Mode changes only presentation, never generation state. */
-export function ImageGenerationPanel({ appId, purpose, contextKey, options, initial, initialDescription = '', referenceInput,
+export function ImageGenerationPanel({ appId, purpose, contextKey, options, initial, initialDescription = '', referenceInput, context,
   onGenerate, onRefresh, onConfigurationChange, loading = false, blockedReason, submitLabel = '开始生成' }: {
   appId: 'creative-center' | 'characters'; purpose: string; contextKey: string;
   options?: CreativePurposeOptions; initial?: ImageGenerationInitial | null; initialDescription?: string;
   referenceInput?: React.ReactNode;
+  context?: ImageContextSelection;
   onConfigurationChange?(configuration: ImageConfiguration | undefined): void;
   onGenerate(input: ImageGenerationSubmission): Promise<void>; onRefresh?(): void; loading?: boolean;
   blockedReason?: string; submitLabel?: string;
 }) {
   const id = useId();
+  const avatar = purpose === 'character-avatar';
+  const [selectedContext, setSelectedContext] = useState<ImageContextSelection>({});
+  const [contextChoices, setContextChoices] = useState<{ characters: Array<{ id: string; label: string }>; notes: Array<{ id: string; label: string }> }>({ characters: [], notes: [] });
+  const [contextLoading, setContextLoading] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const effectiveContext = context ? { ...context, noteIds: selectedContext.noteIds ?? context.noteIds } : selectedContext;
+  const loadContextChoices = async () => {
+    setContextLoading(true);
+    try {
+      const [characters, notes] = await Promise.all([fetchCharacters(), fetchNotes({ kind: 'world' })]);
+      setContextChoices({ characters: characters.items.map(item => ({ id: item.id, label: item.displayName })),
+        notes: notes.items.flatMap(item => item.id ? [{ id: item.id, label: item.title }] : []) });
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '读取来源失败。'); }
+    finally { setContextLoading(false); }
+  };
   const [activeStyle, setActiveStyle] = useState<string>('free');
   const [advanced, setAdvanced] = useImageAdvancedMode(contextKey);
   const [description, setDescription] = useState(initialDescription);
   const [presetId, setPresetId] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
+  const [editedKeys, setEditedKeys] = useState<string[]>([]);
   const [ai, setAi] = useState(true);
   const [manual, setManual] = useState(false);
   const [prepared, setPrepared] = useState<ImagePreparationResponse | null>(null);
@@ -50,6 +70,13 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   const running = useRef(false);
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const storageKey = `sthstart:image-draft:${contextKey}`;
+  const contextIdentity = JSON.stringify(effectiveContext);
+  useEffect(() => {
+    // External character revisions invalidate prepared text while preserving the authored draft.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPrepared(null);
+    attempt.current = null;
+  }, [contextIdentity]);
   const hydrated = hydratedKey === storageKey;
   const effectivePresetId = presetId ?? options?.defaultPresetId ?? null;
   const selected = effectivePresetId ? options?.presets.find(item => item.id === effectivePresetId) : undefined;
@@ -66,6 +93,14 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   const ready = Boolean(configuration && positiveKey && !selected?.unavailableReason && !missingReference && !configurationChanged);
   const advancedFields = fields.filter(field => field.key !== positiveKey && field.key !== negativeKey);
   const modified = advancedFields.filter(field => field.key in overrides && JSON.stringify(overrides[field.key]) !== JSON.stringify(defaults[field.key]));
+  const authoredOverrides = Object.fromEntries(Object.entries(overrides).filter(([key]) => editedKeys.includes(key)));
+  const professionalChanges = imageProfessionalChanges(configuration, authoredOverrides, manual, !avatar);
+  const restoreProfessional = () => {
+    const simpleCanvas = !avatar && configuration?.sizePresets.some(size => values.width === size.width && values.height === size.height);
+    setOverrides(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => simpleCanvas && ['width', 'height'].includes(key))));
+    setEditedKeys(simpleCanvas ? editedKeys.filter(key => ['width', 'height'].includes(key)) : []);
+    setManual(false); setPrepared(null); attempt.current = null; setError('');
+  };
 
   useEffect(() => {
     restored.current = false;
@@ -75,8 +110,10 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
         // Browser draft recovery intentionally runs after hydration.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setDescription(saved.description); setOverrides(saved.overrides as Record<string, unknown>);
+        setEditedKeys(Array.isArray(saved.editedKeys) ? saved.editedKeys.filter((key): key is string => typeof key === 'string') : Object.keys(saved.overrides));
         setPresetId(typeof saved.presetId === 'string' ? saved.presetId : null);
         setAi(saved.ai !== false); setManual(saved.manual === true);
+        if (saved.context && typeof saved.context === 'object') setSelectedContext(saved.context as ImageContextSelection);
         if (typeof saved.activeStyle === 'string' && SCENE_STYLE_PRESETS.some(style => style.id === saved.activeStyle)) {
           setActiveStyle(saved.activeStyle);
         } else {
@@ -92,20 +129,23 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   }, [storageKey]);
   useEffect(() => {
     if (!hydrated || !restored.current) return;
-    try { sessionStorage.setItem(storageKey, JSON.stringify({ description, overrides, presetId, ai, manual, activeStyle })); } catch { /* In-memory draft remains usable. */ }
-  }, [hydrated, storageKey, description, overrides, presetId, ai, manual, activeStyle]);
+    try { sessionStorage.setItem(storageKey, JSON.stringify({ description, overrides, editedKeys, presetId, ai, manual, activeStyle, context: selectedContext })); } catch { /* In-memory draft remains usable. */ }
+  }, [hydrated, storageKey, description, overrides, editedKeys, presetId, ai, manual, activeStyle, selectedContext]);
   useEffect(() => {
     if (!initial) return;
     // Replaying a task is an explicit user action. Do not run its prompt through AI again.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOverrides({ ...initial.parameters, ...(initial.seed != null ? { seed: initial.seed } : {}) });
+    setEditedKeys(Object.keys(initial.parameters));
     setPresetId(initial.presetId ?? null); setDescription(initial.description ?? String(initial.parameters.prompt ?? ''));
     setManual(true); setActiveStyle('free'); setPrepared(null); setError('');
   }, [initial]);
 
   const update = (key: string, value: unknown) => {
     setOverrides(previous => ({ ...previous, [key]: value }));
-    if (key === positiveKey || key === negativeKey) setManual(true);
+    setEditedKeys(previous => [...new Set([...previous, key])]);
+    if (key === positiveKey) setManual(true);
+    setPrepared(null);
     setError('');
   };
   const switchPreset = (next: string) => {
@@ -116,6 +156,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
       ...(positiveKey && nextConfig?.promptKey && positiveKey in previous ? { [nextConfig.promptKey]: previous[positiveKey] } : {}),
       ...(negativeKey && nextConfig?.negativePromptKey && negativeKey in previous ? { [nextConfig.negativePromptKey]: previous[negativeKey] } : {}),
     }));
+    setEditedKeys([nextConfig?.promptKey, nextConfig?.negativePromptKey].filter((key): key is string => Boolean(key)));
   };
   const requestPreset = (next: string) => {
     if (modified.length > 0) setPendingPreset(next);
@@ -129,7 +170,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
     let submittingTask = false;
     if (!prompt.trim() || ((!manual || forcePrepare) && !description.trim())) { setError('请先描述想生成的画面。'); return; }
     running.current = true;
-    const fingerprint = JSON.stringify({ preset: selected?.id, revision: selected?.revision, values, prompt, ai: ai && (!manual || forcePrepare), configurationHash: configuration.configurationHash });
+    const fingerprint = JSON.stringify({ preset: selected?.id, revision: selected?.revision, values, prompt, context: effectiveContext, ai: ai && (!manual || forcePrepare), configurationHash: configuration.configurationHash });
     if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, key: `image-${generateId()}` };
     const key = attempt.current.key;
     try {
@@ -137,14 +178,16 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
       if (!result || result.configurationHash !== configuration.configurationHash || manual || !submit || forcePrepare) {
         setPhase('preparing');
         result = await prepareImageGeneration({ appId, purpose, description: prompt, ai: ai && (!manual || forcePrepare),
+          context: effectiveContext, manualFinal: manual && !forcePrepare,
           parameters: values, ...(selected ? { presetId: selected.id, presetRevision: selected.revision } : {}), idempotencyKey: `${key}-prompt` });
         setPrepared(result); setOverrides(result.parameters);
-        attempt.current = { fingerprint: JSON.stringify({ preset: selected?.id, revision: selected?.revision, values: result.parameters, prompt, ai: ai && (!manual || forcePrepare), configurationHash: configuration.configurationHash }), key };
+        attempt.current = { fingerprint: JSON.stringify({ preset: selected?.id, revision: selected?.revision, values: result.parameters, prompt, context: effectiveContext, ai: ai && (!manual || forcePrepare), configurationHash: configuration.configurationHash }), key };
       }
       if (!submit) return;
       submittingTask = true;
       setPhase('submitting');
       await onGenerate({ sourceDescription: description, parameters: result.parameters, configurationHash: result.configurationHash,
+        preparationId: result.preparationId, contextHash: result.contextHash,
         ...(selected ? { presetId: selected.id, presetRevision: selected.revision } : {}),
         ...(result.optimizerCallId ? { optimizerCallId: result.optimizerCallId } : {}),
         ...(typeof result.parameters.seed === 'number' ? { seed: result.parameters.seed } : {}), idempotencyKey: key });
@@ -157,13 +200,13 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
   };
 
   return <section data-ready={hydrated ? 'true' : 'false'} aria-label="图片生成配置" className="min-w-0 rounded-[var(--radius-panel)] border border-border-subtle bg-surface">
-    <div className="border-b border-border-subtle p-4"><ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={modified.length} disabled={busy || !hydrated} /></div>
+    <div className="border-b border-border-subtle p-4"><ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={professionalChanges} onRestore={restoreProfessional} disabled={busy || !hydrated} /></div>
     <fieldset disabled={busy || !hydrated} className="min-w-0 space-y-5 p-4">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-1.5">
-          <label htmlFor={`${id}-description`} className="text-sm font-semibold text-ink">描述你的画面</label>
+          <label htmlFor={`${id}-description`} className="text-sm font-semibold text-ink">{avatar ? '头像补充要求' : '描述你的画面'}</label>
           <div className="flex flex-wrap items-center gap-1" role="group" aria-label="画风情境预设">
-            {SCENE_STYLE_PRESETS.map((style) => (
+            {SCENE_STYLE_PRESETS.filter(style => !avatar || ['free', 'anime', 'painterly'].includes(style.id)).map((style) => (
               <button
                 key={style.id}
                 type="button"
@@ -188,31 +231,58 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
           </div>
         </div>
         {manual && <p className="text-xs text-muted">当前直接使用手动提示词，画风选项已暂停。编辑画面描述后可重新选择。</p>}
-        <Textarea id={`${id}-description`} rows={5} maxLength={10000} value={description} placeholder="用中文描述人物、动作、场景和想要的氛围…"
+        {avatar && <p className="text-xs text-muted">自动沿用当前已保存角色的外观、服装与 LoRA，结果预览后再应用。</p>}
+        <Textarea id={`${id}-description`} rows={avatar ? 3 : 5} maxLength={10000} value={description} placeholder={avatar ? '补充表情、背景与头像构图…' : '用中文描述人物、动作、场景和想要的氛围…'}
           onChange={event => { setDescription(event.target.value); setManual(false); setPrepared(null); setError(''); }} />
         <label className="flex items-start gap-2 text-sm text-ink"><input type="checkbox" checked={ai} onChange={event => { setAi(event.target.checked); setPrepared(null); }} className="mt-1" />
-          <span>AI 生成专业提示词<span className="mt-0.5 block text-xs leading-relaxed text-muted">{manual ? '最终提示词已手动编辑，本次直接使用；修改画面描述后可重新生成。' : '生成时使用当前应用的文本模型整理画面描述，可关闭后直接使用原文。'}</span></span>
+          <span>AI 生成专业提示词<span className="mt-0.5 block text-xs leading-relaxed text-muted">{manual ? '最终提示词已手动编辑，本次直接使用；修改画面描述后可重新生成。' : '整理画面描述；关闭后仍保留角色、设定来源和方案的自动组装。'}</span></span>
         </label>
       </div>
       {referenceInput}
+      <details className="space-y-3" open={sourcesOpen}>
+        <summary className="cursor-pointer text-sm font-medium text-ink" onClick={event => {
+          event.preventDefault(); setSourcesOpen(previous => !previous);
+          if (!contextChoices.characters.length && !contextLoading) void loadContextChoices();
+        }}>角色与设定来源</summary>
+        {contextLoading ? <p role="status" className="text-xs text-muted">正在读取来源…</p> : <div className="mt-3 space-y-3">
+          <Button type="button" size="sm" variant="outline" onClick={() => void loadContextChoices()}>刷新来源</Button>
+          {!context && <div className="space-y-2"><p className="text-xs text-muted">选择本次画面中的角色，保留外观和 LoRA。</p>
+            {contextChoices.characters.map(item => <label key={item.id} className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={Boolean(effectiveContext.characters?.some(actor => actor.characterId === item.id))} onChange={event => {
+                setSelectedContext(previous => ({ ...previous, characters: event.target.checked
+                  ? [...(previous.characters ?? []), { characterId: item.id }].slice(0, 8)
+                  : previous.characters?.filter(actor => actor.characterId !== item.id) }));
+              }} />{item.label}</label>)}
+          </div>}
+          <div className="space-y-2"><p className="text-xs text-muted">选择与画面相关的世界观资料，准备时记录其版本。</p>
+            {contextChoices.notes.map(item => <label key={item.id} className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={Boolean(effectiveContext.noteIds?.includes(item.id))} onChange={event => {
+                setSelectedContext(previous => ({ ...previous, noteIds: event.target.checked ? [...(previous.noteIds ?? []), item.id].slice(0, 12)
+                  : previous.noteIds?.filter(noteId => noteId !== item.id) }));
+              }} />{item.label}</label>)}
+            {!contextChoices.notes.length && <p className="text-xs text-muted">暂无世界观资料，可在创作笔记中添加。</p>}
+          </div>
+        </div>}
+      </details>
       {missingReference && <Alert variant="warning" title="此方案需要参考素材">请选择不要求参考素材的方案，或在支持参考图的业务入口使用此工作流。</Alert>}
       {loading ? <p role="status" className="text-sm text-muted">正在读取生成方案…</p> : <div className="space-y-2">
-        {advanced && options && options.presets.length > 0 && <div className="space-y-2">
+        {advanced && options && options.presets.length > 0 && <details className="space-y-2">
+          <summary className="cursor-pointer text-xs text-muted">选择其他工作流</summary>
           <label htmlFor={`${id}-workflow`} className="text-sm font-medium text-ink">工作流</label>
           <Select id={`${id}-workflow`} value={selected?.workflowId ?? options.workflow?.id ?? ''} onChange={event => {
             if (!options.defaultPresetId && event.target.value === options.workflow?.id) { requestPreset(''); return; }
             const next = options.presets.find(item => item.workflowId === event.target.value && !item.unavailableReason);
             if (next) requestPreset(next.id);
           }}>{[...new Set([...(options.workflow ? [options.workflow.id] : []), ...options.presets.map(item => item.workflowId)])].map(workflowId => <option key={workflowId} value={workflowId}>{options.presets.find(item => item.workflowId === workflowId)?.workflowName ?? options.workflow?.name}</option>)}</Select>
-        </div>}
+        </details>}
         <label htmlFor={`${id}-preset`} className="text-sm font-medium text-ink">生成方案</label>
         <Select id={`${id}-preset`} value={selected?.id ?? ''} onChange={event => requestPreset(event.target.value)}>
           {!options?.defaultPresetId && <option value="">使用当前绑定工作流</option>}
-          {options?.presets.filter(preset => !advanced || !selected || preset.workflowId === selected.workflowId).map(preset => <option key={preset.id} value={preset.id} disabled={Boolean(preset.unavailableReason)}>{preset.name}{preset.isDefault ? '（默认）' : ''}{preset.unavailableReason ? '（不可用）' : ''}</option>)}
+          {options?.presets.map(preset => <option key={preset.id} value={preset.id} disabled={Boolean(preset.unavailableReason)}>{preset.name}{preset.isDefault ? '（默认）' : ''}{preset.unavailableReason ? '（不可用）' : ''}</option>)}
         </Select>
         <p className="text-xs leading-relaxed text-muted">{selected?.description || '方案包含工作流、模型与采样默认值；本次修改不会更改全局配置。'}</p>
       </div>}
-      {configuration && configuration.sizePresets.length > 0 && <fieldset className="space-y-2">
+      {configuration && configuration.sizePresets.length > 0 && (!avatar || advanced) && <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-ink">画幅</legend>
         <div className="grid grid-cols-2 gap-2">{configuration.sizePresets.map(size => <button key={`${size.width}x${size.height}`} type="button"
           aria-pressed={values.width === size.width && values.height === size.height}
@@ -222,26 +292,38 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
           <span className="min-w-0 text-xs">{size.label}<span className="block text-xs text-muted">{size.width} × {size.height}</span></span>
         </button>)}</div>
       </fieldset>}
-      {!advanced && <ImageParameterFields fields={advancedFields.filter(field => field.section === 'basic' && /style|artist|quality/i.test(field.key))} values={values} onChange={update} />}
-      {!advanced && modified.length > 0 && <p className="break-words rounded-[var(--radius-control)] bg-surface-muted p-3 text-xs text-muted">{modified.map(field => `${field.label}：${String(values[field.key])}`).join(' · ')}</p>}
+      {avatar && !advanced && <p className="text-xs text-muted">头像画幅：{String(values.width ?? '方案默认')} × {String(values.height ?? '方案默认')}；可在专业模式调整。</p>}
+      {manual && !advanced && <p className="text-xs text-muted">已使用手动最终提示词。<button type="button" className="text-accent underline" onClick={() => { setManual(false); setPrepared(null); }}>恢复自动组装</button></p>}
       {advanced && configuration && <div className="space-y-4">
         <section className="space-y-3 border-t border-border-subtle pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-ink">{configuration.promptMode === 'service-finalized-v1' ? '最终提示词' : '注入提示词'}</h3>
             <Button type="button" size="sm" variant="outline" onClick={() => { setManual(false); setPrepared(null); void run(false, true); }} disabled={busy || !description.trim()}>准备提示词</Button></div>
           <ImageParameterFields fields={fields.filter(field => field.key === positiveKey || field.key === negativeKey)} values={values} onChange={update} />
+          {negativeKey && Object.hasOwn(overrides, negativeKey) && <Button type="button" size="sm" variant="ghost" onClick={() => { setOverrides(previous => { const next = { ...previous }; delete next[negativeKey]; return next; }); setEditedKeys(previous => previous.filter(key => key !== negativeKey)); setPrepared(null); }}>恢复继承负面词</Button>}
+          {manual && <Button type="button" size="sm" variant="ghost" onClick={() => { setManual(false); setPrepared(null); }}>恢复自动组装</Button>}
           {prepared && <p className="text-xs text-muted">来源：{prepared.optimizerCallId ? 'AI 生成' : '原文'}{manual ? ' → 手动编辑' : ''}；原始描述保留在上方。</p>}
         </section>
-        {['models', 'sampling', 'other'].map(group => {
-          const grouped = advancedFields.filter(field => group === 'models' ? field.type === 'model' || /lora/i.test(field.key) : group === 'sampling' ? field.type !== 'model' && !/lora/i.test(field.key) && /width|height|steps|cfg|seed|sampler|scheduler|denoise/i.test(field.key) : field.type !== 'model' && !/lora|width|height|steps|cfg|seed|sampler|scheduler|denoise/i.test(field.key));
+        {(['models', 'sampling', 'style'] as const).map(group => {
+          const grouped = advancedFields.filter(field => imageFieldGroup(field) === group);
           return grouped.length > 0 && <details key={group} open={group === 'sampling'} className="border-t border-border-subtle pt-3">
             <summary className="cursor-pointer text-sm font-semibold text-ink">{group === 'models' ? '模型与 LoRA' : group === 'sampling' ? '采样与尺寸' : '风格与其他参数'}</summary>
             <div className="mt-3"><ImageParameterFields fields={grouped} values={values} modelChoices={configuration.modelChoices} onChange={update} /></div>
           </details>;
         })}
+        {prepared?.diagnostics?.loras.length ? <div className="space-y-1 text-xs text-muted"><p className="font-medium text-ink">角色与方案继承的 LoRA</p>{prepared.diagnostics.loras.map(lora => <p key={lora.model}>{lora.model} · {lora.enabled ? `强度 ${lora.strength}` : '未启用'}</p>)}<p>角色 LoRA 在角色资料中维护；此方案只允许调整上方已声明的模型参数。</p></div> : null}
         <p className="break-words text-xs text-muted">工作流：{selected?.workflowName ?? options?.workflow?.name} · v{selected?.workflowVersion ?? options?.workflow?.version}{selected ? ` · 预设修订 ${selected.revision}` : ''}</p>
         {configuration.modelChoicesStale && <p className="text-xs text-warning-fg">模型清单来自过期缓存，请刷新连接发现结果后再选择。</p>}
       </div>}
       {configuration?.warnings.map(warning => <p key={warning} className="text-xs leading-relaxed text-muted">{warning}</p>)}
+      {advanced && prepared?.diagnostics && <details className="rounded-[var(--radius-control)] border border-border-subtle p-3 text-sm">
+        <summary className="cursor-pointer text-ink">来源与诊断</summary>
+        <div className="mt-3 space-y-2 text-xs text-muted">
+          {prepared.diagnostics.contextSources.map(source => <p key={source.id}>{source.label} · 修订 {source.revision}</p>)}
+          {prepared.diagnostics.loras.filter(lora => lora.enabled).map(lora => <p key={lora.model}>LoRA：{lora.model} · {lora.strength}</p>)}
+          <p>知识补全：{prepared.diagnostics.knowledgeMode} · {prepared.diagnostics.knowledgeHits.length} 条命中</p>
+          {prepared.warnings.map(warning => <p key={warning}>{warning}</p>)}
+        </div>
+      </details>}
       {configurationChanged && <Alert variant="warning" title="生成配置已更新">请确认新方案默认值后继续；画面描述会保留。
         <Button type="button" size="sm" variant="outline" onClick={() => {
           setOverrides(previous => ({

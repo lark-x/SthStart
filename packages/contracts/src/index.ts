@@ -12,6 +12,8 @@ export * from './activity-image-hires.js';
 export * from './activity-comic.js';
 export * from './story.js';
 export * from './activities.js';
+import { CharacterAssetDetailSchema, type CharacterAssetDetail } from './character-assets.js';
+export * from './character-assets.js';
 
 export const AppStatusSchema = Type.Union([
   Type.Literal('online'),
@@ -2235,30 +2237,8 @@ export const CharacterBatchAvatarResponseSchema = Type.Object({
 });
 export type CharacterBatchAvatarResponse = Static<typeof CharacterBatchAvatarResponseSchema>;
 
-export const CharacterAssetItemSchema = Type.Object({
-  id: Type.String(),
-  characterId: Type.String(),
-  kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait'), Type.Literal('reference')]),
-  url: Type.String(),
-  originalName: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  contentType: Type.Optional(Type.String()),
-  byteSize: Type.Optional(Type.Number()),
-  createdAt: Type.String(),
-  userNote: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  authorNote: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  sourceUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-});
-export type CharacterAssetItem = Static<typeof CharacterAssetItemSchema>;
-
-export const CharacterAssetListResponseSchema = Type.Object({
-  characterId: Type.Optional(Type.String()),
-  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  activeAvatarId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  activePortraitId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  items: Type.Array(CharacterAssetItemSchema),
-});
-export type CharacterAssetListResponse = Static<typeof CharacterAssetListResponseSchema>;
+export const CharacterAssetItemSchema = CharacterAssetDetailSchema;
+export type CharacterAssetItem = CharacterAssetDetail;
 
 export const CharacterOfficialAssetCandidateSchema = Type.Object({
   id: Type.String(),

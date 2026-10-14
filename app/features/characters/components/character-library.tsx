@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check } from 'lucide-react';
+import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
@@ -19,12 +19,14 @@ import { editCharacterOrganization, saveCharacterWork } from '../api';
 import { useBatchMatchOfficialAvatars } from '../mutations';
 import { isCharacterDraftV2 } from '@sthstart/contracts';
 import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
+import { SharedAssetVault } from './shared-asset-vault';
 
 export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterBrowseQuery | null } = {}) {
   const browser = useCharacterBrowser({}, true, { persist: true, initialFilter });
   const router = useRouter();
   const client = useQueryClient();
   const batchMatchMutation = useBatchMatchOfficialAvatars();
+  const [viewTab, setViewTab] = useState<'characters' | 'shared-assets'>('characters');
   const [importOpen, setImportOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
@@ -102,8 +104,41 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
         </Link>
       </div>}
     />
-    {(error || browser.error) && <p role="alert" className="text-sm text-accent-dark">{error || String(browser.error)}</p>}
-    <CharacterFilters
+
+    {/* 视图切换：专属角色卡 vs 多角色公共资产库 */}
+    <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-xl border border-border-default/60 w-fit">
+      <button
+        type="button"
+        onClick={() => setViewTab('characters')}
+        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          viewTab === 'characters'
+            ? 'bg-surface text-accent shadow-xs font-semibold'
+            : 'text-muted hover:text-ink'
+        }`}
+      >
+        <User className="h-3.5 w-3.5" />
+        <span>专属角色卡</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setViewTab('shared-assets')}
+        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          viewTab === 'shared-assets'
+            ? 'bg-surface text-accent shadow-xs font-semibold'
+            : 'text-muted hover:text-ink'
+        }`}
+      >
+        <Users className="h-3.5 w-3.5" />
+        <span>多角色公共资产库</span>
+      </button>
+    </div>
+
+    {viewTab === 'shared-assets' ? (
+      <SharedAssetVault />
+    ) : (
+      <>
+        {(error || browser.error) && <p role="alert" className="text-sm text-accent-dark">{error || String(browser.error)}</p>}
+        <CharacterFilters
       filter={browser.filter}
       onChange={browser.change}
       onReset={browser.reset}
@@ -311,6 +346,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     )}
     {!browser.isLoading && browser.data?.total === 0 && <p className="py-12 text-center text-muted">没有匹配的角色，可以清空筛选或导入新角色。</p>}
     <CharacterPagination data={browser.data} onPage={page => browser.change({ page })} />
+      </>
+    )}
     {previewArtifact && <Dialog open onOpenChange={open => { if (!open) setPreviewArtifact(null); }} title={previewArtifact.name} description="原图按原始比例显示，缩略图才会裁剪。" footer={<Button size="sm" variant="outline" onClick={() => setPreviewArtifact(null)}>关闭</Button>}><img src={previewArtifact.url} alt={`${previewArtifact.name} 的立绘`} className="mx-auto max-h-[65vh] w-auto rounded-[var(--radius-control)] object-contain" /></Dialog>}
   <CharacterImportDialog open={importOpen} onOpenChange={setImportOpen} initialMode="online" onCommitted={id => { refresh(); router.push(`/apps/characters/${id}`); }} />
   <CharacterBatchImport open={batchOpen} onOpenChange={setBatchOpen} onCommitted={refresh} works={browser.facets?.works || []} />

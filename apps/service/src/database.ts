@@ -1955,6 +1955,45 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     "ALTER TABLE story_projects ADD COLUMN project_type TEXT NOT NULL DEFAULT 'fiction'",
     'CREATE INDEX IF NOT EXISTS idx_story_projects_type ON story_projects(project_type)',
   ] },
+  { version: 52, name: 'image-knowledge-hybrid-mode', statements: [
+    `CREATE TABLE activity_image_prompt_policy_versions_new (
+      workflow_id TEXT NOT NULL, workflow_version INTEGER NOT NULL, revision INTEGER NOT NULL,
+      enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), instructions TEXT NOT NULL,
+      positive_suffix TEXT NOT NULL DEFAULT '', negative_prompt TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+      output_format TEXT NOT NULL DEFAULT 'prose' CHECK(output_format IN ('prose','tags')),
+      knowledge_mode TEXT NOT NULL DEFAULT 'none' CHECK(knowledge_mode IN ('none','keyword','hybrid')),
+      PRIMARY KEY(workflow_id,workflow_version,revision))`,
+    `INSERT INTO activity_image_prompt_policy_versions_new SELECT workflow_id,workflow_version,revision,enabled,
+      instructions,positive_suffix,negative_prompt,created_at,output_format,knowledge_mode FROM activity_image_prompt_policy_versions`,
+    'DROP TABLE activity_image_prompt_policy_versions',
+    'ALTER TABLE activity_image_prompt_policy_versions_new RENAME TO activity_image_prompt_policy_versions',
+  ] },
+  { version: 53, name: 'character-asset-categories-and-shared-assets', statements: [
+    "ALTER TABLE character_assets ADD COLUMN category TEXT NOT NULL DEFAULT 'other'",
+    "ALTER TABLE character_assets ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE character_assets ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE character_assets ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'",
+    "UPDATE character_assets SET category = kind WHERE kind IN ('avatar', 'portrait')",
+    "UPDATE character_assets SET category = 'concept' WHERE kind = 'reference'",
+    'CREATE INDEX IF NOT EXISTS idx_character_assets_category ON character_assets(character_id, category)',
+    `CREATE TABLE IF NOT EXISTS shared_assets (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'other' CHECK(category IN ('group_photo', 'scene_background', 'key_visual', 'item_prop', 'worldview_map', 'other')),
+      artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+      character_ids_json TEXT NOT NULL DEFAULT '[]',
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      author_note TEXT NOT NULL DEFAULT '',
+      user_note TEXT NOT NULL DEFAULT '',
+      source_page TEXT,
+      source_url TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS idx_shared_assets_category ON shared_assets(category, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_shared_assets_created ON shared_assets(created_at DESC)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

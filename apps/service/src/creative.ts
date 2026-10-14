@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { imageGenerationAudit, buildImagePurposeOptions, resolveImageConfiguration } from './generation/image-configuration.js';
+import { assertPreparedImageContext } from './generation/image-context.js';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -38,6 +39,8 @@ type CreativeMode = 'text-to-image' | 'image-to-image' | 'h3-t2v' | 'h3-i2v' | '
 type H3Purpose = 'h3-t2v' | 'h3-i2v' | 'h3-fl2va';
 
 interface CreativeTaskBody {
+  preparationId?: string;
+  contextHash?: string;
   configurationHash?: string;
   optimizerCallId?: string;
   sourceDescription?: string;
@@ -705,17 +708,25 @@ export function registerCreativeRoutes(
       const imageAudit = !isVideo && (body.configurationHash || body.optimizerCallId)
         ? imageGenerationAudit(database, { appId: CREATIVE_APP_ID, purpose: modePurpose(mode), presetId, presetRevision }, body.configurationHash, body.optimizerCallId, body.sourceDescription)
         : {};
+      const preparedSelection = !isVideo && body.preparationId
+        ? resolveImageConfiguration(database, { appId: CREATIVE_APP_ID, purpose: modePurpose(mode), presetId, presetRevision }) : null;
+      const preparedContext = !isVideo ? assertPreparedImageContext(database, CREATIVE_APP_ID, body.preparationId, body.contextHash, undefined,
+        preparedSelection ? { workflowId: preparedSelection.workflow.id, workflowVersion: preparedSelection.workflow.version,
+          configurationHash: preparedSelection.configuration.configurationHash } : undefined) : null;
       const task = await createGenerationTask(config, database, secrets, {
         appId: CREATIVE_APP_ID,
         idempotencyKey: requestIdempotencyKey(request, body),
         purpose: modePurpose(mode),
         ...(presetId ? { presetId, presetRevision } : {}),
         inputs: userValues,
+        activityLoras: preparedContext?.loras,
         inputArtifacts: normalizeInputArtifacts(inputArtifacts),
         seed,
         priority: 'interactive',
         validationMode: 'strict',
-        audit: { feature: 'creative', businessEvent: `creative.${mode}.generate`, objectType: 'creative-task', ...imageAudit },
+        audit: { feature: 'creative', businessEvent: `creative.${mode}.generate`, objectType: 'creative-task', ...imageAudit,
+          ...(!isVideo && body.preparationId ? { parentId: body.preparationId } : {}),
+          visualConfiguration: { ...('visualConfiguration' in imageAudit ? imageAudit.visualConfiguration as Record<string, unknown> : {}), contextHash: body.contextHash ?? null, preparationId: body.preparationId ?? null } },
       }, fetcher);
       return reply.code(202).send(safeTask(database, task.id) ?? task);
     } catch (error) {

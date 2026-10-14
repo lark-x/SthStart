@@ -28,6 +28,7 @@ import {
   Camera,
   User,
   SlidersHorizontal,
+  Images,
 } from 'lucide-react';
 import type { CharacterVariant } from '@sthstart/contracts';
 import { PageContainer } from '@/app/components/shared/page-layout';
@@ -61,6 +62,7 @@ import {
 } from './character-form';
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterMultiSourceDialog } from './character-multi-source-dialog';
+import { CharacterAssetTab } from './character-asset-tab';
 
 const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT_V2);
 
@@ -78,7 +80,7 @@ const PERSONA_PLACEHOLDER = [
   '- 核心内在动机：...',
 ].join('\n');
 
-type EditorTab = 'persona' | 'visual' | 'lora';
+type EditorTab = 'persona' | 'visual' | 'assets' | 'lora';
 
 function subscribeRecovery(callback: () => void) {
   window.addEventListener('storage', callback);
@@ -792,9 +794,15 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 <Layers className="h-3.5 w-3.5 text-accent" />
                 <span>形象资产库</span>
               </h4>
-              <span className="text-[11px] text-muted">
-                {assetsData?.items ? `${assetsData.items.length} 个` : '读取中...'}
-              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTab('assets')}
+                className="text-[11px] text-accent hover:underline flex items-center gap-0.5"
+                title="展开全量 7 大细分分类资产库"
+              >
+                <span>管理资产 ({assetsData?.items ? assetsData.items.length : 0})</span>
+                <span>&rarr;</span>
+              </button>
             </div>
 
             {/* 分类切换 */}
@@ -1039,6 +1047,18 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('assets')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'assets'
+                  ? 'bg-surface text-accent shadow-xs font-semibold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <Images className="h-3.5 w-3.5" />
+              <span>角色资产库 {assetsData?.items ? `(${assetsData.items.length})` : ''}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('lora')}
               className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
                 activeTab === 'lora'
@@ -1128,7 +1148,33 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             </div>
           )}
 
-          {/* ================= 视图 3：视觉 LoRA ================= */}
+          {/* ================= 视图 3：角色资产库 ================= */}
+          {activeTab === 'assets' && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              {characterId ? (
+                <CharacterAssetTab
+                  characterId={characterId}
+                  avatarAssetId={detailData?.avatarAssetId}
+                  portraitAssetId={detailData?.portraitAssetId}
+                  displayName={draft.displayName || '未命名角色'}
+                  onRefreshCharacter={() => {
+                    refetchDetail();
+                    refetchAssets();
+                  }}
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-border-default bg-surface/50 p-12 text-center text-muted">
+                  <Images className="mx-auto h-8 w-8 text-muted/50 mb-3" />
+                  <p className="text-sm font-medium text-ink">请先保存角色基础信息</p>
+                  <p className="text-xs text-muted mt-1">
+                    保存后即可开启该角色的 7 大细分分类资产库（立绘、头像、差分、服装、CG、设定图）、标签及邻舍双向推拉。
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================= 视图 4：视觉 LoRA ================= */}
           {activeTab === 'lora' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
@@ -1279,6 +1325,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         description="根据角色外观生成图片，预览后再应用为头像。"
       >
         <div className="space-y-4">
+          {(isDirty || status === 'dirty' || status === 'saving') && <p role="status" className="rounded-[var(--radius-control)] bg-surface-muted p-3 text-xs text-muted">角色修改尚未保存完成；生成读取已保存的角色版本。请先保存外观或 LoRA 修改，再生成头像。</p>}
           <ImageGenerationPanel
             appId="characters"
             purpose="character-avatar"
@@ -1286,6 +1333,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             options={avatarOptions.data}
             loading={avatarOptions.isLoading}
             initialDescription={aiAvatarPrompt}
+            context={characterId ? { characters: [{ characterId, draftRevision: detailData?.draftRevision }] } : undefined}
             onRefresh={() => {
               void avatarOptions.refetch();
             }}

@@ -4,6 +4,7 @@ import type { BeatRenderCandidate } from '@sthstart/contracts';
 
 const service = 'http://127.0.0.1:4374/api/v1/admin';
 const headers = { 'x-sthstart-admin-token': 'comfy-ui-offline-token-0123456789' };
+test.use({ deviceScaleFactor: 2 });
 test.beforeEach(async ({ page }) => {
   // The development Worker does not inherit Node's service URL. Forward browser API
   // calls directly to the fixture, preserving actual service validation and responses.
@@ -48,7 +49,54 @@ async function seedImageWorkflow(request: APIRequestContext, appId: string, purp
   expect(preset.ok(), await preset.text()).toBeTruthy();
   const setDefault = await request.post(`${service}/generation/presets/${(await preset.json()).id}/set-default`, { headers });
   expect(setDefault.ok()).toBeTruthy();
+  return (await preset.json()).id as string;
 }
+
+test('default schemes are scoped by purpose and do not reset another consumer', async ({ page, request }) => {
+  const avatar = await seedImageWorkflow(request, 'characters', 'character-avatar');
+  const creative = await seedImageWorkflow(request, 'creative-center', 'text-to-image');
+  await page.goto('/settings/generation');
+  await page.getByLabel('默认图片用途').selectOption('avatar');
+  const schemes = page.getByLabel('活动默认绘制预设');
+  await expect(schemes).toHaveValue(avatar);
+  await expect(schemes.locator('option')).toHaveCount(1);
+  await page.getByLabel('默认图片用途').selectOption('text');
+  await expect(schemes).toHaveValue(creative);
+  await expect(schemes.locator('option')).toHaveCount(1);
+  await page.getByText('自定义宽高', { exact: true }).click();
+  await page.getByLabel('宽度', { exact: true }).fill('1024');
+  await page.getByRole('button', { name: '保存尺寸', exact: true }).click();
+  await expect(page.getByText('的出图尺寸', { exact: false })).toBeVisible();
+  const avatarOptions = await request.get(`${service}/generation/image/options?appId=characters&purpose=character-avatar`, { headers });
+  expect((await avatarOptions.json()).configuration.fields.find((field: { key: string }) => field.key === 'width').defaultValue).toBe(768);
+  const creativeOptions = await request.get(`${service}/generation/image/options?appId=creative-center&purpose=text-to-image`, { headers });
+  expect((await creativeOptions.json()).configuration.fields.find((field: { key: string }) => field.key === 'width').defaultValue).toBe(1024);
+});
+
+test('current studio exposes drawing and art controls across four viewports without outer overflow', async ({ page, request }, info) => {
+  await seedImageWorkflow(request, 'activities', 'activity_image_text');
+  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  const stage = document.stages[0], actor = document.actors[0];
+  document.scenes = [{ id: 'layout-scene', stageId: stage.id, title: '窗边', timeText: '午后', locationText: '海边小屋', environment: '阳光', beats: [{ id: 'layout-beat', characterId: actor.id, action: '坐在窗边挥手', dialogue: '你好。', orderIndex: 0 }] }];
+  const created = await request.post(`${service}/activities`, { headers, data: { document } });
+  expect(created.ok()).toBeTruthy();
+  await page.goto(`/apps/activities/${(await created.json()).activity.id}`);
+  for (const [width, height] of [[1920, 1080], [1440, 900], [1024, 768], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    if (width === 390) await page.getByRole('button', { name: '镜头绘制', exact: true }).click();
+    await expect(page.getByRole('button', { name: '绘制设置', exact: true })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBeTruthy();
+    await page.screenshot({ path: info.outputPath(`studio-${width}.png`), animations: 'disabled' });
+  }
+  await page.getByRole('button', { name: '美术', exact: true }).click();
+  const art = page.getByRole('dialog', { name: '活动美术设置', exact: true });
+  await expect(art.getByLabel('活动画幅')).toBeVisible();
+  await expect(art.getByRole('button', { name: '专业模式', exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('art-mobile.png'), animations: 'disabled' });
+});
 
 test('character avatar retains the draft when closing the generation overlay on mobile', async ({ page, request }, info) => {
   await seedImageWorkflow(request, 'characters', 'character-avatar');
@@ -59,17 +107,17 @@ test('character avatar retains the draft when closing the generation overlay on 
   expect(created.ok()).toBeTruthy();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/apps/characters/${(await created.json()).id}`);
-  await page.getByRole('button', { name: 'AI 生成头像', exact: true }).click();
+  await page.getByRole('button', { name: 'AI 生图', exact: true }).click();
   const panel = page.getByLabel('图片生成配置', { exact: true });
   await expect(panel).toHaveAttribute('data-ready', 'true');
-  await panel.getByLabel('描述你的画面').fill('保留红发与蓝色外套，正面头像');
-  await panel.getByRole('button', { name: '高级模式', exact: true }).click();
+  await panel.getByLabel('头像补充要求').fill('保留红发与蓝色外套，正面头像');
+  await panel.getByRole('button', { name: '专业模式', exact: true }).click();
   await expect(panel.getByText('最终提示词', { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath('character-avatar-mobile.png'), fullPage: false, animations: 'disabled' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'AI 生成头像', exact: true }).click();
-  await expect(panel.getByLabel('描述你的画面')).toHaveValue('保留红发与蓝色外套，正面头像');
+  await page.getByRole('button', { name: 'AI 生图', exact: true }).click();
+  await expect(panel.getByLabel('头像补充要求')).toHaveValue('保留红发与蓝色外套，正面头像');
 });
 
 test('activity drawing keeps manual prompt overrides when returning to simple mode', async ({ page, request }, info) => {
@@ -82,12 +130,12 @@ test('activity drawing keeps manual prompt overrides when returning to simple mo
   await page.getByRole('button', { name: '素材制作', exact: true }).click();
   await page.getByRole('button', { name: '绘制图片', exact: true }).first().click();
   const drawer = page.getByRole('dialog', { name: '素材绘制' });
-  await drawer.getByRole('button', { name: '高级模式', exact: true }).click();
+  await drawer.getByRole('button', { name: '专业模式', exact: true }).click();
   await drawer.getByRole('button', { name: '以当前描述为基础编辑最终提示词' }).click();
   await drawer.getByLabel('手动最终正面提示词').fill('one traveler by the sea, blue coat');
   await drawer.getByRole('button', { name: '简单模式', exact: true }).click();
   await expect(drawer.getByText('已使用手动最终提示词', { exact: false })).toBeVisible();
-  await drawer.getByRole('button', { name: '高级模式', exact: true }).click();
+  await drawer.getByRole('button', { name: '专业模式', exact: true }).click();
   await expect(drawer.getByLabel('手动最终正面提示词')).toHaveValue('one traveler by the sea, blue coat');
   await page.screenshot({ path: info.outputPath('activity-drawing-desktop.png'), fullPage: false, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -103,7 +151,7 @@ test('generation settings exposes scoped defaults and remains usable when diagno
   await page.goto('/settings/generation');
   await expect(page.getByRole('heading', { name: '生成配置', exact: true })).toBeVisible();
   await expect(page.getByText('默认绘制模式', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: '高级配置', exact: true }).click();
+  await page.getByRole('tab', { name: '专业配置', exact: true }).click();
   await page.getByRole('tab', { name: '提示词策略', exact: true }).click();
   await expect(page.getByText('策略按工作流版本保存', { exact: false })).toBeVisible();
   await page.screenshot({ path: info.outputPath('generation-settings.png'), fullPage: true, animations: 'disabled' });
@@ -147,7 +195,7 @@ test('scene and comic drawing use the same mode semantics without changing sourc
   await page.goto(`/apps/activities/${activity.id}`);
   await page.getByRole('button', { name: '绘制设置', exact: true }).first().click();
   const beatDialog = page.getByRole('dialog', { name: '绘制设置', exact: true });
-  await beatDialog.getByRole('button', { name: '高级模式', exact: true }).click();
+  await beatDialog.getByRole('button', { name: '专业模式', exact: true }).click();
   await beatDialog.getByRole('button', { name: '以当前描述为基础编辑最终提示词' }).click();
   await beatDialog.getByLabel('手动最终正面提示词').fill('one traveler waving by a sunny window');
   await beatDialog.getByRole('button', { name: '简单模式', exact: true }).click();
@@ -157,15 +205,15 @@ test('scene and comic drawing use the same mode semantics without changing sourc
   await page.getByRole('button', { name: '放大细化', exact: true }).first().click();
   const hiresDialog = page.getByRole('dialog', { name: '放大细化', exact: true });
   await expect(hiresDialog.getByLabel('细化重绘幅度')).toBeHidden();
-  await hiresDialog.getByRole('button', { name: '高级模式', exact: true }).click();
+  await hiresDialog.getByRole('button', { name: '专业模式', exact: true }).click();
   await hiresDialog.getByLabel('细化重绘幅度').fill('0.3');
   await hiresDialog.getByRole('button', { name: '简单模式', exact: true }).click();
-  await expect(hiresDialog.getByText('已自定义 1 项高级参数', { exact: false })).toBeVisible();
-  await hiresDialog.getByRole('button', { name: '高级模式', exact: true }).click();
+  await expect(hiresDialog.getByText('已自定义 1 项专业设置', { exact: false })).toBeVisible();
+  await hiresDialog.getByRole('button', { name: '专业模式', exact: true }).click();
   await expect(hiresDialog.getByLabel('细化重绘幅度')).toHaveValue('0.3');
   await hiresDialog.getByRole('button', { name: '取消', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: '展开右侧镜头工坊', exact: true }).click();
+  await page.getByRole('button', { name: '镜头绘制', exact: true }).click();
   await page.getByRole('button', { name: '放大细化', exact: true }).first().click();
   await expect(hiresDialog.getByLabel('细化重绘幅度')).toHaveValue('0.3');
   await page.screenshot({ path: info.outputPath('hires-mobile.png'), fullPage: false, animations: 'disabled' });
@@ -182,14 +230,16 @@ test('scene and comic drawing use the same mode semantics without changing sourc
   };
   const saved = await request.put(`${service}/activities/${activity.id}/comic/draft`, { headers, data: { expectedDraftVersion: 1, document: comic } });
   expect(saved.ok(), await saved.text()).toBeTruthy();
-  await page.getByRole('button', { name: '漫画', exact: true }).click();
+  await page.getByRole('button', { name: '漫画工坊', exact: true }).click();
   await page.getByRole('button', { name: '✦ 绘制新图', exact: true }).click();
   const comicDialog = page.getByRole('dialog', { name: '画格绘制', exact: true });
-  await comicDialog.getByRole('button', { name: '高级模式', exact: true }).click();
+  await comicDialog.getByRole('button', { name: '专业模式', exact: true }).click();
   await comicDialog.getByRole('button', { name: '以当前描述为基础编辑最终提示词' }).click();
   await comicDialog.getByLabel('手动最终正面提示词').fill('one traveler, medium shot, waving');
   await comicDialog.getByRole('button', { name: '简单模式', exact: true }).click();
   await expect(comicDialog.getByText('已使用手动最终提示词', { exact: false })).toBeVisible();
+  const savedScene = await request.get(`${service}/activities/${activity.id}/draft`, { headers });
+  expect((await savedScene.json()).draft.document.scenes[0].beats[0].dialogue).toBe('你好。');
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   await page.screenshot({ path: info.outputPath('comic-drawing-mobile.png'), fullPage: false, animations: 'disabled' });

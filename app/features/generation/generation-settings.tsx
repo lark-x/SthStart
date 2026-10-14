@@ -87,7 +87,7 @@ export function GenerationSettingsFeature() {
         onChange={setSection}
         tabs={[
           { id: 'quick', label: '常用设置', panelId: 'generation-panel-quick' },
-          { id: 'advanced', label: '高级配置', panelId: 'generation-panel-advanced' },
+          { id: 'advanced', label: '专业配置', panelId: 'generation-panel-advanced' },
         ]}
       />
       {loading ? (

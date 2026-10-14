@@ -417,7 +417,7 @@ export function MediaBatchPanel({
 
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-ink">生产预设偏好</label>
+                  <label className="text-xs font-semibold text-ink">批次偏好</label>
                   <button
                     type="button"
                     onClick={handleSaveProductionPreset}
@@ -431,7 +431,7 @@ export function MediaBatchPanel({
                   <select
                     value={selectedPresetId}
                     onChange={(e) => handleSelectPreset(e.target.value)}
-                    aria-label="选择生产预设"
+                    aria-label="选择批次偏好"
                     className="w-full text-xs py-1.5 px-2 border border-border-default rounded bg-surface text-ink"
                   >
                     <option value="">默认配置 (未指定预设)</option>
@@ -443,7 +443,7 @@ export function MediaBatchPanel({
                   </select>
                 </div>
                 <p className="text-xs text-muted pt-1">
-                  复用常用生图候选数与风格偏好。
+                  复用候选数与风格偏好；模型和采样由生成方案决定。
                 </p>
               </div>
 

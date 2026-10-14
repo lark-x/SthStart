@@ -8,11 +8,14 @@
  * 与内容哈希，并写进实施记录，不能悄悄换数据。
  */
 import { createHash } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import * as tag from '../upstream/linshe/agent-core/src/db/imagePromptTagKnowledgeData.js';
 import * as framework from '../upstream/linshe/agent-core/src/db/imagePromptKnowledgeData.js';
 
 const SOURCE_COMMIT = '6b4c2e517ef72eb606a6ea3577c11804c3a6c603';
+const actualCommit = execFileSync('git', ['-C', 'upstream/linshe', 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+if (actualCommit !== SOURCE_COMMIT) throw new Error('邻舍来源提交已变化，需先核对裁剪规则和更新来源记录。');
 const SOURCE_TAG_FILE = 'upstream/linshe/agent-core/src/db/data/imagePromptTags.yaml';
 const SOURCE_TAG_SHA = tag.IMAGE_PROMPT_TAG_SOURCE_SHA256;
 const UPSTREAM_VERSION = framework.IMAGE_PROMPT_KNOWLEDGE_VERSION;
@@ -88,5 +91,8 @@ lines.push('];');
 lines.push('');
 
 const output = lines.join('\n');
-writeFileSync('apps/service/src/activities/image-prompt-knowledge-data.ts', output, 'utf8');
+if (process.argv.includes('--check')) {
+  if (readFileSync('apps/service/src/activities/image-prompt-knowledge-data.ts', 'utf8').replace(/\r\n/g, '\n') !== output)
+    throw new Error('图片知识快照与来源不一致，请审查差异后重新生成。');
+} else writeFileSync('apps/service/src/activities/image-prompt-knowledge-data.ts', output, 'utf8');
 console.log(JSON.stringify({ items: items.length, totalTags: items.reduce((s, i) => s + i.executableTags.length, 0), contentHash, datasetVersion, bytes: output.length, droppedCategories }, null, 2));

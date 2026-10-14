@@ -5,6 +5,7 @@ import type { ContentDocument } from '@sthstart/contracts';
 import { saveDraft } from '../api';
 import { ApiClientError } from '@/app/lib/api-client';
 import { DraftSaveQueue } from '@/app/lib/draft-save-queue';
+import { getEffectiveStageScenes, writeStageBeatMedia } from '../scene-beat-utils';
 
 /** One writer per mounted editor. Refetches never replace pending input. */
 export function useStudioDraft(id: string, incoming?: { document: ContentDocument; draftVersion: number }) {
@@ -83,6 +84,24 @@ export function useStudioDraft(id: string, incoming?: { document: ContentDocumen
     try { sessionStorage.removeItem(backupKey); } catch { /* optional recovery */ }
   }
 
+  async function adoptBeatMedia(server: { document: ContentDocument; draftVersion: number }, target: { stageId: string; sceneId: string; beatId: string }) {
+    // A media response can arrive while the author is still typing. Only merge its image.
+    if (pending.current) await pending.current;
+    const current = state.current.document;
+    if (!current || server.draftVersion < state.current.version) return;
+    const stage = server.document.stages.find(item => item.id === target.stageId);
+    const image = stage && getEffectiveStageScenes(stage, server.document.scenes).find(item => item.id === target.sceneId)?.beats.find(item => item.id === target.beatId)?.mediaUrl;
+    if (!image) return;
+    const merged = writeStageBeatMedia(current, target.stageId, target.sceneId, target.beatId, image);
+    if (!merged) return;
+    const dirty = state.current.dirty;
+    state.current.version = server.draftVersion;
+    if (dirty) {
+      // The known media write accounts for this version; preserve subsequent authored edits.
+      update(merged);
+    } else resolve(server, false);
+  }
+
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (state.current.dirty) { event.preventDefault(); event.returnValue = ''; }
@@ -90,7 +109,7 @@ export function useStudioDraft(id: string, incoming?: { document: ContentDocumen
     window.addEventListener('beforeunload', beforeUnload);
     return () => { if (timer.current) clearTimeout(timer.current); window.removeEventListener('beforeunload', beforeUnload); };
   }, []);
-  return { document, status, error, update, flush, resolve, version: () => state.current.version,
+  return { document, status, error, update, flush, resolve, adoptBeatMedia, version: () => state.current.version,
     isClean: () => !state.current.dirty && !state.current.blocked && !pending.current,
     retry: () => { state.current.blocked = false; void flush(); } };
 }

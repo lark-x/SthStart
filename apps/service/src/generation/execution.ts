@@ -19,6 +19,7 @@ import {
 import { activeGenerationExecutions, generationExecutionsFor, generationExecutionsStopped, recordGenerationEvent } from './events.js';
 import { generationError, sanitizeErrorMessage } from './errors.js';
 import { computeRequestHash, injectActivityLoras, renderWorkflowSnapshot } from './workflows.js';
+import { watchComfyProgress } from './comfy-progress.js';
 import { mergeGenerationValues, validateRequiredValues } from './configuration.js';
 import type { InputSchemaMap } from './configuration.js';
 import { resolveDefaultPreset, resolveEnabledPreset } from './configuration-store.js';
@@ -303,6 +304,8 @@ export async function createGenerationTask(
     canonicalPayload.presetRevision = selection.presetRevision;
     canonicalPayload.connectionId = selection.connectionId;
   }
+  if (options.audit?.visualConfiguration?.contextHash)
+    canonicalPayload.contextHash = options.audit.visualConfiguration.contextHash;
   const requestHash = computeRequestHash(canonicalPayload);
 
   if (options.idempotencyKey) {
@@ -1530,11 +1533,35 @@ export async function pollAndCompleteTask(
     return;
   }
 
-  const poll = pollAndCompleteTaskInternal(config, database, secrets, taskId, fetcher, options);
+  let stopProgress = () => {};
+  // Custom fetchers are isolated test/adapter transports and must never open a real socket.
+  const startProgress = async () => {
+    if (fetcher === fetch && !options?.singleCheck) {
+      const row = database.connection.prepare(`SELECT t.provider_task_id,e.kind,e.base_url,e.credential_account FROM generation_tasks t
+        JOIN generation_engines e ON e.id=t.engine_id WHERE t.id=?`).get(taskId) as { provider_task_id: string; kind: string; base_url: string; credential_account: string | null } | undefined;
+      if (row?.kind === 'comfyui' && row.provider_task_id) {
+        let secret: string | null = null;
+        if (row.credential_account) { try { secret = (await secrets.get(row.credential_account)).value; } catch {} }
+        stopProgress = watchComfyProgress({ baseUrl: row.base_url, clientId: taskId, promptId: row.provider_task_id,
+          headers: generationEngineHeaders(database, row, secret),
+          active: () => !generationExecutionsStopped(database) && Boolean(database.connection.prepare("SELECT 1 FROM generation_tasks WHERE id=? AND status IN ('accepted','running')").get(taskId)),
+          onProgress: progress => {
+            const task = database.connection.prepare('SELECT app_id FROM generation_tasks WHERE id=?').get(taskId) as { app_id: string } | undefined;
+            if (task) updateTaskProgress(database, taskId, task.app_id, progress);
+          } });
+      }
+    }
+  };
+  // Reserve before credential lookup yields, preventing two callers from opening duplicate pollers.
+  const poll = Promise.resolve().then(async () => {
+    await startProgress();
+    await pollAndCompleteTaskInternal(config, database, secrets, taskId, fetcher, options);
+  });
   polls.set(taskId, poll);
   try {
     await poll;
   } finally {
+    stopProgress();
     if (polls.get(taskId) === poll) polls.delete(taskId);
     if (polls.size === 0) activeTaskPolls.delete(database);
   }

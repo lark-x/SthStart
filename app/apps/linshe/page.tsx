@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { RefreshCw } from 'lucide-react';
+import { LinsheBridgeDrawer } from '@/app/features/linshe-bridge/components/linshe-bridge-drawer';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppDescriptor } from '@sthstart/contracts';
 import { fallbackLinsheUrl, getLinshe } from '../../lib/sthstart-service';
@@ -30,6 +32,7 @@ export default function LinshePage() {
   const [state, setState] = useState<EmbedLoadState>('loading');
   const [forceOpen, setForceOpen] = useState(false);
   const [remoteBrowser, setRemoteBrowser] = useState(false);
+  const [bridgeDrawerOpen, setBridgeDrawerOpen] = useState(false);
   const launchUrl = app?.launchUrl ?? fallbackLinsheUrl;
   const localOnlyLaunch = remoteBrowser && isLoopbackUrl(launchUrl);
 
@@ -87,6 +90,13 @@ export default function LinshePage() {
             {embedStatusLabel(state)}
           </span>
           <button type="button" onClick={() => void refresh()}>重新连接</button>
+          <button
+            type="button"
+            onClick={() => setBridgeDrawerOpen(true)}
+            title="打开 SthStart × 邻舍 数据互通与资产回流工作台"
+          >
+            数据互通
+          </button>
           {localOnlyLaunch ? <span className="embed-disabled-link">本机地址未对外开放</span> : <a href={launchUrl} target="_blank" rel="noreferrer">新窗口打开 ↗</a>}
         </div>
       </header>
@@ -120,6 +130,7 @@ export default function LinshePage() {
           </div>
         )}
       </section>
+      <LinsheBridgeDrawer open={bridgeDrawerOpen} onOpenChange={setBridgeDrawerOpen} />
     </main>
   );
 }

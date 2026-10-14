@@ -15,6 +15,8 @@ import type {
 } from '@sthstart/contracts';
 
 export type CreativeTaskInput = {
+  preparationId?: string;
+  contextHash?: string;
   configurationHash?: string;
   optimizerCallId?: string;
   sourceDescription?: string;

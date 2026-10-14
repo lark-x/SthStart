@@ -28,7 +28,7 @@ function normalizeOutputFormat(value: unknown): ActivityImagePromptOutputFormat 
 }
 
 function normalizeKnowledgeMode(value: unknown): ActivityImagePromptKnowledgeMode {
-  return value === 'keyword' ? 'keyword' : 'none';
+  return value === 'hybrid' ? 'hybrid' : value === 'keyword' ? 'keyword' : 'none';
 }
 
 function toPolicy(row: PolicyRow): ActivityImagePromptPolicy {

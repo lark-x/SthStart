@@ -1,13 +1,13 @@
 /*
  * SthStart 设计变量（唯一语义定义源）
  *
- * 底层四维主题矩阵（对标 Claude 与 Codex 级别）：
+ * 极简设计四维皮肤系统（对标 Google Antigravity IDE 极简设计规范）：
  *   - 白天 (Light Mode):
- *     1. light-paper (Claude 暖白纸意): 温暖纸意底色、陶土赤金强调色、人文典雅。
- *     2. light-zinc (Codex 纯净冷白): 冷白锌灰底色、电光蓝靛强调色、现代科技。
+ *     1. light-paper (柔和暖白): 柔和米白护眼底色、陶土琥珀强调色、温和日光舒适感。
+ *     2. light-zinc (极简纯白): 现代纯白冷调底色、电光曜蓝强调色、高对比工作室风。
  *   - 黑夜 (Dark Mode):
- *     3. dark-espresso (Claude 暖黑深咖): 低对比温润黑咖啡色底、温润暖阳强调色。
- *     4. dark-obsidian (Codex 曜石冷黑): 深空曜石纯黑底、电光紫靛强调色。
+ *     3. dark-espresso (深空石板): 幽邃深海石板蓝底、极光冰蓝强调色、现代沉浸代码风。
+ *     4. dark-obsidian (曜石深黑): 深空曜石纯黑底色、电光紫靛强调色、纯粹极客暗夜。
  *
  * 兼容说明：--paper / --ink / --muted / --accent / --accent-dark 等旧变量名继续保留，
  * 值由新语义变量派生；兼容旧选择器 html[data-theme="warm"] 与 html[data-theme="neutral"]。
@@ -185,21 +185,21 @@
   --paper: var(--bg-app);
 }
 
-/* ==================== 1. Claude 暖白纸意 (light-paper / warm) ==================== */
+/* ==================== 1. 柔和暖白 (light-paper / warm) ==================== */
 :root,
 html[data-theme="light-paper"],
 html[data-theme="warm"] {
   color-scheme: light;
-  --accent: #c2410c;
-  --accent-dark: #9a3412;
-  --accent-soft: #fff7ed;
-  --accent-ring: rgb(194 65 12 / 32%);
+  --accent: #d97706;
+  --accent-dark: #b45309;
+  --accent-soft: #fffbeb;
+  --accent-ring: rgb(217 119 6 / 28%);
 
-  --bg-app: #faf9f5;
-  --bg-nav: #f3f1ea;
-  --nav-surface: #262421;
-  --nav-foreground: #f6f0e5;
-  --nav-muted: #aba69b;
+  --bg-app: #faf8f3;
+  --bg-nav: #f2ede4;
+  --nav-surface: #292524;
+  --nav-foreground: #f5f5f4;
+  --nav-muted: #a8a29e;
   --nav-hover: rgb(255 252 245 / 8%);
   --nav-selected: #ffffff;
   --nav-selected-text: #1f1e1d;
@@ -208,23 +208,23 @@ html[data-theme="warm"] {
 
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f3f1ea;
-  --surface-muted: rgb(243 241 234 / 75%);
-  --surface-hover: rgb(31 30 29 / 5%);
+  --surface-sunken: #f3efe6;
+  --surface-muted: rgb(243 239 230 / 80%);
+  --surface-hover: rgb(41 37 36 / 5%);
   --surface-input: #ffffff;
-  --surface-dark: #1b1a18;
-  --hairline: rgb(31 30 29 / 8%);
+  --surface-dark: #1c1917;
+  --hairline: rgb(41 37 36 / 8%);
 
-  --fg-default: #1f1e1d;
-  --fg-muted: #6b6860;
-  --fg-subtle: #7a766c;
-  --fg-inverse: #faf9f5;
+  --fg-default: #292524;
+  --fg-muted: #78716c;
+  --fg-subtle: #8c857f;
+  --fg-inverse: #faf8f3;
   --fg-on-accent: #ffffff;
 
-  --border-subtle: #e8e6df;
-  --border-default: #d8d5cb;
-  --border-strong: #8f8b80;
-  --border-control: #8a867a;
+  --border-subtle: #ede8dd;
+  --border-default: #ded7ca;
+  --border-strong: #a8a29e;
+  --border-control: #8f887f;
 
   --success: #3f8a5c;
   --success-fg: #2f6d47;
@@ -250,23 +250,23 @@ html[data-theme="warm"] {
   --info-border: rgb(63 95 138 / 30%);
   --info-solid: #3f5f8a;
 
-  --scrollbar-thumb: rgb(31 30 29 / 24%);
-  --scrollbar-thumb-hover: rgb(31 30 29 / 44%);
+  --scrollbar-thumb: rgb(41 37 36 / 24%);
+  --scrollbar-thumb-hover: rgb(41 37 36 / 44%);
 }
 
-/* ==================== 2. Codex 纯净冷白 (light-zinc / neutral) ==================== */
+/* ==================== 2. 极简纯白 (light-zinc / neutral) ==================== */
 html[data-theme="light-zinc"],
 html[data-theme="neutral"] {
   color-scheme: light;
   --accent: #2563eb;
   --accent-dark: #1d4ed8;
   --accent-soft: #eff6ff;
-  --accent-ring: rgb(37 99 235 / 32%);
+  --accent-ring: rgb(37 99 235 / 28%);
 
-  --bg-app: #f4f4f5;
-  --bg-nav: #eceff3;
+  --bg-app: #ffffff;
+  --bg-nav: #f4f4f5;
   --nav-surface: #18181b;
-  --nav-foreground: #f4f4f5;
+  --nav-foreground: #fafafa;
   --nav-muted: #a1a1aa;
   --nav-hover: rgb(255 255 255 / 8%);
   --nav-selected: #ffffff;
@@ -276,8 +276,8 @@ html[data-theme="neutral"] {
 
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #e4e4e7;
-  --surface-muted: rgb(228 228 231 / 75%);
+  --surface-sunken: #f4f4f5;
+  --surface-muted: rgb(244 244 245 / 80%);
   --surface-hover: rgb(9 9 11 / 5%);
   --surface-input: #ffffff;
   --surface-dark: #18181b;
@@ -289,91 +289,91 @@ html[data-theme="neutral"] {
   --fg-inverse: #f4f4f5;
   --fg-on-accent: #ffffff;
 
-  --border-subtle: #e4e4e7;
-  --border-default: #d4d4d8;
+  --border-subtle: #f4f4f5;
+  --border-default: #e4e4e7;
   --border-strong: #a1a1aa;
   --border-control: #71717a;
 
-  --success: #3f8a5c;
-  --success-fg: #2f6d47;
-  --success-bg: rgb(63 138 92 / 10%);
-  --success-border: rgb(63 138 92 / 32%);
-  --success-solid: #3f8a5c;
+  --success: #16a34a;
+  --success-fg: #15803d;
+  --success-bg: rgb(22 163 74 / 10%);
+  --success-border: rgb(22 163 74 / 32%);
+  --success-solid: #16a34a;
 
-  --warning: #b8871f;
-  --warning-fg: #7a5e10;
-  --warning-bg: rgb(184 135 31 / 12%);
-  --warning-border: rgb(184 135 31 / 40%);
-  --warning-solid: #b8871f;
+  --warning: #d97706;
+  --warning-fg: #b45309;
+  --warning-bg: rgb(217 119 6 / 12%);
+  --warning-border: rgb(217 119 6 / 40%);
+  --warning-solid: #d97706;
 
-  --danger: #bb4530;
-  --danger-fg: #9c3a26;
-  --danger-bg: rgb(187 69 48 / 10%);
-  --danger-border: rgb(187 69 48 / 38%);
-  --danger-solid: #a83c28;
+  --danger: #dc2626;
+  --danger-fg: #b91c1c;
+  --danger-bg: rgb(220 38 38 / 10%);
+  --danger-border: rgb(220 38 38 / 38%);
+  --danger-solid: #dc2626;
 
-  --info: #3f5f8a;
-  --info-fg: #33496b;
-  --info-bg: rgb(63 95 138 / 10%);
-  --info-border: rgb(63 95 138 / 30%);
-  --info-solid: #3f5f8a;
+  --info: #2563eb;
+  --info-fg: #1d4ed8;
+  --info-bg: rgb(37 99 235 / 10%);
+  --info-border: rgb(37 99 235 / 30%);
+  --info-solid: #2563eb;
 
-  --scrollbar-thumb: rgb(23 33 46 / 24%);
-  --scrollbar-thumb-hover: rgb(23 33 46 / 44%);
+  --scrollbar-thumb: rgb(9 9 11 / 24%);
+  --scrollbar-thumb-hover: rgb(9 9 11 / 44%);
 }
 
-/* ==================== 3. Claude 暖黑深咖 (dark-espresso) ==================== */
+/* ==================== 3. 深空石板 (dark-espresso / slate) ==================== */
 html[data-theme="dark-espresso"] {
   color-scheme: dark;
-  --accent: #ea580c;
-  --accent-dark: #c2410c;
-  --accent-soft: rgb(234 88 12 / 16%);
-  --accent-ring: rgb(234 88 12 / 32%);
+  --accent: #38bdf8;
+  --accent-dark: #0284c7;
+  --accent-soft: rgb(56 189 248 / 16%);
+  --accent-ring: rgb(56 189 248 / 32%);
 
-  --bg-app: #1b1a18;
-  --bg-nav: #141312;
-  --nav-surface: #171614;
-  --nav-foreground: #eceae5;
-  --nav-muted: #8a867e;
+  --bg-app: #0b1120;
+  --bg-nav: #070d18;
+  --nav-surface: #0b1120;
+  --nav-foreground: #f8fafc;
+  --nav-muted: #94a3b8;
   --nav-hover: rgb(255 255 255 / 6%);
-  --nav-selected: #2e2d29;
+  --nav-selected: #1e293b;
   --nav-selected-text: #ffffff;
   --nav-border: rgb(255 255 255 / 6%);
   --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 30%);
 
-  --surface: #262522;
-  --surface-raised: #2e2d29;
-  --surface-sunken: #151413;
-  --surface-muted: rgb(38 37 34 / 80%);
+  --surface: #1e293b;
+  --surface-raised: #334155;
+  --surface-sunken: #070d18;
+  --surface-muted: rgb(30 41 59 / 80%);
   --surface-hover: rgb(255 255 255 / 5%);
-  --surface-input: #262522;
-  --surface-dark: #151413;
+  --surface-input: #1e293b;
+  --surface-dark: #070d18;
   --hairline: rgb(255 255 255 / 6%);
 
-  --fg-default: #eceae5;
-  --fg-muted: #9c978e;
-  --fg-subtle: #88837a;
-  --fg-inverse: #1b1a18;
-  --fg-on-accent: #ffffff;
+  --fg-default: #f8fafc;
+  --fg-muted: #94a3b8;
+  --fg-subtle: #64748b;
+  --fg-inverse: #0b1120;
+  --fg-on-accent: #0f172a;
 
-  --border-subtle: #383632;
-  --border-default: #4a4742;
-  --border-strong: #736e65;
-  --border-control: #68635b;
+  --border-subtle: #1e293b;
+  --border-default: #334155;
+  --border-strong: #475569;
+  --border-control: #475569;
 
-  --success: #4ade80;
-  --success-fg: #4ade80;
-  --success-bg: rgb(74 222 128 / 14%);
-  --success-border: rgb(74 222 128 / 32%);
-  --success-solid: #22c55e;
-  --success-on-solid: #052e16;
+  --success: #34d399;
+  --success-fg: #34d399;
+  --success-bg: rgb(52 211 153 / 14%);
+  --success-border: rgb(52 211 153 / 32%);
+  --success-solid: #10b981;
+  --success-on-solid: #064e3b;
 
-  --warning: #fbbf24;
-  --warning-fg: #fbbf24;
-  --warning-bg: rgb(251 191 36 / 14%);
-  --warning-border: rgb(251 191 36 / 32%);
-  --warning-solid: #f59e0b;
-  --warning-on-solid: #451a03;
+  --warning: #38bdf8;
+  --warning-fg: #38bdf8;
+  --warning-bg: rgb(56 189 248 / 14%);
+  --warning-border: rgb(56 189 248 / 32%);
+  --warning-solid: #0ea5e9;
+  --warning-on-solid: #082f49;
 
   --danger: #f87171;
   --danger-fg: #f87171;
@@ -382,11 +382,11 @@ html[data-theme="dark-espresso"] {
   --danger-solid: #ef4444;
   --danger-on-solid: #ffffff;
 
-  --info: #60a5fa;
-  --info-fg: #60a5fa;
-  --info-bg: rgb(96 165 250 / 14%);
-  --info-border: rgb(96 165 250 / 32%);
-  --info-solid: #3b82f6;
+  --info: #38bdf8;
+  --info-fg: #38bdf8;
+  --info-bg: rgb(56 189 248 / 14%);
+  --info-border: rgb(56 189 248 / 32%);
+  --info-solid: #0ea5e9;
   --info-on-solid: #ffffff;
 
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
@@ -397,13 +397,13 @@ html[data-theme="dark-espresso"] {
   --shadow-floating: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 4px 12px -2px rgb(0 0 0 / 35%);
   --shadow-dialog: 0 24px 60px -12px rgb(0 0 0 / 70%), 0 8px 24px -4px rgb(0 0 0 / 40%);
   --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
-  --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+  --ambient-glow: color-mix(in srgb, var(--accent) 14%, transparent);
 
-  --scrollbar-thumb: rgb(236 234 229 / 24%);
-  --scrollbar-thumb-hover: rgb(236 234 229 / 44%);
+  --scrollbar-thumb: rgb(248 250 252 / 24%);
+  --scrollbar-thumb-hover: rgb(248 250 252 / 44%);
 }
 
-/* ==================== 4. Codex 曜石冷黑 (dark-obsidian) ==================== */
+/* ==================== 4. 曜石深黑 (dark-obsidian) ==================== */
 html[data-theme="dark-obsidian"] {
   color-scheme: dark;
   --accent: #6366f1;
@@ -422,25 +422,25 @@ html[data-theme="dark-obsidian"] {
   --nav-border: rgb(255 255 255 / 6%);
   --shadow-nav-active: 0 5px 16px rgb(0 0 0 / 30%);
 
-  --surface: #18181b;
-  --surface-raised: #27272a;
-  --surface-sunken: #0c0c0e;
-  --surface-muted: rgb(24 24 27 / 80%);
+  --surface: #121215;
+  --surface-raised: #1c1c21;
+  --surface-sunken: #050506;
+  --surface-muted: rgb(18 18 21 / 80%);
   --surface-hover: rgb(255 255 255 / 5%);
-  --surface-input: #18181b;
-  --surface-dark: #09090b;
+  --surface-input: #121215;
+  --surface-dark: #050506;
   --hairline: rgb(255 255 255 / 6%);
 
   --fg-default: #fafafa;
   --fg-muted: #a1a1aa;
-  --fg-subtle: #8e8e93;
+  --fg-subtle: #71717a;
   --fg-inverse: #09090b;
   --fg-on-accent: #ffffff;
 
-  --border-subtle: #27272a;
-  --border-default: #3f3f46;
-  --border-strong: #71717a;
-  --border-control: #52525b;
+  --border-subtle: #222226;
+  --border-default: #2e2e34;
+  --border-strong: #52525b;
+  --border-control: #3f3f46;
 
   --success: #34d399;
   --success-fg: #34d399;
@@ -478,7 +478,7 @@ html[data-theme="dark-obsidian"] {
   --shadow-floating: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 4px 12px -2px rgb(0 0 0 / 35%);
   --shadow-dialog: 0 24px 60px -12px rgb(0 0 0 / 70%), 0 8px 24px -4px rgb(0 0 0 / 40%);
   --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
-  --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+  --ambient-glow: color-mix(in srgb, var(--accent) 14%, transparent);
 
   --scrollbar-thumb: rgb(250 250 250 / 24%);
   --scrollbar-thumb-hover: rgb(250 250 250 / 44%);

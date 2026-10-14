@@ -21,6 +21,7 @@ import { StructuredDirectorControls, VisualParameterFields } from './visual-sett
 import { restoreVisualDefaults } from '../visual-settings';
 import { defaultCanvasHint, workflowOptionLabel } from '../lib/workflow-option-display';
 import { StudioHiresDialog } from './studio-hires-dialog';
+import { visualProfessionalChanges, restoreVisualProfessionalDefaults } from '@/app/features/generation/image-settings';
 
 function statusLabel(status: string) {
   return ({ preparing: '准备中', queued: '排队中', running: '绘制中', succeeded: '已完成', failed: '绘制失败', adopted: '历史图片' } as Record<string, string>)[status] ?? status;
@@ -241,12 +242,12 @@ export function BeatRenderWorkbench({
       - (['width', 'height'].indexOf(right.key) < 0 ? 2 : ['width', 'height'].indexOf(right.key))) ?? [];
   const settingContent = (
     <div className="space-y-4">
-      <ImageModeSwitch advanced={showAdvanced} onChange={setShowAdvanced} modifiedCount={Object.keys(settings.parameters ?? {}).length + (settings.finalPositivePrompt !== undefined ? 1 : 0)} />
+      <ImageModeSwitch advanced={showAdvanced} onChange={setShowAdvanced} changes={visualProfessionalChanges(settings, settingFields)} onRestore={() => persistSettings(restoreVisualProfessionalDefaults(settings))} />
       <p className="text-sm text-muted">直接使用活动默认配置即可绘制。这里的调整仅用于当前镜头。</p>
       <ImagePromptOverride advanced={showAdvanced} finalPositivePrompt={settings.finalPositivePrompt} promptOptimization={settings.promptOptimization}
         effectiveAI={plan?.promptOptimization.enabled ?? true} finalSupported={plan?.promptAssembly === 'service-finalized-v1'} sourcePrompt={plan?.positivePrompt ?? ''}
         disabled={Boolean(working)} onChange={patch => persistSettings({ ...settings, ...patch })} />
-      <label className="block space-y-1.5"><span className="text-sm font-medium">品质覆盖</span><select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>
+      {!settings.presetId && !settings.workflowId && <label className="block space-y-1.5"><span className="text-sm font-medium">生成档位</span><select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>}
       <details hidden={!showAdvanced} className="rounded-[var(--radius-control)] border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
       <label className="mt-3 block space-y-1.5"><span className="text-sm font-medium text-ink">工作流</span>
         {plan?.workflowOptions.length ? <select aria-label="镜头工作流" value={`${settings.purpose ?? plan.purpose}|${settings.workflowId ?? plan.workflowId}|${settings.workflowVersion ?? plan.workflowVersion}`} onChange={(event) => {
@@ -258,7 +259,7 @@ export function BeatRenderWorkbench({
         </select> : <p className="rounded border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-muted">{settingsLabel}</p>}
         {selectedWorkflowOption && <span className="block text-xs text-muted">{defaultCanvasHint(selectedWorkflowOption, selectedWorkflowOption.workflowId)}</span>}
       </label></details>
-      {plan?.presetOptions.length ? <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">生成预设</span>
+      {plan?.presetOptions.length ? <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">生成方案</span>
         <select aria-label="镜头绘制预设" value={settings.presetId ?? ''} onChange={(event) => {
           const preset = plan.presetOptions.find((item) => item.id === event.target.value);
           changeWorkflowSettings({ ...settings, purpose: preset ? plan.purpose : undefined, workflowId: preset?.workflowId, workflowVersion: preset?.workflowVersion,
@@ -283,6 +284,10 @@ export function BeatRenderWorkbench({
           placeholder="补充构图、光影或画风要求；镜头动作会自动带入"
         />
       </div>
+      <label className="block space-y-1"><span className="text-xs font-medium text-muted">角色参考图</span><select aria-label="镜头参考图" disabled={Boolean(plan && !plan.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={event => persistSettings({ ...settings, referenceAssetKey: event.target.value || undefined })} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm">
+        <option value="">不使用参考图</option>{(actor?.appearanceReferenceAssetKeys ?? []).map(key => <option key={key} value={key}>{key}</option>)}</select>
+        {plan && !plan.referenceSupported && <span className="block text-xs text-muted">此方案不支持参考图，可切换兼容方案。</span>}
+      </label>
       <details hidden={!showAdvanced} className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
         <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="text-xs text-muted">需要改变画风或角色特征时，再添加、调权或关闭。</p>
         {plan?.loras.map((item) => {
@@ -329,17 +334,11 @@ export function BeatRenderWorkbench({
         }}><WandSparkles className="mr-1 h-4 w-4" />添加或覆盖</Button>
       </details>
       {error && <p role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 px-3 py-2 text-sm text-danger-fg">{error}</p>}
-      <details hidden={!showAdvanced} open={showAdvanced} onToggle={(event) => setShowAdvanced((event.currentTarget as HTMLDetailsElement).open)} className="rounded-[var(--radius-control)] border border-border-subtle p-3">
-        <summary className="cursor-pointer select-none text-sm font-medium text-ink">高级设置：负向词、参考图、种子与采样参数</summary>
+      <details hidden={!showAdvanced} open={showAdvanced} className="rounded-[var(--radius-control)] border border-border-subtle p-3">
+        <summary className="cursor-pointer select-none text-sm font-medium text-ink">采样、尺寸与负面词</summary>
         <div className="mt-3 space-y-3">
           <VisualParameterFields key={`${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} recoveryKey={`sthstart:visual-input:beat:${activityId}:${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} fields={settingFields} values={settings.parameters ?? {}} onChange={parameters => persistSettings({ ...settings, parameters })} onValidityChange={setParametersValid} disabled={Boolean(working)} />
           <label className="block space-y-1"><span className="text-xs font-medium text-muted">反向提示词 · {settings.negativePrompt === undefined ? '继承默认' : '仅此镜头'}</span><Textarea rows={3} value={settings.negativePrompt ?? ''} onChange={(event) => persistSettings({ ...settings, negativePrompt: event.target.value })} placeholder="未修改时继承默认；修改后留空表示明确清空" /><Button size="sm" variant="ghost" onClick={() => persistSettings({ ...settings, negativePrompt: undefined })}>恢复继承</Button></label>
-          <label className="block space-y-1"><span className="text-xs font-medium text-muted">角色参考图</span><select aria-label="镜头参考图" disabled={Boolean(plan && !plan.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={(event) => persistSettings({ ...settings, referenceAssetKey: event.target.value || undefined })} className="h-10 w-full rounded border border-border-control bg-surface-raised px-3 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60">
-            <option value="">不使用参考图</option>{(actor?.appearanceReferenceAssetKeys ?? []).map((key) => <option key={key} value={key}>{key}</option>)}
-          </select>
-          {plan && !plan.referenceSupported && <span className="block text-xs text-muted">当前工作流未声明参考图输入能力：本次<b>仅文字描述</b>，角色形象不会被锁定，也不会伪装成已锁定。</span>}
-          {plan && plan.referenceSupported && <span className="block text-xs text-muted">该工作流声明了参考图输入，选择后会随本次绘制一起提交。</span>}
-          </label>
           {plan && <div className="space-y-2 rounded bg-surface-raised p-3 text-xs text-muted"><div className="font-semibold text-ink">提示词来源与工作流参数</div>
             <p>下列来源描述尚未经过本次自动优化；实际提交提示词会在生成记录中保留。</p>
             {plan.source.map((item) => <p key={item.label}><strong className="text-ink">{item.label}：</strong>{item.value}</p>)}

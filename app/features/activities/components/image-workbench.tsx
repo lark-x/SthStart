@@ -68,6 +68,7 @@ import {
   useUploadActivityAsset,
 } from '../mutations';
 import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
+import { visualProfessionalChanges, restoreVisualProfessionalDefaults } from '@/app/features/generation/image-settings';
 import { ImagePromptOverride } from '@/app/features/generation/components/image-prompt-override';
 import { PromptSourcePanel } from './prompt-source-panel';
 import { previewActivitySlotVisual } from '../studio-api';
@@ -304,7 +305,7 @@ export function ImageWorkbench({
   };
   useEffect(() => { registerFlush?.(flushConfig); return () => registerFlush?.(null); });
   useEffect(() => {
-    if (!advanced || !isOpen || !currentConfigDoc || !activeSlot) return;
+    if (!isOpen || !currentConfigDoc || !activeSlot) return;
     let active = true;
     const timer = setTimeout(() => {
       void previewActivitySlotVisual(activity.id, { slotId: activeSlot.id, document: currentConfigDoc }).then(result => {
@@ -312,7 +313,7 @@ export function ImageWorkbench({
       }).catch(error => { if (active) setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : '配置检查失败' }); });
     }, 300);
     return () => { active = false; clearTimeout(timer); };
-  }, [advanced, isOpen, currentConfigDoc, activeSlot?.id, activity.id]);
+  }, [isOpen, currentConfigDoc, activeSlot?.id, activity.id]);
 
   // Commit Revision
   const handleCommitRevision = async () => {
@@ -567,7 +568,10 @@ export function ImageWorkbench({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-default px-4 py-2">
         <p className="text-sm text-muted">使用活动默认配置，点击绘制即可。提示词准备与配置检查会自动完成。</p>
-        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={Object.keys(activeSlotConfig.params ?? {}).length + (activeSlotConfig.finalPositivePrompt !== undefined ? 1 : 0)} />
+        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={[
+          ...visualProfessionalChanges({ ...activeSlotConfig, parameters: activeSlotConfig.params }, visualPreview?.fields),
+          ...(selectedReferenceKey && referenceRole === 'init_image' && denoise !== 0.75 ? [`重绘幅度：${denoise}`] : []),
+        ]} onRestore={() => { handleUpdateSlotConfig({ ...restoreVisualProfessionalDefaults(activeSlotConfig), finalPositivePrompt: undefined, negativePrompt: undefined, params: undefined }); setDenoise(0.75); setPreparedRecipe(null); setPreparedCompilation(null); }} />
       </div>
       {/* Main body */}
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-0 min-w-0 min-h-0 overflow-y-auto xl:overflow-hidden">
@@ -697,17 +701,6 @@ export function ImageWorkbench({
               </div>
 
               <div className="space-y-1">
-                <label className="text-muted">镜头补充提示词 (Supplement)</label>
-                <Textarea
-                  placeholder="补充镜头氛围细节..."
-                  value={activeSlotConfig.supplementPrompt || ''}
-                  onChange={(e) => handleUpdateSlotConfig({ supplementPrompt: e.target.value })}
-                  rows={2}
-                  className="bg-paper text-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
                 <label className="text-muted">镜头负向提示词 (Negative)</label>
                 <Textarea
                   placeholder="针对本镜头的排除项..."
@@ -716,6 +709,7 @@ export function ImageWorkbench({
                   rows={2}
                   className="bg-paper text-sm"
                 />
+                {activeSlotConfig.negativePrompt !== undefined && <Button type="button" variant="ghost" size="sm" onClick={() => handleUpdateSlotConfig({ negativePrompt: undefined })}>恢复继承负面词</Button>}
               </div>
             </div>
           )}
@@ -782,7 +776,7 @@ export function ImageWorkbench({
           </div>
 
           {/* Reference Image Section (I2I) */}
-          <div className={`${advanced ? '' : 'hidden'} bg-surface/60 border border-border-default rounded-[var(--radius-panel)] p-3 space-y-2.5`}>
+          <div className="bg-surface/60 border border-border-default rounded-[var(--radius-panel)] p-3 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
@@ -845,7 +839,7 @@ export function ImageWorkbench({
                       <option value="style">风格参考 (style)</option>
                     </select>
                   </div>
-                  {referenceRole === 'init_image' && (
+                  {advanced && referenceRole === 'init_image' && (
                     <div className="flex items-center gap-2 text-sm text-muted">
                       <span>重绘幅度: {denoise}</span>
                       <input
@@ -869,6 +863,7 @@ export function ImageWorkbench({
           </div>
 
           {/* Prompt Source Panel */}
+          <label className="block space-y-1.5 text-sm text-ink">补充画面要求<Textarea aria-label="素材补充画面要求" rows={3} value={activeSlotConfig.supplementPrompt ?? ''} onChange={event => handleUpdateSlotConfig({ supplementPrompt: event.target.value })} placeholder="补充动作、构图与氛围，角色和场景会自动带入。" /></label>
           <ImagePromptOverride advanced={advanced} finalPositivePrompt={activeSlotConfig.finalPositivePrompt}
             promptOptimization={activeSlotConfig.promptOptimization} finalSupported={visualPreview?.promptAssembly === 'service-finalized-v1'}
             sourcePrompt={visualPreview?.positivePrompt ?? ''} effectiveAI={visualPreview?.promptOptimization?.enabled ?? true}
@@ -894,11 +889,11 @@ export function ImageWorkbench({
 
           {/* Execution Plan Hash & Seed Input */}
           <div className="bg-surface/60 border border-border-default rounded-lg p-3 space-y-2.5">
-            <label className="block space-y-1 text-sm text-muted">品质覆盖<select aria-label="素材绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-ink" value={activeSlotConfig.quality ?? ''} onChange={event => handleUpdateSlotConfig({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>
-            {advanced && <><StructuredDirectorControls value={activeSlotConfig.director} onChange={director => handleUpdateSlotConfig({ director })} />
-              {visualPreview && <VisualParameterFields key={`${activeSlot.id}:${visualPreview.workflowId}:${visualPreview.workflowVersion}`} recoveryKey={`sthstart:visual-input:slot:${activity.id}:${activeSlot.id}:${visualPreview.workflowId}:${visualPreview.workflowVersion}`} fields={visualPreview.fields} values={activeSlotConfig.params ?? {}} onChange={params => handleUpdateSlotConfig({ params })} onValidityChange={setParametersValid} />}</>}
+            {!activeSlotConfig.presetId && !activeSlotConfig.workflowId && <label className="block space-y-1 text-sm text-muted">生成档位<select aria-label="素材绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-ink" value={activeSlotConfig.quality ?? ''} onChange={event => handleUpdateSlotConfig({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>}
+            <StructuredDirectorControls value={activeSlotConfig.director} onChange={director => handleUpdateSlotConfig({ director })} />
+            {advanced && visualPreview && <VisualParameterFields key={`${activeSlot.id}:${visualPreview.workflowId}:${visualPreview.workflowVersion}`} recoveryKey={`sthstart:visual-input:slot:${activity.id}:${activeSlot.id}:${visualPreview.workflowId}:${visualPreview.workflowVersion}`} fields={visualPreview.fields} values={activeSlotConfig.params ?? {}} onChange={params => handleUpdateSlotConfig({ params })} onValidityChange={setParametersValid} />}
             <div className="space-y-1.5">
-              <label htmlFor="activity-image-generation-preset" className="text-sm text-muted font-medium">图片模型与参数预设</label>
+              <label htmlFor="activity-image-generation-preset" className="text-sm text-muted font-medium">生成方案</label>
               <select
                 id="activity-image-generation-preset"
                 aria-label="图片模型与参数预设"

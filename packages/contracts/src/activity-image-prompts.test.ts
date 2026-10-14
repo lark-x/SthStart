@@ -19,6 +19,7 @@ test('a legacy policy payload without the new modes is rejected by the strict po
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, basePolicy), false);
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'prose', knowledgeMode: 'none' }), true);
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'keyword' }), true);
+  assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'hybrid' }), true);
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'vector' }), false);
 });
 

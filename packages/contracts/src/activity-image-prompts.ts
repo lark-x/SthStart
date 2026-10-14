@@ -24,7 +24,7 @@ export const DEFAULT_ACTIVITY_NEGATIVE_PROMPT =
 export const ActivityImagePromptOutputFormatSchema = Type.Union([Type.Literal('prose'), Type.Literal('tags')]);
 export type ActivityImagePromptOutputFormat = Static<typeof ActivityImagePromptOutputFormatSchema>;
 
-export const ActivityImagePromptKnowledgeModeSchema = Type.Union([Type.Literal('none'), Type.Literal('keyword')]);
+export const ActivityImagePromptKnowledgeModeSchema = Type.Union([Type.Literal('none'), Type.Literal('keyword'), Type.Literal('hybrid')]);
 export type ActivityImagePromptKnowledgeMode = Static<typeof ActivityImagePromptKnowledgeModeSchema>;
 
 export const ActivityImagePromptPolicySchema = Type.Object({

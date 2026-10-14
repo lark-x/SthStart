@@ -17,6 +17,8 @@ import { enforceAllRetention, reconcileArtifacts } from './artifacts.js';
 import { generationExecutionsFor, reconcileGenerationTasks, resumeGenerationExecutions, startGenerationScheduler, stopGenerationExecutions } from './generation.js';
 import { registerNotebookRoutes } from './notebook.js';
 import { registerCharacterRoutes } from './characters.js';
+import { registerSharedAssetRoutes } from './shared-assets.js';
+import { registerLinsheBridgeRoutes } from './linshe-bridge.js';
 import { NarrativeDatabase } from './narrative-database.js';
 import { registerNarrativeRoutes } from './narrative.js';
 import { registerResearchRoutes as registerNarrativeResearchRoutes } from './research/routes.js';
@@ -53,6 +55,7 @@ import { StoryRuntime } from './story/runtime.js';
 import { registerStoryRoutes } from './story/routes.js';
 import { registerPublicationRoutes } from './publication/routes.js';
 import { registerWorkspaceRoutes } from './workspace.js';
+import { startImageKnowledgeScheduler } from './generation/image-knowledge-index.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -232,6 +235,8 @@ export async function createService(options: ServiceOptions = {}) {
   registerNotebookRoutes(app, config, database);
   registerWorkspaceRoutes(app, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
+  registerSharedAssetRoutes(app, config, database);
+  registerLinsheBridgeRoutes(app, config, database, options.fetcher);
   registerNarrativeRoutes(app, narrativeDatabase, database, narrativeConnectors, config, secrets, options.fetcher);
   /*
    * 研究运行中断恢复：服务重启时把 queued/running 标记为 interrupted，
@@ -277,6 +282,7 @@ export async function createService(options: ServiceOptions = {}) {
   reconcileMediaBatchesOnStartup(database, config, secrets, new ActivityStore(database), options.fetcher);
   resumeGenerationExecutions(database);
   const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);
+  const stopImageKnowledge = startImageKnowledgeScheduler(database, secrets, options.fetcher);
   // 话题搜集调度器：跟随服务进程运行，浏览器关闭不影响执行。
   const topicScheduler = new TopicScheduler({ config, database, secrets, fetcher: options.fetcher, narrativeConnectors });
   topicScheduler.start();
@@ -295,6 +301,7 @@ export async function createService(options: ServiceOptions = {}) {
   app.addHook('onClose', async () => {
     clearInterval(retentionTimer);
     genScheduler.stop();
+    await stopImageKnowledge();
     topicScheduler.stop();
     knowledgeScheduler.stop();
     backupScheduler.stop();

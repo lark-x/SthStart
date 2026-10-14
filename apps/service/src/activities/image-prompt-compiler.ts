@@ -62,7 +62,7 @@ export function resolveImageExecutionPlan(database: ServiceDatabase, hasReferenc
 }
 
 import { createSourceRef, extractEntityFieldValue } from './image-provenance.js';
-import { buildCharacterVisualPrompt, normalizeCharacterAppearance } from '../characters/persona-compiler.js';
+import { buildCharacterVisualContext, toCharacterRuntime } from '@sthstart/contracts';
 
 export const PROMPT_COMPILER_VERSION = 'v1.0.0';
 export const DEFAULT_TEMPLATE_ID = 'activity-image-v1';
@@ -233,9 +233,8 @@ export function compilePromptRecipe(options: PrepareRecipeOptions): {
   // 3. Actors: Identity, Appearance, Outfit
   for (const actor of actors) {
     // Identity & Appearance
-    const appearanceField = (actor.persona as Record<string, unknown>)?.appearance;
-    const appearanceObject = normalizeCharacterAppearance(appearanceField);
-    const appearanceText = buildCharacterVisualPrompt({ ...appearanceObject, outfits: [], defaultOutfitId: null });
+    const appearanceObject = toCharacterRuntime(actor.persona).appearance;
+    const appearanceText = buildCharacterVisualContext(actor.persona, { outfitOverride: '' }).text;
     const appearanceSourceRef = createSourceRef({
       activityId,
       ownerKind: 'content',

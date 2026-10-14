@@ -120,6 +120,9 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
             label="关键词补全标签" description={draft.outputFormat === 'tags'
               ? '按来源文本在本地通用词表里做关键词召回，只补充该作用域的可选措辞；不使用向量检索。'
               : '结构化混合模式下才可用。'} />
+          <Checkbox checked={draft.knowledgeMode === 'hybrid'} disabled={draft.outputFormat !== 'tags'}
+            onChange={event => setDraft({ ...draft, knowledgeMode: event.target.checked ? 'hybrid' : 'none' })}
+            label="语义与关键词混合检索" description="需要已配置的向量服务；索引未就绪或服务不可用时使用关键词，并记录降级原因。" />
           {styleManagedByActivity && <Alert variant="info" title="画风由活动画风管理">
             该工作流版本声明了服务端组装，画师与质量标签来自活动画风，策略里的画风字段已清空并停用；如需修改请到活动画风设置。
           </Alert>}

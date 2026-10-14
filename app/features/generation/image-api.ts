@@ -11,6 +11,8 @@ export function prepareImageGeneration(input: ImagePreparationRequest) {
 }
 
 export type ImageGenerationSubmission = {
+  preparationId?: string;
+  contextHash?: string;
   presetId?: string;
   presetRevision?: number;
   parameters: Record<string, unknown>;

@@ -12,7 +12,9 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   // Creative tests mock browser responses; business context tests use an isolated temporary service.
   webServer: [{
-    command: 'npx vinext dev --port 4373 --hostname 127.0.0.1', cwd: root,
+    command: process.env.STHSTART_COMFY_PORTAL_MODE === 'production'
+      ? 'npx vinext start --port 4373 --hostname 127.0.0.1'
+      : 'npx vinext dev --port 4373 --hostname 127.0.0.1', cwd: root,
     url: 'http://127.0.0.1:4373', timeout: 90000, reuseExistingServer: false,
     env: { STHSTART_SERVICE_URL: 'http://127.0.0.1:4374', STHSTART_ADMIN_TOKEN: 'comfy-ui-offline-token-0123456789' },
   }, { command: 'node --import tsx/esm scripts/testing/comfy-ui-service.ts', cwd: root,

@@ -11,49 +11,54 @@ export interface ThemeConfig {
   tone: ThemeTone;
   accent: string;
   bg: string;
+  surface: string;
   description: string;
 }
 
 export const THEMES: readonly ThemeConfig[] = [
   {
     id: 'light-paper',
-    name: 'Claude 暖白纸意',
+    name: '柔和暖白',
     category: '白天',
     mode: 'light',
     tone: 'paper',
-    accent: '#c2410c',
-    bg: '#faf9f5',
-    description: '纸张温润、人文沉静、陶土赤金',
+    accent: '#d97706',
+    bg: '#faf8f3',
+    surface: '#f3efe6',
+    description: '暖白底 · 陶土琥珀',
   },
   {
     id: 'light-zinc',
-    name: 'Codex 纯净冷白',
+    name: '极简纯白',
     category: '白天',
     mode: 'light',
     tone: 'zinc',
     accent: '#2563eb',
-    bg: '#f4f4f5',
-    description: '纯净冷白、科技理性、电光蓝靛',
+    bg: '#ffffff',
+    surface: '#f4f4f5',
+    description: '纯白底 · 电光曜蓝',
   },
   {
     id: 'dark-espresso',
-    name: 'Claude 暖黑深咖',
+    name: '深空石板',
     category: '黑夜',
     mode: 'dark',
     tone: 'espresso',
-    accent: '#ea580c',
-    bg: '#1b1a18',
-    description: '纸墨沉降、低对比温和、温润暖阳',
+    accent: '#38bdf8',
+    bg: '#0b1120',
+    surface: '#1e293b',
+    description: '深蓝灰 · 冰蓝极光',
   },
   {
     id: 'dark-obsidian',
-    name: 'Codex 曜石冷黑',
+    name: '曜石深黑',
     category: '黑夜',
     mode: 'dark',
     tone: 'obsidian',
     accent: '#6366f1',
     bg: '#09090b',
-    description: '纯粹深空、曜石冷峻、电光紫靛',
+    surface: '#121215',
+    description: '纯黑底 · 紫靛冷调',
   },
 ] as const;
 

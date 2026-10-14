@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isActivityArtStylePayload, type Activity, type ActivityArtDirection, type GenerationPreset, type GenerationPresetRef, type ImageConfigDocument } from '@sthstart/contracts';
 import { fetchGenerationPresets } from '@/app/features/generation/api';
 import { activityKeys } from '@/app/lib/query-keys';
+import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { Button } from '@/app/components/ui/button';
@@ -46,6 +47,7 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
   beforeApply(): Promise<boolean>; onApplied(): Promise<unknown>;
 }) {
   const queryClient = useQueryClient();
+  const [advanced, setAdvanced] = useImageAdvancedMode('activity-art');
   const config = useImageConfigDraft(activity.id);
   const styles = useQuery({ queryKey: ['activity-art-styles'], queryFn: fetchActivityArtStyles, enabled: open });
   const presets = useQuery({ queryKey: ['activity-art-profiles'], queryFn: () => fetchGenerationPresets({ appId: 'activities' }), enabled: open });
@@ -58,7 +60,12 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
   const [cardName, setCardName] = useState('');
   const editing = useRef(false);
   useEffect(() => {
-    if (!open) { editing.current = false; setTemporary(null); return; }
+    if (!open) {
+      editing.current = false;
+      // Remote configuration is copied once per overlay session; closing clears that copy.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTemporary(null); return;
+    }
     if (!config.data || editing.current) return;
     editing.current = true;
     version.current = config.data.draftVersion;
@@ -104,6 +111,11 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
     <ResponsiveEditOverlay open={open} onOpenChange={close} title="活动美术设置" description="镜头、漫画和素材共用；只影响之后的新绘制，历史图的“按原配置重绘”与“放大细化”各自保留原配置。"
       footer={<><Button variant="outline" disabled={busy} onClick={() => close(false)}>取消</Button><Button loading={busy} disabled={!temporary || busy} onClick={() => void apply()}>保存并应用</Button></>}>
       {config.isPending ? <p role="status" className="text-sm text-muted">读取美术设置…</p> : config.isError ? <p role="alert" className="text-danger-fg">{config.error.message}</p> : temporary && direction && <fieldset disabled={busy} className="space-y-5">
+        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={[
+          ...(temporary.globalStylePrompt?.trim() ? ['已配置画风词'] : []),
+          ...(temporary.globalNegativePrompt !== undefined ? ['已配置活动负面词'] : []),
+          ...(direction.renderProfiles.draft || direction.renderProfiles.final ? ['已绑定档位方案'] : []),
+        ]} />
         <FormField label="画风卡"><select aria-label="活动画风卡" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm" value={direction.selectedStyle?.id ?? ''} onChange={event => {
           const style = styles.data?.items.find(item => item.id === event.target.value);
           if (!style || !isActivityArtStylePayload(style.payload)) { updateDirection({ selectedStyle: null }); return; }
@@ -134,10 +146,10 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
                 : '跟随公共生成绑定'}</li>;
             })}
           </ul>
-          <p className="mt-1 text-xs text-muted">这里只读展示，改档位请用下面的“高级：档位预设与反向词”。</p>
+          <p className="mt-1 text-xs text-muted">模型与采样随档位方案配置，可在专业模式调整绑定。</p>
         </div>
-        <FormField label="补充画风词" hint="会在画面描述优化之后追加；工作流内部质量词无需重复填写。"><Textarea rows={3} value={temporary.globalStylePrompt ?? ''} onChange={event => setTemporary({ ...temporary, globalStylePrompt: event.target.value })} /></FormField>
-        <details className="rounded-[var(--radius-control)] bg-surface-muted p-4"><summary className="cursor-pointer text-sm font-semibold">高级：档位预设与反向词</summary><div className="mt-4 space-y-4">
+        {advanced && <FormField label="补充画风词" hint="会在画面描述优化之后追加；工作流内部质量词无需重复填写。"><Textarea rows={3} value={temporary.globalStylePrompt ?? ''} onChange={event => setTemporary({ ...temporary, globalStylePrompt: event.target.value })} /></FormField>}
+        <details hidden={!advanced} open={advanced} className="rounded-[var(--radius-control)] bg-surface-muted p-4"><summary className="cursor-pointer text-sm font-semibold">档位方案与负面词</summary><div className="mt-4 space-y-4">
           <p className="text-xs text-muted">两档分别绑定已发布预设，不能仅换 Base/Turbo 模型而共用采样参数。为空时跟随公共生成绑定；未保存前不会改动现有配置。</p>
           {(['draft','final'] as const).map(quality => <FormField key={quality} label={`${quality === 'draft' ? '草图' : '成稿'}预设`}><select aria-label={`${quality}预设`} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={direction.renderProfiles[quality]?.presetId ?? ''} onChange={event => {
             const selected = enabledPresets.find(item => item.id === event.target.value);

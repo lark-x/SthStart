@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
-import type { CreativePurposeOptions, CreativeTaskResponse, ImageConfiguration } from '@sthstart/contracts';
+import { normalizeCharacterDraftV2, type CreativePurposeOptions, type CreativeTaskResponse, type ImageConfiguration } from '@sthstart/contracts';
+
+test.use({ deviceScaleFactor: 2 });
 
 const fields: ImageConfiguration['fields'] = [
   { key: 'prompt', label: '正面提示词', description: null, type: 'long-text', section: 'basic', order: 0, defaultValue: '', required: true },
@@ -30,6 +32,8 @@ async function mock(page: Page, failAI = false, purposeOptions = options) {
   await page.route('**/api/auth/admin-session', route => route.fulfill({ json: { csrfToken: 'offline-csrf' } }));
   await page.route('**/api/admin/**', async route => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/characters')) return route.fulfill({ json: { items: [{ id: 'alice', slug: 'alice', displayName: 'Alice', draft: normalizeCharacterDraftV2({ displayName: 'Alice' }), avatarUrl: null, tags: [], archived: false, latestVersion: null, avatarAssetId: null, createdAt: '2026-10-13', updatedAt: '2026-10-13' }] } });
+    if (path.endsWith('/notebook/notes')) return route.fulfill({ json: { items: [{ id: 'world', title: '浮空世界', kind: 'world', content: [], summary: '', tags: [], stage: 'reference', favorite: false, createdAt: '2026-10-13', updatedAt: '2026-10-13' }], total: 1, page: 1, pageSize: 20 } });
     if (path.endsWith('/creative/options')) return route.fulfill({ json: { app: { id: 'creative-center', name: '创作中心' }, purposes: [purposeOptions] } });
     if (path.endsWith('/creative/status')) return route.fulfill({ json: { app: { id: 'creative-center', name: '创作中心' }, modes: Object.fromEntries([
       ['textToImage', 'text-to-image'], ['imageToImage', 'image-to-image'], ['h3T2v', 'h3-t2v'], ['h3I2v', 'h3-i2v'], ['h3Fl2va', 'h3-fl2va'],
@@ -66,12 +70,12 @@ test('simple/advanced modes preserve drafts and manual final prompts bypass AI',
   await page.goto('/apps/creative');
   await page.getByLabel('描述你的画面').fill('一个女孩在窗边读书');
   await expect(page.getByLabel('步数', { exact: true })).toBeHidden();
-  await page.getByRole('button', { name: '高级模式', exact: true }).click();
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
   await page.getByLabel('步数', { exact: true }).fill('25');
   await page.getByLabel('正面提示词', { exact: true }).fill('(red hair:1.2), reading by a window');
   await page.getByLabel('负面提示词', { exact: true }).fill('');
   await page.getByRole('button', { name: '简单模式', exact: true }).click();
-  await expect(page.getByText('已自定义 1 项高级参数', { exact: false })).toBeVisible();
+  await expect(page.getByText('已自定义 3 项专业设置', { exact: false })).toBeVisible();
   await page.screenshot({ path: info.outputPath('desktop-simple.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: '开始生成', exact: true }).click();
   await expect.poll(() => requests.submissions.length).toBe(1);
@@ -79,6 +83,30 @@ test('simple/advanced modes preserve drafts and manual final prompts bypass AI',
   expect(requests.submissions[0].parameters).toMatchObject({ prompt: '(red hair:1.2), reading by a window', negativePrompt: '', steps: 25 });
   await page.reload();
   await expect(page.getByLabel('描述你的画面')).toHaveValue('一个女孩在窗边读书');
+});
+
+test('selected context survives refresh and is sent with preparation at desktop and mobile sizes', async ({ page }, info) => {
+  const requests = await mock(page);
+  await page.goto('/apps/creative');
+  await page.getByLabel('描述你的画面').fill('角色站在浮空桥上');
+  await page.getByText('角色与设定来源', { exact: true }).click();
+  await page.getByLabel('Alice', { exact: true }).check();
+  await page.getByLabel('浮空世界', { exact: true }).check();
+  await page.getByLabel('AI 生成专业提示词').uncheck();
+  await page.reload();
+  await page.getByText('角色与设定来源', { exact: true }).click();
+  await page.getByRole('button', { name: '刷新来源', exact: true }).click();
+  await expect(page.getByLabel('Alice', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('浮空世界', { exact: true })).toBeChecked();
+  for (const [width, height] of [[1440, 900], [390, 844], [1024, 768], [1920, 1080]]) {
+    await page.setViewportSize({ width, height });
+    if (width === 390) { const configuration = page.getByRole('button', { name: '配置', exact: true }); if (await configuration.count()) await configuration.click(); }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    await page.screenshot({ path: info.outputPath(`context-${width}.png`), fullPage: true, animations: 'disabled' });
+  }
+  await page.getByRole('button', { name: '开始生成', exact: true }).click();
+  await expect.poll(() => requests.preparations.length).toBe(1);
+  expect(requests.preparations[0].context).toMatchObject({ characters: [{ characterId: 'alice' }], noteIds: ['world'] });
 });
 
 test('mobile retains configuration across tabs and AI failure can recover without losing input', async ({ page }, info) => {
@@ -105,14 +133,35 @@ test('mobile retains configuration across tabs and AI failure can recover withou
 test('switching a workflow uses its own parameter bounds and confirms edited overrides', async ({ page }, info) => {
   await mock(page);
   await page.goto('/apps/creative');
-  await page.getByRole('button', { name: '高级模式', exact: true }).click();
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
   await page.getByLabel('步数', { exact: true }).fill('28');
+  await page.getByText('选择其他工作流', { exact: true }).click();
   await page.getByLabel('工作流', { exact: true }).selectOption('turbo-flow');
   await expect(page.getByRole('dialog', { name: '切换生成方案' })).toBeVisible();
   await page.getByRole('button', { name: '应用新方案' }).click();
   await expect(page.getByLabel('步数', { exact: true })).toHaveValue('12');
   await expect(page.getByLabel('步数', { exact: true })).toHaveAttribute('max', '20');
   await page.screenshot({ path: info.outputPath('desktop-advanced.png'), fullPage: true, animations: 'disabled' });
+});
+
+test('simple canvas stays simple; restoring professional defaults keeps scene, sources and canvas', async ({ page }) => {
+  await mock(page);
+  await page.goto('/apps/creative');
+  await page.getByLabel('描述你的画面').fill('旅人在雨中');
+  await page.getByRole('button', { name: '清晰横图', exact: false }).click();
+  await expect(page.getByLabel('生效的专业修改')).toHaveCount(0);
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
+  await page.getByLabel('步数', { exact: true }).fill('25');
+  await page.getByLabel('负面提示词', { exact: true }).fill('');
+  await page.getByRole('button', { name: '简单模式', exact: true }).click();
+  await expect(page.getByLabel('生效的专业修改')).toContainText('明确清空');
+  await page.getByRole('button', { name: '恢复专业默认', exact: true }).click();
+  await expect(page.getByLabel('描述你的画面')).toHaveValue('旅人在雨中');
+  await expect(page.getByRole('button', { name: '清晰横图', exact: false })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
+  await expect(page.getByLabel('步数', { exact: true })).toHaveValue('31');
+  await expect(page.getByLabel('负面提示词', { exact: true })).toHaveValue('blurry');
+  await expect(page.getByLabel('AI 生成专业提示词')).toBeChecked();
 });
 
 
@@ -122,7 +171,7 @@ test('a direct workflow binding is retained when no default preset was selected'
   await page.goto('/apps/creative');
   await expect(page.getByLabel('描述你的画面')).toBeEnabled();
   await expect(page.getByLabel('生成方案', { exact: true })).toHaveValue('');
-  await page.getByRole('button', { name: '高级模式', exact: true }).click();
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
   await expect(page.getByLabel('步数', { exact: true })).toHaveValue('17');
 });
 
@@ -130,9 +179,12 @@ test('a changed configuration requires review and restores its own defaults', as
   await mock(page);
   await page.goto('/apps/creative');
   await page.getByLabel('描述你的画面').fill('窗边读书的女孩');
-  await page.getByRole('button', { name: '高级模式', exact: true }).click();
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
   await page.getByRole('button', { name: '准备提示词', exact: true }).click();
   await expect(page.getByLabel('正面提示词', { exact: true })).toHaveValue('one girl reading by a window');
+  await page.getByRole('button', { name: '简单模式', exact: true }).click();
+  await expect(page.getByLabel('生效的专业修改')).toHaveCount(0);
+  await page.getByRole('button', { name: '专业模式', exact: true }).click();
   const updated = { ...configuration, configurationHash: 'c'.repeat(64), fields: fields.map(field => field.key === 'steps' ? { ...field, defaultValue: 19 } : field) };
   await page.route('**/api/admin/creative/options', route => route.fulfill({ json: {
     app: { id: 'creative-center', name: '创作中心' }, purposes: [{ ...options, configuration: updated,

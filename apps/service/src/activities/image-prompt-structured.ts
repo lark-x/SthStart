@@ -11,6 +11,7 @@ import { compileVisualPrompt, normalizeTagKey, type StructuredActorBlock } from 
 import {
   applyScopedKnowledgeRules, knowledgeDatasetInfo, resolveScopedConflicts, retrieveImagePromptKnowledge,
   selectExecutableTagsForScope, toKnowledgeHits, type KnowledgeRemovedTag, type SelectedKnowledgeTag,
+  type KnowledgeRetrievalResult,
 } from './image-prompt-knowledge.js';
 
 /**
@@ -42,11 +43,13 @@ export interface StructuredOptimizationInput {
   finishReason: string | null;
   /** 本次目标声明的角色作用域，必须与模型输出一致。 */
   actorScope: Array<{ actorId: string; displayName?: string }>;
-  knowledgeMode: 'none' | 'keyword';
+  knowledgeMode: 'none' | 'keyword' | 'hybrid';
+  retrieval?: KnowledgeRetrievalResult;
   /** 知识召回与作用域匹配使用的来源文本。 */
   sourcePrompt: string;
   /** 明确可见人数标签；无法确定时留空，不猜。 */
   personCount?: string | null;
+  scene?: string;
 }
 
 export interface StructuredOptimizationResult {
@@ -159,8 +162,8 @@ export function parseStructuredOptimization(input: StructuredOptimizationInput):
   const removedTags: RemovedTagDiagnostic[] = [];
   const knowledgeHits: KnowledgeHit[] = [];
   const knowledgeVersion = knowledgeDatasetInfo().datasetVersion;
-  const retrieval = input.knowledgeMode === 'keyword'
-    ? retrieveImagePromptKnowledge(input.sourcePrompt, { mode: 'keyword', limit: 24 })
+  const retrieval = input.knowledgeMode !== 'none'
+    ? input.retrieval ?? retrieveImagePromptKnowledge(input.sourcePrompt, { mode: 'keyword', limit: 24, scene: input.scene })
     : null;
 
   const pushRemoved = (entries: readonly KnowledgeRemovedTag[], scope: string) => {

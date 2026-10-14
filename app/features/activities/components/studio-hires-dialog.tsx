@@ -134,7 +134,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
         </Button>
       </>}>
       <div className="space-y-5">
-        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={denoise !== HIRES_DENOISE_DEFAULT ? 1 : 0} />
+        <ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={denoise !== HIRES_DENOISE_DEFAULT ? [`重绘幅度：${denoise}`] : []} onRestore={() => { setDenoise(HIRES_DENOISE_DEFAULT); saveDraft({ denoise: HIRES_DENOISE_DEFAULT }); setPreview(null); }} />
         <div className="flex flex-col gap-4 sm:flex-row">
           <div className="w-full space-y-1.5 sm:max-w-[240px] sm:shrink-0">
             <span className="text-sm font-medium text-ink">原图</span>
@@ -164,9 +164,9 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
             {preview && <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted">
               <dt>原图尺寸</dt><dd className="text-ink">{preview.sourceWidth} × {preview.sourceHeight}</dd>
               <dt>预计输出</dt><dd className="text-ink">{preview.outputWidth} × {preview.outputHeight}</dd>
-              <dt>细化工作流</dt><dd className="break-words text-ink">{preview.workflowId} v{preview.workflowVersion}</dd>
+              {advanced && <><dt>细化工作流</dt><dd className="break-words text-ink">{preview.workflowId} v{preview.workflowVersion}</dd>
               <dt>引擎</dt><dd className="break-words text-ink">{preview.engineId}</dd>
-              <dt>seed</dt><dd className="text-ink">{preview.seed}</dd>
+              <dt>seed</dt><dd className="text-ink">{preview.seed}</dd></>}
             </dl>}
           </div>
         </div>

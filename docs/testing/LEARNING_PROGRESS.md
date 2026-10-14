@@ -1,6 +1,6 @@
 # 测试学习进度
 
-更新时间：2026-10-07（Asia/Shanghai）
+更新时间：2026-10-13（Asia/Shanghai）
 
 ## 学习约定
 
@@ -8,7 +8,7 @@
 - 默认目标：能为 SthStart 设计、编写、排查和维护测试；岗位能力与 AI 专项可以后续调整。
 - 学习者负责设计用例和写代码。助手负责解释思路、审阅、逐级提示和维护本文件。
 - 测试代码使用 Python，在 VS Code 中编写；项目业务代码保持 TypeScript。首期使用 pytest 与 httpx，后续按需加入 Playwright Python、异步和 MCP 测试工具。
-- 每次只推进一个小任务。先讨论要验证什么，再写测试；不提前把练习全部代写。
+- 按完整模块安排练习：一次给出足够完整的范围和验收项，学习者集中编写；助手审阅、运行并分步解释失败，不预先代写整套测试。
 - 2026-10-07 起采用实战驱动：直接给项目代码、测试目标与运行方式，由学习者编写测试；基础概念和测试分层在代码审阅时穿插，不要求逐题完成概念问答。
 - 卡住时先指出思考方向，再给局部提示；学习者要求或仍无法完成时再讲参考答案。
 - 不以阅读教程、复制答案或运行现有测试作为“已掌握”的证据。
@@ -24,19 +24,21 @@
 
 提示程度记录：无提示、方向提示、局部提示、参考答案。依赖参考答案完成后，安排一次独立练习再判断掌握情况。
 
-知识地图的内容是主题范围。具体题目在学习该主题时设计，不预先堆积完整课程或解决方案。
+长线阶段见 `LEARNING_ROADMAP.md`。每个模块提前给出完整目标和验收范围；代码由学习者实现，参考答案按需提供。
+
+Story 垂直实践的完整任务说明见 [STORY_VERTICAL_TESTING_GUIDE.md](STORY_VERTICAL_TESTING_GUIDE.md)，覆盖 API 收尾、浏览器、MCP、串联流程与单个 Skill 观察。
 
 ## 当前位置
 
 | 项目 | 当前情况 |
 | --- | --- |
-| 当前主题 | T04、T10：使用 Python 编写和运行项目 HTTP 接口测试 |
-| 当前任务 | PY02：建立公共 HTTP fixture，测试剧情接口权限、保存、输入校验和版本冲突 |
-| 当前阶段 | PY01 的断言与 URL 已修正；用户要求连续实战任务，已安排 PY02，尚未提交新测试 |
+| 当前主题 | T04、T10：使用 Python 编写接口测试、验证状态变化；准备进入跨层纵向实践 |
+| 当前任务 | PY02-BATCH-01：收尾 Story 提案 API 状态流，补 stale 冲突；随后进入 PY03 小型纵向实践 |
+| 当前阶段 | 先前 API/权限/提案已有通过记录；2026-10-13 Story 测试已移入 tests/python/story/，当前提案 collect-only 收集 1 项，最新业务测试和全套本次未执行 |
 | 已掌握主题 | 尚未认定；跳过概念问答不等同于已掌握，后续以代码与解释验证 |
-| 学习者最近提交 | tests/python/test_health.py 与 pytest 输出：1 passed，0.15s；Python 3.11.15，pytest 9.1.1 |
-| 当前卡点 | 暂无新卡点；PY01 修正后的运行与故意失败输出尚未提交 |
-| 下一步 | 学习者完成 PY02 公共 fixture 与权限用例后可先提交审阅，随后继续保存、校验与冲突；测试仅写入独立数据库 |
+| 学习者最近提交 | 已新增 helpers/story_data.py、helpers/story_api.py 与 story_project fixture；提案代码已补 rejected 状态和 story_proposal_decided 错误码 |
+| 当前卡点 | 补 accepted 状态、失败后章节 revision/提案状态，拆分独立用例，完成基于 N 与 N+1 的 story_proposal_stale 场景 |
+| 下一步 | 按 STORY_VERTICAL_TESTING_GUIDE.md 阶段 A 收尾；随后实现阶段 B 的门户 fixture 和 Python 浏览器保存/刷新用例 |
 
 ### PY01：Python 接口测试环境与首个实战
 
@@ -45,6 +47,8 @@
 - 使用 pytest 运行测试、httpx 发起同步 HTTP 请求；当前不需要异步插件和浏览器依赖。
 - 接口：`GET /api/v1/health`，默认服务地址 `http://127.0.0.1:4100`，实际端口以服务启动输出为准。
 - 本次实际环境：`.env.local` 的 `STHSTART_SERVICE_URL` 为 `http://127.0.0.1:4102`；助手检查到 4102 正在监听，并只读请求健康接口得到 `status=ok`、`service=sthstart-service`。默认 4100 不适用于本次运行。
+- 地址配置区别（2026-10-10 核对）：当前 `.env` 设置门户宿主端口 `PORTAL_PORT=9320`，没有 `SERVICE_PORT`；直接启动后端时，`start.ts` 只加载根 `.env`，`readConfig` 默认监听 4100。`.env.local` 中的 `STHSTART_SERVICE_URL=4102` 是门户代理的后端目标，项目注释说明这是本地另一个后端实例，并非 `SERVICE_PORT`。Docker Compose 中服务监听容器内 4100，只向宿主发布门户端口 9320。当前检查时 4100/4102/4103/4173/4175 均无监听。
+- `STHSTART_TEST_BASE_URL` 与 `STHSTART_TEST_ADMIN_TOKEN` 是学习测试自行定义的配置名，项目运行时不会自动设置。它们须在运行 pytest 的 PowerShell 进程中设置；需对权限和写入场景测试时，指向独立临时数据库的 4103 实例，不复用日常项目数据。
 - 检查 HTTP 状态码 200、JSON 中 `status` 为 `ok`、`service` 为 `sthstart-service`；请求设明确超时。
 - 运行：在根目录用虚拟环境 Python 执行 `-m pytest tests/python/test_health.py -v`。
 - 下一项：在独立测试环境验证草稿保存与重新读取；不对现有创作数据做练习写入。
@@ -59,6 +63,8 @@
 练习文件由学习者创建：`tests/python/conftest.py`、`tests/python/test_story_api.py`；现有 `test_health.py` 改为使用公共 client。
 
 准备独立服务（在根目录的专用 PowerShell 终端，不修改 .env）：
+
+> 这段手动启动方式现在由 PY02-A 自动化练习取代，暂时不用再手动打开服务终端。
 
 ```powershell
 $practiceRoot = Join-Path (Get-Location) ('data/testing/python-' + [guid]::NewGuid().ToString('N'))
@@ -94,6 +100,23 @@ $env:STHSTART_TEST_ADMIN_TOKEN = 'python-learning-only-token-20261007'
 验收：每个测试能单独运行，全部连续运行两次成功；不共享前一个测试创建的 id，不写死 revision，不只检查 PUT 返回的正文。报告故意失败和恢复成功各一次；当前尚无 PY02 实际运行证据。
 
 资料：pytest fixtures https://docs.pytest.org/en/stable/how-to/fixtures.html；HTTPX clients https://www.python-httpx.org/advanced/clients/。暂不引入异步插件、模型调用、MCP 或浏览器测试。
+
+### PY02-A：pytest 自动管理 API 测试服务
+
+目标：运行 pytest 时自动启动 SthStart Node 服务、使用隔离的 SQLite/媒体/日志目录和测试管理员令牌、等健康接口可访问，测试结束后关闭服务；不要求学习者手工维护两个终端。
+
+实现放在 `tests/python/conftest.py`，学习者编写，不预置完整代码：
+
+1. 新增 session 级 `api_service` fixture。使用 `tmp_path_factory.mktemp(...)` 建一个临时数据目录；Python 标准库 `socket` 绑定本机端口 0 读取空闲端口后关闭 socket。
+2. 使用 `subprocess.Popen` 从项目根目录运行 `node --import tsx/esm apps/service/src/start.ts`。环境基于 `os.environ.copy()`，覆盖 SERVICE_HOST/PORT、STHSTART_ADMIN_TOKEN、主/叙事数据库路径、artifact 和 log 路径。测试令牌由 conftest 定义一个专用常量；不要复用 .env 中的管理令牌。标准输出和错误写入临时日志文件，异常时可查看。
+3. 在有限时长（例如 30 秒）内轮询 `/api/v1/health`，每轮前检查 `process.poll()` 是否已退出；仅健康响应 200 后 yield 服务 URL。短超时的连接失败属于启动过程，期限耗尽时抛出含日志尾部的清晰错误。
+4. 将服务启动、等待与 yield 放在 try/finally 生命周期内；finally 调用 terminate、wait，超时后 kill 并再次 wait。这样断言失败也会关闭服务。
+5. 把 `base_url` fixture 改为依赖 `api_service` 并返回其 URL；`admin_headers` 用同一个测试常量生成请求头；现有 `client` 保持 function scope 与 with/yield。
+6. 删除 pytest 对手工设置 `STHSTART_TEST_BASE_URL` 的依赖。先只运行 health 与三个权限测试；通过后再运行保存用例。每次测试会话使用新的临时数据库。
+
+首次实现验收：只运行 pytest 命令就会启动服务；健康与三项权限检查通过；服务终端无需手动打开；pytest 结束后子进程已退出；SQLite 文件位于 pytest 临时目录；故意让断言失败后也能确认子进程清理。
+
+下一步提交要求：先写 `api_service` fixture 的进程启动与清理骨架，不需要一次实现日志细节；提供代码后再逐步补充健康等待、错误诊断和测试运行。不要由助手代写该 fixture。
 
 ### P01：草稿保存失败与恢复（历史安排，已暂停）
 
@@ -241,6 +264,27 @@ node --import tsx/esm --test tests/learning/draft-save.practice.test.ts
 | 2026-10-07 | PY01 首次代码审阅 | 学习者提交 test_health.py 与 1 passed 输出；请求设置了超时，但没有有效断言，JSON 字段被赋值 | 局部提示：assert 与比较/赋值区别 | 环境跑通；需修正断言并验证错误预期能触发失败，再进入保存实战 |
 | 2026-10-07 | PY01 地址排查 | 助手再次读取代码确认三个 assert 已修正；检查 .env.local、监听端口并请求 4102 健康接口，确认实际后端地址 | 配置与运行证据说明 | 学习者自行修正 URL 后重新运行；尚无修正后的 pytest 结果和故意失败证据 |
 | 2026-10-07 | PY01 修正 / PY02 安排 | 学习者确认修改地址，助手读取文件确认 4102 URL 和三个 assert；学习者要求更长的连续练习 | 环境与接口规格、分阶段练习说明 | 安排独立服务、公共 fixture、权限、保存、输入校验与版本冲突；尚未认定掌握，等待代码与运行证据 |
+| 2026-10-07 | PY02 fixtures 与权限初稿审阅 | 学习者提交三个 Python 文件；client 生命周期和依赖正确；助手仅运行 collect-only，收集到 3 项，两个 test_wrong_token 重名导致错误令牌用例被覆盖 | 局部提示：请求头字典、json()、唯一命名、状态码与类型断言 | 需修正后收集到 4 项，再运行真实接口测试；本次未发 HTTP 请求，也未修改学习者测试代码 |
+| 2026-10-07 | PY02 权限测试修正 | 学习者修正请求头、json()、函数命名、状态码和列表类型断言；助手读取文件核对并仅收集到 4 项 | 依据上次局部提示自行修正 | 代码审阅通过，等待真实接口运行输出；未把收集成功等同于测试通过 |
+| 2026-10-07 | PY02 保存链路初稿 | 学习者自行编写创建项目/章节、更新和重新读取，f-string 与项目响应 id 正确；助手仅收集到 5 项 | 局部提示：json()、PUT 授权、expectedRevision、按 id 读回验证 | 待修正并实际运行；不修改学习者代码，不将收集成功作为接口通过证据 |
+| 2026-10-10 | PY02 环境变量错误 | 学习者提交 pytest 输出：4 个测试均在 base_url fixture 中因缺少 STHSTART_TEST_BASE_URL 报 KeyError；未进入测试函数或发送 HTTP。当前工具上下文也未发现 4103 监听 | 环境变量进程作用域说明 | 先启动独立后端，再在 pytest 所在 PowerShell 设置 URL 与匹配令牌；之后继续修正保存用例 |
+| 2026-10-10 | 项目与测试地址配置澄清 | 核对 start.ts、readConfig、Vite、BFF route、.env、.env.local 与 docker-compose：PORTAL_PORT 是门户入口；SERVICE_PORT 是服务监听；STHSTART_SERVICE_URL 是门户代理目标；STHSTART_TEST_BASE_URL 是测试自定义变量 | 配置流说明，并更正早先将代理目标说成服务监听端口的表述 | 接口测试固定指向专用 4103 后端与临时数据库；当前尚未启动该实例 |
+| 2026-10-10 | PY02-A 自动化方向 | 学习者要求亲自实现服务启动自动化；说明手动双终端只是初次接通方式，pytest fixture 可统一启动、等待、清理服务 | 设计选择与阶段任务 | 改为 session 级服务 fixture、动态端口、tmp_path_factory 隔离、健康就绪和进程清理；等待学习者提交代码 |
+| 2026-10-10 | PY02-A fixture 骨架审阅 | 学习者创建 api_service 开头、临时目录和 socket；发现 `getpeername()` 误用、项目根变量拼写错、环境字典为空、尚未启动子进程，原 base_url/admin_headers 仍读取环境变量 | 局部提示：`getsockname()`、环境字典用途与 Popen 参数 | 未运行；先完成服务启动/清理骨架，再加入健康就绪检查 |
+| 2026-10-10 | PY02-A 子进程骨架二次审阅 | 学习者已正确设置临时目录、动态端口、环境映射、Popen 和 finally 清理；发现嵌套的 test_health 未调用、健康路径写错、令牌不足32字符，且服务 fixture 未被 base_url 使用 | 局部实现提示：健康轮询、fixture 依赖链和 token 最小长度 | 未运行；补健康轮询并连上 base_url/admin_headers 后再试运行 |
+| 2026-10-10 | PY02-A 健康等待与 fixture 接线审阅 | 学习者改正健康路径、补充超时重试和足够长的测试令牌；发现 `run` 含 yield 导致生成器、`run` 变量遮蔽函数、port 未传入，base_url 仍直接调用 fixture | 局部提示：普通函数 return 与 fixture yield、fixture 参数注入 | 未运行；先改正 fixture 接线，再检查启动失败时的 cleanup，并补充保存用例断言 |
+| 2026-10-10 | PY02-A 参考答案 | 按学习者请求提供完整的服务 fixture 与项目/章节创建、保存、读回参考实现；学习者尚未自行复写或运行 | 完整参考答案（本次提示级别最高） | 学习者自行输入并运行；下一步根据实际 pytest 输出定位问题，再用新的练习确认理解 |
+| 2026-10-10 | PY02-A 首次运行诊断 | 实际运行 `test_story_api.py`：3 passed、1 failed；失败发生在 PUT 保存，接口返回 401 unauthorized。已确认 PUT 缺少管理员请求头；同时代码把契约字段 `expectedRevision` 写成 `extensions`，该问题尚未执行到 | 依据 pytest 实际失败位置解释，并指出下一处待修正字段 | 学习者自行给 PUT 补 `admin_headers` 并改为 `expectedRevision`，再重跑该测试；按下一次实际结果继续分析 |
+| 2026-10-11 | PY02-A 保存流程验证完成 | 学习者修正 PUT 请求头和 `expectedRevision`；`tests/python` 全套 5 项通过 | 学习者根据失败报告自行修改并回归 | 进入 PY02-B：编写过期版本冲突测试，验证 409、错误码及数据未被覆盖；先单测，再运行全套 |
+| 2026-10-11 | PY02-B 版本冲突用例首次运行 | 过期版本 PUT 已正确返回 409；断言将整个 JSON 响应正文与纯错误码字符串比较，导致失败。测试还未重新 GET 验证内容未被覆盖 | 指出 `.json()["error"]` 应取结构化字段；补齐冲突后的状态断言 | 学习者自行修正错误码断言，并增加 GET 后核对成功版本正文与 revision；再运行单测和全套 |
+| 2026-10-11 | PY02-B 读回路由诊断 | 错误码断言已通过；读回请求使用未注册的 `/documents/{id}` GET，实际返回 404。剧情 API 仅注册 `/documents` 列表 GET、POST 和 `/documents/:id` PUT | 对照实际路由指出列表查询和按 id 过滤方式 | 学习者将读回改为 GET `/documents`，按文档 id 找到条目并断言正文与 revision 未变化；之后重跑本用例和全套 |
+| 2026-10-11 | PY02-B 版本冲突测试完成 | 冲突用例单独运行通过；Python 全套 6 项通过。已验证 409/错误码，且失败写入后正文与 revision 维持最新成功版本 | 学习者完成列表读取和 id 过滤；助手运行定向与全量测试 | 进入 PY02-C：测试文档标题边界校验，并验证无效更新不会改变已有文档 |
+| 2026-10-11 | PY02-C 空标题校验完成 | 学习者新增空字符串标题更新用例；验证 400 后标题、正文、revision 均未改变；Python 全套 7 项通过 | 学习者实现并运行，助手核对用例和全量结果 | 进入 PY02-D：用 pytest 参数化验证文档标题 120 字符可接受、121 字符被拒绝 |
+| 2026-10-11 | 学习者请求扩展为长线集中练习 | 学习者希望一次拿到更多内容并集中编写；已整理 Python API、浏览器、MCP、Skill 评估及 CI 路线，并把当前后端模块扩展为完整故事 API 回归练习 | 长线路线与 PY02-BATCH-01 任务规格已保存至 `docs/testing/LEARNING_ROADMAP.md` | 学习者按 A-C 编写边界/权限/隔离/提案测试，再完成 D 修订历史；助手按提交与运行结果审阅 |
+| 2026-10-12 | 学习范围收窄为代表性纵向实践 | 学习者希望先完成提案部分，再用“小而全”的方式进入浏览器、MCP 等后续阶段，不要求覆盖项目全部功能；已核对 Story 模块及现有 `tests/e2e/learning-story.spec.ts` | 对照仓库已有跨浏览器、API、MCP 和作者审阅流程，更新 `LEARNING_ROADMAP.md` | 先补提案状态与 stale 冲突；之后用 Python 重现一条 Story 保存→MCP 读取/提案→作者决定的代表流程，其他边界和模块暂缓 |
+| 2026-10-13 | 完整纵向实践指南 | 按学习者请求创建 STORY_VERTICAL_TESTING_GUIDE.md；核对当前 story/ 与 helpers/ 目录、管理员/原生 MCP 两种提案接口、门户配置、页面定位和官方 Python 工具文档；当前提案仅 collect-only 1 项成功 | 阶段任务、局部语法和请求数据提示；未代写测试代码 | 从指南阶段 A 完善提案状态与 stale，再按 B→C→D→E 学习浏览器、MCP、串联与单场景 Skill 观察；本次没有认定新主题已掌握 |
+| 2026-10-13 | 后续章节详细教程 | 按学习者要求扩充指南第 8—12 章，补 MCP 异步连接/结果解析、共享 fixture 可见性、综合流程原生 confirm、Skill 实验与评分、报告排错和交付清单 | 解释与局部示例；业务测试仍由学习者编写 | 校验文档示例和链接，不执行真实模型或后续业务用例；当前学习任务仍为阶段 A 收尾 |
+| 2026-10-13 | 全章节 Python 知识讲解 | 按学习者要求补充指南第 13 章，依次解释第 1—12 章使用的 Python 基础与进阶语法：断言、数据结构、解释器/导入、fixture 生命周期、HTTPX、参数化、Playwright、async/await、同步异步边界、哈希/报告和排错 | 按概念拆解语法并说明使用场景，代码保留为局部示例；未代写完整测试 | 校验 Python 示例、JSON 示例和本地链接；学习状态不变，仍从阶段 A 收尾开始 |
 
 后续每条记录保存：主题或练习编号、学习者设计或代码位置、实际运行结果（若有）、理解与卡点、提示程度、下一步。
 

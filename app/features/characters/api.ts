@@ -134,7 +134,8 @@ export async function uploadCharacterAsset(
   id: string,
   file: File,
   kind: 'avatar' | 'portrait' | 'reference' = 'avatar',
-  setAsActive = true
+  setAsActive = true,
+  extra?: { category?: string; title?: string; tags?: string[] }
 ): Promise<Record<string, unknown>> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -144,7 +145,7 @@ export async function uploadCharacterAsset(
   });
   return postJson(
     `characters/${id}/assets`,
-    { dataUrl, filename: file.name, kind, setAsActive },
+    { dataUrl, filename: file.name, kind, setAsActive, ...extra },
     undefined,
     CharacterAssetResponseSchema
   );
@@ -152,6 +153,22 @@ export async function uploadCharacterAsset(
 
 export async function fetchCharacterAssets(id: string): Promise<CharacterAssetListResponse> {
   return getJson<CharacterAssetListResponse>(`characters/${id}/assets`, undefined, CharacterAssetListResponseSchema);
+}
+
+export async function updateCharacterAsset(
+  characterId: string,
+  assetId: string,
+  payload: import('@sthstart/contracts').UpdateCharacterAssetRequest
+): Promise<{ ok: boolean; id: string }> {
+  const { patchJson } = await import('@/app/lib/api-client');
+  return patchJson(`characters/${characterId}/assets/${assetId}`, payload);
+}
+
+export async function deleteCharacterAsset(
+  characterId: string,
+  assetId: string
+): Promise<{ ok: boolean; id: string }> {
+  return deleteJson(`characters/${characterId}/assets/${assetId}`);
 }
 
 export async function previewCharacterOfficialAssets(id: string): Promise<CharacterPreviewOfficialAssetsResponse> {
@@ -170,6 +187,83 @@ export async function setCharacterActiveAsset(
   payload: CharacterSetActiveAssetRequest
 ): Promise<CharacterProfile> {
   return putJson<CharacterProfile>(`characters/${id}/set-active-asset`, payload, undefined, CharacterProfileSchema);
+}
+
+// ── 多角色公共资产库 API ──
+
+export async function fetchSharedAssets(query?: {
+  category?: string;
+  characterId?: string;
+  tag?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<import('@sthstart/contracts').SharedAssetListResponse> {
+  const params = new URLSearchParams();
+  if (query?.category) params.set('category', query.category);
+  if (query?.characterId) params.set('characterId', query.characterId);
+  if (query?.tag) params.set('tag', query.tag);
+  if (query?.search) params.set('search', query.search);
+  if (query?.limit) params.set('limit', String(query.limit));
+  if (query?.offset) params.set('offset', String(query.offset));
+  const qs = params.toString();
+  return getJson(`shared-assets${qs ? `?${qs}` : ''}`);
+}
+
+export async function createSharedAsset(
+  payload: import('@sthstart/contracts').CreateSharedAssetRequest
+): Promise<import('@sthstart/contracts').SharedAssetItem> {
+  return postJson('shared-assets', payload);
+}
+
+export async function updateSharedAsset(
+  id: string,
+  payload: import('@sthstart/contracts').UpdateSharedAssetRequest
+): Promise<{ ok: boolean; id: string }> {
+  const { patchJson } = await import('@/app/lib/api-client');
+  return patchJson(`shared-assets/${id}`, payload);
+}
+
+export async function deleteSharedAsset(id: string): Promise<{ ok: boolean; id: string }> {
+  return deleteJson(`shared-assets/${id}`);
+}
+
+// ── 邻舍数据互通网桥 API ──
+
+export async function fetchLinsheBridgeStatus(): Promise<import('@sthstart/contracts').LinsheBridgeStatus> {
+  return getJson('linshe-bridge/status');
+}
+
+export async function syncCharacterWithLinshe(payload: {
+  characterId: string;
+  action: 'push_to_linshe' | 'pull_from_linshe';
+  force?: boolean;
+}): Promise<import('@sthstart/contracts').LinsheBridgeSyncResult> {
+  return postJson('linshe-bridge/sync-character', payload);
+}
+
+export async function fetchLinsheGallery(params?: {
+  folder?: string;
+  character?: string;
+}): Promise<{ images: any[] }> {
+  const qs = new URLSearchParams();
+  if (params?.folder) qs.set('folder', params.folder);
+  if (params?.character) qs.set('character', params.character);
+  const qStr = qs.toString();
+  return getJson(`linshe-bridge/gallery${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function importLinsheGalleryImage(payload: {
+  imageUrl: string;
+  target: 'character' | 'shared';
+  characterId?: string;
+  characterIds?: string[];
+  category?: string;
+  title?: string;
+  tags?: string[];
+  setAsActive?: 'avatar' | 'portrait';
+}): Promise<{ ok: boolean; id: string; url: string; title: string }> {
+  return postJson('linshe-bridge/import-gallery-image', payload);
 }
 
 export async function uploadCharacterReference(id: string, file: File, purposes = ['identity']): Promise<{ id: string; url: string; reference?: Record<string, unknown> }> {

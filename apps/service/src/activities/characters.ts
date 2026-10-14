@@ -7,6 +7,7 @@ import { nowIso } from '../database.js';
 import { createArtifactReference, streamUploadArtifact } from '../artifacts.js';
 import { normalizeCharacterDraft } from '../characters/draft.js';
 import { normalizeCharacterAppearance, projectCharacterPersona } from '../characters/persona-compiler.js';
+import { buildCharacterVisualContext } from '@sthstart/contracts';
 
 export function listAvailableCharacters(database: ServiceDatabase): {
   id: string;
@@ -79,9 +80,7 @@ export function createActorSnapshotFromCharacter(
   const chosenPortrait = overrides.portraitAssetId || profile.portrait_asset_id;
   const portraitAssetId = chosenPortrait ? String(chosenPortrait) : undefined;
   const projected = projectCharacterPersona(draft);
-  const selectedOutfit = appearance.defaultOutfitId && appearance.outfits.includes(appearance.defaultOutfitId)
-    ? appearance.defaultOutfitId
-    : appearance.outfits[0] || '';
+  const selectedOutfit = buildCharacterVisualContext(draft).outfitText;
   return {
     id: actorId,
     sourceCharacterId: String(profile.id),
@@ -97,7 +96,7 @@ export function createActorSnapshotFromCharacter(
     ...(portraitAssetId ? { portraitAssetId } : {}),
     ...(portraitAssetId ? { portraitUrl: `/api/admin/characters/assets/${portraitAssetId}` } : {}),
     activityRole: overrides.activityRole?.trim() || '活动参与者',
-    outfitDescription: overrides.outfitDescription?.trim() || selectedOutfit,
+    outfitDescription: overrides.outfitDescription !== undefined ? overrides.outfitDescription.trim() : selectedOutfit,
     appearanceReferenceAssetKeys: [],
     appearanceReferenceAssetIds: orderedReferenceAssetIds,
   };

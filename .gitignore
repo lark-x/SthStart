@@ -25,6 +25,9 @@ __pycache__/
 .DS_Store
 *.pem
 pelican-bike-animation.html
+pelican_bike.html
+_CONTEXT_COMPRESSION.md
+/.dsh-tmp/
 
 # debug
 npm-debug.log*

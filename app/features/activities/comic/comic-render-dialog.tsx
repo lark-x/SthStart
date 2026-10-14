@@ -10,6 +10,7 @@ import { useCreateComicPanelRender, usePreviewComicPanelRender } from '../mutati
 import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
 import { ImagePromptOverride } from '@/app/features/generation/components/image-prompt-override';
 import { StructuredDirectorControls, VisualParameterFields } from '../components/visual-settings-controls';
+import { visualProfessionalChanges, restoreVisualProfessionalDefaults } from '@/app/features/generation/image-settings';
 
 interface ComicRenderDialogProps {
   open: boolean;
@@ -46,7 +47,7 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
   const [busy, setBusy] = useState(false);
   const attemptStorageKey = `sthstart:comic-render-attempt:${activityId}:${panel.id}`;
   const [error, setError] = useState<string | null>(null);
-  const [seed, setSeed] = useState<number>(settings.parameters?.seed as number | undefined ?? Math.floor(Math.random() * 2_147_483_647));
+  const [seed, setSeed] = useState<number>(() => settings.parameters?.seed as number | undefined ?? Math.floor(Math.random() * 2_147_483_647));
 
   const renderOptions = useMemo<RenderOption[]>(() => {
     const data = optionsQuery.data;
@@ -74,7 +75,11 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
     && (settings.presetId ? option.presetId === settings.presetId : !option.presetId)) ?? null;
 
   useEffect(() => {
-    if (!open) { setPreview(null); setError(null); return; }
+    if (!open) {
+      // The overlay lifecycle clears remote preview state; form content stays in the draft.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPreview(null); setError(null); return;
+    }
     try {
       const stored = sessionStorage.getItem(attemptStorageKey);
       if (stored) {
@@ -121,6 +126,8 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
   useEffect(() => {
     if (!open) { previewSequence.current++; return; }
     const timer = setTimeout(() => void runPreview(), 300);
+    // Superseded requests must not update another panel's preview.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { clearTimeout(timer); previewSequence.current++; };
   // Refresh inherited field values only when selection changes, not on every parameter keystroke.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,12 +184,12 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
   const content = (
     <div className="space-y-4">
       <fieldset disabled={busy} className="min-w-0 space-y-4">
-      <ImageModeSwitch advanced={advanced} onChange={setAdvanced} modifiedCount={Object.keys(settings.parameters ?? {}).length + (settings.finalPositivePrompt !== undefined ? 1 : 0)} />
+      <ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={visualProfessionalChanges(settings, fields)} onRestore={() => { onSettingsChange(restoreVisualProfessionalDefaults(settings)); submitAttempt.current = null; setPreview(null); setPromptContext(null); try { sessionStorage.removeItem(attemptStorageKey); } catch { /* optional storage */ } }} />
       <ImagePromptOverride advanced={advanced} finalPositivePrompt={settings.finalPositivePrompt} promptOptimization={settings.promptOptimization}
         effectiveAI={promptPreview?.promptOptimization?.enabled ?? true} finalSupported={promptPreview?.promptAssembly === 'service-finalized-v1'} sourcePrompt={promptPreview?.positivePrompt ?? ''}
         disabled={busy} onChange={updateSettings} />
-      <label className={labelClass}>品质覆盖<select className={controlClass} value={settings.quality ?? ''} onChange={event => updateSettings({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>
-      <label className={labelClass}>绘制预设
+      {!settings.presetId && !settings.workflowId && <label className={labelClass}>生成档位<select className={controlClass} value={settings.quality ?? ''} onChange={event => updateSettings({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>}
+      <label className={labelClass}>生成方案
         <select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}>
           <option value="">跟随活动默认配置</option>{renderOptions.filter((option) => option.presetId || option.key === selectedOption?.key).map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
         </select>
@@ -190,7 +197,11 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
       {optionsQuery.isLoading && <p className="text-xs text-muted">正在读取已发布的活动图片工作流…</p>}
       <label className={labelClass}>补充画面要求<textarea className={`${controlClass} min-h-20 resize-y`} maxLength={20_000} value={settings.customPrompt ?? ''}
         onChange={(event) => updateSettings({ customPrompt: event.target.value })} placeholder="例如：柔和的电影感逆光，保持角色服装细节。" /></label>
-      <div hidden={!advanced}><StructuredDirectorControls value={settings.director} includeShotSize={false} onChange={director => updateSettings({ director })} disabled={busy} /></div>
+      <StructuredDirectorControls value={settings.director} includeShotSize={false} onChange={director => updateSettings({ director })} disabled={busy} />
+      <label className={labelClass}>角色参考图<select className={controlClass} disabled={Boolean(preview && !preview.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={event => updateSettings({ referenceAssetKey: event.target.value || undefined })}>
+        <option value="">不使用参考图</option>{actorReferenceKeys.map(item => <option key={item.key} value={item.key}>{item.actorName}</option>)}</select>
+        {preview && !preview.referenceSupported && <span>此方案不支持参考图。</span>}
+      </label>
       <Link href="/settings/generation" target="_blank" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link>
       <details hidden={!advanced} className="rounded-[var(--radius-panel)] border border-border-default p-3" onToggle={(event) => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
         <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="mt-1 text-xs text-muted">可按画格关闭或调权。</p>
@@ -207,18 +218,14 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
         })}</div> : <p className="mt-2 text-xs text-muted">{previewMutation.isPending ? '正在读取 LoRA 配置…' : '本次未启用角色 LoRA。'}</p>}
       </details>
       <details hidden={!advanced} className="rounded-[var(--radius-panel)] border border-border-default p-3" onToggle={event => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
-        <summary className="cursor-pointer text-sm font-medium text-ink">高级设置：负向词、角色参考、种子与采样参数</summary>
+        <summary className="cursor-pointer text-sm font-medium text-ink">采样、尺寸与负面词</summary>
         <div className="mt-3 space-y-3">
           <label className={labelClass}>切换其他工作流<select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}><option value="">跟随活动默认配置</option>{renderOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
           <label className={labelClass}>反向提示词<textarea className={`${controlClass} min-h-16 resize-y`} maxLength={20_000} value={settings.negativePrompt ?? ''}
             onChange={(event) => updateSettings({ negativePrompt: event.target.value })} placeholder={settings.negativePrompt === undefined ? '继承活动与工作流负向词；输入后即为本画格覆盖' : '已覆盖；留空表示明确不使用负向词'} /></label>
           {settings.negativePrompt !== undefined && <Button size="sm" variant="ghost" onClick={() => updateSettings({ negativePrompt: undefined })}>恢复继承负向词</Button>}
-          <label className={labelClass}>角色参考图<select className={controlClass} disabled={Boolean(preview && !preview.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={(event) => updateSettings({ referenceAssetKey: event.target.value || undefined })}>
-            <option value="">不使用参考图</option>{actorReferenceKeys.map((item) => <option key={item.key} value={item.key}>{item.actorName} · {item.key}</option>)}
-          </select></label>
-          {preview && !preview.referenceSupported && <p className="text-xs text-muted">当前工作流未声明参考图输入能力：本画格<b>仅文字描述</b>，角色形象不会被锁定。</p>}
-          <label className={labelClass}>随机种子<input className={controlClass} type="number" min={0} max={2_147_483_647} step={1} value={seed}
-            onChange={(event) => { const next = Math.max(0, Math.min(2_147_483_647, Math.floor(Number(event.target.value) || 0))); setSeed(next); setPreview(null); }} /></label>
+          {!fields.some(field => field.type === 'seed' || field.key === 'seed') && <label className={labelClass}>随机种子<input className={controlClass} type="number" min={0} max={2_147_483_647} step={1} value={seed}
+            onChange={(event) => { const next = Math.max(0, Math.min(2_147_483_647, Math.floor(Number(event.target.value) || 0))); setSeed(next); updateSettings({ parameters: { ...settings.parameters, seed: next } }); }} /></label>}
           <VisualParameterFields key={`${panel.id}:${settings.workflowId ?? 'inherit'}:${settings.workflowVersion ?? ''}:${settings.quality ?? ''}`} recoveryKey={`sthstart:visual-input:comic:${activityId}:${panel.id}:${settings.workflowId ?? 'inherit'}:${settings.workflowVersion ?? ''}:${settings.quality ?? ''}`} fields={fields} values={settings.parameters ?? {}} onChange={parameters => updateSettings({ parameters })} onValidityChange={setParametersValid} disabled={busy} />
         </div>
       </details>

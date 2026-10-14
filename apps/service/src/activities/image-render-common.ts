@@ -151,6 +151,15 @@ export function readActivityLoraPolicy(database: ServiceDatabase, workflowId: st
 export function mergeActivityLoras(globalEntries: ActivityLora[], actorEntries: ActivityLora[], overrides: Array<{
   model: string; strength?: number; triggerWord?: string; enabled?: boolean;
 }>, options: { rejectActorConflicts?: boolean } = {}) {
+  const normalize = (item: ActivityLora): ActivityLora => {
+    const model = item.model.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    if (!model || model.startsWith('/') || /^[a-z]:/i.test(model) || model.split('/').includes('..'))
+      throw Object.assign(new Error('LoRA 必须使用模型目录下的相对文件名。'), { code: 'invalid_lora_model', statusCode: 400 });
+    return { ...item, model };
+  };
+  globalEntries = globalEntries.map(normalize);
+  actorEntries = actorEntries.map(normalize);
+  overrides = overrides.map(item => ({ ...item, model: normalize({ ...item, strength: item.strength ?? 1, triggerWord: item.triggerWord ?? '', enabled: item.enabled ?? true }).model }));
   const merged = new Map<string, ActivityLora & { source: 'global' | 'character' | 'shot'; available: boolean }>();
   const actorConfig = new Map<string, ActivityLora>();
   for (const item of globalEntries) merged.set(item.model, { ...item, source: 'global', available: false });

@@ -38,6 +38,7 @@ import {
 import { listCharacterLlmAssignments, resolveCharacterLlmProfile, setCharacterLlmAssignment } from './characters/model-assignments.js';
 import { buildAuditionPrompt, normalizeCharacterAppearance } from './characters/persona-compiler.js';
 import { buildCharacterVisualContext, previewAppearanceCandidateApplication, toCharacterRuntime } from '@sthstart/contracts';
+import { assertPreparedImageContext, buildImageContext } from './generation/image-context.js';
 import { matchOfficialAvatarUrl, previewCharacterMultiSourceAssets } from './characters/official-avatars.js';
 
 function hash(value: unknown) { return createHash('sha256').update(value instanceof Uint8Array || typeof value === 'string' ? value : JSON.stringify(value)).digest('hex'); }
@@ -870,6 +871,13 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const header = request.headers['idempotency-key'];
     try {
       const body = request.body ?? {};
+      const avatarConfiguration = resolveImageConfiguration(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision });
+      const preparedContext = body.preparationId
+        ? assertPreparedImageContext(database, 'characters', body.preparationId, body.contextHash, request.params.id, {
+          workflowId: avatarConfiguration.workflow.id, workflowVersion: avatarConfiguration.workflow.version,
+          configurationHash: avatarConfiguration.configuration.configurationHash })
+        : { loras: buildImageContext(database, { characters: [{ characterId: request.params.id }] }, resolveImageConfiguration(database,
+          { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }).workflow).loras };
       const audit = body.configurationHash || body.optimizerCallId
         ? imageGenerationAudit(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }, body.configurationHash, body.optimizerCallId, body.sourceDescription) : {};
       const avatarInputs = body.parameters ? mergeImageParameters(resolveImageConfiguration(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }), body.parameters) : { prompt };
@@ -877,7 +885,9 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
         appId: 'characters', purpose: 'character-avatar',
         inputs: { ...avatarInputs, characterId: request.params.id },
         presetId: body.presetId, presetRevision: body.presetRevision,
-        audit: { feature: 'character-avatar', ...audit },
+        activityLoras: preparedContext.loras,
+        audit: { feature: 'character-avatar', ...audit, ...(body.preparationId ? { parentId: body.preparationId } : {}),
+          visualConfiguration: { ...('visualConfiguration' in audit ? audit.visualConfiguration as Record<string, unknown> : {}), contextHash: body.contextHash ?? null, preparationId: body.preparationId ?? null } },
         seed, priority: 'interactive', idempotencyKey: typeof header === 'string' ? header : body.idempotencyKey ?? null,
       }, fetcher);
       return reply.code(202).send(task);
@@ -954,19 +964,31 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     return result.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
-  app.post<{ Params: { id: string }; Body: { dataUrl?: string; filename?: string; kind?: 'avatar' | 'portrait' | 'reference'; setAsActive?: boolean; purposes?: string[]; sourcePage?: string; originalUrl?: string; authorNote?: string; userNote?: string; outfitId?: string | null } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { dataUrl?: string; filename?: string; kind?: 'avatar' | 'portrait' | 'reference'; category?: string; title?: string; tags?: string[]; metadata?: Record<string, unknown>; setAsActive?: boolean; purposes?: string[]; sourcePage?: string; originalUrl?: string; authorNote?: string; userNote?: string; outfitId?: string | null } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
     if (!database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(request.params.id)) return reply.code(404).send({ error: 'not_found' });
     const match = request.body?.dataUrl?.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/); if (!match) return reply.code(400).send({ error: 'invalid_image' });
     const bytes = Buffer.from(match[2], 'base64'); if (bytes.length > 8 * 1024 * 1024) return reply.code(413).send({ error: 'image_too_large' });
     const id = randomUUID(); const now = nowIso(); const originalName = request.body.filename?.slice(0, 255) || `${id}.${match[1].split('/')[1].replace('jpeg', 'jpg')}`;
+    const rawCategory = request.body.category;
     const rawKind = request.body.kind;
-    const kind: 'avatar' | 'portrait' | 'reference' = rawKind === 'reference' ? 'reference' : rawKind === 'portrait' ? 'portrait' : 'avatar';
-    const artifact = await streamUploadArtifact(config, database, { appId: 'characters', stream: Readable.from([bytes]), contentType: match[1], originalName, refType: 'character-asset', refId: id, metadata: { characterId: request.params.id, kind } });
+    const category = rawCategory || (rawKind === 'avatar' ? 'avatar' : rawKind === 'portrait' ? 'portrait' : 'concept');
+    const kind: 'avatar' | 'portrait' | 'reference' = rawKind || (category === 'avatar' ? 'avatar' : category === 'portrait' ? 'portrait' : 'reference');
+    const title = request.body.title?.slice(0, 200) || originalName;
+    const tags = Array.isArray(request.body.tags) ? request.body.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean) : [];
+    const metadata = request.body.metadata && typeof request.body.metadata === 'object' ? request.body.metadata : {};
+    const artifact = await streamUploadArtifact(config, database, { appId: 'characters', stream: Readable.from([bytes]), contentType: match[1], originalName, refType: 'character-asset', refId: id, metadata: { characterId: request.params.id, kind, category } });
     const purposes = Array.isArray(request.body.purposes) ? [...new Set(request.body.purposes.filter((purpose): purpose is string => ['avatar', 'identity', 'outfit', 'pose', 'style', 'init_image'].includes(purpose)))].slice(0, 10) : (kind === 'reference' ? ['identity'] : [kind]);
     try {
       database.connection.prepare(`INSERT INTO character_assets
-        (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note)
-        VALUES (?,?,?,?,?,?,?,?,?)`).run(id, request.params.id, kind, now, artifact.id, request.body.sourcePage?.slice(0, 2_000) || null, request.body.originalUrl?.slice(0, 2_000) || null, request.body.authorNote?.slice(0, 4_000) || '', request.body.userNote?.slice(0, 4_000) || '');
+        (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note,category,title,tags_json,metadata_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+          id, request.params.id, kind, now, artifact.id,
+          request.body.sourcePage?.slice(0, 2_000) || null,
+          request.body.originalUrl?.slice(0, 2_000) || null,
+          request.body.authorNote?.slice(0, 4_000) || '',
+          request.body.userNote?.slice(0, 4_000) || '',
+          category, title, JSON.stringify(tags), JSON.stringify(metadata)
+        );
       if (kind === 'reference') {
         database.connection.prepare(`INSERT INTO character_visual_references
           (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)
@@ -975,36 +997,108 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     } catch (error) { throw error; }
     const setAsActive = request.body.setAsActive !== false;
     if (setAsActive) {
-      if (kind === 'avatar') {
+      if (kind === 'avatar' || category === 'avatar') {
         database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(id, now, request.params.id);
-      } else if (kind === 'portrait') {
+      } else if (kind === 'portrait' || category === 'portrait') {
         database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(id, now, request.params.id);
       }
     }
     const reference = kind === 'reference' ? visualReferenceRows(database, request.params.id).find((item) => item.assetId === id) : null;
-    return reply.code(201).send({ id, url: `/api/admin/characters/assets/${id}`, ...(reference ? { reference } : {}) });
+    return reply.code(201).send({ id, url: `/api/admin/characters/assets/${id}`, category, title, tags, metadata, ...(reference ? { reference } : {}) });
   });
 
   // 获取角色的资产列表（含当前生效的头像和立绘）
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
     const profile = database.connection.prepare('SELECT id, avatar_asset_id, portrait_asset_id FROM character_profiles WHERE id=?').get(request.params.id) as { id: string; avatar_asset_id: string | null; portrait_asset_id: string | null } | undefined;
     if (!profile) return reply.code(404).send({ error: 'not_found' });
-    const rows = database.connection.prepare('SELECT id, character_id, kind, created_at, source_url, author_note, user_note FROM character_assets WHERE character_id=? ORDER BY created_at DESC').all(request.params.id) as Record<string, unknown>[];
+    const rows = database.connection.prepare('SELECT id, character_id, kind, created_at, artifact_id, source_url, source_page, author_note, user_note, category, title, tags_json, metadata_json FROM character_assets WHERE character_id=? ORDER BY created_at DESC').all(request.params.id) as Record<string, unknown>[];
     return {
       characterId: profile.id,
       avatarAssetId: profile.avatar_asset_id ? String(profile.avatar_asset_id) : null,
       portraitAssetId: profile.portrait_asset_id ? String(profile.portrait_asset_id) : null,
-      items: rows.map((r) => ({
-        id: String(r.id),
-        characterId: String(r.character_id),
-        kind: String(r.kind) as 'avatar' | 'portrait' | 'reference',
-        url: `/api/admin/characters/assets/${r.id}`,
-        createdAt: String(r.created_at),
-        sourceUrl: r.source_url ? String(r.source_url) : null,
-        authorNote: r.author_note ? String(r.author_note) : undefined,
-        userNote: r.user_note ? String(r.user_note) : undefined,
-      })),
+      items: rows.map((r) => {
+        let tags: string[] = [];
+        try { tags = JSON.parse(String(r.tags_json || '[]')); } catch {}
+        let metadata: Record<string, unknown> = {};
+        try { metadata = JSON.parse(String(r.metadata_json || '{}')); } catch {}
+        return {
+          id: String(r.id),
+          characterId: String(r.character_id),
+          kind: String(r.kind) as 'avatar' | 'portrait' | 'reference',
+          category: (r.category ? String(r.category) : (r.kind === 'avatar' ? 'avatar' : r.kind === 'portrait' ? 'portrait' : 'other')) as any,
+          title: String(r.title || ''),
+          url: `/api/admin/characters/assets/${r.id}`,
+          artifactId: r.artifact_id ? String(r.artifact_id) : null,
+          tags,
+          metadata,
+          createdAt: String(r.created_at),
+          sourceUrl: r.source_url ? String(r.source_url) : null,
+          sourcePage: r.source_page ? String(r.source_page) : null,
+          authorNote: r.author_note ? String(r.author_note) : undefined,
+          userNote: r.user_note ? String(r.user_note) : undefined,
+        };
+      }),
     };
+  });
+
+  // 更新角色单项资产
+  app.patch<{ Params: { id: string; assetId: string }; Body: { title?: string; category?: string; tags?: string[]; metadata?: Record<string, unknown>; userNote?: string; authorNote?: string; setAsActive?: 'avatar' | 'portrait' | 'none' } }>('/api/v1/admin/characters/:id/assets/:assetId', async (request, reply) => {
+    const existing = database.connection.prepare('SELECT id, kind, category FROM character_assets WHERE id=? AND character_id=?').get(request.params.assetId, request.params.id) as { id: string; kind: string; category: string } | undefined;
+    if (!existing) return reply.code(404).send({ error: 'not_found' });
+    const now = nowIso();
+    const updates: string[] = [];
+    const values: any[] = [];
+    if (request.body?.title !== undefined) {
+      updates.push('title=?');
+      values.push(request.body.title.slice(0, 200));
+    }
+    if (request.body?.category !== undefined) {
+      updates.push('category=?');
+      values.push(request.body.category);
+    }
+    if (request.body?.tags !== undefined && Array.isArray(request.body.tags)) {
+      updates.push('tags_json=?');
+      values.push(JSON.stringify(request.body.tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean)));
+    }
+    if (request.body?.metadata !== undefined && typeof request.body.metadata === 'object') {
+      updates.push('metadata_json=?');
+      values.push(JSON.stringify(request.body.metadata));
+    }
+    if (request.body?.userNote !== undefined) {
+      updates.push('user_note=?');
+      values.push(request.body.userNote.slice(0, 4_000));
+    }
+    if (request.body?.authorNote !== undefined) {
+      updates.push('author_note=?');
+      values.push(request.body.authorNote.slice(0, 4_000));
+    }
+    if (updates.length > 0) {
+      values.push(existing.id);
+      database.connection.prepare(`UPDATE character_assets SET ${updates.join(', ')} WHERE id=?`).run(...values);
+    }
+    if (request.body?.setAsActive === 'avatar') {
+      database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?, updated_at=? WHERE id=?').run(existing.id, now, request.params.id);
+    } else if (request.body?.setAsActive === 'portrait') {
+      database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?, updated_at=? WHERE id=?').run(existing.id, now, request.params.id);
+    }
+    return { ok: true, id: existing.id };
+  });
+
+  // 删除角色单项资产
+  app.delete<{ Params: { id: string; assetId: string } }>('/api/v1/admin/characters/:id/assets/:assetId', async (request, reply) => {
+    const existing = database.connection.prepare('SELECT id, artifact_id FROM character_assets WHERE id=? AND character_id=?').get(request.params.assetId, request.params.id) as { id: string; artifact_id: string | null } | undefined;
+    if (!existing) return reply.code(404).send({ error: 'not_found' });
+    const now = nowIso();
+    database.transaction(() => {
+      database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=NULL, updated_at=? WHERE id=? AND avatar_asset_id=?').run(now, request.params.id, existing.id);
+      database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=NULL, updated_at=? WHERE id=? AND portrait_asset_id=?').run(now, request.params.id, existing.id);
+      database.connection.prepare('DELETE FROM character_visual_references WHERE asset_id=?').run(existing.id);
+      database.connection.prepare('DELETE FROM character_assets WHERE id=?').run(existing.id);
+      if (existing.artifact_id) {
+        removeArtifactReference(database, { artifactId: existing.artifact_id, appId: 'characters', refId: existing.id });
+      }
+    });
+    return { ok: true, id: existing.id };
   });
 
   // 外部图片反向代理（解决海外 Wiki / 外部 CDN 防盗链或网络问题）

@@ -13,6 +13,8 @@ import {
   type OptimizerVisualBlocks,
 } from './image-prompt-structured.js';
 import { bindStudioOptimizerCall, studioRenderAudit, type StudioRenderContext } from './studio-render-context.js';
+import { activityImageLore } from '../generation/image-context.js';
+import { retrieveHybridImageKnowledge } from '../generation/image-knowledge-index.js';
 
 export type ActivityImagePromptOptimization = {
   traceId: string;
@@ -133,6 +135,10 @@ export async function optimizeActivityImagePrompt(
   },
   fetcher: typeof fetch = fetch,
 ): Promise<ActivityImagePromptOptimization> {
+  if (input.policy.enabled) {
+    const lore = activityImageLore(database, input.activityId);
+    if (lore) input = { ...input, sourcePrompt: `${input.sourcePrompt}\n\n相关设定（仅使用本画面可见事实与约束）：\n${lore}` };
+  }
   const traceId = input.traceId ?? input.studioContext?.traceId ?? randomUUID();
   const policySnapshot = input.policy;
   const override = input.studioContext?.optimizerOverride;
@@ -287,6 +293,8 @@ export async function optimizeActivityImagePrompt(
     let structuredResult: ReturnType<typeof parseStructuredOptimization> | null = null;
     if (structuredMode) {
       try {
+        const hybrid = input.policy.knowledgeMode === 'hybrid'
+          ? await retrieveHybridImageKnowledge(database, secrets, input.sourcePrompt, 'standalone', fetcher) : undefined;
         structuredResult = parseStructuredOptimization({
           content,
           finishReason,
@@ -294,7 +302,10 @@ export async function optimizeActivityImagePrompt(
           knowledgeMode: input.policy.knowledgeMode,
           sourcePrompt: input.sourcePrompt,
           personCount: input.personCount ?? null,
+          scene: 'standalone',
+          retrieval: hybrid,
         });
+        if (hybrid?.degraded) structuredResult.warnings.push(`语义检索降级为关键词：${hybrid.degraded}`);
       } catch (error) {
         // 结构化失败必须使用计划 §19 的精确错误码，绝不落成通用“候选未生成完成”。
         if (error instanceof StructuredOptimizationError) {

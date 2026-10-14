@@ -1,4 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { Value } from '@sinclair/typebox/value';
+import { ManagedImageOptionsSchema, type ActivityLora } from '@sthstart/contracts';
+import { projectManagedImage } from './generation/managed-image.js';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -895,6 +898,14 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
 
     try {
       const body = safeJson(request.body);
+      let managedLoras: ActivityLora[] = [];
+      let managedInputs = safeJson(body.inputs);
+      if (body.managedImage !== undefined) {
+        if (identity.id !== 'linshe' || body.purpose !== 'linshe-chat-image' || !Value.Check(ManagedImageOptionsSchema, body.managedImage))
+          return reply.code(400).send({ error: 'invalid_managed_image', message: '公共图片选项不属于已授权用途。' });
+        const projected = projectManagedImage(database, identity.id, body.purpose, body.managedImage, managedInputs);
+        managedInputs = projected.inputs; managedLoras = projected.loras;
+      }
       const task = await createGenerationTask(
         config,
         database,
@@ -905,7 +916,8 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
           purpose: typeof body.purpose === 'string' ? body.purpose : null,
           workflowId: typeof body.workflowId === 'string' ? body.workflowId : null,
           workflowVersion: typeof body.workflowVersion === 'number' ? body.workflowVersion : null,
-          inputs: safeJson(body.inputs),
+          inputs: managedInputs,
+          activityLoras: managedLoras,
           inputArtifacts: Array.isArray(body.inputArtifacts) ? body.inputArtifacts : [],
           seed: typeof body.seed === 'number' ? body.seed : null,
           priority: body.priority === 'interactive' || body.priority === 'background' ? body.priority : 'normal',
@@ -918,6 +930,11 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
       const safeMsg = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
 
       const KNOWN_CODES: Record<string, number> = {
+        managed_image_input_unsupported: 409,
+        managed_image_input_conflict: 409,
+        managed_image_lora_unsupported: 409,
+        invalid_managed_image: 400,
+        invalid_lora_model: 400,
         idempotency_conflict: 409,
         workflow_assignment_managed: 400,
         generation_assignment_not_found: 404,
