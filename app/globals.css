@@ -60,7 +60,7 @@
 }
 
 
-/* ---------- 邻舍嵌入页动作按钮 ---------- */
+/* ---------- 邻舍与全局行动按钮 (Linear 级微渐变与高精光泽) ---------- */
 .primary-action,
 a.primary-action,
 button.primary-action {
@@ -68,21 +68,39 @@ button.primary-action {
   min-height: var(--control-h-sm);
   align-items: center;
   justify-content: center;
-  padding: 0 14px;
+  padding: 0 16px;
   border-radius: var(--radius-control);
-  background-color: var(--accent);
-  color: var(--fg-on-accent);
-  /* 计划 §11.3：常用控件文字不低于 14px。 */
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  border: 1px solid #92400e;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(180, 83, 9, 0.3),
+    0 4px 14px rgba(180, 83, 9, 0.22);
+  color: #ffffff;
   font-size: 14px;
   font-weight: 600;
-  transition: background var(--motion-fast) var(--motion-ease);
+  letter-spacing: -0.01em;
+  transition: all var(--motion-fast) var(--motion-ease);
   cursor: pointer;
 }
 
 .primary-action:hover,
 a.primary-action:hover,
 button.primary-action:hover {
-  background-color: var(--accent-dark);
+  background: linear-gradient(180deg, #ea8a16 0%, #b45309 100%);
+  border-color: #78350f;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 2px 4px rgba(180, 83, 9, 0.35),
+    0 8px 24px rgba(180, 83, 9, 0.35);
+  transform: translateY(-1.5px);
+}
+
+.primary-action:active,
+a.primary-action:active,
+button.primary-action:active {
+  transform: translateY(0.5px) scale(0.985);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
 .safe-area-bottom {
