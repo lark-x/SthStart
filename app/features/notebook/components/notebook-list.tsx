@@ -243,7 +243,7 @@ export function NotebookList() {
                       <time>{formatDate(note.updatedAt)}</time>
                     </div>
 
-                    <h4 className="font-serif text-xl font-semibold text-ink group-hover:text-accent transition-colors line-clamp-2">
+                    <h4 className="font-sans text-lg font-semibold tracking-tight text-ink group-hover:text-accent transition-colors line-clamp-2">
                       {note.title || '未命名笔记'}
                     </h4>
 

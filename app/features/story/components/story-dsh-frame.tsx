@@ -114,7 +114,7 @@ ${activeEntryContent || '（暂无正文）'}
           <Terminal className="size-3.5 text-accent" />
           <span className="font-semibold text-ink">DSH 创作终端</span>
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
               isRunning ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-surface text-muted'
             }`}
           >
@@ -146,7 +146,7 @@ ${activeEntryContent || '（暂无正文）'}
 
           {/* 快捷分屏宽度预设 */}
           {onSetWidth && !isMaximized && (
-            <div className="hidden sm:flex items-center rounded border border-border-default/80 bg-surface p-0.5 text-[10px]">
+            <div className="hidden sm:flex items-center rounded border border-border-default/80 bg-surface p-0.5 text-xs">
               {[
                 { label: '窄', width: 380, title: '窄栏辅助 (380px)' },
                 { label: '半', width: typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.5) : 640, title: '半屏对等创作 (50%)' },
@@ -271,7 +271,7 @@ ${activeEntryContent || '（暂无正文）'}
               {startMutation.isPending ? '正在拉起 DSH 守护进程…' : '一键启动 DSH 终端'}
             </Button>
 
-            <div className="mt-6 border-t border-border-default/60 pt-4 text-[11px] text-muted">
+            <div className="mt-6 border-t border-border-default/60 pt-4 text-xs text-muted">
               <span>端口：3081 · 协议：跨平台守护代理 · 权限已对 SthStart 放行</span>
             </div>
           </div>

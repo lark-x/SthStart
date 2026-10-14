@@ -360,7 +360,7 @@ export function BeatRenderWorkbench({
     <div className="flex min-h-0 flex-col gap-4">
       <section className="space-y-3" aria-label="当前镜头画面">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0"><div className="text-xs font-semibold text-ink">当前镜头画面</div><div className="max-w-full truncate text-[11px] text-muted">{settingsLabel}</div></div>
+          <div className="min-w-0"><div className="text-xs font-semibold text-ink">当前镜头画面</div><div className="max-w-full truncate text-xs text-muted">{settingsLabel}</div></div>
           <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void handleOpenSettings()}><Settings2 className="mr-1 h-4 w-4" />绘制设置</Button>
         </div>
         <div className={`relative ${currentUrl ? 'aspect-video' : 'min-h-40 py-5'} w-full overflow-hidden rounded-[var(--radius-control)] border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
@@ -403,7 +403,7 @@ export function BeatRenderWorkbench({
       </section>
 
       <section className="min-w-0 space-y-2" aria-label="镜头绘制历史">
-        <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-semibold text-ink">历史图片</h3><span className="text-[11px] text-muted">{candidateTotal} 条绘制记录 · {candidateQuery.data?.pages[0]?.imageTotal ?? history.length} 张图片</span></div>
+        <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-semibold text-ink">历史图片</h3><span className="text-xs text-muted">{candidateTotal} 条绘制记录 · {candidateQuery.data?.pages[0]?.imageTotal ?? history.length} 张图片</span></div>
         {candidateQuery.isPending && !candidateQuery.data ? <p className="text-xs text-muted">正在读取绘制历史…</p>
           : candidateQuery.isError ? <p role="alert" className="text-xs text-danger-fg">读取绘制历史失败：{candidateQuery.error.message}</p>
             : history.length === 0 ? <div className="rounded border border-dashed border-border-default px-3 py-5 text-center text-xs text-muted">暂无历史图片；失败记录会列在下方。</div>
@@ -420,11 +420,11 @@ export function BeatRenderWorkbench({
                   <button type="button" disabled={disabled || working === 'select' || !image.available}
                     onClick={() => void selectImage(candidate, image.artifactId)} aria-label={`${label}${isHires ? '（细化）' : ''}，绘制于 ${new Date(candidate.createdAt).toLocaleString()}`}
                     className={`group relative block h-20 w-28 overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-black'}`}>
-                    {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-[10px] text-muted">文件不可用</span>}
-                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isCurrent ? 'bg-accent text-white' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-white'}`}>{label}</span>
-                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">细化</span>}
+                    {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-xs text-muted">文件不可用</span>}
+                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-xs font-semibold ${isCurrent ? 'bg-accent text-white' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-white'}`}>{label}</span>
+                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-white">细化</span>}
                   </button>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                     <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
                       onClick={() => void selectImage(candidate, image.artifactId)}>使用</button>
                     <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy}
@@ -438,7 +438,7 @@ export function BeatRenderWorkbench({
                   </div>
                   {isHires && sourcePreviewKey === itemKey && parent && <div className="overflow-hidden rounded border border-border-default">
                     <img src={parent.image.mediaUrl} alt="细化来源图" className="h-auto w-full object-contain" />
-                    <p className="break-words px-1 py-0.5 text-[10px] text-muted">细化来源</p>
+                    <p className="break-words px-1 py-0.5 text-xs text-muted">细化来源</p>
                   </div>}
                 </div>;
               })}</div>}
@@ -452,7 +452,7 @@ export function BeatRenderWorkbench({
               {candidate.status === 'failed' && <Button type="button" size="sm" variant="outline" disabled={disabled || Boolean(working) || running} onClick={() => void handleDraw(makeRequest())}>重新绘制</Button>}</div>
           </article>)}</div>
         </details>}
-        {history.some(({ candidate }) => candidate.callId) && <div className="flex flex-wrap gap-x-3 gap-y-1">{[...new Map(history.filter(({ candidate }) => candidate.callId).map(({ candidate }) => [candidate.id, candidate])).values()].slice(0, 4).map((candidate) => <Link key={candidate.id} href={`/settings/ai-logs?callId=${encodeURIComponent(candidate.callId!)}`} target="_blank" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">{new Date(candidate.createdAt).toLocaleString()} · 调用日志<ExternalLink className="h-3 w-3" /></Link>)}</div>}
+        {history.some(({ candidate }) => candidate.callId) && <div className="flex flex-wrap gap-x-3 gap-y-1">{[...new Map(history.filter(({ candidate }) => candidate.callId).map(({ candidate }) => [candidate.id, candidate])).values()].slice(0, 4).map((candidate) => <Link key={candidate.id} href={`/settings/ai-logs?callId=${encodeURIComponent(candidate.callId!)}`} target="_blank" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">{new Date(candidate.createdAt).toLocaleString()} · 调用日志<ExternalLink className="h-3 w-3" /></Link>)}</div>}
       </section>
 
       <ResponsiveEditOverlay open={settingsOpen} onOpenChange={open => { if (open || parametersValid) setSettingsOpen(open); else setError('请修正无效参数，当前输入已保留。'); }} title="绘制设置" description="选择预设、补充画面要求，即可直接绘制。">{settingContent}</ResponsiveEditOverlay>

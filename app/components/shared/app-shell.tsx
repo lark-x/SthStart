@@ -81,7 +81,7 @@ function serverCollapsedPref() {
 }
 
 /**
- * 全站应用外框：负责导航、48px 顶部指令条与抽屉，并承载页面内容。
+ * 全站应用外框：负责轻盈同色系侧栏导航、48px 顶部指令条与抽屉，并承载页面内容。
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -183,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <button
         type="button"
-        className="shell-nav-link w-full text-left"
+        className="shell-nav-link w-full text-left border border-nav-border bg-surface/65 hover:bg-surface shadow-xs"
         onClick={() => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
         }}
@@ -192,7 +192,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Search className="shell-nav-icon" aria-hidden="true" />
         <span className="shell-nav-text flex-1">搜索与命令</span>
-        <kbd className="shell-nav-text rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-nav-muted">⌘K</kbd>
+        <kbd className="shell-nav-text rounded border border-nav-border bg-surface-sunken px-1.5 py-0.5 font-mono text-xs text-nav-muted">⌘K</kbd>
       </button>
 
       <nav className="shell-nav" aria-label="主导航">
@@ -265,7 +265,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {collapsed
             ? <PanelLeftOpen className="shell-nav-icon" aria-hidden="true" />
             : <PanelLeftClose className="shell-nav-icon" aria-hidden="true" />}
-          <span className="shell-nav-text">{collapsed ? '展开' : '收起'}</span>
+          <span className="shell-nav-text">{collapsed ? '展开侧栏' : '收起侧栏'}</span>
         </button>
       </div>
     </>
@@ -316,7 +316,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               ref={triggerRef}
               type="button"
-              className="lg:hidden inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-default/70 bg-surface/70 text-ink transition-colors hover:bg-surface-hover"
+              className="lg:hidden inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-subtle bg-surface text-ink shadow-xs transition-colors hover:bg-surface-hover"
               aria-label="打开导航"
               aria-expanded={drawerOpen}
               onClick={() => setDrawerOpen(true)}
@@ -324,24 +324,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Menu className="h-4 w-4" aria-hidden="true" />
             </button>
 
-            {/* Breadcrumb Hierarchy */}
+            {/* Breadcrumb Hierarchy (Modern Sans-Serif) */}
             <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted font-sans">
               {pathname === '/' ? (
-                <span className="font-serif font-bold text-sm tracking-tight text-ink">工作台</span>
+                <span className="font-sans font-semibold text-sm tracking-tight text-ink">工作台</span>
               ) : active ? (
                 <>
                   <span className="hidden sm:inline hover:text-ink transition-colors">{active.navSection}</span>
                   <span className="hidden sm:inline text-muted/60">/</span>
-                  <span className="font-medium text-ink truncate">{active.title}</span>
+                  <span className="font-semibold text-sm text-ink truncate">{active.title}</span>
                 </>
               ) : pathname.startsWith('/settings') ? (
                 <>
                   <span className="hidden sm:inline hover:text-ink transition-colors">系统与应用</span>
                   <span className="hidden sm:inline text-muted/60">/</span>
-                  <span className="font-medium text-ink truncate">系统设置</span>
+                  <span className="font-semibold text-sm text-ink truncate">系统设置</span>
                 </>
               ) : (
-                <span className="font-serif font-bold text-sm tracking-tight text-ink">工作台</span>
+                <span className="font-sans font-semibold text-sm tracking-tight text-ink">工作台</span>
               )}
             </div>
           </div>
@@ -350,7 +350,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-default/70 bg-surface/70 px-2.5 text-xs text-muted hover:text-ink hover:border-border-default transition-colors"
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-subtle bg-surface px-2.5 text-sm text-muted shadow-xs hover:text-ink hover:border-border-default transition-colors"
               onClick={() => {
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
               }}
@@ -358,21 +358,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               aria-label="搜索与命令快捷键"
             >
               <Search className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">搜索与命令</span>
-              <kbd className="hidden md:inline font-mono text-[10px] text-muted bg-surface-sunken px-1 rounded border border-border-subtle">⌘K</kbd>
+              <span className="hidden md:inline text-xs font-medium">搜索与命令</span>
+              <kbd className="hidden md:inline font-mono text-xs text-muted bg-surface-sunken px-1.5 rounded border border-border-subtle" aria-hidden="true">⌘K</kbd>
             </button>
 
             <button
               type="button"
-              className="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-default/70 bg-surface/70 px-2.5 text-xs text-muted hover:text-ink hover:border-border-default transition-colors"
+              className="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 text-sm text-muted shadow-xs hover:text-ink hover:border-border-default transition-colors"
               aria-label="打开任务中心"
-              title="全局任务中心"
+              title="全局任务抽屉"
               onClick={() => setTaskDrawerOpen(true)}
             >
               <ListTodo className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-              <span className="hidden sm:inline">任务</span>
+              <span className="hidden sm:inline text-xs font-medium">任务</span>
               {activeTasksCount > 0 && (
-                <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                <span className="bg-accent text-white text-xs font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                   {activeTasksCount}
                 </span>

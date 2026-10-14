@@ -271,7 +271,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
   }, []);
 
   if (project.isLoading) return <div className="p-8 text-muted">正在打开剧情项目…</div>;
-  if (!project.data) return <div className="p-8 text-red-700">无法打开剧情项目：{project.error?.message}</div>;
+  if (!project.data) return <div className="p-8 text-danger-fg">无法打开剧情项目：{project.error?.message}</div>;
 
   const filtered = (row: EntryRow) => !search.trim() || `${'name' in row.item ? row.item.name : row.item.title}\n${'notes' in row.item ? row.item.notes : row.item.body}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
 
@@ -285,7 +285,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
             aria-label={isReflection ? '搜索纲要或随笔' : '搜索正文或设定'}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="pl-8 text-xs h-8"
+            className="pl-8 text-sm h-9"
             placeholder={isReflection ? '搜索纲要或随笔…' : '搜索正文或设定…'}
           />
         </div>
@@ -325,7 +325,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               role="tab"
               aria-selected={navTab === 'chapters'}
               onClick={() => setNavTab('chapters')}
-              className={`flex items-center justify-center gap-1.5 rounded py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-control)-2px)] py-1.5 text-sm font-medium transition-all ${
                 navTab === 'chapters'
                   ? 'bg-surface font-semibold text-accent shadow-xs'
                   : 'text-muted hover:text-ink'
@@ -339,7 +339,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               role="tab"
               aria-selected={navTab === 'bible'}
               onClick={() => setNavTab('bible')}
-              className={`flex items-center justify-center gap-1.5 rounded py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-control)-2px)] py-1.5 text-sm font-medium transition-all ${
                 navTab === 'bible'
                   ? 'bg-surface font-semibold text-accent shadow-xs'
                   : 'text-muted hover:text-ink'
@@ -416,11 +416,11 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                       <span className="truncate text-sm font-medium text-ink">
                         {outlineDoc.title || '思考纲要'}
                       </span>
-                      <span className="shrink-0 text-[10px] text-muted font-mono">
+                      <span className="shrink-0 text-xs text-muted font-mono">
                         {[...outlineDoc.body.trim()].length}字
                       </span>
                     </div>
-                    <div className="mt-0.5 text-[11px] text-muted">
+                    <div className="mt-0.5 text-xs text-muted">
                       v{outlineDoc.revision} · 顶层思考与框架梳理
                     </div>
                   </button>
@@ -491,11 +491,11 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                             <span className="truncate text-sm font-medium text-ink">
                               第 {chapter.position + 1} 篇 · {chapter.title}
                             </span>
-                            <span className="shrink-0 text-[10px] text-muted font-mono">
+                            <span className="shrink-0 text-xs text-muted font-mono">
                               {wordLabel}
                             </span>
                           </div>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                             <span>v{chapter.revision}</span>
                             <span className="truncate">更新于 {new Date(chapter.updatedAt).toLocaleDateString('zh-CN')}</span>
                           </div>
@@ -587,11 +587,11 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                               <span className="truncate text-sm font-medium text-ink">
                                 第 {chapter.position + 1} 章 · {chapter.title}
                               </span>
-                              <span className="shrink-0 text-[10px] text-muted font-mono">
+                              <span className="shrink-0 text-xs text-muted font-mono">
                                 {wordLabel}
                               </span>
                             </div>
-                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                               <span className={`rounded-sm border px-1 py-0.2 text-[9px] font-medium ${statusInfo.bg}`}>
                                 {statusInfo.label}
                               </span>
@@ -683,7 +683,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                             >
                               <div className="flex items-center gap-2 min-w-0">
                                 {isChar && (
-                                  <div className="size-6 shrink-0 rounded-full overflow-hidden border border-border-default/80 bg-surface-muted flex items-center justify-center text-[11px] font-bold text-accent">
+                                  <div className="size-6 shrink-0 rounded-full overflow-hidden border border-border-default/80 bg-surface-muted flex items-center justify-center text-xs font-bold text-accent">
                                     {charInfo?.avatarUrl ? (
                                       <img src={charInfo.avatarUrl} alt="" className="size-full object-cover" />
                                     ) : (
@@ -695,7 +695,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                                   <span className="truncate block text-sm font-medium text-ink">
                                     {'name' in row.item ? row.item.name : row.item.title}
                                   </span>
-                                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+                                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                                     {isChar && charInfo?.work && (
                                       <span className="truncate rounded border border-border-default/60 bg-surface-muted px-1 py-0.2 text-[9px]">
                                         {charInfo.work}
@@ -729,7 +729,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
       </nav>
 
       {/* 底部全书统计与即时保存状态 */}
-      <div className="story-tree-footer shrink-0 border-t border-border-default/60 p-2.5 text-center text-[11px] text-muted font-mono">
+      <div className="story-tree-footer shrink-0 border-t border-border-default/60 p-2.5 text-center text-xs text-muted font-mono">
         {isReflection ? '对话感想空间 · 自动即时保存' : '本地私密创作空间 · 自动即时保存'}
       </div>
     </div>
@@ -952,7 +952,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
             placeholder={newKind === 'character' ? '主角姓名' : isReflection ? (newKind === 'chapter' ? '例如：关于智能体认知的若干反思' : '例如：核心思考脉络') : (newKind === 'chapter' ? '第一章' : '核心设定')} />
         </label>
         <label className="block text-sm font-medium">初始正文（可选）<textarea value={newBody} maxLength={100000} onChange={(event) => setNewBody(event.target.value)} className="mt-1 min-h-48 w-full rounded-[var(--radius-control)] border border-border-control bg-surface p-3 font-mono text-sm leading-6 outline-none focus:border-accent" placeholder="Markdown 正文…" /></label>
-        {createError && <p role="alert" className="text-sm text-red-700">{createError}</p>}
+        {createError && <p role="alert" className="text-sm text-danger-fg">{createError}</p>}
       </form>
     </Dialog>
 

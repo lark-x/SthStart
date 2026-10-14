@@ -635,13 +635,13 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                       className="object-cover"
                     />
                   </div>
-                  <span className="text-[10px] font-semibold text-ink">当前头像</span>
+                  <span className="text-xs font-semibold text-ink">当前头像</span>
                 </div>
               )}
 
               {/* 立绘标记（右上角） */}
               {currentPortraitUrl && (
-                <div className="absolute top-2.5 right-2.5 rounded-md bg-surface/85 backdrop-blur-md px-1.5 py-0.5 text-[10px] font-medium text-ink shadow-sm border border-border-default/50">
+                <div className="absolute top-2.5 right-2.5 rounded-md bg-surface/85 backdrop-blur-md px-1.5 py-0.5 text-xs font-medium text-ink shadow-sm border border-border-default/50">
                   当前立绘
                 </div>
               )}
@@ -655,7 +655,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 variant="outline"
                 onClick={() => setMultiSourceDialogOpen(true)}
                 disabled={!characterId}
-                className="flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-accent transition-colors"
+                className="flex flex-col items-center justify-center h-13 p-1 text-xs gap-1 hover:border-accent hover:text-accent transition-colors"
                 title="自动探测 Enka CDN、Fandom Wiki 等官方资源库"
               >
                 <Sparkles className="h-3.5 w-3.5 text-accent" />
@@ -669,7 +669,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   variant="outline"
                   onClick={() => setUploadMenuOpen((v) => !v)}
                   disabled={!characterId || uploadAssetMutation.isPending}
-                  className="w-full flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-accent transition-colors"
+                  className="w-full flex flex-col items-center justify-center h-13 p-1 text-xs gap-1 hover:border-accent hover:text-accent transition-colors"
                   title="上传本地图片"
                 >
                   <Upload className="h-3.5 w-3.5 text-muted" />
@@ -709,7 +709,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 variant="outline"
                 onClick={handleTriggerAiAvatar}
                 disabled={!characterId}
-                className="flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-accent transition-colors"
+                className="flex flex-col items-center justify-center h-13 p-1 text-xs gap-1 hover:border-accent hover:text-accent transition-colors"
                 title="基于外观与服装特征生成头像"
               >
                 <Palette className="h-3.5 w-3.5 text-indigo-500" />
@@ -722,7 +722,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   size="sm"
                   variant="outline"
                   onClick={() => setMoreMenuOpen((v) => !v)}
-                  className="w-full flex flex-col items-center justify-center h-13 p-1 text-[11px] gap-1 hover:border-accent hover:text-ink transition-colors"
+                  className="w-full flex flex-col items-center justify-center h-13 p-1 text-xs gap-1 hover:border-accent hover:text-ink transition-colors"
                   title="更多导入导出操作"
                 >
                   <MoreHorizontal className="h-3.5 w-3.5 text-muted" />
@@ -797,11 +797,11 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               <button
                 type="button"
                 onClick={() => setActiveTab('assets')}
-                className="text-[11px] text-accent hover:underline flex items-center gap-0.5"
+                className="text-xs text-accent hover:underline flex items-center gap-1 font-medium"
                 title="展开全量 7 大细分分类资产库"
               >
                 <span>管理资产 ({assetsData?.items ? assetsData.items.length : 0})</span>
-                <span>&rarr;</span>
+                <span aria-hidden="true">&rarr;</span>
               </button>
             </div>
 
@@ -812,7 +812,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   key={tab}
                   type="button"
                   onClick={() => setAssetFilter(tab)}
-                  className={`flex-1 py-1 rounded-md transition-colors text-[11px] font-medium ${
+                  className={`flex-1 py-1 rounded-md transition-colors text-xs font-medium ${
                     assetFilter === tab
                       ? 'bg-surface text-ink shadow-xs'
                       : 'text-muted hover:text-ink'
@@ -1079,7 +1079,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   <label htmlFor="char-summary" className="font-semibold text-ink">
                     一句话概述
                   </label>
-                  <span className="text-muted text-[11px]">用于卡片预览与人物列表</span>
+                  <span className="text-muted text-xs">用于卡片预览与人物列表</span>
                 </div>
                 <Textarea
                   id="char-summary"
@@ -1095,7 +1095,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   <label htmlFor="char-persona" className="font-semibold text-ink">
                     详细人设背景
                   </label>
-                  <div className="flex items-center gap-3 text-muted text-[11px]">
+                  <div className="flex items-center gap-3 text-muted text-xs">
                     <span>Markdown 结构化语法</span>
                     <span className="font-mono">{draft.personaText?.length || 0} 字</span>
                   </div>
@@ -1119,7 +1119,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   <label htmlFor="char-appearance-base" className="font-semibold text-ink">
                     基础外貌特征
                   </label>
-                  <span className="text-muted text-[11px]">面部、发型发色、身形与体貌特征</span>
+                  <span className="text-muted text-xs">面部、发型发色、身形与体貌特征</span>
                 </div>
                 <Textarea
                   id="char-appearance-base"
@@ -1135,7 +1135,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   <label htmlFor="char-outfit" className="font-semibold text-ink">
                     代表性装扮与配饰
                   </label>
-                  <span className="text-muted text-[11px]">默认服装、经典礼服或随身配饰</span>
+                  <span className="text-muted text-xs">默认服装、经典礼服或随身配饰</span>
                 </div>
                 <Textarea
                   id="char-outfit"

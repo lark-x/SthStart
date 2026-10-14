@@ -121,7 +121,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
             >
               进行中
               {activeCount > 0 && (
-                <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                <span className="bg-accent text-white text-xs font-bold px-1.5 py-0.2 rounded-full">
                   {activeCount}
                 </span>
               )}
@@ -161,7 +161,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
           <div className="p-12 text-center text-xs text-muted space-y-1">
             <ListTodo className="h-8 w-8 mx-auto text-fg-subtle opacity-50" />
             <p>暂无符合筛选的任务记录</p>
-            <p className="text-[11px] text-muted">
+            <p className="text-xs text-muted">
               在活动工作室发起生成或采集任务时，将在此处实时汇总追踪。
             </p>
           </div>
@@ -184,7 +184,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface-raised border border-border-default">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-surface-raised border border-border-default">
                           {domainIcon(task.domain)}
                           <span>{domainLabel(task.domain)}</span>
                         </span>
@@ -203,37 +203,37 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                     {/* Status Badge */}
                     <div className="flex-shrink-0">
                       {isRunning && (
-                        <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
                           <Spinner className="h-2.5 w-2.5" />
                           处理中
                         </Badge>
                       )}
                       {isWaiting && (
-                        <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
                           <Clock className="h-2.5 w-2.5" />
                           排队中
                         </Badge>
                       )}
                       {isSucceeded && (
-                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 flex items-center gap-1">
                           <CheckCircle2 className="h-2.5 w-2.5" />
                           已完成
                         </Badge>
                       )}
                       {isPartial && (
-                        <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
                           <AlertTriangle className="h-2.5 w-2.5" />
                           部分成功
                         </Badge>
                       )}
                       {isFailed && (
-                        <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-300 flex items-center gap-1">
                           <XCircle className="h-2.5 w-2.5" />
                           失败
                         </Badge>
                       )}
                       {isStopped && (
-                        <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-700 border-slate-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700 border-slate-300 flex items-center gap-1">
                           <Square className="h-2.5 w-2.5" />
                           已停止
                         </Badge>
@@ -244,7 +244,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                   {/* Progress bar if progress exists */}
                   {task.progress && task.progress.total > 0 && (
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px] text-muted">
+                      <div className="flex items-center justify-between text-xs text-muted">
                         <span>进度: {task.progress.completed} / {task.progress.total} {task.progress.unit}</span>
                         <span>{Math.round((task.progress.completed / task.progress.total) * 100)}%</span>
                       </div>
@@ -258,7 +258,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                   )}
 
                   {/* Bottom bar: timestamp and actions */}
-                  <div className="flex items-center justify-between pt-1 border-t border-border-subtle text-[11px] text-muted">
+                  <div className="flex items-center justify-between pt-1 border-t border-border-subtle text-xs text-muted">
                     <span>{new Date(task.createdAt).toLocaleTimeString()}</span>
 
                     <div className="flex items-center gap-2">

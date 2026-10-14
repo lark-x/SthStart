@@ -530,17 +530,17 @@ export function MediaBatchPanel({
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           {hasBound && (
-                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300">
+                            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300">
                               已有素材
                             </Badge>
                           )}
                           {preflightUnready && (
-                            <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-300">
+                            <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-300">
                               {preflightUnready.reason}
                             </Badge>
                           )}
                           {preflightReady?.reason && (
-                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300">
+                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
                               {preflightReady.reason}
                             </Badge>
                           )}
@@ -741,25 +741,25 @@ export function MediaBatchPanel({
                                   ) : item.state === 'skipped' ? <span className="text-xs text-muted">已停止</span> : item.state === 'failed' ? (
                                     <div className="flex flex-col items-center justify-center p-2 text-center text-rose-600">
                                       <XCircle className="h-5 w-5 mb-1" />
-                                      <span className="text-[10px]">{String(item.error?.message || '生成失败')}</span>
+                                      <span className="text-xs">{String(item.error?.message || '生成失败')}</span>
                                     </div>
                                   ) : (
                                     <div className="flex flex-col items-center justify-center p-2 text-center text-muted">
                                       <Spinner className="h-5 w-5 mb-1 text-accent" />
-                                      <span className="text-[10px]">
+                                      <span className="text-xs">
                                         {item.state === 'waiting' ? '排队中' : '正在出图'}
                                       </span>
                                     </div>
                                   )}
 
                                   {/* Badge on candidate index */}
-                                  <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.5 rounded text-[10px] font-mono text-white">
+                                  <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.5 rounded text-xs font-mono text-white">
                                     #{item.candidateIndex}
                                   </div>
 
                                   {/* Currently adopted badge */}
                                   {isAdopted && (
-                                    <div className="absolute top-1 right-1 bg-emerald-600 px-1.5 py-0.5 rounded text-[10px] font-medium text-white flex items-center gap-0.5 shadow-xs">
+                                    <div className="absolute top-1 right-1 bg-emerald-600 px-1.5 py-0.5 rounded text-xs font-medium text-white flex items-center gap-0.5 shadow-xs">
                                       <Check className="h-3 w-3" />
                                       已采用
                                     </div>
@@ -768,7 +768,7 @@ export function MediaBatchPanel({
 
                                 {/* Details & Adopt Action */}
                                 <div className="p-2 space-y-1.5 flex-1 flex flex-col justify-between">
-                                  <div className="text-[10px] text-muted space-y-0.5">
+                                  <div className="text-xs text-muted space-y-0.5">
                                     {item.actualSeed != null && (
                                       <div className="font-mono truncate">种子: {item.actualSeed}</div>
                                     )}

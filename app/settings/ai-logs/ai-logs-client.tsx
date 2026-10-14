@@ -105,9 +105,9 @@ function DetailGroup({ title, hint, children }: { title: string; hint: string; c
 function CallButton({ item, selectedId, selectCall }: { item: AiCallSummary; selectedId: string; selectCall: (id: string) => void }) {
   return <button type="button" onClick={() => selectCall(item.id)} aria-current={selectedId === item.id ? 'true' : undefined} className={`grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-1 px-4 py-3 text-left hover:bg-surface-muted/50 ${selectedId === item.id ? 'bg-accent/5' : ''}`}>
     <span className="min-w-0">
-      <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold text-ink">{businessEventTitle(item.businessEvent)}</span><span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-[11px] text-muted">{statusLabels[item.status] ?? item.status}</span></span>
+      <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold text-ink">{businessEventTitle(item.businessEvent)}</span><span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">{statusLabels[item.status] ?? item.status}</span></span>
       <span className="mt-1 block truncate text-xs text-muted">{item.applicationId} · {item.callType} · {item.models.join(', ') || item.provider || '模型待确认'}</span>
-      <span className="mt-1 block truncate font-mono text-[11px] text-muted">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
+      <span className="mt-1 block truncate font-mono text-xs text-muted">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
     </span>
     <span className="flex items-center justify-between gap-2 text-left sm:text-right xl:text-left text-xs text-muted"><span>{time(item.requestedAt)}<br />{item.durationMs == null ? '耗时处理中' : `${item.durationMs} ms`}</span><ChevronRight className="h-4 w-4 shrink-0" /></span>
   </button>;
@@ -171,7 +171,7 @@ export function AiLogsClient() {
                   <DetailGroup title="来源" hint="这次调用由哪个业务对象、哪次作业发起。">
                     <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                       <div><div className="text-xs text-muted">来源 / 功能</div><div className="break-all font-medium text-ink">{detail.data.applicationId} / {detail.data.feature}</div></div>
-                      <div><div className="text-xs text-muted">业务事件</div><div className="break-all font-medium text-ink">{businessEventLabel(detail.data.businessEvent)}</div><div className="break-all font-mono text-[11px] text-muted">{detail.data.businessEvent}</div></div>
+                      <div><div className="text-xs text-muted">业务事件</div><div className="break-all font-medium text-ink">{businessEventLabel(detail.data.businessEvent)}</div><div className="break-all font-mono text-xs text-muted">{detail.data.businessEvent}</div></div>
                       <div><div className="text-xs text-muted">调用类型 / 状态</div><div className="font-medium text-ink">{detail.data.callType} / {statusLabels[detail.data.status] ?? detail.data.status}</div></div>
                       <div><div className="text-xs text-muted">请求 / 结束</div><div className="font-medium text-ink">{time(detail.data.requestedAt)}<br />{time(detail.data.endedAt)}</div></div>
                     </div>
@@ -234,7 +234,7 @@ export function AiLogsClient() {
                       <summary className="cursor-pointer list-none px-4 py-3 hover:bg-surface-muted/50">
                         <span className="flex items-start justify-between gap-3"><span className="min-w-0"><span className="block truncate font-semibold text-ink">{traceGroupTitle(calls)}</span><span className="mt-1 block text-xs text-muted">{calls.length} 次调用 · 追踪 {traceId}</span></span><span className="shrink-0 text-right text-xs text-muted">{time(calls[0].requestedAt)}<br /><span className="inline-flex items-center gap-1">展开时间线<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></span></span></span>
                       </summary>
-                      <ol className="divide-y divide-border-subtle border-t border-border-subtle bg-surface-muted/30">{calls.map((item, index) => <li key={item.id} className="relative pl-3"><span className="absolute left-5 top-6 text-[10px] text-muted">{index + 1}</span><div className="pl-5"><CallButton item={item} selectedId={selectedId} selectCall={selectCall} /></div></li>)}</ol>
+                      <ol className="divide-y divide-border-subtle border-t border-border-subtle bg-surface-muted/30">{calls.map((item, index) => <li key={item.id} className="relative pl-3"><span className="absolute left-5 top-6 text-xs text-muted">{index + 1}</span><div className="pl-5"><CallButton item={item} selectedId={selectedId} selectCall={selectCall} /></div></li>)}</ol>
                     </details>)}
                 </div>}
           {query.data?.nextCursor && <div className="border-t border-border-subtle p-3 text-center"><Button variant="outline" size="sm" disabled={query.isFetching} onClick={loadMore}>加载更多<ChevronDown className="ml-1 h-4 w-4" /></Button></div>}

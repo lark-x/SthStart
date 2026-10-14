@@ -357,7 +357,7 @@ export function StoryEntryEditor({
                 {statusLabel}
               </span>
             </div>
-            <p className="mt-0.5 text-[11px] text-muted font-mono">
+            <p className="mt-0.5 text-xs text-muted font-mono">
               {charCount.toLocaleString('zh-CN')} 字 · 预计阅读 {readMinutes} 分钟
             </p>
           </div>
@@ -395,7 +395,7 @@ export function StoryEntryEditor({
 
                 {/* 纸感底色 */}
                 <div className="mb-3">
-                  <label className="text-[11px] font-medium text-muted block mb-1.5">纸感底色</label>
+                  <label className="text-xs font-medium text-muted block mb-1.5">纸感底色</label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {(['parchment', 'pure', 'midnight', 'sage'] as const).map((t) => (
                       <button
@@ -420,7 +420,7 @@ export function StoryEntryEditor({
 
                 {/* 字体家族 */}
                 <div className="mb-3">
-                  <label className="text-[11px] font-medium text-muted block mb-1.5">正文字体</label>
+                  <label className="text-xs font-medium text-muted block mb-1.5">正文字体</label>
                   <div className="grid grid-cols-3 gap-1">
                     {(['serif', 'kai', 'sans'] as const).map((f) => (
                       <button
@@ -441,7 +441,7 @@ export function StoryEntryEditor({
 
                 {/* 画布宽度 */}
                 <div className="mb-3">
-                  <label className="text-[11px] font-medium text-muted block mb-1.5">写作画布宽度</label>
+                  <label className="text-xs font-medium text-muted block mb-1.5">写作画布宽度</label>
                   <div className="grid grid-cols-3 gap-1">
                     {([
                       ['wide', '宽屏 (1024)'],
@@ -468,7 +468,7 @@ export function StoryEntryEditor({
                 <div className="pt-2 border-t border-border-default/60 flex items-center justify-between">
                   <div className="text-xs">
                     <span className="font-medium text-ink block">段首空两格</span>
-                    <span className="text-[10px] text-muted">正文段落缩进 2em</span>
+                    <span className="text-xs text-muted">正文段落缩进 2em</span>
                   </div>
                   <button
                     type="button"
@@ -778,7 +778,7 @@ export function StoryEntryEditor({
                       role="listbox"
                       aria-label="角色对白补全"
                     >
-                      <div className="px-2 py-1 text-[11px] font-medium text-muted border-b border-border-default/60">
+                      <div className="px-2 py-1 text-xs font-medium text-muted border-b border-border-default/60">
                         登场角色（回车填入对白引号）
                       </div>
                       {filteredCast.map((char, idx) => (
@@ -793,7 +793,7 @@ export function StoryEntryEditor({
                             idx === mentionIndex ? 'bg-accent/15 text-accent font-semibold' : 'text-ink hover:bg-surface-hover'
                           }`}
                         >
-                          <div className="size-5 shrink-0 rounded-full overflow-hidden border border-border-default bg-surface-muted flex items-center justify-center text-[10px]">
+                          <div className="size-5 shrink-0 rounded-full overflow-hidden border border-border-default bg-surface-muted flex items-center justify-center text-xs">
                             {char.avatarUrl ? (
                               <img src={char.avatarUrl} alt="" className="size-full object-cover" />
                             ) : (
@@ -802,7 +802,7 @@ export function StoryEntryEditor({
                           </div>
                           <span className="truncate flex-1">{char.name}</span>
                           {char.work && (
-                            <span className="shrink-0 text-[10px] text-muted">{char.work}</span>
+                            <span className="shrink-0 text-xs text-muted">{char.work}</span>
                           )}
                         </button>
                       ))}
@@ -862,7 +862,7 @@ export function StoryEntryEditor({
                 </button>
               ) : <div />}
 
-              <span className="text-[11px] text-muted font-mono">
+              <span className="text-xs text-muted font-mono">
                 第 {(entry as StoryDocument).position + 1} 章 · {charCount} 字
               </span>
 

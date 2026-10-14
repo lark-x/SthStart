@@ -163,7 +163,7 @@ export function ResearchTopicPicker({
                     {/* 种子证据必须来自本地原文，用户能直接看到出处。 */}
                     {candidate.seedEvidence.length > 0 && (
                       <div className="mt-2 space-y-1 rounded-[var(--radius-control)] bg-ink/4 p-2">
-                        <p className="text-[11px] font-semibold text-muted">本地种子证据</p>
+                        <p className="text-xs font-semibold text-muted">本地种子证据</p>
                         {candidate.seedEvidence.slice(0, 2).map((seed, index) => (
                           <p key={`${seed.targetId}-${index}`} className="text-xs leading-relaxed text-ink/80">
                             <span className="text-muted">{seed.locator}：</span>{seed.quote.slice(0, 160)}

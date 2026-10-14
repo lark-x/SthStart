@@ -128,9 +128,9 @@ export function CalendarView() {
         {/* 第二层工具栏：搜索与筛选（§8.7）。 */}
         <Toolbar>
           <Input aria-label="搜索角色或活动" placeholder="搜索角色姓名或活动标题…" value={query} onChange={(event) => setQuery(event.target.value)} className="w-full sm:w-64" />
-          <div className="flex overflow-hidden rounded-xl bg-surface-sunken/65 p-1 text-sm">
+          <div className="flex items-center gap-1 rounded-[var(--radius-control)] border border-border-subtle/70 bg-surface-sunken p-1 text-sm">
             {([['all', '全部'], ['birthday', '仅生日'], ['activity', '仅活动']] as const).map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`px-3 py-2 ${kind === value ? 'bg-accent text-white' : 'bg-surface text-muted hover:text-ink'}`}>{label}</button>
+              <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`rounded-[calc(var(--radius-control)-2px)] px-3 py-1.5 text-sm font-semibold transition-colors cursor-pointer ${kind === value ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink'}`}>{label}</button>
             ))}
           </div>
           <Button type="button" size="sm" variant="outline" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1.5 h-4 w-4" />更多筛选{work || favorite ? ' · 已启用' : ''}</Button>
@@ -193,10 +193,10 @@ export function CalendarView() {
                     aria-pressed={isSelected}
                     className={`calendar-day min-h-20 rounded-xl p-1.5 text-left align-top text-sm transition-all ${isSelected ? 'is-selected bg-accent/8 ring-2 ring-accent/35' : 'bg-surface'} ${inMonth ? '' : 'opacity-35'}`}
                   >
-                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${isToday ? 'bg-accent text-white' : ''}`}>{cell.day}</span>
-                    <span className="mt-1 flex flex-col gap-0.5">
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${isToday ? 'bg-accent text-white shadow-2xs' : 'text-ink'}`}>{cell.day}</span>
+                    <span className="mt-1 flex flex-col gap-1">
                       {events.slice(0, 3).map((event) => (
-                        <span key={event.id} className={`block truncate rounded px-1 flex items-center gap-1 ${event.kind === 'birthday' ? 'bg-warning-bg text-warning-fg' : 'bg-info-bg text-info-fg'}`}>
+                        <span key={event.id} className={`truncate rounded-md px-1.5 py-0.5 text-xs flex items-center gap-1 ${event.kind === 'birthday' ? 'bg-warning-bg text-warning-fg' : 'bg-info-bg text-info-fg'}`}>
                           {event.kind === 'birthday' ? <Cake className="size-3 shrink-0" /> : <Film className="size-3 shrink-0" />}
                           <span className="truncate">{event.title}</span>
                         </span>
@@ -230,7 +230,7 @@ export function CalendarView() {
                       />
                       {event.avatarUrl
                         ? <Image src={event.avatarUrl} alt="" width={24} height={24} unoptimized className="h-6 w-6 rounded object-cover" />
-                        : <Cake className="h-4 w-4 text-rose-500" />}
+                        : <Cake className="h-4 w-4 text-warning-fg" />}
                       <span className="min-w-0 flex-1 truncate">{event.characterName}{event.work ? <span className="text-muted"> · {event.work}</span> : null}</span>
                       <Button size="sm" variant="ghost" onClick={() => openPickerFor([String(event.characterId)])}>为 TA 创建</Button>
                     </li>
@@ -247,7 +247,7 @@ export function CalendarView() {
                 <ul className="space-y-1">
                   {dayEvents.filter((event) => event.kind === 'activity').map((event) => (
                     <li key={event.id} className="rounded-xl bg-surface-sunken/50 p-3 text-sm">
-                      <span className="flex items-center gap-2"><Film className="h-4 w-4 text-sky-600" />{event.title}</span>
+                      <span className="flex items-center gap-2"><Film className="h-4 w-4 text-info-fg" />{event.title}</span>
                       <div className="mt-1 flex items-center justify-between text-xs text-muted">
                         <span>参与角色 {event.participantCount ?? 0} 位</span>
                         <Link className="inline-flex items-center gap-1 text-accent" href={`/apps/activities/${event.activityId}`}>打开活动<ExternalLink className="h-3 w-3" /></Link>

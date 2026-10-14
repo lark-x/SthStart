@@ -130,7 +130,7 @@ export function DirectorChips({
     >
       {/* 景别 (Framing) */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted shrink-0 w-12">
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted shrink-0 w-12">
           <Camera className="h-3 w-3 text-accent" />
           <span>景别</span>
         </span>
@@ -144,7 +144,7 @@ export function DirectorChips({
                 disabled={disabled}
                 onClick={() => onChange(toggleChipInPrompt(prompt, chip))}
                 title={`点击切换标签: ${chip.tag}`}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all cursor-pointer ${
                   active
                     ? 'bg-accent text-white font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
                     : 'bg-surface text-ink/80 hover:text-ink hover:bg-surface-muted border border-border-default/80'
@@ -159,7 +159,7 @@ export function DirectorChips({
 
       {/* 光影与氛围 (Lighting & Atmosphere) */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted shrink-0 w-12">
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted shrink-0 w-12">
           <Sparkles className="h-3 w-3 text-amber-500" />
           <span>光影</span>
         </span>
@@ -173,7 +173,7 @@ export function DirectorChips({
                 disabled={disabled}
                 onClick={() => onChange(toggleChipInPrompt(prompt, chip))}
                 title={`点击切换标签: ${chip.tag}`}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all cursor-pointer ${
                   active
                     ? 'bg-accent text-white font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
                     : 'bg-surface text-ink/80 hover:text-ink hover:bg-surface-muted border border-border-default/80'

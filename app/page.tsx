@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Film, BookOpen, Users, Sparkles } from 'lucide-react';
+import { Film, BookOpen, Users, Sparkles, Lightbulb, NotebookPen, Library, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { RecentWork } from './components/recent-work';
 import { UpcomingSchedule } from './components/upcoming-schedule';
 import { RuntimeStrip } from './components/runtime-strip';
@@ -7,8 +7,8 @@ import { PageContainer } from './components/shared/page-layout';
 
 /**
  * 工作台首页 (Mission Control):
- * 彻底移除冗余装饰性 Banner 与平铺 App 目录；
- * 采用 Claude 人文排版美学与双栏高密工作台设计 (65% 最近工作 + 35% 态势与运行指标)。
+ * 采用 Notion / Craft 轻盈温暖纸感与现代无衬线排版层级，
+ * 双栏高密创作驾驶舱设计 (64% 最近工作 + 36% 日程态势与创作枢纽)。
  */
 export default function Home() {
   return (
@@ -16,33 +16,34 @@ export default function Home() {
       {/* 顶部标题与高频快捷动作胶囊 */}
       <header className="desk-header">
         <div>
+          <p className="desk-eyebrow">CREATIVE WORKSPACE · 创作工作台</p>
           <h1 className="desk-header-title" id="desk-title">工作台</h1>
           <p className="desk-header-subtitle">
-            让角色、故事与画面在灵感心流中自由生长。
+            让角色、故事与分镜画面在轻盈纸感心流中自由生长。
           </p>
         </div>
 
         <nav aria-label="快捷创作操作" className="desk-capsules">
           <Link href="/apps/activities/new" className="desk-capsule-btn primary">
-            <Film className="h-3.5 w-3.5" aria-hidden="true" />
+            <Film className="h-4 w-4" aria-hidden="true" />
             <span>新建活动</span>
           </Link>
           <Link href="/apps/story" className="desk-capsule-btn">
-            <BookOpen className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            <BookOpen className="h-4 w-4 text-accent" aria-hidden="true" />
             <span>新建剧情</span>
           </Link>
           <Link href="/apps/characters/new" className="desk-capsule-btn">
-            <Users className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            <Users className="h-4 w-4 text-accent" aria-hidden="true" />
             <span>创建角色</span>
           </Link>
           <Link href="/apps/creative" className="desk-capsule-btn">
-            <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            <Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />
             <span>生图工坊</span>
           </Link>
         </nav>
       </header>
 
-      {/* 创作驾驶舱双栏栅格 (65% / 35%) */}
+      {/* 创作驾驶舱双栏栅格 */}
       <div className="dash-grid">
         {/* 左侧核心栏：高密度最近创作草稿与活动 */}
         <div className="min-w-0">
@@ -55,42 +56,77 @@ export default function Home() {
           <RuntimeStrip />
 
           {/* 创作知识库快捷枢纽 */}
-          <div className="tpl-panel p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="tpl-section-title text-sm">创作枢纽</h2>
-              <span className="text-[11px] text-muted">工作区快速索引</span>
+          <section className="tpl-panel p-4 sm:p-5 space-y-3.5" aria-labelledby="creative-hub-title">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 id="creative-hub-title" className="tpl-section-title">创作枢纽</h2>
+              <span className="text-xs text-muted">工作区快速索引</span>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm">
               <Link
                 href="/apps/inspiration"
-                className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-ink transition-colors hover:border-accent/40 hover:bg-surface-hover"
+                className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface-sunken/45 p-3 text-ink transition-all duration-150 hover:border-accent/35 hover:bg-surface hover:shadow-xs"
               >
-                <span className="h-2 w-2 rounded-full bg-accent/70" aria-hidden="true" />
-                <span className="font-medium">灵感素材</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface text-accent shadow-2xs transition-transform duration-150 group-hover:scale-105">
+                  <Lightbulb className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-semibold text-sm text-ink group-hover:text-accent transition-colors">灵感素材</span>
+                    <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+                  </div>
+                  <p className="truncate text-xs text-muted">热点采集与企划点子</p>
+                </div>
               </Link>
+
               <Link
                 href="/apps/notebook"
-                className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-ink transition-colors hover:border-accent/40 hover:bg-surface-hover"
+                className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface-sunken/45 p-3 text-ink transition-all duration-150 hover:border-accent/35 hover:bg-surface hover:shadow-xs"
               >
-                <span className="h-2 w-2 rounded-full bg-accent/70" aria-hidden="true" />
-                <span className="font-medium">创作笔记</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface text-accent shadow-2xs transition-transform duration-150 group-hover:scale-105">
+                  <NotebookPen className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-semibold text-sm text-ink group-hover:text-accent transition-colors">创作资料库</span>
+                    <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+                  </div>
+                  <p className="truncate text-xs text-muted">笔记、设定与随手摘录</p>
+                </div>
               </Link>
+
               <Link
                 href="/apps/narrative"
-                className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-ink transition-colors hover:border-accent/40 hover:bg-surface-hover"
+                className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface-sunken/45 p-3 text-ink transition-all duration-150 hover:border-accent/35 hover:bg-surface hover:shadow-xs"
               >
-                <span className="h-2 w-2 rounded-full bg-accent/70" aria-hidden="true" />
-                <span className="font-medium">叙事档案</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface text-accent shadow-2xs transition-transform duration-150 group-hover:scale-105">
+                  <Library className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-semibold text-sm text-ink group-hover:text-accent transition-colors">叙事档案</span>
+                    <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+                  </div>
+                  <p className="truncate text-xs text-muted">沉浸阅读与证据检索</p>
+                </div>
               </Link>
+
               <Link
                 href="/settings/public-services"
-                className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-raised p-2.5 text-ink transition-colors hover:border-accent/40 hover:bg-surface-hover"
+                className="group flex items-center gap-3 rounded-xl border border-border-subtle bg-surface-sunken/45 p-3 text-ink transition-all duration-150 hover:border-accent/35 hover:bg-surface hover:shadow-xs"
               >
-                <span className="h-2 w-2 rounded-full bg-accent/70" aria-hidden="true" />
-                <span className="font-medium">系统设置</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-surface text-accent shadow-2xs transition-transform duration-150 group-hover:scale-105">
+                  <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-semibold text-sm text-ink group-hover:text-accent transition-colors">系统设置</span>
+                    <ArrowUpRight className="h-3.5 w-3.5 text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+                  </div>
+                  <p className="truncate text-xs text-muted">模型绑定与生成引擎</p>
+                </div>
               </Link>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </PageContainer>

@@ -267,7 +267,7 @@ export function CharacterMultiSourceDialog({
                     <div className="mt-2 space-y-1">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-semibold ${
                             candidate.kind === 'avatar'
                               ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                               : 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
@@ -285,7 +285,7 @@ export function CharacterMultiSourceDialog({
                             </>
                           )}
                         </span>
-                        <span className="text-[10px] text-fg-subtle truncate max-w-[110px]" title={candidate.source}>
+                        <span className="text-xs text-fg-subtle truncate max-w-[110px]" title={candidate.source}>
                           {candidate.source}
                         </span>
                       </div>

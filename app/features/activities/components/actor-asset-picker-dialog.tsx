@@ -101,7 +101,7 @@ export function ActorAssetPickerDialog({
                   <User className="h-3.5 w-3.5 text-accent" />
                   <span>选择本场头像 ({avatarCandidates.length})</span>
                 </label>
-                <span className="text-[11px] text-muted">用于剧情对话框、群聊头像</span>
+                <span className="text-xs text-muted">用于剧情对话框、群聊头像</span>
               </div>
 
               {avatarCandidates.length === 0 ? (
@@ -150,7 +150,7 @@ export function ActorAssetPickerDialog({
                   <ImageIcon className="h-3.5 w-3.5 text-purple-500" />
                   <span>选择本场立绘 ({portraitCandidates.length})</span>
                 </label>
-                <span className="text-[11px] text-muted">用于舞台大图、朋友圈半身照</span>
+                <span className="text-xs text-muted">用于舞台大图、朋友圈半身照</span>
               </div>
 
               {portraitCandidates.length === 0 ? (
@@ -185,7 +185,7 @@ export function ActorAssetPickerDialog({
                             <Check className="h-3 w-3" />
                           </div>
                         )}
-                        <span className="mt-1 text-[10px] text-fg-subtle truncate max-w-full">
+                        <span className="mt-1 text-xs text-fg-subtle truncate max-w-full">
                           {asset.userNote || '官方立绘'}
                         </span>
                       </div>

@@ -76,8 +76,8 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
   const jobs = query.data?.pages[0]?.jobs ?? [];
   const nonImageJobs = jobs.filter((job) => job.status !== 'succeeded' || !images.some((image) => image.renderJobId === job.id));
   return <section className="flex shrink-0 flex-col border-t border-border-default bg-surface" aria-label="镜头绘制历史">
-    <div className="flex items-center justify-between gap-2 px-3 pt-2"><div className="flex items-center gap-2"><h3 className="text-xs font-semibold text-ink">画格历史图片</h3><span className="text-[11px] text-muted">{images.length} 张</span></div>
-      {query.isFetching && !query.isFetchingNextPage && <span className="text-[11px] text-muted">更新中…</span>}
+    <div className="flex items-center justify-between gap-2 px-3 pt-2"><div className="flex items-center gap-2"><h3 className="text-xs font-semibold text-ink">画格历史图片</h3><span className="text-xs text-muted">{images.length} 张</span></div>
+      {query.isFetching && !query.isFetchingNextPage && <span className="text-xs text-muted">更新中…</span>}
     </div>
     {query.hasNextPage && <button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}
       className="mx-3 mb-2 self-start text-xs font-medium text-accent disabled:opacity-50">{query.isFetchingNextPage ? '正在载入…' : '加载更早的图片'}</button>}
@@ -92,12 +92,12 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
             onClick={() => void choose(item)} aria-label={`${item.current ? '当前' : '切换为'}历史图片${isHires ? '（细化）' : ''}，绘制于 ${new Date(item.createdAt).toLocaleString()}`}
             className={`group relative block w-28 overflow-hidden rounded-[var(--radius-control)] border bg-surface text-left ${item.current ? 'border-accent ring-1 ring-accent' : 'border-border-default'} disabled:cursor-not-allowed disabled:opacity-50`}>
             {item.previewUrl ? <img src={item.previewUrl} alt="漫画绘制历史缩略图" loading="lazy" className="aspect-[4/3] w-full object-cover" />
-              : <span className="grid aspect-[4/3] place-items-center bg-surface-muted text-[11px] text-muted">文件不可用</span>}
-            <span className="absolute left-1 top-1 rounded bg-ink/75 px-1 py-0.5 text-[10px] font-medium text-white">{item.current ? '当前' : item.sourceChanged ? '描述不同' : '历史'}</span>
-            {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1 py-0.5 text-[10px] font-medium text-white">细化</span>}
-            <span className="block truncate px-1.5 py-1 text-[10px] text-muted">{new Date(item.createdAt).toLocaleString()}</span>
+              : <span className="grid aspect-[4/3] place-items-center bg-surface-muted text-xs text-muted">文件不可用</span>}
+            <span className="absolute left-1 top-1 rounded bg-ink/75 px-1 py-0.5 text-xs font-medium text-white">{item.current ? '当前' : item.sourceChanged ? '描述不同' : '历史'}</span>
+            {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1 py-0.5 text-xs font-medium text-white">细化</span>}
+            <span className="block truncate px-1.5 py-1 text-xs text-muted">{new Date(item.createdAt).toLocaleString()}</span>
           </button>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
             <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!item.available || selectImage.isPending}
               onClick={() => void choose(item)}>使用</button>
             <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!item.available || previewRender.isPending || createRender.isPending}
@@ -111,14 +111,14 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
           </div>
           {isHires && sourcePreviewKey === itemKey && parent?.previewUrl && <div className="overflow-hidden rounded border border-border-default">
             <img src={parent.previewUrl} alt="细化来源图" className="aspect-[4/3] w-full object-cover" />
-            <p className="px-1 py-0.5 text-[10px] text-muted">细化来源</p>
+            <p className="px-1 py-0.5 text-xs text-muted">细化来源</p>
           </div>}
         </div>;
       })}</div> : <p className="py-2 text-xs text-muted">尚无绘制图片。图片生成完成后会保留在这里。</p>}
     </div>
     {nonImageJobs.length > 0 && <details className="border-t border-border-subtle px-3 py-1.5">
-      <summary className="cursor-pointer text-[11px] font-medium text-muted">失败与处理中记录（{nonImageJobs.length}）</summary>
-      <div className="mt-1 flex max-h-20 flex-col gap-1 overflow-y-auto pb-1 text-[11px]" data-autohide-scroll>{nonImageJobs.map((job) => <div key={job.id} className="flex items-center justify-between gap-2">
+      <summary className="cursor-pointer text-xs font-medium text-muted">失败与处理中记录（{nonImageJobs.length}）</summary>
+      <div className="mt-1 flex max-h-20 flex-col gap-1 overflow-y-auto pb-1 text-xs" data-autohide-scroll>{nonImageJobs.map((job) => <div key={job.id} className="flex items-center justify-between gap-2">
         <span className={job.status === 'failed' || job.status === 'interrupted' ? 'min-w-0 truncate text-danger' : 'min-w-0 truncate text-muted'}>{new Date(job.createdAt).toLocaleString()} · {statusText(job.status)}{job.errorMessage ? ` · ${job.errorMessage}` : ''}</span>
         {job.callId && <a className="shrink-0 text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(job.callId)}`} target="_blank" rel="noreferrer">调用日志 ↗</a>}
       </div>)}</div>

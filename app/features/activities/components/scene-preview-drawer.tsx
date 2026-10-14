@@ -185,7 +185,7 @@ export function ScenePreviewDrawer({
             </div>
           </div>
           {scene.environment && (
-            <div className="text-muted text-[11px] italic truncate max-w-sm" title={scene.environment}>
+            <div className="text-muted text-xs italic truncate max-w-sm" title={scene.environment}>
               环境：{scene.environment}
             </div>
           )}
@@ -203,7 +203,7 @@ export function ScenePreviewDrawer({
               <span className="font-semibold text-accent">
                 动作 {currentBeatIndex + 1} / {beats.length}
               </span>
-              <span className="text-[11px]">
+              <span className="text-xs">
                 {isNarrator ? '旁白叙事' : currentActor?.displayName || '在场角色'}
               </span>
             </div>
@@ -233,7 +233,7 @@ export function ScenePreviewDrawer({
                       />
                     </div>
                   )}
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[10px] font-semibold flex items-center gap-1 backdrop-blur-xs pointer-events-none">
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs font-semibold flex items-center gap-1 backdrop-blur-xs pointer-events-none">
                     {currentBeat.mediaType === 'video' ? (
                       <>
                         <Film className="h-3 w-3 text-accent" />
@@ -278,7 +278,7 @@ export function ScenePreviewDrawer({
 
               {/* 核心动作与行为 (Action/What) - 醒目大字 */}
               <div className="p-4 rounded-xl bg-surface border border-border-default shadow-xs space-y-1">
-                <div className="text-[11px] font-bold text-accent uppercase tracking-wider">
+                <div className="text-xs font-bold text-accent uppercase tracking-wider">
                   主体动作 / 发生事件
                 </div>
                 <p className="text-sm sm:text-base font-semibold text-ink leading-relaxed">
@@ -289,7 +289,7 @@ export function ScenePreviewDrawer({
               {/* 角色台词或独白 (Dialogue) - 引用气泡 */}
               {currentBeat?.dialogue && (
                 <div className="relative pl-4 pr-3 py-3 rounded-lg bg-accent/5 border-l-4 border-accent text-xs sm:text-sm text-ink space-y-1">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-accent">
+                  <div className="flex items-center gap-1 text-xs font-semibold text-accent">
                     <Quote className="h-3 w-3" />
                     <span>台词 / 独白</span>
                   </div>

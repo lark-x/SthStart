@@ -12,17 +12,17 @@ export function RuntimeStrip() {
   const detail = isPending ? '请稍候…' : isError ? '请在控制中心检查连接后重试' : `${running} 个服务在线 · 最近异常 ${overview?.recentErrors ?? 0}`;
 
   return (
-    <section className="runtime-strip" aria-label="本地服务状态" data-visual-dynamic="true">
+    <section className="runtime-strip p-4" aria-label="本地服务状态" data-visual-dynamic="true">
       <div className="runtime-strip-info">
         <span aria-hidden="true" className={`service-light ${!isPending && !isError && running ? 'state-running' : 'state-stopped'}`} />
-        <div className="runtime-strip-text">
-          <strong>{title}</strong>
-          <small>{detail}</small>
+        <div className="runtime-strip-text gap-0.5">
+          <strong className="text-sm font-semibold text-ink">{title}</strong>
+          <small className="text-xs text-muted">{detail}</small>
         </div>
       </div>
-      <Link href="/settings/control-center" className="runtime-strip-action inline-flex items-center gap-1.5 font-semibold text-ink hover:text-accent transition-colors">
+      <Link href="/settings/control-center" className="runtime-strip-action inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-sunken/50 px-2.5 py-1.5 text-xs font-semibold text-ink hover:border-accent/40 hover:bg-surface hover:text-accent transition-colors">
         <span>打开控制中心</span>
-        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
       </Link>
     </section>
   );

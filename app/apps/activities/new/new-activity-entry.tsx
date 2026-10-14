@@ -363,7 +363,7 @@ export function NewActivityEntry() {
                     >
                       {selected && <Check className="size-3" />}
                       <span>{c.displayName}</span>
-                      {c.tags?.[0] && <span className="opacity-60 text-[10px]">· {c.tags[0]}</span>}
+                      {c.tags?.[0] && <span className="opacity-60 text-xs">· {c.tags[0]}</span>}
                     </button>
                   );
                 })}

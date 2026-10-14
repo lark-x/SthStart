@@ -452,7 +452,7 @@ export function RecordsEditor({
                   placeholder="设定本阶段的核心事件冲突、角色情感变化与剧情发展目标（大模型将严格围绕该主旨生成）..."
                   className="h-18 text-xs bg-surface"
                 />
-                <p className="text-[11px] text-muted">
+                <p className="text-xs text-muted">
                   此主旨会与全局活动主题结合，引导大模型产生符合本幕节奏的对话与动态。
                 </p>
               </div>
@@ -460,7 +460,7 @@ export function RecordsEditor({
               {/* 系统提示词覆盖 */}
               <div className="space-y-2">
                 <div className="pt-2 space-y-1">
-                  <label className="block font-medium text-muted text-[11px]">
+                  <label className="block font-medium text-muted text-xs">
                     阶段专属系统提示词微调 (System Prompt Override，可选):
                   </label>
                   <Input
@@ -589,20 +589,20 @@ export function RecordsEditor({
                           <div className="flex items-center gap-2 text-xs">
                             <span className="font-bold text-ink">{speaker?.displayName || msg.speakerActorId || '系统'}</span>
                             {speaker?.activityRole && (
-                              <span className="text-[10px] text-muted bg-surface-muted px-1.5 py-0.2 rounded font-normal">
+                              <span className="text-xs text-muted bg-surface-muted px-1.5 py-0.2 rounded font-normal">
                                 {speaker.activityRole}
                               </span>
                             )}
                             {msg.storyTimeLabel && (
-                              <span className="text-[11px] text-muted font-mono flex items-center gap-0.5">
+                              <span className="text-xs text-muted font-mono flex items-center gap-0.5">
                                 <Clock className="h-2.5 w-2.5" />
                                 {msg.storyTimeLabel}
                               </span>
                             )}
-                            <span className="text-[10px] text-muted font-mono opacity-60">#{idx + 1}</span>
+                            <span className="text-xs text-muted font-mono opacity-60">#{idx + 1}</span>
 
                             {lockedRecordMap.has(msg.id) && (
-                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200">
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200">
                                 <Lock className="h-2.5 w-2.5" /> 已锁定
                               </span>
                             )}
@@ -622,7 +622,7 @@ export function RecordsEditor({
                                   type="button"
                                   size="sm"
                                   onClick={() => handleSaveEditMsg(msg.id)}
-                                  className="h-6 text-[11px] px-2.5 bg-accent text-white"
+                                  className="h-6 text-xs px-2.5 bg-accent text-white"
                                 >
                                   保存
                                 </Button>
@@ -631,7 +631,7 @@ export function RecordsEditor({
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => setEditingMsgId(null)}
-                                  className="h-6 text-[11px] px-2"
+                                  className="h-6 text-xs px-2"
                                 >
                                   取消
                                 </Button>
@@ -656,7 +656,7 @@ export function RecordsEditor({
                                   key={slotId}
                                   type="button"
                                   onClick={() => onOpenWorkbench?.(slotId)}
-                                  className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+                                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
                                   title="打开 AI 生图与分镜工作台"
                                 >
                                   <Camera className="h-3 w-3 text-amber-600" />
@@ -816,7 +816,7 @@ export function RecordsEditor({
                         </div>
                         <div>
                           <p className="text-xs font-bold text-ink">{author?.displayName || '未知角色'}</p>
-                          <p className="text-[10px] text-muted">{author?.activityRole}</p>
+                          <p className="text-xs text-muted">{author?.activityRole}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
@@ -881,7 +881,7 @@ export function RecordsEditor({
               stageFacts.map((fact) => (
                 <div key={fact.id} className="p-3 rounded bg-surface-raised border border-border-subtle flex items-start justify-between gap-3 text-xs">
                   <div className="space-y-1">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-[10px]">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-xs">
                       {fact.status === 'happened' ? '✓ 已发生事实' : '○ 规划事实'}
                     </span>
                     <p className="text-ink font-medium leading-relaxed">{fact.text}</p>

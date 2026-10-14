@@ -64,10 +64,10 @@ export default function SettingsLayout({
       {/* Secondary Settings Tab Navigation Bar */}
       <nav
         aria-label="设置中心二级导航"
-        className="sticky top-12 z-20 border-b border-border-subtle bg-surface/90 backdrop-blur-md transition-colors"
+        className="sticky top-12 z-20 border-b border-border-subtle bg-bg-app/88 backdrop-blur-md transition-colors"
       >
         <div className="tpl-container py-2 flex items-center justify-between gap-4 overflow-x-auto">
-          <div className="flex items-center gap-1.5 min-w-max">
+          <div className="flex items-center gap-1.5 min-w-max rounded-[var(--radius-control)] bg-surface-sunken/75 p-1 border border-border-subtle/70">
             {SETTINGS_TABS.map((tab) => {
               const isActive =
                 pathname === tab.href || pathname.startsWith(`${tab.href}/`);
@@ -78,15 +78,15 @@ export default function SettingsLayout({
                   key={tab.href}
                   href={tab.href}
                   className={cn(
-                    'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors select-none',
+                    'inline-flex items-center gap-2 px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm font-medium transition-colors select-none',
                     isActive
-                      ? 'bg-accent/10 text-accent font-semibold shadow-xs'
+                      ? 'bg-surface text-ink font-semibold shadow-xs border border-border-subtle/80'
                       : 'text-muted hover:text-ink hover:bg-surface-hover'
                   )}
                   aria-current={isActive ? 'page' : undefined}
                   title={tab.description}
                 >
-                  <Icon className="h-3.5 w-3.5 flex-none" />
+                  <Icon className={cn('h-3.5 w-3.5 flex-none', isActive ? 'text-accent' : 'text-muted')} />
                   <span>{tab.label}</span>
                 </Link>
               );

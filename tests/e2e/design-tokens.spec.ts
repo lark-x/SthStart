@@ -16,29 +16,31 @@ test('shape and shell tokens resolve to the planned computed values', async ({ p
       sidebar: css.getPropertyValue('--shell-sidebar').trim(),
       sidebarCollapsed: css.getPropertyValue('--shell-sidebar-collapsed').trim(),
       reading: css.getPropertyValue('--shell-reading').trim(),
+      navSurface: css.getPropertyValue('--nav-surface').trim(),
     };
   });
 
   expect(tokens.control).toBe('10px');
-  expect(tokens.panel).toBe('18px');
+  expect(tokens.panel).toBe('16px');
   expect(tokens.dialog).toBe('20px');
-  expect(tokens.sidebar).toBe('224px');
-  expect(tokens.sidebarCollapsed).toBe('72px');
+  expect(tokens.sidebar).toBe('236px');
+  expect(tokens.sidebarCollapsed).toBe('68px');
   expect(Number.parseFloat(tokens.reading)).toBeGreaterThan(600);
+  expect(tokens.navSurface).toBe('#f3efe6');
 
   // 真实内容表面（面板与卡片）使用 panel 圆角。
-  await expect(page.locator('section.tpl-panel').first()).toHaveCSS('border-radius', '18px');
+  await expect(page.locator('section.tpl-panel').first()).toHaveCSS('border-radius', '16px');
 });
 
 test('interactive controls use the control radius', async ({ page }) => {
   await page.goto('/apps/characters');
   await expect(page.getByRole('link', { name: '新建角色' })).toHaveCSS('border-radius', '10px');
 
-  // 页级 tab 的分段容器沿用 panel 圆角，内部按钮用 control 圆角。
+  // 页级 tab 的分段容器与内部按钮使用 control 圆角规范。
   await page.goto('/settings/generation');
-  await expect(page.locator('.page-tabs').first()).toHaveCSS('border-radius', '18px');
+  await expect(page.locator('.page-tabs').first()).toHaveCSS('border-radius', '10px');
 
-  // 表单控件最小高度 40px，移动端热区 44px。
+  // 表单控件最小高度 36px，移动端热区 44px。
   await page.goto('/settings/public-services');
   const inputHeight = await page.getByLabel('搜索模型模板').evaluate((el) => el.getBoundingClientRect().height);
   expect(inputHeight).toBeGreaterThanOrEqual(36);

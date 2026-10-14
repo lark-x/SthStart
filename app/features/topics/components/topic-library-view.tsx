@@ -232,9 +232,9 @@ export function TopicLibraryView() {
           <span className="text-muted">最近任务：{latestRun ? ({ queued: '排队中', running: '搜集中', succeeded: '已完成', partial: '部分完成', failed: '失败', interrupted: '已中断' }[latestRun.status]) + '（' + formatDateTime(latestRun.finishedAt ?? latestRun.createdAt) + '）' : '还没有执行记录'}</span>
           <span className="text-muted">最近成功：{runsQuery.data?.lastSuccessful?.finishedAt ? formatDateTime(runsQuery.data.lastSuccessful.finishedAt) : '暂无'}</span>
           <span className="text-muted">最近新增：{latestRun ? latestRun.createdCount + ' 条' : '—'}</span>
-          {activeRun && <span className="flex items-center gap-1.5 text-amber-800"><Spinner size="sm" label="" />{activeRun.progressLabel || '进行中'}</span>}
-          {latestRun?.status === 'partial' && <span className="text-amber-700">部分来源失败：{latestRun.errorMessage}</span>}
-          {latestRun?.status === 'failed' && <span className="text-red-700">上次失败：{latestRun.errorMessage}</span>}
+          {activeRun && <span className="flex items-center gap-1.5 text-warning-fg"><Spinner size="sm" label="" />{activeRun.progressLabel || '进行中'}</span>}
+          {latestRun?.status === 'partial' && <span className="text-warning-fg">部分来源失败：{latestRun.errorMessage}</span>}
+          {latestRun?.status === 'failed' && <span className="text-danger-fg">上次失败：{latestRun.errorMessage}</span>}
         </section>
 
         <WorkbenchColumns
@@ -371,7 +371,7 @@ export function TopicLibraryView() {
               <Button variant="primary" disabled={busy || !selected.length || selected.length > MAX_SELECTED || !leadCharacterId} onClick={() => { setIdeaOpen(true); void generateIdeas(false); }}>
                 <Wand2 className="h-3.5 w-3.5" />生成三个点子
               </Button>
-              {!leadCharacterId && <p className="text-xs text-amber-700">请先选择活动主角：采用点子时会用主角建立企划会话。</p>}
+              {!leadCharacterId && <p className="text-xs text-warning-fg">请先选择活动主角：采用点子时会用主角建立企划会话。</p>}
               {selected.length > MAX_SELECTED && <Alert variant="warning">一次最多选择 {MAX_SELECTED} 条素材。</Alert>}
               <p className="text-xs text-muted">这里只生成点子方向，不生成完整聊天、图片或视频；详情页与企划会继续沿用已有流程。</p>
             </section>
@@ -615,7 +615,7 @@ function CollectionSettingsForm({ onSaved, onError }: { onSaved: (message: strin
       <div className="space-y-2">
         <p className="text-sm font-semibold text-ink">信息来源</p>
         <p className="text-xs text-muted">请选择能够检索近期网页或社区信息的资料源；剧情资料库不一定包含新梗。</p>
-        {!enabledSources.length && <p className="text-xs text-amber-700">还没有启用的 MCP 资料源，请先到「模型与公共服务」配置并启用。</p>}
+        {!enabledSources.length && <p className="text-xs text-warning-fg">还没有启用的 MCP 资料源，请先到「模型与公共服务」配置并启用。</p>}
         <ul className="space-y-2">
           {enabledSources.map((source) => {
             const binding = bindings.find((item) => item.sourceId === source.id);
@@ -662,7 +662,7 @@ function CollectionSettingsForm({ onSaved, onError }: { onSaved: (message: strin
                         {tools.map((tool) => <option key={tool.name} value={tool.name}>{tool.name}</option>)}
                       </Select>
                     </label>
-                    {!tools.length && <p className="text-xs text-amber-700 sm:col-span-2">该资料源还没有发现工具，请先在公共服务里测试连接。</p>}
+                    {!tools.length && <p className="text-xs text-warning-fg sm:col-span-2">该资料源还没有发现工具，请先在公共服务里测试连接。</p>}
                   </div>
                 )}
               </li>
@@ -751,7 +751,7 @@ function IdeaWorkspace({ batch, loading, busy, selectedTopics, onUse }: {
               <p className="text-xs text-muted"><span className="font-medium text-ink">预期桥段：</span>{idea.expectedHighlights.join('、')}</p>
             )}
             {idea.assumptions.length > 0 && (
-              <p className="text-xs text-amber-700"><span className="font-medium">属于建议：</span>{idea.assumptions.join('；')}</p>
+              <p className="text-xs text-warning-fg"><span className="font-medium">属于建议：</span>{idea.assumptions.join('；')}</p>
             )}
             <div className="mt-auto pt-1">
               <Button size="sm" variant="primary" disabled={busy} onClick={() => onUse(batch, idea)}>用这个点子创建活动</Button>

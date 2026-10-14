@@ -123,7 +123,7 @@ export function ResearchReview({
         >
           <div className="px-3 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-ink">结论清单 ({claims.length})</span>
-            <span className="text-[11px] text-muted">接受 {accepted}</span>
+            <span className="text-xs text-muted">接受 {accepted}</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
@@ -142,10 +142,10 @@ export function ResearchReview({
                   )}
                 >
                   <div className="flex items-center justify-between gap-1.5">
-                    <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold', claimTone(claim.claimType))}>
+                    <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs font-semibold', claimTone(claim.claimType))}>
                       {CLAIM_LABELS[claim.claimType ?? 'open-question'] ?? '未分类'}
                     </span>
-                    <span className="text-[11px] font-medium text-muted">
+                    <span className="text-xs font-medium text-muted">
                       {claim.status === 'accepted' ? (
                         <span className="text-success-fg">已接受</span>
                       ) : claim.status === 'rejected' ? (
@@ -156,7 +156,7 @@ export function ResearchReview({
                     </span>
                   </div>
                   <span className="mt-1.5 block text-xs font-bold leading-snug text-ink line-clamp-2">{claim.title}</span>
-                  <span className="mt-1 block text-[10px] text-muted">
+                  <span className="mt-1 block text-xs text-muted">
                     证据 {claim.evidence?.length ?? 0} 条 · {claim.origin === 'ai' ? 'AI 发现' : '手动'}
                   </span>
                 </button>
@@ -213,7 +213,7 @@ export function ResearchReview({
                       {evidence.archiveHref && (
                         <a
                           href={evidence.archiveHref}
-                          className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-accent hover:underline bg-accent/8"
+                          className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-xs text-accent hover:underline bg-accent/8"
                           title="跳转至归档原文"
                         >
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -233,13 +233,13 @@ export function ResearchReview({
                     </div>
                   </div>
 
-                  {evidence.contextBefore && <p className="text-[11px] leading-relaxed text-muted font-serif">{evidence.contextBefore}</p>}
+                  {evidence.contextBefore && <p className="text-xs leading-relaxed text-muted font-serif">{evidence.contextBefore}</p>}
                   <p className="whitespace-pre-wrap font-serif text-xs leading-relaxed text-ink font-medium bg-surface-muted/40 p-2 rounded border border-border-subtle">
                     {evidence.quoteSnapshot}
                   </p>
-                  {evidence.contextAfter && <p className="text-[11px] leading-relaxed text-muted font-serif">{evidence.contextAfter}</p>}
+                  {evidence.contextAfter && <p className="text-xs leading-relaxed text-muted font-serif">{evidence.contextAfter}</p>}
                   {!evidence.valid && evidence.validationMessage && (
-                    <Alert variant="warning" className="text-[11px] py-1">
+                    <Alert variant="warning" className="text-xs py-1">
                       {evidence.validationMessage}
                     </Alert>
                   )}

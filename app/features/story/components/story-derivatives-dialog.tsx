@@ -303,7 +303,7 @@ export function StoryDerivativesDialog({
                         <div className="mb-0.5 flex items-center gap-2">
                           <span className="font-semibold text-accent">{line.speaker}</span>
                           {line.emotion && (
-                            <span className="rounded bg-surface-muted px-1.5 py-0.2 text-[10px] text-muted">
+                            <span className="rounded bg-surface-muted px-1.5 py-0.2 text-xs text-muted">
                               {line.emotion}
                             </span>
                           )}

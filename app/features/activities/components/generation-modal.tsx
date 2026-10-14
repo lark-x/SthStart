@@ -518,7 +518,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                             {speakerName.slice(0, 1)}
                           </div>
                           <div className="space-y-1 max-w-[85%]">
-                            <div className="text-[11px] font-medium text-muted">
+                            <div className="text-xs font-medium text-muted">
                               {speakerName}
                             </div>
                             <div className="rounded-2xl rounded-tl-xs border border-border-subtle bg-surface px-3 py-2 text-sm text-ink shadow-2xs">
@@ -571,7 +571,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                           <span>{String(slot.caption || '待出图')}</span>
                         </div>
                         {Boolean(slot.shotDescription) && (
-                          <p className="text-muted text-[11px] leading-relaxed">
+                          <p className="text-muted text-xs leading-relaxed">
                             {String(slot.shotDescription)}
                           </p>
                         )}

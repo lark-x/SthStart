@@ -119,11 +119,10 @@ export function ThemeSwitcher({
           type="button"
           onClick={() => setDropdownOpen((prev) => !prev)}
           className={cn(
-            'relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
             isSidebar
-              ? 'border border-nav-border bg-white/5 text-nav-muted hover:bg-white/10 hover:text-nav-foreground'
-              : 'border border-border-default/70 bg-surface/70 text-muted hover:bg-surface-hover hover:text-ink',
-            dropdownOpen && (isSidebar ? 'bg-white/10 text-nav-foreground' : 'bg-surface-hover text-ink')
+              ? 'border border-nav-border bg-surface/65 text-nav-muted hover:bg-surface hover:text-nav-foreground shadow-xs'
+              : 'border border-border-subtle bg-surface text-muted hover:bg-surface-hover hover:text-ink shadow-xs',
+            dropdownOpen && (isSidebar ? 'bg-surface text-nav-foreground' : 'bg-surface-hover text-ink')
           )}
           title={`外观皮肤：${activeTheme.name}`}
           aria-label="选择主题与外观"
@@ -136,7 +135,7 @@ export function ThemeSwitcher({
           )}
           {/* Active theme accent indicator dot */}
           <span
-            className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full ring-1 ring-black/20 dark:ring-white/20"
+            className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full ring-1 ring-black/15 dark:ring-white/20"
             style={{ backgroundColor: activeTheme.accent }}
             aria-hidden="true"
           />
@@ -180,8 +179,8 @@ export function ThemeSwitcher({
         className={cn(
           'flex items-center rounded-lg p-0.5 shadow-xs transition-colors',
           isSidebar
-            ? 'w-full justify-between border border-nav-border bg-white/5'
-            : 'border border-border-default/70 bg-surface/70 hover:border-border-default'
+            ? 'w-full justify-between border border-nav-border bg-surface/65'
+            : 'border border-border-subtle bg-surface hover:border-border-default'
         )}
       >
         {/* Quick 1-click day/night toggle button */}
@@ -189,9 +188,9 @@ export function ThemeSwitcher({
           type="button"
           onClick={toggleColorMode}
           className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
+            'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
             isSidebar
-              ? 'text-nav-muted hover:bg-white/10 hover:text-nav-foreground'
+              ? 'text-nav-muted hover:bg-surface hover:text-nav-foreground'
               : 'text-muted hover:bg-surface-hover hover:text-ink'
           )}
           title={isDark ? '切换至日间模式' : '切换至夜间模式'}
@@ -203,7 +202,7 @@ export function ThemeSwitcher({
             <Moon className={cn('h-3.5 w-3.5', isSidebar ? 'text-nav-foreground' : 'text-ink')} aria-hidden="true" />
           )}
           {isSidebar && (
-            <span className="text-[11px] font-medium tracking-tight">
+            <span className="text-xs font-medium tracking-tight">
               {isDark ? '夜间' : '日间'}
             </span>
           )}
@@ -216,11 +215,11 @@ export function ThemeSwitcher({
           aria-expanded={dropdownOpen}
           aria-haspopup="menu"
           className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
+            'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
             isSidebar
-              ? 'text-nav-muted hover:bg-white/10 hover:text-nav-foreground'
+              ? 'text-nav-muted hover:bg-surface hover:text-nav-foreground'
               : 'text-muted hover:bg-surface-hover hover:text-ink',
-            dropdownOpen && (isSidebar ? 'bg-white/10 text-nav-foreground' : 'bg-surface-hover text-ink')
+            dropdownOpen && (isSidebar ? 'bg-surface text-nav-foreground' : 'bg-surface-hover text-ink')
           )}
           title="选择外观皮肤"
           aria-label="选择外观皮肤"
@@ -230,8 +229,8 @@ export function ThemeSwitcher({
             style={{ backgroundColor: activeTheme.accent }}
             aria-hidden="true"
           />
-          <span className="truncate text-[11px] font-medium tracking-tight">
-            {activeTheme.name}
+          <span className="max-w-[90px] truncate text-xs tracking-tight">
+            {activeTheme.name.split(' ')[0]}
           </span>
           <ChevronDown
             className={cn('h-3 w-3 opacity-60 transition-transform', dropdownOpen && 'rotate-180')}
@@ -249,12 +248,58 @@ export function ThemeSwitcher({
             popoverPositionClass
           )}
         >
-          <div className="flex items-center justify-between px-2 py-1 text-[11px] font-medium text-muted">
-            <span>外观与皮肤</span>
-            <span className="text-[10px] text-muted/60">4 种风格</span>
+          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted">
+            主题风格
           </div>
 
-          {renderThemeItems()}
+          <div className="space-y-1">
+            {THEMES.map((theme) => {
+              const isSelected = theme.id === themeId;
+              return (
+                <button
+                  key={theme.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setThemeId(theme.id as ThemeId);
+                    setDropdownOpen(false);
+                  }}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                    isSelected
+                      ? 'bg-accent/10 text-ink font-medium'
+                      : 'text-muted hover:bg-surface-hover hover:text-ink'
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {/* Visual Color Preview Swatch */}
+                    <div
+                      className="relative flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border-strong/40 shadow-xs"
+                      style={{ backgroundColor: theme.bg }}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: theme.accent }}
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-semibold text-ink">
+                        {theme.name}
+                      </div>
+                      <div className="truncate text-xs text-muted">
+                        {theme.description}
+                      </div>
+                    </div>
+                  </div>
+
+                  {isSelected && (
+                    <Check className="h-3.5 w-3.5 flex-none text-accent" aria-hidden="true" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

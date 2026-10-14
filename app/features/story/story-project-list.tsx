@@ -36,7 +36,7 @@ export function StoryProjectList() {
   const submitCreate = () => { if (title.trim() && !create.isPending) create.mutate(); };
   return <div className="min-h-0 w-full bg-paper py-6 text-ink">
     <PageContainer className="space-y-5">
-      <PageHeader title="剧情与记录工作室" description="结构化大纲、小说正文与对话感想记录，支持 AI 辅助构思与标准 MCP 协议协作。" actions={<Button onClick={() => { setError(''); setCreateOpen(true); }}><Plus className="size-4" />新建项目</Button>} />
+      <PageHeader title="剧情与记录工作室" description="结构化大纲、小说正文与对话感想记录，支持 AI 辅助构思与标准 MCP 协议协作。" actions={<Button variant="primary" size="sm" onClick={() => { setError(''); setCreateOpen(true); }}><Plus className="size-4" />新建项目</Button>} />
       {projects.error && <p role="alert" className="text-sm text-danger-fg">{projects.error.message}</p>}
       {projects.isLoading && <p className="text-muted">正在读取项目…</p>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -46,46 +46,46 @@ export function StoryProjectList() {
             <Link
               key={item.id}
               href={`/apps/story/${item.id}`}
-              className="story-project-card group flex min-h-[170px] flex-col justify-between rounded-[var(--radius-panel)] border border-border-default/60 bg-surface p-5 transition-all hover:border-border-default hover:shadow-xs"
+              className="story-project-card group flex min-h-[176px] flex-col justify-between rounded-[var(--radius-panel)] bg-surface p-5"
             >
               <div>
-                <div className="flex items-center justify-between gap-3 font-semibold">
+                <div className="flex items-start justify-between gap-3 font-semibold">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="story-project-icon">
                       {isReflection ? (
-                        <Lightbulb className="size-5 text-amber-500" />
+                        <Lightbulb className="size-4 text-warning-fg" />
                       ) : (
-                        <BookOpen className="size-5 text-accent" />
+                        <BookOpen className="size-4 text-accent" />
                       )}
                     </span>
-                    <span className="truncate text-ink transition-colors group-hover:text-accent">
+                    <span className="truncate text-base font-semibold tracking-tight text-ink transition-colors group-hover:text-accent">
                       {item.title}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         isReflection
-                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                          : 'bg-accent/10 text-accent'
+                          ? 'bg-warning-bg text-warning-fg'
+                          : 'bg-accent/10 text-accent-dark'
                       }`}
                     >
                       {isReflection ? '对话感想' : '剧情创作'}
                     </span>
                     {item.workId && (
-                      <span className="rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                      <span className="rounded-full bg-surface-sunken px-2.5 py-0.5 text-xs font-medium text-muted border border-border-subtle">
                         {item.workId}
                       </span>
                     )}
                   </div>
                 </div>
-                <p className="mt-2.5 line-clamp-2 text-xs leading-relaxed text-muted">
+                <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-muted">
                   {item.summary || (isReflection ? '暂无感想记录描述' : '尚未填写项目简介')}
                 </p>
               </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-border-subtle/50 pt-3 text-xs text-muted">
-                <span>更新于 {new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
+              <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-3 text-xs text-muted">
+                <span className="tabular-nums">更新于 {new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
                 <div className="flex items-center gap-1 font-medium text-muted transition-colors group-hover:text-accent">
                   <span>进入工作台</span>
                   <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -105,26 +105,28 @@ export function StoryProjectList() {
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Button
                 variant="outline"
-                className="gap-2 text-xs"
+                size="sm"
+                className="gap-2 text-sm"
                 onClick={() => {
                   setError('');
                   setProjectType('fiction');
                   setCreateOpen(true);
                 }}
               >
-                <BookOpen className="size-3.5 text-accent" />
+                <BookOpen className="size-4 text-accent" />
                 <span>新建剧情创作工程</span>
               </Button>
               <Button
                 variant="secondary"
-                className="gap-2 text-xs"
+                size="sm"
+                className="gap-2 text-sm"
                 onClick={() => {
                   setError('');
                   setProjectType('reflection');
                   setCreateOpen(true);
                 }}
               >
-                <Lightbulb className="size-3.5 text-amber-500" />
+                <Lightbulb className="size-4 text-warning-fg" />
                 <span>新建对话感想记录</span>
               </Button>
             </div>
@@ -143,6 +145,7 @@ export function StoryProjectList() {
             </Button>
             <Button
               type="submit"
+              variant="primary"
               form="story-create-project"
               disabled={!title.trim() || create.isPending}
               loading={create.isPending}
@@ -166,10 +169,10 @@ export function StoryProjectList() {
               <button
                 type="button"
                 onClick={() => setProjectType('fiction')}
-                className={`flex flex-col items-start rounded-[var(--radius-control)] border p-3 text-left transition-all ${
+                className={`flex flex-col items-start rounded-[var(--radius-control)] border p-3 text-left text-sm transition-all ${
                   projectType === 'fiction'
                     ? 'border-accent bg-accent/10 shadow-xs'
-                    : 'border-border-default/80 bg-surface hover:bg-surface-hover'
+                    : 'border-border-default bg-surface hover:bg-surface-hover'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -184,73 +187,61 @@ export function StoryProjectList() {
               <button
                 type="button"
                 onClick={() => setProjectType('reflection')}
-                className={`flex flex-col items-start rounded-[var(--radius-control)] border p-3 text-left transition-all ${
+                className={`flex flex-col items-start rounded-[var(--radius-control)] border p-3 text-left text-sm transition-all ${
                   projectType === 'reflection'
-                    ? 'border-amber-500 bg-amber-500/10 shadow-xs'
-                    : 'border-border-default/80 bg-surface hover:bg-surface-hover'
+                    ? 'border-warning bg-warning-bg shadow-xs'
+                    : 'border-border-default bg-surface hover:bg-surface-hover'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Lightbulb className="size-4 text-amber-500" />
+                  <Lightbulb className="size-4 text-warning-fg" />
                   <span className="font-semibold text-sm text-ink">对话感想</span>
                 </div>
                 <p className="mt-1 text-xs text-muted">
-                  聚焦思考纲要与随笔篇目，精简无干扰的感想反思工作台。
+                  记录与角色聊天、剧情体验后的随笔、复盘与灵感摘录。
                 </p>
               </button>
             </div>
           </div>
 
-          <div>
-            <label htmlFor="story-project-title" className="block text-sm font-medium text-ink">
-              项目名称
-            </label>
+          <label className="block space-y-1.5 text-sm font-medium text-ink">
+            <span>{projectType === 'reflection' ? '记录册名称' : '项目名称'}</span>
             <Input
-              id="story-project-title"
-              autoFocus
-              className="mt-1"
+              aria-label="项目名称"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              maxLength={120}
-              placeholder={projectType === 'reflection' ? '例如：AI 对话与认知反思录' : '例如：雾港夜行'}
+              placeholder={projectType === 'reflection' ? '例如：芙宁娜日常对话随感' : '例如：枫丹雨夜篇章'}
+              autoFocus
             />
-          </div>
-
-          {projectType === 'fiction' ? (
-            <div>
-              <label htmlFor="story-project-work" className="block text-sm font-medium text-ink">
-                绑定所属作品（可选）
-              </label>
-              <Input
-                id="story-project-work"
-                className="mt-1"
-                value={workId}
-                onChange={(event) => setWorkId(event.target.value)}
-                maxLength={120}
-                placeholder="例如：原神、崩坏：星穹铁道，或原创世界"
-              />
-              <p className="mt-1 text-xs text-muted">绑定后将优先推荐并筛选该作品库下的角色与设定。</p>
-            </div>
-          ) : (
-            <div>
-              <label htmlFor="story-project-work" className="block text-sm font-medium text-ink">
-                关联主题标签（可选）
-              </label>
-              <Input
-                id="story-project-work"
-                className="mt-1"
-                value={workId}
-                onChange={(event) => setWorkId(event.target.value)}
-                maxLength={120}
-                placeholder="例如：智能体对话、系统架构哲学"
-              />
-              <p className="mt-1 text-xs text-muted">可用于为感想随笔打上主题分类标识。</p>
-            </div>
-          )}
-          {error && <p role="alert" className="mt-3 text-sm text-danger-fg">创建失败：{error}</p>}
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium text-ink">
+            <span>所属作品（选填）</span>
+            <Input
+              aria-label="所属作品"
+              value={workId}
+              onChange={(event) => setWorkId(event.target.value)}
+              placeholder="例如：原神"
+            />
+          </label>
+          {error && <p role="alert" className="text-sm text-danger-fg">{error}</p>}
         </form>
       </ResponsiveEditOverlay>
-      <ConfirmDialog open={discardOpen} onOpenChange={setDiscardOpen} title="放弃项目名称？" description="未创建的项目名称将被清空。" confirmLabel="放弃修改" onConfirm={() => { setTitle(''); setWorkId(''); setError(''); setCreateOpen(false); }} />
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title="放弃未保存的新建项目？"
+        description="关闭后已填写的名称与作品信息不会保留。"
+        confirmLabel="放弃填写"
+        danger
+        onConfirm={() => {
+          setDiscardOpen(false);
+          setCreateOpen(false);
+          setTitle('');
+          setWorkId('');
+          setProjectType('fiction');
+          setError('');
+        }}
+      />
     </PageContainer>
   </div>;
 }

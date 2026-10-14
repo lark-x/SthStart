@@ -641,7 +641,7 @@ export function NoteEditor({
             <div className="flex flex-wrap items-center gap-3 text-xs">
               {/* Kind Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-muted text-[11px]">类型:</span>
+                <span className="text-muted text-xs">类型:</span>
                 <select
                   aria-label="资料分类"
                   value={note.kind}
@@ -656,7 +656,7 @@ export function NoteEditor({
 
               {/* Stage Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-muted text-[11px]">阶段:</span>
+                <span className="text-muted text-xs">阶段:</span>
                 <select
                   aria-label="阶段状态"
                   value={note.stage}

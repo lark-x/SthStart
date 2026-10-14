@@ -30,7 +30,7 @@ export function ComicPageList({ pages, panels, selectedPageId, newPageTemplate, 
             className={`w-32 shrink-0 rounded-[var(--radius-panel)] border p-2 text-left transition-colors xl:w-full ${page.id === selectedPageId ? 'border-accent bg-accent/5' : 'border-border-default bg-surface hover:bg-surface-raised'}`}>
             <span className="flex items-center justify-between text-xs font-semibold text-ink"><span>第 {index + 1} 页</span><span className="text-muted">{page.panelIds.length} 格</span></span>
             <span className="mt-2 grid grid-cols-2 gap-1">
-              {page.panelIds.map((panelId) => <span key={panelId} className="aspect-[4/3] rounded-sm bg-ink/10 p-1 text-[10px] text-muted line-clamp-2">{panelById.get(panelId)?.visualDescription || '空白画格'}</span>)}
+              {page.panelIds.map((panelId) => <span key={panelId} className="aspect-[4/3] rounded-sm bg-ink/10 p-1 text-xs text-muted line-clamp-2">{panelById.get(panelId)?.visualDescription || '空白画格'}</span>)}
             </span>
           </button>
         ))}

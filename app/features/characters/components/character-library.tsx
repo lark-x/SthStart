@@ -79,7 +79,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     try { await saveCharacterWork({ ...work, aliases: splitLabels(aliases) }); refresh(); setWorksOpen(false); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
-  return <div className="bg-paper py-6 text-ink"><PageContainer className="space-y-4">
+  return <div className="bg-paper py-6 text-ink"><PageContainer className="space-y-5">
     <PageHeader
       title="角色资料库"
       description="按作品与标签找角色，为下一场活动挑选参与者。"
@@ -96,7 +96,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           作品与别名
         </Button>
         <Link
-          className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] bg-accent px-3 text-sm font-semibold text-white transition-colors hover:bg-accent-dark"
+          className="inline-flex h-11 sm:h-9 items-center gap-1.5 rounded-[var(--radius-control)] bg-accent px-3.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-accent-dark"
           href="/apps/characters/new"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
@@ -145,7 +145,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
       facets={browser.facets}
       actions={
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted tabular-nums">
             共 {browser.data?.total ?? '—'} 位角色{browser.isFetching ? ' · 筛选中…' : ''}
           </span>
           <Button
@@ -185,7 +185,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             <button
               key={id}
               type="button"
-              className="inline-flex items-center gap-1 rounded-[var(--radius-control)] border border-border-default/60 bg-surface px-2 py-0.5 text-xs text-ink hover:border-accent/50"
+              className="inline-flex items-center gap-1 rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 py-1 text-sm text-ink hover:border-accent/50"
               onClick={() =>
                 setSelected((current) => {
                   const next = { ...current };
@@ -210,7 +210,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
         <Button
           size="sm"
           variant="ghost"
-          className="h-8 px-2.5 text-xs text-muted hover:text-ink"
+          className="h-8 px-2.5 text-sm text-muted hover:text-ink"
           onClick={() =>
             setSelected((current) => ({
               ...current,
@@ -232,7 +232,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
       <Button
         size="sm"
         variant="outline"
-        className="h-8 gap-1.5 px-3 text-xs"
+        className="h-8 gap-1.5 px-3 text-sm"
         disabled={!Object.keys(selected).length}
         onClick={() => {
           setError('');
@@ -247,7 +247,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
       <Button
         size="sm"
         variant="primary"
-        className="h-8 gap-1.5 px-3 text-xs"
+        className="h-8 gap-1.5 px-3 text-sm"
         disabled={!Object.keys(selected).length}
         onClick={() => {
           setError('');
@@ -262,11 +262,11 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     {browser.isLoading ? (
       <p className="py-12 text-center text-muted">正在加载角色…</p>
     ) : (
-      <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))]">
+      <div className="grid gap-3.5 grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))]">
         {browser.data?.items.map((character) => (
           <article
             key={character.id}
-            className="character-profile-card group relative flex min-h-[94px] items-center justify-between rounded-[var(--radius-panel)] bg-surface p-4 transition-all"
+            className="character-profile-card group relative flex min-h-[92px] items-center justify-between rounded-[var(--radius-panel)] bg-surface p-3.5 transition-all"
           >
             {selectionMode && (
               <input
@@ -281,13 +281,13 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     return next;
                   })
                 }
-                className="mr-2"
+                className="mr-2.5"
               />
             )}
 
             <Link href={`/apps/characters/${character.id}`} className="flex flex-1 items-center gap-3 min-w-0">
               <div
-                className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border-default/60 bg-surface-muted text-xl font-bold shadow-inner"
+                className="relative flex h-13 w-13 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken text-lg font-bold shadow-xs"
                 style={
                   character.avatarUrl
                     ? undefined
@@ -312,7 +312,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     alt=""
                     fill
                     unoptimized
-                    className="object-cover transition-transform group-hover:scale-105"
+                    className="object-cover transition-transform duration-200 group-hover:scale-105"
                   />
                 ) : (
                   character.displayName.slice(0, 1)
@@ -320,7 +320,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               </div>
 
               <div className="min-w-0 flex-1">
-                <h3 className="truncate text-sm font-semibold text-ink group-hover:text-accent">
+                <h3 className="truncate text-sm font-semibold text-ink transition-colors group-hover:text-accent">
                   {character.displayName}
                 </h3>
                 <p className="mt-0.5 truncate text-xs text-fg-subtle">
@@ -331,7 +331,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
 
             <button
               type="button"
-              className="ml-2 text-muted transition-colors hover:text-accent p-1"
+              className="ml-2 rounded-lg p-1.5 text-sm text-muted transition-colors hover:bg-surface-sunken hover:text-accent"
               aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
               aria-pressed={character.organization?.favorite || false}
               onClick={() => void toggleFavorite(character.id, !character.organization?.favorite)}
@@ -352,7 +352,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   <CharacterImportDialog open={importOpen} onOpenChange={setImportOpen} initialMode="online" onCommitted={id => { refresh(); router.push(`/apps/characters/${id}`); }} />
   <CharacterBatchImport open={batchOpen} onOpenChange={setBatchOpen} onCommitted={refresh} works={browser.facets?.works || []} />
   <Dialog open={organizeOpen} onOpenChange={v => { if (!busy) setOrganizeOpen(v); }} title={`整理 ${Object.keys(selected).length} 位角色`} description="只修改角色库资料，已保存的活动快照保持原样。" footer={<Button disabled={busy} onClick={() => void organize()}>{busy ? '保存中…' : '保存整理结果'}</Button>}><CharacterOrganizationFields value={fields} onChange={setFields} works={browser.facets?.works || []} /><div className="mt-3 space-y-2 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={replaceTags} onChange={e => setReplaceTags(e.target.checked)} />改为替换全部标签（留空则清除）</label><label className="flex items-center gap-2"><input type="checkbox" checked={replaceGroups} onChange={e => setReplaceGroups(e.target.checked)} />改为替换全部分组（留空则清除）</label></div>{error && <p role="alert" className="mt-3 text-sm text-accent-dark">{error}</p>}</Dialog>
-  <Dialog open={worksOpen} onOpenChange={v => { if (!busy) setWorksOpen(v); }} title="作品与别名" description="新增作品，或选择已有作品编辑别名与类型。别名可以用于搜索和筛选。" footer={<Button disabled={busy || !work.name.trim()} onClick={() => void saveWork()}>保存作品</Button>}><div className="space-y-3"><label className="block text-sm">选择已有作品<select className="mt-1 w-full rounded border p-2" value="" onChange={e => { const next = browser.facets?.works.find(w => w.name === e.target.value); if (next) { setWork(next); setAliases(next.aliases.join('，')); } }}><option value="">选择作品，或在下方新建</option>{browser.facets?.works.map(w => <option key={w.name} value={w.name}>{w.name}</option>)}</select></label><label className="block text-sm">标准名称<Input value={work.name} onChange={e => setWork({ ...work, name: e.target.value })} /></label><label className="block text-sm">别名（逗号分隔）<Input value={aliases} onChange={e => setAliases(e.target.value)} /></label><label className="block text-sm">作品类型<select className="mt-1 w-full rounded border p-2" value={work.mediaType} onChange={e => setWork({ ...work, mediaType: e.target.value })}><option value="">未分类</option>{['游戏', '动画', '漫画', '小说', '影视', '其他'].map(t => <option key={t}>{t}</option>)}</select></label>{error && <p role="alert" className="text-sm text-accent-dark">{error}</p>}</div></Dialog>
+  <Dialog open={worksOpen} onOpenChange={v => { if (!busy) setWorksOpen(v); }} title="作品与别名" description="新增作品，或选择已有作品编辑别名与类型。别名可以用于搜索和筛选。" footer={<Button disabled={busy || !work.name.trim()} onClick={() => void saveWork()}>保存作品</Button>}><div className="space-y-3"><label className="block text-sm">选择已有作品<select className="mt-1 h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm text-ink" value="" onChange={e => { const next = browser.facets?.works.find(w => w.name === e.target.value); if (next) { setWork(next); setAliases(next.aliases.join('，')); } }}><option value="">选择作品，或在下方新建</option>{browser.facets?.works.map(w => <option key={w.name} value={w.name}>{w.name}</option>)}</select></label><label className="block text-sm">标准名称<Input value={work.name} onChange={e => setWork({ ...work, name: e.target.value })} /></label><label className="block text-sm">别名（逗号分隔）<Input value={aliases} onChange={e => setAliases(e.target.value)} /></label><label className="block text-sm">作品类型<select className="mt-1 h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm text-ink" value={work.mediaType} onChange={e => setWork({ ...work, mediaType: e.target.value })}><option value="">未分类</option>{['游戏', '动画', '漫画', '小说', '影视', '其他'].map(t => <option key={t}>{t}</option>)}</select></label>{error && <p role="alert" className="text-sm text-accent-dark">{error}</p>}</div></Dialog>
   <Dialog
     open={batchAvatarOpen}
     onOpenChange={(v) => {

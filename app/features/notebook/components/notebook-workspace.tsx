@@ -337,10 +337,10 @@ export function NotebookWorkspace({
                     type="button"
                     aria-pressed={isActive}
                     onClick={() => { setSelectedFilter(opt.value); setPage(1); }}
-                    className={"px-2.5 py-1 rounded-full text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer " + (
+                    className={"px-2.5 py-1 rounded-lg border text-sm font-medium whitespace-nowrap transition-colors cursor-pointer " + (
                       isActive
-                        ? 'bg-ink text-paper'
-                        : 'text-muted hover:text-ink hover:bg-ink/6'
+                        ? 'border-border-subtle bg-surface text-ink font-semibold shadow-xs'
+                        : 'border-transparent text-muted hover:text-ink hover:bg-surface-hover'
                     )}
                   >
                     {opt.label}
@@ -391,7 +391,7 @@ export function NotebookWorkspace({
                   key={key}
                   aria-label={label}
                   value={filters[key]}
-                  className="min-w-0 rounded-md border border-border-control bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  className="min-w-0 rounded-md border border-border-control bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
                   onChange={(event) => {
                     setFilters((current) => ({ ...current, [key]: event.target.value }));
                     setPage(1);
@@ -470,7 +470,7 @@ export function NotebookWorkspace({
                         {item.tags.slice(0, 2).map((t) => (
                           <span
                             key={t}
-                            className="bg-ink/5 px-1.5 py-0.2 rounded text-sm"
+                            className="bg-surface-sunken px-1.5 py-0.5 rounded text-xs text-muted border border-border-subtle/60"
                           >
                             #{t}
                           </span>
