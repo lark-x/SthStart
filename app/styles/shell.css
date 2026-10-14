@@ -5,14 +5,67 @@
  * 外框与模板规则以 .shell-* / .tpl-* 明确根标识，避免与旧 .portal-* / .studio-* 规则交叉命中。
  */
 
-/* ==================== 外框骨架 ==================== */
+/* ==================== 外框骨架与纸质微噪点 ==================== */
 
 .shell-root {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg-app);
+}
+
+/* Craft 级物理纸质漫反射微噪点（2KB 内联 SVG 噪点，0.022 极低透明度，打破数码塑料感） */
+.shell-root::before {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  content: '';
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+html[data-theme*='dark'] .shell-root::before {
+  opacity: 0.012;
+}
+
+/* ---------- Heti 赫蹏级中文长文排版与屏幕阅读流 ---------- */
+.shell-main,
+.tpl-container,
+.story-reading-content,
+.narrative-content,
+.novel-prose {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.tpl-description,
+.story-reading-content p,
+.narrative-content p,
+.novel-prose p {
+  text-wrap: pretty;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+}
+
+.story-reading-content,
+.narrative-content,
+.novel-prose {
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 1.85;
+  letter-spacing: 0.015em;
+  color: var(--fg-default);
+}
+
+.story-reading-content p,
+.narrative-content p,
+.novel-prose p {
+  margin-block: 1.2em;
+  text-indent: 0;
 }
 
 /* ---------- 左侧导航（Notion / Craft 轻盈同色系半透明侧栏） ---------- */
@@ -588,6 +641,11 @@
   border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow-panel);
+  transition: box-shadow var(--motion-base) var(--motion-ease), border-color var(--motion-base) var(--motion-ease);
+}
+
+.tpl-panel:hover {
+  box-shadow: var(--shadow-panel-hover);
 }
 
 .activity-card,
@@ -604,6 +662,20 @@
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--accent) 36%, var(--border-default));
   box-shadow: var(--shadow-panel-hover);
+}
+
+/* Paco Coursey 对话框多层微阴影与高光内阴影增强 */
+[role='dialog'] > div[tabindex='-1'] {
+  box-shadow: var(--shadow-dialog) !important;
+  border: 1px solid var(--border-default) !important;
+}
+
+/* 现代精密按压触感反馈 */
+.desk-capsule-btn:active,
+.primary-action:active,
+.shell-collapse-btn:active {
+  transform: scale(0.985);
+  transition-duration: 70ms;
 }
 
 .activity-card-mark {

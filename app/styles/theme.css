@@ -21,21 +21,21 @@
   --accent-soft: #fff7ed;
   --accent-ring: rgb(194 65 12 / 28%);
 
-  /* ---------- 应用背景与同色系轻盈侧栏 ---------- */
-  --bg-app: #faf8f4;
-  --bg-nav: #f3efe6;
-  --nav-surface: #f3efe6;
-  --nav-foreground: #1e1d1a;
-  --nav-muted: #57534b;
-  --nav-hover: rgb(30 29 26 / 6%);
+  /* ---------- 应用背景与同色系轻盈侧栏 (Radix Sand 科学色彩阶梯) ---------- */
+  --bg-app: #fcfbf9;
+  --bg-nav: #f6f3ed;
+  --nav-surface: #f6f3ed;
+  --nav-foreground: #1f1d1a;
+  --nav-muted: #5e5951;
+  --nav-hover: rgb(31 29 26 / 5%);
   --nav-selected: #ffffff;
-  --nav-selected-text: #181715;
-  --nav-border: rgb(30 29 26 / 8%);
-  --shadow-nav-active: 0 1px 3px rgb(30 29 26 / 7%), 0 1px 2px rgb(30 29 26 / 4%);
-  --shadow-hero: 0 16px 40px rgb(30 29 26 / 7%);
-  --shadow-editorial: 0 2px 10px -2px rgb(30 29 26 / 5%), 0 1px 3px 0 rgb(30 29 26 / 3%);
+  --nav-selected-text: #171614;
+  --nav-border: rgb(31 29 26 / 8%);
+  --shadow-nav-active: 0 1px 3px rgb(31 29 26 / 6%), 0 1px 2px rgb(31 29 26 / 4%);
+  --shadow-hero: 0 16px 40px rgb(31 29 26 / 7%);
+  --shadow-editorial: 0 2px 10px -2px rgb(31 29 26 / 5%), 0 1px 3px 0 rgb(31 29 26 / 3%);
   --ambient-glow: color-mix(in srgb, var(--accent) 6%, transparent);
-  --shadow-control-inset: inset 0 1px 1px rgb(30 29 26 / 3%);
+  --shadow-control-inset: inset 0 1px 1px rgb(31 29 26 / 3%);
   --hero-start: #233143;
   --hero-mid: #304355;
   --hero-end: #445366;
@@ -48,25 +48,25 @@
   --hero-dot: #d3a987;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f3efe6;
-  --surface-muted: rgb(243 239 230 / 78%);
-  --surface-hover: rgb(30 29 26 / 4.5%);
+  --surface-sunken: #f2eee5;
+  --surface-muted: rgb(245 241 232 / 85%);
+  --surface-hover: rgb(31 29 26 / 4%);
   --surface-input: #ffffff;
   --surface-dark: #1b1a18;
-  --hairline: rgb(30 29 26 / 8%);
+  --hairline: rgb(31 29 26 / 8%);
 
-  /* ---------- 文字 ---------- */
-  --fg-default: #1e1d1a;
-  --fg-muted: #5c5850;
-  --fg-subtle: #6e6a61;
-  --fg-inverse: #faf8f4;
+  /* ---------- 文字 (高对比墨黑与呼吸感次级色) ---------- */
+  --fg-default: #1f1d1a;
+  --fg-muted: #5e5951;
+  --fg-subtle: #797368;
+  --fg-inverse: #fcfbf9;
   --fg-on-accent: #ffffff;
 
-  /* ---------- 边框 ---------- */
-  --border-subtle: #e6e2d8;
-  --border-default: #d6d1c4;
-  --border-strong: #8c877b;
-  --border-control: #858075;
+  /* ---------- 边框 (Radix Sand 细腻阶梯) ---------- */
+  --border-subtle: #ece6dc;
+  --border-default: #dad3c5;
+  --border-strong: #8e877a;
+  --border-control: #827b6e;
 
   /* ---------- 状态色 ---------- */
   --success: #2f7d4e;
@@ -123,13 +123,15 @@
   --radius-xl: 18px;
   --radius-full: 9999px;
 
-  /* ---------- 阴影 ---------- */
-  --shadow-xs: 0 1px 2px rgb(30 29 26 / 4%);
-  --shadow-sm: 0 1px 3px rgb(30 29 26 / 6%), 0 1px 2px rgb(30 29 26 / 4%);
-  --shadow-panel: 0 1px 2px rgb(30 29 26 / 4%), 0 4px 12px -2px rgb(30 29 26 / 4%);
-  --shadow-panel-hover: 0 4px 12px -2px rgb(30 29 26 / 7%), 0 10px 24px -4px rgb(30 29 26 / 6%);
-  --shadow-floating: 0 10px 28px -4px rgb(30 29 26 / 11%), 0 4px 12px -2px rgb(30 29 26 / 6%);
-  --shadow-dialog: 0 24px 60px -12px rgb(30 29 26 / 20%), 0 8px 24px -4px rgb(30 29 26 / 9%);
+  /* ---------- Paco Coursey 现代精密多层微阴影与高光内阴影 ---------- */
+  --shadow-xs: 0 1px 2px rgb(31 29 26 / 4%);
+  --shadow-sm: 0 1px 3px rgb(31 29 26 / 5%), 0 1px 2px rgb(31 29 26 / 3%);
+  --shadow-card: 0 1px 3px rgb(31 29 26 / 4%), 0 2px 6px -1px rgb(31 29 26 / 4%), inset 0 1px 0 rgb(255 255 255 / 70%);
+  --shadow-panel: 0 1px 2px rgb(31 29 26 / 3%), 0 4px 12px -2px rgb(31 29 26 / 4%), inset 0 1px 0 rgb(255 255 255 / 75%);
+  --shadow-panel-hover: 0 4px 14px -2px rgb(31 29 26 / 7%), 0 12px 28px -4px rgb(31 29 26 / 6%), inset 0 1px 0 rgb(255 255 255 / 90%);
+  --shadow-floating: 0 12px 32px -4px rgb(31 29 26 / 10%), 0 4px 12px -2px rgb(31 29 26 / 5%), inset 0 1px 0 rgb(255 255 255 / 80%);
+  --shadow-dialog: 0 24px 64px -12px rgb(31 29 26 / 18%), 0 8px 24px -4px rgb(31 29 26 / 8%), inset 0 1px 0 rgb(255 255 255 / 60%);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 70%);
 
   /* ---------- 外框尺寸 ---------- */
   --shell-sidebar: 236px;
@@ -193,39 +195,39 @@ html[data-theme="warm"] {
   --accent: #c2410c;
   --accent-dark: #9a3412;
   --accent-soft: #fff7ed;
-  --accent-ring: rgb(194 65 12 / 28%);
+  --accent-ring: rgb(194 65 12 / 24%);
   --focus-ring: #c2410c;
 
-  --bg-app: #faf8f4;
-  --bg-nav: #f3efe6;
-  --nav-surface: #f3efe6;
-  --nav-foreground: #1e1d1a;
-  --nav-muted: #57534b;
-  --nav-hover: rgb(30 29 26 / 6%);
+  --bg-app: #fcfbf9;
+  --bg-nav: #f6f3ed;
+  --nav-surface: #f6f3ed;
+  --nav-foreground: #1f1d1a;
+  --nav-muted: #5e5951;
+  --nav-hover: rgb(31 29 26 / 5%);
   --nav-selected: #ffffff;
-  --nav-selected-text: #181715;
-  --nav-border: rgb(30 29 26 / 8%);
-  --shadow-nav-active: 0 1px 3px rgb(30 29 26 / 7%), 0 1px 2px rgb(30 29 26 / 4%);
+  --nav-selected-text: #171614;
+  --nav-border: rgb(31 29 26 / 8%);
+  --shadow-nav-active: 0 1px 3px rgb(31 29 26 / 6%), 0 1px 2px rgb(31 29 26 / 4%);
 
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f3efe6;
-  --surface-muted: rgb(243 239 230 / 78%);
-  --surface-hover: rgb(30 29 26 / 4.5%);
+  --surface-sunken: #f2eee5;
+  --surface-muted: rgb(245 241 232 / 85%);
+  --surface-hover: rgb(31 29 26 / 4%);
   --surface-input: #ffffff;
   --surface-dark: #1b1a18;
-  --hairline: rgb(30 29 26 / 8%);
+  --hairline: rgb(31 29 26 / 8%);
 
-  --fg-default: #1e1d1a;
-  --fg-muted: #5c5850;
-  --fg-subtle: #6e6a61;
-  --fg-inverse: #faf8f4;
+  --fg-default: #1f1d1a;
+  --fg-muted: #5e5951;
+  --fg-subtle: #797368;
+  --fg-inverse: #fcfbf9;
   --fg-on-accent: #ffffff;
 
-  --border-subtle: #e6e2d8;
-  --border-default: #d6d1c4;
-  --border-strong: #8c877b;
-  --border-control: #858075;
+  --border-subtle: #ece6dc;
+  --border-default: #dad3c5;
+  --border-strong: #8e877a;
+  --border-control: #827b6e;
 
   --success: #2f7d4e;
   --success-fg: #23633c;
@@ -251,8 +253,17 @@ html[data-theme="warm"] {
   --info-border: rgb(54 88 128 / 28%);
   --info-solid: #365880;
 
-  --scrollbar-thumb: rgb(30 29 26 / 22%);
-  --scrollbar-thumb-hover: rgb(30 29 26 / 40%);
+  --shadow-xs: 0 1px 2px rgb(31 29 26 / 4%);
+  --shadow-sm: 0 1px 3px rgb(31 29 26 / 5%), 0 1px 2px rgb(31 29 26 / 3%);
+  --shadow-card: 0 1px 3px rgb(31 29 26 / 4%), 0 2px 6px -1px rgb(31 29 26 / 4%), inset 0 1px 0 rgb(255 255 255 / 70%);
+  --shadow-panel: 0 1px 2px rgb(31 29 26 / 3%), 0 4px 12px -2px rgb(31 29 26 / 4%), inset 0 1px 0 rgb(255 255 255 / 75%);
+  --shadow-panel-hover: 0 4px 14px -2px rgb(31 29 26 / 7%), 0 12px 28px -4px rgb(31 29 26 / 6%), inset 0 1px 0 rgb(255 255 255 / 90%);
+  --shadow-floating: 0 12px 32px -4px rgb(31 29 26 / 10%), 0 4px 12px -2px rgb(31 29 26 / 5%), inset 0 1px 0 rgb(255 255 255 / 80%);
+  --shadow-dialog: 0 24px 64px -12px rgb(31 29 26 / 18%), 0 8px 24px -4px rgb(31 29 26 / 8%), inset 0 1px 0 rgb(255 255 255 / 60%);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 70%);
+
+  --scrollbar-thumb: rgb(31 29 26 / 20%);
+  --scrollbar-thumb-hover: rgb(31 29 26 / 38%);
 }
 
 /* ==================== 2. 纯净冷白 (light-zinc / neutral) ==================== */
@@ -319,6 +330,15 @@ html[data-theme="neutral"] {
   --info-bg: rgb(54 88 128 / 10%);
   --info-border: rgb(54 88 128 / 28%);
   --info-solid: #365880;
+
+  --shadow-xs: 0 1px 2px rgb(9 9 11 / 4%);
+  --shadow-sm: 0 1px 3px rgb(9 9 11 / 5%), 0 1px 2px rgb(9 9 11 / 3%);
+  --shadow-card: 0 1px 3px rgb(9 9 11 / 4%), 0 2px 6px -1px rgb(9 9 11 / 4%), inset 0 1px 0 rgb(255 255 255 / 80%);
+  --shadow-panel: 0 1px 2px rgb(9 9 11 / 3%), 0 4px 12px -2px rgb(9 9 11 / 4%), inset 0 1px 0 rgb(255 255 255 / 80%);
+  --shadow-panel-hover: 0 4px 14px -2px rgb(9 9 11 / 7%), 0 12px 28px -4px rgb(9 9 11 / 6%), inset 0 1px 0 rgb(255 255 255 / 90%);
+  --shadow-floating: 0 12px 32px -4px rgb(9 9 11 / 10%), 0 4px 12px -2px rgb(9 9 11 / 5%), inset 0 1px 0 rgb(255 255 255 / 85%);
+  --shadow-dialog: 0 24px 64px -12px rgb(9 9 11 / 18%), 0 8px 24px -4px rgb(9 9 11 / 8%), inset 0 1px 0 rgb(255 255 255 / 70%);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 80%);
 
   --scrollbar-thumb: rgb(23 33 46 / 22%);
   --scrollbar-thumb-hover: rgb(23 33 46 / 40%);
@@ -394,12 +414,14 @@ html[data-theme="dark-espresso"] {
 
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 20%);
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 24%), 0 6px 16px -2px rgb(0 0 0 / 32%);
-  --shadow-panel-hover: 0 4px 12px -2px rgb(0 0 0 / 34%), 0 12px 28px -4px rgb(0 0 0 / 42%);
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 24%), 0 2px 6px -1px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 6%);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 24%), 0 6px 16px -2px rgb(0 0 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 7%);
+  --shadow-panel-hover: 0 4px 14px -2px rgb(0 0 0 / 34%), 0 14px 32px -4px rgb(0 0 0 / 44%), inset 0 1px 0 rgb(255 255 255 / 10%);
   --shadow-editorial: 0 2px 12px -2px rgb(0 0 0 / 30%), 0 1px 3px 0 rgb(0 0 0 / 20%);
-  --shadow-floating: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 4px 12px -2px rgb(0 0 0 / 35%);
-  --shadow-dialog: 0 24px 60px -12px rgb(0 0 0 / 70%), 0 8px 24px -4px rgb(0 0 0 / 40%);
+  --shadow-floating: 0 12px 32px -4px rgb(0 0 0 / 52%), 0 4px 12px -2px rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 9%);
+  --shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 72%), 0 8px 24px -4px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 8%);
   --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 7%);
   --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
 
   --scrollbar-thumb: rgb(236 234 229 / 22%);
@@ -476,12 +498,14 @@ html[data-theme="dark-obsidian"] {
 
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 20%);
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 24%), 0 6px 16px -2px rgb(0 0 0 / 32%);
-  --shadow-panel-hover: 0 4px 12px -2px rgb(0 0 0 / 34%), 0 12px 28px -4px rgb(0 0 0 / 42%);
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 25%), 0 2px 6px -1px rgb(0 0 0 / 25%), inset 0 1px 0 rgb(255 255 255 / 6%);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 24%), 0 6px 16px -2px rgb(0 0 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 7%);
+  --shadow-panel-hover: 0 4px 14px -2px rgb(0 0 0 / 34%), 0 14px 32px -4px rgb(0 0 0 / 44%), inset 0 1px 0 rgb(255 255 255 / 10%);
   --shadow-editorial: 0 2px 12px -2px rgb(0 0 0 / 30%), 0 1px 3px 0 rgb(0 0 0 / 20%);
-  --shadow-floating: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 4px 12px -2px rgb(0 0 0 / 35%);
-  --shadow-dialog: 0 24px 60px -12px rgb(0 0 0 / 70%), 0 8px 24px -4px rgb(0 0 0 / 40%);
+  --shadow-floating: 0 12px 32px -4px rgb(0 0 0 / 52%), 0 4px 12px -2px rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 9%);
+  --shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 72%), 0 8px 24px -4px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 8%);
   --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 7%);
   --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
 
   --scrollbar-thumb: rgb(250 250 250 / 22%);
@@ -557,11 +581,13 @@ html[data-theme="dark-obsidian"] {
 
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
+  --shadow-card: var(--shadow-card);
   --shadow-panel: var(--shadow-panel);
   --shadow-panel-hover: var(--shadow-panel-hover);
   --shadow-editorial: var(--shadow-editorial);
   --shadow-floating: var(--shadow-floating);
   --shadow-dialog: var(--shadow-dialog);
+  --shadow-inset-top: var(--shadow-inset-top);
 
   --font-serif: "Newsreader", "Iowan Old Style", "Charter", Georgia, "Songti SC", "Source Han Serif SC", "STSong", "SimSun", serif;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", Roboto, sans-serif;
