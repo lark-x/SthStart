@@ -212,7 +212,7 @@ export function ProviderForm({
         </div>
 
         <fieldset className="capability-picker p-3.5 rounded border border-border-subtle space-y-2">
-          <legend className="text-sm font-bold text-muted px-1">模型能力</legend>
+          <legend className="text-sm font-semibold text-muted px-1">模型能力</legend>
           <div className="flex gap-6">
             <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
               <input

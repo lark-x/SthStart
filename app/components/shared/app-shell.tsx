@@ -1,33 +1,31 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo, ChevronDown } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo, ChevronDown, MoreHorizontal, SlidersHorizontal, Sun, Moon } from 'lucide-react';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp, type NavSection } from './navigation';
 import { ThemeSwitcher } from './theme-switcher';
 import { AutoHideScrollbars } from './auto-hide-scrollbars';
 import { useOverlayAccessibility } from '../ui/overlay';
 import { TaskDrawer } from './task-drawer';
+import { useTheme } from '@/app/providers/ui-provider';
 import { useGlobalTasks } from '@/app/features/tasks/queries';
 
 const COLLAPSE_KEY = 'sthstart_nav_collapsed';
 const COLLAPSED_SECTIONS_KEY = 'sthstart_nav_collapsed_sections';
 
-function readCollapsedSectionsPref(): Set<NavSection> {
-  if (typeof window === 'undefined') return new Set();
+let collapsedSectionsFallback = '[]';
+
+function readCollapsedSectionsSnapshot() {
   try {
-    const raw = localStorage.getItem(COLLAPSED_SECTIONS_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return new Set(parsed as NavSection[]);
-    }
+    return localStorage.getItem(COLLAPSED_SECTIONS_KEY) ?? collapsedSectionsFallback;
   } catch {
-    /* ignore */
+    return collapsedSectionsFallback;
   }
-  return new Set();
 }
+
+function serverSectionsSnapshot() { return '[]'; }
 
 /** 1024–1439px 默认收窄为图标栏，用户显式选择过则沿用其偏好。 */
 const NARROW_QUERY = '(min-width: 1024px) and (max-width: 1439px)';
@@ -90,35 +88,42 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileCollapsed, setMobileCollapsed] = useState<boolean | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const { data: globalTasksData } = useGlobalTasks({ state: 'active' });
   const activeTasksCount = globalTasksData?.activeCount ?? 0;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuId = React.useId();
+
+  const { colorMode, toggleColorMode } = useTheme();
+  const isDark = colorMode === 'dark';
 
   const collapsed = mobileCollapsed ?? collapsedPref;
-  const [collapsedSections, setCollapsedSections] = useState<Set<NavSection>>(new Set());
-
-  useEffect(() => {
-    setCollapsedSections(readCollapsedSectionsPref());
-  }, []);
+  const sectionsSnapshot = useSyncExternalStore(subscribeNavPref, readCollapsedSectionsSnapshot, serverSectionsSnapshot);
+  const collapsedSections = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(sectionsSnapshot);
+      return new Set<NavSection>(Array.isArray(parsed) ? parsed.filter((value): value is NavSection => NAV_SECTIONS.includes(value)) : []);
+    } catch {
+      return new Set<NavSection>();
+    }
+  }, [sectionsSnapshot]);
 
   const toggleSection = useCallback((section: NavSection) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) {
-        next.delete(section);
-      } else {
-        next.add(section);
-      }
-      try {
-        localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        /* 忽略持久化失败 */
-      }
-      return next;
-    });
-  }, []);
+    const next = new Set(collapsedSections);
+    if (next.has(section)) next.delete(section);
+    else next.add(section);
+    collapsedSectionsFallback = JSON.stringify(Array.from(next));
+    try {
+      localStorage.setItem(COLLAPSED_SECTIONS_KEY, collapsedSectionsFallback);
+    } catch {
+      /* Storage 不可用时保留本次会话偏好。 */
+    }
+    emitNavPref();
+  }, [collapsedSections]);
 
   const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
   const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
@@ -155,6 +160,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!moreMenuRef.current?.contains(event.target as Node) && !moreTriggerRef.current?.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMoreMenuOpen(false);
+        moreTriggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [moreMenuOpen]);
+
   useOverlayAccessibility({
     open: drawerOpen,
     onRequestClose: closeDrawer,
@@ -183,7 +210,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <button
         type="button"
-        className="shell-nav-link w-full text-left border border-nav-border bg-surface/65 hover:bg-surface shadow-xs"
+        className="shell-nav-link w-full text-left"
         onClick={() => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
         }}
@@ -199,6 +226,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="shell-nav-group">
           <Link
             href={NAV_PORTAL.href}
+            title={collapsed ? navDisplayLabel(NAV_PORTAL) : undefined}
             className="shell-nav-link"
             data-active={isActive(pathname, NAV_PORTAL) || undefined}
             aria-current={isActive(pathname, NAV_PORTAL) ? 'page' : undefined}
@@ -301,6 +329,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="shell-root">
       <AutoHideScrollbars />
+      <a href="#shell-content" className="shell-skip-link">跳至主要内容</a>
       <aside
         className="shell-sidebar"
         data-collapsed={collapsed || undefined}
@@ -310,13 +339,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="shell-main">
-        {/* Slim 48px Top Command Header */}
-        <header className="shell-command-header" aria-label="全局指令条">
-          <div className="flex items-center gap-3 min-w-0">
+        {/* Slim 48px Top Command Header: 降低操作密度，保留单主操作，次要收进菜单 */}
+        <header className="shell-command-header" aria-label="全局指令条" data-testid="shell-header">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <button
               ref={triggerRef}
               type="button"
-              className="lg:hidden inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-subtle bg-surface text-ink shadow-xs transition-colors hover:bg-surface-hover"
+              className="shell-command-action shell-nav-trigger"
               aria-label="打开导航"
               aria-expanded={drawerOpen}
               onClick={() => setDrawerOpen(true)}
@@ -324,66 +353,111 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Menu className="h-4 w-4" aria-hidden="true" />
             </button>
 
-            {/* Breadcrumb Hierarchy (Modern Sans-Serif) */}
-            <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted font-sans">
+            {/* Breadcrumb Hierarchy (Modern Sans-Serif) - 移动端标题完整 */}
+            <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted font-sans overflow-hidden">
               {pathname === '/' ? (
-                <span className="font-sans font-semibold text-sm tracking-tight text-ink">工作台</span>
+                <span className="font-sans font-semibold text-sm tracking-tight text-ink truncate">工作台</span>
               ) : active ? (
                 <>
-                  <span className="hidden sm:inline hover:text-ink transition-colors">{active.navSection}</span>
-                  <span className="hidden sm:inline text-muted/60">/</span>
+                  <span className="hidden sm:inline hover:text-ink transition-colors flex-none">{active.navSection}</span>
+                  <span className="hidden sm:inline text-muted/60 flex-none">/</span>
                   <span className="font-semibold text-sm text-ink truncate">{active.title}</span>
                 </>
               ) : pathname.startsWith('/settings') ? (
                 <>
-                  <span className="hidden sm:inline hover:text-ink transition-colors">系统与应用</span>
-                  <span className="hidden sm:inline text-muted/60">/</span>
+                  <span className="hidden sm:inline hover:text-ink transition-colors flex-none">系统与应用</span>
+                  <span className="hidden sm:inline text-muted/60 flex-none">/</span>
                   <span className="font-semibold text-sm text-ink truncate">系统设置</span>
                 </>
               ) : (
-                <span className="font-sans font-semibold text-sm tracking-tight text-ink">工作台</span>
+                <span className="font-sans font-semibold text-sm tracking-tight text-ink truncate">工作台</span>
               )}
             </div>
           </div>
 
-          {/* Quick Access Control Capsules */}
-          <div className="flex items-center gap-2">
+          {/* 顶栏操作区：单主操作（搜索与命令），任务与次级操作收敛 */}
+          <div className="flex items-center gap-1.5 flex-none">
             <button
               type="button"
-              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-subtle bg-surface px-2.5 text-sm text-muted shadow-xs hover:text-ink hover:border-border-default transition-colors"
+              className="shell-command-action"
               onClick={() => {
                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
               }}
-              title="搜索与命令 (Cmd+K)"
+              title="搜索与命令 (Cmd+K / Ctrl+K)"
               aria-label="搜索与命令快捷键"
             >
               <Search className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden md:inline text-xs font-medium">搜索与命令</span>
-              <kbd className="hidden md:inline font-mono text-xs text-muted bg-surface-sunken px-1.5 rounded border border-border-subtle" aria-hidden="true">⌘K</kbd>
+              <span className="hidden md:inline text-sm font-medium">搜索与命令</span>
+              <kbd className="hidden md:inline font-mono text-xs text-fg-subtle bg-surface-sunken px-1.5 py-0.5 rounded border border-border-subtle" aria-hidden="true">⌘K</kbd>
             </button>
 
             <button
               type="button"
-              className="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 text-sm text-muted shadow-xs hover:text-ink hover:border-border-default transition-colors"
+              className="shell-command-action relative flex items-center gap-1.5"
               aria-label="打开任务中心"
               title="全局任务抽屉"
               onClick={() => setTaskDrawerOpen(true)}
             >
-              <ListTodo className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-              <span className="hidden sm:inline text-xs font-medium">任务</span>
+              <ListTodo className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline text-sm font-medium">任务</span>
               {activeTasksCount > 0 && (
-                <span className="bg-accent text-white text-xs font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold text-[var(--fg-on-accent)]">
                   {activeTasksCount}
                 </span>
               )}
             </button>
 
-            <ThemeSwitcher />
+            {/* 更多菜单：收纳低频次要操作（主题切换、快速设置、快捷键提示等） */}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                ref={moreTriggerRef}
+                type="button"
+                className="shell-command-action"
+                aria-label="更多操作"
+                aria-haspopup="menu"
+                aria-expanded={moreMenuOpen}
+                aria-controls={moreMenuOpen ? moreMenuId : undefined}
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                title="更多操作"
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              </button>
+
+              {moreMenuOpen && (
+                <div
+                  id={moreMenuId}
+                  role="menu"
+                  aria-label="更多操作菜单"
+                  className="absolute right-0 z-[var(--z-menu)] mt-1.5 w-48 overflow-hidden rounded-[var(--radius-panel)] border border-border-default bg-surface py-1 shadow-[var(--shadow-floating)]"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      toggleColorMode();
+                      setMoreMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-surface-hover"
+                  >
+                    {isDark ? <Sun className="h-3.5 w-3.5 text-muted" aria-hidden="true" /> : <Moon className="h-3.5 w-3.5 text-muted" aria-hidden="true" />}
+                    <span>{isDark ? '切换至日间模式' : '切换至夜间模式'}</span>
+                  </button>
+                  <Link
+                    href="/settings/public-services"
+                    role="menuitem"
+                    onClick={() => setMoreMenuOpen(false)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-xs font-medium text-ink transition-colors hover:bg-surface-hover"
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+                    <span>模型与系统设置</span>
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        <main className="shell-content" id="shell-content">{children}</main>
+        <main className="shell-content" id="shell-content" tabIndex={-1}>{children}</main>
       </div>
 
       {drawerOpen && (

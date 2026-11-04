@@ -272,7 +272,7 @@ export function CharacterAssetTab({
           onClick={() => setSelectedCategory('all')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${
             selectedCategory === 'all'
-              ? 'bg-accent text-white shadow-2xs'
+              ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs'
               : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
           }`}
         >
@@ -286,7 +286,7 @@ export function CharacterAssetTab({
             onClick={() => setSelectedCategory(cat.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${
               selectedCategory === cat.id
-                ? 'bg-accent text-white shadow-2xs'
+                ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs'
                 : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
             }`}
           >
@@ -490,7 +490,7 @@ export function CharacterAssetTab({
                   if (!uploadTitle) setUploadTitle(f.name.replace(/\.[^.]+$/, ''));
                 }
               }}
-              className="block w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-white hover:file:bg-accent/90 cursor-pointer"
+              className="block w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-[var(--fg-on-accent)] hover:file:bg-accent/90 cursor-pointer"
               required
             />
           </div>

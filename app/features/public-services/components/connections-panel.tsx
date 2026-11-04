@@ -17,12 +17,12 @@ import type { ConnectionTestResult, DiscoveredModelList, ServiceConnection, Serv
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   deleteConnection,
@@ -314,7 +314,7 @@ export function ConnectionsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
@@ -325,22 +325,22 @@ export function ConnectionsPanel({
         </div>
       </div>
 
-      {/* 连接列表卡片网格 */}
+      {/* 连接列表：连续行比独立卡片更容易扫读。 */}
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-muted">
+        <div className="border-y border-border-subtle py-10 text-center text-muted">
           <p className="text-sm">暂无匹配的服务连接。点击上方“新建连接”添加一个。</p>
-        </Card>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ul className="divide-y divide-border-subtle border-y border-border-subtle">
           {filtered.map((conn) => (
-            <Card key={conn.id} className="relative flex flex-col justify-between overflow-hidden">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
+            <li key={conn.id} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <CardTitle className="text-base truncate">{conn.name}</CardTitle>
-                    <CardDescription className="text-xs font-mono text-muted truncate mt-0.5">
+                    <h3 className="truncate text-base font-semibold text-ink">{conn.name}</h3>
+                    <p className="mt-0.5 truncate font-mono text-xs text-muted">
                       ID: {conn.id}
-                    </CardDescription>
+                    </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant={conn.enabled ? 'online' : 'unknown'}>
@@ -351,9 +351,7 @@ export function ConnectionsPanel({
                     </Badge>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm pt-0">
-                <div className="text-xs font-mono bg-surface-raised px-2.5 py-1.5 rounded border border-border-subtle truncate text-ink">
+                <div className="truncate font-mono text-xs text-muted">
                   {conn.baseUrl}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
@@ -363,55 +361,23 @@ export function ConnectionsPanel({
                   </span>
                   <span>超时：{conn.timeoutMs / 1000}s</span>
                 </div>
-
-                <div className="pt-2 border-t border-border-subtle flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenTestDrawer(conn)}
-                      className="text-xs h-7 px-2"
-                    >
-                      <Activity className="h-3 w-3" />
-                      探测连通性
-                    </Button>
-                    {conn.kind.startsWith('openai-') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenDiscoverDrawer(conn)}
-                        className="text-xs h-7 px-2 text-accent"
-                      >
-                        <Compass className="h-3 w-3" />
-                        发现模型
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenEdit(conn)}
-                      className="h-7 w-7 p-0"
-                      aria-label="编辑连接"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteConnection(conn)}
-                      className="h-7 w-7 p-0 text-danger"
-                      aria-label="删除连接"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex items-center gap-1 md:justify-end">
+                <Button variant="ghost" size="sm" onClick={() => handleOpenTestDrawer(conn)}>
+                  <Activity className="h-3.5 w-3.5" />探测
+                </Button>
+                <RowActionsMenu
+                  label={`更多连接操作：${conn.name}`}
+                  items={[
+                    { label: '发现模型', icon: <Compass className="h-3.5 w-3.5 text-muted" />, onSelect: () => handleOpenDiscoverDrawer(conn), hidden: !conn.kind.startsWith('openai-') },
+                    { label: '编辑连接', icon: <Pencil className="h-3.5 w-3.5 text-muted" />, onSelect: () => handleOpenEdit(conn) },
+                    { label: '删除连接', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => void handleDeleteConnection(conn), tone: 'danger', separatorBefore: true },
+                  ]}
+                />
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* 新建/编辑连接对话框 */}

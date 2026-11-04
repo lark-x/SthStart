@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Sparkles, PenLine, Loader2, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Sparkles, Loader2, AlertTriangle, ChevronRight } from 'lucide-react';
 import type { NarrativeWork, ResearchScope, ResearchTopicSuggestionResult } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
@@ -98,28 +98,28 @@ export function ResearchTopicPicker({
           </div>
 
           {mode === 'choose' && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="divide-y divide-border-subtle">
               <button
                 type="button"
                 onClick={() => { setMode('ai'); void runSuggest(); }}
-                className="flex items-start gap-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 text-left transition-colors hover:border-accent/40"
+                className="-mx-2 flex w-[calc(100%+16px)] items-baseline gap-3 rounded-[var(--radius-control)] px-2 py-3 text-left transition-colors hover:bg-surface-hover"
               >
-                <Sparkles className="mt-0.5 h-5 w-5 flex-none text-accent" aria-hidden="true" />
-                <span>
-                  <span className="block text-sm font-semibold text-ink">AI 发现研究主题</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-muted">扫描本地原文，给出带真实证据的候选主题。</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-ink">AI 发现研究主题</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted">扫描本地原文，给出带真实证据的候选主题。</span>
                 </span>
+                <ChevronRight className="h-4 w-4 flex-none text-muted" aria-hidden="true" />
               </button>
               <button
                 type="button"
                 onClick={() => setMode('manual')}
-                className="flex items-start gap-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 text-left transition-colors hover:border-accent/40"
+                className="-mx-2 flex w-[calc(100%+16px)] items-baseline gap-3 rounded-[var(--radius-control)] px-2 py-3 text-left transition-colors hover:bg-surface-hover"
               >
-                <PenLine className="mt-0.5 h-5 w-5 flex-none text-accent" aria-hidden="true" />
-                <span>
-                  <span className="block text-sm font-semibold text-ink">自己提出研究主题</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-muted">填写想回答的问题，再补充关键词。</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-ink">自己提出研究主题</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted">填写想回答的问题，再补充关键词。</span>
                 </span>
+                <ChevronRight className="h-4 w-4 flex-none text-muted" aria-hidden="true" />
               </button>
             </div>
           )}

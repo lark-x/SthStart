@@ -1,3 +1,5 @@
+'use client';
+
 import React, { forwardRef } from 'react';
 import { cn } from '../../lib/cn';
 
@@ -7,7 +9,7 @@ export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputE
 }
 
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, label, description, id, ...props }, ref) => {
+  ({ className, label, description, id, disabled, 'aria-describedby': describedBy, ...props }, ref) => {
     const generatedId = React.useId();
     const inputId = id || generatedId;
 
@@ -17,16 +19,18 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
           type="checkbox"
           id={inputId}
           ref={ref}
+          disabled={disabled}
+          aria-describedby={[describedBy, description ? inputId + '-description' : undefined].filter(Boolean).join(' ') || undefined}
           className={cn(
-            'h-4 w-4 rounded border-border-strong text-accent accent-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 mt-0.5 cursor-pointer',
+            'h-4 w-4 shrink-0 rounded border-border-control accent-[var(--action-primary)] mt-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
             className
           )}
           {...props}
         />
         {(label || description) && (
-          <label htmlFor={inputId} className="cursor-pointer select-none text-sm text-ink">
+          <label htmlFor={inputId} className={cn("min-w-0 select-none text-sm text-ink", disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
             {label && <span className="font-medium">{label}</span>}
-            {description && <p className="text-sm text-muted leading-relaxed mt-0.5">{description}</p>}
+            {description && <span id={inputId + '-description'} className="mt-1 block text-sm text-muted leading-relaxed">{description}</span>}
           </label>
         )}
       </div>

@@ -68,14 +68,15 @@ export function GenerationSettingsFeature() {
   }, [load]);
 
   return (
-    <PageContainer width="wide" className="space-y-4 py-6">
+    <PageContainer width="wide" className="space-y-3 sm:space-y-4 py-4 sm:py-6">
       <PageHeader
+        compact
         backHref="/apps/creative"
         backLabel="返回图像工坊"
         title="生成配置"
         description="管理连接、工作流、生成方案与提示词策略。生图页面中的修改仅用于本次任务；这里保存的设置用于后续任务。"
         actions={(
-          <Button size="sm" variant="outline" onClick={() => { void load(); }}>
+          <Button size="sm" variant="ghost" onClick={() => { void load(); }}>
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新
           </Button>
         )}

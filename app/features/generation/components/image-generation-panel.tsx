@@ -221,7 +221,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
                 }}
                 className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 ${
                   activeStyle === style.id
-                    ? 'bg-accent/15 text-accent font-semibold'
+                    ? 'bg-accent/15 text-ink font-semibold'
                     : 'bg-surface-sunken/60 text-muted hover:bg-surface-sunken hover:text-ink'
                 }`}
               >
@@ -333,7 +333,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
           setManual(true); setPrepared(null); attempt.current = null; setError('');
         }}>采用新配置，保留提示词</Button>
       </Alert>}
-      {(!ready && !loading && !configurationChanged) && <Alert variant="warning" title="生成方案尚未就绪">{selected?.unavailableReason || (effectivePresetId && !selected ? '先前选择的方案已不可用，请选择有效方案。' : options?.status) || '请先配置图片工作流。'} <a href="/settings/generation" className="underline">前往生成设置</a>{onRefresh && <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>重新读取</Button>}</Alert>}
+      {(!ready && !loading && !configurationChanged) && <Alert variant="warning" title="生成方案尚未就绪">{selected?.unavailableReason || (effectivePresetId && !selected ? '先前选择的方案已不可用，请选择有效方案。' : options?.status) || '请先配置图片工作流。'} <a href="/settings/generation" className="underline">前往生成设置</a>{onRefresh && <Button type="button" size="sm" variant="ghost" className="text-ink" onClick={onRefresh}>重新读取</Button>}</Alert>}
       {blockedReason && <p className="text-xs text-muted">{blockedReason}</p>}
     </fieldset>
     <div className="xl:sticky xl:bottom-0 z-10 space-y-3 border-t border-border-subtle bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">

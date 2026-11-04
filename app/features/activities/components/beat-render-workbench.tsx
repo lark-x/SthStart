@@ -421,8 +421,8 @@ export function BeatRenderWorkbench({
                     onClick={() => void selectImage(candidate, image.artifactId)} aria-label={`${label}${isHires ? '（细化）' : ''}，绘制于 ${new Date(candidate.createdAt).toLocaleString()}`}
                     className={`group relative block h-20 w-28 overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-black'}`}>
                     {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-xs text-muted">文件不可用</span>}
-                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-xs font-semibold ${isCurrent ? 'bg-accent text-white' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-white'}`}>{label}</span>
-                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-white">细化</span>}
+                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-xs font-semibold ${isCurrent ? 'bg-accent text-[var(--fg-on-accent)]' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-[var(--fg-on-accent)]'}`}>{label}</span>
+                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-[var(--fg-on-accent)]">细化</span>}
                   </button>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                     <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}

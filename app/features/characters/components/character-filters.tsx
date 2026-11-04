@@ -73,26 +73,37 @@ function MultiFilter({ label, values, selected, onChange }: { label: string; val
   const needle = query.trim().toLowerCase();
   const matches = needle ? values.filter((item) => `${item.label} ${item.search || ''}`.toLowerCase().includes(needle)) : values;
 
-  return <details ref={ref} className="relative rounded-[var(--radius-control)] border border-border-default bg-surface">
-    <summary className="cursor-pointer px-3 py-2 text-sm">{label}{selected.length ? ` (${selected.length})` : ''}</summary>
-    <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-[var(--radius-control)] border border-border-default bg-surface p-3 shadow-floating">
-      <Input aria-label={`搜索${label}`} placeholder={`搜索${label}`} value={query} onChange={(event) => setQuery(event.target.value)} />
-      <div className="mt-2 max-h-48 space-y-1 overflow-auto">
-        {matches.map((item) => (
-          <label key={item.value} className="flex cursor-pointer items-center gap-2 py-1 text-sm">
-            <input
-              type="checkbox"
-              checked={selected.includes(item.value)}
-              onChange={(event) => onChange(event.target.checked ? [...selected, item.value] : selected.filter((value) => value !== item.value))}
-            />
-            {item.label}
-          </label>
-        ))}
-        {!values.length && <p className="text-sm text-muted">暂无可选项</p>}
-        {!!values.length && !matches.length && <p className="text-sm text-muted">没有匹配“{query.trim()}”的选项</p>}
+  return (
+    <details ref={ref} className="relative rounded-[var(--radius-control)] border border-border-default bg-surface">
+      <summary className="cursor-pointer list-none px-3 py-1.5 text-sm font-medium text-muted hover:text-ink transition-colors">
+        {label}{selected.length ? ` (${selected.length})` : ''}
+      </summary>
+      <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-2.5 shadow-floating">
+        <Input
+          aria-label={`搜索${label}`}
+          placeholder={`搜索${label}…`}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="h-8 text-base sm:text-sm"
+        />
+        <div className="mt-2 max-h-48 space-y-0.5 overflow-auto">
+          {matches.map((item) => (
+            <label key={item.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-ink hover:bg-surface-hover transition-colors">
+              <input
+                type="checkbox"
+                checked={selected.includes(item.value)}
+                onChange={(event) => onChange(event.target.checked ? [...selected, item.value] : selected.filter((value) => value !== item.value))}
+                className="size-3.5 rounded accent-accent"
+              />
+              <span className="truncate">{item.label}</span>
+            </label>
+          ))}
+          {!values.length && <p className="px-2 py-1 text-xs text-muted">暂无可选项</p>}
+          {!!values.length && !matches.length && <p className="px-2 py-1 text-xs text-muted">没有匹配“{query.trim()}”的选项</p>}
+        </div>
       </div>
-    </div>
-  </details>;
+    </details>
+  );
 }
 
 interface Chip { key: string; label: string; clear: () => CharacterBrowseQuery; }
@@ -129,8 +140,13 @@ function activeChips(filter: CharacterBrowseQuery): Chip[] {
 export function CharacterFilters({ filter, onChange, facets, onReset, actions }: { actions?: ReactNode; filter: CharacterBrowseQuery; onChange: (patch: CharacterBrowseQuery) => void; facets?: CharacterBrowseResult['facets']; onReset: () => void }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const select = (label: string, key: keyof CharacterBrowseQuery, options: [string, string][]) => (
-    <label className="flex flex-col gap-1 text-sm">{label}
-      <select className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-input px-3 text-sm text-ink" value={String(filter[key] || '')} onChange={(event) => onChange({ [key]: event.target.value || undefined })}>
+    <label className="flex flex-col gap-1 text-sm font-medium text-ink">
+      <span>{label}</span>
+      <select
+        className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-base sm:text-sm text-ink focus-visible:outline-accent"
+        value={String(filter[key] || '')}
+        onChange={(event) => onChange({ [key]: event.target.value || undefined })}
+      >
         <option value="">全部</option>
         {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
       </select>
@@ -139,42 +155,81 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
   const chips = activeChips(filter);
   const clearChip = (chip: Chip) => onChange(chip.clear());
 
-  return <div className="space-y-3 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
-    <div className="flex flex-wrap items-center gap-2">
-    <Input className="w-full sm:w-[320px] xl:w-[360px]" aria-label="搜索角色" placeholder="搜索姓名、英文名、别名、作品或标签…" value={filter.q || ''} onChange={(event) => onChange({ q: event.target.value })} />
-    <div className="flex flex-wrap items-center gap-2">
-      <MultiFilter label="作品" values={(facets?.works || []).map((work) => ({ value: work.name, label: work.name, search: work.aliases.join(' ') }))} selected={filter.works || []} onChange={(works) => onChange({ works })} />
-      <MultiFilter label="标签" values={[...new Set([...(facets?.tags || []), ...(filter.tags || [])])].map((tag) => ({ value: tag, label: tag }))} selected={filter.tags || []} onChange={(tags) => onChange({ tags })} />
-      <MultiFilter label="分组" values={(facets?.groups || []).map((group) => ({ value: group, label: group }))} selected={filter.groups || []} onChange={(groups) => onChange({ groups })} />
-      <label className="flex items-center gap-2 px-2 text-sm"><input type="checkbox" checked={filter.favorite || false} onChange={(event) => onChange({ favorite: event.target.checked })} />仅收藏</label>
-      {!!chips.length && <Button size="sm" variant="ghost" onClick={onReset}>清空</Button>}
-    </div>
+  return (
+    <div className="space-y-3 border-b border-border-subtle pb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="w-full sm:w-[280px] xl:w-[320px] text-base sm:text-sm"
+          aria-label="搜索角色"
+          placeholder="搜索姓名、别名、作品或标签…"
+          value={filter.q || ''}
+          onChange={(event) => onChange({ q: event.target.value })}
+        />
+        <div className="hidden flex-wrap items-center gap-2 sm:flex">
+          <MultiFilter label="作品" values={(facets?.works || []).map((work) => ({ value: work.name, label: work.name, search: work.aliases.join(' ') }))} selected={filter.works || []} onChange={(works) => onChange({ works })} />
+          <MultiFilter label="标签" values={[...new Set([...(facets?.tags || []), ...(filter.tags || [])])].map((tag) => ({ value: tag, label: tag }))} selected={filter.tags || []} onChange={(tags) => onChange({ tags })} />
+          <MultiFilter label="分组" values={(facets?.groups || []).map((group) => ({ value: group, label: group }))} selected={filter.groups || []} onChange={(groups) => onChange({ groups })} />
+          <label className="flex items-center gap-1.5 px-2 text-sm font-medium text-ink cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filter.favorite || false}
+              onChange={(event) => onChange({ favorite: event.target.checked })}
+              className="size-3.5 rounded accent-accent"
+            />
+            <span>仅收藏</span>
+          </label>
+          {!!chips.length && (
+            <Button size="sm" variant="ghost" onClick={onReset} className="h-8 px-2 text-xs text-muted hover:text-ink">
+              清空
+            </Button>
+          )}
+        </div>
 
-    <Button size="sm" variant="ghost" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(!advancedOpen)}>更多筛选与排序</Button>
-    {actions && <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">{actions}</div>}
-    </div>
-    <ResponsiveEditOverlay open={advancedOpen} onOpenChange={setAdvancedOpen} title="角色筛选" description="常用搜索与作品、标签、分组条件保留在列表上方。" footer={<Button type="button" onClick={() => setAdvancedOpen(false)}>完成筛选</Button>}>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {select('作品类型', 'mediaType', ['游戏', '动画', '漫画', '小说', '影视', '其他'].map((type) => [type, type]))}
-        {select('创作类型', 'originType', [['ip', '已有 IP'], ['original', '原创']])}
-        {select('外观参考图', 'reference', [['yes', '有可用参考图'], ['no', '无可用参考图']])}
-        {select('外观描述', 'appearance', [['yes', '已填写'], ['no', '未填写']])}
-        {select('人设演绎', 'interpretation', (facets?.interpretations || []).map((item) => [item, item]))}
-        {select('导入来源', 'source', (facets?.sources || []).map((item) => [item, item === 'local' ? '本地角色卡' : item === 'manual' ? '手动创建' : item]))}
-        {select('待整理', 'unclassified', [['work', '未设置作品'], ['tags', '未设置标签']])}
-        {select('生日状态', 'birthdayStatus', [['known', '生日已知'], ['needs_confirmation', '生日待确认'], ['unset', '未填写生日']])}
-        {select('生日月份', 'birthdayMonth', (facets?.birthdayMonths || []).map((month) => [String(month), `${month} 月`]))}
-        {select('标签匹配', 'tagMode', [['any', '任一标签'], ['all', '全部标签']])}
-        {select('排序', 'sort', [['updated', '最近更新'], ['name', '角色名称']])}
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-expanded={advancedOpen}
+          onClick={() => setAdvancedOpen(!advancedOpen)}
+          className="h-8 text-xs font-medium text-muted hover:text-ink"
+        >
+          筛选与排序
+        </Button>
+        {actions && <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">{actions}</div>}
       </div>
-    </ResponsiveEditOverlay>
-    {!!chips.length && <div className="flex w-full flex-wrap gap-2">
-      {chips.map((chip) => (
-        <button type="button" key={chip.key} className="rounded bg-accent/10 px-2 py-1 text-sm" onClick={() => clearChip(chip)}>{chip.label} ×</button>
-      ))}
-    </div>}
 
-  </div>;
+      <ResponsiveEditOverlay open={advancedOpen} onOpenChange={setAdvancedOpen} title="角色筛选" description="常用搜索与作品、标签、分组条件保留在列表上方。" footer={<Button type="button" onClick={() => setAdvancedOpen(false)}>完成筛选</Button>}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {select('作品类型', 'mediaType', ['游戏', '动画', '漫画', '小说', '影视', '其他'].map((type) => [type, type]))}
+          {select('创作类型', 'originType', [['ip', '已有 IP'], ['original', '原创']])}
+          {select('外观参考图', 'reference', [['yes', '有可用参考图'], ['no', '无可用参考图']])}
+          {select('外观描述', 'appearance', [['yes', '已填写'], ['no', '未填写']])}
+          {select('人设演绎', 'interpretation', (facets?.interpretations || []).map((item) => [item, item]))}
+          {select('导入来源', 'source', (facets?.sources || []).map((item) => [item, item === 'local' ? '本地角色卡' : item === 'manual' ? '手动创建' : item]))}
+          {select('待整理', 'unclassified', [['work', '未设置作品'], ['tags', '未设置标签']])}
+          {select('生日状态', 'birthdayStatus', [['known', '生日已知'], ['needs_confirmation', '生日待确认'], ['unset', '未填写生日']])}
+          {select('生日月份', 'birthdayMonth', (facets?.birthdayMonths || []).map((month) => [String(month), `${month} 月`]))}
+          {select('标签匹配', 'tagMode', [['any', '任一标签'], ['all', '全部标签']])}
+          {select('排序', 'sort', [['updated', '最近更新'], ['name', '角色名称']])}
+        </div>
+      </ResponsiveEditOverlay>
+
+      {!!chips.length && (
+        <div className="flex w-full flex-wrap gap-1.5 pt-1 border-t border-border-subtle/50">
+          {chips.map((chip) => (
+            <button
+              type="button"
+              key={chip.key}
+              className="rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken px-2 py-0.5 text-xs text-ink transition-colors hover:border-accent/40"
+              onClick={() => clearChip(chip)}
+            >
+              <span>{chip.label}</span>
+              <span className="ml-1 text-muted hover:text-danger-fg">×</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function CharacterPagination({ data, onPage }: { data?: CharacterBrowseResult; onPage: (page: number) => void }) {
@@ -184,11 +239,17 @@ export function CharacterPagination({ data, onPage }: { data?: CharacterBrowseRe
     if (data && data.page > pages) onPage(pages);
   }, [data, pages, onPage]);
   if (!data) return null;
-  return <div className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm text-muted">
-    <span>共 {data.total} 位 · 第 {data.page} / {pages} 页</span>
-    <div className="flex gap-2">
-      <Button size="sm" variant="outline" disabled={data.page <= 1} onClick={() => onPage(data.page - 1)}>上一页</Button>
-      <Button size="sm" variant="outline" disabled={data.page >= pages} onClick={() => onPage(data.page + 1)}>下一页</Button>
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm text-muted">
+      <span className="tabular-nums">共 {data.total} 位 · 第 {data.page} / {pages} 页</span>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" className="min-h-[36px] sm:min-h-[32px] px-3 text-sm" disabled={data.page <= 1} onClick={() => onPage(data.page - 1)}>
+          上一页
+        </Button>
+        <Button size="sm" variant="outline" className="min-h-[36px] sm:min-h-[32px] px-3 text-sm" disabled={data.page >= pages} onClick={() => onPage(data.page + 1)}>
+          下一页
+        </Button>
+      </div>
     </div>
-  </div>;
+  );
 }

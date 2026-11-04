@@ -103,11 +103,11 @@ function DetailGroup({ title, hint, children }: { title: string; hint: string; c
 }
 
 function CallButton({ item, selectedId, selectCall }: { item: AiCallSummary; selectedId: string; selectCall: (id: string) => void }) {
-  return <button type="button" onClick={() => selectCall(item.id)} aria-current={selectedId === item.id ? 'true' : undefined} className={`grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-1 px-4 py-3 text-left hover:bg-surface-muted/50 ${selectedId === item.id ? 'bg-accent/5' : ''}`}>
+  return <button type="button" onClick={() => selectCall(item.id)} aria-current={selectedId === item.id ? 'true' : undefined} className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 xl:grid-cols-1 px-3 py-3 text-left hover:bg-surface-muted/50 ${selectedId === item.id ? 'bg-accent/5' : ''}`}>
     <span className="min-w-0">
       <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold text-ink">{businessEventTitle(item.businessEvent)}</span><span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">{statusLabels[item.status] ?? item.status}</span></span>
       <span className="mt-1 block truncate text-xs text-muted">{item.applicationId} · {item.callType} · {item.models.join(', ') || item.provider || '模型待确认'}</span>
-      <span className="mt-1 block truncate font-mono text-xs text-muted">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
+      <span className="mt-1 hidden truncate font-mono text-xs text-muted sm:block">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
     </span>
     <span className="flex items-center justify-between gap-2 text-left sm:text-right xl:text-left text-xs text-muted"><span>{time(item.requestedAt)}<br />{item.durationMs == null ? '耗时处理中' : `${item.durationMs} ms`}</span><ChevronRight className="h-4 w-4 shrink-0" /></span>
   </button>;
@@ -127,6 +127,7 @@ export function AiLogsClient() {
   const storage = useQuery({ queryKey: ['ai-calls-storage'], queryFn: fetchAiCallStorageStats, staleTime: 60_000 });
   React.useEffect(() => {
     if (!query.data) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 将分页查询结果按游标累积为连续列表。
     setItems((previous) => cursor ? [...previous, ...query.data.items] : query.data.items);
   }, [query.data, cursor]);
   const detail = useQuery({ queryKey: ['ai-call', selectedId], queryFn: () => fetchAiCall(selectedId), enabled: Boolean(selectedId), staleTime: 15_000 });
@@ -162,7 +163,7 @@ export function AiLogsClient() {
   const readableText = detail.data ? readableStreamText(detail.data.responseText) : null;
 
   const detailContent = (<>
-          {activeBusinessHref && <div className="mb-3 flex justify-end"><Link href={activeBusinessHref} className="inline-flex items-center gap-1 text-sm text-accent hover:underline">返回业务页面<ExternalLink className="h-3.5 w-3.5" /></Link></div>}
+          {activeBusinessHref && <div className="mb-3 flex justify-end"><Link href={activeBusinessHref} className="inline-flex items-center gap-1 text-sm text-ink hover:text-accent">返回业务页面<ExternalLink className="h-3.5 w-3.5" /></Link></div>}
           {!selectedId ? <div className="p-8 text-sm text-muted">选择一条调用，查看脱敏后的请求、响应和作业时间线。</div>
             : detail.isPending ? <div className="p-6 text-sm text-muted">正在读取调用详情…</div>
               : detail.isError ? <div role="alert" className="p-6 text-sm text-danger-fg">读取详情失败：{detail.error.message}</div>
@@ -176,7 +177,7 @@ export function AiLogsClient() {
                       <div><div className="text-xs text-muted">请求 / 结束</div><div className="font-medium text-ink">{time(detail.data.requestedAt)}<br />{time(detail.data.endedAt)}</div></div>
                     </div>
                     <div className="break-all rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-xs text-muted">追踪 ID：<span className="font-mono text-ink">{detail.data.traceId}</span></div>
-                    {(detail.data.error || detail.data.errorCode) && <div role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 p-3 text-sm text-danger-fg">{detail.data.errorCode && <strong>{detail.data.errorCode}: </strong>}{detail.data.error}</div>}
+                    {(detail.data.error || detail.data.errorCode) && <div role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 p-3 text-sm text-danger-fg">{detail.data.errorCode && <span className="font-semibold">{detail.data.errorCode}: </span>}{detail.data.error}</div>}
                   </DetailGroup>
 
                   <DetailGroup title="优化" hint="文本模型的原始响应与用量，不做截断。">
@@ -185,8 +186,8 @@ export function AiLogsClient() {
                   </DetailGroup>
 
                   <DetailGroup title="规则" hint="实际生效的参数与各执行阶段，含规则／知识诊断。">
-                    <div><h3 className="mb-2 text-sm font-semibold text-ink">作业时间线（{detail.data.traceCalls.length} 次调用）</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.traceCalls.map((call, index) => <li key={call.id} className="relative text-sm"><span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${call.status === 'failed' ? 'bg-danger-fg' : 'bg-accent'}`} /><button type="button" onClick={() => selectCall(call.id)} className="font-medium text-ink hover:text-accent" aria-current={call.id === selectedId ? 'true' : undefined}>{index + 1}. {businessEventLabel(call.businessEvent)} · {statusLabels[call.status] ?? call.status}</button><div className="text-xs text-muted">{time(call.requestedAt)}{call.durationMs != null ? ` · ${call.durationMs} ms` : ''}{call.models.length ? ` · ${call.models.join(', ')}` : ''}</div>{call.error && <div className="text-xs text-danger-fg">{call.errorCode ? `${call.errorCode}: ` : ''}{call.error}</div>}</li>)}</ol></div>
-                    <div><h3 className="mb-2 text-sm font-semibold text-ink">单次调用事件</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.events.map((event) => <li key={event.id} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-accent" /><div className="font-medium text-ink">{event.phase}</div><div className="text-xs text-muted">{time(event.createdAt)}</div>{Object.keys(event.detail).length > 0 && <div className="mt-1"><JsonBlock value={event.detail} /></div>}</li>)}</ol></div>
+                    <div><h3 className="mb-2 text-sm font-semibold text-ink">作业时间线（{detail.data.traceCalls.length} 次调用）</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.traceCalls.map((call, index) => <li key={call.id} className="relative text-sm"><span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${call.status === 'failed' ? 'bg-danger-fg' : 'bg-border-strong'}`} /><button type="button" onClick={() => selectCall(call.id)} className="font-medium text-ink hover:text-accent" aria-current={call.id === selectedId ? 'true' : undefined}>{index + 1}. {businessEventLabel(call.businessEvent)} · {statusLabels[call.status] ?? call.status}</button><div className="text-xs text-muted">{time(call.requestedAt)}{call.durationMs != null ? ` · ${call.durationMs} ms` : ''}{call.models.length ? ` · ${call.models.join(', ')}` : ''}</div>{call.error && <div className="text-xs text-danger-fg">{call.errorCode ? `${call.errorCode}: ` : ''}{call.error}</div>}</li>)}</ol></div>
+                    <div><h3 className="mb-2 text-sm font-semibold text-ink">单次调用事件</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.events.map((event) => <li key={event.id} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-border-strong" /><div className="font-medium text-ink">{event.phase}</div><div className="text-xs text-muted">{time(event.createdAt)}</div>{Object.keys(event.detail).length > 0 && <div className="mt-1"><JsonBlock value={event.detail} /></div>}</li>)}</ol></div>
                     <details><summary className="cursor-pointer text-sm font-semibold text-ink">有效参数</summary><div className="mt-2"><JsonBlock value={detail.data.parameters} /></div></details>
                   </DetailGroup>
 
@@ -219,9 +220,9 @@ export function AiLogsClient() {
                 </div>}
   </>);
   const callList = (
-        <section aria-label="调用列表" className="min-w-0 overflow-hidden rounded-[var(--radius-panel)] border border-border-default bg-surface">
+        <section aria-label="调用列表" className="min-w-0 overflow-hidden border-y border-border-subtle">
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-            <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-accent" /><h2 className="font-semibold text-ink">作业列表</h2><span className="text-xs text-muted">{items.length} 次调用 · {groupedItems.length} 组</span></div>
+            <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-muted" /><h2 className="font-semibold text-ink">作业列表</h2><span className="text-xs text-muted">{items.length} 次调用 · {groupedItems.length} 组</span></div>
             <Button variant="ghost" size="sm" onClick={() => { setCursor(undefined); setItems([]); void query.refetch(); }} aria-label="刷新调用列表"><RefreshCw className="h-4 w-4" /></Button>
           </div>
           {query.isPending && items.length === 0 ? <div className="p-6 text-sm text-muted">正在读取调用记录…</div>
@@ -245,10 +246,10 @@ export function AiLogsClient() {
   return (
     <PageContainer className="max-w-[1600px]">
       <PageHeader title="AI 调用记录" description="按业务事件查看实际发送的模型请求、执行阶段、响应与生成产物。" />
-      <div className="mb-4 rounded-[var(--radius-control)] border border-border-subtle bg-surface-muted/50 px-4 py-3 text-sm text-muted leading-relaxed">
+      <div className="mb-4 border-y border-border-subtle py-3 text-sm leading-relaxed text-muted">
         仅包含经 SthStart 服务转发、且已接入审计的调用。旧任务和旧镜头没有历史调用详情；独立启动、未经过本项目网关的邻舍进程也不会出现在这里。
       </div>
-      <section aria-label="日志留存" className="mb-4 grid grid-cols-1 gap-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:grid-cols-3">
+      <section aria-label="日志留存" className="mb-4 grid grid-cols-1 border-y border-border-subtle py-4 sm:grid-cols-3">
         <div><div className="text-xs text-muted">数据库占用（含 WAL）</div><div className="mt-1 text-lg font-semibold text-ink">{storage.data ? formatBytes(storage.data.totalBytes) : storage.isError ? '暂不可读取' : '读取中…'}</div></div>
         <div><div className="text-xs text-muted">永久保留的调用 / 事件</div><div className="mt-1 text-lg font-semibold text-ink">{storage.data ? `${storage.data.recordCount.toLocaleString()} / ${storage.data.eventCount.toLocaleString()}` : '—'}</div></div>
         <p className="text-xs leading-relaxed text-muted sm:col-span-1">调用记录不会自动过期或截断。请把数据库纳入例行备份；可运行 <code className="rounded bg-surface-muted px-1 py-0.5 text-ink">npm run db:backup</code> 创建一致性快照。</p>
@@ -257,7 +258,7 @@ export function AiLogsClient() {
       <form onSubmit={(event) => { event.preventDefault(); applyFilters(); }} className="mb-4 flex min-w-0 items-center gap-2">
           <Input aria-label="关键词" placeholder="搜索提示词、事件或对象" value={draftFilters.q} onChange={(event) => setDraftFilters({ ...draftFilters, q: event.target.value })} />
           <Button type="submit" variant="accent" aria-label="应用筛选"><Search className="h-4 w-4" /><span className="sr-only">应用筛选</span></Button>
-          <Button type="button" variant="outline" className="shrink-0" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1 h-4 w-4" />更多筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
+          <Button type="button" variant="ghost" className="shrink-0" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1 h-4 w-4" />更多筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
       </form>
       <ResponsiveEditOverlay
         open={filtersOpen}
@@ -284,10 +285,15 @@ export function AiLogsClient() {
 
       <div className="grid min-w-0 grid-cols-1 gap-4">
         <SplitPanes
+          resizable
+          storageKey="sthstart_ailogs_split"
+          defaultSplitRatio={0.32}
+          minLeftWidth={320}
+          minRightWidth={450}
           from="xl"
           className="xl:grid-cols-[400px_minmax(0,1fr)]"
           left={callList}
-          right={wide ? <section aria-label="AI 调用详情" className="min-w-0 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
+          right={wide ? <section aria-label="AI 调用详情" className="min-w-0 border-y border-border-subtle py-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-ink">AI 调用详情</h2>
               {selectedId && <Button size="sm" variant="ghost" onClick={closeDetail}>取消选择</Button>}

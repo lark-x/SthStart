@@ -5,7 +5,6 @@ import { Plus } from 'lucide-react';
 import type { PublicServiceOverview } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/app/components/ui/card';
 
 export function AppTokens({
   overview,
@@ -34,19 +33,19 @@ export function AppTokens({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>已接入应用与令牌</CardTitle>
-        <CardDescription>
+    <section className="min-w-0 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">已接入应用与令牌</h2>
+        <p className="mt-1 text-sm text-muted">
           应用通过分配的令牌访问公共 LLM、向量与图片能力。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2 record-list">
+        </p>
+      </div>
+      <div className="space-y-4">
+        <div className="divide-y divide-border-subtle border-y border-border-subtle record-list">
           {overview?.apps.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between p-3 rounded border border-border-subtle bg-surface"
+              className="flex flex-wrap items-center justify-between gap-2 py-3"
             >
               <div>
                 <strong className="text-sm font-semibold text-ink">
@@ -63,15 +62,15 @@ export function AppTokens({
         </div>
 
         {issuedToken && (
-          <div className="p-3.5 rounded bg-accent/10 border border-accent/30 text-sm text-accent-dark space-y-1 one-time-token">
-            <strong className="block font-bold">仅显示一次，请立即保存：</strong>
+          <div className="space-y-1 border-y border-warning-border py-3 text-sm text-warning-fg one-time-token">
+            <strong className="block font-semibold">仅显示一次，请立即保存：</strong>
             <code className="block font-mono bg-surface-raised p-2 rounded select-all break-all text-ink">
               {issuedToken}
             </code>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border-subtle">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2 pt-2 sm:flex-row">
           <Input
             value={appId}
             onChange={(e) => setAppId(e.target.value)}
@@ -91,7 +90,7 @@ export function AppTokens({
             <span>创建应用令牌</span>
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { Cloud, KeyRound, Link2, Lock, ShieldAlert, Unlock } from 'lucide-react';
 import type { BackupTarget } from '@sthstart/contracts';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Switch } from '@/app/components/ui/switch';
@@ -47,17 +46,17 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
   const vault = overview.vault;
 
   return (
-    <div className="space-y-3">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <KeyRound className="h-4 w-4" aria-hidden="true" />加密仓库
-          </CardTitle>
-          <CardDescription>
+    <div className="divide-y divide-border-subtle">
+      <section className="border-b border-border-subtle py-5">
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <KeyRound className="h-4 w-4 text-muted" aria-hidden="true" />加密仓库
+          </h2>
+          <p className="mt-1 text-sm text-muted">
             密码只用来包裹主密钥；恢复密钥是第二份独立材料。两者都丢失就无法恢复，请自行妥善保存。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+          </p>
+        </div>
+        <div className="space-y-3">
           {!vault && (
             <div className="space-y-2">
               <label className="block text-sm">
@@ -123,7 +122,7 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
                 >
                   连接已有仓库
                 </Button>
-                <p className="text-xs text-muted">仓库 ID 可以在旧设备的这张卡片里复制；远端根目录要与旧设备一致。</p>
+                <p className="text-xs text-muted">仓库 ID 可以在旧设备的加密仓库区域复制；远端根目录要与旧设备一致。</p>
               </div>
             </div>
           )}
@@ -201,8 +200,8 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
               <p className="text-xs text-muted">修改密码只重新包裹主密钥；旧副本仍可能被旧密码解开，泄露后请重新创建仓库。</p>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {issuedRecoveryKey && (
         <Alert variant="warning" title="请立刻保存恢复密钥">
@@ -217,14 +216,14 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Cloud className="h-4 w-4" aria-hidden="true" />目标网盘
-          </CardTitle>
-          <CardDescription>每个目标独立上传、独立校验、独立重试；一个失败不影响其它目标。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <section className="py-5">
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <Cloud className="h-4 w-4 text-muted" aria-hidden="true" />目标网盘
+          </h2>
+          <p className="mt-1 text-sm text-muted">每个目标独立上传、独立校验、独立重试；一个失败不影响其它目标。</p>
+        </div>
+        <div className="space-y-3">
           {overview.targets.map((target) => (
             <TargetRow
               key={target.id}
@@ -348,8 +347,8 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <Alert variant="info" title="加密范围说明">
         本功能只加密上传到网盘的备份与导出文件。本地媒体、模型输入和整个硬盘不受影响；云端仍能看到密文的大小、数量和上传时间。
@@ -370,7 +369,7 @@ function TargetRow({ target, onVerify, onRemove }: {
   onRemove: () => Promise<void>;
 }) {
   return (
-    <div className="rounded-[var(--radius-panel)] border border-border-default p-3">
+    <div className="border-b border-border-subtle py-3 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-sm font-medium">{target.accountLabel || target.kind}</div>

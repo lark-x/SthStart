@@ -460,7 +460,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                       onClick={() => setPickedCandidateId(candidate.id)}
                       className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                         isSelected
-                          ? 'bg-accent text-white shadow-xs'
+                          ? 'bg-accent text-[var(--fg-on-accent)] shadow-xs'
                           : 'bg-surface-raised border border-border-subtle text-muted hover:text-ink'
                       }`}
                     >

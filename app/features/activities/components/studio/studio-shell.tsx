@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import type {
   ActivityScene,
   SceneBeat,
@@ -23,8 +24,9 @@ import { StudioSettingsDrawer } from './studio-settings-drawer';
 import { ComicWorkstation } from '../../comic/comic-workstation';
 import { PlaybackWorkstation } from '../playback-workstation';
 import { ExportPanel } from '../export-panel';
-import { X } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, Sparkles, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { StudioMenu, StudioMenuItem } from './studio-menu';
 
 interface StudioShellProps {
   activityId: string;
@@ -44,21 +46,39 @@ function getServerSnapshot() {
   return false;
 }
 
+function createStudioId(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+const COMPACT_WORKBENCH_QUERY = '(min-width: 768px) and (max-width: 1279px)';
+function subscribeCompactWorkbench(callback: () => void) {
+  const mql = window.matchMedia(COMPACT_WORKBENCH_QUERY);
+  mql.addEventListener('change', callback);
+  return () => mql.removeEventListener('change', callback);
+}
+function getCompactWorkbenchSnapshot() {
+  return window.matchMedia(COMPACT_WORKBENCH_QUERY).matches;
+}
+
 export function StudioShell({ activityId }: StudioShellProps) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const isMobile = useSyncExternalStore(subscribeMobile, getMobileSnapshot, getServerSnapshot);
+  const compactWorkbench = useSyncExternalStore(subscribeCompactWorkbench, getCompactWorkbenchSnapshot, getServerSnapshot);
 
   // 数据拉取与草稿管理器
   const {
     data: activityData,
     isLoading: activityLoading,
     refetch: refetchActivity,
+    error: activityError,
   } = useActivity(activityId);
 
   const {
     data: draftData,
     isLoading: draftLoading,
+    error: draftError,
+    refetch: refetchDraft,
   } = useActivityDraft(activityId);
 
   const draft = useStudioDraft(activityId, draftData?.draft);
@@ -81,7 +101,8 @@ export function StudioShell({ activityId }: StudioShellProps) {
 
   // 侧栏折叠状态
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
-  const [rightInspectorCollapsed, setRightInspectorCollapsed] = useState(false);
+  const [rightInspectorOverride, setRightInspectorCollapsed] = useState<boolean | null>(null);
+  const rightInspectorCollapsed = rightInspectorOverride ?? compactWorkbench;
 
   // 浮层状态
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -93,6 +114,10 @@ export function StudioShell({ activityId }: StudioShellProps) {
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
   const quickAttempts = useRef(new Map<string, string>());
   const quickLocks = useRef(new Set<string>());
+  const draftFlushRef = useRef(draft.flush);
+  useEffect(() => {
+    draftFlushRef.current = draft.flush;
+  });
 
   const activeStage = useMemo(() => {
     if (!document) return null;
@@ -114,13 +139,51 @@ export function StudioShell({ activityId }: StudioShellProps) {
     return activeScene.beats.find((b) => b.id === selectedBeatId) || activeScene.beats[0] || null;
   }, [activeScene, selectedBeatId]);
   const changeView = async (mode: typeof viewMode) => {
+    if (mode === viewMode) return;
     if (mediaFlush.current && !await mediaFlush.current()) return;
-    if (await draft.flush()) setViewMode(mode);
+    if (await draft.flush()) {
+      mediaFlush.current = null;
+      setViewMode(mode);
+    }
   };
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void (async () => {
+          if (mediaFlush.current && !await mediaFlush.current()) return;
+          await draftFlushRef.current();
+        })();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
+  useEffect(() => {
+    if (!playbackOpen && !exportOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229 || event.key !== 'Escape') return;
+      setPlaybackOpen(false);
+      setExportOpen(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [playbackOpen, exportOpen]);
+
+  if (activityError || draftError || (!activityLoading && !draftLoading && (!document || !activity))) {
+    return <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-paper p-6 text-sm">
+      <p role="alert" className="text-danger-fg">{activityError?.message || draftError?.message || '活动或草稿暂不可用。'}</p>
+      <Button variant="outline" onClick={() => { void refetchActivity(); void refetchDraft(); }}>重新加载</Button>
+      <Link href="/apps/activities" className="text-muted hover:underline">返回活动列表</Link>
+    </div>;
+  }
 
   if (activityLoading || draftLoading || !document || !activity) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-paper text-muted text-sm" role="status">
+      <div className="flex h-full min-h-0 w-full items-center justify-center bg-paper text-muted text-sm" role="status">
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           <span>正在进入活动工作室…</span>
@@ -161,7 +224,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
   // 新增分镜
   const handleAddBeat = (insertIndex?: number) => {
     if (!activeScene || !activeStage) return;
-    const newBeatId = `beat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newBeatId = createStudioId('beat');
     const newBeat: SceneBeat = {
       id: newBeatId,
       sceneId: activeScene.id,
@@ -205,7 +268,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
     const targetStage = document.stages.find((s) => s.id === stageId);
     if (!targetStage) return;
     const stageScenes = getEffectiveStageScenes(targetStage, document.scenes);
-    const newSceneId = `scene_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newSceneId = createStudioId('scene');
     const newScene: ActivityScene = {
       id: newSceneId,
       stageId,
@@ -215,7 +278,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
       environment: '',
       beats: [
         {
-          id: `beat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          id: createStudioId('beat'),
           sceneId: newSceneId,
           stageId,
           characterId: document.actors[0]?.id || 'narrator',
@@ -258,7 +321,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
 
   // 新增一幕
   const handleAddStage = () => {
-    const newStageId = `stage_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newStageId = createStudioId('stage');
     const newStageOrder = document.stages.length + 1;
     const newStage: StageDefinition = {
       id: newStageId,
@@ -273,13 +336,20 @@ export function StudioShell({ activityId }: StudioShellProps) {
       scenes: [],
     };
 
-    const nextDoc = {
+    const newSceneId = `scene_${crypto.randomUUID()}`;
+    const newScene: ActivityScene = {
+      id: newSceneId, stageId: newStageId, title: '新场次 1',
+      timeText: '', locationText: newStage.location || '', environment: '',
+      beats: [], orderIndex: 0,
+    };
+    const nextDoc = writeStageScenes({
       ...document,
       stages: [...document.stages, newStage],
-    };
+    }, newStageId, [newScene]);
     draft.update(nextDoc);
     setActiveStageId(newStageId);
-    handleAddScene(newStageId);
+    setActiveSceneId(newSceneId);
+    setSelectedBeatId(null);
   };
 
   // 单镜头生图
@@ -362,7 +432,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
   };
 
   return (
-    <div className="flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-paper text-ink">
+    <main className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-paper text-ink">
       {/* 48px 极简统一顶栏 */}
       <StudioHeader
         activity={activity}
@@ -379,46 +449,72 @@ export function StudioShell({ activityId }: StudioShellProps) {
         onOpenExport={() => setExportOpen(true)}
         onOpenArt={() => setArtOpen(true)}
       />
-      <div className="flex shrink-0 flex-wrap gap-2 border-b border-border-default bg-surface p-2 md:hidden">
-        <select aria-label="工作台视图" className="min-w-0 rounded border border-border-control bg-surface p-2 text-xs" value={viewMode} onChange={event => { void changeView(event.target.value as typeof viewMode); }}><option value="storyboard">分镜漫剧</option><option value="comic">漫画工坊</option><option value="materials">素材制作</option></select>
-        {viewMode === 'storyboard' && <>
-          <select aria-label="当前幕" className="min-w-0 max-w-[45%] rounded border border-border-control bg-surface p-2 text-xs" value={activeStage?.id ?? ''} onChange={event => { setActiveStageId(event.target.value); setActiveSceneId(null); }}>{document.stages.map(stage => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select>
-          <Button size="sm" variant="outline" onClick={() => setMobileDrawing(value => !value)}>{mobileDrawing ? '返回剧情' : '镜头绘制'}</Button>
-          {mobileDrawing && <select aria-label="选择镜头" className="w-full min-w-0 rounded border border-border-control bg-surface p-2 text-xs" value={`${activeScene?.id ?? ''}|${selectedBeat?.id ?? ''}`} onChange={event => { const [sceneId, beatId] = event.target.value.split('|'); setActiveSceneId(sceneId); setSelectedBeatId(beatId); }}>{scenes.flatMap(scene => scene.beats.map((beat, index) => <option key={beat.id} value={`${scene.id}|${beat.id}`}>{scene.title} · {index + 1} · {beat.action || beat.dialogue || '镜头'}</option>))}</select>}
-        </>}
+      {(saveStatus === 'error' || saveStatus === 'conflict') && (
+        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger-fg/20 bg-danger-bg px-3 py-2 text-sm text-danger-fg">
+          <span className="min-w-0 flex-1">{saveError || '草稿尚未同步，你的输入仍保留在本机。'}</span>
+          {saveStatus === 'error' ? <Button size="sm" variant="ghost" onClick={draft.retry}>重试保存</Button> : <>
+            <Button size="sm" variant="ghost" onClick={() => {
+              if (!window.confirm('使用当前内容覆盖服务器新版本？请先核对版本差异。')) return;
+              void refetchDraft().then(result => { if (result.data?.draft) draft.resolve(result.data.draft, true); });
+            }}>保留本机内容并重试</Button>
+            <Button size="sm" variant="ghost" onClick={() => {
+              if (!window.confirm('放弃本机未保存修改并载入服务器版本？')) return;
+              void refetchDraft().then(result => { if (result.data?.draft) draft.resolve(result.data.draft, false); });
+            }}>载入服务器版本</Button>
+          </>}
+        </div>
+      )}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-surface px-2 py-2 md:hidden">
+        {viewMode === 'storyboard' ? <>
+          <select aria-label="当前幕" className="h-9 min-w-0 flex-1 rounded-[var(--radius-control)] border border-border-control bg-surface px-2 text-base text-ink" value={activeStage?.id ?? ''} onChange={event => { setActiveStageId(event.target.value); setActiveSceneId(null); }}>{document.stages.map(stage => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select>
+          <select aria-label="当前场次" className="h-9 min-w-0 flex-1 rounded-[var(--radius-control)] border border-border-control bg-surface px-2 text-base text-ink" value={activeScene?.id ?? ''} onChange={event => { setActiveSceneId(event.target.value); setSelectedBeatId(null); }}>{scenes.map(scene => <option key={scene.id} value={scene.id}>{scene.title}</option>)}</select>
+          <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => setMobileDrawing(value => !value)}>{mobileDrawing ? '返回剧情' : '镜头绘制'}</Button>
+          <StudioMenu label="工作台操作">
+            <StudioMenuItem onSelect={handleAddStage}>新增一幕</StudioMenuItem>
+            <StudioMenuItem disabled={!activeStage} onSelect={() => { if (activeStage) handleAddScene(activeStage.id); }}>新增场次</StudioMenuItem>
+          </StudioMenu>
+        </> : <span className="px-1 text-sm text-muted">{viewMode === 'comic' ? '漫画工坊' : '素材制作'}</span>}
       </div>
+
+      {viewMode === 'storyboard' && mobileDrawing && (
+        <div className="shrink-0 border-b border-border-subtle bg-surface px-2 py-2 md:hidden">
+          <select aria-label="选择镜头" className="h-9 w-full min-w-0 rounded-[var(--radius-control)] border border-border-control bg-surface px-2 text-base text-ink" value={`${activeScene?.id ?? ''}|${selectedBeat?.id ?? ''}`} onChange={event => { const [sceneId, beatId] = event.target.value.split('|'); setActiveSceneId(sceneId); setSelectedBeatId(beatId); }}>{scenes.flatMap(scene => scene.beats.map((beat, index) => <option key={beat.id} value={`${scene.id}|${beat.id}`}>{scene.title} · {index + 1} · {beat.action || beat.dialogue || '镜头'}</option>))}</select>
+        </div>
+      )}
 
       {/* 核心工作台：三栏视口锁高布局 */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* 左侧大纲导轨 */}
-        <div className="hidden md:flex"><StudioOutlineRail
-          document={document}
-          activeStageId={activeStage?.id ?? ''}
-          activeSceneId={activeScene?.id ?? null}
-          onSelectStage={(stId) => {
-            setActiveStageId(stId);
-            const target = document.stages.find((s) => s.id === stId);
-            if (target) {
-              const scs = getEffectiveStageScenes(target, document.scenes);
-              setActiveSceneId(scs[0]?.id || null);
-              setSelectedBeatId(scs[0]?.beats[0]?.id || null);
-            }
-          }}
-          onSelectScene={(stId, scId) => {
-            setActiveStageId(stId);
-            setActiveSceneId(scId);
-            const target = document.stages.find((s) => s.id === stId);
-            if (target) {
-              const scs = getEffectiveStageScenes(target, document.scenes);
-              const found = scs.find((s) => s.id === scId);
-              setSelectedBeatId(found?.beats[0]?.id || null);
-            }
-          }}
-          onAddStage={handleAddStage}
-          onAddScene={handleAddScene}
-          collapsed={leftRailCollapsed}
-          onToggleCollapse={() => setLeftRailCollapsed(!leftRailCollapsed)}
-        /></div>
+        {/* 左侧大纲导轨（仅分镜模式展示，避免漫画工坊出现双侧栏） */}
+        {viewMode === 'storyboard' && (
+          <div className="hidden md:flex"><StudioOutlineRail
+            document={document}
+            activeStageId={activeStage?.id ?? ''}
+            activeSceneId={activeScene?.id ?? null}
+            onSelectStage={(stId) => {
+              setActiveStageId(stId);
+              const target = document.stages.find((s) => s.id === stId);
+              if (target) {
+                const scs = getEffectiveStageScenes(target, document.scenes);
+                setActiveSceneId(scs[0]?.id || null);
+                setSelectedBeatId(scs[0]?.beats[0]?.id || null);
+              }
+            }}
+            onSelectScene={(stId, scId) => {
+              setActiveStageId(stId);
+              setActiveSceneId(scId);
+              const target = document.stages.find((s) => s.id === stId);
+              if (target) {
+                const scs = getEffectiveStageScenes(target, document.scenes);
+                const found = scs.find((s) => s.id === scId);
+                setSelectedBeatId(found?.beats[0]?.id || null);
+              }
+            }}
+            onAddStage={handleAddStage}
+            onAddScene={handleAddScene}
+            collapsed={leftRailCollapsed}
+            onToggleCollapse={() => setLeftRailCollapsed(!leftRailCollapsed)}
+          /></div>
+        )}
 
         {/* 中央主创作流 */}
         {viewMode === 'materials' ? <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4" data-autohide-scroll><MediaWorkstation activity={activity} document={document} actors={document.actors} currentMediaRevision={activityData?.currentMediaRevision} onUpdateDocument={draft.update} registerFlush={flush => { mediaFlush.current = flush; }} /></div> : viewMode === 'comic' ? (
@@ -450,15 +546,81 @@ export function StudioShell({ activityId }: StudioShellProps) {
         )}
 
         {/* 右侧随动导演面板 */}
-        {viewMode === 'storyboard' && activeStage && <aside className={`${mobileDrawing ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 w-full flex-col border-l border-border-default bg-surface ${rightInspectorCollapsed ? 'md:w-40' : 'md:w-80 lg:w-96'} md:shrink-0`}>
-          <div className="flex shrink-0 items-center justify-between border-b border-border-default p-2"><span className="text-xs font-semibold">镜头工坊</span><Button size="sm" variant="ghost" className="hidden md:inline-flex" onClick={() => setRightInspectorCollapsed(value => !value)}>{rightInspectorCollapsed ? '展开镜头工坊' : '收起镜头工坊'}</Button></div>
-          <div className={`${rightInspectorCollapsed && !isMobile ? 'hidden' : ''} min-h-0 flex-1 overflow-y-auto p-3`} data-autohide-scroll>
-            {selectedBeat && activeScene ? <BeatRenderWorkbench activityId={activityId} stageId={activeStage.id} scene={activeScene} beat={selectedBeat} document={document} onBeforeAction={draft.flush}
-              onSettingsChange={settings => handleUpdateBeat(selectedBeat.id, { renderSettings: settings })}
-              onAdopted={(nextDocument, draftVersion) => { void draft.adoptBeatMedia({ document: nextDocument, draftVersion }, { stageId: activeStage.id, sceneId: activeScene.id, beatId: selectedBeat.id }); void refetchActivity(); }}
-              onAutoAppliedCheck={() => { if (draft.isClean()) void queryClient.invalidateQueries({ queryKey: activityKeys.draft(activityId) }); }} /> : <p className="text-xs text-muted">选择一个镜头开始绘制。</p>}
-          </div>
-        </aside>}
+        {viewMode === 'storyboard' && activeStage && (
+          <aside
+            className={`${mobileDrawing ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 w-full flex-col border-l border-border-default bg-surface transition-[width] duration-150 ${
+              rightInspectorCollapsed ? 'md:w-12' : 'md:w-80 lg:w-96'
+            } md:shrink-0`}
+          >
+            {/* 44px 统一连续基线顶栏 */}
+            <div className="h-11 px-2.5 border-b border-border-default bg-surface flex items-center justify-between shrink-0 select-none">
+              {!rightInspectorCollapsed && (
+                <span className="flex items-center gap-1.5 truncate text-sm font-medium text-ink">
+                  <Sparkles className="h-3.5 w-3.5 text-muted" />
+                  <span>镜头工坊</span>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setRightInspectorCollapsed(!rightInspectorCollapsed)}
+                className={`hidden md:flex h-7 w-7 rounded-[var(--radius-control)] items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer shrink-0 ${
+                  rightInspectorCollapsed ? 'mx-auto' : ''
+                }`}
+                title={rightInspectorCollapsed ? '展开镜头工坊' : '收起镜头工坊'}
+                aria-label={rightInspectorCollapsed ? '展开镜头工坊' : '收起镜头工坊'}
+              >
+                {rightInspectorCollapsed ? (
+                  <PanelRightOpen className="h-4 w-4" />
+                ) : (
+                  <PanelRightClose className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+
+            {rightInspectorCollapsed && !isMobile ? (
+              <button type="button"
+                onClick={() => setRightInspectorCollapsed(false)}
+                className="flex-1 flex flex-col items-center py-4 cursor-pointer hover:bg-surface-hover/50 text-muted hover:text-ink transition-colors"
+                title="点击展开镜头工坊"
+              >
+                <span className="[writing-mode:vertical-rl] text-xs font-medium tracking-widest text-muted hover:text-ink select-none">
+                  镜头工坊
+                </span>
+              </button>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto p-3" data-autohide-scroll>
+                {selectedBeat && activeScene ? (
+                  <BeatRenderWorkbench
+                    activityId={activityId}
+                    stageId={activeStage.id}
+                    scene={activeScene}
+                    beat={selectedBeat}
+                    document={document}
+                    onBeforeAction={draft.flush}
+                    onSettingsChange={(settings) =>
+                      handleUpdateBeat(selectedBeat.id, { renderSettings: settings })
+                    }
+                    onAdopted={(nextDocument, draftVersion) => {
+                      void draft.adoptBeatMedia(
+                        { document: nextDocument, draftVersion },
+                        { stageId: activeStage.id, sceneId: activeScene.id, beatId: selectedBeat.id }
+                      );
+                      void refetchActivity();
+                    }}
+                    onAutoAppliedCheck={() => {
+                      if (draft.isClean())
+                        void queryClient.invalidateQueries({
+                          queryKey: activityKeys.draft(activityId),
+                        });
+                    }}
+                  />
+                ) : (
+                  <p className="text-xs text-muted">选择一个镜头开始绘制。</p>
+                )}
+              </div>
+            )}
+          </aside>
+        )}
       </div>
 
       {/* 统一全局设置抽屉 */}
@@ -473,12 +635,14 @@ export function StudioShell({ activityId }: StudioShellProps) {
       {/* 连贯试演弹窗 */}
       {playbackOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-surface overflow-hidden">
-          <div className="h-10 px-4 border-b border-border-default flex items-center justify-between shrink-0 bg-surface-muted/50">
-            <span className="text-xs font-bold text-ink">连贯试演与演播预览</span>
+          <div className="h-11 px-4 border-b border-border-default flex items-center justify-between shrink-0 bg-surface">
+            <span className="text-xs font-semibold text-ink">连贯试演与演播预览</span>
             <button
               type="button"
               onClick={() => setPlaybackOpen(false)}
-              className="h-7 w-7 rounded flex items-center justify-center text-muted hover:text-ink cursor-pointer"
+              className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+              title="关闭试演预览"
+              aria-label="关闭试演预览"
             >
               <X className="h-4 w-4" />
             </button>
@@ -520,6 +684,6 @@ export function StudioShell({ activityId }: StudioShellProps) {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }

@@ -121,7 +121,7 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
   };
 
   return <div className="space-y-4">
-    <section className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-6" aria-labelledby="activity-image-default-title">
+    <section className="border-y border-border-subtle py-6" aria-labelledby="activity-image-default-title">
       <h2 id="activity-image-default-title" className="text-base font-semibold text-ink">默认绘制模式</h2>
       <p className="mt-1 text-sm text-muted">按用途管理默认生成方案与画幅；本次出图的修改在业务页面进行。</p>
       <label className="mt-4 block max-w-xl space-y-1.5 text-sm font-medium text-ink">图片用途<Select aria-label="默认图片用途" value={targetId} disabled={busy} onChange={event => { if (dimensionsDirty && !window.confirm('当前尺寸尚未保存，确定切换用途吗？')) return; setLoading(true); setSelectedId(''); setNotice(''); setError(''); setTargetId(event.target.value); }}>{targets.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></label>
@@ -149,6 +149,6 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
       {notice && <p role="status" className="mt-3 text-sm text-success">{notice}</p>}
       {error && <Alert variant="danger" title="常用设置未保存">{error}</Alert>}
     </section>
-    <Button variant="outline" onClick={onManagePrompts}>管理提示词策略</Button>
+    <Button variant="ghost" onClick={onManagePrompts}>管理提示词策略</Button>
   </div>;
 }

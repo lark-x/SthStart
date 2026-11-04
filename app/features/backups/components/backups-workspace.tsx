@@ -2,13 +2,12 @@
 
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, CloudUpload, DatabaseBackup, HardDrive, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
-import type { BackupRun, BackupSnapshot, BackupTarget } from '@sthstart/contracts';
+import { CloudUpload, DatabaseBackup, HardDrive, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
+import type { BackupRun, BackupSnapshot } from '@sthstart/contracts';
 import { ApiClientError } from '@/app/lib/api-client';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageTabs } from '@/app/components/ui/page-tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
@@ -90,8 +89,9 @@ export function BackupsWorkspace() {
   };
 
   return (
-    <PageContainer>
+    <PageContainer width="settings" className="space-y-3 sm:space-y-4 py-4 sm:py-6">
       <PageHeader
+        compact
         title="云备份"
         description="把内容加密后备份到一个或多个网盘，支持增量上传与按版本恢复。"
         actions={(
@@ -114,62 +114,65 @@ export function BackupsWorkspace() {
               捕获期间会短暂拒绝写入型请求，请稍后重试；未保存的草稿会保留在本地。
             </Alert>
           )}
-          {!data.vault && (
+          {!data.vault && tab !== 'security' && (
             <Alert variant="info" title="还没有创建加密仓库">
-              先在「网盘与加密」里创建仓库并保存恢复密钥，然后连接网盘即可开始备份。
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>先在「网盘与加密」里创建仓库并保存恢复密钥，然后连接网盘即可开始备份。</span>
+                <Button size="sm" variant="outline" onClick={() => setTab('security')}>前往创建</Button>
+              </div>
             </Alert>
           )}
-          {data.vault && !data.unlocked && (
+          {data.vault && !data.unlocked && tab !== 'security' && (
             <Alert variant="warning" title="仓库已锁定">
-              解锁后才能备份与恢复。{data.vault.unlockPolicy === 'remember' ? '本机已记住解锁材料，解锁一次即可继续。' : '请在「网盘与加密」里解锁。'}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>解锁后才能备份与恢复。{data.vault.unlockPolicy === 'remember' ? '本机已记住解锁材料，解锁一次即可继续。' : '请在「网盘与加密」里解锁。'}</span>
+                <Button size="sm" variant="outline" onClick={() => setTab('security')}>前往解锁</Button>
+              </div>
             </Alert>
           )}
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <DatabaseBackup className="h-4 w-4" aria-hidden="true" />最近完成
-                </CardTitle>
-                <CardDescription>{lastRun ? formatTime(lastRun.finishedAt ?? lastRun.updatedAt) : '还没有完成过备份'}</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted">
-                {lastRun
-                  ? <>{RUN_STATE_LABEL[lastRun.status] ?? lastRun.status}：{lastRun.targets.filter((target) => target.manifestPublished).length}/{lastRun.targets.length} 个目标完成</>
-                  : '第一次备份会完整上传所需内容，之后只上传变化的部分。'}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <HardDrive className="h-4 w-4" aria-hidden="true" />目标网盘
-                </CardTitle>
-                <CardDescription>{data.targets.length} 个目标</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-1 text-sm text-muted">
-                {data.targets.length === 0 && <div>还没有连接网盘。</div>}
-                {data.targets.map((target) => (
-                  <div key={target.id} className="flex items-center justify-between gap-2">
-                    <span className="truncate">{target.accountLabel || target.kind}</span>
-                    <Badge variant={target.lastError ? 'warning' : 'online'}>{target.lastError ? '需要处理' : '可用'}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />加密仓库
-                </CardTitle>
-                <CardDescription>{data.vault ? (data.unlocked ? '已解锁' : '已锁定') : '未创建'}</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted">
-                {data.vault
-                  ? <>格式版本 {data.vault.formatVersion}，恢复密钥{data.vault.recoveryWrap ? '已生成' : '未生成'}。</>
-                  : '仓库头只保存被包裹的主密钥，密码与恢复密钥都不会落库。'}
-              </CardContent>
-            </Card>
-          </div>
+          {/* 3块总览状态卡片仅在概览标签下展示，其他标签主任务优先（计划、历史、安全） */}
+          {tab === 'overview' && (
+            <div className="grid border-y border-border-subtle md:grid-cols-3">
+              <section className="py-4 md:pr-5">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <DatabaseBackup className="h-4 w-4 text-muted" aria-hidden="true" />最近完成
+                </h2>
+                <p className="mt-1 text-xs text-muted">{lastRun ? formatTime(lastRun.finishedAt ?? lastRun.updatedAt) : '还没有完成过备份'}</p>
+                <div className="mt-3 text-sm text-muted">
+                  {lastRun
+                    ? <>{RUN_STATE_LABEL[lastRun.status] ?? lastRun.status}：{lastRun.targets.filter((target) => target.manifestPublished).length}/{lastRun.targets.length} 个目标完成</>
+                    : '第一次备份会完整上传所需内容，之后只上传变化的部分。'}
+                </div>
+              </section>
+              <section className="border-t border-border-subtle py-4 md:border-l md:border-t-0 md:px-5">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <HardDrive className="h-4 w-4 text-muted" aria-hidden="true" />目标网盘
+                </h2>
+                <p className="mt-1 text-xs text-muted">{data.targets.length} 个目标</p>
+                <div className="mt-3 space-y-1 text-sm text-muted">
+                  {data.targets.length === 0 && <div>还没有连接网盘。</div>}
+                  {data.targets.map((target) => (
+                    <div key={target.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{target.accountLabel || target.kind}</span>
+                      <Badge variant={target.lastError ? 'warning' : 'online'}>{target.lastError ? '需要处理' : '可用'}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="border-t border-border-subtle py-4 md:border-l md:border-t-0 md:pl-5">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <ShieldCheck className="h-4 w-4 text-muted" aria-hidden="true" />加密仓库
+                </h2>
+                <p className="mt-1 text-xs text-muted">{data.vault ? (data.unlocked ? '已解锁' : '已锁定') : '未创建'}</p>
+                <div className="mt-3 text-sm text-muted">
+                  {data.vault
+                    ? <>格式版本 {data.vault.formatVersion}，恢复密钥{data.vault.recoveryWrap ? '已生成' : '未生成'}。</>
+                    : '仓库头只保存被包裹的主密钥，密码与恢复密钥都不会落库。'}
+                </div>
+              </section>
+            </div>
+          )}
 
           {activeRun && <ActiveRunCard run={activeRun} onCancel={async () => {
             try { await cancelRun.mutateAsync(activeRun.id); toast.info('已请求取消', '已完成的目标会保留，未上传的部分保留可续传状态。'); }
@@ -214,12 +217,12 @@ export function BackupsWorkspace() {
 
 function ActiveRunCard({ run, onCancel }: { run: BackupRun; onCancel: () => Promise<void> }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">正在进行：{run.planName}</CardTitle>
-        <CardDescription>{run.progressLabel ?? '准备中'}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <section className="border-y border-border-subtle py-5">
+      <div>
+        <h2 className="text-base font-semibold text-ink">正在进行：{run.planName}</h2>
+        <p className="mt-1 text-sm text-muted">{run.progressLabel ?? '准备中'}</p>
+      </div>
+      <div className="mt-4 space-y-3">
         {run.targets.map((target) => (
           <div key={target.targetId} className="space-y-1">
             <div className="flex items-center justify-between text-sm">
@@ -234,24 +237,24 @@ function ActiveRunCard({ run, onCancel }: { run: BackupRun; onCancel: () => Prom
           </div>
         ))}
         <Button variant="ghost" size="sm" onClick={() => void onCancel()}>取消这次备份</Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
 function OverviewPanel({ runs, snapshots, onRefresh }: { runs: BackupRun[]; snapshots: BackupSnapshot[]; onRefresh: () => void }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRound className="h-4 w-4" aria-hidden="true" />最近运行
-        </CardTitle>
-        <CardDescription>查看每次备份的阶段、实际上传量与每个目标的结果。</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <section className="border-y border-border-subtle py-5">
+      <div>
+        <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+          <KeyRound className="h-4 w-4 text-muted" aria-hidden="true" />最近运行
+        </h2>
+        <p className="mt-1 text-sm text-muted">查看每次备份的阶段、实际上传量与每个目标的结果。</p>
+      </div>
+      <div className="mt-4 divide-y divide-border-subtle">
         {runs.length === 0 && <EmptyState title="还没有备份记录" description="点击右上角「立即备份」开始第一次备份。" />}
         {runs.slice(0, 8).map((run) => (
-          <div key={run.id} className="rounded-[var(--radius-panel)] border border-border-default p-3">
+          <div key={run.id} className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-medium">{run.planName} · {run.trigger === 'manual' ? '手动' : run.trigger === 'scheduled' ? '定时' : '重试'}</div>
               <Badge variant={run.status === 'succeeded' ? 'online' : run.status === 'partial' ? 'warning' : run.status === 'failed' ? 'error' : 'accent'}>
@@ -271,7 +274,7 @@ function OverviewPanel({ runs, snapshots, onRefresh }: { runs: BackupRun[]; snap
               ))}
             </div>
             <a
-              className="mt-2 inline-block text-xs text-accent hover:underline"
+              className="mt-2 inline-block text-xs text-ink hover:underline"
               href={'/settings/control-center?tab=logs&taskId=backup&runId=' + run.id}
             >
               查看这次运行的日志
@@ -282,8 +285,8 @@ function OverviewPanel({ runs, snapshots, onRefresh }: { runs: BackupRun[]; snap
           <span>共 {snapshots.length} 个版本</span>
           <Button variant="ghost" size="sm" onClick={onRefresh}><RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />刷新</Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 

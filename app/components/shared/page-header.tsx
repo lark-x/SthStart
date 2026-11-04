@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
-export interface PageHeaderProps {
+export interface PageHeaderProps extends Omit<React.ComponentPropsWithoutRef<'header'>, 'title'> {
   title: string;
   description?: string;
   backHref?: string;
@@ -30,9 +30,10 @@ export function PageHeader({
   actions,
   className,
   compact = false,
+  ...rest
 }: PageHeaderProps) {
   return (
-    <header className={cn('tpl-header', compact ? 'pb-1' : 'pb-2', className)}>
+    <header className={cn('tpl-header', compact ? 'tpl-header-compact pb-1' : 'pb-2', className)} {...rest}>
       {backHref && (
         <Link
           href={backHref}
@@ -54,10 +55,12 @@ export function PageHeader({
         </div>
 
         {/* page-header-actions 保留为兼容类名：既有测试与样式仍按它定位动作区。 */}
-        <div className="tpl-actions page-header-actions">
-          {status}
-          {actions}
-        </div>
+        {(status || actions) && (
+          <div className="tpl-actions page-header-actions">
+            {status}
+            {actions}
+          </div>
+        )}
       </div>
     </header>
   );

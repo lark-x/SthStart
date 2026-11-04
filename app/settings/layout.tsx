@@ -10,7 +10,6 @@ import {
   Activity,
   CloudUpload,
 } from 'lucide-react';
-import { cn } from '@/app/lib/cn';
 
 interface SettingsTab {
   href: string;
@@ -60,43 +59,48 @@ export default function SettingsLayout({
   const pathname = usePathname();
 
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Secondary Settings Tab Navigation Bar */}
-      <nav
-        aria-label="设置中心二级导航"
-        className="sticky top-12 z-20 border-b border-border-subtle bg-bg-app/88 backdrop-blur-md transition-colors"
-      >
-        <div className="tpl-container py-2 flex items-center justify-between gap-4 overflow-x-auto">
-          <div className="flex items-center gap-1.5 min-w-max rounded-[var(--radius-control)] bg-surface-sunken/75 p-1 border border-border-subtle/70">
-            {SETTINGS_TABS.map((tab) => {
-              const isActive =
-                pathname === tab.href || pathname.startsWith(`${tab.href}/`);
-              const Icon = tab.icon;
+    <div className="min-h-full">
+      <div className="mx-auto w-full max-w-[calc(var(--shell-settings-max)_+_13rem)] px-3 py-3 sm:px-6 lg:py-8">
+        <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+          <nav
+            aria-label="设置中心二级导航"
+            className="min-w-0 border-b border-border-subtle pb-2 lg:border-b-0 lg:pb-0 lg:sticky lg:top-[calc(var(--shell-topbar)_+_1.5rem)] lg:self-start"
+          >
+            <div className="mb-4 hidden border-b border-border-subtle pb-4 lg:block">
+              <p className="text-xs font-semibold tracking-[0.08em] text-muted">设置中心</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted">服务、生成、运行与数据安全</p>
+            </div>
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
+              {SETTINGS_TABS.map((tab) => {
+                const isActive =
+                  pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+                const Icon = tab.icon;
 
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className={cn(
-                    'inline-flex items-center gap-2 px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm font-medium transition-colors select-none',
-                    isActive
-                      ? 'bg-surface text-ink font-semibold shadow-xs border border-border-subtle/80'
-                      : 'text-muted hover:text-ink hover:bg-surface-hover'
-                  )}
-                  aria-current={isActive ? 'page' : undefined}
-                  title={tab.description}
-                >
-                  <Icon className={cn('h-3.5 w-3.5 flex-none', isActive ? 'text-accent' : 'text-muted')} />
-                  <span>{tab.label}</span>
-                </Link>
-              );
-            })}
+                return (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    className="settings-navigation-link flex-none items-center rounded-[var(--radius-control)] px-2.5 py-1.5 text-xs sm:text-sm lg:w-full lg:min-h-14 lg:items-start lg:rounded-none lg:px-3 lg:py-2.5"
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <Icon className="h-3.5 w-3.5 flex-none lg:mt-0.5 lg:h-4 lg:w-4" aria-hidden="true" />
+                    <span className="min-w-0">
+                      <span className="block whitespace-nowrap">{tab.label}</span>
+                      <span className="mt-0.5 hidden text-xs font-normal leading-snug text-muted lg:block">
+                        {tab.description}
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+
+          <div className="min-w-0 [&>.tpl-container]:max-w-none [&>.tpl-container]:px-0">
+            {children}
           </div>
         </div>
-      </nav>
-
-      {/* Settings Sub-page Content */}
-      <div className="flex-1 min-w-0">{children}</div>
+      </div>
     </div>
   );
 }

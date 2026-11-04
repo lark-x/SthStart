@@ -25,12 +25,14 @@ export function ActivityLoraPolicyPanel({ workflows }: { workflows: Workflow[] }
 
   useEffect(() => {
     if (!versions.length || selection) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 工作流异步加载后选择首个可用版本。
     setSelection(`${versions[0].id}::${versions[0].version}`);
   }, [selection, versions]);
 
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换工作流版本后进入异步 LoRA 读取态。
     setLoading(true); setError(''); setSaved(false);
     void fetchActivityLoraPolicy(selected.id, selected.version).then((next) => {
       if (!active) return;
@@ -54,7 +56,7 @@ export function ActivityLoraPolicyPanel({ workflows }: { workflows: Workflow[] }
   const update = (index: number, patch: Partial<ActivityLora>) => setEntries((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, ...patch } : entry));
 
   return (
-    <section className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-6" aria-labelledby="activity-lora-policy-title">
+    <section className="space-y-4 border-y border-border-subtle py-6" aria-labelledby="activity-lora-policy-title">
       <div>
         <h2 id="activity-lora-policy-title" className="text-base font-semibold text-ink">活动全局 LoRA</h2>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">这里配置活动统一画风。实际加载顺序为全局 → 角色 → 镜头；同名文件只加载一次，后一级覆盖强度和触发词。设置按已发布工作流版本保存。</p>

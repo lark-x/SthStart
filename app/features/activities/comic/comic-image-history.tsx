@@ -94,7 +94,7 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
             {item.previewUrl ? <img src={item.previewUrl} alt="漫画绘制历史缩略图" loading="lazy" className="aspect-[4/3] w-full object-cover" />
               : <span className="grid aspect-[4/3] place-items-center bg-surface-muted text-xs text-muted">文件不可用</span>}
             <span className="absolute left-1 top-1 rounded bg-ink/75 px-1 py-0.5 text-xs font-medium text-white">{item.current ? '当前' : item.sourceChanged ? '描述不同' : '历史'}</span>
-            {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1 py-0.5 text-xs font-medium text-white">细化</span>}
+            {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1 py-0.5 text-xs font-medium text-[var(--fg-on-accent)]">细化</span>}
             <span className="block truncate px-1.5 py-1 text-xs text-muted">{new Date(item.createdAt).toLocaleString()}</span>
           </button>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">

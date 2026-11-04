@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Trash2, Plus, ExternalLink } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import type { CharacterProfile } from '@sthstart/contracts';
 import type { CharacterDetail } from '../api';
 import { Button } from '@/app/components/ui/button';
@@ -55,27 +55,29 @@ export function RelationsSection({
   return (
     <div className="space-y-6">
       <div className="pb-3 border-b border-border-subtle">
-        <h3 className="text-xl font-medium text-ink">关系与资料来源</h3>
-        <p className="text-sm text-muted mt-1 leading-relaxed">
+        <h3 className="text-base font-semibold text-ink">关系与资料来源</h3>
+        <p className="text-xs text-muted mt-1 leading-relaxed">
           关系是有方向的；“A 如何看待 B” 与 “B 如何看待 A” 可以具有不同的态度与描述。
         </p>
       </div>
 
       {/* Relationship Creator */}
-      <div className="p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface space-y-3">
-        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
+      <div className="p-4 rounded-[var(--radius-panel)] border border-border-subtle bg-surface space-y-3">
+        <h4 className="text-xs font-semibold text-fg-subtle uppercase tracking-wider">
           添加人物关系
         </h4>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-semibold text-ink mb-1">
+            <label htmlFor="rel-target-char" className="block text-xs font-medium text-fg-subtle mb-1">
               目标角色
             </label>
             <Select
+              id="rel-target-char"
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
               disabled={!canEdit}
+              className="text-base sm:text-sm"
             >
               <option value="">选择资料库中的角色</option>
               {availableTargets.map((item) => (
@@ -87,147 +89,96 @@ export function RelationsSection({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-ink mb-1">关系类型</label>
+            <label htmlFor="rel-type-input" className="block text-xs font-medium text-fg-subtle mb-1">
+              关系类型
+            </label>
             <Input
+              id="rel-type-input"
               value={relationType}
               onChange={(e) => setRelationType(e.target.value)}
-              placeholder="如：同伴、保护者、宿敌、崇拜…"
+              placeholder="例如：挚友、宿敌、搭档"
               disabled={!canEdit}
+              className="text-base sm:text-sm"
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label htmlFor="rel-desc-input" className="block text-xs font-medium text-fg-subtle mb-1">
+              关系描述
+            </label>
+            <Textarea
+              id="rel-desc-input"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="例如：虽然表面经常争执，但危急时刻总是最信任对方。"
+              disabled={!canEdit}
+              className="text-base sm:text-sm"
             />
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-semibold text-ink mb-1">关系说明与看法</label>
-          <Textarea
-            rows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="当前角色如何看待对方？有哪些难忘的交集？"
-            disabled={!canEdit}
-          />
+        <div className="pt-1 flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!targetId || !canEdit || saving}
+            loading={saving}
+            onClick={() => void handleAdd()}
+          >
+            添加关系
+          </Button>
         </div>
-
-        <Button
-          size="sm"
-          variant="primary"
-          disabled={!canEdit || !targetId}
-          loading={saving}
-          onClick={handleAdd}
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>保存关系</span>
-        </Button>
       </div>
 
-      {/* Relationship List */}
+      {/* Existing Relationships */}
       <div className="space-y-3">
-        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
-          已建立的角色关系 ({detail?.relationships.length ?? 0})
+        <h4 className="text-xs font-semibold text-fg-subtle uppercase tracking-wider">
+          已有关系 ({detail?.relationships?.length ?? 0})
         </h4>
 
-        <div className="grid grid-cols-1 gap-2.5">
-          {detail?.relationships.map((rel) => {
-            const otherId = rel.fromCharacterId === detail.id ? rel.toCharacterId : rel.fromCharacterId;
-            const other = library.find((c) => c.id === otherId);
-            const isOutward = rel.fromCharacterId === detail.id;
+        {detail?.relationships && detail.relationships.length > 0 ? (
+          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
+            {detail.relationships.map((rel) => {
+              const otherId = rel.fromCharacterId === detail.id ? rel.toCharacterId : rel.fromCharacterId;
+              const other = library.find((c) => c.id === otherId);
+              const isOutward = rel.fromCharacterId === detail.id;
 
-            return (
-              <div
-                key={rel.id}
-                className="flex items-start justify-between gap-3 p-3.5 rounded border border-border-subtle bg-surface"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <strong className="text-sm font-semibold text-ink">
-                      {other?.displayName || '未知角色'}
-                    </strong>
-                    <span className="text-sm font-medium text-accent-dark bg-accent/10 px-2 py-0.5 rounded-full">
-                      {rel.relationType || '关系'}
-                    </span>
-                    <span className="text-sm text-muted">
-                      {isOutward ? '由当前角色指向对方' : '由对方指向当前角色'}
-                    </span>
+              return (
+                <div key={rel.id} className="flex items-center justify-between p-3.5 gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-ink">
+                        {other?.displayName || otherId}
+                      </span>
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-surface-sunken text-fg-subtle border border-border-subtle">
+                        {isOutward ? `-> ${rel.relationType}` : `<- ${rel.relationType}`}
+                      </span>
+                    </div>
+                    {rel.description && (
+                      <p className="mt-1 text-xs text-muted leading-relaxed">{rel.description}</p>
+                    )}
                   </div>
-                  {rel.description && (
-                    <p className="mt-1 text-sm text-muted leading-relaxed">
-                      {rel.description}
-                    </p>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => void onRemoveRelationship(rel.id)}
+                      className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
+                      title="删除关系"
+                      aria-label="删除关系"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
                   )}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => onRemoveRelationship(rel.id)}
-                  className="p-1 text-muted hover:text-danger transition-colors"
-                  title="移除关系"
-                  aria-label="移除关系"
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
-
-          {(!detail?.relationships || detail.relationships.length === 0) && (
-            <div className="p-6 text-center text-sm text-muted border border-dashed border-border-default rounded">
-              尚未建立任何角色关系。
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Sources List */}
-      <div className="pt-4 border-t border-border-subtle space-y-3">
-        <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
-          参考资料来源 ({detail?.sources.length ?? 0})
-        </h4>
-
-        <div className="grid grid-cols-1 gap-2.5">
-          {detail?.sources.map((source) => (
-            <div
-              key={source.id}
-              className="p-3.5 rounded border border-border-subtle bg-surface space-y-1"
-            >
-              <div className="flex items-center justify-between">
-                <strong className="text-sm font-semibold text-ink">{source.title}</strong>
-                <span className="text-sm text-muted">
-                  {source.sourceType} · {new Date(source.fetchedAt).toLocaleDateString()}
-                </span>
-              </div>
-              <p className="text-sm text-muted line-clamp-3 leading-relaxed">
-                {source.excerpt}
-              </p>
-              {source.url && (
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-accent-dark font-medium hover:underline pt-1"
-                >
-                  <span>查看来源原文</span>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-              {source.sourceSnapshotId && (
-                <a
-                  href={`/api/admin/characters/${detail?.id}/source-snapshots/${source.sourceSnapshotId}/raw`}
-                  download
-                  className="inline-flex items-center gap-1 text-sm text-accent-dark font-medium hover:underline pt-1 ml-3"
-                >
-                  <span>下载原始快照</span>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-          ))}
-
-          {(!detail?.sources || detail.sources.length === 0) && (
-            <div className="p-6 text-center text-sm text-muted border border-dashed border-border-default rounded">
-              暂无参考来源。使用 AI 智能草稿生成或导入 Tavern 卡片时会自动记录。
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-6 text-center text-xs text-muted">
+            暂无已配置的人物关系。
+          </div>
+        )}
       </div>
     </div>
   );

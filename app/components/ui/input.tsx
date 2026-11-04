@@ -1,26 +1,25 @@
+'use client';
+
 import React, { forwardRef } from 'react';
+import { useImeSafeHandlers } from './use-ime-safe-handlers';
 import { cn } from '../../lib/cn';
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: boolean | string;
 }
 
-/** 与 Button/Select 同规范：高 40px、圆角 8px、统一错误态（计划 §3.3/§7.1）。 */
+/** 与 Button/Select 同规范：高 40px、语义圆角、统一错误态（计划 §3.3/§7.1）。 */
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, error, type = 'text', ...props }, ref) => {
+  ({ className, error, type = 'text', onKeyDown, onCompositionStart, onCompositionEnd, ...props }, ref) => {
+    const imeHandlers = useImeSafeHandlers({ onKeyDown, onCompositionStart, onCompositionEnd });
     return (
       <input
         type={type}
         ref={ref}
         aria-invalid={Boolean(error) || undefined}
-        className={cn(
-          'flex h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3.5 py-2.5 text-sm text-ink shadow-[var(--shadow-control-inset)] placeholder:text-muted/65',
-          'focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:ring-offset-0',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-          error && 'border-danger focus-visible:border-danger focus-visible:ring-danger/20',
-          className
-        )}
+        className={cn('ui-control', className)}
         {...props}
+        {...imeHandlers}
       />
     );
   }

@@ -48,23 +48,24 @@ export function NarrativeInspector({
             onChange={(e) => setDraft(e.target.value)}
             placeholder="搜索当前作品原文…"
             aria-label="搜索当前作品原文"
-            className="h-9 bg-surface pl-9 text-sm"
+            className="h-9 bg-surface pl-9 text-base sm:text-sm"
           />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {query ? (
-          <div className="space-y-2">
-            <p className="text-xs text-fg-subtle">检索结果 · {results.length} 条</p>
+          <div>
+            <p className="pb-2 text-xs text-fg-subtle">检索结果 · {results.length} 条</p>
+            <div className="[&>*+*]:border-t [&>*+*]:border-border-subtle">
             {results.map((r) => (
               <button
                 key={`${r.kind}-${r.refId}`}
                 type="button"
                 onClick={() => onSelectResult(r)}
-                className="w-full space-y-1 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-2.5 text-left transition-colors hover:bg-surface-hover"
+                className="-mx-1 w-[calc(100%+8px)] space-y-1 rounded-[var(--radius-control)] px-1 py-2.5 text-left transition-colors hover:bg-surface-hover"
               >
-                <strong className="block text-sm font-semibold text-ink">
+                <strong className="block text-sm font-medium text-ink">
                   {r.title || r.kind}
                 </strong>
                 <p className="line-clamp-2 text-sm leading-relaxed text-muted">
@@ -72,6 +73,7 @@ export function NarrativeInspector({
                 </p>
               </button>
             ))}
+            </div>
             {results.length === 0 && (
               <p className="py-6 text-center text-sm text-fg-subtle">未找到相关原文片段</p>
             )}

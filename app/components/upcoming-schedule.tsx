@@ -28,9 +28,9 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
 
   /* 骨架与真实日程行同构，保证载入完成时不出现整块高度跳变。 */
   const skeletonRows = (
-    <ul className="space-y-2" aria-hidden="true">
+    <ul className="home-list" aria-hidden="true">
       {Array.from({ length: limit }, (_, index) => (
-        <li key={index} className="flex items-start gap-3 rounded-xl border border-border-subtle/70 bg-surface-sunken/35 px-3.5 py-2.5">
+        <li key={index} className="home-row">
           <Skeleton className="mt-0.5 h-8 w-8 rounded-lg flex-none" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-4 w-3/4" data-visual-dynamic="true" />
@@ -42,8 +42,8 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
   );
 
   return (
-    <section className="tpl-panel p-4 sm:p-5" aria-labelledby="upcoming-title">
-      <div className="mb-3.5 flex items-baseline justify-between gap-3 border-b border-border-subtle pb-3">
+    <section className="home-section" aria-labelledby="upcoming-title">
+      <div className="mb-4 flex items-baseline justify-between gap-3 border-b border-border-subtle pb-3">
         <div>
           <h2 id="upcoming-title" className="tpl-section-title">近期日程</h2>
           <p className="mt-0.5 text-xs text-muted">未来 {days} 天角色生辰与活动排期</p>
@@ -64,20 +64,16 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
           读取失败，点击重试
         </button>
       ) : events.length === 0 ? (
-        <div className="rounded-xl border border-border-subtle bg-surface-sunken/35 px-3.5 py-3 text-sm text-muted">
+        <div className="py-4 text-sm text-muted">
           未来 {days} 天内没有生日或已排期活动。
         </div>
       ) : (
-        <ul className="space-y-2" data-testid="upcoming-schedule-list">
+        <ul className="home-list" data-testid="upcoming-schedule-list">
           {/* 同上：行数与行距纳入基线，日期与标题按动态内容遮罩。 */}
           {events.map((event) => (
-            <li key={event.id} className="flex items-center gap-3 rounded-xl border border-border-subtle/80 bg-surface-sunken/35 px-3.5 py-2.5 transition-colors hover:bg-surface">
+            <li key={event.id} className="home-row">
               <span
-                className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg border ${
-                  event.kind === 'birthday'
-                    ? 'border-warning-border bg-warning-bg text-warning-fg'
-                    : 'border-accent/15 bg-accent-soft text-accent'
-                }`}
+                className="home-row-icon"
               >
                 {event.kind === 'birthday'
                   ? <Cake className="h-4 w-4" aria-hidden="true" />

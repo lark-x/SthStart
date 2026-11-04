@@ -50,7 +50,7 @@ export function ComicPanelInspector({ panel, content, page, selectedBubbleId, is
           <button type="button" disabled={panelIndex < 0 || panelIndex >= page.panelIds.length - 1} onClick={() => onMovePanel(1)} className="rounded border border-border-default px-2 py-1 disabled:opacity-40">后移</button>
         </div></div>
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={onOpenRenderSettings} className="rounded-[var(--radius-control)] bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-dark">✦ 绘制新图</button>
+          <button type="button" onClick={onOpenRenderSettings} className="rounded-[var(--radius-control)] bg-accent px-3 py-2 text-sm font-semibold text-[var(--fg-on-accent)] hover:bg-accent-dark">绘制新图</button>
           <button type="button" onClick={onRerenderSelected} disabled={!panel.selectedImage} className="rounded-[var(--radius-control)] border border-border-default bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-surface-hover disabled:opacity-50">按此图配置重绘</button>
         </div>
         {panel.selectedImage && <p className="text-xs text-muted">当前画面来源：{panel.selectedImage.origin === 'comic_render' ? '漫画绘制历史' : '原镜头绘制历史'}</p>}
@@ -132,7 +132,7 @@ export function ComicPanelInspector({ panel, content, page, selectedBubbleId, is
           <label className={labelClass}>自动播放停留（毫秒，留空自动计算）<input className={fieldClass} type="number" min={500} max={30000} step={100} value={panel.presentation.holdMs ?? ''} onChange={(event) => onChange({ ...panel, presentation: { ...panel.presentation, holdMs: event.target.value ? Math.max(500, Math.min(30000, Number(event.target.value))) : null } })} /></label>
         </div></details>
         {issues.length > 0 && <div role="alert" className="rounded-[var(--radius-control)] border border-warning/30 bg-warning/5 p-2 text-xs text-warning">{issues.map((issue) => <p key={issue}>{issue}</p>)}</div>}
-        <button type="button" disabled={!canExport} onClick={onExportPng} className="w-full rounded-[var(--radius-control)] bg-accent px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">导出当前页 PNG</button>
+        <button type="button" disabled={!canExport} onClick={onExportPng} className="w-full rounded-[var(--radius-control)] bg-accent px-3 py-2 text-sm font-semibold text-[var(--fg-on-accent)] disabled:cursor-not-allowed disabled:opacity-50">导出当前页 PNG</button>
       </div>
     </aside>
   );

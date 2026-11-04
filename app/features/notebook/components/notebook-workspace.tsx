@@ -266,8 +266,10 @@ export function NotebookWorkspace({
             </>
   );
 
+  const WorkspaceRoot = focused ? 'main' : 'div';
+
   return (
-    <div ref={workspaceRef} className={"notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col " + (focused ? 'notebook-focused h-dvh overflow-hidden' : '')}>
+    <WorkspaceRoot ref={workspaceRef} className={"notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col " + (focused ? 'notebook-focused h-dvh overflow-hidden' : '')}>
       {/* Top Global Header Bar */}
       {focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" actions={headerActions} /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
         <PageHeader
@@ -319,7 +321,7 @@ export function NotebookWorkspace({
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                 placeholder="搜索标题、正文或标签…"
-                className="pl-7.5 h-8 border-border-control text-sm placeholder:text-muted/50"
+                className="pl-7.5 h-9 border-border-control text-base sm:text-sm placeholder:text-muted/50"
               />
             </div>
 
@@ -355,9 +357,9 @@ export function NotebookWorkspace({
             <button
               type="button"
               onClick={() => setFilterPanelOpen((v) => !v)}
-              className={`inline-flex items-center gap-1.5 py-1 px-2 rounded-md font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 py-1 px-2 rounded-[var(--radius-control)] font-medium transition-colors cursor-pointer ${
                 filterPanelOpen || activeFilterCount > 0
-                  ? 'bg-accent/10 text-accent font-semibold'
+                  ? 'bg-surface-sunken text-ink'
                   : 'text-muted hover:text-ink'
               }`}
             >
@@ -371,7 +373,7 @@ export function NotebookWorkspace({
                   setFilters({ work: '', character: '', usage: '', nature: '', category: '' });
                   setPage(1);
                 }}
-                className="text-muted hover:text-accent cursor-pointer"
+                  className="text-muted hover:text-ink cursor-pointer"
               >
                 重置
               </button>
@@ -413,16 +415,13 @@ export function NotebookWorkspace({
             <Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>重试</Button>
           </Alert>}
           {/* Note Items List Stream */}
-          <div className="notebook-master-list flex-1 overflow-y-auto p-2 space-y-1.5">
+          <div className="notebook-master-list flex-1 overflow-y-auto px-2 py-1 [&>*+*]:border-t [&>*+*]:border-border-subtle">
             {isLoading && notes.length === 0 ? (
-              <div className="p-2 space-y-2">
+              <div className="py-1">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <div
-                    key={n}
-                    className="p-3 rounded-lg border border-border-subtle bg-surface space-y-2"
-                  >
-                    <Skeleton className="h-3 w-1/3" />
+                  <div key={n} className="space-y-1.5 px-2 py-3">
                     <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
                   </div>
                 ))}
               </div>
@@ -435,53 +434,24 @@ export function NotebookWorkspace({
                     type="button"
                     onClick={() => handleSelectNote(item.id!)}
                     aria-current={isSelected ? 'page' : undefined}
-                    className={"notebook-list-item group relative p-3 rounded-[var(--radius-control)] border transition-all duration-150 cursor-pointer " + (
-                      isSelected
-                        ? 'bg-surface border-accent shadow-xs ring-1 ring-accent/30'
-                        : 'bg-surface/60 border-border-subtle hover:bg-surface hover:border-border-default'
-                    )}
+                    className={
+                      'notebook-list-item group -mx-2 w-[calc(100%+16px)] rounded-[var(--radius-control)] px-2 py-2.5 text-left transition-colors cursor-pointer ' +
+                      (isSelected ? 'bg-surface-sunken' : 'hover:bg-surface-hover')
+                    }
                   >
-                    <div className="flex items-center justify-between text-sm text-muted mb-1">
-                      <span className="font-semibold text-accent-dark">
-                        {kindLabels[item.kind]}
-                      </span>
-                      <time className="text-xs tabular-nums">{formatDate(item.updatedAt)}</time>
+                    <div className="flex items-baseline gap-2">
+                      <h4 className={"min-w-0 flex-1 truncate text-sm " + (isSelected ? 'font-semibold text-ink' : 'font-medium text-ink')}>
+                        {item.title || '未命名笔记'}
+                      </h4>
+                      <time className="flex-none text-xs tabular-nums text-fg-subtle">{formatDate(item.updatedAt)}</time>
                     </div>
-
-                    <h4
-                      className={"text-sm font-semibold truncate transition-colors" + (
-                        isSelected
-                          ? 'text-ink'
-                          : 'text-ink group-hover:text-accent'
+                    <p className="mt-0.5 line-clamp-1 text-sm text-muted">{item.summary || '写下一段文字记录…'}</p>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-fg-subtle">
+                      <span>{kindLabels[item.kind]}</span>
+                      <span>{stageLabels[item.stage]}</span>
+                      {item.favorite && (
+                        <Star className="h-3 w-3 fill-warning text-warning" aria-hidden="true" />
                       )}
-                    >
-                      {item.title || '未命名笔记'}
-                    </h4>
-
-                    <p className="mt-1 text-sm text-muted line-clamp-2 leading-relaxed">
-                      {item.summary || '写下一段文字记录…'}
-                    </p>
-
-                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-ink/6 text-sm text-muted">
-                      <span className="text-xs text-fg-subtle">
-                        {stageLabels[item.stage]}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {item.tags.slice(0, 2).map((t) => (
-                          <span
-                            key={t}
-                            className="bg-surface-sunken px-1.5 py-0.5 rounded text-xs text-muted border border-border-subtle/60"
-                          >
-                            #{t}
-                          </span>
-                        ))}
-                        {item.favorite && (
-                          <Star
-                            className="h-3 w-3 fill-warning text-warning"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </div>
                     </div>
                   </button>
                 );
@@ -509,7 +479,7 @@ export function NotebookWorkspace({
         {/* Right Column: Detail Canvas Pane */}
         <section
           className={
-            "notebook-detail-pane flex-1 min-w-0 bg-surface flex flex-col min-h-0 overflow-y-auto " +
+            "notebook-detail-pane flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto " +
             (isEditingOnMobile ? 'flex' : 'hidden lg:flex')
           }
         >
@@ -563,6 +533,6 @@ export function NotebookWorkspace({
           )}
         </section>
       </div>
-    </div>
+    </WorkspaceRoot>
   );
 }

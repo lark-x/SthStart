@@ -3,11 +3,11 @@
  *
  * 视觉美学基调（Notion / Craft 轻盈人文纸感 + Linear / Raycast 现代精密排版）：
  *   - 白天 (Light Mode):
- *     1. light-paper (温暖纸感): 温润象牙纸底、同色系亚麻浅色半透明侧栏、陶土赤金强调色。
- *     2. light-zinc (纯净冷白): 清透冷白底色、浅石灰同色系侧栏、电光蓝靛强调色。
+ *     1. light-paper (温暖纸感): 温润象牙纸底、同色系亚麻浅色半透明侧栏、克制的暖棕强调色。
+ *     2. light-zinc (纯净冷白): 清透冷白底色、浅石灰同色系侧栏、灰蓝强调色。
  *   - 黑夜 (Dark Mode):
- *     3. dark-espresso (暖黑深咖): 低对比温润深咖底、同色系深焙侧栏、暖阳琥珀强调色。
- *     4. dark-obsidian (曜石冷黑): 纯粹深空曜石底、碳黑侧栏、电光紫靛强调色。
+ *     3. dark-espresso (暖黑深咖): 低对比温润深咖底、同色系深焙侧栏、低饱和暖沙强调色。
+ *     4. dark-obsidian (曜石冷黑): 纯粹深空曜石底、碳黑侧栏、灰紫强调色。
  *
  * 兼容说明：--paper / --ink / --muted / --accent / --accent-dark 等旧变量名继续保留，
  * 值由新语义变量派生；兼容旧选择器 html[data-theme="warm"] 与 html[data-theme="neutral"]。
@@ -16,14 +16,14 @@
 :root {
   /* ---------- 基础色阶默认值（融合方案：温暖纸感 + Linear 高精质感） ---------- */
   color-scheme: light;
-  --accent: #b45309;
-  --accent-dark: #92400e;
-  --accent-soft: #fef3c7;
-  --accent-ring: rgb(217 119 6 / 28%);
-  --accent-glow: 0 0 20px -3px rgba(217, 119, 6, 0.35);
+  --accent: #856342;
+  --accent-dark: #755333;
+  --accent-soft: #f1ebe2;
+  --accent-ring: color-mix(in srgb, var(--accent) 24%, transparent);
+  --accent-glow: none;
 
   /* ---------- 应用背景与同色系轻盈侧栏 (拉开明暗景深，白色卡片真正浮起) ---------- */
-  --bg-app: #f9f7f2;
+  --bg-app: #faf8f4;
   --bg-nav: rgba(246, 243, 236, 0.92);
   --nav-surface: rgba(246, 243, 236, 0.92);
   --nav-foreground: #1c1a17;
@@ -32,11 +32,11 @@
   --nav-selected: #ffffff;
   --nav-selected-text: #171614;
   --nav-border: rgb(31 29 26 / 9%);
-  --shadow-nav-active: 0 1px 3px rgb(31 29 26 / 6%), 0 1px 2px rgb(31 29 26 / 4%), inset 0 1px 0 #ffffff;
-  --shadow-hero: 0 16px 40px rgb(31 29 26 / 7%);
-  --shadow-editorial: 0 2px 10px -2px rgb(31 29 26 / 5%), 0 1px 3px 0 rgb(31 29 26 / 3%);
-  --ambient-glow: radial-gradient(ellipse 80% 50% at 50% -15%, rgba(217, 119, 6, 0.08), transparent 70%);
-  --shadow-control-inset: inset 0 1px 1px rgb(31 29 26 / 3%);
+  --shadow-nav-active: var(--shadow-xs);
+  --shadow-hero: none;
+  --shadow-editorial: var(--shadow-xs);
+  --ambient-glow: none;
+  --shadow-control-inset: none;
   --hero-start: #233143;
   --hero-mid: #304355;
   --hero-end: #445366;
@@ -49,7 +49,7 @@
   --hero-dot: #d3a987;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #ede7dc;
+  --surface-sunken: #f1ede5;
   --surface-muted: rgb(243 238 228 / 85%);
   --surface-hover: rgb(31 29 26 / 4%);
   --surface-input: #ffffff;
@@ -59,7 +59,7 @@
   /* ---------- 文字 (高对比墨黑与呼吸感次级色) ---------- */
   --fg-default: #1c1a17;
   --fg-muted: #5e574c;
-  --fg-subtle: #7a7264;
+  --fg-subtle: #6d6559;
   --fg-inverse: #f9f7f2;
   --fg-on-accent: #ffffff;
 
@@ -109,13 +109,13 @@
   --color-info-bg: var(--info-bg);
 
   /* ---------- 焦点 ---------- */
-  --focus-ring: #d97706;
+  --focus-ring: var(--fg-default);
   --focus-ring-offset: 2px;
 
   /* ---------- 形状 ---------- */
-  --radius-control: 10px;
-  --radius-panel: 16px;
-  --radius-dialog: 20px;
+  --radius-control: 6px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
   --radius-chip: 9999px;
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -124,18 +124,18 @@
   --radius-xl: 18px;
   --radius-full: 9999px;
 
-  /* ---------- Linear 级空间纵深多层微阴影与高光内阴影 ---------- */
-  --shadow-xs: 0 1px 2px rgb(31 29 26 / 4%);
-  --shadow-sm: 0 1px 3px rgb(31 29 26 / 5%), 0 1px 2px rgb(31 29 26 / 3%);
-  --shadow-card: 0 1px 3px rgba(31, 29, 26, 0.05), 0 4px 14px -2px rgba(31, 29, 26, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --shadow-card-hover: 0 8px 24px -4px rgba(31, 29, 26, 0.09), 0 2px 6px -1px rgba(31, 29, 26, 0.04), 0 0 0 1px rgba(217, 119, 6, 0.22), inset 0 1px 0 #ffffff;
-  --shadow-panel: 0 1px 3px rgba(31, 29, 26, 0.04), 0 6px 18px -3px rgba(31, 29, 26, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  --shadow-panel-hover: 0 10px 28px -4px rgba(31, 29, 26, 0.1), 0 4px 12px -2px rgba(31, 29, 26, 0.05), inset 0 1px 0 #ffffff;
-  --shadow-floating: 0 14px 36px -4px rgba(31, 29, 26, 0.12), 0 4px 14px -2px rgba(31, 29, 26, 0.06), inset 0 1px 0 #ffffff;
-  --shadow-dialog: 0 28px 72px -12px rgba(31, 29, 26, 0.22), 0 10px 28px -4px rgba(31, 29, 26, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  --shadow-inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  --shadow-button-primary: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(180, 83, 9, 0.25), 0 4px 12px rgba(180, 83, 9, 0.18);
-  --shadow-button-primary-hover: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 2px 4px rgba(180, 83, 9, 0.3), 0 8px 22px rgba(180, 83, 9, 0.28);
+  /* ---------- 表面与细线优先，仅浮层保留柔和投影 ---------- */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-panel: none;
+  --shadow-panel-hover: none;
+  --shadow-floating: 0 4px 16px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 20%);
+  --shadow-inset-top: none;
+  --shadow-button-primary: none;
+  --shadow-button-primary-hover: none;
 
   /* ---------- 外框尺寸 ---------- */
   --shell-sidebar: 236px;
@@ -153,6 +153,20 @@
   --z-sticky: 30;
   --z-menu: 40;
   --z-overlay: 50;
+
+  /* 中性操作色随主题自动派生，保留旧 accent 作为少量强调。 */
+  --action-primary: var(--fg-default);
+  --action-primary-hover: color-mix(in srgb, var(--fg-default) 85%, var(--surface));
+  --action-on-primary: var(--fg-inverse);
+  --action-secondary: var(--surface-sunken);
+  --action-secondary-hover: color-mix(in srgb, var(--fg-default) 8%, var(--surface));
+  --overlay-backdrop: rgb(0 0 0 / 40%);
+  --control-placeholder: var(--fg-subtle);
+  --control-disabled-opacity: 0.5;
+  --control-px: 12px;
+  --control-h-xs: 32px;
+  --control-text-size: 14px;
+  --control-ring-width: 2px;
 
   /* ---------- 控件尺寸 ---------- */
   --control-h-sm: 36px;
@@ -174,7 +188,7 @@
   --motion-base: 180ms;
   --motion-slow: 300ms;
   --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-spring: cubic-bezier(0.175, 0.885, 0.32, 1.12);
+  --motion-spring: var(--motion-ease);
 
   /* ---------- 滚动条 ---------- */
   --scrollbar-thumb: rgb(30 29 26 / 22%);
@@ -191,98 +205,15 @@
   --paper: var(--bg-app);
 }
 
-/* ==================== 1. 温暖纸感 (light-paper / warm) ==================== */
-:root,
-html[data-theme="light-paper"],
-html[data-theme="warm"] {
-  color-scheme: light;
-  --accent: #b45309;
-  --accent-dark: #92400e;
-  --accent-soft: #fef3c7;
-  --accent-ring: rgb(217 119 6 / 28%);
-  --accent-glow: 0 0 20px -3px rgba(217, 119, 6, 0.35);
-  --focus-ring: #d97706;
-
-  --bg-app: #f9f7f2;
-  --bg-nav: rgba(246, 243, 236, 0.92);
-  --nav-surface: rgba(246, 243, 236, 0.92);
-  --nav-foreground: #1c1a17;
-  --nav-muted: #615a4f;
-  --nav-hover: rgb(31 29 26 / 5.5%);
-  --nav-selected: #ffffff;
-  --nav-selected-text: #171614;
-  --nav-border: rgb(31 29 26 / 9%);
-  --shadow-nav-active: 0 1px 3px rgb(31 29 26 / 6%), 0 1px 2px rgb(31 29 26 / 4%), inset 0 1px 0 #ffffff;
-
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --surface-sunken: #ede7dc;
-  --surface-muted: rgb(243 238 228 / 85%);
-  --surface-hover: rgb(31 29 26 / 4%);
-  --surface-input: #ffffff;
-  --surface-dark: #1b1a18;
-  --hairline: rgb(31 29 26 / 8%);
-
-  --fg-default: #1c1a17;
-  --fg-muted: #5e574c;
-  --fg-subtle: #7a7264;
-  --fg-inverse: #f9f7f2;
-  --fg-on-accent: #ffffff;
-
-  --border-subtle: #e6dfd1;
-  --border-default: #d3c8b5;
-  --border-strong: #8a7e6c;
-  --border-control: #807462;
-
-  --success: #2f7d4e;
-  --success-fg: #23633c;
-  --success-bg: rgb(47 125 78 / 10%);
-  --success-border: rgb(47 125 78 / 30%);
-  --success-solid: #2f7d4e;
-
-  --warning: #b47d14;
-  --warning-fg: #78530a;
-  --warning-bg: rgb(180 125 20 / 11%);
-  --warning-border: rgb(180 125 20 / 36%);
-  --warning-solid: #b47d14;
-
-  --danger: #b93829;
-  --danger-fg: #992d20;
-  --danger-bg: rgb(185 56 41 / 10%);
-  --danger-border: rgb(185 56 41 / 34%);
-  --danger-solid: #a83224;
-
-  --info: #365880;
-  --info-fg: #2b4769;
-  --info-bg: rgb(54 88 128 / 10%);
-  --info-border: rgb(54 88 128 / 28%);
-  --info-solid: #365880;
-
-  --shadow-xs: 0 1px 2px rgb(31 29 26 / 4%);
-  --shadow-sm: 0 1px 3px rgb(31 29 26 / 5%), 0 1px 2px rgb(31 29 26 / 3%);
-  --shadow-card: 0 1px 3px rgba(31, 29, 26, 0.05), 0 4px 14px -2px rgba(31, 29, 26, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --shadow-card-hover: 0 8px 24px -4px rgba(31, 29, 26, 0.09), 0 2px 6px -1px rgba(31, 29, 26, 0.04), 0 0 0 1px rgba(217, 119, 6, 0.22), inset 0 1px 0 #ffffff;
-  --shadow-panel: 0 1px 3px rgba(31, 29, 26, 0.04), 0 6px 18px -3px rgba(31, 29, 26, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  --shadow-panel-hover: 0 10px 28px -4px rgba(31, 29, 26, 0.1), 0 4px 12px -2px rgba(31, 29, 26, 0.05), inset 0 1px 0 #ffffff;
-  --shadow-floating: 0 14px 36px -4px rgba(31, 29, 26, 0.12), 0 4px 14px -2px rgba(31, 29, 26, 0.06), inset 0 1px 0 #ffffff;
-  --shadow-dialog: 0 28px 72px -12px rgba(31, 29, 26, 0.22), 0 10px 28px -4px rgba(31, 29, 26, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  --shadow-inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.85);
-  --shadow-button-primary: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(180, 83, 9, 0.25), 0 4px 12px rgba(180, 83, 9, 0.18);
-  --shadow-button-primary-hover: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 2px 4px rgba(180, 83, 9, 0.3), 0 8px 22px rgba(180, 83, 9, 0.28);
-
-  --scrollbar-thumb: rgb(31 29 26 / 20%);
-  --scrollbar-thumb-hover: rgb(31 29 26 / 38%);
-}
-
 /* ==================== 2. 纯净冷白 (light-zinc / neutral) ==================== */
 html[data-theme="light-zinc"],
 html[data-theme="neutral"] {
   color-scheme: light;
-  --accent: #2563eb;
-  --accent-dark: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --accent-ring: rgb(37 99 235 / 28%);
-  --focus-ring: #2563eb;
+  --accent: #526785;
+  --accent-dark: #405674;
+  --accent-soft: #edf0f5;
+  --accent-ring: color-mix(in srgb, var(--accent) 24%, transparent);
+  --focus-ring: var(--fg-default);
 
   --bg-app: #f8f9fa;
   --bg-nav: #f1f3f5;
@@ -293,7 +224,7 @@ html[data-theme="neutral"] {
   --nav-selected: #ffffff;
   --nav-selected-text: #09090b;
   --nav-border: rgb(9 9 11 / 8%);
-  --shadow-nav-active: 0 1px 3px rgb(9 9 11 / 6%), 0 1px 2px rgb(9 9 11 / 4%);
+  --shadow-nav-active: var(--shadow-xs);
 
   --surface: #ffffff;
   --surface-raised: #ffffff;
@@ -339,14 +270,14 @@ html[data-theme="neutral"] {
   --info-border: rgb(54 88 128 / 28%);
   --info-solid: #365880;
 
-  --shadow-xs: 0 1px 2px rgb(9 9 11 / 4%);
-  --shadow-sm: 0 1px 3px rgb(9 9 11 / 5%), 0 1px 2px rgb(9 9 11 / 3%);
-  --shadow-card: 0 1px 3px rgb(9 9 11 / 4%), 0 2px 6px -1px rgb(9 9 11 / 4%), inset 0 1px 0 rgb(255 255 255 / 80%);
-  --shadow-panel: 0 1px 2px rgb(9 9 11 / 3%), 0 4px 12px -2px rgb(9 9 11 / 4%), inset 0 1px 0 rgb(255 255 255 / 80%);
-  --shadow-panel-hover: 0 4px 14px -2px rgb(9 9 11 / 7%), 0 12px 28px -4px rgb(9 9 11 / 6%), inset 0 1px 0 rgb(255 255 255 / 90%);
-  --shadow-floating: 0 12px 32px -4px rgb(9 9 11 / 10%), 0 4px 12px -2px rgb(9 9 11 / 5%), inset 0 1px 0 rgb(255 255 255 / 85%);
-  --shadow-dialog: 0 24px 64px -12px rgb(9 9 11 / 18%), 0 8px 24px -4px rgb(9 9 11 / 8%), inset 0 1px 0 rgb(255 255 255 / 70%);
-  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 80%);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-card: none;
+  --shadow-panel: none;
+  --shadow-panel-hover: none;
+  --shadow-floating: 0 4px 16px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 20%);
+  --shadow-inset-top: none;
 
   --scrollbar-thumb: rgb(23 33 46 / 22%);
   --scrollbar-thumb-hover: rgb(23 33 46 / 40%);
@@ -355,11 +286,11 @@ html[data-theme="neutral"] {
 /* ==================== 3. 暖黑深咖 (dark-espresso) ==================== */
 html[data-theme="dark-espresso"] {
   color-scheme: dark;
-  --accent: #ea580c;
-  --accent-dark: #c2410c;
-  --accent-soft: rgb(234 88 12 / 15%);
-  --accent-ring: rgb(234 88 12 / 32%);
-  --focus-ring: #ea580c;
+  --accent: #c2a17c;
+  --accent-dark: #d3b391;
+  --accent-soft: rgb(194 161 124 / 12%);
+  --accent-ring: color-mix(in srgb, var(--accent) 24%, transparent);
+  --focus-ring: var(--fg-default);
 
   --bg-app: #191816;
   --bg-nav: #141311;
@@ -370,7 +301,7 @@ html[data-theme="dark-espresso"] {
   --nav-selected: #272522;
   --nav-selected-text: #ffffff;
   --nav-border: rgb(255 255 255 / 7%);
-  --shadow-nav-active: 0 2px 8px rgb(0 0 0 / 28%);
+  --shadow-nav-active: var(--shadow-xs);
 
   --surface: #22211e;
   --surface-raised: #2a2825;
@@ -385,12 +316,12 @@ html[data-theme="dark-espresso"] {
   --fg-muted: #a39e93;
   --fg-subtle: #8f8a80;
   --fg-inverse: #191816;
-  --fg-on-accent: #ffffff;
+  --fg-on-accent: #191816;
 
   --border-subtle: #33312d;
   --border-default: #45423d;
   --border-strong: #736e65;
-  --border-control: #6b665e;
+  --border-control: #817b71;
 
   --success: #4ade80;
   --success-fg: #4ade80;
@@ -410,27 +341,27 @@ html[data-theme="dark-espresso"] {
   --danger-fg: #f87171;
   --danger-bg: rgb(248 113 113 / 14%);
   --danger-border: rgb(248 113 113 / 32%);
-  --danger-solid: #ef4444;
+  --danger-solid: #b63838;
   --danger-on-solid: #ffffff;
 
   --info: #60a5fa;
   --info-fg: #60a5fa;
   --info-bg: rgb(96 165 250 / 14%);
   --info-border: rgb(96 165 250 / 32%);
-  --info-solid: #3b82f6;
-  --info-on-solid: #ffffff;
+  --info-solid: #abc5e2;
+  --info-on-solid: #191816;
 
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 20%);
-  --shadow-card: 0 1px 3px rgb(0 0 0 / 24%), 0 2px 6px -1px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 6%);
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 24%), 0 6px 16px -2px rgb(0 0 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 7%);
-  --shadow-panel-hover: 0 4px 14px -2px rgb(0 0 0 / 34%), 0 14px 32px -4px rgb(0 0 0 / 44%), inset 0 1px 0 rgb(255 255 255 / 10%);
-  --shadow-editorial: 0 2px 12px -2px rgb(0 0 0 / 30%), 0 1px 3px 0 rgb(0 0 0 / 20%);
-  --shadow-floating: 0 12px 32px -4px rgb(0 0 0 / 52%), 0 4px 12px -2px rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 9%);
-  --shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 72%), 0 8px 24px -4px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 8%);
-  --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
-  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 7%);
-  --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-card: none;
+  --shadow-panel: none;
+  --shadow-panel-hover: none;
+  --shadow-editorial: var(--shadow-xs);
+  --shadow-floating: 0 4px 16px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 20%);
+  --shadow-control-inset: none;
+  --shadow-inset-top: none;
+  --ambient-glow: none;
 
   --scrollbar-thumb: rgb(236 234 229 / 22%);
   --scrollbar-thumb-hover: rgb(236 234 229 / 42%);
@@ -439,11 +370,11 @@ html[data-theme="dark-espresso"] {
 /* ==================== 4. 曜石冷黑 (dark-obsidian) ==================== */
 html[data-theme="dark-obsidian"] {
   color-scheme: dark;
-  --accent: #6366f1;
-  --accent-dark: #4f46e5;
-  --accent-soft: rgb(99 102 241 / 15%);
-  --accent-ring: rgb(99 102 241 / 32%);
-  --focus-ring: #6366f1;
+  --accent: #a3accb;
+  --accent-dark: #bdc5df;
+  --accent-soft: rgb(163 172 203 / 12%);
+  --accent-ring: color-mix(in srgb, var(--accent) 24%, transparent);
+  --focus-ring: var(--fg-default);
 
   --bg-app: #09090b;
   --bg-nav: #0c0c0f;
@@ -454,7 +385,7 @@ html[data-theme="dark-obsidian"] {
   --nav-selected: #202024;
   --nav-selected-text: #ffffff;
   --nav-border: rgb(255 255 255 / 7%);
-  --shadow-nav-active: 0 2px 8px rgb(0 0 0 / 32%);
+  --shadow-nav-active: var(--shadow-xs);
 
   --surface: #141417;
   --surface-raised: #1e1e22;
@@ -469,19 +400,19 @@ html[data-theme="dark-obsidian"] {
   --fg-muted: #a1a1aa;
   --fg-subtle: #8e8e93;
   --fg-inverse: #09090b;
-  --fg-on-accent: #ffffff;
+  --fg-on-accent: #09090b;
 
   --border-subtle: #242429;
   --border-default: #383840;
   --border-strong: #71717a;
-  --border-control: #52525b;
+  --border-control: #71717a;
 
   --success: #34d399;
   --success-fg: #34d399;
   --success-bg: rgb(52 211 153 / 14%);
   --success-border: rgb(52 211 153 / 32%);
   --success-solid: #10b981;
-  --success-on-solid: #064e3b;
+  --success-on-solid: #09090b;
 
   --warning: #fbbf24;
   --warning-fg: #fbbf24;
@@ -494,41 +425,44 @@ html[data-theme="dark-obsidian"] {
   --danger-fg: #f87171;
   --danger-bg: rgb(248 113 113 / 14%);
   --danger-border: rgb(248 113 113 / 32%);
-  --danger-solid: #ef4444;
+  --danger-solid: #b63838;
   --danger-on-solid: #ffffff;
 
   --info: #818cf8;
   --info-fg: #818cf8;
   --info-bg: rgb(129 140 248 / 14%);
   --info-border: rgb(129 140 248 / 32%);
-  --info-solid: #6366f1;
-  --info-on-solid: #ffffff;
+  --info-solid: #a3accb;
+  --info-on-solid: #09090b;
 
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 25%);
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 20%);
-  --shadow-card: 0 1px 3px rgb(0 0 0 / 25%), 0 2px 6px -1px rgb(0 0 0 / 25%), inset 0 1px 0 rgb(255 255 255 / 6%);
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 24%), 0 6px 16px -2px rgb(0 0 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 7%);
-  --shadow-panel-hover: 0 4px 14px -2px rgb(0 0 0 / 34%), 0 14px 32px -4px rgb(0 0 0 / 44%), inset 0 1px 0 rgb(255 255 255 / 10%);
-  --shadow-editorial: 0 2px 12px -2px rgb(0 0 0 / 30%), 0 1px 3px 0 rgb(0 0 0 / 20%);
-  --shadow-floating: 0 12px 32px -4px rgb(0 0 0 / 52%), 0 4px 12px -2px rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 9%);
-  --shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 72%), 0 8px 24px -4px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 8%);
-  --shadow-control-inset: inset 0 1px 1px rgb(0 0 0 / 30%);
-  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 7%);
-  --ambient-glow: color-mix(in srgb, var(--accent) 12%, transparent);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-card: none;
+  --shadow-panel: none;
+  --shadow-panel-hover: none;
+  --shadow-editorial: var(--shadow-xs);
+  --shadow-floating: 0 4px 16px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 20%);
+  --shadow-control-inset: none;
+  --shadow-inset-top: none;
+  --ambient-glow: none;
 
   --scrollbar-thumb: rgb(250 250 250 / 22%);
   --scrollbar-thumb-hover: rgb(250 250 250 / 42%);
 }
 
-@theme {
+@theme inline {
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 600;
+  --font-weight-black: 600;
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-paper: var(--paper);
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
   --color-accent-soft: var(--accent-soft);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--fg-on-accent);
+  --color-primary: var(--action-primary);
+  --color-primary-foreground: var(--action-on-primary);
 
   --color-fg-default: var(--fg-default);
   --color-fg-muted: var(--fg-muted);
@@ -587,18 +521,18 @@ html[data-theme="dark-obsidian"] {
   --color-info-solid: var(--info-solid);
   --color-info-on-solid: var(--info-on-solid);
 
-  --shadow-xs: var(--shadow-xs);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-card: var(--shadow-card);
-  --shadow-card-hover: var(--shadow-card-hover);
-  --shadow-panel: var(--shadow-panel);
-  --shadow-panel-hover: var(--shadow-panel-hover);
-  --shadow-editorial: var(--shadow-editorial);
-  --shadow-floating: var(--shadow-floating);
-  --shadow-dialog: var(--shadow-dialog);
-  --shadow-inset-top: var(--shadow-inset-top);
-  --shadow-button-primary: var(--shadow-button-primary);
-  --shadow-button-primary-hover: var(--shadow-button-primary-hover);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm: 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-panel: none;
+  --shadow-panel-hover: none;
+  --shadow-editorial: var(--shadow-xs);
+  --shadow-floating: 0 4px 16px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 12px 40px rgb(0 0 0 / 20%);
+  --shadow-inset-top: none;
+  --shadow-button-primary: none;
+  --shadow-button-primary-hover: none;
 
   --font-serif: "Newsreader", "Iowan Old Style", "Charter", Georgia, "Songti SC", "Source Han Serif SC", "STSong", "SimSun", serif;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", Roboto, sans-serif;

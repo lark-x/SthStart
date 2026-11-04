@@ -24,6 +24,7 @@ import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/lib/cn';
 
 export function NarrativeWorkspace() {
@@ -60,14 +61,14 @@ export function NarrativeWorkspace() {
   // 避免用户切换节点后轮询用新节点查询旧任务导致 404 和任务孤儿。
   const submittedNodeIdRef = useRef('');
 
-  const { data: worksData, refetch: refetchWorks } = useNarrativeWorks();
+  const { data: worksData, refetch: refetchWorks, isPending: worksLoading, error: worksError } = useNarrativeWorks();
   const works = worksData?.items ?? [];
 
   const activeWorkId = works.some((work) => work.id === selectedWorkId)
     ? selectedWorkId
     : works[0]?.id ?? '';
 
-  const { data: treeData } = useNarrativeTree(activeWorkId);
+  const { data: treeData, refetch: refetchTree, isLoading: treeLoading, error: treeError } = useNarrativeTree(activeWorkId);
   const nodes = treeData?.items ?? [];
 
   const firstReadableNode = nodes.find((node) => node.kind !== 'chapter') ?? nodes[0];
@@ -75,7 +76,8 @@ export function NarrativeWorkspace() {
     ? selectedNodeId
     : firstReadableNode?.id ?? '';
 
-  const { data: readingData, isLoading: readingLoading, refetch: refetchReading } = useNarrativeReading(activeNodeId);
+  const { data: readingData, isLoading: readingLoading, refetch: refetchReading, error: readingError } = useNarrativeReading(activeNodeId);
+  const sourceError = worksError ?? treeError ?? readingError;
   useEffect(() => {
     activeNodeIdRef.current = activeNodeId;
   }, [activeNodeId]);
@@ -237,10 +239,12 @@ export function NarrativeWorkspace() {
               </div>
   );
 
+  const WorkspaceRoot = mode === 'read' ? 'main' : 'div';
+
   return (
-    <div className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
+    <WorkspaceRoot className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
       {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
-      {mode === 'read' ? <WorkspaceHeader title="叙事档案" centerSlot={modeTabs} actions={readingActions} /> : <div className="narrative-workspace-header shrink-0 bg-surface">
+      {mode === 'read' ? <WorkspaceHeader title="叙事档案" centerSlotOnMobile centerSlot={modeTabs} actions={readingActions} /> : <div className="narrative-workspace-header shrink-0 bg-surface">
         <PageContainer className="pt-4">
           <PageHeader
             compact
@@ -265,14 +269,18 @@ export function NarrativeWorkspace() {
               {treePanel}
             </div>
 
-            <NarrativeReader
+            {sourceError ? <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
+              <h2 className="text-base font-semibold text-ink">档案暂时无法读取</h2>
+              <p className="max-w-md text-sm text-muted">已有内容未被删除。请重试读取，不必重新导入。</p>
+              <Button size="sm" onClick={() => { void refetchWorks(); if (activeWorkId) void refetchTree(); if (activeNodeId) void refetchReading(); }}>重试读取</Button>
+            </section> : worksLoading || treeLoading ? <div role="status" className="flex flex-1 items-center justify-center p-6 text-sm text-muted">正在读取档案…</div> : <NarrativeReader
               reading={readingData ?? null}
               loading={readingLoading}
               onSaveUtteranceToNotebook={handleSaveToNotebook}
               onOpenImport={() => setMode('import')}
               onGenerateConcept={() => void handleGenerateConcept()}
               generatingConcept={Boolean(conceptTaskId) || submittingConcept}
-            />
+            />}
 
             {inspectorOpen && <div className="hidden min-h-0 md:flex"><NarrativeInspector
               query={searchQuery}
@@ -294,6 +302,6 @@ export function NarrativeWorkspace() {
           />
         )}
       </div>
-    </div>
+    </WorkspaceRoot>
   );
 }

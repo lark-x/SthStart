@@ -32,18 +32,21 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
 
   useEffect(() => {
     if (!versions.length || selection) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 工作流异步加载后选择首个可用版本。
     setSelection(`${versions[0].id}::${versions[0].version}`);
   }, [selection, versions]);
 
   useEffect(() => {
     if (!preferredWorkflow) return;
     const value = `${preferredWorkflow.id}::${preferredWorkflow.version}`;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 活动首选工作流变化时切换对应策略。
     if (versions.some((item) => `${item.id}::${item.version}` === value)) setSelection(value);
   }, [preferredWorkflow?.id, preferredWorkflow?.version, versions]);
 
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换工作流版本后进入异步策略读取态。
     setLoading(true);
     setError('');
     setSaved(false);
@@ -80,7 +83,7 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
   };
 
   return (
-    <section className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-6" aria-labelledby="activity-image-prompt-policy-title">
+    <section className="space-y-4 border-y border-border-subtle py-6" aria-labelledby="activity-image-prompt-policy-title">
       <div>
         <h2 id="activity-image-prompt-policy-title" className="text-base font-semibold text-ink">画风与提示词</h2>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">参考邻舍：画面描述、画师标签和质量词分开设置。这里只调整提交给所选工作流的提示词，不会改动模型或已有图片。</p>

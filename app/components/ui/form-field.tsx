@@ -15,7 +15,13 @@ export interface FormFieldProps {
   className?: string;
 }
 
-type WithCommonControlProps = { id?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string };
+type WithCommonControlProps = {
+  id?: string;
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
+  required?: boolean;
+  'aria-required'?: boolean;
+};
 
 /**
  * 表单字段骨架（§7.2）：统一 label、必填标记、提示与错误的 DOM 结构和 aria 关联，
@@ -26,11 +32,16 @@ export function FormField({ label, htmlFor, required, hint, error, children, cla
   const hintId = `${autoId}-hint`;
   const errorId = `${autoId}-error`;
   const errorText = typeof error === 'string' && error.trim().length > 0 ? error : undefined;
-  const describedBy = [errorText ? errorId : null, hint ? hintId : null].filter(Boolean).join(' ') || undefined;
-
   const isElement = React.isValidElement(children);
   const childProps = isElement ? (children.props as WithCommonControlProps) : undefined;
   const controlId = htmlFor ?? childProps?.id ?? (isElement ? autoId : undefined);
+  const describedBy = [
+    childProps?.['aria-describedby'],
+    errorText ? errorId : null,
+    hint ? hintId : null,
+  ]
+    .filter(Boolean)
+    .join(' ') || undefined;
 
   let control: React.ReactNode = children;
   if (isElement) {
@@ -38,12 +49,14 @@ export function FormField({ label, htmlFor, required, hint, error, children, cla
       id: controlId,
       'aria-invalid': Boolean(error) || undefined,
       'aria-describedby': describedBy,
+      required: childProps?.required ?? (required || undefined),
+      'aria-required': childProps?.['aria-required'] ?? (required || undefined),
     });
   }
 
   return (
     <div className={cn('flex min-w-0 flex-col gap-2', className)}>
-      <label htmlFor={controlId} className="text-[13px] font-semibold tracking-[0.01em] text-ink">
+      <label htmlFor={controlId} className="text-sm font-medium tracking-[0.01em] text-ink">
         {label}
         {required && (
           <>
@@ -55,15 +68,16 @@ export function FormField({ label, htmlFor, required, hint, error, children, cla
         )}
       </label>
       {control}
-      {errorText ? (
-        <p id={errorId} role="alert" className="text-[13px] leading-relaxed text-danger-fg">
+      {errorText && (
+        <p id={errorId} role="alert" className="text-xs leading-relaxed text-danger-fg">
           {errorText}
         </p>
-      ) : hint ? (
-        <p id={hintId} className="text-[13px] leading-relaxed text-muted">
+      )}
+      {hint && (
+        <p id={hintId} className="text-xs leading-relaxed text-muted">
           {hint}
         </p>
-      ) : null}
+      )}
     </div>
   );
 }

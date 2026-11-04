@@ -385,7 +385,7 @@ export function RecordsEditor({
                   onSelectStage?.(stage.id);
                 }}
                 className={`px-3 py-1.5 rounded-[var(--radius-control)] text-xs font-medium transition-colors cursor-pointer shrink-0 ${
-                  isSelected ? 'bg-accent text-white shadow-xs' : 'bg-surface-muted text-ink hover:bg-surface-hover'
+                  isSelected ? 'bg-accent text-[var(--fg-on-accent)] shadow-xs' : 'bg-surface-muted text-ink hover:bg-surface-hover'
                 }`}
               >
                 #{idx + 1} {stage.title}
@@ -476,7 +476,7 @@ export function RecordsEditor({
                     type="button"
                     size="sm"
                     onClick={handleSaveStageConfig}
-                    className="h-7 text-xs px-3 bg-accent text-white"
+                    className="h-7 text-xs px-3 bg-accent text-[var(--fg-on-accent)]"
                   >
                     保存本阶段配置
                   </Button>
@@ -493,7 +493,7 @@ export function RecordsEditor({
               type="button"
               onClick={() => selectView('script')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'script' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+                activeTab === 'script' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <Layers className="h-3.5 w-3.5" />
@@ -504,7 +504,7 @@ export function RecordsEditor({
               type="button"
               onClick={() => selectView('chat')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'chat' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+                activeTab === 'chat' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <MessageSquare className="h-3.5 w-3.5" />
@@ -514,7 +514,7 @@ export function RecordsEditor({
               type="button"
               onClick={() => selectView('moments')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'moments' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+                activeTab === 'moments' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <Share2 className="h-3.5 w-3.5" />
@@ -524,7 +524,7 @@ export function RecordsEditor({
               type="button"
               onClick={() => selectView('facts')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'facts' ? 'bg-accent text-white shadow-2xs' : 'text-muted hover:text-ink'
+                activeTab === 'facts' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <FileCheck className="h-3.5 w-3.5" />
@@ -622,7 +622,7 @@ export function RecordsEditor({
                                   type="button"
                                   size="sm"
                                   onClick={() => handleSaveEditMsg(msg.id)}
-                                  className="h-6 text-xs px-2.5 bg-accent text-white"
+                                  className="h-6 text-xs px-2.5 bg-accent text-[var(--fg-on-accent)]"
                                 >
                                   保存
                                 </Button>
@@ -745,7 +745,7 @@ export function RecordsEditor({
                 type="submit"
                 size="sm"
                 disabled={disabled || !composerText.trim()}
-                className="h-8 px-3 text-xs bg-accent hover:bg-accent-dark text-white flex items-center gap-1 shrink-0"
+                className="h-8 px-3 text-xs bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1 shrink-0"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>追加</span>

@@ -96,7 +96,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
           size="sm"
           onClick={handleAddStage}
           disabled={disabled}
-          className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5"
+          className="text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5"
         >
           <Plus className="h-3.5 w-3.5" />
           新增阶段

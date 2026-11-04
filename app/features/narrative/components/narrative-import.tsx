@@ -157,11 +157,11 @@ export function NarrativeImport({
        * Connectors 由查询异步填充，初始为空数组。
        * data-testid 供视觉回归等待“连接器已就绪”，避免截到半加载画面。
        */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="narrative-connectors">
+      <div className="grid grid-cols-1 divide-y divide-border-subtle md:grid-cols-2 md:divide-y-0 md:gap-8 [&>*]:py-3" data-testid="narrative-connectors">
         {connectors.map((c) => (
           <div
             key={c.id}
-            className="p-5 rounded-[var(--radius-panel)] bg-surface-muted border border-border-default space-y-2"
+            className="space-y-1.5"
           >
             <div className="flex items-center justify-between">
               <strong className="text-sm font-semibold text-ink">{c.name}</strong>
@@ -229,37 +229,30 @@ export function NarrativeImport({
 
         {/* Remote Results */}
         {remoteResults.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+          <div className="divide-y divide-border-subtle pt-1">
             {remoteResults.map((r) => (
               <div
                 key={r.pathHash}
-                className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-4"
+                className="flex flex-wrap items-center gap-3 py-3.5"
               >
-                <div className="flex items-center justify-between text-sm">
-                  <span
-                    className={`px-2 py-0.5 rounded font-semibold ${
-                      r.sourceTier === 'primary'
-                        ? 'bg-success-bg text-success-fg'
-                        : 'bg-warning-bg text-warning-fg'
-                    }`}
-                  >
-                    {r.sourceTier === 'primary' ? '原始任务资料' : '二级整理'}
-                  </span>
-                  <span className="text-muted">{r.totalLines} 行</span>
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h4 className="truncate text-sm font-medium text-ink">
+                      {r.fileName}
+                    </h4>
+                    <span className="text-xs text-fg-subtle">
+                      {r.sourceTier === 'primary' ? '原始任务资料' : '二级整理'} · {r.totalLines} 行
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted line-clamp-1">
+                    {r.hits[0]?.snippet || '无命中摘要'}
+                  </p>
                 </div>
-
-                <h4 className="text-lg font-medium text-ink truncate">
-                  {r.fileName}
-                </h4>
-                <p className="text-sm text-muted line-clamp-2">
-                  {r.hits[0]?.snippet || '无命中摘要'}
-                </p>
-
-                <div className="flex gap-2 border-t border-border-subtle pt-2">
-                  <Button size="sm" variant="outline" onClick={() => handleReadRemote(r)}>
+                <div className="flex flex-none gap-1.5">
+                  <Button size="sm" variant="ghost" onClick={() => handleReadRemote(r)}>
                     读取原文
                   </Button>
-                  <Button size="sm" variant="primary" onClick={() => handlePreviewRemote(r)}>
+                  <Button size="sm" variant="outline" onClick={() => handlePreviewRemote(r)}>
                     预览并导入
                   </Button>
                 </div>

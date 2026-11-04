@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarClock, Play, Plus, Trash2 } from 'lucide-react';
 import type { BackupPlan, BackupScope } from '@sthstart/contracts';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Switch } from '@/app/components/ui/switch';
@@ -61,6 +60,7 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
   const [draft, setDraft] = useState<PlanDraft>({ ...emptyDraft });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 目标列表异步到达后补齐新计划默认值。
     if (!draft.targetIds.length && targets.length) setDraft((current) => ({ ...current, targetIds: targets.map((target) => target.id) }));
   }, [targets, draft.targetIds.length]);
 
@@ -90,18 +90,18 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
   };
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarClock className="h-4 w-4" aria-hidden="true" />备份计划
-          </CardTitle>
-          <CardDescription>按时区计算执行时间；服务重启后错过的计划最多补一次。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {plans.length === 0 && <EmptyState title="还没有备份计划" description="可以在右侧新建一个每天或每周自动执行的计划。" />}
+    <div className="grid gap-8 lg:grid-cols-[1.1fr_1fr]">
+      <section className={plans.length === 0 ? "order-2 border-y border-border-subtle py-5 lg:order-1" : "border-y border-border-subtle py-5"}>
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <CalendarClock className="h-4 w-4 text-muted" aria-hidden="true" />备份计划
+          </h2>
+          <p className="mt-1 text-sm text-muted">按时区计算执行时间；服务重启后错过的计划最多补一次。</p>
+        </div>
+        <div className="divide-y divide-border-subtle">
+          {plans.length === 0 && <EmptyState title="还没有备份计划" description="填写新建计划表单，安排每天或每周自动执行的备份。" />}
           {plans.map((plan) => (
-            <div key={plan.id} className="rounded-[var(--radius-panel)] border border-border-default p-3">
+            <div key={plan.id} className="py-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-medium">{plan.name}</div>
                 <div className="flex items-center gap-2">
@@ -132,17 +132,17 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Plus className="h-4 w-4" aria-hidden="true" />{draft.id ? '修改计划' : '新建计划'}
-          </CardTitle>
-          <CardDescription>高级选项保持默认即可；密文算法与分片参数由应用选择。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <section className={plans.length === 0 ? "order-1 border-y border-border-subtle py-5 lg:order-2 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-5" : "border-y border-border-subtle py-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-5"}>
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <Plus className="h-4 w-4 text-muted" aria-hidden="true" />{draft.id ? '修改计划' : '新建计划'}
+          </h2>
+          <p className="mt-1 text-sm text-muted">设置执行时间、备份范围和保留数量。</p>
+        </div>
+        <div className="space-y-3">
           <label className="block text-sm">
             <span className="text-muted">名称</span>
             <Input value={draft.name} onChange={(event) => update({ name: event.target.value })} />
@@ -250,8 +250,8 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
             {draft.id && <Button variant="ghost" onClick={() => setDraft({ ...emptyDraft, targetIds: targets.map((target) => target.id) })}>取消修改</Button>}
           </div>
           <p className="text-xs text-muted">计划按 Asia/Shanghai 计算；修改只影响之后的执行，正在进行的备份继续使用原配置。</p>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

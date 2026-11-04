@@ -146,7 +146,7 @@ export function DirectorChips({
                 title={`点击切换标签: ${chip.tag}`}
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all cursor-pointer ${
                   active
-                    ? 'bg-accent text-white font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
+                    ? 'bg-accent text-[var(--fg-on-accent)] font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
                     : 'bg-surface text-ink/80 hover:text-ink hover:bg-surface-muted border border-border-default/80'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
@@ -175,7 +175,7 @@ export function DirectorChips({
                 title={`点击切换标签: ${chip.tag}`}
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all cursor-pointer ${
                   active
-                    ? 'bg-accent text-white font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
+                    ? 'bg-accent text-[var(--fg-on-accent)] font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
                     : 'bg-surface text-ink/80 hover:text-ink hover:bg-surface-muted border border-border-default/80'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >

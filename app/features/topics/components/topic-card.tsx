@@ -43,7 +43,7 @@ export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, 
     try { await onSaveToLibrary(topic); } finally { setSavingToLibrary(false); }
   };
   return (
-    <li className={'topic-summary-card space-y-3 rounded-[var(--radius-panel)] p-4 ' + (selected ? 'is-selected' : '')}>
+    <li className={'topic-summary-card space-y-3 px-2 py-4 transition-colors ' + (selected ? 'is-selected bg-accent/5' : '')}>
       <div className="flex items-start gap-3">
         {onToggle && (
           <input
@@ -68,7 +68,7 @@ export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, 
           {!!topic.characters.length && <p className="text-xs text-muted">涉及角色：{topic.characters.join('、')}</p>}
           {!!topic.adaptationTags.length && (
             <div className="flex flex-wrap gap-1.5">
-              {topic.adaptationTags.map((tag) => <span key={tag} className="rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark">{tag}</span>)}
+              {topic.adaptationTags.map((tag) => <span key={tag} className="rounded bg-surface-sunken px-2 py-0.5 text-xs text-muted">{tag}</span>)}
             </div>
           )}
           {/* 发布时间只表示来源里能确认到的时间；确认不了就写“未知”，不拿收集时间冒充。 */}

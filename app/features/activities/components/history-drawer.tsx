@@ -106,7 +106,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
             type="submit"
             size="sm"
             disabled={createCheckpointMutation.isPending || !newCheckpointName.trim()}
-            className="h-8 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1 flex-shrink-0"
+            className="h-8 text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1 flex-shrink-0"
           >
             <BookmarkPlus className="h-3.5 w-3.5" />
             创建检查点

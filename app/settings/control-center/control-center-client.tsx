@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Activity, Server, Sliders, Cpu, Terminal, RefreshCw, BookOpen } from 'lucide-react';
 import type { RuntimeSettings } from '@sthstart/contracts';
@@ -30,7 +29,6 @@ import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Button } from '@/app/components/ui/button';
-import { buttonVariants } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
@@ -197,18 +195,12 @@ export function ControlCenter() {
         title="控制中心"
         description="统一管理邻舍主服务、ComfyUI、向量数据库与生图依赖，掌控实时日志与自启状态。"
         actions={
-          <div className="flex items-center gap-2">
-            <Link
-              href="/settings/public-services"
-              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-            >
-              公共服务
-            </Link>
-            <Button size="sm" variant="outline" onClick={() => void refetch()}>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={() => void refetch()}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>刷新</span>
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => void handleCheckImport()}>
+            <Button size="sm" variant="ghost" onClick={() => void handleCheckImport()}>
               <span>导入旧配置</span>
             </Button>
           </div>
@@ -251,10 +243,10 @@ export function ControlCenter() {
 
       {isLoading && !overview && (
         <div className="space-y-4" aria-label="正在加载运行控制中心">
-          <Skeleton className="h-40 w-full rounded-[var(--radius-panel)]" />
+          <Skeleton className="h-40 w-full rounded-xl" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Skeleton className="h-28 w-full rounded-[var(--radius-panel)]" />
-            <Skeleton className="h-28 w-full rounded-[var(--radius-panel)]" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
           </div>
         </div>
       )}

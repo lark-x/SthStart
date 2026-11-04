@@ -8,7 +8,6 @@ import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { Switch } from '@/app/components/ui/switch';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/app/components/ui/card';
 
 export interface RuntimeFormValues {
   autoStart: boolean;
@@ -88,14 +87,14 @@ export function RuntimeSettingsForm({
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>运行参数与自启配置</CardTitle>
-          <CardDescription>
+      <section className="border-y border-border-subtle py-6">
+        <div className="pb-5">
+          <h2 className="text-base font-semibold text-ink">运行参数与自启配置</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
             控制 SthStart 启动时是否自动拉起邻舍核心服务，以及镜像下载和本地辅助服务。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </p>
+        </div>
+        <div className="space-y-4">
           <div className="space-y-3 divide-y divide-[rgb(24_32_29/10%)]">
             <Switch
               label="启动 SthStart 时自动拉起邻舍服务"
@@ -119,7 +118,7 @@ export function RuntimeSettingsForm({
             />
           </div>
 
-          <div className="rounded border border-accent/25 bg-accent/10 px-3.5 py-3 text-sm text-ink">
+          <div className="border-l-2 border-border-strong bg-surface-sunken/60 px-3.5 py-3 text-sm leading-relaxed text-muted">
             本项目管理的邻舍始终通过 SthStart 公共网关使用 LLM 与向量服务；生图是否走公共网关由上方开关决定。启动前会检查应用令牌与模型路由，仅在生图开关打开时检查图片用途绑定；配置不足时会列出需要补齐的项目。
           </div>
 
@@ -153,7 +152,7 @@ export function RuntimeSettingsForm({
           </div>
 
           <div className="pt-4 border-t border-border-subtle space-y-3">
-            <h4 className="text-sm font-bold uppercase tracking-wider text-muted">
+            <h4 className="text-sm font-semibold text-muted">
               MAIBOT 辅助生态
             </h4>
             <Switch
@@ -166,8 +165,8 @@ export function RuntimeSettingsForm({
               <Checkbox label="SnowLuma 视图" {...register('maibotBrowserSnowluma')} />
             </div>
           </div>
-        </CardContent>
-        <CardFooter>
+        </div>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
           <div className="text-sm text-muted">
             {isDirty ? '有未保存的修改' : '所有修改已与系统同步'}
           </div>
@@ -179,8 +178,8 @@ export function RuntimeSettingsForm({
           >
             保存运行配置
           </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </section>
     </form>
   );
 }

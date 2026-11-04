@@ -183,6 +183,7 @@ export function NoteEditor({
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
         void handleSave();
@@ -298,11 +299,6 @@ export function NoteEditor({
       resolvingRef.current = false;
       setResolvingConflict(false);
     }
-  };
-
-  const openMetaEditor = () => {
-    setMetaDraft({ title: note.title, tags: [...note.tags], kind: note.kind, stage: note.stage });
-    setMetaEditorOpen(true);
   };
 
   const metaDraftChanged = Boolean(metaDraft && (
@@ -551,7 +547,7 @@ export function NoteEditor({
           <Button
             type="button"
             size="sm"
-            variant={zenMode ? 'accent' : 'outline'}
+            variant={zenMode ? 'secondary' : 'ghost'}
             className="h-8 px-2.5 text-sm"
             onClick={() => setZenMode((prev) => !prev)}
             title={zenMode ? '退出专注模式' : '进入禅道专注模式'}
@@ -575,7 +571,7 @@ export function NoteEditor({
           <Button
             size="sm"
             variant="primary"
-            className="notebook-save-button min-h-[30px] px-3 font-bold shadow-xs text-sm"
+            className="notebook-save-button min-h-[30px] px-3 font-semibold text-sm"
             onClick={() => void handleSave()}
           >
             <Save className="h-3.5 w-3.5" />
@@ -634,7 +630,7 @@ export function NoteEditor({
             value={note.title}
             onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
             placeholder="无标题笔记"
-            className="w-full text-2xl sm:text-3xl font-bold bg-transparent border-b border-transparent hover:border-border-default focus:border-accent outline-none text-ink placeholder:text-muted/40 py-1 transition-colors"
+            className="w-full text-2xl sm:text-[28px] font-semibold tracking-tight bg-transparent border-0 outline-none text-ink placeholder:text-muted/40 py-1"
           />
 
           {!zenMode && (
@@ -646,7 +642,7 @@ export function NoteEditor({
                   aria-label="资料分类"
                   value={note.kind}
                   onChange={(e) => updateNoteState((prev) => ({ ...prev, kind: e.target.value as NoteKind }))}
-                  className="rounded-md border border-border-default/60 bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  className="rounded-[var(--radius-control)] border-0 bg-surface-sunken px-2 py-1 text-base sm:text-xs text-ink outline-none"
                 >
                   {Object.entries(kindLabels).map(([k, label]) => (
                     <option key={k} value={k}>{label}</option>
@@ -661,7 +657,7 @@ export function NoteEditor({
                   aria-label="阶段状态"
                   value={note.stage}
                   onChange={(e) => updateNoteState((prev) => ({ ...prev, stage: e.target.value as NoteStage }))}
-                  className="rounded-md border border-border-default/60 bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  className="rounded-[var(--radius-control)] border-0 bg-surface-sunken px-2 py-1 text-base sm:text-xs text-ink outline-none"
                 >
                   {Object.entries(stageLabels).map(([s, label]) => (
                     <option key={s} value={s}>{label}</option>
@@ -696,19 +692,19 @@ export function NoteEditor({
             <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
               正文内容
             </span>
-            <span className="notebook-block-count text-sm text-muted bg-ink/5 px-2 py-0.5 rounded-full font-medium">
+            <span className="notebook-block-count text-xs text-fg-subtle">
               {note.content.length} 个内容块
             </span>
           </div>
 
-          <div className="notebook-blocks space-y-3">
+          <div className="notebook-blocks divide-y divide-border-subtle">
             {note.content.map((block, index) => (
               <div
                 key={block.id}
-                className="notebook-block group relative p-3 rounded-xl border border-border-subtle bg-surface hover:border-border-default shadow-2xs space-y-2 transition-all"
+                className="notebook-block group relative py-3 first:pt-1 space-y-2"
               >
                 <div className="notebook-block-header flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase tracking-wider text-muted">
+                  <span className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
                     {block.type === 'text'
                       ? '段落文本'
                       : block.type === 'image'
@@ -760,7 +756,7 @@ export function NoteEditor({
                     value={block.text}
                     onChange={(e) => handleUpdateBlock(block.id, { text: e.target.value })}
                     placeholder="写下一段文字记录…"
-                    className="notebook-textarea w-full bg-transparent text-[16px] sm:text-[17px] leading-[1.85] text-ink placeholder:text-muted/40 outline-none p-1"
+                    className="notebook-textarea w-full bg-transparent text-base leading-[1.85] text-ink placeholder:text-muted/40 outline-none p-0"
                   />
                 )}
 
@@ -891,16 +887,16 @@ export function NoteEditor({
         </section>
 
         {/* Layer 4: Compact Action Dock (添加内容工具坞 - 紧凑小药丸) */}
-        <section className="notebook-add-panel p-2.5 rounded-lg border border-border-subtle bg-surface-muted/70 flex flex-wrap items-center justify-between gap-2" aria-label="添加内容块">
+        <section className="notebook-add-panel flex flex-wrap items-center gap-1.5 pt-1" aria-label="添加内容块">
           <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
-            ＋ 添加内容块
+            添加内容块
           </span>
           <div className="notebook-add-grid flex flex-wrap gap-1.5">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('text')}
             >
               <Plus className="h-3 w-3" />
@@ -911,7 +907,7 @@ export function NoteEditor({
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => fileInputRef.current?.click()}
             >
               <ImageIcon className="h-3 w-3" />
@@ -922,7 +918,7 @@ export function NoteEditor({
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('link')}
             >
               <LinkIcon className="h-3 w-3" />
@@ -933,7 +929,7 @@ export function NoteEditor({
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('character-reference')}
             >
               <User className="h-3 w-3" />

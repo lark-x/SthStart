@@ -78,7 +78,7 @@ export function NarrativeTree({
           id="narrative-work-select"
           value={selectedWorkId}
           onChange={(e) => onSelectWork(e.target.value)}
-          className="h-9 bg-surface text-sm"
+          className="h-9 bg-surface text-base sm:text-sm"
         >
           <option value="">尚未选择作品</option>
           {works.map((w) => (
@@ -104,23 +104,21 @@ export function NarrativeTree({
               style={{ paddingLeft: `${12 + depth * 14}px` }}
               aria-current={isActive ? 'true' : undefined}
               className={cn(
-                'flex w-full flex-col items-start gap-0.5 border-l-2 py-1.5 pr-3 text-left transition-colors',
-                isActive
-                  ? 'border-accent bg-surface'
-                  : 'border-transparent hover:bg-surface-hover',
+                'flex w-full flex-col items-start gap-0.5 py-1.5 pr-3 text-left transition-colors',
+                isActive ? 'bg-surface-sunken' : 'hover:bg-surface-hover',
               )}
             >
-              <span className="text-xs text-fg-subtle">{node.kind}</span>
-              <span className={cn('w-full truncate text-sm', isActive ? 'font-semibold text-ink' : 'text-muted')}>
+              <span className={cn('w-full truncate text-sm', isActive ? 'font-medium text-ink' : 'text-muted')}>
                 {node.title}
               </span>
+              <span className="sr-only">{node.kind}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="narrative-tree-foot shrink-0 p-3">
-        <Button variant="outline" size="sm" className="w-full justify-center" onClick={onOpenImport}>
+      <div className="narrative-tree-foot shrink-0 border-t border-border-subtle p-3">
+        <Button variant="ghost" size="sm" className="w-full justify-center text-muted" onClick={onOpenImport}>
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           <span>导入任务链</span>
         </Button>

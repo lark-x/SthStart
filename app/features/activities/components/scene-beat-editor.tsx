@@ -506,7 +506,7 @@ export function SceneBeatEditor({
                       : 'text-muted hover:text-ink hover:bg-surface-muted/60 border border-transparent'
                   }`}
                 >
-                  <span className={`px-1.5 py-0.2 rounded text-xs font-mono ${isActive ? 'bg-accent text-white font-bold' : 'bg-surface-muted text-muted'}`}>
+                  <span className={`px-1.5 py-0.2 rounded text-xs font-mono ${isActive ? 'bg-accent text-[var(--fg-on-accent)] font-bold' : 'bg-surface-muted text-muted'}`}>
                     第 {sIdx + 1} 场
                   </span>
                   <span className="truncate max-w-[130px] sm:max-w-[180px]">{cleanSceneTitle(s.title)}</span>
@@ -534,7 +534,7 @@ export function SceneBeatEditor({
         <div className="rounded-lg bg-surface-muted/40 px-3.5 py-1.5 shrink-0 border border-border-default/50">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
-              <span className="px-1.5 py-0.5 rounded bg-accent text-white font-bold text-xs shrink-0 shadow-2xs font-mono">
+              <span className="px-1.5 py-0.5 rounded bg-accent text-[var(--fg-on-accent)] font-bold text-xs shrink-0 shadow-2xs font-mono">
                 第 {currentSceneIndex + 1} 场
               </span>
               <h2 className="truncate text-xs sm:text-sm font-bold text-ink max-w-[180px] sm:max-w-xs" title={cleanSceneTitle(currentScene.title) || '未命名场次'}>

@@ -1,22 +1,106 @@
 'use client';
 import Link from 'next/link';
-import {useEffect,useRef,useState} from 'react';
-import {useQuery,useQueryClient} from '@tanstack/react-query';
-import type {PublicationDocument,PublicationShot,PublicationPreview,SpeechProfile,ActivityLora} from '@sthstart/contracts';
-import {WorkspaceHeader} from '@/app/components/shared/workspace-header';
-import {Button} from '@/app/components/ui/button';
-import {Input} from '@/app/components/ui/input';
-import {Select} from '@/app/components/ui/select';
-import {Textarea} from '@/app/components/ui/textarea';
-import {ResponsiveEditOverlay} from '@/app/components/ui/responsive-edit-overlay';
-import {publicationApi,publicationFile} from './api';
-import {usePublicationDraft} from './use-publication-draft';
-import {PublicationComicPreview} from './publication-preview';
-import {PublicationAudioHistory} from './publication-audio-history';
-import {ApiClientError} from '@/app/lib/api-client';
-const labels:Record<string,string>={queued:'等待制作',preparing:'准备中',running:'制作中',succeeded:'已完成',failed:'需要处理',unknown:'结果待核对',interrupted:'需要人工恢复',stopped:'已停止'};
-const emptyPrompt=()=>({actors:[],camera:['medium shot'],scene:[],details:[],naturalLanguage:''});
-const fieldClass='space-y-2 text-sm';
+import { useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { PublicationDocument, PublicationShot, PublicationPreview, SpeechProfile, ActivityLora } from '@sthstart/contracts';
+import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
+import { Button } from '@/app/components/ui/button';
+import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
+import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { publicationApi, publicationFile } from './api';
+import { usePublicationDraft } from './use-publication-draft';
+import { PublicationComicPreview } from './publication-preview';
+import { PublicationAudioHistory } from './publication-audio-history';
+import { ApiClientError } from '@/app/lib/api-client';
+import { Camera, AlertCircle, ArrowUp, ArrowDown, X } from 'lucide-react';
+
+const labels: Record<string, string> = {
+  queued: '等待制作',
+  preparing: '准备中',
+  running: '制作中',
+  succeeded: '已完成',
+  failed: '需要处理',
+  unknown: '结果待核对',
+  interrupted: '需要人工恢复',
+  stopped: '已停止',
+};
+
+const emptyPrompt = () => ({ actors: [], camera: ['medium shot'], scene: [], details: [], naturalLanguage: '' });
+const fieldClass = 'space-y-1.5 text-sm';
+
+function PublicationThumbnail({
+  artifactId,
+  alt = '',
+  className = '',
+  fallbackText = '无图',
+}: {
+  artifactId?: string | null;
+  alt?: string;
+  className?: string;
+  fallbackText?: string;
+}) {
+  const [failedArtifact, setFailedArtifact] = useState<string | null>(null);
+  const isFailed = Boolean(artifactId && failedArtifact === artifactId);
+
+  if (!artifactId || isFailed) {
+    return (
+      <div className={`flex items-center justify-center bg-surface-muted text-xs text-muted select-none border border-border-subtle ${className}`}>
+        <span>{isFailed ? '读取失败' : fallbackText}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={publicationFile(artifactId)}
+      alt={alt}
+      onError={() => setFailedArtifact(artifactId)}
+      className={className}
+    />
+  );
+}
+
+function MainShotViewport({ shot }: { shot: PublicationShot }) {
+  const currentId = shot.selectedImage?.artifactId ?? null;
+  const [failedId, setFailedId] = useState<string | null>(null);
+  const isFailed = Boolean(currentId && failedId === currentId);
+
+  if (!shot.selectedImage) {
+    return (
+      <div className="flex min-h-56 flex-col items-center justify-center rounded-[var(--radius-panel)] border border-border-default bg-surface-muted/50 p-6 text-center space-y-2">
+        <Camera className="h-6 w-6 text-muted" />
+        <p className="text-sm font-medium text-ink">当前镜头尚未生成或绑定画面</p>
+        <p className="text-xs text-muted max-w-md">方案确认并批准后将自动绘制；你也可在下方按批准配置重绘或从历史中选择。</p>
+      </div>
+    );
+  }
+
+  if (isFailed) {
+    return (
+      <div className="flex min-h-56 flex-col items-center justify-center rounded-[var(--radius-panel)] border border-warning/40 bg-warning/5 p-6 text-center space-y-2">
+        <AlertCircle className="h-6 w-6 text-warning-fg" />
+        <p className="text-sm font-medium text-warning-fg">画面文件暂不可读取或尚未就绪</p>
+        <p className="text-xs font-mono text-muted">产物 ID: {shot.selectedImage.artifactId}</p>
+        <p className="text-sm text-muted">可重新加载画面，或在历史版本中选择其他图片。</p>
+        <Button size="sm" variant="outline" onClick={() => setFailedId(null)}>重新加载画面</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-56 items-center justify-center rounded-[var(--radius-panel)] border border-border-default bg-surface p-2 overflow-hidden shadow-2xs">
+      <img
+        src={publicationFile(shot.selectedImage.artifactId)}
+        alt="当前关键镜头画面"
+        onError={() => currentId && setFailedId(currentId)}
+        className="max-h-[50dvh] w-full object-contain rounded-[var(--radius-control)]"
+      />
+    </div>
+  );
+}
 
 export function PublicationWorkspace({activityId}:{activityId:string}) {
   const client=useQueryClient(),incoming=useQuery({queryKey:['publication',activityId,'draft'],queryFn:()=>publicationApi.draft(activityId),refetchInterval:2500});
@@ -29,10 +113,11 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
   const [overlay,setOverlay]=useState<'drawing'|'project'|'approve'|'bridge'|'speech'|null>(null),[editShot,setEditShot]=useState<PublicationShot|null>(null),[editDoc,setEditDoc]=useState<PublicationDocument|null>(null);
   const [preview,setPreview]=useState<PublicationPreview|null>(null),[speechId,setSpeechId]=useState(''),[makeVideo,setMakeVideo]=useState(true),[budget,setBudget]=useState(9);
   const [grantToken,setGrantToken]=useState(''),[speechEdit,setSpeechEdit]=useState<SpeechProfile|null>(null);
+  const [pendingApprovalRequest, setPendingApprovalRequest] = useState<{approvalId:string;key:string}|null>(null);
   const approvalRequest=useRef<{approvalId:string;key:string}|null>(null),actionKey=useRef<string|null>(null);
   const shot=doc?.shots.find(s=>s.id===selected)??doc?.shots[0],run=runs.data?.items[0];
   const history=useQuery({queryKey:['publication',activityId,'history',shot?.id,run?.updatedAt],queryFn:()=>publicationApi.history(activityId,shot!.id),enabled:Boolean(shot)});
-  useEffect(()=>{if(profiles.data?.items.length&&!speechId)setSpeechId(profiles.data.items[0].id);},[profiles.data,speechId]);
+  const activeSpeechId = speechId || profiles.data?.items[0]?.id || '';
   const refresh=async()=>{await Promise.all([client.invalidateQueries({queryKey:['publication',activityId]}),client.invalidateQueries({queryKey:['publication','speech-profiles']})]);};
   async function action(fn:()=>Promise<unknown>,flush=true){setBusy(true);setError('');try{if(flush&&!await draft.flush())return;await fn();await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   function changeShot(next:PublicationShot){if(!doc)return;draft.update({...doc,shots:doc.shots.map(s=>s.id===next.id?next:s)});}
@@ -42,9 +127,10 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
   async function confirmApproval(){await action(async()=>{
     if(!preview)throw new Error('请先预览实际配置。');
     const chars=doc!.shots.flatMap(s=>s.utterances).filter(u=>!u.selectedAudioArtifactId).reduce((n,u)=>n+u.text.length,0);
-    const approval=await publicationApi.approve(activityId,{expectedDraftVersion:draft.version(),expectedConfigHash:preview.configHash,speechProfileId:speechId||null,makeVideo,imageBudget:budget,speechCharacterBudget:makeVideo?chars:0});
-    approvalRequest.current={approvalId:approval.id,key:crypto.randomUUID()};
-    await publicationApi.start(activityId,approval.id,approvalRequest.current.key);setOverlay(null);setTab('media');
+    const approval=await publicationApi.approve(activityId,{expectedDraftVersion:draft.version(),expectedConfigHash:preview.configHash,speechProfileId:activeSpeechId||null,makeVideo,imageBudget:budget,speechCharacterBudget:makeVideo?chars:0});
+    const req = {approvalId:approval.id,key:crypto.randomUUID()};
+    approvalRequest.current=req; setPendingApprovalRequest(req);
+    await publicationApi.start(activityId,approval.id,req.key);setOverlay(null);setTab('media');
   });}
   async function chooseImage(id:string){await action(async()=>{let result;try{result=await publicationApi.select(activityId,shot!.id,draft.version(),id);}catch(e){if(!(e instanceof ApiClientError)||e.code!=='publication_source_changed'||!window.confirm('镜头描述已经变化，仍使用这张旧描述图片吗？'))throw e;result=await publicationApi.select(activityId,shot!.id,draft.version(),id,true);}draft.accept(result);});}
   const closeOverlay=(open:boolean)=>{if(open||busy)return;if((overlay==='drawing'&&editShot&&JSON.stringify(editShot)!==JSON.stringify(shot))||(overlay==='project'&&editDoc&&JSON.stringify(editDoc)!==JSON.stringify(doc))){if(!window.confirm('放弃弹窗内尚未保存的修改？'))return;}setOverlay(null);setGrantToken('');};
@@ -52,43 +138,134 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
   if(incoming.isError)return <div className="p-6" role="alert">{(incoming.error as Error).message}<Button onClick={()=>void incoming.refetch()}>重新载入</Button></div>;
   if(!doc)return <div className="p-6" role="status">正在载入制作文档…</div>;
   const active=shot;
-  const shotList=<div className="space-y-2 p-3">{doc.shots.map((s,i)=><div key={s.id} className={`rounded-2xl p-2 ${s.id===active?.id?'bg-accent/10':'bg-surface-muted'}`}><button className="flex w-full min-w-0 items-center gap-3 text-left" onClick={()=>{setSelected(s.id);setTab('media');}}><span className="text-xs text-accent">{String(i+1).padStart(2,'0')}</span>{s.selectedImage&&<img src={publicationFile(s.selectedImage.artifactId)} alt="" className="h-10 w-14 rounded-lg object-cover"/>}<span className="min-w-0 flex-1 truncate text-sm">{s.visualDescription||'未填写画面'}</span></button><div className="mt-1 flex items-center justify-end gap-1 text-xs"><span className="mr-auto text-muted">{s.utterances.length} 句对白</span><button aria-label={`镜头${i+1}上移`} disabled={i===0} onClick={()=>reorder(i,-1)}>↑</button><button aria-label={`镜头${i+1}下移`} disabled={i===doc.shots.length-1} onClick={()=>reorder(i,1)}>↓</button><button aria-label={`删除镜头${i+1}`} onClick={()=>{if(window.confirm('删除此制作镜头？历史图片仍保留。'))draft.update({...doc,shots:doc.shots.filter(x=>x.id!==s.id)});}}>×</button></div></div>)}<Button className="w-full" disabled={doc.shots.length>=12} onClick={addShot}>添加关键镜头</Button></div>;
+  const shotList = (
+    <div className="space-y-2 p-3">
+      <div className="flex items-center justify-between pb-1">
+        <span className="text-xs font-semibold text-ink">关键镜头清单 ({doc.shots.length}/12)</span>
+      </div>
+      <div className="space-y-1.5">
+        {doc.shots.map((s, i) => {
+          const isActive = s.id === active?.id;
+          return (
+            <div
+              key={s.id}
+              className={`flex items-center gap-2.5 rounded-[var(--radius-control)] border p-2 transition-colors ${
+                isActive
+                  ? 'border-accent bg-accent/5 ring-1 ring-accent/20'
+                  : 'border-border-subtle bg-surface hover:border-border-default'
+              }`}
+            >
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                onClick={() => {
+                  setSelected(s.id);
+                  setTab('media');
+                }}
+              >
+                <span className="font-mono text-xs font-semibold text-accent shrink-0">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <div className="h-10 w-14 shrink-0 overflow-hidden rounded-[var(--radius-control)] bg-surface-muted border border-border-subtle">
+                  <PublicationThumbnail
+                    artifactId={s.selectedImage?.artifactId}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    fallbackText="无图"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-ink">{s.visualDescription || '未填写画面'}</p>
+                  <p className="text-xs text-muted">{s.utterances.length} 句对白</p>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-0.5 shrink-0 text-xs">
+                <button
+                  type="button"
+                  aria-label={`镜头${i + 1}上移`}
+                  disabled={i === 0}
+                  onClick={() => reorder(i, -1)}
+                  className="rounded p-1 text-muted hover:text-ink hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`镜头${i + 1}下移`}
+                  disabled={i === doc.shots.length - 1}
+                  onClick={() => reorder(i, 1)}
+                  className="rounded p-1 text-muted hover:text-ink hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`删除镜头${i + 1}`}
+                  onClick={() => {
+                    if (window.confirm('删除此制作镜头？历史图片仍保留。')) {
+                      draft.update({ ...doc, shots: doc.shots.filter((x) => x.id !== s.id) });
+                    }
+                  }}
+                  className="rounded p-1 text-muted hover:text-danger-fg hover:bg-danger/10"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full mt-2"
+        disabled={doc.shots.length >= 12}
+        onClick={addShot}
+      >
+        添加关键镜头
+      </Button>
+    </div>
+  );
   return <main className="flex h-dvh max-h-dvh min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink" data-testid="publication-workspace">
     <WorkspaceHeader title={doc.title} backHref={`/apps/story/${doc.source.storyProjectId}`} backLabel="正式剧情" status={savedStatus}
-      centerSlot={<nav aria-label="作品制作步骤" className="flex gap-1">{(['plan','media','export'] as const).map((t,i)=><Button key={t} size="sm" variant={tab===t?'secondary':'ghost'} onClick={()=>setTab(t)}>{i+1}. {t==='plan'?'制作方案':t==='media'?'画面与配音':'预览与导出'}</Button>)}</nav>}
-      actions={<><Button size="sm" variant="ghost" onClick={()=>setOverlay('bridge')}>AI 协作</Button><Button size="sm" disabled={busy} onClick={()=>void draft.flush()}>保存</Button></>}/>
+      centerSlotOnMobile
+      centerSlot={<PageTabs ariaLabel="作品制作步骤" value={tab} onChange={value => setTab(value as typeof tab)} tabs={[
+        {id:'plan',label:'1. 制作方案'}, {id:'media',label:'2. 画面与配音'}, {id:'export',label:'3. 预览与导出'},
+      ]} />}
+      actions={<><Button size="sm" variant="ghost" onClick={()=>setOverlay('bridge')}>AI 协作</Button><Button size="sm" variant="primary" disabled={busy} onClick={()=>void draft.flush()}>保存</Button></>}/>
     {(error||draft.error)&&<div role="alert" className="shrink-0 space-y-2 bg-danger/10 p-3 text-sm text-danger-fg"><p>{error||draft.error}</p>{draft.error&&<div className="flex flex-wrap gap-2"><Button size="sm" onClick={()=>void navigator.clipboard.writeText(JSON.stringify(doc,null,2))}>复制本地内容</Button><Button size="sm" onClick={()=>void action(async()=>{const server=await publicationApi.draft(activityId);if(window.confirm('使用服务器版本会放弃本地输入，请先复制备份。继续？'))draft.resolve(server,false);},false)}>查看并使用服务器版本</Button><Button size="sm" onClick={()=>void action(async()=>{const server=await publicationApi.draft(activityId);if(window.confirm('已核对服务器更新，仍以本地内容重新保存？'))draft.resolve(server,true);},false)}>手动恢复本地编辑</Button></div>}</div>}
     <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
       {tab==='plan'?<section className="mx-auto h-full max-w-5xl overflow-y-auto p-4 sm:p-6 space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-medium text-accent">从剧情到发布</p><h2 className="mt-1 text-xl font-semibold">少量关键画面，完整讲一段故事</h2><p className="mt-2 text-sm text-muted">已冻结 {doc.source.entryRevisionIds.length} 个章节版本 · {doc.shots.length}/12 个镜头 · 不改变正式剧情</p></div><Button onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑作品与角色</Button></div>
-        <p className="rounded-2xl bg-surface p-5 text-sm leading-7">{doc.synopsis||'让 DSH／其他 Harness 读取冻结章节，提交 6–12 个关键镜头。每个画面可配多句对白；英文生图提示词由创作模型一次完成，制作服务不再改写。也可以手动添加镜头。'}</p>
-        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_300px]"><div className="rounded-2xl bg-surface">{shotList}</div><div className="space-y-4 rounded-2xl bg-surface p-5">
-          <h3 className="font-semibold">制作输出</h3><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={makeVideo} onChange={e=>setMakeVideo(e.target.checked)}/>漫画图片＋配音视频</label><p className="text-xs leading-5 text-muted">关闭视频仍会导出漫画、封面和发布文案。默认无背景音乐，不自动发布平台。</p>
-          <div className={fieldClass}><label className="block">独立配音配置<Select value={speechId} onChange={e=>setSpeechId(e.target.value)}><option value="">未配置／使用上传配音</option>{profiles.data?.items.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}</Select></label>{profiles.isError?<div className="space-y-2"><p role="alert" className="text-xs text-danger-fg">无法读取已保存的配音配置，可重试或直接使用上传配音。</p><Button variant="ghost" size="sm" onClick={()=>void profiles.refetch()}>重试读取配音配置</Button></div>:!profiles.isLoading&&!profiles.data?.items.length?<p className="text-xs text-muted">还没有保存的配音配置，可直接上传配音，或配置新的配音服务。</p>:null}</div>
-          <Button variant="ghost" onClick={()=>{setSpeechEdit(profiles.data?.items.find(p=>p.id===speechId)??{id:crypto.randomUUID(),revision:1,name:'在线配音',baseUrl:'',model:'',voices:['alloy'],defaultVoice:'alloy',speed:1,secretEnvironment:'STHSTART_SPEECH_API_KEY'});setOverlay('speech');}}>配置配音服务</Button>
-          <Button variant="primary" className="w-full" disabled={busy||doc.shots.length<6} onClick={()=>void openApproval()}>核对方案与额度</Button><p className="text-xs text-muted">确认前不会发出生图或配音付费请求。</p>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border-subtle pb-4"><div><p className="text-xs font-medium text-accent">从剧情到发布</p><h2 className="mt-1 text-xl font-semibold text-ink">少量关键画面，完整讲一段故事</h2><p className="mt-1.5 text-xs text-muted">已冻结 {doc.source.entryRevisionIds.length} 个章节版本 · {doc.shots.length}/12 个镜头 · 不改变正式剧情</p></div><Button variant="outline" size="sm" onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑作品与角色</Button></div>
+        <div className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 text-sm leading-relaxed text-ink/90">{doc.synopsis||'让 DSH／其他 Harness 读取冻结章节，提交 6–12 个关键镜头。每个画面可配多句对白；英文生图提示词由创作模型一次完成，制作服务不再改写。也可以手动添加镜头。'}</div>
+        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_320px]"><div className="rounded-[var(--radius-panel)] border border-border-default bg-surface">{shotList}</div><div className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
+          <h3 className="font-semibold text-sm text-ink">制作输出设置</h3><label className="flex items-center gap-2 text-sm text-ink cursor-pointer"><input type="checkbox" checked={makeVideo} onChange={e=>setMakeVideo(e.target.checked)} className="rounded border-border-control text-accent focus:ring-accent"/><span>漫画图片＋配音视频</span></label><p className="text-xs leading-5 text-muted">关闭视频仍会导出漫画、封面和发布文案。默认无背景音乐，不自动发布平台。</p>
+          <div className={fieldClass}><label className="block text-xs font-medium text-muted">独立配音配置<Select value={speechId} onChange={e=>setSpeechId(e.target.value)} className="mt-1"><option value="">未配置／使用上传配音</option>{profiles.data?.items.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}</Select></label>{profiles.isError?<div className="space-y-2 mt-1"><p role="alert" className="text-xs text-danger-fg">无法读取已保存的配音配置，可重试或直接使用上传配音。</p><Button variant="ghost" size="sm" onClick={()=>void profiles.refetch()}>重试读取配音配置</Button></div>:!profiles.isLoading&&!profiles.data?.items.length?<p className="text-xs text-muted mt-1">还没有保存的配音配置，可直接上传配音，或配置新的配音服务。</p>:null}</div>
+          <Button variant="ghost" size="sm" onClick={()=>{setSpeechEdit(profiles.data?.items.find(p=>p.id===speechId)??{id:crypto.randomUUID(),revision:1,name:'在线配音',baseUrl:'',model:'',voices:['alloy'],defaultVoice:'alloy',speed:1,secretEnvironment:'STHSTART_SPEECH_API_KEY'});setOverlay('speech');}}>配置配音服务</Button>
+          <div className="border-t border-border-subtle pt-3 space-y-2"><Button variant="primary" className="w-full" disabled={busy||doc.shots.length<6} onClick={()=>void openApproval()}>核对方案与额度</Button><p className="text-xs text-muted text-center">确认前不会发出生图或配音付费请求。</p></div>
         </div></div>
       </section>:tab==='media'?<div className="flex h-full min-h-0 min-w-0 flex-col md:flex-row">
-        <aside className="hidden w-60 shrink-0 overflow-y-auto md:block" aria-label="关键镜头列表">{shotList}</aside>
+        <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-border-default bg-surface/50 md:block" aria-label="关键镜头列表">{shotList}</aside>
         <section className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <Select className="mb-4 md:hidden" aria-label="选择关键镜头" value={active?.id??''} onChange={e=>setSelected(e.target.value)}>{doc.shots.map((s,i)=><option key={s.id} value={s.id}>{i+1}. {s.visualDescription||'未填写'}</option>)}</Select>
-          {!active?<div className="rounded-2xl bg-surface p-8"><p>先准备关键镜头。</p><Button onClick={()=>setTab('plan')}>回到制作方案</Button></div>:<div className="mx-auto max-w-4xl space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">镜头 {doc.shots.indexOf(active)+1} · {active.utterances.length} 句对白</h2><Button onClick={()=>{setEditShot(structuredClone(active));setOverlay('drawing');}}>绘制设置</Button></div>
-            <div className="flex min-h-48 items-center justify-center rounded-2xl bg-surface-muted p-3">{active.selectedImage?<img src={publicationFile(active.selectedImage.artifactId)} alt="当前关键镜头画面" className="max-h-[50dvh] w-full object-contain"/>:<p className="text-sm text-muted">还没有画面。方案确认后自动绘制，成功的第一张会入镜。</p>}</div>
-            <div className="flex flex-wrap items-center gap-3"><Button disabled={busy||!run} onClick={()=>void action(async()=>{actionKey.current??=crypto.randomUUID();await publicationApi.retry(activityId,active.id,run!.id,actionKey.current);actionKey.current=null;})}>按批准配置重绘</Button>{run&&<span className="text-xs text-muted">{labels[run.status]} · 已用 {run.imagesUsed} 张额度</span>}</div>
-            <div className="flex gap-3 overflow-x-auto pb-2" aria-label="绘制历史">{history.data?.items.map(i=><button key={`${i.taskId}:${i.artifactId}`} disabled={!i.available||busy} onClick={()=>void chooseImage(i.artifactId)} className={`shrink-0 rounded-xl p-1 ${i.current?'ring-2 ring-accent':'bg-surface'}`}><div className="h-20 w-28">{i.available?<img src={publicationFile(i.artifactId)} alt="历史绘制图片" className="size-full rounded-lg object-cover"/>:<span className="text-xs">文件不可用</span>}</div><span className="text-xs text-muted">{i.current?'当前':'历史'}</span></button>)}</div>
-            <label className={fieldClass}>画面描述<Textarea value={active.visualDescription} rows={3} onChange={e=>changeShot({...active,visualDescription:e.target.value})}/><span className="block text-xs text-muted">修改画面含义后，请同时在绘制设置中更新英文提示词，再重新确认制作。</span></label>
-            <div className="space-y-3"><h3 className="font-semibold">对白与配音</h3>{active.utterances.map((u,i)=><div key={u.id} className="space-y-3 rounded-2xl bg-surface p-4"><div className="flex flex-wrap items-center gap-2"><Select aria-label={`第${i+1}句发言人`} value={u.speakerActorId??''} onChange={e=>changeShot({...active,utterances:active.utterances.map(x=>x.id===u.id?{...x,speakerActorId:e.target.value||null}:x)})} className="!w-44"><option value="">旁白</option>{doc.actors.filter(a=>active.actorIds.includes(a.id)).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select><Button variant="ghost" size="sm" onClick={()=>changeShot({...active,utterances:active.utterances.filter(x=>x.id!==u.id)})}>删除此句</Button></div>
+          {!active?<div className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-8 text-center space-y-3"><p className="text-sm text-muted">先准备关键镜头。</p><Button variant="outline" onClick={()=>setTab('plan')}>回到制作方案</Button></div>:<div className="mx-auto max-w-4xl space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3"><h2 className="font-semibold text-ink text-base">镜头 {doc.shots.indexOf(active)+1} · {active.utterances.length} 句对白</h2><Button variant="outline" size="sm" onClick={()=>{setEditShot(structuredClone(active));setOverlay('drawing');}}>绘制设置</Button></div>
+            <MainShotViewport shot={active} />
+            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Button size="sm" variant="secondary" disabled={busy||!run} onClick={()=>void action(async()=>{actionKey.current??=crypto.randomUUID();await publicationApi.retry(activityId,active.id,run!.id,actionKey.current);actionKey.current=null;})}>按批准配置重绘</Button>{run&&<span className="text-xs text-muted">{labels[run.status]} · 已用 {run.imagesUsed} 张额度</span>}</div></div>
+            <div className="space-y-2"><span className="text-xs font-medium text-muted">绘制历史与候选</span><div className="flex gap-2.5 overflow-x-auto pb-2" aria-label="绘制历史">{history.data?.items.map(i=><button key={`${i.taskId}:${i.artifactId}`} disabled={!i.available||busy} onClick={()=>void chooseImage(i.artifactId)} className={`shrink-0 rounded-[var(--radius-control)] p-1 text-left transition-all border ${i.current?'border-accent ring-2 ring-accent/30 bg-accent/5':'border-border-default bg-surface hover:border-border-strong'}`}><div className="h-16 w-24 overflow-hidden rounded-[var(--radius-control)]"><PublicationThumbnail artifactId={i.artifactId} alt="历史绘制图片" className="h-full w-full object-cover" fallbackText="文件不可用"/></div><span className={`text-[11px] font-medium ${i.current?'text-accent':'text-muted'}`}>{i.current?'当前采用':'历史候选'}</span></button>)}</div></div>
+            <label className={fieldClass}><span className="font-medium text-ink">画面描述</span><Textarea value={active.visualDescription} rows={3} onChange={e=>changeShot({...active,visualDescription:e.target.value})}/><span className="block text-xs text-muted">修改画面含义后，请同时在绘制设置中更新英文提示词，再重新确认制作。</span></label>
+            <div className="space-y-3 pt-2"><div className="flex items-center justify-between"><h3 className="font-semibold text-sm text-ink">对白与配音</h3><span className="text-xs text-muted">{active.utterances.length}/12 句</span></div>{active.utterances.map((u,i)=><div key={u.id} className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4"><div className="flex flex-wrap items-center justify-between gap-2"><Select aria-label={`第${i+1}句发言人`} value={u.speakerActorId??''} onChange={e=>changeShot({...active,utterances:active.utterances.map(x=>x.id===u.id?{...x,speakerActorId:e.target.value||null}:x)})} className="!w-48"><option value="">旁白</option>{doc.actors.filter(a=>active.actorIds.includes(a.id)).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select><Button variant="ghost" size="sm" onClick={()=>changeShot({...active,utterances:active.utterances.filter(x=>x.id!==u.id)})} className="text-muted hover:text-danger-fg">删除此句</Button></div>
               <Textarea aria-label={`第${i+1}句对白`} value={u.text} rows={2} onChange={e=>changeShot({...active,utterances:active.utterances.map(x=>x.id===u.id?{...x,text:e.target.value}:x)})}/>
-              {u.selectedAudioArtifactId&&<audio controls preload="none" src={publicationFile(u.selectedAudioArtifactId)} className="max-w-full"/>}
-              <PublicationAudioHistory activityId={activityId} utteranceId={u.id} refreshKey={`${run?.updatedAt}:${u.selectedAudioArtifactId}:${u.text}`} disabled={busy} onSelect={id=>void action(async()=>{try{draft.accept(await publicationApi.audio(activityId,u.id,draft.version(),id));}catch(e){if(!(e instanceof ApiClientError)||e.code!=='publication_source_changed'||!window.confirm('对白或声音已经变化，仍使用这份旧配音吗？'))throw e;draft.accept(await publicationApi.audio(activityId,u.id,draft.version(),id,true));}})}/>
-              <label className="relative inline-flex cursor-pointer rounded-lg bg-surface-muted px-3 py-2 text-xs">{u.selectedAudioArtifactId?'替换已有配音':'上传配音'}<input type="file" className="sr-only" accept=".wav,.mp3,.m4a" disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void action(async()=>{const uploaded=await publicationApi.uploadAudio(activityId,u.id,f);draft.accept(await publicationApi.audio(activityId,u.id,draft.version(),uploaded.artifactId));});e.target.value='';}}/></label>
-              <span className="ml-3 text-xs text-muted">改句子后仅本句音频失效；重新确认即可只补缺失配音。</span>
-            </div>)}<Button disabled={active.utterances.length>=12} onClick={()=>changeShot({...active,utterances:[...active.utterances,{id:crypto.randomUUID(),speakerActorId:null,text:'新对白',voiceBindingId:null,selectedAudioArtifactId:null}]})}>添加一句对白</Button></div>
+              {u.selectedAudioArtifactId&&<div className="rounded-[var(--radius-control)] bg-surface-muted p-2"><audio controls preload="none" src={publicationFile(u.selectedAudioArtifactId)} className="w-full h-8"/></div>}
+              <div className="flex flex-wrap items-center gap-3 pt-1"><PublicationAudioHistory activityId={activityId} utteranceId={u.id} refreshKey={`${run?.updatedAt}:${u.selectedAudioArtifactId}:${u.text}`} disabled={busy} onSelect={id=>void action(async()=>{try{draft.accept(await publicationApi.audio(activityId,u.id,draft.version(),id));}catch(e){if(!(e instanceof ApiClientError)||e.code!=='publication_source_changed'||!window.confirm('对白或声音已经变化，仍使用这份旧配音吗？'))throw e;draft.accept(await publicationApi.audio(activityId,u.id,draft.version(),id,true));}})}/>
+              <label className="relative inline-flex cursor-pointer rounded-[var(--radius-control)] border border-border-default bg-surface px-3 py-1.5 text-xs text-ink hover:bg-surface-hover transition-colors">{u.selectedAudioArtifactId?'替换已有配音':'上传本地配音'}<input type="file" className="sr-only" accept=".wav,.mp3,.m4a" disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void action(async()=>{const uploaded=await publicationApi.uploadAudio(activityId,u.id,f);draft.accept(await publicationApi.audio(activityId,u.id,draft.version(),uploaded.artifactId));});e.target.value='';}}/></label>
+              <span className="text-xs text-muted">改句子后仅本句音频失效；重新确认即可只补缺失配音。</span></div>
+            </div>)}<Button variant="outline" size="sm" disabled={active.utterances.length>=12} onClick={()=>changeShot({...active,utterances:[...active.utterances,{id:crypto.randomUUID(),speakerActorId:null,text:'新对白',voiceBindingId:null,selectedAudioArtifactId:null}]})}>添加一句对白</Button></div>
           </div>}
         </section>
-      </div>:<section className="h-full overflow-y-auto p-4 sm:p-6"><div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><PublicationComicPreview document={doc}/><div className="space-y-5"><div className="rounded-2xl bg-surface p-5 space-y-3"><h2 className="font-semibold">发布前检查</h2><p className="text-sm text-muted">漫画卡片：最多三句一张，长对白会提示溢出。视频按真实配音时长显示字幕。最终画面、读音和平台文案由你审核。</p><Button onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑发布文案</Button><Button variant="primary" disabled={busy} onClick={()=>void action(async()=>{actionKey.current??=crypto.randomUUID();await publicationApi.exports(activityId,draft.version(),makeVideo,actionKey.current);actionKey.current=null;})}>导出{makeVideo?'视频＋':' '}漫画发布包</Button></div>
-        {runs.data?.items.map(r=><div key={r.id} className="space-y-3 rounded-2xl bg-surface p-5"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">{labels[r.status]}</h3>{['running','queued'].includes(r.status)&&<Button size="sm" onClick={()=>void action(()=>publicationApi.stop(activityId,r.id),false)}>停止</Button>}</div><p className="text-xs text-muted">图片调用 {r.imagesUsed} · 配音 {r.speechCharactersUsed} 字</p>{r.tasks.filter(t=>t.kind==='export'&&t.status==='succeeded').map(t=><div key={t.id} className="flex flex-wrap gap-3">{t.artifactIds.map((id,i)=><a key={id} href={publicationFile(id)} download className="text-sm text-accent underline">{i===0?'发布 ZIP':i===1?'封面 PNG':'视频 MP4'}</a>)}{t.artifactIds[2]&&<video controls preload="metadata" src={publicationFile(t.artifactIds[2])} className="w-full max-h-96 rounded-xl"/>}</div>)}<details><summary className="cursor-pointer text-sm">调用与错误记录（{r.tasks.length}）</summary><div className="mt-3 space-y-3">{r.tasks.map(t=><div key={t.id} className="text-xs"><p>{t.kind==='image'?'绘图':t.kind==='speech'?'配音':'导出'} · {labels[t.status]}</p>{t.error&&<p className="text-danger-fg">{t.error}</p>}{t.callId&&<Link href={`/settings/ai-logs?callId=${t.callId}`} className="text-accent">查看调用日志</Link>}</div>)}</div></details></div>)}
+      </div>:<section className="h-full overflow-y-auto p-4 sm:p-6"><div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_340px]"><PublicationComicPreview document={doc}/><div className="space-y-5"><div className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-5 space-y-3"><h2 className="font-semibold text-sm text-ink">发布前检查</h2><p className="text-xs leading-relaxed text-muted">漫画卡片：最多三句一张，长对白会提示溢出。视频按真实配音时长显示字幕。最终画面、读音和平台文案由你审核。</p><Button variant="outline" size="sm" onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑发布文案</Button><Button variant="primary" disabled={busy} className="w-full" onClick={()=>void action(async()=>{actionKey.current??=crypto.randomUUID();await publicationApi.exports(activityId,draft.version(),makeVideo,actionKey.current);actionKey.current=null;})}>导出{makeVideo?'视频＋':' '}漫画发布包</Button></div>
+        {runs.data?.items.map(r=><div key={r.id} className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-ink">{labels[r.status]}</h3>{['running','queued'].includes(r.status)&&<Button size="sm" variant="outline" onClick={()=>void action(()=>publicationApi.stop(activityId,r.id),false)}>停止</Button>}</div><p className="text-xs text-muted">图片调用 {r.imagesUsed} · 配音 {r.speechCharactersUsed} 字</p>{r.tasks.filter(t=>t.kind==='export'&&t.status==='succeeded').map(t=><div key={t.id} className="space-y-3"><div className="flex flex-wrap gap-3">{t.artifactIds.map((id,i)=><a key={id} href={publicationFile(id)} download className="text-sm font-medium text-accent hover:underline">{i===0?'发布 ZIP':i===1?'封面 PNG':'视频 MP4'}</a>)}{t.artifactIds[2]&&<video controls preload="metadata" src={publicationFile(t.artifactIds[2])} className="w-full max-h-80 rounded-[var(--radius-control)] border border-border-subtle"/>}</div></div>)}<details className="text-xs"><summary className="cursor-pointer text-muted hover:text-ink">调用与错误记录（{r.tasks.length}）</summary><div className="mt-3 space-y-2 border-t border-border-subtle pt-2">{r.tasks.map(t=><div key={t.id} className="space-y-0.5"><p className="text-ink">{t.kind==='image'?'绘图':t.kind==='speech'?'配音':'导出'} · {labels[t.status]}</p>{t.error&&<p className="text-danger-fg">{t.error}</p>}{t.callId&&<Link href={`/settings/ai-logs?callId=${t.callId}`} className="text-accent hover:underline">查看调用日志</Link>}</div>)}</div></details></div>)}
         </div></div></section>}
     </div>
     <ResponsiveEditOverlay open={overlay==='drawing'} onOpenChange={closeOverlay} title="绘制设置" description="英文提示词由创作模型生成；这里只编译并追加固定画风与 LoRA。"
@@ -112,7 +289,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
     </ResponsiveEditOverlay>
     <ResponsiveEditOverlay open={overlay==='approve'} onOpenChange={closeOverlay} title="确认本轮制作" description="确认冻结方案、实际配置和费用上限后开始；未知结果仍占额度。"
       footer={<><Button onClick={()=>closeOverlay(false)}>返回修改</Button><Button variant="primary" disabled={busy} onClick={()=>void confirmApproval()}>确认并开始制作</Button></>}>
-      <div className="space-y-5"><p className="text-sm">{doc.shots.length} 个关键画面 · {makeVideo?'漫画＋配音视频':'漫画图片'} · {doc.orientation==='portrait'?'竖屏':'横屏'}</p><label className={fieldClass}>本轮图片调用额度<Input type="number" min={doc.shots.length} max={doc.shots.length+3} value={budget} onChange={e=>setBudget(Number(e.target.value))}/></label><p className="text-sm text-muted">配音额度：{makeVideo?doc.shots.flatMap(s=>s.utterances).filter(u=>!u.selectedAudioArtifactId).reduce((n,u)=>n+u.text.length,0):0} 字。已有可用配音直接复用。服务商单价由你确认，本项目不估算货币金额。</p>{preview?.shots.map((p,i)=><details key={p.shotId} className="rounded-xl bg-surface-muted p-3"><summary className="cursor-pointer text-sm">镜头 {i+1} · {p.workflowId} v{p.workflowVersion} · {p.models.join(' / ')}</summary><div className="mt-3 space-y-2 text-xs"><p className="whitespace-pre-wrap break-words">{p.positivePrompt}</p><p className="text-muted">负向：{p.negativePrompt||'无'}</p><p>LoRA：{p.loras.filter(l=>l.enabled).map(l=>`${l.model} (${l.strength})`).join('、')||'未启用'} · 参考图 {p.referenceArtifactIds.length}</p><pre className="max-h-40 overflow-auto whitespace-pre-wrap">{JSON.stringify(p.parameters,null,2)}</pre></div></details>)}{error&&<p role="alert" className="text-danger-fg text-sm">{error}</p>}{approvalRequest.current&&error&&<Button onClick={()=>void action(()=>publicationApi.start(activityId,approvalRequest.current!.approvalId,approvalRequest.current!.key),false)}>查询／重发同一次启动</Button>}</div>
+      <div className="space-y-5"><p className="text-sm">{doc.shots.length} 个关键画面 · {makeVideo?'漫画＋配音视频':'漫画图片'} · {doc.orientation==='portrait'?'竖屏':'横屏'}</p><label className={fieldClass}>本轮图片调用额度<Input type="number" min={doc.shots.length} max={doc.shots.length+3} value={budget} onChange={e=>setBudget(Number(e.target.value))}/></label><p className="text-sm text-muted">配音额度：{makeVideo?doc.shots.flatMap(s=>s.utterances).filter(u=>!u.selectedAudioArtifactId).reduce((n,u)=>n+u.text.length,0):0} 字。已有可用配音直接复用。服务商单价由你确认，本项目不估算货币金额。</p>{preview?.shots.map((p,i)=><details key={p.shotId} className="rounded-xl bg-surface-muted p-3"><summary className="cursor-pointer text-sm">镜头 {i+1} · {p.workflowId} v{p.workflowVersion} · {p.models.join(' / ')}</summary><div className="mt-3 space-y-2 text-xs"><p className="whitespace-pre-wrap break-words">{p.positivePrompt}</p><p className="text-muted">负向：{p.negativePrompt||'无'}</p><p>LoRA：{p.loras.filter(l=>l.enabled).map(l=>`${l.model} (${l.strength})`).join('、')||'未启用'} · 参考图 {p.referenceArtifactIds.length}</p><pre className="max-h-40 overflow-auto whitespace-pre-wrap">{JSON.stringify(p.parameters,null,2)}</pre></div></details>)}{error&&<p role="alert" className="text-danger-fg text-sm">{error}</p>}{pendingApprovalRequest&&error&&<Button onClick={()=>void action(()=>publicationApi.start(activityId,pendingApprovalRequest.approvalId,pendingApprovalRequest.key),false)}>查询／重发同一次启动</Button>}</div>
     </ResponsiveEditOverlay>
     <ResponsiveEditOverlay open={overlay==='bridge'} onOpenChange={closeOverlay} title="制作 AI 协作" description="独立凭据只能读制作来源、编辑制作方案和运行人工批准的额度；不能改正式剧情或批准费用。">
       <div className="space-y-4 text-sm"><p>在现有 DSH 中额外加载制作 MCP，或交给支持标准 MCP 的其他 Harness。旧剧情 MCP 的权限不变。</p><p className="break-all">作品 ID：{activityId}<br/>剧情项目 ID：{doc.source.storyProjectId}</p><Button disabled={busy} onClick={()=>void action(async()=>{if(!window.confirm('生成新的独立制作凭据？旧制作凭据将立即失效；不会更改旧剧情桥接。'))return;const grant=await publicationApi.grant(doc.source.storyProjectId);setGrantToken(grant.token);},false)}>生成独立制作凭据</Button><Button variant="ghost" disabled={busy} onClick={()=>void action(()=>publicationApi.revoke(doc.source.storyProjectId),false)}>撤销制作权限</Button>

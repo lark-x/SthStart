@@ -25,7 +25,6 @@ import type {
   MediaSlot,
   ContentDocument,
   MediaRevision,
-  MediaRevisionDocument,
   SlotBinding,
 } from '@sthstart/contracts';
 import {
@@ -33,6 +32,7 @@ import {
   useSaveMediaRevision,
 } from '../mutations';
 import { useActivityAssets } from '../queries';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
@@ -243,12 +243,13 @@ export function MediaWorkstation({
           <Button
             type="button"
             size="sm"
+            variant="outline"
             onClick={() => setIsBatchPanelOpen(true)}
             disabled={disabled}
-            className="text-sm flex items-center gap-1.5"
+            className="hidden sm:flex items-center gap-1.5 text-sm"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            批量生图与挑选
+            批量生图
           </Button>
 
           <Button
@@ -257,7 +258,7 @@ export function MediaWorkstation({
             variant="outline"
             onClick={handleAddSlot}
             disabled={disabled}
-            className="text-sm flex items-center gap-1.5"
+            className="hidden sm:flex items-center gap-1.5 text-sm"
           >
             <Plus className="h-3.5 w-3.5" />
             新增镜头
@@ -266,13 +267,18 @@ export function MediaWorkstation({
           <Button
             type="button"
             size="sm"
+            variant="primary"
             onClick={handleSaveMedia}
             disabled={disabled || saveMediaMutation.isPending}
-            className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+            className="flex items-center gap-1.5 text-sm"
           >
             <Save className="h-3.5 w-3.5" />
             {saveMediaMutation.isPending ? '保存中…' : '保存媒体版本'}
           </Button>
+          <RowActionsMenu className="sm:hidden" label="更多媒体操作" items={[
+            {label:'批量生图',onSelect:()=>{if(!disabled)setIsBatchPanelOpen(true);}},
+            {label:'新增镜头',onSelect:()=>{if(!disabled)handleAddSlot();}},
+          ]} />
         </div>
       </div>
 
@@ -454,7 +460,7 @@ export function MediaWorkstation({
             type="button"
             size="sm"
             onClick={() => setActiveSlotId(null)}
-            className="text-sm bg-accent hover:bg-accent-dark text-white"
+            className="text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)]"
           >
             完成选择
           </Button>

@@ -36,9 +36,11 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229) return;
     const selectable = tabs.map((tab, index) => ({ tab, index })).filter(({ tab }) => !tab.disabled);
     if (selectable.length === 0) return;
-    const currentIndex = selectable.findIndex(({ tab }) => tab.id === value);
+    const focusedIndex = selectable.findIndex(({ index }) => tabRefs.current[index] === event.target);
+    const currentIndex = Math.max(0, focusedIndex >= 0 ? focusedIndex : selectable.findIndex(({ tab }) => tab.id === value));
     let target: number | null = null;
 
     if (event.key === 'ArrowRight') {
@@ -63,7 +65,7 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
       aria-label={ariaLabel}
       onKeyDown={handleKeyDown}
       className={cn(
-        'page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-[var(--radius-control)] border border-border-subtle/50 bg-surface-sunken/80 p-1 backdrop-blur-xs',
+        'page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-[var(--radius-control)] bg-surface-sunken p-1',
         className
       )}
     >
@@ -79,14 +81,14 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
             role="tab"
             aria-selected={selected}
             aria-controls={tab.panelId}
-            tabIndex={selected ? 0 : -1}
+            tabIndex={!tab.disabled && (selected || (!tabs.some((item) => item.id === value && !item.disabled) && index === tabs.findIndex((item) => !item.disabled))) ? 0 : -1}
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'inline-flex h-9 sm:h-8 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-control)-3px)] px-3 text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-[var(--motion-ease)] active:scale-[0.98]',
+              'inline-flex h-9 sm:h-8 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-control)-3px)] px-3 text-sm font-medium transition-colors duration-[var(--motion-fast)]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
               selected
-                ? 'bg-surface text-ink font-semibold shadow-xs shadow-ink/5 border border-border-subtle/60'
+                ? 'bg-surface text-ink font-semibold shadow-xs'
                 : 'text-muted hover:bg-surface-hover/80 hover:text-ink',
               tab.disabled && 'pointer-events-none opacity-50'
             )}
@@ -96,7 +98,7 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
               <span
                 className={cn(
                   'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-5',
-                  selected ? 'bg-accent/12 text-accent-dark' : 'bg-ink/8 text-muted'
+                  selected ? 'bg-surface-sunken text-ink' : 'bg-ink/8 text-muted'
                 )}
               >
                 {tab.count}

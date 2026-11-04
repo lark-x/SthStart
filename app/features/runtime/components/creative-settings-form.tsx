@@ -3,7 +3,6 @@
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/app/components/ui/card';
 import { Textarea } from '@/app/components/ui/textarea';
 
 type CreativeFormValues = { jsonText: string };
@@ -56,21 +55,19 @@ export function CreativeSettingsForm({
 
   return (
     <form onSubmit={handleSubmit(handleSave)}>
-      <Card>
-        <CardHeader>
+      <section className="border-y border-border-subtle py-6">
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-5">
+          <div>
+            <h2 className="text-base font-semibold text-ink">创作扩展与生图参数</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted">管理 ComfyUI 工作流映射、提示词前后缀及各生图管线参数。</p>
+          </div>
           {onSyncPublicModel && (
-            <div className="flex items-center justify-end">
-              <Button type="button" size="sm" variant="outline" onClick={onSyncPublicModel}>
-                同步公共模型到邻舍
-              </Button>
-            </div>
+            <Button type="button" size="sm" variant="ghost" onClick={onSyncPublicModel}>
+              同步公共模型到邻舍
+            </Button>
           )}
-          <CardTitle>创作扩展与生图参数</CardTitle>
-          <CardDescription>
-            管理 ComfyUI 工作流映射、提示词前后缀及各生图管线参数。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        </div>
+        <div className="space-y-4">
           <div>
             <label htmlFor="creative-json-text" className="block text-sm font-semibold text-ink mb-1.5">
               JSON 配置结构
@@ -90,8 +87,8 @@ export function CreativeSettingsForm({
               </p>
             )}
           </div>
-        </CardContent>
-        <CardFooter>
+        </div>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
           <span className="text-sm text-muted">修改将实时写入 runtime.creative 配置</span>
           <Button
             type="submit"
@@ -101,8 +98,8 @@ export function CreativeSettingsForm({
           >
             保存创作配置
           </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </section>
     </form>
   );
 }

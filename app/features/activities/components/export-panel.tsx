@@ -173,7 +173,7 @@ export function ExportPanel({ activity, creationProfile, contentRevision, mediaR
           size="sm"
           disabled={isExporting}
           onClick={handleExport}
-          className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+          className="text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5 shadow-xs"
         >
           {isExporting ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           {isExporting ? '打包流式压缩中…' : '开始打包并下载 ZIP'}

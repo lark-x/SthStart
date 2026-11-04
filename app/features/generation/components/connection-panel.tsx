@@ -5,7 +5,6 @@ import { MemoryStick, Plus, RefreshCw } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -210,27 +209,27 @@ export function ConnectionsPanel({
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
+      <section className="border-y border-border-subtle py-5">
+        <div className="pb-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle>连接</CardTitle>
-              <CardDescription>统一管理 ComfyUI 直连与 Windows Worker。每个 ComfyUI 实例都可单独卸载已载入模型、释放 ComfyUI 显存缓存；不会删除磁盘模型文件或影响其他程序占用的显存。</CardDescription>
+              <h2 className="text-base font-semibold text-ink">连接</h2>
+              <p className="mt-1 max-w-3xl text-sm text-muted">统一管理 ComfyUI 直连与 Windows Worker。每个 ComfyUI 实例都可单独卸载已载入模型、释放 ComfyUI 显存缓存；不会删除磁盘模型文件或影响其他程序占用的显存。</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => { void onRefresh(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>
+              <Button size="sm" variant="ghost" onClick={() => { void onRefresh(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>
               <Button size="sm" variant="primary" onClick={() => setCreating(true)}><Plus className="h-3.5 w-3.5" aria-hidden="true" />新建连接</Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
+        </div>
+        <div className="divide-y divide-border-subtle border-t border-border-subtle">
           {engines.length === 0 && <p className="text-sm text-fg-subtle">还没有连接。点击「新建连接」填写 ComfyUI 地址，保存后即可测试并读取模型列表。</p>}
           {engines.map((engine) => (
-            <div key={engine.id} className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3" data-testid="engine-card" data-engine-id={engine.id}>
+            <div key={engine.id} className="py-4" data-testid="engine-card" data-engine-id={engine.id}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <strong className="text-sm">{engine.name}</strong>
+                    <span className="text-sm font-semibold text-ink">{engine.name}</span>
                     <Badge variant={engine.kind === 'comfyui' ? 'accent' : 'secondary'}>{engine.kind === 'comfyui' ? '直连' : engine.kind}</Badge>
                     {statusBadge(engine)}
                     {engine.enabled ? null : <Badge variant="stopped">已禁用</Badge>}
@@ -248,8 +247,8 @@ export function ConnectionsPanel({
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <details className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
         <summary className="cursor-pointer text-sm font-semibold text-ink">高级诊断</summary>

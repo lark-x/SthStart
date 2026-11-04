@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import type { NarrativeResearchClaim, NarrativeResearchEvidence, NarrativeResearchDraft } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -89,6 +88,7 @@ export function ResearchReview({
   const showEvidenceInline = paneWidth >= 1200 && evidenceOpen;
   const showClaimsInline = paneWidth >= 900 && !(showEvidenceInline && evidenceWide);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 面板宽度进入内联模式时同步收起对应抽屉，属于外部视口状态同步。
     if (showClaimsInline) setClaimsDrawerOpen(false);
     if (showEvidenceInline) setEvidenceDrawerOpen(false);
   }, [showClaimsInline, showEvidenceInline]);
@@ -121,8 +121,8 @@ export function ResearchReview({
             !isStandaloneWorkspace && 'max-h-[600px]'
           )}
         >
-          <div className="px-3 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
-            <span className="text-xs font-bold text-ink">结论清单 ({claims.length})</span>
+          <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-ink">结论清单 ({claims.length})</span>
             <span className="text-xs text-muted">接受 {accepted}</span>
           </div>
 
@@ -135,10 +135,8 @@ export function ResearchReview({
                   type="button"
                   onClick={() => { setSelectedId(claim.id); setClaimsDrawerOpen(false); }}
                   className={cn(
-                    'w-full rounded-lg border p-2.5 text-left transition-all cursor-pointer',
-                    isSelected
-                      ? 'border-accent bg-accent/8 shadow-2xs'
-                      : 'border-border-default bg-surface hover:border-accent/40 hover:bg-surface-muted/30'
+                    'w-full rounded-[var(--radius-control)] p-2.5 text-left transition-colors cursor-pointer',
+                    isSelected ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
                   )}
                 >
                   <div className="flex items-center justify-between gap-1.5">
@@ -155,7 +153,7 @@ export function ResearchReview({
                       )}
                     </span>
                   </div>
-                  <span className="mt-1.5 block text-xs font-bold leading-snug text-ink line-clamp-2">{claim.title}</span>
+                  <span className="mt-1.5 block text-xs font-medium leading-snug text-ink line-clamp-2">{claim.title}</span>
                   <span className="mt-1 block text-xs text-muted">
                     证据 {claim.evidence?.length ?? 0} 条 · {claim.origin === 'ai' ? 'AI 发现' : '手动'}
                   </span>
@@ -174,7 +172,7 @@ export function ResearchReview({
             )}
           >
             <div className="px-3 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-ink">
+              <span className="text-xs font-semibold text-ink">
                 证据原文快照 ({activeClaim?.evidence?.length ?? 0})
               </span>
               <div className="flex items-center gap-1">
@@ -208,7 +206,7 @@ export function ResearchReview({
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold text-ink">{evidence.locator}</p>
+                    <p className="font-semibold text-ink">{evidence.locator}</p>
                     <div className="flex flex-none items-center gap-1">
                       {evidence.archiveHref && (
                         <a
@@ -296,7 +294,7 @@ export function ResearchReview({
           )}
         >
           <div className="px-4 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
-            <span className="text-xs font-bold text-ink">审核正文与总稿</span>
+            <span className="text-xs font-semibold text-ink">审核正文与总稿</span>
             <div className="flex items-center gap-2">
 
             </div>
@@ -349,7 +347,7 @@ export function ResearchReview({
                 </div>
 
                 <div className="space-y-2">
-                  <h2 className="text-base sm:text-lg font-bold text-ink leading-snug">{activeClaim.title}</h2>
+                  <h2 className="text-base sm:text-lg font-semibold text-ink leading-snug">{activeClaim.title}</h2>
                   <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink/90 font-serif p-4 rounded-lg bg-surface-muted/30 border border-border-subtle">
                     {activeClaim.body}
                   </div>
@@ -378,7 +376,7 @@ export function ResearchReview({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-accent" aria-hidden="true" />
-                    <h3 className="text-sm font-bold text-ink">研究总稿（第 {draft.revision} 版）</h3>
+                    <h3 className="text-sm font-semibold text-ink">研究总稿（第 {draft.revision} 版）</h3>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => void act(() => onSaveDraft({ title: draftTitle, summary: draftSummary }))} disabled={busy}>
                     <span>保存总稿修改</span>

@@ -1,3 +1,5 @@
+'use client';
+
 import React, { forwardRef } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { Loader2 } from 'lucide-react';
@@ -8,29 +10,29 @@ import { cn } from '../../lib/cn';
  * 桌面默认 40px、紧凑 36px；移动端至少 44px，大按钮 48px。
  */
 export const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-[var(--motion-ease)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none active:scale-[0.98] active:translate-y-[0.5px]',
+  'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] text-sm font-medium transition-colors duration-[var(--motion-fast)] focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-wait aria-disabled:opacity-60 cursor-pointer select-none',
   {
     variants: {
       variant: {
         primary:
-          'bg-accent text-[var(--fg-on-accent)] shadow-xs hover:bg-accent-dark hover:shadow-sm font-semibold border border-transparent shadow-[inset_0_1px_0_0_rgba(255,255,255,0.2)]',
+          'border border-transparent bg-primary text-primary-foreground enabled:hover:bg-[var(--action-primary-hover)] font-semibold',
         accent:
-          'bg-accent text-[var(--fg-on-accent)] shadow-xs hover:bg-accent-dark hover:shadow-sm font-semibold border border-transparent shadow-[inset_0_1px_0_0_rgba(255,255,255,0.2)]',
+          'border border-transparent bg-accent text-[var(--fg-on-accent)] enabled:hover:bg-accent-dark font-semibold',
         secondary:
-          'bg-surface-sunken/80 text-ink border border-border-subtle/80 hover:bg-surface-sunken hover:border-border-default shadow-xs',
+          'border border-transparent bg-[var(--action-secondary)] text-ink enabled:hover:bg-[var(--action-secondary-hover)]',
         outline:
-          'border border-border-default bg-surface text-ink hover:border-accent/40 hover:bg-surface-raised shadow-xs',
-        ghost: 'bg-transparent text-muted hover:text-ink hover:bg-surface-sunken/65',
+          'border border-border-subtle bg-transparent text-ink enabled:hover:border-border-default enabled:hover:bg-surface-hover',
+        ghost: 'border border-transparent bg-transparent text-muted enabled:hover:text-ink enabled:hover:bg-surface-hover',
         danger:
-          'bg-danger-solid text-danger-on-solid hover:bg-danger-fg shadow-xs font-semibold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18)]',
-        'danger-ghost': 'bg-transparent text-danger-fg hover:bg-danger/12',
+          'border border-transparent bg-danger-solid text-danger-on-solid enabled:hover:bg-[color-mix(in_srgb,var(--danger-solid)_88%,black)] font-semibold',
+        'danger-ghost': 'border border-transparent bg-transparent text-danger-fg enabled:hover:bg-danger-bg',
       },
       size: {
-        sm: 'h-11 sm:h-9 px-3.5 text-sm',
-        md: 'h-11 sm:h-10 px-4 py-2 text-sm',
-        lg: 'h-12 px-6 py-3 text-base',
-        icon: 'h-11 w-11 sm:h-9 sm:w-9 p-0',
-        'icon-lg': 'h-11 w-11 p-0',
+        sm: 'min-h-[var(--control-h-touch)] sm:min-h-[var(--control-h-sm)] px-3 text-sm',
+        md: 'min-h-[var(--control-h-touch)] sm:min-h-[var(--control-h)] px-4 py-2 text-sm',
+        lg: 'min-h-[var(--control-h-lg)] px-6 py-3 text-base',
+        icon: 'size-[var(--control-h-touch)] sm:size-[var(--control-h-sm)] p-0',
+        'icon-lg': 'size-[var(--control-h-touch)] p-0',
       },
     },
     defaultVariants: {
@@ -47,13 +49,34 @@ export interface ButtonProps
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, disabled, children, ...props }, ref) => {
+  ({ className, variant, size, loading, disabled, children, type = 'button', onClick, onClickCapture, 'aria-disabled': ariaDisabled, ...props }, ref) => {
+    const unavailable = loading || ariaDisabled === true || ariaDisabled === 'true';
     return (
       <button
         ref={ref}
-        disabled={disabled || loading}
+        type={type}
+        disabled={disabled}
+        aria-disabled={unavailable || undefined}
         aria-busy={loading || undefined}
+        onClickCapture={(event) => {
+          if (unavailable) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          onClickCapture?.(event);
+        }}
+        onClick={(event) => {
+          if (unavailable) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          onClick?.(event);
+        }}
         className={cn(buttonVariants({ variant, size, className }))}
+        data-variant={variant ?? 'secondary'}
+        data-size={size ?? 'md'}
         {...props}
       >
         {loading && <Loader2 className="h-4 w-4 animate-spin text-current" aria-hidden="true" />}

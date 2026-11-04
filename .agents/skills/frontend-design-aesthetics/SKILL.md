@@ -26,7 +26,7 @@ description: >-
    - 严禁出现无规律的任意像素微调（如 `mt-[13px]`, `p-[7px]`）。
 
 3. **字体阶度与文本层级 (Typography Scale)**：
-   - **全局无衬线 UI 主导（`--font-sans`）**：所有页面大标题（`.tpl-title`、`.desk-header-title`）、工作台标题、导航、卡片标题与按钮统一使用现代无衬线字体，通过字重（`600`/`700`）与紧凑字距（`-0.025em`）拉开层级。
+   - **全局无衬线 UI 主导（`--font-sans`）**：所有页面大标题（`.tpl-title`、`.desk-header-title`）、工作台标题、导航、卡片标题与按钮统一使用现代无衬线字体，通过 `400/500/600` 字重与紧凑字距拉开层级，UI 字重最高 600。
    - **沉浸式阅读衬线体（`--font-serif`）**：仅在「叙事档案阅读器」「小说/长文正文阅读视图」等沉浸式长文阅读区域启用衬线体。
    - **字号底线规约**：辅助标注（Caption / Meta）不低于 `12px`（`text-xs`）；所有可交互控件与标签（`button`, `input`, `select`, `[role="tab"]`）字号不低于 `14px`（`text-sm`）；长文阅读与编辑表面不低于 `16px`。
 
@@ -39,4 +39,9 @@ description: >-
    - **边框与分隔 (Borders & Dividers)**：
      - 卡片与面板采用清晰温润的 1px 细边框（`border-border-subtle`），表单输入控件采用满足 3:1 对比度的 `border-border-control`。
    - **圆角标度 (Corner Radius)**：
-     - 面板与大卡片使用 `rounded-[var(--radius-panel)]`（`16px`），按钮与输入控件使用 `rounded-[var(--radius-control)]`（`10px`），弹窗使用 `rounded-[var(--radius-dialog)]`（`20px`）。
+     - 面板与大卡片使用 `rounded-[var(--radius-panel)]`（`12px`），按钮与输入控件使用 `rounded-[var(--radius-control)]`（`6px`），弹窗使用 `rounded-[var(--radius-dialog)]`（`16px`）。尺寸由 Token 决定，不在业务组件重复硬编码。
+
+5. **单闭合边框原则与边缘消隐物理学 (Single-Stroke Discipline & Non-Linear Masks)**：
+   - **边框表达用途**：层级依次依靠文字灰阶、留白、表面、细线；避免以重复容器边框代替信息分组。表单控件、媒体对象和必要的 outline 操作可以保留独立描边，不机械执行“所有卡片和内层边框一律删除”；内联低频动作优先 ghost 样式。
+   - **7 档非线性 Alpha 渐变遮罩 (7-Stop Non-Linear Mask)**：独立滚动容器（大纲树、长文档、日志流）的上下边缘消隐，必须采用基于 $y \approx x^{1.5}$ 幂律曲线的 7 档渐变（`ScrollFadeContainer`），并在触顶或触底时动态将对应边缘羽化值归零，杜绝生硬切断的色阶横线。
+   - **高分屏发丝细边微质感 (Hairline Ring)**：边框微光投影采用单像素微透明层（如 `border-border-subtle`），在高 DPI 屏幕下呈现温润发丝线，严禁使用浓黑重描边。

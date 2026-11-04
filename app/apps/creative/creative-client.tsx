@@ -328,43 +328,99 @@ export function CreativeClient() {
   };
 
   return (
-    <PageContainer className="space-y-4 py-6">
-        <PageHeader
-          title="图像工坊"
-          description="高质量文本生图、图生图与创作媒体资产库。"
-          actions={<Button size="sm" variant="outline" onClick={() => { void statusQuery.refetch(); void optionsQuery.refetch(); void tasksQuery.refetch(); void artifactsQuery.refetch(); }}><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新</Button>}
-        />
-        {(pageError || serviceError) && (
-          <Alert
-            variant="danger"
-            title={pageError ? '图像工坊操作未完成' : '图像工坊暂时无法完成操作'}
-            onDismiss={pageError ? () => setPageError('') : undefined}
+    <PageContainer className="space-y-4 py-4 sm:space-y-5 sm:py-6">
+      <PageHeader
+        compact
+        title="图像工坊"
+        description="高质量文本生图、图生图与创作媒体资产库。"
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void statusQuery.refetch();
+              void optionsQuery.refetch();
+              void tasksQuery.refetch();
+              void artifactsQuery.refetch();
+            }}
           >
-            {pageError || (serviceError instanceof Error ? serviceError.message : String(serviceError))}
-          </Alert>
-        )}
-        <div className="flex flex-wrap items-center gap-3">
-        <details className="flex-1 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
-          <summary className="cursor-pointer text-sm font-medium">生成服务 · {ready ? '当前模式已就绪' : '当前模式待配置'} · 查看连接详情</summary>
-          <div className="mt-3"><CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} /></div>
-        </details>
-        {!ready && <a href="/settings/generation" className="text-sm font-semibold text-accent hover:underline">配置生成工作流 →</a>}
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            刷新
+          </Button>
+        }
+      />
+
+      {(pageError || serviceError) && (
+        <Alert
+          variant="danger"
+          title={pageError ? '图像工坊操作未完成' : '图像工坊暂时无法完成操作'}
+          onDismiss={pageError ? () => setPageError('') : undefined}
+        >
+          {pageError || (serviceError instanceof Error ? serviceError.message : String(serviceError))}
+        </Alert>
+      )}
+
+      {/* 紧凑任务状态与视口切换工具栏 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-2.5 text-xs text-muted">
+        <div className="flex items-center gap-2">
+          <details className="cursor-pointer">
+            <summary className="inline-flex items-center gap-1.5 font-medium text-ink hover:text-accent select-none py-1">
+              <span className={`inline-block h-2 w-2 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} />
+              <span>服务：{ready ? '已就绪' : '待配置'}</span>
+              <span className="text-muted text-[11px]">（详情）</span>
+            </summary>
+            <div className="mt-2.5 max-w-xl animate-in fade-in duration-150">
+              <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
+            </div>
+          </details>
+          {!ready && (
+            <a href="/settings/generation" className="font-semibold text-accent hover:underline ml-1">
+              去配置工作流 →
+            </a>
+          )}
         </div>
-        {/*
-         * 宽屏左参数区 320–400px，右侧结果/预览（§8.6）。
-         * 两栏各自滚动：参数区内容多时自己滚，结果区不会把参数区拉长（§4.4）。
-         */}
-        <div className="flex gap-2 xl:hidden" role="group" aria-label="生图工作区">
-          <Button size="sm" variant={mobilePane === 'configuration' ? 'accent' : 'outline'} aria-pressed={mobilePane === 'configuration'} onClick={() => setMobilePane('configuration')}>配置</Button>
-          <Button size="sm" variant={mobilePane === 'results' ? 'accent' : 'outline'} aria-pressed={mobilePane === 'results'} onClick={() => setMobilePane('results')}>结果</Button>
+
+        {/* 移动端两栏切换 */}
+        <div className="flex items-center gap-1 xl:hidden bg-surface-sunken p-0.5 rounded-[var(--radius-control)] border border-border-subtle" role="group" aria-label="生图工作区分栏">
+          <button
+            type="button"
+            aria-pressed={mobilePane === 'configuration'}
+            onClick={() => setMobilePane('configuration')}
+            className={`px-2.5 py-1 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-colors ${
+              mobilePane === 'configuration'
+                ? 'bg-surface text-ink font-semibold shadow-xs'
+                : 'text-muted hover:text-ink'
+            }`}
+          >
+            参数配置
+          </button>
+          <button
+            type="button"
+            aria-pressed={mobilePane === 'results'}
+            onClick={() => setMobilePane('results')}
+            className={`px-2.5 py-1 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-colors ${
+              mobilePane === 'results'
+                ? 'bg-surface text-ink font-semibold shadow-xs'
+                : 'text-muted hover:text-ink'
+            }`}
+          >
+            作品 / 任务
+          </button>
         </div>
-        <SplitPanes
-          leftClassName={mobilePane === 'configuration' ? '' : 'hidden xl:block'}
-          rightClassName={mobilePane === 'results' ? '' : 'hidden xl:block'}
-          className="gap-5 xl:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]"
-          from="xl"
-          labels={{ left: '生成参数', right: '生成结果' }}
-          left={
+      </div>
+
+      <SplitPanes
+        resizable
+        storageKey="sthstart_creative_split"
+        defaultSplitRatio={0.36}
+        minLeftWidth={320}
+        minRightWidth={420}
+        leftClassName={mobilePane === 'configuration' ? '' : 'hidden xl:block'}
+        rightClassName={mobilePane === 'results' ? '' : 'hidden xl:block'}
+        className="gap-6 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]"
+        from="xl"
+        labels={{ left: '生成参数', right: '生成结果' }}
+        left={
           <div className="space-y-4">
             <PageTabs
               ariaLabel="生成模式"
@@ -393,58 +449,150 @@ export function CreativeClient() {
                 uploading={uploading}
                 submitting={submitting}
                 onFormChange={updateForm}
-                onSubmit={() => { void handleCreate(); }}
-                onFirstFrameSelect={(file) => { void handleFrameUpload(file, 'first'); }}
-                onFirstFrameRemove={() => { setSourceArtifact(null); setSourcePreview(null); }}
-                onLastFrameSelect={(file) => { void handleFrameUpload(file, 'last'); }}
-                onLastFrameRemove={() => { setLastFrameArtifact(null); setLastFramePreview(null); }}
+                onSubmit={() => {
+                  void handleCreate();
+                }}
+                onFirstFrameSelect={(file) => {
+                  void handleFrameUpload(file, 'first');
+                }}
+                onFirstFrameRemove={() => {
+                  setSourceArtifact(null);
+                  setSourcePreview(null);
+                }}
+                onLastFrameSelect={(file) => {
+                  void handleFrameUpload(file, 'last');
+                }}
+                onLastFrameRemove={() => {
+                  setLastFrameArtifact(null);
+                  setLastFramePreview(null);
+                }}
               />
             ) : (
               <ImageGenerationPanel
                 key={mode}
-                appId="creative-center" purpose={mode} contextKey={`creative:${mode}`}
+                appId="creative-center"
+                purpose={mode}
+                contextKey={`creative:${mode}`}
                 onConfigurationChange={setSelectedImageConfiguration}
-                options={imageOptions} loading={optionsQuery.isLoading} initial={imageInitial}
-                onRefresh={() => { void optionsQuery.refetch(); }}
-                blockedReason={uploading ? '参考图片正在上传…' : mode === 'image-to-image' && !sourceArtifact ? '请先添加参考图片。' : mode === 'image-to-image' && sourceArtifact && (!creativeImageAllowed(referenceBinding, imageReferenceKey, sourceArtifact.contentType ?? '') || sourceArtifact.byteSize > creativeInputMaxBytes(referenceBinding, imageReferenceKey)) ? '现有参考图片不符合所选方案的格式或大小限制，请重新选择。' : undefined}
-                referenceInput={mode === 'image-to-image' ? <ArtifactPicker id="creative-source" label="参考图片"
-                  hint={`最大 ${formatByteLimit(creativeInputMaxBytes(referenceBinding, imageReferenceKey))}；保持主体描述与参考图一致。`}
-                  accept={creativeImageAccept(referenceBinding, imageReferenceKey)} artifact={sourceArtifact} previewUrl={sourcePreview} uploading={uploading}
-                  onSelect={file => { void handleFrameUpload(file, 'first'); }} onRemove={() => { setSourceArtifact(null); setSourcePreview(null); }} /> : undefined}
-                onGenerate={async input => {
+                options={imageOptions}
+                loading={optionsQuery.isLoading}
+                initial={imageInitial}
+                onRefresh={() => {
+                  void optionsQuery.refetch();
+                }}
+                blockedReason={
+                  uploading
+                    ? '参考图片正在上传…'
+                    : mode === 'image-to-image' && !sourceArtifact
+                    ? '请先添加参考图片。'
+                    : mode === 'image-to-image' &&
+                      sourceArtifact &&
+                      (!creativeImageAllowed(referenceBinding, imageReferenceKey, sourceArtifact.contentType ?? '') ||
+                        sourceArtifact.byteSize > creativeInputMaxBytes(referenceBinding, imageReferenceKey))
+                    ? '现有参考图片不符合所选方案的格式或大小限制，请重新选择。'
+                    : undefined
+                }
+                referenceInput={
+                  mode === 'image-to-image' ? (
+                    <ArtifactPicker
+                      id="creative-source"
+                      label="参考图片"
+                      hint={`最大 ${formatByteLimit(
+                        creativeInputMaxBytes(referenceBinding, imageReferenceKey)
+                      )}；保持主体描述与参考图一致。`}
+                      accept={creativeImageAccept(referenceBinding, imageReferenceKey)}
+                      artifact={sourceArtifact}
+                      previewUrl={sourcePreview}
+                      uploading={uploading}
+                      onSelect={(file) => {
+                        void handleFrameUpload(file, 'first');
+                      }}
+                      onRemove={() => {
+                        setSourceArtifact(null);
+                        setSourcePreview(null);
+                      }}
+                    />
+                  ) : undefined
+                }
+                onGenerate={async (input) => {
                   const { parameters, ...selection } = input;
-                  await createCreativeTask({ mode: mode as 'text-to-image' | 'image-to-image', ...selection,
+                  await createCreativeTask({
+                    mode: mode as 'text-to-image' | 'image-to-image',
+                    ...selection,
                     parameters,
-                    ...(mode === 'image-to-image' && sourceArtifact ? { sourceArtifactId: sourceArtifact.id } : {}) });
-                  setResultView('tasks'); setMobilePane('results');
+                    ...(mode === 'image-to-image' && sourceArtifact ? { sourceArtifactId: sourceArtifact.id } : {}),
+                  });
+                  setResultView('tasks');
+                  setMobilePane('results');
                   toast.success('图片任务已提交');
-                  void tasksQuery.refetch(); void statusQuery.refetch();
+                  void tasksQuery.refetch();
+                  void statusQuery.refetch();
                 }}
               />
             )}
           </div>
-          }
-          right={
-          <div className="min-w-0 space-y-3">
-            {!isVideoMode && <ImageResultPreview tasks={sortedTasks.filter(task => !task.replay.mode.startsWith('h3-'))} onReplay={handleReplay} />}
-            <div className="flex flex-wrap gap-2" aria-label="创作结果视图">
-              <Button size="sm" variant={resultView === 'media' ? 'primary' : 'outline'} aria-pressed={resultView === 'media'} onClick={() => setResultView('media')}>媒体库（{artifactsTotal}）</Button>
-              <Button size="sm" variant={resultView === 'tasks' ? 'primary' : 'outline'} aria-pressed={resultView === 'tasks'} onClick={() => setResultView('tasks')}>生成任务（{sortedTasks.length}）</Button>
+        }
+        right={
+          <div className="min-w-0 space-y-5">
+            {!isVideoMode && (
+              <ImageResultPreview
+                tasks={sortedTasks.filter((task) => !task.replay.mode.startsWith('h3-'))}
+                onReplay={handleReplay}
+              />
+            )}
+            <div className="flex items-center gap-1 bg-surface-sunken p-1 rounded-[var(--radius-control)] border border-border-subtle w-fit" role="tablist" aria-label="创作结果视图">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={resultView === 'media'}
+                onClick={() => setResultView('media')}
+                className={`px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-all ${
+                  resultView === 'media'
+                    ? 'bg-surface text-ink font-semibold shadow-xs'
+                    : 'text-muted hover:text-ink'
+                }`}
+              >
+                媒体库 ({artifactsTotal})
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={resultView === 'tasks'}
+                onClick={() => setResultView('tasks')}
+                className={`px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-all ${
+                  resultView === 'tasks'
+                    ? 'bg-surface text-ink font-semibold shadow-xs'
+                    : 'text-muted hover:text-ink'
+                }`}
+              >
+                生成任务 ({sortedTasks.length})
+              </button>
             </div>
-        {resultView === 'media' ? <MediaGallery
-          artifacts={artifacts}
-          total={artifactsTotal}
-          isLoading={artifactsQuery.isLoading}
-          hasMore={Boolean(artifactsQuery.hasNextPage)}
-          isLoadingMore={artifactsQuery.isFetchingNextPage}
-          onLoadMore={() => { void artifactsQuery.fetchNextPage(); }}
-          onPin={handlePin}
-          onDelete={handleDelete}
-        /> : <TaskList tasks={sortedTasks} isLoading={tasksQuery.isLoading} onCancel={handleCancel} onRetry={handleRetry} onReplay={handleReplay} />}
+            {resultView === 'media' ? (
+              <MediaGallery
+                artifacts={artifacts}
+                total={artifactsTotal}
+                isLoading={artifactsQuery.isLoading}
+                hasMore={Boolean(artifactsQuery.hasNextPage)}
+                isLoadingMore={artifactsQuery.isFetchingNextPage}
+                onLoadMore={() => {
+                  void artifactsQuery.fetchNextPage();
+                }}
+                onPin={handlePin}
+                onDelete={handleDelete}
+              />
+            ) : (
+              <TaskList
+                tasks={sortedTasks}
+                isLoading={tasksQuery.isLoading}
+                onCancel={handleCancel}
+                onRetry={handleRetry}
+                onReplay={handleReplay}
+              />
+            )}
           </div>
-          }
-        />
-
+        }
+      />
     </PageContainer>
   );
 }

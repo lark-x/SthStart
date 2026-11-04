@@ -7,6 +7,7 @@ import { zipSync } from 'fflate';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Button } from '@/app/components/ui/button';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { getEffectiveStageScenes } from '../scene-beat-utils';
 import { useComicDraft } from './use-comic-draft';
 import { useActivityContentRevision, useComicJob, useComicJobs } from '../queries';
@@ -21,6 +22,7 @@ import { ComicImageHistory } from './comic-image-history';
 import { ComicReader } from './comic-reader';
 import { useComicAssets } from './use-comic-assets';
 import { exportComicOfflineReader, fetchComicRevisions } from './api';
+import { ArrowLeft, BookOpen, Sparkles, SlidersHorizontal, Save, RefreshCw } from 'lucide-react';
 
 interface ComicWorkstationProps {
   activity: Activity;
@@ -377,21 +379,84 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
   const resultPanels = (result?.panels ?? []) as ComicPanel[];
   const canApply = latestStoryboardJob?.status === 'succeeded' && resultPanels.length > 0;
 
+  const mobileOverflowItems = [
+    {
+      label: '生成分镜草案',
+      icon: <Sparkles className="h-4 w-4" />,
+      onSelect: () => setStoryboardDialogOpen(true),
+      hidden: !revisionId || !draftState.version || isSaving,
+    },
+    {
+      label: '逐格阅读',
+      icon: <BookOpen className="h-4 w-4" />,
+      onSelect: () => setReadingMode(true),
+      hidden: !comic.pages.length || draftState.status !== 'saved',
+    },
+    {
+      label: '编辑选中画格',
+      icon: <SlidersHorizontal className="h-4 w-4" />,
+      onSelect: () => setMobileInspectorOpen(true),
+    },
+    ...(draftState.status === 'conflict' ? [
+      {
+        label: '使用服务器版本',
+        icon: <RefreshCw className="h-4 w-4" />,
+        onSelect: () => draftState.resolveConflict(false),
+        separatorBefore: true,
+      },
+      {
+        label: '保留本地并保存',
+        icon: <Save className="h-4 w-4" />,
+        onSelect: () => draftState.resolveConflict(true),
+      },
+    ] : []),
+    ...(draftState.status === 'error' ? [
+      {
+        label: '重试保存',
+        icon: <RefreshCw className="h-4 w-4" />,
+        onSelect: () => draftState.retry(),
+        separatorBefore: true,
+      },
+    ] : []),
+  ];
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border-default px-3 py-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={onBack}>← 原回放</Button><span className="text-sm font-semibold text-ink">漫画编辑</span>
-          <span className="text-xs text-muted">{draftState.status === 'saving' ? '保存中…' : draftState.status === 'saved' ? `已保存 · v${draftState.version ?? '—'}` : draftState.status === 'loading' ? '载入中…' : draftState.status === 'conflict' ? '版本冲突' : '保存失败'}</span>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-default px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={onBack} aria-label="返回原回放" className="px-2">
+            <ArrowLeft className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">原回放</span>
+          </Button>
+          <span className="truncate text-sm font-semibold text-ink">漫画编辑</span>
+          <span className="shrink-0 text-xs text-muted hidden xs:inline">{draftState.status === 'saving' ? '保存中…' : draftState.status === 'saved' ? `已保存 · v${draftState.version ?? '—'}` : draftState.status === 'loading' ? '载入中…' : draftState.status === 'conflict' ? '版本冲突' : '保存失败'}</span>
           {draftState.error && <span role="alert" className="max-w-[min(70vw,520px)] truncate text-xs text-danger" title={draftState.error}>{draftState.error}</span>}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Desktop actions: show full toolbar */}
+        <div className="hidden sm:flex flex-wrap items-center justify-end gap-2">
           {draftState.status === 'conflict' && <><Button size="sm" variant="outline" onClick={() => draftState.resolveConflict(false)}>使用服务器版本</Button><Button size="sm" variant="outline" onClick={() => draftState.resolveConflict(true)}>保留本地并保存</Button></>}
           {draftState.status === 'error' && <Button size="sm" variant="outline" onClick={draftState.retry}>重试保存</Button>}
           <Button size="sm" variant="outline" onClick={() => setStoryboardDialogOpen(true)} disabled={!revisionId || !draftState.version || isSaving}>✦ 生成分镜草案</Button>
-          <Button size="sm" variant="outline" onClick={saveVersion} disabled={!draftState.version || isSaving || createRevision.isPending}>保存漫画版本</Button>
+          <Button size="sm" variant="primary" onClick={saveVersion} disabled={!draftState.version || isSaving || createRevision.isPending}>保存漫画版本</Button>
           <Button size="sm" variant="outline" onClick={() => setMobileInspectorOpen(true)} className="xl:hidden">编辑选中画格</Button>
           <Button size="sm" variant="outline" onClick={() => setReadingMode(true)} disabled={!comic.pages.length || draftState.status !== 'saved'}>逐格阅读</Button>
+        </div>
+        {/* Mobile actions: Single primary CTA + overflow RowActionsMenu */}
+        <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={saveVersion}
+            disabled={!draftState.version || isSaving || createRevision.isPending}
+            className="text-xs px-2.5 h-8 flex items-center gap-1"
+          >
+            <Save className="h-3.5 w-3.5" />
+            保存版本
+          </Button>
+          <RowActionsMenu
+            label="漫画工坊操作菜单"
+            items={mobileOverflowItems}
+          />
         </div>
       </div>
       {!revisionId && <div role="alert" className="shrink-0 border-b border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">当前活动还没有已保存的剧情版本。请先在活动编辑中保存内容版本，再创建漫画草稿。</div>}

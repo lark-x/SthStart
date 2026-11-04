@@ -396,7 +396,7 @@ export function PlaybackWorkstation({
             size="sm"
             onClick={handleSavePlayback}
             disabled={disabled || !playbackDoc || playbackRevisionIsStale || savePlaybackMutation.isPending}
-            className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+            className="text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5 shadow-xs"
           >
             <Save className="h-3.5 w-3.5" />
             {savePlaybackMutation.isPending ? '保存中…' : '保存回放版本'}
@@ -463,7 +463,7 @@ export function PlaybackWorkstation({
                 onClick={() => setSpeed(s)}
                 className={`px-2 py-1 rounded text-sm font-mono font-medium transition-colors ${
                   speed === s
-                    ? 'bg-accent text-white'
+                    ? 'bg-accent text-[var(--fg-on-accent)]'
                     : 'bg-surface-raised text-ink hover:bg-surface-hover border border-border-default'
                 }`}
               >
@@ -637,7 +637,7 @@ export function PlaybackWorkstation({
                 size="sm"
                 onClick={() => setIsPlaying(!isPlaying)}
                 disabled={!playbackDoc || playbackRevisionIsStale}
-                className="h-8 px-4 text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+                className="h-8 px-4 text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5 shadow-xs"
               >
                 {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 {isPlaying ? '暂停' : '播放'}

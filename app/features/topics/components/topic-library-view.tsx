@@ -222,7 +222,7 @@ export function TopicLibraryView() {
         {notice && <Alert variant="info">{notice}</Alert>}
 
         {/* 状态行：自动搜集开关、最近成功时间、下次执行、最近新增 */}
-        <section className="topic-status-strip flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-panel)] bg-surface px-4 py-3 text-sm shadow-[var(--shadow-panel)]">
+        <section className="topic-status-strip flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-border-subtle py-3 text-sm">
           <span className="flex items-center gap-1.5">
             <CalendarClock className="h-4 w-4 text-accent" />
             自动搜集
@@ -240,7 +240,7 @@ export function TopicLibraryView() {
         <WorkbenchColumns
           left={(
             <>
-              <section className="topic-list-panel space-y-4 rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--shadow-panel)]">
+              <section className="topic-list-panel space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-base font-semibold text-ink">素材（{topicsQuery.data?.total ?? 0}）</h2>
                   <Button size="sm" variant="ghost" onClick={() => void topicsQuery.refetch()}><RefreshCw className="h-3.5 w-3.5" />刷新列表</Button>
@@ -266,8 +266,8 @@ export function TopicLibraryView() {
                 </div>}
 
                 {topicsQuery.isLoading && <Spinner size="sm" label="正在加载素材…" />}
-                {topicsQuery.isError && <Alert variant="warning" title="素材加载失败">{topicsQuery.error instanceof Error ? topicsQuery.error.message : '请稍后重试'}。已有素材不会因此删除。</Alert>}
-                {!topicsQuery.isLoading && !topics.length && (
+                {topicsQuery.isError && <Alert variant="warning" title="素材加载失败">{topicsQuery.error instanceof Error ? topicsQuery.error.message : '请稍后重试'}。<Button size="sm" variant="ghost" onClick={() => { void topicsQuery.refetch(); }}>重试读取素材</Button></Alert>}
+                {!topicsQuery.isLoading && !topicsQuery.isError && !topics.length && (
                   <EmptyState
                     icon={Lightbulb}
                     title={view === 'all' ? '还没有素材' : '这个视图里没有素材'}
@@ -278,7 +278,7 @@ export function TopicLibraryView() {
                   />
                 )}
 
-                <ul className="space-y-2">
+                <ul className="divide-y divide-border-subtle border-y border-border-subtle">
                   {topics.map((topic) => (
                     <TopicSummaryCard
                       key={topic.id}
@@ -314,7 +314,7 @@ export function TopicLibraryView() {
                 )}
               </section>
 
-              <section className="topic-history-panel space-y-2 rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--shadow-panel)]">
+              <section className="topic-history-panel space-y-2 border-t border-border-subtle py-4">
                 <h2 className="text-sm font-semibold text-ink">最近的采纳与线索</h2>
                 {historyQuery.data?.items.length
                   ? <ul className="space-y-1.5 text-xs text-muted">
@@ -331,7 +331,7 @@ export function TopicLibraryView() {
             </>
           )}
           right={(
-            <section className="topic-idea-panel space-y-4 rounded-[var(--radius-panel)] bg-surface p-5 shadow-[var(--shadow-panel)]">
+            <section className="topic-idea-panel space-y-4 lg:border-l lg:border-border-subtle lg:pl-6">
               <h2 className="flex items-center gap-2 text-base font-semibold text-ink"><Lightbulb className="h-4 w-4 text-accent" />从素材生成点子</h2>
               <p className="text-sm text-muted">勾选 1～3 条素材效果最好，最多 5 条。可以跨页勾选。</p>
               <p className="text-sm">已选 {selected.length} 条{selected.length > MAX_SELECTED ? '（超过上限，请去掉一些）' : ''}</p>

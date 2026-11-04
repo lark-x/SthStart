@@ -8,7 +8,6 @@ import {
   LoaderCircle,
   PanelRightClose,
   PanelRightOpen,
-  RefreshCw,
   Sliders,
   Sparkles,
   Sun,
@@ -58,8 +57,6 @@ const MOODS = [
 
 export function StudioDirectorPanel({
   beat,
-  stage,
-  actors,
   onUpdateBeat,
   onGenerate,
   isGenerating = false,
@@ -70,15 +67,18 @@ export function StudioDirectorPanel({
 
   if (collapsed) {
     return (
-      <aside className="w-10 border-l border-border-default bg-surface flex flex-col items-center py-2.5 shrink-0 select-none z-10">
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-ink hover:bg-surface-muted transition-colors cursor-pointer"
-          title="展开镜头属性与导演面板"
-        >
-          <PanelRightOpen className="h-4 w-4" />
-        </button>
+      <aside className="w-12 border-l border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
+        <div className="h-11 border-b border-border-default bg-surface flex items-center justify-center shrink-0">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+            title="展开镜头属性与导演面板"
+            aria-label="展开镜头属性与导演面板"
+          >
+            <PanelRightOpen className="h-4 w-4" />
+          </button>
+        </div>
       </aside>
     );
   }
@@ -103,19 +103,20 @@ export function StudioDirectorPanel({
 
   return (
     <aside className="w-72 lg:w-80 border-l border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
-      {/* 顶部标题栏 */}
-      <div className="h-10 px-3 border-b border-border-default flex items-center justify-between shrink-0 bg-surface-muted/30">
-        <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+      {/* 44px 统一连续基线顶栏 */}
+      <div className="h-11 px-3 border-b border-border-default flex items-center justify-between shrink-0 bg-surface">
+        <span className="text-xs font-semibold text-ink flex items-center gap-1.5">
           <Camera className="h-3.5 w-3.5 text-accent" />
           <span>镜头导演属性</span>
         </span>
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="h-6 w-6 rounded flex items-center justify-center text-muted hover:text-ink hover:bg-surface-muted transition-colors cursor-pointer"
+          className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
           title="收起右栏"
+          aria-label="收起右栏"
         >
-          <PanelRightClose className="h-3.5 w-3.5" />
+          <PanelRightClose className="h-4 w-4" />
         </button>
       </div>
 
@@ -181,7 +182,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('shotSize', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-white font-bold shadow-2xs'
+                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >
@@ -208,7 +209,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('angle', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-white font-bold shadow-2xs'
+                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >
@@ -235,7 +236,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('lighting', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-white font-bold shadow-2xs'
+                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >
@@ -262,7 +263,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('mood', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-white font-bold shadow-2xs'
+                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >

@@ -9,10 +9,7 @@ import {
   RotateCcw,
   CheckCircle2,
   BookOpen,
-  AlertTriangle,
   ArrowRight,
-  Sparkles,
-  ExternalLink,
 } from 'lucide-react';
 import type { NarrativeWork, ResearchScope } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
@@ -280,10 +277,8 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                     key={item.id}
                     type="button"
                     onClick={() => { setSelectedProjectId(item.id); setCreating(false); }}
-                    className={`w-full rounded-[var(--radius-panel)] border p-3 text-left transition-colors cursor-pointer ${
-                      selectedProjectId === item.id
-                        ? 'border-accent/50 bg-accent/8 shadow-2xs'
-                        : 'border-border-default bg-surface hover:border-accent/30'
+                    className={`w-full rounded-[var(--radius-control)] p-2.5 text-left transition-colors cursor-pointer ${
+                      selectedProjectId === item.id ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
                     }`}
                   >
                     <span className="block text-sm font-semibold leading-snug text-ink">{item.title}</span>
@@ -358,22 +353,20 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
 
                   {/* 核心入口：进入研究审核专注工作区 */}
                   {claims.length > 0 && (
-                    <div className="p-4 rounded-xl border border-accent/30 bg-accent/5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="size-4 text-accent" />
-                          <h3 className="text-sm font-bold text-ink">研究成果已生成，待人工核验</h3>
-                        </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border-subtle py-3">
+                      <div className="space-y-0.5">
+                        <h3 className="text-sm font-semibold text-ink">研究成果已生成，待人工核验</h3>
                         <p className="text-xs text-muted">
-                          共生成 {claims.length} 条论点与证据（已接受 {acceptedCount} 条）。进入审核工作区，核验证据并修订总稿。
+                          共 {claims.length} 条论点与证据，已接受 {acceptedCount} 条。
                         </p>
                       </div>
                       <Button
                         variant="primary"
+                        size="sm"
                         onClick={() => setIsReviewing(true)}
-                        className="gap-2 font-semibold shadow-xs"
+                        className="gap-2"
                       >
-                        <span>进入研究审核工作区</span>
+                        <span>进入研究审核</span>
                         <ArrowRight className="size-4" />
                       </Button>
                     </div>

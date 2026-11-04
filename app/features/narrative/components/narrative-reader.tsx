@@ -76,7 +76,7 @@ export function NarrativeReader({
             </span>
           </div>
 
-          <h2 className="font-sans text-2xl font-bold tracking-tight leading-snug text-ink">
+          <h2 className="font-sans text-[26px] font-semibold tracking-tight leading-snug text-ink">
             {reading.node.title}
           </h2>
 
@@ -116,7 +116,7 @@ export function NarrativeReader({
           {reading.scenes.map((scene, index) => (
             <section key={scene.id} className="space-y-3.5">
               <div className="flex items-baseline gap-2.5 border-b border-border-subtle/70 pb-2">
-                <span className="font-mono text-xs font-semibold tabular-nums text-accent">
+                <span className="font-mono text-xs font-medium tabular-nums text-fg-subtle">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <h3 className="font-sans text-base font-semibold tracking-tight text-ink">
@@ -139,12 +139,12 @@ export function NarrativeReader({
                       className={cn(
                         'group relative',
                         isChoice
-                          ? 'ml-4 rounded-[var(--radius-control)] border border-border-default bg-surface-sunken px-3.5 py-2.5'
-                          : cn('border-l-2 pl-3.5', isNarration ? 'border-border-default' : 'border-accent/35'),
+                          ? 'ml-4 rounded-[var(--radius-control)] border border-border-subtle bg-surface-muted px-3.5 py-2.5'
+                          : cn('border-l-2 pl-3.5', isNarration ? 'border-border-subtle' : 'border-border-default'),
                       )}
                     >
                       {line.speaker && (
-                        <strong className="mb-1 block font-sans text-sm font-semibold text-accent-dark">
+                        <strong className="mb-1 block font-sans text-sm font-semibold text-ink">
                           {line.speaker}
                         </strong>
                       )}
