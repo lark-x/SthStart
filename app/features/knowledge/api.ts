@@ -1,4 +1,5 @@
 import { getJson, postJson, putJson, patchJson, deleteJson } from '@/app/lib/api-client';
+import { KnowledgePendingListResponseSchema, type KnowledgePendingListQuery, type KnowledgePendingListResponse } from '@sthstart/contracts';
 import type {
   KnowledgeCollection, KnowledgeCollectionRun, KnowledgeOrganizeDraft, KnowledgePendingItem,
   KnowledgeSourceVersion,
@@ -78,12 +79,13 @@ export async function cancelCollectionRun(id: string): Promise<KnowledgeCollecti
   return postJson<KnowledgeCollectionRun>('/api/admin/knowledge/collection-runs/' + encodeURIComponent(id) + '/cancel', {});
 }
 
-export async function fetchPending(options: { state?: string; collectionId?: string; limit?: number } = {}): Promise<{ items: KnowledgePendingItem[]; counts: Record<string, number> }> {
+export async function fetchPending(options: KnowledgePendingListQuery = {}): Promise<KnowledgePendingListResponse> {
   const params = new URLSearchParams();
   if (options.state) params.set('state', options.state);
   if (options.collectionId) params.set('collectionId', options.collectionId);
   params.set('limit', String(options.limit ?? 60));
-  return getJson('/api/admin/knowledge/pending?' + params.toString());
+  params.set('offset', String(options.offset ?? 0));
+  return getJson('/api/admin/knowledge/pending?' + params.toString(), undefined, KnowledgePendingListResponseSchema);
 }
 
 export async function fetchPendingDetail(id: string): Promise<{ item: KnowledgePendingItem; versions: KnowledgeSourceVersion[] }> {

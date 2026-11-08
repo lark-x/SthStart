@@ -109,7 +109,7 @@ function ConnectionForm({
         </div>
       )}
 
-      <details className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+      <details className="rounded-panel border border-border-subtle bg-surface p-3">
         <summary className="cursor-pointer text-sm font-semibold">高级：内部 ID</summary>
         <div className="mt-2">
           <label htmlFor="conn-id" className="mb-1 block text-sm font-medium text-ink">内部 ID（自动生成，可自定义）</label>
@@ -119,7 +119,7 @@ function ConnectionForm({
       </details>
 
       {(!engine || engine.kind === 'worker') && (
-        <details className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+        <details className="rounded-panel border border-border-subtle bg-surface p-3">
           <summary className="cursor-pointer text-sm font-semibold">高级：Windows Worker 设置</summary>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -250,7 +250,7 @@ export function ConnectionsPanel({
         </div>
       </section>
 
-      <details className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+      <details className="rounded-panel border border-border-subtle bg-surface p-3">
         <summary className="cursor-pointer text-sm font-semibold text-ink">高级诊断</summary>
         <div className="mt-3">{diagnostics && <DiagnosticsPanel diagnostics={diagnostics} />}</div>
       </details>

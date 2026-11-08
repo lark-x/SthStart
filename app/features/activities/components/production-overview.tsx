@@ -46,7 +46,7 @@ export function ProductionOverview({ activityId, document, headVersion, onReview
      * 紧凑单行条：标题、说明与主动作同行。之前用大卡片承载一句提示，
      * 在页头与标签栏之间又插了一整块，页面显得层数过多。
      */
-    <section aria-label="接下来做什么" className="rounded-[var(--radius-panel)] border border-border-default bg-surface px-4 py-3">
+    <section aria-label="接下来做什么" className="rounded-panel border border-border-default bg-surface px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <p className="text-xs font-semibold text-accent shrink-0">下一步</p>
         <div className="min-w-0 flex-1">

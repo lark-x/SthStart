@@ -20,7 +20,7 @@ import {
   type CreativeTaskInput,
   uploadCreativeImage,
 } from '@/app/features/creative/api';
-import { useCreativeArtifacts, useCreativeGenerationOptions, useCreativeStatus, useCreativeTasks } from '@/app/features/creative/queries';
+import { useCreativeArtifacts, useCreativeGenerationOptions, useCreativeStatus, useCreativeTaskPages } from '@/app/features/creative/queries';
 import {
   creativeImageAccept,
   creativeImageAllowed,
@@ -39,6 +39,7 @@ import { ImageResultPreview } from '@/app/features/creative/components/image-res
 import { TaskList } from '@/app/features/creative/components/task-list';
 import { MediaGallery } from '@/app/features/creative/components/media-gallery';
 import { creativeKeys } from '@/app/lib/query-keys';
+import { createActionLock } from './action-lock';
 
 const IMAGE_TABS = [
   { value: 'text-to-image' as const, label: '文本生图', Icon: Sparkles },
@@ -56,7 +57,7 @@ export function CreativeClient() {
   const toast = useToast();
   const statusQuery = useCreativeStatus();
   const optionsQuery = useCreativeGenerationOptions();
-  const tasksQuery = useCreativeTasks();
+  const tasksQuery = useCreativeTaskPages();
   const artifactsQuery = useCreativeArtifacts();
   const [mode, setMode] = useState<CreativeMode>('text-to-image');
   const [form, setForm] = useState<CreativeFormState>(EMPTY_CREATIVE_FORM);
@@ -67,7 +68,24 @@ export function CreativeClient() {
   const [lastFramePreview, setLastFramePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [actionLock] = useState(createActionLock);
+  const [taskActionCount, setTaskActionCount] = useState(0);
   const [pageError, setPageError] = useState('');
+  const serviceDetailsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent | KeyboardEvent) => {
+      const details = serviceDetailsRef.current;
+      if (!details?.open) return;
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== 'Escape' || event.isComposing) return;
+        details.open = false;
+        details.querySelector('summary')?.focus();
+      } else if (!details.contains(event.target as Node)) details.open = false;
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', dismiss);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', dismiss); };
+  }, []);
 
   // ── 预设选择（规划 §10.1）：工作流选择 → 预设选择；表单随选择变化。 ──
   const imageOptions = mode === 'text-to-image' || mode === 'image-to-image'
@@ -91,7 +109,10 @@ export function CreativeClient() {
     if (lastFramePreview?.startsWith('blob:')) URL.revokeObjectURL(lastFramePreview);
   }, [lastFramePreview]);
 
-  const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
+  const tasks = useMemo(() => {
+    const seen = new Set<string>();
+    return (tasksQuery.data?.pages.flatMap(page => page.items) ?? []).filter(item => !seen.has(item.id) && Boolean(seen.add(item.id)));
+  }, [tasksQuery.data]);
   // 媒体库是 created_at DESC + OFFSET 分页：上传/删除/10s 轮询都会移动偏移
   // 基准，先加载的旧页与按新序位取到的下一页可能重叠，按 id 去重避免
   // 重复卡片与重复 React key。
@@ -118,7 +139,7 @@ export function CreativeClient() {
   const imageReferenceKey = selectedImageConfiguration?.referenceInputKey ?? 'sourceImage';
   const referenceBinding = selectedImageConfiguration ? { ...binding, inputCapabilities: selectedImageConfiguration.inputCapabilities } as typeof binding : binding;
   const ready = Boolean(binding?.ready);
-  const serviceError = statusQuery.error ?? tasksQuery.error ?? artifactsQuery.error;
+  const serviceError = statusQuery.error ?? optionsQuery.error ?? tasksQuery.error ?? artifactsQuery.error;
   const sortedTasks = useMemo(() => tasks.slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [tasks]);
   const isVideoMode = mode.startsWith('h3-');
   const videoTabs = [
@@ -200,6 +221,7 @@ export function CreativeClient() {
   };
 
   const handleCreate = async () => {
+    if (submitting || uploading) return;
     setPageError('');
     if (!form.prompt.trim()) {
       setPageError('请先写下提示词。');
@@ -222,6 +244,7 @@ export function CreativeClient() {
       setPageError('请填写有效的视频时长。');
       return;
     }
+    if (!actionLock.acquire('create')) return;
     setSubmitting(true);
     try {
       const payload: CreativeTaskInput = {
@@ -238,27 +261,38 @@ export function CreativeClient() {
     } catch (err) {
       setPageError(err instanceof Error ? err.message : String(err));
     } finally {
+      actionLock.release('create');
       setSubmitting(false);
     }
   };
 
   const handleCancel = async (id: string) => {
+    if (!actionLock.acquire('task:' + id)) return;
+    setTaskActionCount(count => count + 1);
     try {
       await cancelCreativeTask(id);
       await queryClient.invalidateQueries({ queryKey: creativeKeys.tasks() });
       toast.success('已请求取消任务');
     } catch (error) {
       toast.error('取消任务失败', error instanceof Error ? error.message : String(error));
+    } finally {
+      actionLock.release('task:' + id);
+      setTaskActionCount(count => count - 1);
     }
   };
 
   const handleRetry = async (id: string) => {
+    if (!actionLock.acquire('task:' + id)) return;
+    setTaskActionCount(count => count + 1);
     try {
       await retryCreativeTask(id);
       await queryClient.invalidateQueries({ queryKey: creativeKeys.tasks() });
       toast.success('已创建重试任务');
     } catch (error) {
       toast.error('重试任务失败', error instanceof Error ? error.message : String(error));
+    } finally {
+      actionLock.release('task:' + id);
+      setTaskActionCount(count => count - 1);
     }
   };
 
@@ -331,9 +365,20 @@ export function CreativeClient() {
     <PageContainer className="space-y-4 py-4 sm:space-y-5 sm:py-6">
       <PageHeader
         compact
-        title="图像工坊"
-        description="高质量文本生图、图生图与创作媒体资产库。"
+        title="自由生成"
+        description="独立尝试画面与视频创意。生成结果可在媒体库中加入创作项目。"
         actions={
+          <div className="flex items-center gap-3">
+            <details ref={serviceDetailsRef} className="relative text-sm">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-2 text-muted">
+                <span className={`h-2 w-2 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} />
+                服务{ready ? '已就绪' : '待配置'}
+              </summary>
+              <div className="absolute right-0 top-full z-40 mt-2 w-80 max-w-[80vw] rounded-panel border border-border-subtle bg-surface p-4 shadow-floating">
+                <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
+                {!ready && <a href="/settings/generation" className="mt-3 inline-block text-sm text-accent underline">前往生成设置</a>}
+              </div>
+            </details>
           <Button
             size="sm"
             variant="outline"
@@ -347,6 +392,7 @@ export function CreativeClient() {
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             刷新
           </Button>
+          </div>
         }
       />
 
@@ -361,27 +407,9 @@ export function CreativeClient() {
       )}
 
       {/* 紧凑任务状态与视口切换工具栏 */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-2.5 text-xs text-muted">
-        <div className="flex items-center gap-2">
-          <details className="cursor-pointer">
-            <summary className="inline-flex items-center gap-1.5 font-medium text-ink hover:text-accent select-none py-1">
-              <span className={`inline-block h-2 w-2 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} />
-              <span>服务：{ready ? '已就绪' : '待配置'}</span>
-              <span className="text-muted text-[11px]">（详情）</span>
-            </summary>
-            <div className="mt-2.5 max-w-xl animate-in fade-in duration-150">
-              <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
-            </div>
-          </details>
-          {!ready && (
-            <a href="/settings/generation" className="font-semibold text-accent hover:underline ml-1">
-              去配置工作流 →
-            </a>
-          )}
-        </div>
-
+      <div className="xl:hidden">
         {/* 移动端两栏切换 */}
-        <div className="flex items-center gap-1 xl:hidden bg-surface-sunken p-0.5 rounded-[var(--radius-control)] border border-border-subtle" role="group" aria-label="生图工作区分栏">
+        <div className="flex items-center gap-1 xl:hidden bg-surface-sunken p-0.5 rounded-control border border-border-subtle" role="group" aria-label="生图工作区分栏">
           <button
             type="button"
             aria-pressed={mobilePane === 'configuration'}
@@ -409,34 +437,30 @@ export function CreativeClient() {
         </div>
       </div>
 
+      <PageTabs
+        ariaLabel="生成模式"
+        value={mode}
+        onChange={(id) => handleModeChange(id as CreativeMode)}
+        className="flex-nowrap overflow-x-auto"
+        tabs={[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => ({
+          id: value,
+          panelId: `creative-panel-${value}`,
+          label: <><Icon className="h-4 w-4" aria-hidden="true" />{label}</>,
+        }))}
+      />
       <SplitPanes
         resizable
         storageKey="sthstart_creative_split"
-        defaultSplitRatio={0.36}
-        minLeftWidth={320}
-        minRightWidth={420}
-        leftClassName={mobilePane === 'configuration' ? '' : 'hidden xl:block'}
+        defaultSplitRatio={0.4}
+        minLeftWidth={360}
+        minRightWidth={360}
+        leftClassName={`${!isVideoMode ? 'creative-configuration' : ''} ${mobilePane === 'configuration' ? '' : 'hidden xl:block'}`}
         rightClassName={mobilePane === 'results' ? '' : 'hidden xl:block'}
-        className="gap-6 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]"
+        className="creative-split gap-6 xl:grid-cols-[minmax(360px,2fr)_minmax(0,3fr)]"
         from="xl"
         labels={{ left: '生成参数', right: '生成结果' }}
         left={
-          <div className="space-y-4">
-            <PageTabs
-              ariaLabel="生成模式"
-              value={mode}
-              onChange={(id) => handleModeChange(id as CreativeMode)}
-              tabs={[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => ({
-                id: value,
-                panelId: `creative-panel-${value}`,
-                label: (
-                  <>
-                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {label}
-                  </>
-                ),
-              }))}
-            />
+          <div id={`creative-panel-${mode}`} role="tabpanel" aria-label="生成参数">
             {isVideoMode ? (
               <VideoGenerator
                 form={form}
@@ -534,41 +558,20 @@ export function CreativeClient() {
         }
         right={
           <div className="min-w-0 space-y-5">
-            {!isVideoMode && (
+            {!isVideoMode && sortedTasks.some(task => !task.replay.mode.startsWith('h3-') && task.artifacts.some(item => item.mediaKind === 'image')) && (
               <ImageResultPreview
                 tasks={sortedTasks.filter((task) => !task.replay.mode.startsWith('h3-'))}
                 onReplay={handleReplay}
               />
             )}
-            <div className="flex items-center gap-1 bg-surface-sunken p-1 rounded-[var(--radius-control)] border border-border-subtle w-fit" role="tablist" aria-label="创作结果视图">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={resultView === 'media'}
-                onClick={() => setResultView('media')}
-                className={`px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-all ${
-                  resultView === 'media'
-                    ? 'bg-surface text-ink font-semibold shadow-xs'
-                    : 'text-muted hover:text-ink'
-                }`}
-              >
-                媒体库 ({artifactsTotal})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={resultView === 'tasks'}
-                onClick={() => setResultView('tasks')}
-                className={`px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-all ${
-                  resultView === 'tasks'
-                    ? 'bg-surface text-ink font-semibold shadow-xs'
-                    : 'text-muted hover:text-ink'
-                }`}
-              >
-                生成任务 ({sortedTasks.length})
-              </button>
-            </div>
-            {resultView === 'media' ? (
+            <PageTabs ariaLabel="创作结果视图" value={resultView} onChange={value => setResultView(value as 'media' | 'tasks')} tabs={[
+              { id: 'media', label: '媒体库', count: artifactsTotal, panelId: 'creative-results-media' },
+              { id: 'tasks', label: '生成任务', count: sortedTasks.length, panelId: 'creative-results-tasks' },
+            ]} />
+            <div id={`creative-results-${resultView}`} role="tabpanel" aria-label={resultView === 'media' ? '媒体库' : '生成任务'}>
+            {resultView === 'media' && artifactsQuery.isError && <div role="alert" className="space-y-2 text-sm text-danger-fg"><p>媒体读取失败，已有结果会保留。</p><Button variant="outline" disabled={artifactsQuery.isFetching} onClick={() => { if (artifactsQuery.isFetchNextPageError) void artifactsQuery.fetchNextPage(); else void artifactsQuery.refetch(); }}>重新读取媒体</Button></div>}
+            {resultView === 'tasks' && tasksQuery.isError && <div role="alert" className="space-y-2 text-sm text-danger-fg"><p>任务读取失败，无法确认当前任务状态。</p><Button variant="outline" disabled={tasksQuery.isFetching} onClick={() => void tasksQuery.refetch()}>重新读取任务</Button></div>}
+            {resultView === 'media' ? (artifactsQuery.isError && !artifactsQuery.data ? null :
               <MediaGallery
                 artifacts={artifacts}
                 total={artifactsTotal}
@@ -576,12 +579,15 @@ export function CreativeClient() {
                 hasMore={Boolean(artifactsQuery.hasNextPage)}
                 isLoadingMore={artifactsQuery.isFetchingNextPage}
                 onLoadMore={() => {
-                  void artifactsQuery.fetchNextPage();
+                  if (!artifactsQuery.isFetching && artifactsQuery.hasNextPage) void artifactsQuery.fetchNextPage();
                 }}
                 onPin={handlePin}
                 onDelete={handleDelete}
               />
-            ) : (
+            ) : (tasksQuery.isError && !tasksQuery.data ? null :
+              <fieldset disabled={taskActionCount > 0} aria-busy={taskActionCount > 0} className="min-w-0">
+              <legend className="sr-only">生成任务操作</legend>
+              {taskActionCount > 0 && <p role="status" className="text-sm text-muted">正在处理任务操作…</p>}
               <TaskList
                 tasks={sortedTasks}
                 isLoading={tasksQuery.isLoading}
@@ -589,7 +595,11 @@ export function CreativeClient() {
                 onRetry={handleRetry}
                 onReplay={handleReplay}
               />
+              </fieldset>
             )}
+            {resultView === 'tasks' && tasksQuery.hasNextPage && <Button variant="outline" disabled={tasksQuery.isFetching} onClick={() => { if (!tasksQuery.isFetching) void tasksQuery.fetchNextPage(); }}>{tasksQuery.isFetchingNextPage ? '正在加载…' : tasksQuery.isFetchNextPageError ? '重试加载更多任务' : '加载更多任务'}</Button>}
+            {resultView === 'tasks' && tasks.length > 0 && !tasksQuery.hasNextPage && !tasksQuery.isFetching && !tasksQuery.isError && <p role="status" className="text-sm text-muted">已显示全部任务</p>}
+            </div>
           </div>
         }
       />

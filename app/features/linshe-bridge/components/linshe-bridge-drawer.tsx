@@ -28,13 +28,13 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
 import { useToast } from '@/app/providers/ui-provider';
+import { useCharacters } from '@/app/features/characters/queries';
 import {
   fetchLinsheBridgeStatus,
   syncCharacterWithLinshe,
   fetchLinsheGallery,
   importLinsheGalleryImage,
-  fetchCharacters,
-} from '@/app/features/characters/api';
+  } from '@/app/features/characters/api';
 
 interface LinsheBridgeDrawerProps {
   open: boolean;
@@ -90,12 +90,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
   });
 
   // 3. 获取所有角色列表
-  const { data: charactersData } = useQuery({
-    queryKey: ['characters', 'all-profiles'],
-    queryFn: () => fetchCharacters(),
-    enabled: open,
-    staleTime: 60_000,
-  });
+  const { data: charactersData } = useCharacters({ enabled: open });
 
   const allCharacters = useMemo(() => charactersData?.items ?? [], [charactersData]);
 

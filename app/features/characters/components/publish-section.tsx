@@ -29,7 +29,7 @@ export function PublishSection({
         </p>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-[var(--radius-panel)] border border-border-subtle bg-surface">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-panel border border-border-subtle bg-surface">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -63,7 +63,7 @@ export function PublishSection({
         <h4 className="text-xs font-semibold text-fg-subtle uppercase tracking-wider">
           邻舍人格提示词预览 (Compiled Prompt)
         </h4>
-        <pre className="p-4 rounded-[var(--radius-panel)] border border-border-subtle bg-surface-sunken text-ink font-mono text-xs leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap">
+        <pre className="p-4 rounded-panel border border-border-subtle bg-surface-sunken text-ink font-mono text-xs leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap">
           {previewPrompt}
         </pre>
       </div>
@@ -74,7 +74,7 @@ export function PublishSection({
           版本发布记录 ({detail?.versions.length ?? 0})
         </h4>
 
-        <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
+        <div className="rounded-panel border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
           {detail?.versions.map((ver) => (
             <div
               key={ver.version}
@@ -106,7 +106,7 @@ export function PublishSection({
           使用此角色的应用 ({detail?.links.length ?? 0})
         </h4>
 
-        <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
+        <div className="rounded-panel border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
           {detail?.links.map((link) => (
             <div
               key={`${link.app_id}-${link.local_id}`}

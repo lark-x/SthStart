@@ -76,7 +76,7 @@ export const ThinkingAccordion: React.FC<ThinkingAccordionProps> = ({
       role="region"
       aria-label="推理思考链"
       className={cn(
-        'group/thinking my-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken/40 transition-colors',
+        'group/thinking my-2 rounded-control border border-border-subtle bg-surface-sunken/40 transition-colors',
         className,
       )}
     >

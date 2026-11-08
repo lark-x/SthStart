@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
+import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 
 /**
@@ -13,18 +14,28 @@ export function NarrativeInspector({
   query,
   onQueryChange,
   results,
+  loading = false,
+  error = null,
+  onRetry,
   onSelectResult,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
   results: NarrativeSearchResult[];
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   onSelectResult: (res: NarrativeSearchResult) => void;
 }) {
   const [draft, setDraft] = useState(query);
+  const composingRef = useRef(false);
 
   useEffect(() => {
+    if (composingRef.current) return;
     if (draft === query) return;
-    const timer = setTimeout(() => onQueryChange(draft), 300);
+    const timer = setTimeout(() => {
+      if (!composingRef.current) onQueryChange(draft);
+    }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
@@ -46,6 +57,13 @@ export function NarrativeInspector({
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const value = event.currentTarget.value;
+              setDraft(value);
+              onQueryChange(value);
+            }}
             placeholder="搜索当前作品原文…"
             aria-label="搜索当前作品原文"
             className="h-9 bg-surface pl-9 text-base sm:text-sm"
@@ -54,7 +72,14 @@ export function NarrativeInspector({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        {query ? (
+        {query.trim() ? error ? (
+          <div role="alert" className="space-y-3 rounded-control border border-danger/20 bg-danger/10 p-3 text-sm text-danger-fg">
+            <p>原文检索失败：{error}</p>
+            {onRetry && <Button size="sm" variant="outline" onClick={onRetry}>重试检索</Button>}
+          </div>
+        ) : loading ? (
+          <p role="status" className="py-6 text-center text-sm text-fg-subtle">正在检索原文…</p>
+        ) : (
           <div>
             <p className="pb-2 text-xs text-fg-subtle">检索结果 · {results.length} 条</p>
             <div className="[&>*+*]:border-t [&>*+*]:border-border-subtle">
@@ -63,7 +88,7 @@ export function NarrativeInspector({
                 key={`${r.kind}-${r.refId}`}
                 type="button"
                 onClick={() => onSelectResult(r)}
-                className="-mx-1 w-[calc(100%+8px)] space-y-1 rounded-[var(--radius-control)] px-1 py-2.5 text-left transition-colors hover:bg-surface-hover"
+                className="-mx-1 w-[calc(100%+8px)] space-y-1 rounded-control px-1 py-2.5 text-left transition-colors hover:bg-surface-hover"
               >
                 <strong className="block text-sm font-medium text-ink">
                   {r.title || r.kind}

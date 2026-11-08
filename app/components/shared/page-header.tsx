@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { PageHeaderIcon } from './page-header-icon';
 
 export interface PageHeaderProps extends Omit<React.ComponentPropsWithoutRef<'header'>, 'title'> {
   title: string;
@@ -45,13 +46,16 @@ export function PageHeader({
       )}
 
       <div className="tpl-header-main">
-        <div className="min-w-0">
-          <h1 className={cn('tpl-title', compact && 'text-xl')}>{title}</h1>
-          {description && (
-            <p className={cn('tpl-description mt-0.5', compact && 'line-clamp-2')}>
-              {description}
-            </p>
-          )}
+        <div className="tpl-heading">
+          <PageHeaderIcon compact={compact} />
+          <div className="min-w-0">
+            <h1 className={cn('tpl-title', compact && 'text-xl')}>{title}</h1>
+            {description && (
+              <p className={cn('tpl-description mt-0.5', compact && 'line-clamp-2')}>
+                {description}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* page-header-actions 保留为兼容类名：既有测试与样式仍按它定位动作区。 */}

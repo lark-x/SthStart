@@ -163,7 +163,7 @@ export function WorkflowImportDialog({
             </div>
             <textarea
               aria-label="工作流 JSON 内容"
-              className="h-48 w-full rounded-[var(--radius-control)] border border-border-default bg-surface p-2 font-mono text-xs"
+              className="h-48 w-full rounded-control border border-border-default bg-surface p-2 font-mono text-xs"
               value={rawText}
               onChange={(event) => setRawText(event.target.value)}
               placeholder='{"3": {"class_type": "KSampler", "inputs": {...}}, ...}'
@@ -202,7 +202,7 @@ export function WorkflowImportDialog({
                 <ul className="list-disc space-y-1 pl-4">{analysis.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
               </Alert>
             )}
-            {analysis.packageInfo ? <p className="text-sm text-muted">保留配置包中的原始字段、默认值与节点绑定，不重新套用自动识别结果。</p> : <div className="max-h-56 space-y-1 overflow-y-auto rounded-[var(--radius-control)] border border-border-subtle p-2">
+            {analysis.packageInfo ? <p className="text-sm text-muted">保留配置包中的原始字段、默认值与节点绑定，不重新套用自动识别结果。</p> : <div className="max-h-56 space-y-1 overflow-y-auto rounded-control border border-border-subtle p-2">
               {analysis.inputs.map((item) => (
                 <label key={item.key} className="flex items-start gap-2 text-sm">
                   <input

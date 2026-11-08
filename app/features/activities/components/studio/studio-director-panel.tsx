@@ -72,7 +72,7 @@ export function StudioDirectorPanel({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
             title="展开镜头属性与导演面板"
             aria-label="展开镜头属性与导演面板"
           >
@@ -112,7 +112,7 @@ export function StudioDirectorPanel({
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+          className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
           title="收起右栏"
           aria-label="收起右栏"
         >
@@ -182,7 +182,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('shotSize', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
+                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >
@@ -209,7 +209,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('angle', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
+                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >
@@ -236,7 +236,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('lighting', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
+                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >
@@ -263,7 +263,7 @@ export function StudioDirectorPanel({
                       onClick={() => handleUpdateDirector('mood', item.value)}
                       className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
                         active
-                          ? 'bg-accent text-[var(--fg-on-accent)] font-bold shadow-2xs'
+                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
                           : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
                       }`}
                     >

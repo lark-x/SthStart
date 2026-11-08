@@ -45,7 +45,7 @@ export function StudioOutlineRail({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
             title="展开剧情大纲"
             aria-label="展开剧情大纲"
           >
@@ -64,7 +64,7 @@ export function StudioOutlineRail({
                   onClick={() => onSelectStage(stage.id)}
                   className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-mono font-bold transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs'
+                      ? 'bg-accent text-fg-on-accent shadow-2xs'
                       : 'text-muted hover:text-ink hover:bg-surface-muted'
                   }`}
                   title={`第 ${idx + 1} 幕 · ${stage.title}`}
@@ -103,7 +103,7 @@ export function StudioOutlineRail({
           <button
             type="button"
             onClick={onAddStage}
-            className="flex h-7 cursor-pointer items-center gap-1 rounded-[var(--radius-control)] px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
+            className="flex h-7 cursor-pointer items-center gap-1 rounded-control px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
             title="新增一幕"
           >
             <Plus className="h-3 w-3" />
@@ -112,7 +112,7 @@ export function StudioOutlineRail({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
             title="收起侧栏"
             aria-label="收起侧栏"
           >
@@ -144,7 +144,7 @@ export function StudioOutlineRail({
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
-                    isStageActive ? 'bg-accent text-[var(--fg-on-accent)]' : 'bg-surface-muted text-muted'
+                    isStageActive ? 'bg-accent text-fg-on-accent' : 'bg-surface-muted text-muted'
                   }`}>
                     {stageIdx + 1}
                   </span>
@@ -176,7 +176,7 @@ export function StudioOutlineRail({
                           e.stopPropagation();
                           onSelectScene(stage.id, scene.id);
                         }}
-                        className={`flex w-full cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-2 py-1.5 text-left text-sm transition-colors ${
+                        className={`flex w-full cursor-pointer items-center justify-between rounded-control px-2 py-1.5 text-left text-sm transition-colors ${
                           isSceneActive
                             ? 'bg-surface font-medium text-ink'
                             : 'text-muted hover:bg-surface-hover hover:text-ink'
@@ -202,7 +202,7 @@ export function StudioOutlineRail({
                       e.stopPropagation();
                       onAddScene(stage.id);
                     }}
-                    className="mt-1 flex w-full cursor-pointer items-center justify-center gap-1 rounded-[var(--radius-control)] px-2 py-1.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
+                    className="mt-1 flex w-full cursor-pointer items-center justify-center gap-1 rounded-control px-2 py-1.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
                   >
                     <Plus className="h-3 w-3" />
                     <span>加场</span>

@@ -74,7 +74,7 @@ export function LogViewer({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[var(--radius-panel)] border border-border-default bg-ink text-[#dae2de] overflow-hidden shadow-lg">
+      <div className="rounded-panel border border-border-default bg-ink text-[#dae2de] overflow-hidden shadow-lg">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-white/10 bg-[#1f2925]">
           <div className="flex items-center gap-2 flex-wrap">

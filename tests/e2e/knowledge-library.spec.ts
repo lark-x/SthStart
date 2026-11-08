@@ -1,4 +1,13 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+/** 展开列表上方的「高级筛选」。hydration 前的点击可能被丢弃，重试到筛选下拉出现为止。 */
+async function openAdvancedFilters(page: Page) {
+  const work = page.getByRole('combobox', { name: '作品', exact: true });
+  await expect(async () => {
+    if (!(await work.isVisible())) await page.getByRole('button', { name: /^高级筛选/ }).click();
+    await expect(work).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
+}
 
 test('knowledge workspace filters server results and keeps cached pages out of the selection', async ({ page, request }) => {
   const suffix = Date.now().toString(36);
@@ -23,6 +32,8 @@ test('knowledge workspace filters server results and keeps cached pages out of t
     const list = page.locator('.notebook-master-list');
     await expect(list.getByText('目标资料' + suffix)).toBeVisible();
     await expect(list.getByText('其他作品' + suffix)).toBeVisible();
+    // 作品、角色等筛选收在「高级筛选」折叠区里，先展开再选。
+    await openAdvancedFilters(page);
     await page.getByRole('combobox', { name: '作品', exact: true }).selectOption('原神');
     await expect(list.getByText('目标资料' + suffix)).toBeVisible();
     await expect(list.getByText('其他作品' + suffix)).toHaveCount(0);
@@ -32,6 +43,7 @@ test('knowledge workspace filters server results and keeps cached pages out of t
     await expect(list.getByText('目标资料' + suffix)).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/apps/notebook');
+    await openAdvancedFilters(page);
     await expect(page.getByRole('combobox', { name: '作品', exact: true })).toBeVisible();
   } finally {
     for (const id of ids) await request.delete(root + '/notebook/notes/' + id, { headers });

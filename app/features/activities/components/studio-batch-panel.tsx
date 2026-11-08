@@ -14,7 +14,7 @@ import {getEffectiveStageScenes} from '../scene-beat-utils';
 import {studioStatusLabels} from './studio-proposal-review';
 import {StudioTaskControls} from './studio-task-controls';
 
-const selectClass='h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm';
+const selectClass='h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm';
 const stateLabels:Record<StudioItem['state'],string>={waiting:'待提交',preparing:'准备中',submitted:'已提交',succeeded:'已完成',failed:'失败',skipped:'已跳过',cancelled:'已停止',interrupted:'已中断',unknown:'结果未确定'};
 export function StudioBatchPanel({activityId,content,job,beforeAction,onSelectJob,onSync}:{activityId:string;content:ContentDocument;job:StudioJob|null;
   beforeAction():Promise<boolean>;onSelectJob(id:string|null):void;onSync():Promise<void>}){

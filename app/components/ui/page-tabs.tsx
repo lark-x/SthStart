@@ -65,7 +65,7 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
       aria-label={ariaLabel}
       onKeyDown={handleKeyDown}
       className={cn(
-        'page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-[var(--radius-control)] bg-surface-sunken p-1',
+        'page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-control bg-surface-sunken p-1',
         className
       )}
     >
@@ -85,7 +85,7 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'inline-flex h-9 sm:h-8 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-control)-3px)] px-3 text-sm font-medium transition-colors duration-[var(--motion-fast)]',
+              'inline-flex h-9 sm:h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-control)-3px)] px-3 text-sm font-medium transition-colors duration-[var(--motion-fast)]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
               selected
                 ? 'bg-surface text-ink font-semibold shadow-xs'

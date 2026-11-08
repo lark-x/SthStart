@@ -25,7 +25,7 @@ interface ComicRenderDialogProps {
   onSubmitted(job: ComicJob): void;
 }
 
-const controlClass = 'w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
+const controlClass = 'w-full rounded-control border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
 const labelClass = 'block space-y-1 text-xs font-medium text-muted';
 type RenderOption = { key: string; purpose: string; workflowId: string; workflowVersion: number; presetId?: string; presetRevision?: number; label: string };
 
@@ -203,7 +203,7 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
         {preview && !preview.referenceSupported && <span>此方案不支持参考图。</span>}
       </label>
       <Link href="/settings/generation" target="_blank" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link>
-      <details hidden={!advanced} className="rounded-[var(--radius-panel)] border border-border-default p-3" onToggle={(event) => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
+      <details hidden={!advanced} className="rounded-panel border border-border-default p-3" onToggle={(event) => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
         <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="mt-1 text-xs text-muted">可按画格关闭或调权。</p>
         {preview?.loras.length ? <div className="mt-2 space-y-2">{preview.loras.map((lora) => {
           const override = settings.loraOverrides?.find((item) => item.model === lora.model);
@@ -217,7 +217,7 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
           </div>;
         })}</div> : <p className="mt-2 text-xs text-muted">{previewMutation.isPending ? '正在读取 LoRA 配置…' : '本次未启用角色 LoRA。'}</p>}
       </details>
-      <details hidden={!advanced} className="rounded-[var(--radius-panel)] border border-border-default p-3" onToggle={event => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
+      <details hidden={!advanced} className="rounded-panel border border-border-default p-3" onToggle={event => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
         <summary className="cursor-pointer text-sm font-medium text-ink">采样、尺寸与负面词</summary>
         <div className="mt-3 space-y-3">
           <label className={labelClass}>切换其他工作流<select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}><option value="">跟随活动默认配置</option>{renderOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
@@ -229,7 +229,7 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
           <VisualParameterFields key={`${panel.id}:${settings.workflowId ?? 'inherit'}:${settings.workflowVersion ?? ''}:${settings.quality ?? ''}`} recoveryKey={`sthstart:visual-input:comic:${activityId}:${panel.id}:${settings.workflowId ?? 'inherit'}:${settings.workflowVersion ?? ''}:${settings.quality ?? ''}`} fields={fields} values={settings.parameters ?? {}} onChange={parameters => updateSettings({ parameters })} onValidityChange={setParametersValid} disabled={busy} />
         </div>
       </details>
-      {advanced && preview && <details className="rounded-[var(--radius-panel)] border border-border-default bg-surface-muted/40 p-3"><summary className="cursor-pointer text-sm text-muted">查看提示词与实际配置</summary>
+      {advanced && preview && <details className="rounded-panel border border-border-default bg-surface-muted/40 p-3"><summary className="cursor-pointer text-sm text-muted">查看提示词与实际配置</summary>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"><strong className="text-ink">{preview.workflowName} v{preview.workflowVersion}</strong><span className="text-muted">模型：{preview.model || '工作流未识别模型'}</span><span className="text-muted">种子：{preview.seed}</span></div>
         <p className="mt-2 text-xs text-muted">提示词模式：{preview.promptAssembly === 'service-finalized-v1'
           ? '服务端最终组装，正负提示词直接绑定文本编码器，画风只追加一次'

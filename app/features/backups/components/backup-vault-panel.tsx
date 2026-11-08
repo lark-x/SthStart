@@ -86,7 +86,7 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
                 <p className="text-sm text-muted">换机或已有备份：连接已有加密仓库</p>
                 <div className="grid gap-2 sm:grid-cols-3">
                   <select
-                    className="h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+                    className="h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
                     value={targetKind}
                     onChange={(event) => setTargetKind(event.target.value as BackupTarget['kind'])}
                   >
@@ -245,7 +245,7 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
               <label className="block text-sm">
                 <span className="text-muted">网盘类型</span>
                 <select
-                  className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+                  className="mt-1 h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
                   value={targetKind}
                   onChange={(event) => setTargetKind(event.target.value as BackupTarget['kind'])}
                 >

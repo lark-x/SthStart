@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { CreativeClient } from './creative-client';
 
 export const metadata: Metadata = {
-  title: '图像工坊 — SthStart',
-  description: '高质量文本生图、图生图与创作媒体资产库。',
+  title: '自由生成 — SthStart',
+  description: '独立尝试画面与视频创意，生成结果可加入创作项目。',
 };
 
 export default function CreativePage() {

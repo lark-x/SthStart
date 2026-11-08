@@ -38,7 +38,7 @@ export function StudioCanvasLayout({
   return (
     <div
       className={cn(
-        'relative flex h-[calc(100vh-var(--shell-topbar,48px))] h-[calc(100dvh-var(--shell-topbar,48px))] w-full flex-col overflow-hidden bg-paper select-text',
+        'relative flex h-[var(--shell-workspace-height,100dvh)] w-full flex-col overflow-hidden bg-paper select-text',
         className
       )}
     >

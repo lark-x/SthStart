@@ -67,8 +67,8 @@ export function AppearanceSection({
         </p>
       </div>
 
-      <div className="flex items-center gap-4 p-4 rounded-[var(--radius-panel)] border border-border-subtle bg-surface">
-        <div className="relative h-14 w-14 rounded-[var(--radius-control)] overflow-hidden bg-surface-sunken border border-border-subtle flex items-center justify-center text-ink font-semibold text-lg flex-shrink-0">
+      <div className="flex items-center gap-4 p-4 rounded-panel border border-border-subtle bg-surface">
+        <div className="relative h-14 w-14 rounded-control overflow-hidden bg-surface-sunken border border-border-subtle flex items-center justify-center text-ink font-semibold text-lg flex-shrink-0">
           {avatarUrl ? (
             <Image src={avatarUrl} alt="" fill unoptimized className="object-cover" />
           ) : (
@@ -106,7 +106,7 @@ export function AppearanceSection({
         </div>
       </div>
 
-      <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-3">
+      <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
         <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
           <div>
             <h4 className="text-sm font-semibold text-ink">外观参考图</h4>
@@ -137,7 +137,7 @@ export function AppearanceSection({
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             {references.map((reference) => (
               <div key={reference.id} className="space-y-1">
-                <div className="relative aspect-square overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-paper">
+                <div className="relative aspect-square overflow-hidden rounded-control border border-border-subtle bg-paper">
                   <Image src={reference.url} alt="" fill unoptimized className="object-cover" />
                 </div>
                 <Button
@@ -164,7 +164,7 @@ export function AppearanceSection({
           <p className="text-xs text-muted">尚未添加外观参考图。</p>
         )}
         {appearanceCandidate && (
-          <div className="rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken p-3 text-xs">
+          <div className="rounded-control border border-border-subtle bg-surface-sunken p-3 text-xs">
             <p className="font-semibold text-ink">已生成视觉候选</p>
             <p className="mt-0.5 text-xs text-muted">勾选要采用的细项；未勾选的部分会保留原有正文。</p>
             <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-muted">

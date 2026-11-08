@@ -17,7 +17,7 @@ import { StudioProposalReview, studioStatusLabels } from './studio-proposal-revi
 import { StudioRefinePanel } from './studio-refine-panel';
 import { StudioBatchPanel } from './studio-batch-panel';
 
-const selectClass = 'h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm';
+const selectClass = 'h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm';
 export function StudioSmartDialog({ activityId, content, open, stageId, sceneId, beatId, panelId, jobId, onClose, onSelectJob, beforeAction, onApplied }: {
   activityId: string; content: ContentDocument; open: boolean; stageId?: string; sceneId?: string; beatId?:string;panelId?:string; jobId: string | null;
   onClose(): void; onSelectJob(id: string | null): void; beforeAction(): Promise<boolean>; onApplied(job: StudioJob): Promise<void>;

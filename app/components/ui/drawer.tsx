@@ -46,7 +46,7 @@ export function Drawer({
       className="fixed inset-0 z-50 flex"
     >
       <div
-        className="fixed inset-0 bg-[var(--overlay-backdrop)] transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -80,7 +80,7 @@ export function Drawer({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭抽屉"
           >
             <X className="h-5 w-5" aria-hidden="true" />

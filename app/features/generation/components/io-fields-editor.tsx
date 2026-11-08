@@ -113,7 +113,7 @@ export function IoFieldsEditor({
           const slot = (rawSlot && typeof rawSlot === 'object' && !Array.isArray(rawSlot) ? rawSlot : {}) as MediaSlot;
           const mediaTypes = Array.isArray(slot.mediaTypes) ? slot.mediaTypes.join(', ') : '';
           return (
-            <div key={key} className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+            <div key={key} className="rounded-panel border border-border-subtle bg-surface p-3">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="w-44">
                   <label htmlFor={`slot-types-${key}`} className="mb-1 block text-sm font-medium text-ink">允许 MIME</label>
@@ -157,7 +157,7 @@ export function IoFieldsEditor({
             </div>
           );
         })}
-        <div className="flex flex-wrap items-end gap-2 rounded-[var(--radius-panel)] border border-dashed border-border-default p-3">
+        <div className="flex flex-wrap items-end gap-2 rounded-panel border border-dashed border-border-default p-3">
           <div className="w-44">
             <label htmlFor="new-slot-key" className="mb-1 block text-sm font-medium text-ink">新槽位键</label>
             <Input id="new-slot-key" value={newSlotKey} onChange={(event) => setNewSlotKey(event.target.value)} placeholder="例如 sourceImage" />
@@ -180,7 +180,7 @@ export function IoFieldsEditor({
           {outputCandidates.map((nodeId) => {
             const node = draft.definition[nodeId] as { class_type?: string } | undefined;
             return (
-              <label key={nodeId} className="flex items-center gap-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface px-3 py-2 text-sm">
+              <label key={nodeId} className="flex items-center gap-2 rounded-control border border-border-subtle bg-surface px-3 py-2 text-sm">
                 <input type="checkbox" checked={draft.outputDeclarations.includes(nodeId)} onChange={() => toggleOutput(nodeId)} />
                 <code>{nodeId}</code>
                 <span className="text-muted">{node?.class_type}</span>

@@ -129,7 +129,7 @@ export function ParameterFieldsEditor({
           const isNumeric = type === 'integer' || type === 'number' || type === 'seed';
           const enumValues = Array.isArray(schema.enum) ? schema.enum as string[] : [];
           return (
-            <div key={field.key} className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+            <div key={field.key} className="rounded-panel border border-border-subtle bg-surface p-3">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-0 flex-1">
                   <label htmlFor={`param-label-${field.key}`} className="mb-1 block text-sm font-medium text-ink">显示名称</label>
@@ -207,7 +207,7 @@ export function ParameterFieldsEditor({
       </div>
 
       {unmapped.length > 0 && (
-        <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+        <div className="rounded-panel border border-border-subtle bg-surface p-3">
           <h3 className="text-sm font-semibold text-ink">未映射的节点输入（{unmapped.length}）</h3>
           <p className="mt-1 text-sm text-muted">这些输入保留在工作流定义中不会丢失；确认后可映射为业务字段暴露到表单。</p>
           <ul className="mt-2 space-y-1">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ban, Copy, Plus, Save, Star, Trash2 } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
@@ -170,17 +170,31 @@ export function PresetPanel({
   const [deletingPreset, setDeletingPreset] = useState<GenerationPreset | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [loadingPresets, setLoadingPresets] = useState(true);
 
   const reloadPresets = async () => {
     const response = await fetchGenerationPresets();
     setPresets(response.items);
   };
 
+  const loadPresets = useCallback(async () => {
+    setLoadingPresets(true);
+    setLoadError('');
+    try {
+      const response = await fetchGenerationPresets();
+      setPresets(response.items);
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : '服务未连接，无法读取预设。');
+    } finally {
+      setLoadingPresets(false);
+    }
+  }, []);
   useEffect(() => {
     // 预设列表来自管理 API（外部系统）；挂载时加载一次。
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void reloadPresets();
-  }, []);
+    void loadPresets();
+  }, [loadPresets]);
   useEffect(() => {
     if (draftFor?.workflowId && draftFor.values) {
       // 「另存预设」入口带入试运行参数：仅在该入口变化时打开编辑器。
@@ -329,6 +343,8 @@ export function PresetPanel({
   return (
     <div className="space-y-4">
       {error && <Alert variant="danger" title="预设操作未完成" onDismiss={() => setError('')}>{error}</Alert>}
+      {loadError && <Alert variant="danger" title="预设读取失败">{loadError}<Button variant="outline" disabled={loadingPresets} onClick={() => void loadPresets()}>重新读取预设</Button></Alert>}
+      {loadingPresets && <p role="status" className="text-sm text-muted">正在读取预设…</p>}
 
       <section className="border-y border-border-subtle py-5">
         <div className="pb-4">
@@ -341,7 +357,7 @@ export function PresetPanel({
           </div>
         </div>
         <div className="divide-y divide-border-subtle border-t border-border-subtle">
-          {presets.length === 0 && <p className="text-sm text-fg-subtle">还没有预设。为常用场景（如「角色立绘」「横向场景图」）各建一个，图像工坊即可按预设生成。</p>}
+          {!loadingPresets && !loadError && presets.length === 0 && <p className="text-sm text-fg-subtle">还没有预设。为常用场景（如「角色立绘」「横向场景图」）各建一个，图像工坊即可按预设生成。</p>}
           {presets.map((preset) => {
             const workflow = workflowById.get(preset.workflowId);
             const engine = engines.find((item) => item.id === preset.engineId);
@@ -482,7 +498,7 @@ export function PresetPanel({
               <label htmlFor="preset-desc" className="mb-1 block text-sm font-medium text-ink">说明</label>
               <Input id="preset-desc" value={editor.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} />
             </div>
-            <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+            <div className="rounded-panel border border-border-subtle bg-surface p-3">
               <h3 className="text-sm font-semibold text-ink">参数覆盖值</h3>
               <p className="mt-0.5 text-sm text-muted">仅保存与默认不同的值；提示词默认不保存进共享预设，由使用者填写。</p>
               <div className="mt-2">

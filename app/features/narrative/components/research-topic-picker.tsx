@@ -90,7 +90,7 @@ export function ResearchTopicPicker({
               id="research-work"
               value={activeWorkId}
               onChange={(event) => { onWorkChange(event.target.value); setResult(null); }}
-              className="h-9 rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm"
+              className="h-9 rounded-control border border-border-default bg-surface px-3 text-sm"
             >
               {works.map((work) => <option key={work.id} value={work.id}>{work.title}</option>)}
             </select>
@@ -102,7 +102,7 @@ export function ResearchTopicPicker({
               <button
                 type="button"
                 onClick={() => { setMode('ai'); void runSuggest(); }}
-                className="-mx-2 flex w-[calc(100%+16px)] items-baseline gap-3 rounded-[var(--radius-control)] px-2 py-3 text-left transition-colors hover:bg-surface-hover"
+                className="-mx-2 flex w-[calc(100%+16px)] items-baseline gap-3 rounded-control px-2 py-3 text-left transition-colors hover:bg-surface-hover"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-ink">AI 发现研究主题</span>
@@ -113,7 +113,7 @@ export function ResearchTopicPicker({
               <button
                 type="button"
                 onClick={() => setMode('manual')}
-                className="-mx-2 flex w-[calc(100%+16px)] items-baseline gap-3 rounded-[var(--radius-control)] px-2 py-3 text-left transition-colors hover:bg-surface-hover"
+                className="-mx-2 flex w-[calc(100%+16px)] items-baseline gap-3 rounded-control px-2 py-3 text-left transition-colors hover:bg-surface-hover"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-ink">自己提出研究主题</span>
@@ -145,7 +145,7 @@ export function ResearchTopicPicker({
 
               <div className="space-y-2">
                 {candidates.map((candidate) => (
-                  <div key={candidate.id} className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-3">
+                  <div key={candidate.id} className="rounded-panel border border-border-default bg-surface p-3">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-ink">{candidate.title}</p>
@@ -162,7 +162,7 @@ export function ResearchTopicPicker({
                     {candidate.reason && <p className="mt-2 text-xs text-muted">值得研究：{candidate.reason}</p>}
                     {/* 种子证据必须来自本地原文，用户能直接看到出处。 */}
                     {candidate.seedEvidence.length > 0 && (
-                      <div className="mt-2 space-y-1 rounded-[var(--radius-control)] bg-ink/4 p-2">
+                      <div className="mt-2 space-y-1 rounded-control bg-ink/4 p-2">
                         <p className="text-xs font-semibold text-muted">本地种子证据</p>
                         {candidate.seedEvidence.slice(0, 2).map((seed, index) => (
                           <p key={`${seed.targetId}-${index}`} className="text-xs leading-relaxed text-ink/80">

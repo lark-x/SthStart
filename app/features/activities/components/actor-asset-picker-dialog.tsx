@@ -132,7 +132,7 @@ export function ActorAssetPickerDialog({
                           />
                         </div>
                         {isSelected && (
-                          <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[var(--fg-on-accent)] shadow-xs">
+                          <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-fg-on-accent shadow-xs">
                             <Check className="h-2.5 w-2.5" />
                           </div>
                         )}

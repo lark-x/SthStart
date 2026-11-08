@@ -38,7 +38,7 @@ export function InlineCandidatePanel({
   });
 
   return (
-    <section aria-label="生成结果预览" className="rounded-[var(--radius-panel)] border border-accent/40 bg-accent/5 p-3 space-y-2">
+    <section aria-label="生成结果预览" className="rounded-panel border border-accent/40 bg-accent/5 p-3 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ink">
           {running ? '正在生成…' : failed ? '生成失败' : `已生成 ${candidates.length} 个候选，确认后才会写入`}

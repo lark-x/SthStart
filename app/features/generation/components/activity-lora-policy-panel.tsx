@@ -72,7 +72,7 @@ export function ActivityLoraPolicyPanel({ workflows }: { workflows: Workflow[] }
         {error && <Alert variant="danger" title="LoRA 配置操作失败">{error}</Alert>}
         {loading || !response ? <div className="py-10 text-center text-sm text-muted" role="status">正在检查工作流节点和 LoRA 文件…</div> : <>
           <div className="space-y-3">
-            {entries.map((entry, index) => <div key={`${entry.model}-${index}`} className="grid gap-3 rounded-[var(--radius-control)] border border-border-subtle bg-surface-raised p-3 md:grid-cols-[minmax(0,1fr)_8rem_auto]">
+            {entries.map((entry, index) => <div key={`${entry.model}-${index}`} className="grid gap-3 rounded-control border border-border-subtle bg-surface-raised p-3 md:grid-cols-[minmax(0,1fr)_8rem_auto]">
               <div className="min-w-0 space-y-2">
                 <Select aria-label={`全局 LoRA 文件 ${index + 1}`} value={entry.model} onChange={(event) => update(index, { model: event.target.value })}>
                   {!response.models.includes(entry.model) && <option value={entry.model}>{entry.model} · 当前实例不可用</option>}

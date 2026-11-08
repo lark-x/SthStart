@@ -29,13 +29,13 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
 import { useToast } from '@/app/providers/ui-provider';
+import { useCharacters } from '@/app/features/characters/queries';
 import {
   fetchSharedAssets,
   createSharedAsset,
   updateSharedAsset,
   deleteSharedAsset,
-  fetchCharacters,
-} from '../api';
+  } from '../api';
 
 function SharedAssetCardImage({
   src,
@@ -52,15 +52,12 @@ function SharedAssetCardImage({
 
   if (!src || failedSrc === src) {
     return (
-      <div className="w-full aspect-[4/3] bg-surface-sunken flex flex-col items-center justify-center p-4 text-center select-none border-b border-border-subtle/60 overflow-hidden">
-        <div className="w-10 h-10 rounded-[var(--radius-control)] bg-surface border border-border-subtle flex items-center justify-center text-muted mb-1 shadow-2xs">
-          <ImageOff className="h-5 w-5 stroke-[1.5]" aria-hidden="true" />
+      <div className="w-full aspect-[4/3] bg-surface-sunken flex flex-col items-center justify-center p-3 text-center select-none border-b border-border-subtle/60 overflow-hidden">
+        <div className="w-8 h-8 rounded-control bg-surface border border-border-subtle flex items-center justify-center text-muted mb-1 shadow-2xs">
+          <ImageOff className="h-4 w-4 stroke-[1.5]" aria-hidden="true" />
         </div>
-        <p className="text-xs font-semibold text-ink line-clamp-1 max-w-[90%]">{title || '公共资产'}</p>
-        <p className="text-[11px] text-muted mt-0.5">图片暂不可用</p>
-        <span className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-[var(--radius-control)] text-[10px] font-medium bg-surface-muted text-fg-subtle border border-border-subtle">
-          可查看资产详情
-        </span>
+        <p className="text-xs text-muted">图片暂不可用</p>
+        <span className="mt-1 text-xs text-muted">打开详情可重试</span>
       </div>
     );
   }
@@ -100,6 +97,7 @@ export function SharedAssetVault({
   // 模态弹窗状态
   const [previewAsset, setPreviewAsset] = useState<SharedAssetItem | null>(null);
   const [previewFailedSrc, setPreviewFailedSrc] = useState<string | null>(null);
+  const [previewRetry, setPreviewRetry] = useState(0);
   const [internalUploadOpen, setInternalUploadOpen] = useState(false);
   const uploadDialogOpen = externalUploadOpen !== undefined ? externalUploadOpen : internalUploadOpen;
   const setUploadDialogOpen = (open: boolean) => {
@@ -134,12 +132,7 @@ export function SharedAssetVault({
 
 
   // 1. 查询所有可用角色（供多选绑定与筛选）
-  const { data: charactersData, error: charactersError } = useQuery({
-    queryKey: ['characters', 'all-profiles'],
-    queryFn: () => fetchCharacters(),
-    staleTime: 60_000,
-    enabled: active,
-  });
+  const { data: charactersData, error: charactersError } = useCharacters({ enabled: active });
   const allCharacters = useMemo(() => charactersData?.items ?? [], [charactersData]);
   const characterMap = useMemo(() => {
     const map = new Map<string, { displayName: string; avatarUrl?: string | null }>();
@@ -307,7 +300,7 @@ export function SharedAssetVault({
       </div>
 
       {/* 分类快捷标签栏 */}
-      <div className="flex flex-nowrap overflow-x-auto items-center gap-1 p-1 bg-surface-sunken rounded-[var(--radius-control)] border border-border-subtle" role="group" aria-label="公共资产分类">
+      <div className="flex flex-nowrap overflow-x-auto items-center gap-1 p-1 bg-surface-sunken rounded-control border border-border-subtle" role="group" aria-label="公共资产分类">
         <button
           type="button"
 
@@ -352,7 +345,7 @@ export function SharedAssetVault({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索资产标题或标签..."
-              className="h-8 pl-8 pr-3 text-xs bg-surface border border-border-subtle rounded-[var(--radius-control)] text-ink placeholder:text-muted/60 focus:outline-none focus:border-accent w-full"
+              className="h-8 pl-8 pr-3 text-xs bg-surface border border-border-subtle rounded-control text-ink placeholder:text-muted/60 focus:outline-none focus:border-accent w-full"
             />
             {searchQuery && (
               <button
@@ -401,7 +394,7 @@ export function SharedAssetVault({
                 aria-label="按关联角色筛选公共资产"
                 value={selectedCharacterId}
                 onChange={(e) => setSelectedCharacterId(e.target.value)}
-                className="h-8 px-2 text-xs bg-surface border border-border-subtle rounded-[var(--radius-control)] text-ink focus:outline-none focus:border-accent"
+                className="h-8 px-2 text-xs bg-surface border border-border-subtle rounded-control text-ink focus:outline-none focus:border-accent"
               >
                 <option value="">全部关联角色</option>
                 {allCharacters.map((c) => (
@@ -425,9 +418,9 @@ export function SharedAssetVault({
                     type="button"
                     aria-pressed={selectedTag === tag}
                     onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                    className={`whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-[var(--radius-control)] text-xs transition-colors ${
+                    className={`whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-control text-xs transition-colors ${
                       selectedTag === tag
-                        ? 'bg-accent text-[var(--fg-on-accent)] font-medium shadow-xs'
+                        ? 'bg-accent text-fg-on-accent font-medium shadow-xs'
                         : 'bg-surface-sunken text-muted hover:text-ink hover:bg-surface-hover'
                     }`}
                   >
@@ -486,7 +479,7 @@ export function SharedAssetVault({
             return (
               <div
                 key={asset.id}
-              className="break-inside-avoid mb-4 group relative rounded-[var(--radius-panel)] border border-border-subtle bg-surface/90 hover:border-accent/40 transition-colors motion-reduce:transition-none overflow-hidden flex flex-col"
+              className="break-inside-avoid mb-4 group relative rounded-panel border border-border-subtle bg-surface/90 hover:border-accent/40 transition-colors motion-reduce:transition-none overflow-hidden flex flex-col"
               >
                 {/* 瀑布流自适应图片容器 */}
                 <button type="button" aria-label={`预览${asset.title || '公共资产'}`}
@@ -860,21 +853,28 @@ export function SharedAssetVault({
         {previewAsset && (
           <div className="space-y-4 pt-1">
             {/* 自然长宽比图片展示 */}
-            <div className="relative w-full min-h-[240px] max-h-[72vh] rounded-[var(--radius-panel)] overflow-hidden bg-surface-sunken border border-border-subtle flex items-center justify-center p-2">
+            <div className="relative w-full min-h-[240px] max-h-[72vh] rounded-panel overflow-hidden bg-surface-sunken border border-border-subtle flex items-center justify-center p-2">
               {previewFailedSrc !== previewAsset.url ? (
                 <img
-                  src={previewAsset.url}
+                  src={previewRetry ? `${previewAsset.url}${previewAsset.url.includes('?') ? '&' : '?'}retry=${previewRetry}` : previewAsset.url}
                   alt={previewAsset.title}
                   onError={() => setPreviewFailedSrc(previewAsset.url)}
                   className="max-h-[68vh] w-auto max-w-full object-contain rounded-[calc(var(--radius-panel)-4px)] shadow-xs"
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center p-8 text-center">
-                  <div className="w-12 h-12 rounded-[var(--radius-control)] bg-surface border border-border-subtle flex items-center justify-center text-muted mb-3 shadow-2xs">
+                  <div className="w-12 h-12 rounded-control bg-surface border border-border-subtle flex items-center justify-center text-muted mb-3 shadow-2xs">
                     <ImageOff className="h-6 w-6 stroke-[1.5]" aria-hidden="true" />
                   </div>
                   <p className="text-sm font-semibold text-ink">{previewAsset.title || '公共资产'}</p>
-                  <p className="text-xs text-muted mt-1 max-w-sm">图片暂不可用，可稍后重新打开，或编辑资产更新图片。</p>
+                  <p className="text-xs text-muted mt-1 max-w-sm">图片暂不可用，可重试加载或编辑资产更新图片。</p>
+                  <button
+                    type="button"
+                    onClick={() => { setPreviewRetry(value => value + 1); setPreviewFailedSrc(null); }}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-surface border border-border-subtle text-ink font-medium text-xs hover:bg-surface-hover transition-colors cursor-pointer"
+                  >
+                    <span>重试加载</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -882,7 +882,7 @@ export function SharedAssetVault({
             {/* 工具条与元数据 */}
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2 border-t border-border-subtle">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-[var(--radius-control)] bg-surface-sunken text-ink font-medium text-xs border border-border-subtle">
+                <span className="px-2.5 py-1 rounded-control bg-surface-sunken text-ink font-medium text-xs border border-border-subtle">
                   {SHARED_ASSET_CATEGORIES.find((c) => c.id === previewAsset.category)?.label || previewAsset.category}
                 </span>
                 {previewAsset.characterIds && previewAsset.characterIds.length > 0 && (
@@ -892,7 +892,7 @@ export function SharedAssetVault({
                       return (
                         <span
                           key={cid}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-control)] bg-accent/10 text-accent font-medium text-xs"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-control bg-accent/10 text-accent font-medium text-xs"
                         >
                           {c?.avatarUrl && (
                             <img src={c.avatarUrl} alt="" className="h-3 w-3 rounded-full object-cover" />
@@ -912,21 +912,33 @@ export function SharedAssetVault({
                   onClick={() => {
                     void navigator.clipboard.writeText(previewAsset.url).then(() => toast.success('已复制图片链接到剪贴板')).catch(() => toast.error('复制失败，请手动复制图片链接'));
                   }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-control)] border border-border-subtle text-muted hover:text-ink hover:bg-surface-sunken transition-colors text-xs"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-border-subtle text-muted hover:text-ink hover:bg-surface-sunken transition-colors text-xs"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   <span>复制链接</span>
                 </button>
-                <a
-                  href={previewAsset.url}
-                  download={`${previewAsset.title || 'asset'}.png`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-control)] bg-accent text-[var(--fg-on-accent)] font-medium hover:bg-accent-dark transition-colors text-xs shadow-xs"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>保存原图</span>
-                </a>
+                {previewFailedSrc === previewAsset.url ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-border-subtle bg-surface-muted text-muted font-medium text-xs opacity-60 cursor-not-allowed"
+                    title="资源文件不可用，无法下载"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>原图不可用</span>
+                  </button>
+                ) : (
+                  <a
+                    href={previewAsset.url}
+                    download={`${previewAsset.title || 'asset'}.png`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control bg-accent text-fg-on-accent font-medium hover:bg-accent-dark transition-colors text-xs shadow-xs"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>保存原图</span>
+                  </a>
+                )}
               </div>
             </div>
           </div>

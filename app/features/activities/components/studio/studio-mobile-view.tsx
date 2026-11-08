@@ -149,7 +149,7 @@ export function StudioMobileView({
               onClick={() => setActiveStageId(stage.id)}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 isSelected
-                  ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs'
+                  ? 'bg-accent text-fg-on-accent shadow-2xs'
                   : 'bg-surface border border-border-default text-muted hover:text-ink'
               }`}
             >

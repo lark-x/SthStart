@@ -20,7 +20,7 @@ export function Tooltip({ content, children, className }: TooltipProps) {
         id={id}
         role="tooltip"
         className={cn(
-          'absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex group-focus-within:flex pointer-events-none z-50 max-w-[min(24rem,calc(100vw-2rem))] w-max rounded-[var(--radius-control)] bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-floating',
+          'absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex group-focus-within:flex pointer-events-none z-50 max-w-[min(24rem,calc(100vw-2rem))] w-max rounded-control bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-floating',
           className
         )}
       >

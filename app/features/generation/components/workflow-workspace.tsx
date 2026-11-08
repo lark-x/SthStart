@@ -320,7 +320,7 @@ export function WorkflowWorkspace({
   return (
     <div ref={workspaceRef} className="space-y-3" data-testid="workflow-workspace">
       {/* 头部：固定当前工作流名称、保存状态与当前版本；技术信息折叠在高级页签。 */}
-      <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-panel border border-border-subtle bg-surface px-4 py-3">
         <Select
           aria-label="选择工作流"
           value={selectedId}
@@ -369,7 +369,7 @@ export function WorkflowWorkspace({
                   type="button"
                   onClick={() => { void selectWorkflow(item.id); }}
                   aria-current={item.id === selectedId ? 'true' : undefined}
-                  className={`w-full rounded-[var(--radius-control)] border p-2.5 text-left ${item.id === selectedId ? 'border-accent bg-accent-soft' : 'border-border-subtle bg-surface hover:bg-ink/4'}`}
+                  className={`w-full rounded-control border p-2.5 text-left ${item.id === selectedId ? 'border-accent bg-accent-soft' : 'border-border-subtle bg-surface hover:bg-ink/4'}`}
                 >
                   <span className="block truncate text-sm font-semibold">{item.name}</span>
                   <span className="mt-0.5 block text-sm text-muted">v{item.latest_version} · {item.category ?? 'image'}</span>
@@ -413,7 +413,7 @@ export function WorkflowWorkspace({
 
         {/* 根据工作区实际宽度决定常驻，避免侧栏挤占空间导致溢出。 */}
         {inlineTest && <aside aria-label="试运行区">
-          <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+          <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-panel border border-border-subtle bg-surface p-3">
             {testRunForm}
           </div>
         </aside>}

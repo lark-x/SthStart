@@ -372,7 +372,7 @@ export function RecordsEditor({
     <div className="w-full space-y-4">
       {/* 阶段选择器（仅在独立未由外层托管时显示） */}
       {!hideStageSelector && (
-        <div className="flex items-center gap-2 p-2.5 rounded-[var(--radius-panel)] bg-surface border border-border-default overflow-x-auto">
+        <div className="flex items-center gap-2 p-2.5 rounded-panel bg-surface border border-border-default overflow-x-auto">
           <span className="text-xs font-semibold text-muted px-2 shrink-0">当前阶段：</span>
           {stages.map((stage, idx) => {
             const isSelected = selectedStageId === stage.id;
@@ -384,8 +384,8 @@ export function RecordsEditor({
                   setSelectedStageId(stage.id);
                   onSelectStage?.(stage.id);
                 }}
-                className={`px-3 py-1.5 rounded-[var(--radius-control)] text-xs font-medium transition-colors cursor-pointer shrink-0 ${
-                  isSelected ? 'bg-accent text-[var(--fg-on-accent)] shadow-xs' : 'bg-surface-muted text-ink hover:bg-surface-hover'
+                className={`px-3 py-1.5 rounded-control text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                  isSelected ? 'bg-accent text-fg-on-accent shadow-xs' : 'bg-surface-muted text-ink hover:bg-surface-hover'
                 }`}
               >
                 #{idx + 1} {stage.title}
@@ -396,7 +396,7 @@ export function RecordsEditor({
       )}
 
       {/* 阶段提示词配置 */}
-      <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-xs overflow-hidden">
+      <div className="rounded-panel bg-surface border border-border-default shadow-xs overflow-hidden">
         <div className="p-4 space-y-3 bg-linear-to-r from-surface to-surface-raised">
           {/* 阶段标题与概览 */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -476,7 +476,7 @@ export function RecordsEditor({
                     type="button"
                     size="sm"
                     onClick={handleSaveStageConfig}
-                    className="h-7 text-xs px-3 bg-accent text-[var(--fg-on-accent)]"
+                    className="h-7 text-xs px-3 bg-accent text-fg-on-accent"
                   >
                     保存本阶段配置
                   </Button>
@@ -492,8 +492,8 @@ export function RecordsEditor({
             <button
               type="button"
               onClick={() => selectView('script')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'script' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+                activeTab === 'script' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <Layers className="h-3.5 w-3.5" />
@@ -503,8 +503,8 @@ export function RecordsEditor({
             <button
               type="button"
               onClick={() => selectView('chat')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'chat' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+                activeTab === 'chat' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <MessageSquare className="h-3.5 w-3.5" />
@@ -513,8 +513,8 @@ export function RecordsEditor({
             <button
               type="button"
               onClick={() => selectView('moments')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'moments' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+                activeTab === 'moments' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <Share2 className="h-3.5 w-3.5" />
@@ -523,8 +523,8 @@ export function RecordsEditor({
             <button
               type="button"
               onClick={() => selectView('facts')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-control)] font-semibold transition-colors cursor-pointer ${
-                activeTab === 'facts' ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs' : 'text-muted hover:text-ink'
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+                activeTab === 'facts' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <FileCheck className="h-3.5 w-3.5" />
@@ -547,7 +547,7 @@ export function RecordsEditor({
         >
           <div className="space-y-4">
             {/* 剧本流卡片列表 */}
-            <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 sm:p-6 min-h-[400px] space-y-4">
+            <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-[400px] space-y-4">
               {stageMessages.length === 0 && stagePosts.length === 0 ? (
                 <div className="py-16 text-center text-sm text-muted space-y-3">
                   <Layers className="h-10 w-10 mx-auto text-accent opacity-60" />
@@ -622,7 +622,7 @@ export function RecordsEditor({
                                   type="button"
                                   size="sm"
                                   onClick={() => handleSaveEditMsg(msg.id)}
-                                  className="h-6 text-xs px-2.5 bg-accent text-[var(--fg-on-accent)]"
+                                  className="h-6 text-xs px-2.5 bg-accent text-fg-on-accent"
                                 >
                                   保存
                                 </Button>
@@ -709,7 +709,7 @@ export function RecordsEditor({
             {/* 底部：快捷追加台词/旁白条 */}
             <form
               onSubmit={handleSendMessage}
-              className="flex items-center gap-2 p-2 rounded-[var(--radius-panel)] bg-surface border border-border-default shadow-2xs"
+              className="flex items-center gap-2 p-2 rounded-panel bg-surface border border-border-default shadow-2xs"
             >
               <div className="w-32 shrink-0">
                 <Select
@@ -745,7 +745,7 @@ export function RecordsEditor({
                 type="submit"
                 size="sm"
                 disabled={disabled || !composerText.trim()}
-                className="h-8 px-3 text-xs bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1 shrink-0"
+                className="h-8 px-3 text-xs bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1 shrink-0"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>追加</span>
@@ -755,7 +755,7 @@ export function RecordsEditor({
 
           {/* 宽屏右侧记录详情 */}
           {wideDetailColumn && selectedMessage && (
-            <aside className="sticky top-20 h-fit rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 space-y-3">
+            <aside className="sticky top-20 h-fit rounded-panel bg-surface border border-border-default p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-xs font-bold text-ink">记录详情</h3>
                 <button
@@ -794,7 +794,7 @@ export function RecordsEditor({
       {/* 2.2 朋友圈动态视图 */}
       {activeTab === 'moments' && (
         <div className="space-y-4">
-          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-4">
+          <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-4">
             {stagePosts.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted space-y-2">
                 <Share2 className="h-8 w-8 mx-auto text-muted opacity-60" />
@@ -870,7 +870,7 @@ export function RecordsEditor({
       {/* 2.3 剧情事实沉淀视图 */}
       {activeTab === 'facts' && (
         <div className="space-y-4">
-          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-3">
+          <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-3">
             {stageFacts.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted space-y-2">
                 <FileCheck className="h-8 w-8 mx-auto text-muted opacity-60" />

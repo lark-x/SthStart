@@ -248,20 +248,29 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <PageContainer className="space-y-4 py-4">
-        {emptyCorpus && (
-          <Alert variant="warning">
-            本地还没有叙事原文，可以创建研究专题，但无法开始研究运行。请先在「数据源与导入」导入规范化 JSON 。
-          </Alert>
-        )}
-
-        {!works.length && (
+        {!works.length ? (
           <EmptyState
+            icon={BookOpen}
             title="还没有可研究的作品"
-            description="研究专题需要一个本地作品作为语料。先导入规范化 JSON，再回到这里。"
+            description="研究专题需要本地作品作为语料。请先在「数据源与导入」中导入规范化 JSON 数据，再创建并开展研究专题。"
+            actions={
+              <Button
+                variant="primary"
+                onClick={() => router.push('/apps/narrative?mode=import')}
+                className="gap-1.5"
+              >
+                <span>前往数据源与导入</span>
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Button>
+            }
           />
-        )}
-
-        {works.length > 0 && (
+        ) : (
+          <>
+            {emptyCorpus && (
+              <Alert variant="warning">
+                本地还没有叙事原文，可以创建研究专题，但无法开始研究运行。请先在「数据源与导入」导入规范化 JSON。
+              </Alert>
+            )}
           <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
             {/* 左栏：专题列表 */}
             <div className="space-y-3">
@@ -277,7 +286,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                     key={item.id}
                     type="button"
                     onClick={() => { setSelectedProjectId(item.id); setCreating(false); }}
-                    className={`w-full rounded-[var(--radius-control)] p-2.5 text-left transition-colors cursor-pointer ${
+                    className={`w-full rounded-control p-2.5 text-left transition-colors cursor-pointer ${
                       selectedProjectId === item.id ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
                     }`}
                   >
@@ -288,7 +297,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                     </span>
                   </button>
                 ))}
-                {!projects.length && <p className="text-xs text-muted">还没有研究专题，点「新建」开始。</p>}
+                {!projects.length && <p className="text-xs text-muted">还没有研究专题，点「新建专题」开始。</p>}
               </div>
             </div>
 
@@ -434,6 +443,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
               )}
             </div>
           </div>
+          </>
         )}
       </PageContainer>
     </div>

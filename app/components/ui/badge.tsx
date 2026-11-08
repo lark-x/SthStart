@@ -18,8 +18,10 @@ export const badgeVariants = cva(
         unknown: 'bg-warning/15 text-warning-fg',
         warning: 'bg-warning/15 text-warning-fg',
         error: 'bg-danger/15 text-danger-fg',
-        accent: 'bg-accent-soft text-accent',
-        system: 'bg-accent-soft text-accent font-semibold text-sm uppercase px-1.5 py-0.5',
+        accent: 'bg-accent-soft text-accent-dark',
+        /** 跟随最近的 [data-tone] 容器（模块识别色）。 */
+        tone: 'bg-tone-soft text-tone-fg',
+        system: 'bg-accent-soft text-accent-dark font-semibold text-sm uppercase px-1.5 py-0.5',
       },
     },
     defaultVariants: {

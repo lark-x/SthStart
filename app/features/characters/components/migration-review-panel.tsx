@@ -33,7 +33,7 @@ export function MigrationReviewPanel({ characterId }: { characterId?: string }) 
   if (!hasConflicts && extraOutfits.length === 0) return null;
 
   return (
-    <section className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-3">
+    <section className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
       <div>
         <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
           <History className="h-4 w-4 text-accent" aria-hidden="true" />

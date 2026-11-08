@@ -9,8 +9,16 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const providedToken = request.headers.get('x-sthstart-admin-token');
   const isDirectAdminToken = Boolean(adminToken && providedToken && providedToken === adminToken);
 
+  const { path } = await context.params;
+  const isPublicMediaFile = (request.method === 'GET' || request.method === 'HEAD') && (
+    (path[0] === 'shared-assets' && path[1] === 'file') ||
+    (path[0] === 'characters' && (path[1] === 'assets' || path[2] === 'avatar')) ||
+    (path[0] === 'linshe-bridge' && path[1] === 'asset') ||
+    (path[0] === 'creative' && path[1] === 'artifacts')
+  );
+
   let session = null;
-  if (!isDirectAdminToken) {
+  if (!isDirectAdminToken && !isPublicMediaFile) {
     session = await readSession(request);
     if (!session) return Response.json({ error: 'admin_session_required' }, { status: 401 });
     if (!safeFetchContext(request)) return Response.json({ error: 'untrusted_request' }, { status: 403 });
@@ -20,7 +28,6 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   }
   const sessionFinishedAt = performance.now();
   if (!adminToken) return Response.json({ error: 'admin_not_configured', message: '请在 .env 中设置 STHSTART_ADMIN_TOKEN。' }, { status: 503 });
-  const { path } = await context.params;
   const target = `${serviceUrl}/api/v1/admin/${path.join('/')}${request.nextUrl.search}`;
   const contentType = request.headers.get('content-type') ?? '';
   const streamBody = request.method !== 'GET' && request.method !== 'HEAD' && Boolean(request.body) && /^(?:image\/|video\/|audio\/|application\/octet-stream|application\/zip|application\/x-zip-compressed)/i.test(contentType);

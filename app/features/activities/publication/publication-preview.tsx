@@ -116,7 +116,7 @@ export function PublicationComicPreview({ document }: { document: PublicationDoc
 
       {/* Error / issue notice placed above the tall canvas so it is immediately visible */}
       {issues.length > 0 && (
-        <div role="alert" className="rounded-[var(--radius-control)] border border-warning/40 bg-warning/5 p-3 text-sm text-ink space-y-1">
+        <div role="alert" className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm text-ink space-y-1">
           <div className="flex items-center gap-1.5 font-semibold text-warning-fg text-sm">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>预览提示（{issues.length}）</span>
@@ -131,7 +131,7 @@ export function PublicationComicPreview({ document }: { document: PublicationDoc
       )}
 
       <div className="relative mx-auto w-full max-w-xl">
-        <canvas ref={canvas} width={size.width} height={size.height} aria-label="漫画发布预览" className="mx-auto h-auto w-full rounded-[var(--radius-panel)] border border-border-subtle shadow-sm bg-[#f5f0e7]" />
+        <canvas ref={canvas} width={size.width} height={size.height} aria-label="漫画发布预览" className="mx-auto h-auto w-full rounded-panel border border-border-subtle shadow-sm bg-[#f5f0e7]" />
       </div>
     </div>
   );

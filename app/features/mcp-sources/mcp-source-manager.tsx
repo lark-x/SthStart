@@ -15,6 +15,7 @@ import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
 import { useToast } from '@/app/providers/ui-provider';
 import { createMcpSource, deleteMcpSource, discoverMcpTools, fetchMcpSources, setMcpSourceStatus, testMcpSource, updateMcpSource } from './api';
+import { mcpSourceKeys } from '@/app/lib/query-keys';
 
 type Draft = {
   id: string;
@@ -91,22 +92,25 @@ export function McpSourceManager() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [mutatingId, setMutatingId] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
 
   // 列表由 React Query 持有：避免在 effect 里同步 setState 触发级联渲染。
-  const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, staleTime: 15_000 });
+  const sourcesQuery = useQuery({ queryKey: mcpSourceKeys.all, queryFn: fetchMcpSources, staleTime: 15_000 });
   const sources = sourcesQuery.data ?? null;
   const loading = sourcesQuery.isLoading;
   const load = () => sourcesQuery.refetch();
   const loadError = sourcesQuery.error instanceof Error ? sourcesQuery.error.message : sourcesQuery.error ? String(sourcesQuery.error) : null;
 
   const openNew = () => {
+    setError(null);
     setEditingId(null);
     setDraft(EMPTY_DRAFT);
     setEditorOpen(true);
   };
 
   const openEdit = (source: McpSource) => {
+    setError(null);
     setEditingId(source.id);
     setDraft(sourceToDraft(source));
     setEditorOpen(true);
@@ -125,6 +129,7 @@ export function McpSourceManager() {
         if (result.warning) toast.warning('资料源已保存，但凭据未能写入安全存储：' + result.warning);
         else toast.success('资料源已创建');
       }
+      setError(null);
       setEditorOpen(false);
       void load();
     } catch (saveError) {
@@ -173,24 +178,32 @@ export function McpSourceManager() {
   };
 
   const handleToggle = async (source: McpSource) => {
+    if (mutatingId) return;
     const next = source.status === 'enabled' ? 'disabled' : 'enabled';
+    setMutatingId(source.id);
     try {
       await setMcpSourceStatus(source.id, next);
       toast.success(next === 'enabled' ? '资料源已启用' : '资料源已停用');
       void load();
     } catch (toggleError) {
       toast.error(toggleError instanceof Error ? toggleError.message : String(toggleError));
+    } finally {
+      setMutatingId(null);
     }
   };
 
   const handleDelete = async (source: McpSource) => {
+    if (mutatingId) return;
     if (!window.confirm('确定删除资料源「' + source.name + '」？')) return;
+    setMutatingId(source.id);
     try {
       await deleteMcpSource(source.id);
       toast.success('资料源已删除');
       void load();
     } catch (deleteError) {
       toast.error(deleteError instanceof Error ? deleteError.message : String(deleteError));
+    } finally {
+      setMutatingId(null);
     }
   };
 
@@ -225,7 +238,7 @@ export function McpSourceManager() {
         {(sources ?? []).map((source) => {
           const testResult = source.lastTestResult;
           return (
-            <article key={source.id} className={`rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 ${source.status === 'disabled' ? 'opacity-60' : ''}`}>
+            <article key={source.id} className={`rounded-panel border border-border-default bg-surface p-4 ${source.status === 'disabled' ? 'opacity-60' : ''}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -249,10 +262,10 @@ export function McpSourceManager() {
                     {testingId === source.id ? <Spinner className="h-3.5 w-3.5" /> : <PlugZap className="h-3.5 w-3.5" />}测试连接
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => openEdit(source)}><Edit3 className="h-3.5 w-3.5" />编辑</Button>
-                  <Button size="sm" variant="ghost" onClick={() => void handleToggle(source)}>
+                  <Button size="sm" variant="ghost" disabled={Boolean(mutatingId)} onClick={() => void handleToggle(source)}>
                     {source.status === 'enabled' ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}{source.status === 'enabled' ? '停用' : '启用'}
                   </Button>
-                  <Button size="sm" variant="ghost" className="text-danger hover:bg-danger/10" onClick={() => void handleDelete(source)}><Trash2 className="h-3.5 w-3.5" />删除</Button>
+                  <Button size="sm" variant="ghost" className="text-danger hover:bg-danger/10" disabled={Boolean(mutatingId)} onClick={() => void handleDelete(source)}><Trash2 className="h-3.5 w-3.5" />删除</Button>
                 </div>
               </div>
             </article>

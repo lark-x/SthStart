@@ -38,7 +38,7 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(
           <span
             aria-hidden="true"
             className={cn(
-              "h-6 w-11 rounded-full border border-border-control bg-surface-sunken peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--focus-ring)] peer-focus-visible:outline-offset-2 peer-checked:bg-[var(--action-primary)] peer-checked:border-transparent after:content-[''] after:absolute after:top-1 after:left-1 after:size-4 after:rounded-full after:bg-[var(--fg-muted)] peer-checked:after:bg-[var(--action-on-primary)] peer-checked:after:translate-x-5 after:transition-transform after:duration-[var(--motion-fast)]",
+              "h-6 w-11 rounded-full border border-border-control bg-surface-sunken peer-focus-visible:outline-2 peer-focus-visible:outline-focus-ring peer-focus-visible:outline-offset-2 peer-checked:bg-action-primary peer-checked:border-transparent after:content-[''] after:absolute after:top-1 after:left-1 after:size-4 after:rounded-full after:bg-fg-muted peer-checked:after:bg-action-on-primary peer-checked:after:translate-x-5 after:transition-transform after:duration-[var(--motion-fast)]",
               disabled && 'opacity-50 cursor-not-allowed',
               className
             )}

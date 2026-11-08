@@ -254,6 +254,7 @@ export function TextModelsPanel({
             />
           </div>
           <Select
+            aria-label="按关联连接筛选"
             value={filterConn}
             onChange={(e) => setFilterConn(e.target.value)}
             className="w-48"

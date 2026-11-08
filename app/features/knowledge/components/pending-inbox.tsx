@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Ban, Check, Eye, Inbox, Lightbulb, Wand2 } from 'lucide-react';
 import type { KnowledgePendingItem } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
+import { Pagination } from '@/app/components/ui/pagination';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
@@ -15,6 +16,7 @@ import { EmptyState } from '@/app/components/ui/empty-state';
 import { formatTopicTime } from '@/app/features/topics/components/topic-card';
 import { fetchPending, fetchPendingDetail, setPendingState } from '../api';
 import { OrganizeDraftDialog } from './organize-draft-dialog';
+import { knowledgePendingKeys, notebookKeys } from '@/app/lib/query-keys';
 
 const STATE_TABS: Array<{ id: 'pending' | 'kept' | 'ignored' | 'organized'; label: string }> = [
   { id: 'pending', label: '待整理' },
@@ -29,28 +31,50 @@ const STATE_TABS: Array<{ id: 'pending' | 'kept' | 'ignored' | 'organized'; labe
  */
 export function PendingInbox() {
   const router = useRouter();
+  const params = useSearchParams();
   const client = useQueryClient();
-  const [state, setState] = useState<'pending' | 'kept' | 'ignored' | 'organized'>('pending');
+  const [state, setState] = useState<'pending' | 'kept' | 'ignored' | 'organized'>(() => STATE_TABS.find(tab => tab.id === params.get('pending_state'))?.id ?? 'pending');
   const [selected, setSelected] = useState<string[]>([]);
+  const [page, setPage] = useState(() => Math.max(1, Number.parseInt(params.get('pending_page') ?? '1', 10) || 1));
+  const [pageSize, setPageSize] = useState(() => [20, 50, 100].includes(Number(params.get('pending_size'))) ? Number(params.get('pending_size')) : 20);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [organizeIds, setOrganizeIds] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const restore = () => {
+      const query = new URLSearchParams(window.location.search);
+      setState(STATE_TABS.find(tab => tab.id === query.get('pending_state'))?.id ?? 'pending');
+      setPage(Math.max(1, Number.parseInt(query.get('pending_page') ?? '1', 10) || 1));
+      setPageSize([20, 50, 100].includes(Number(query.get('pending_size'))) ? Number(query.get('pending_size')) : 20);
+      setSelected([]);
+    };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    query.set('pending_state', state); query.set('pending_page', String(page)); query.set('pending_size', String(pageSize));
+    window.history.replaceState(window.history.state, '', window.location.pathname + '?' + query);
+  }, [state, page, pageSize]);
 
   const pendingQuery = useQuery({
-    queryKey: ['knowledge-pending', state],
-    queryFn: () => fetchPending({ state, limit: 100 }),
+    queryKey: [...knowledgePendingKeys.list(state), page, pageSize],
+    queryFn: () => fetchPending({ state, limit: pageSize, offset: (page - 1) * pageSize }),
     staleTime: 10_000,
   });
   const detailQuery = useQuery({
-    queryKey: ['knowledge-pending', 'detail', detailId],
+    queryKey: knowledgePendingKeys.detail(detailId),
     queryFn: () => fetchPendingDetail(detailId!),
     enabled: Boolean(detailId),
   });
 
   const items = useMemo(() => pendingQuery.data?.items ?? [], [pendingQuery.data]);
   const counts = pendingQuery.data?.counts ?? {};
+  const total = pendingQuery.data?.total ?? 0;
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Reconcile page bounds after a server-side state transition removes rows.
+  useEffect(() => { if (pendingQuery.data && !pendingQuery.isFetching) setPage(p => Math.min(p, Math.max(1, Math.ceil(total / pageSize)))); }, [pendingQuery.data, pendingQuery.isFetching, total, pageSize]);
 
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
@@ -63,7 +87,7 @@ export function PendingInbox() {
       setNotice(next === 'kept' ? '已保留：这些来源摘录现在可以被资料搜索找到，没有生成新的笔记。'
         : next === 'ignored' ? '已忽略：后续搜到同一版本不会再提示，新版本仍会重新出现。'
           : next === 'organized' ? '已标记为已整理。' : '已恢复为待整理。');
-      void client.invalidateQueries({ queryKey: ['knowledge-pending'] });
+      void client.invalidateQueries({ queryKey: knowledgePendingKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '更新失败。');
     } finally { setBusy(false); }
@@ -72,7 +96,7 @@ export function PendingInbox() {
   /** 未整理的来源也能显式带进企划：跳转到新建活动并把来源作为参考资料。 */
   const sendToPlanning = (targets: KnowledgePendingItem[]) => {
     if (!targets.length) return;
-    const refs = items.map((item) => 'collection:' + item.sourceVersionId).join(',');
+    const refs = targets.map((item) => 'collection:' + item.sourceVersionId).join(',');
     router.push('/apps/activities/new?refs=' + encodeURIComponent(refs));
   };
 
@@ -84,7 +108,7 @@ export function PendingInbox() {
           <p className="text-sm text-muted">搜集结果先到这里确认。保留只让它可被检索；整理为资料才会生成可编辑正文，并保留来源。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select aria-label="待整理状态" value={state} className="h-9 w-32 text-sm" onChange={(event) => { setState(event.target.value as typeof state); setSelected([]); }}>
+          <Select aria-label="待整理状态" value={state} className="h-9 w-32 text-sm" onChange={(event) => { setState(event.target.value as typeof state); setSelected([]); setPage(1); }}>
             {STATE_TABS.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
           </Select>
         </div>
@@ -99,7 +123,7 @@ export function PendingInbox() {
             key={tab.id}
             type="button"
             aria-pressed={state === tab.id}
-            onClick={() => { setState(tab.id); setSelected([]); }}
+            onClick={() => { setState(tab.id); setSelected([]); setPage(1); }}
             className={'rounded-full px-3 py-1 text-sm transition-colors ' + (state === tab.id ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5')}
           >
             {tab.label}
@@ -110,7 +134,7 @@ export function PendingInbox() {
 
       {selected.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-sm">
-          <span>已选 {selected.length} 条</span>
+          <span>本页已选 {selected.length} 条</span>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void apply(selected, state === 'ignored' ? 'pending' : 'kept')}>
             {state === 'ignored' ? <><Check className="h-3.5 w-3.5" />恢复</> : <><Check className="h-3.5 w-3.5" />保留</>}
           </Button>
@@ -122,8 +146,8 @@ export function PendingInbox() {
       )}
 
       {pendingQuery.isLoading && <Spinner size="sm" label="正在加载…" />}
-      {pendingQuery.isError && <Alert variant="warning" title="加载失败">{pendingQuery.error instanceof Error ? pendingQuery.error.message : '请稍后重试'}</Alert>}
-      {!pendingQuery.isLoading && !items.length && (
+      {pendingQuery.isError && <Alert variant="warning" title="加载失败">{pendingQuery.error instanceof Error ? pendingQuery.error.message : '请稍后重试'}<Button size="sm" onClick={() => void pendingQuery.refetch()}>重试</Button></Alert>}
+      {!pendingQuery.isLoading && !pendingQuery.isError && !items.length && (
         <EmptyState
           icon={Inbox}
           title={state === 'pending' ? '没有待整理的内容' : '这个分组是空的'}
@@ -133,7 +157,7 @@ export function PendingInbox() {
 
       <ul className="space-y-2">
         {items.map((item) => (
-          <li key={item.id} className={'space-y-2 rounded-[var(--radius-panel)] border p-3 ' + (selected.includes(item.id) ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
+          <li key={item.id} className={'space-y-2 rounded-panel border p-3 ' + (selected.includes(item.id) ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
             <div className="flex items-start gap-3">
               <input type="checkbox" className="mt-1" aria-label={'选择 ' + item.title} checked={selected.includes(item.id)} onChange={() => toggle(item.id)} />
               <div className="min-w-0 flex-1 space-y-1">
@@ -166,6 +190,12 @@ export function PendingInbox() {
         ))}
       </ul>
 
+      <Pagination total={total} page={page} pageSize={pageSize} loading={pendingQuery.isFetching} onPageChange={next => {
+        const query = new URLSearchParams(window.location.search); query.set('pending_page', String(next));
+        window.history.pushState(window.history.state, '', window.location.pathname + '?' + query);
+        setPage(next); setSelected([]);
+      }} onPageSizeChange={size => { setPageSize(size); setPage(1); setSelected([]); }} pageSizeOptions={[20, 50, 100]} />
+
       <Drawer
         open={Boolean(detailId)}
         onOpenChange={(open) => { if (!open) setDetailId(null); }}
@@ -174,6 +204,7 @@ export function PendingInbox() {
         className="max-w-xl"
       >
         {detailQuery.isLoading && <Spinner size="sm" label="正在加载…" />}
+        {detailQuery.isError && <Alert variant="danger" title="详情加载失败"><Button onClick={() => void detailQuery.refetch()}>重试</Button></Alert>}
         {detailQuery.data && (
           <div className="space-y-4 text-sm">
             <p className="whitespace-pre-wrap">{detailQuery.data.item.excerpt}</p>
@@ -212,8 +243,8 @@ export function PendingInbox() {
           setOrganizeIds(null);
           setSelected([]);
           setNotice(created ? '已保存为新资料。建议接着把它的参考状态改成可参考。' : '已追加到已有资料。');
-          void client.invalidateQueries({ queryKey: ['knowledge-pending'] });
-          void client.invalidateQueries({ queryKey: ['notebook'] });
+          void client.invalidateQueries({ queryKey: knowledgePendingKeys.all });
+          void client.invalidateQueries({ queryKey: notebookKeys.all });
           void router.push('/apps/notebook/' + noteId);
         }}
       />

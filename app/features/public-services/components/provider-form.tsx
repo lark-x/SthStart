@@ -175,7 +175,7 @@ export function ProviderForm({
                 type="button"
                 onClick={handleDiscover}
                 disabled={discovering}
-                className="min-h-[42px] px-4 rounded-[var(--radius-control)] border border-border-default bg-surface hover:bg-ink/6 text-sm font-medium text-ink cursor-pointer transition-colors"
+                className="min-h-[42px] px-4 rounded-control border border-border-default bg-surface hover:bg-ink/6 text-sm font-medium text-ink cursor-pointer transition-colors"
               >
                 {discovering ? '正在获取…' : '获取模型'}
               </button>

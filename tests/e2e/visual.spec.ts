@@ -41,18 +41,74 @@ const screenshotOptions = {
   timeout: 15_000,
 };
 
+/*
+ * 视觉基线不能依赖测试库里的累积数据：全量并发跑时其他用例会不断新建项目、笔记与活动，
+ * 最近工作行数、笔记列表条数都会随执行顺序变化，整页截图高度也就跟着漂移。
+ * 这里把列表类接口拦截为固定数据，并把页面时钟固定在同一时刻，
+ * 问候语、日期与「更新于」时间都只由这份固定输入决定。
+ */
+const FIXED_NOW = new Date('2026-10-15T10:30:00+08:00');
+
+const RECENT_WORK_FIXTURE = {
+  items: [
+    { id: 'visual-story', title: '枫丹雨夜篇章', kind: 'story', updatedAt: '2026-10-15T01:20:00.000Z' },
+    { id: 'visual-activity', title: '秋日茶会互动', kind: 'activity', updatedAt: '2026-10-14T09:00:00.000Z' },
+    { id: 'visual-note', title: '港口城市的世界观笔记', kind: 'note', updatedAt: '2026-10-13T12:45:00.000Z' },
+    { id: 'visual-character', title: '芙宁娜', kind: 'character', updatedAt: '2026-10-12T08:10:00.000Z' },
+    { id: 'visual-publication', title: '第一章分镜制作', kind: 'publication', updatedAt: '2026-10-11T15:30:00.000Z' },
+    { id: 'visual-story-2', title: '沙海遗迹调查', kind: 'story', updatedAt: '2026-10-10T03:05:00.000Z' },
+    { id: 'visual-note-2', title: '角色口癖摘录', kind: 'note', updatedAt: '2026-10-09T11:00:00.000Z' },
+    { id: 'visual-character-2', title: '那维莱特', kind: 'character', updatedAt: '2026-10-08T06:40:00.000Z' },
+  ],
+};
+
+const CALENDAR_FIXTURE = {
+  from: '2026-10-15',
+  to: '2026-11-29',
+  events: [
+    { id: 'visual-birthday-1', kind: 'birthday', date: '2026-10-18', title: '芙宁娜 生日', characterName: '芙宁娜' },
+    { id: 'visual-activity-1', kind: 'activity', date: '2026-10-21', title: '秋日茶会互动', participantCount: 3 },
+    { id: 'visual-birthday-2', kind: 'birthday', date: '2026-10-30', title: '那维莱特 生日', characterName: '那维莱特' },
+    { id: 'visual-activity-2', kind: 'activity', date: '2026-11-08', title: '第一章分镜制作', participantCount: 2 },
+    { id: 'visual-activity-3', kind: 'activity', date: '2026-11-20', title: '沙海遗迹调查', participantCount: 4 },
+  ],
+};
+
+const NOTEBOOK_LIST_FIXTURE = {
+  items: [
+    { id: 'visual-note-a', title: '港口城市的世界观笔记', kind: 'world', summary: '潮汐、码头与旧灯塔的设定。', content: [], tags: ['世界'], stage: 'reference', favorite: true, revision: 1, createdAt: '2026-10-10T08:00:00.000Z', updatedAt: '2026-10-13T12:45:00.000Z' },
+    { id: 'visual-note-b', title: '角色口癖摘录', kind: 'character', summary: '对话里反复出现的语气词。', content: [], tags: ['角色'], stage: 'draft', favorite: false, revision: 1, createdAt: '2026-10-08T08:00:00.000Z', updatedAt: '2026-10-09T11:00:00.000Z' },
+  ],
+  total: 2,
+  page: 1,
+  pageSize: 50,
+};
+
+async function useFixedDashboardData(page: import('@playwright/test').Page) {
+  await page.clock.setFixedTime(FIXED_NOW);
+  await page.route(/\/api\/admin\/workspace\/recent(?:\?|$)/, (route) => route.fulfill({ json: RECENT_WORK_FIXTURE }));
+  await page.route(/\/api\/admin\/calendar(?:\?|$)/, (route) => route.fulfill({ json: CALENDAR_FIXTURE }));
+}
+
 /**
- * 工作台两块面板的内容来自真实数据库，且行数由组件按 limit 截断。
- * 截图前先等载入态结束并确认行数达到上限，画面尺寸才由固定行数决定；
- * 行文本本身以 data-visual-dynamic 遮罩，避免测试库中带随机后缀的标题污染基线。
+ * 截图前等载入态结束：最近工作按 limit=8 截断、近期日程按 limit=5 截断，
+ * 两块列表都达到固定行数后画面高度才确定；骨架行期间 role=status 仍在无障碍树中。
  */
 async function waitForDashboardSettled(page: import('@playwright/test').Page) {
   await expect(page.getByRole('status')).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
-  const scheduleItems = page.getByTestId('upcoming-schedule-list').getByRole('listitem');
-  const emptySchedule = page.getByText('未来 45 天内没有生日或已排期活动。', { exact: true });
-  await expect.poll(async () => (await scheduleItems.count()) === 5 || await emptySchedule.isVisible(), { timeout: 15_000 })
-    .toBeTruthy();
+  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(8, { timeout: 15_000 });
+  await expect(page.getByTestId('upcoming-schedule-list').getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
+  // 模块卡数量来自真实库，内容已按 data-visual-dynamic 遮罩；这里只等它们不再是加载前的说明文案。
+  await expect(page.getByRole('navigation', { name: '创作模块' }).getByRole('link')).toHaveCount(4);
+  // 服务状态条先显示「正在获取服务状态」，取到结果后才稳定。
+  await expect(page.getByRole('region', { name: '本地服务状态' })).not.toContainText('正在获取服务状态', { timeout: 15_000 });
+}
+
+/** 控制中心在首个 overview 返回前，会在分区内容上方插入一块加载骨架。 */
+async function waitForControlCenterLoaded(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('heading', { name: '控制中心', level: 1 })).toBeVisible();
+  await expect(page.getByLabel('正在加载运行控制中心')).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByText('服务通讯异常')).toHaveCount(0);
 }
 
 /** 页面本身不得横向溢出；失败时直接给出超宽元素，而不是只报像素差异。 */
@@ -70,9 +126,15 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(overflow).toBeNull();
 }
 
+/*
+ * 首页已不再放「全部应用」目录：问候 + 新建入口、四个创作模块卡、最近工作与近期日程。
+ * 主标题对读屏是「工作台」，可见文字是按时间生成的问候语（已遮罩）。
+ */
 test('portal desktop visual baseline', async ({ page }) => {
+  await useFixedDashboardData(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '全部应用' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近工作' })).toBeVisible();
   await waitForDashboardSettled(page);
   await expectNoHorizontalOverflow(page);
   await expect(page).toHaveScreenshot('portal-desktop.png', {
@@ -85,8 +147,10 @@ test('portal desktop visual baseline', async ({ page }) => {
 
 test('portal mobile visual baseline', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await useFixedDashboardData(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '全部应用' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近工作' })).toBeVisible();
   await waitForDashboardSettled(page);
   await expectNoHorizontalOverflow(page);
   await expect(page).toHaveScreenshot('portal-mobile.png', {
@@ -99,7 +163,10 @@ test('portal mobile visual baseline', async ({ page }) => {
 
 test('control center overview visual baseline', async ({ page }) => {
   await page.goto('/settings/control-center');
-  await expect(page.getByRole('heading', { name: '邻舍运行控制中心' })).toBeVisible();
+  // 页标题改为「控制中心」；运行总览面板标题为「邻舍运行栈」。
+  await waitForControlCenterLoaded(page);
+  await expect(page.getByRole('tab', { name: '运行总览' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: '邻舍运行栈' })).toBeVisible();
   await expect(page.getByText('运行栈状态')).toBeVisible();
   await expect(page).toHaveScreenshot('control-center-overview.png', {
     ...screenshotOptions,
@@ -111,6 +178,8 @@ test('control center overview visual baseline', async ({ page }) => {
 
 test('control center logs visual baseline', async ({ page }) => {
   await page.goto('/settings/control-center?tab=logs');
+  await waitForControlCenterLoaded(page);
+  await expect(page.getByRole('tab', { name: '实时日志' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByPlaceholder('搜索日志内容…')).toBeVisible();
   await expect(page.getByText('LIVE STREAM')).toBeVisible();
   await expect(page).toHaveScreenshot('control-center-logs.png', {
@@ -123,8 +192,11 @@ test('control center logs visual baseline', async ({ page }) => {
 
 test('character editor visual baseline', async ({ page }) => {
   await page.goto('/apps/characters/new');
-  await expect(page.getByRole('heading', { name: '编辑基础档案与外观' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '编辑身份资料' })).toBeVisible();
+  // 编辑器改为页头「新建角色档案」+「人设 / 外貌 / 资产 / LoRA」分段，不再有「编辑身份资料」浮层入口。
+  await expect(page.getByRole('heading', { name: '新建角色档案', level: 1 })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '人设' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('角色名称')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '形象资产库' })).toBeVisible();
   await expect(page).toHaveScreenshot('character-editor.png', {
     ...screenshotOptions,
     fullPage: true,
@@ -132,9 +204,17 @@ test('character editor visual baseline', async ({ page }) => {
 });
 
 test('notebook visual baseline', async ({ page }) => {
+  // 左侧资料列表默认展开，条目来自测试库；拦截为固定两条，避免随其他用例新建的笔记漂移。
+  await page.clock.setFixedTime(FIXED_NOW);
+  await page.route(/\/api\/admin\/notebook\/notes(?:\?|$)/, (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ json: NOTEBOOK_LIST_FIXTURE }) : route.fallback());
   await page.goto('/apps/notebook/new');
-  await expect(page.getByRole('button', { name: '编辑资料' })).toBeVisible();
+  // 标题与元信息改为文档头内联编辑，旧的「编辑资料」浮层按钮已移除。
+  await expect(page.getByRole('heading', { name: '创作资料库', level: 1 })).toBeVisible();
+  await expect(page.getByRole('region', { name: '文档标题与元信息' }).getByPlaceholder('无标题笔记')).toBeVisible();
   await expect(page.getByRole('region', { name: '笔记正文' }).getByPlaceholder('写下一段文字记录…')).toBeVisible();
+  await expect(page.locator('.notebook-master-list .notebook-list-item')).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.getByText('1 页 · 共 2 条')).toBeVisible();
   await expect(page).toHaveScreenshot('notebook.png', {
     ...screenshotOptions,
     fullPage: true,
@@ -144,6 +224,7 @@ test('notebook visual baseline', async ({ page }) => {
 test('narrative visual baseline', async ({ page }) => {
   await page.goto('/apps/narrative');
   await page.getByRole('tab', { name: '数据源与导入' }).click();
+  await expect(page.getByRole('tab', { name: '数据源与导入' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('规范化剧情 JSON 工作台')).toBeVisible();
   /*
    * 连接器来自异步查询，初始是空数组。不等待就会截到“还没有连接器卡片”的

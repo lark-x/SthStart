@@ -248,13 +248,13 @@ export function BeatRenderWorkbench({
         effectiveAI={plan?.promptOptimization.enabled ?? true} finalSupported={plan?.promptAssembly === 'service-finalized-v1'} sourcePrompt={plan?.positivePrompt ?? ''}
         disabled={Boolean(working)} onChange={patch => persistSettings({ ...settings, ...patch })} />
       {!settings.presetId && !settings.workflowId && <label className="block space-y-1.5"><span className="text-sm font-medium">生成档位</span><select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>}
-      <details hidden={!showAdvanced} className="rounded-[var(--radius-control)] border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
+      <details hidden={!showAdvanced} className="rounded-control border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
       <label className="mt-3 block space-y-1.5"><span className="text-sm font-medium text-ink">工作流</span>
         {plan?.workflowOptions.length ? <select aria-label="镜头工作流" value={`${settings.purpose ?? plan.purpose}|${settings.workflowId ?? plan.workflowId}|${settings.workflowVersion ?? plan.workflowVersion}`} onChange={(event) => {
           const item = plan.workflowOptions.find((option) => `${option.purpose}|${option.workflowId}|${option.workflowVersion}` === event.target.value);
           if (item) changeWorkflowSettings({ ...settings, purpose: item.purpose, workflowId: item.workflowId, workflowVersion: item.workflowVersion,
             presetId: item.presetId ?? undefined, presetRevision: undefined, parameters: undefined });
-        }} className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink">
+        }} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
           {plan.workflowOptions.map((item) => <option key={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`} value={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`}>{workflowOptionLabel(item)}</option>)}
         </select> : <p className="rounded border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-muted">{settingsLabel}</p>}
         {selectedWorkflowOption && <span className="block text-xs text-muted">{defaultCanvasHint(selectedWorkflowOption, selectedWorkflowOption.workflowId)}</span>}
@@ -264,7 +264,7 @@ export function BeatRenderWorkbench({
           const preset = plan.presetOptions.find((item) => item.id === event.target.value);
           changeWorkflowSettings({ ...settings, purpose: preset ? plan.purpose : undefined, workflowId: preset?.workflowId, workflowVersion: preset?.workflowVersion,
             presetId: preset?.id, presetRevision: preset?.revision, parameters: undefined });
-        }} className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink">
+        }} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
           <option value="">跟随活动默认配置</option>{plan.presetOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · 默认' : ''}</option>)}
         </select>
       </label> : null}
@@ -288,7 +288,7 @@ export function BeatRenderWorkbench({
         <option value="">不使用参考图</option>{(actor?.appearanceReferenceAssetKeys ?? []).map(key => <option key={key} value={key}>{key}</option>)}</select>
         {plan && !plan.referenceSupported && <span className="block text-xs text-muted">此方案不支持参考图，可切换兼容方案。</span>}
       </label>
-      <details hidden={!showAdvanced} className="space-y-2 rounded-[var(--radius-control)] border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
+      <details hidden={!showAdvanced} className="space-y-2 rounded-control border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
         <summary className="cursor-pointer text-sm font-medium text-ink">LoRA · 继承角色与活动配置</summary><p className="text-xs text-muted">需要改变画风或角色特征时，再添加、调权或关闭。</p>
         {plan?.loras.map((item) => {
           const existing = (settings.loraOverrides ?? []).find((override) => override.model === item.model);
@@ -334,7 +334,7 @@ export function BeatRenderWorkbench({
         }}><WandSparkles className="mr-1 h-4 w-4" />添加或覆盖</Button>
       </details>
       {error && <p role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 px-3 py-2 text-sm text-danger-fg">{error}</p>}
-      <details hidden={!showAdvanced} open={showAdvanced} className="rounded-[var(--radius-control)] border border-border-subtle p-3">
+      <details hidden={!showAdvanced} open={showAdvanced} className="rounded-control border border-border-subtle p-3">
         <summary className="cursor-pointer select-none text-sm font-medium text-ink">采样、尺寸与负面词</summary>
         <div className="mt-3 space-y-3">
           <VisualParameterFields key={`${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} recoveryKey={`sthstart:visual-input:beat:${activityId}:${beat.id}:${plan?.workflowId}:${plan?.workflowVersion}`} fields={settingFields} values={settings.parameters ?? {}} onChange={parameters => persistSettings({ ...settings, parameters })} onValidityChange={setParametersValid} disabled={Boolean(working)} />
@@ -363,7 +363,7 @@ export function BeatRenderWorkbench({
           <div className="min-w-0"><div className="text-xs font-semibold text-ink">当前镜头画面</div><div className="max-w-full truncate text-xs text-muted">{settingsLabel}</div></div>
           <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void handleOpenSettings()}><Settings2 className="mr-1 h-4 w-4" />绘制设置</Button>
         </div>
-        <div className={`relative ${currentUrl ? 'aspect-video' : 'min-h-40 py-5'} w-full overflow-hidden rounded-[var(--radius-control)] border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
+        <div className={`relative ${currentUrl ? 'aspect-video' : 'min-h-40 py-5'} w-full overflow-hidden rounded-control border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
           {currentUrl ? unavailableMediaUrl === currentUrl
             ? <div role="status" className="p-4 text-center text-sm text-muted">当前画面文件不可用，历史图片仍可重新选择。</div>
             : beat.mediaType === 'video' ? <video src={currentUrl} controls onError={() => setUnavailableMediaUrl(currentUrl)} className="h-full w-full object-contain" />
@@ -421,8 +421,8 @@ export function BeatRenderWorkbench({
                     onClick={() => void selectImage(candidate, image.artifactId)} aria-label={`${label}${isHires ? '（细化）' : ''}，绘制于 ${new Date(candidate.createdAt).toLocaleString()}`}
                     className={`group relative block h-20 w-28 overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-black'}`}>
                     {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-xs text-muted">文件不可用</span>}
-                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-xs font-semibold ${isCurrent ? 'bg-accent text-[var(--fg-on-accent)]' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-[var(--fg-on-accent)]'}`}>{label}</span>
-                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-[var(--fg-on-accent)]">细化</span>}
+                    <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-xs font-semibold ${isCurrent ? 'bg-accent text-fg-on-accent' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-fg-on-accent'}`}>{label}</span>
+                    {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-fg-on-accent">细化</span>}
                   </button>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                     <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}

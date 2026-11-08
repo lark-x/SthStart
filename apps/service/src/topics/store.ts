@@ -272,7 +272,7 @@ export class TopicStore {
     }
     const where = 'WHERE ' + clauses.join(' AND ');
     const totalRow = this.connection.prepare('SELECT COUNT(*) count FROM topics ' + where).get(...params as never[]) as { count?: number } | undefined;
-    const rows = this.connection.prepare('SELECT * FROM topics ' + where + ' ORDER BY last_seen_at DESC, created_at DESC LIMIT ? OFFSET ?')
+    const rows = this.connection.prepare('SELECT * FROM topics ' + where + ' ORDER BY last_seen_at DESC, created_at DESC, id DESC LIMIT ? OFFSET ?')
       .all(...params as never[], pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
 
     // 分面只按忽略视图之外的基础条件统计，避免筛选后分面自相矛盾。

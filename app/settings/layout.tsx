@@ -21,19 +21,19 @@ interface SettingsTab {
 const SETTINGS_TABS: SettingsTab[] = [
   {
     href: '/settings/public-services',
-    label: '模型与服务',
+    label: '模型与连接',
     icon: Settings,
     description: '公共模型、服务连接与绑定',
   },
   {
     href: '/settings/generation',
-    label: '生成配置',
+    label: '生成方案',
     icon: SlidersHorizontal,
-    description: '生成引擎、工作流与参数',
+    description: '生成引擎、工作流与参数方案',
   },
   {
     href: '/settings/control-center',
-    label: '运行控制',
+    label: '运行诊断',
     icon: Server,
     description: '邻舍后端栈、服务监控与日志',
   },
@@ -45,7 +45,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   },
   {
     href: '/settings/backups',
-    label: '云端备份',
+    label: '数据备份',
     icon: CloudUpload,
     description: '工作区加密备份与恢复',
   },
@@ -64,11 +64,11 @@ export default function SettingsLayout({
         <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
           <nav
             aria-label="设置中心二级导航"
-            className="min-w-0 border-b border-border-subtle pb-2 lg:border-b-0 lg:pb-0 lg:sticky lg:top-[calc(var(--shell-topbar)_+_1.5rem)] lg:self-start"
+            className="min-w-0 border-b border-border-subtle pb-2 lg:border-b-0 lg:pb-0 lg:sticky lg:top-[calc(var(--shell-sticky-top)_+_1.5rem)] lg:self-start"
           >
             <div className="mb-4 hidden border-b border-border-subtle pb-4 lg:block">
               <p className="text-xs font-semibold tracking-[0.08em] text-muted">设置中心</p>
-              <p className="mt-1 text-sm leading-relaxed text-muted">服务、生成、运行与数据安全</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted">模型连接、生成方案、运行诊断与数据安全</p>
             </div>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
               {SETTINGS_TABS.map((tab) => {
@@ -80,7 +80,7 @@ export default function SettingsLayout({
                   <Link
                     key={tab.href}
                     href={tab.href}
-                    className="settings-navigation-link flex-none items-center rounded-[var(--radius-control)] px-2.5 py-1.5 text-xs sm:text-sm lg:w-full lg:min-h-14 lg:items-start lg:rounded-none lg:px-3 lg:py-2.5"
+                    className="settings-navigation-link flex-none items-center rounded-control px-2.5 py-1.5 text-xs sm:text-sm lg:w-full lg:min-h-14 lg:items-start lg:rounded-none lg:px-3 lg:py-2.5"
                     aria-current={isActive ? 'page' : undefined}
                   >
                     <Icon className="h-3.5 w-3.5 flex-none lg:mt-0.5 lg:h-4 lg:w-4" aria-hidden="true" />

@@ -5,11 +5,24 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { CharacterBrowseQuery, CharacterBrowseResult } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
+import { Pagination } from '@/app/components/ui/pagination';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { browseCharacters } from '../api';
 
-export { CHARACTER_FILTER_URL_PARAM, parseCharacterFilterParam } from '../filter-url';
-import { CHARACTER_FILTER_URL_PARAM } from '../filter-url';
+export {
+  CHARACTER_DEFAULT_PAGE_SIZE,
+  CHARACTER_FILTER_URL_PARAM,
+  CHARACTER_PAGE_SIZE_OPTIONS,
+  normalizeCharacterFilter,
+  parseCharacterFilterParam,
+} from '../filter-url';
+import {
+  CHARACTER_DEFAULT_PAGE_SIZE,
+  CHARACTER_FILTER_URL_PARAM,
+  CHARACTER_PAGE_SIZE_OPTIONS,
+  normalizeCharacterFilter,
+  parseCharacterFilterParam,
+} from '../filter-url';
 
 /**
  * 角色浏览的统一实现：角色库与活动选人共用同一套条件与分页。
@@ -17,8 +30,9 @@ import { CHARACTER_FILTER_URL_PARAM } from '../filter-url';
  */
 export function useCharacterBrowser(overrides: CharacterBrowseQuery = {}, enabled = true, options: { persist?: boolean; initialFilter?: CharacterBrowseQuery | null } = {}) {
   const persist = options.persist === true;
-  const [filter, setFilter] = useState<CharacterBrowseQuery>(() => options.initialFilter || { page: 1 });
-  const [debouncedQ, setDebouncedQ] = useState('');
+  const initialFilter = normalizeCharacterFilter(options.initialFilter || { page: 1, pageSize: CHARACTER_DEFAULT_PAGE_SIZE });
+  const [filter, setFilter] = useState<CharacterBrowseQuery>(initialFilter);
+  const [debouncedQ, setDebouncedQ] = useState(() => initialFilter.q || '');
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(filter.q || ''), 250);
@@ -28,9 +42,25 @@ export function useCharacterBrowser(overrides: CharacterBrowseQuery = {}, enable
   useEffect(() => {
     if (!persist || typeof window === 'undefined') return;
     const url = new URL(window.location.href);
-    url.searchParams.set(CHARACTER_FILTER_URL_PARAM, JSON.stringify(filter));
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    const value = JSON.stringify(filter);
+    if (url.searchParams.get(CHARACTER_FILTER_URL_PARAM) === value) return;
+    url.searchParams.set(CHARACTER_FILTER_URL_PARAM, value);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
   }, [filter, persist]);
+
+  // 浏览器后退/前进时恢复当时的页码、搜索、筛选与排序。
+  useEffect(() => {
+    if (!persist) return;
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      const next = parseCharacterFilterParam(params.get(CHARACTER_FILTER_URL_PARAM))
+        || { page: 1, pageSize: CHARACTER_DEFAULT_PAGE_SIZE };
+      setFilter(next);
+      setDebouncedQ(next.q || '');
+    };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, [persist]);
 
   const request = { ...filter, ...overrides, q: debouncedQ };
   const result = useQuery({
@@ -40,7 +70,36 @@ export function useCharacterBrowser(overrides: CharacterBrowseQuery = {}, enable
     staleTime: 15_000,
     placeholderData: keepPreviousData,
   });
-  const change = useCallback((patch: CharacterBrowseQuery) => setFilter((current) => ({ ...current, ...patch, page: patch.page ?? 1 })), []);
+  const change = useCallback((patch: CharacterBrowseQuery) => setFilter((current) => normalizeCharacterFilter({
+    ...current,
+    ...patch,
+    page: patch.page ?? 1,
+  })), []);
+  const reset = useCallback(() => {
+    setFilter((current) => ({
+      page: 1,
+      pageSize: (CHARACTER_PAGE_SIZE_OPTIONS as readonly number[]).includes(Number(current.pageSize))
+        ? Number(current.pageSize)
+        : CHARACTER_DEFAULT_PAGE_SIZE,
+    }));
+    setDebouncedQ('');
+  }, []);
+
+  // 删除末页内容后把越界页码收回最后一页；URL 也会同步修正。
+  useEffect(() => {
+    // keepPreviousData 期间显示的是上一查询的结果，不能用它判断新页码是否越界。
+    if (result.isPlaceholderData) return;
+    const data = result.data;
+    if (!data) return;
+    const pages = Math.max(1, Math.ceil(data.total / Math.max(1, data.pageSize)));
+    if (filter.page && filter.page > pages) {
+      const timer = setTimeout(() => {
+        setFilter((current) => current.page === pages ? current : { ...current, page: pages });
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [filter.page, result.data, result.isPlaceholderData]);
+
   return {
     ...result,
     facets: result.data?.facets,
@@ -48,7 +107,7 @@ export function useCharacterBrowser(overrides: CharacterBrowseQuery = {}, enable
     change,
     // 关键词还在防抖窗口内时提示结果即将更新。
     isSearchPending: (filter.q || '') !== debouncedQ,
-    reset: () => setFilter({ page: 1 }),
+    reset,
   };
 }
 
@@ -74,11 +133,11 @@ function MultiFilter({ label, values, selected, onChange }: { label: string; val
   const matches = needle ? values.filter((item) => `${item.label} ${item.search || ''}`.toLowerCase().includes(needle)) : values;
 
   return (
-    <details ref={ref} className="relative rounded-[var(--radius-control)] border border-border-default bg-surface">
+    <details ref={ref} className="relative rounded-control border border-border-default bg-surface">
       <summary className="cursor-pointer list-none px-3 py-1.5 text-sm font-medium text-muted hover:text-ink transition-colors">
         {label}{selected.length ? ` (${selected.length})` : ''}
       </summary>
-      <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-2.5 shadow-floating">
+      <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-control border border-border-subtle bg-surface p-2.5 shadow-floating">
         <Input
           aria-label={`搜索${label}`}
           placeholder={`搜索${label}…`}
@@ -139,11 +198,19 @@ function activeChips(filter: CharacterBrowseQuery): Chip[] {
 
 export function CharacterFilters({ filter, onChange, facets, onReset, actions }: { actions?: ReactNode; filter: CharacterBrowseQuery; onChange: (patch: CharacterBrowseQuery) => void; facets?: CharacterBrowseResult['facets']; onReset: () => void }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState(filter.q || '');
+  const [lastFilterQuery, setLastFilterQuery] = useState(filter.q || '');
+  const composingRef = useRef(false);
+  const filterQuery = filter.q || '';
+  if (filterQuery !== lastFilterQuery) {
+    setLastFilterQuery(filterQuery);
+    setSearchInput(filterQuery);
+  }
   const select = (label: string, key: keyof CharacterBrowseQuery, options: [string, string][]) => (
     <label className="flex flex-col gap-1 text-sm font-medium text-ink">
       <span>{label}</span>
       <select
-        className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-base sm:text-sm text-ink focus-visible:outline-accent"
+        className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-base sm:text-sm text-ink focus-visible:outline-accent"
         value={String(filter[key] || '')}
         onChange={(event) => onChange({ [key]: event.target.value || undefined })}
       >
@@ -162,8 +229,20 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
           className="w-full sm:w-[280px] xl:w-[320px] text-base sm:text-sm"
           aria-label="搜索角色"
           placeholder="搜索姓名、别名、作品或标签…"
-          value={filter.q || ''}
-          onChange={(event) => onChange({ q: event.target.value })}
+          value={searchInput}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSearchInput(value);
+            if (composingRef.current) return;
+            onChange({ q: value });
+          }}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={(event) => {
+            composingRef.current = false;
+            const value = event.currentTarget.value;
+            setSearchInput(value);
+            onChange({ q: value });
+          }}
         />
         <div className="hidden flex-wrap items-center gap-2 sm:flex">
           <MultiFilter label="作品" values={(facets?.works || []).map((work) => ({ value: work.name, label: work.name, search: work.aliases.join(' ') }))} selected={filter.works || []} onChange={(works) => onChange({ works })} />
@@ -190,7 +269,7 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
           variant="ghost"
           aria-expanded={advancedOpen}
           onClick={() => setAdvancedOpen(!advancedOpen)}
-          className="h-8 text-xs font-medium text-muted hover:text-ink"
+          className="h-8 text-sm font-medium text-muted hover:text-ink"
         >
           筛选与排序
         </Button>
@@ -219,7 +298,7 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
             <button
               type="button"
               key={chip.key}
-              className="rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken px-2 py-0.5 text-xs text-ink transition-colors hover:border-accent/40"
+              className="rounded-control border border-border-subtle bg-surface-sunken px-2 py-0.5 text-xs text-ink transition-colors hover:border-accent/40"
               onClick={() => clearChip(chip)}
             >
               <span>{chip.label}</span>
@@ -232,24 +311,22 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
   );
 }
 
-export function CharacterPagination({ data, onPage }: { data?: CharacterBrowseResult; onPage: (page: number) => void }) {
-  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-  // 数据减少导致页码越界时回到最后一个有效页，避免停在空页面。
-  useEffect(() => {
-    if (data && data.page > pages) onPage(pages);
-  }, [data, pages, onPage]);
+export function CharacterPagination({ data, onPage, onPageSizeChange, loading = false }: {
+  data?: CharacterBrowseResult;
+  onPage: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  loading?: boolean;
+}) {
   if (!data) return null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm text-muted">
-      <span className="tabular-nums">共 {data.total} 位 · 第 {data.page} / {pages} 页</span>
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" className="min-h-[36px] sm:min-h-[32px] px-3 text-sm" disabled={data.page <= 1} onClick={() => onPage(data.page - 1)}>
-          上一页
-        </Button>
-        <Button size="sm" variant="outline" className="min-h-[36px] sm:min-h-[32px] px-3 text-sm" disabled={data.page >= pages} onClick={() => onPage(data.page + 1)}>
-          下一页
-        </Button>
-      </div>
-    </div>
+    <Pagination
+      total={data.total}
+      page={data.page}
+      pageSize={data.pageSize}
+      onPageChange={onPage}
+      onPageSizeChange={onPageSizeChange}
+      pageSizeOptions={CHARACTER_PAGE_SIZE_OPTIONS}
+      loading={loading}
+    />
   );
 }

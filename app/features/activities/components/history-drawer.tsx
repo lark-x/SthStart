@@ -31,8 +31,10 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
   const [newCheckpointName, setNewCheckpointName] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const { data: checkpointsData, isLoading: checkpointsLoading } = useActivityCheckpoints(activity.id);
-  const { data: revisionsData } = useActivityContentRevisions(activity.id);
+  const checkpointsQuery = useActivityCheckpoints(activity.id);
+  const revisionsQuery = useActivityContentRevisions(activity.id);
+  const { data: checkpointsData, isLoading: checkpointsLoading } = checkpointsQuery;
+  const { data: revisionsData } = revisionsQuery;
 
   const createCheckpointMutation = useCreateCheckpoint();
   const restoreCheckpointMutation = useRestoreCheckpoint();
@@ -42,7 +44,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
 
   const handleCreateCheckpoint = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCheckpointName.trim()) return;
+    if (!newCheckpointName.trim() || createCheckpointMutation.isPending || restoreCheckpointMutation.isPending) return;
 
     setErrorMsg(null);
     try {
@@ -57,6 +59,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
   };
 
   const handleRestore = async (checkpointId: string) => {
+    if (restoreCheckpointMutation.isPending || createCheckpointMutation.isPending) return;
     setErrorMsg(null);
     try {
       await restoreCheckpointMutation.mutateAsync({
@@ -97,6 +100,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
           className="flex items-center gap-2 p-2.5 rounded-lg bg-surface border border-border-subtle"
         >
           <Input
+            aria-label="新检查点名称"
             value={newCheckpointName}
             onChange={(e) => setNewCheckpointName(e.target.value)}
             placeholder="命名新检查点（如：第一幕初版、晚餐合照已选片）…"
@@ -106,7 +110,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
             type="submit"
             size="sm"
             disabled={createCheckpointMutation.isPending || !newCheckpointName.trim()}
-            className="h-8 text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1 flex-shrink-0"
+            className="h-8 text-sm bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1 flex-shrink-0"
           >
             <BookmarkPlus className="h-3.5 w-3.5" />
             创建检查点
@@ -119,6 +123,8 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
 
           {checkpointsLoading ? (
             <div className="text-sm text-muted py-6 text-center">加载检查点列表中…</div>
+          ) : checkpointsQuery.isError ? (
+            <div role="alert" className="text-sm text-danger-fg">检查点读取失败：{checkpointsQuery.error.message}<Button variant="outline" disabled={checkpointsQuery.isFetching} onClick={() => void checkpointsQuery.refetch()}>重新加载检查点</Button></div>
           ) : checkpoints.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted bg-surface rounded border border-border-default">
               尚未创建任何检查点。建议在重要节点保存快照。
@@ -163,6 +169,9 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
         {/* Content revisions history */}
         <div className="space-y-2 pt-2 border-t border-border-subtle">
           <span className="text-sm font-semibold text-ink">内容版本历史 ({revisions.length})</span>
+          {revisionsQuery.isPending && <p role="status">正在读取版本历史…</p>}
+          {revisionsQuery.isError && <div role="alert">版本历史读取失败：{revisionsQuery.error.message}<Button variant="outline" disabled={revisionsQuery.isFetching} onClick={() => void revisionsQuery.refetch()}>重新加载版本历史</Button></div>}
+          {revisionsQuery.isSuccess && !revisions.length && <p className="text-sm text-muted">暂无内容版本。</p>}
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {revisions.map((rev) => {
               const isCurrent = rev.id === activity.currentContentRevisionId;

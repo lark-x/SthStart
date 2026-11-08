@@ -150,7 +150,7 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
           <label className="block text-sm">
             <span className="text-muted">备份范围</span>
             <select
-              className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+              className="mt-1 h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
               value={draft.scope}
               onChange={(event) => update({ scope: event.target.value as BackupScope })}
             >
@@ -162,7 +162,7 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
           {draft.scope === 'activities' && (
             <div className="text-sm">
               <span className="text-muted">选择活动</span>
-              <div className="mt-1 max-h-40 space-y-1 overflow-auto rounded-[var(--radius-control)] border border-border-default p-2">
+              <div className="mt-1 max-h-40 space-y-1 overflow-auto rounded-control border border-border-default p-2">
                 {(activities.data?.items ?? []).map((activity) => (
                   <label key={activity.id} className="flex items-center gap-2">
                     <input
@@ -211,7 +211,7 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
             <label className="block">
               <span className="text-muted">频率</span>
               <select
-                className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+                className="mt-1 h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
                 value={draft.frequency}
                 onChange={(event) => update({ frequency: event.target.value as BackupPlan['frequency'] })}
               >
@@ -228,7 +228,7 @@ export function BackupPlansPanel({ plans, targets }: { plans: BackupPlan[]; targ
               <label className="block">
                 <span className="text-muted">星期</span>
                 <select
-                  className="mt-1 h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+                  className="mt-1 h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
                   value={draft.weekday}
                   onChange={(event) => update({ weekday: Number(event.target.value) })}
                 >

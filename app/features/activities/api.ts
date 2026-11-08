@@ -46,7 +46,7 @@ import type {
   InstantiateTemplateInput,
   UpdateActivityPresetInput,
 } from '@sthstart/contracts';
-import { ActivityGallerySchema } from '@sthstart/contracts';
+import { ActivityGallerySchema, ActivityPageResponseSchema, ImageAttemptPageSchema, type ActivityPageQuery, type ActivityPageResponse, type ImageAttemptPage } from '@sthstart/contracts';
 
 export interface ActivityCapabilities {
   llm: boolean;
@@ -107,6 +107,11 @@ export interface StagedImportPreview {
 }
 
 // 1. Activities List & CRUD
+export async function fetchActivityPage(filters: ActivityPageQuery = {}, signal?: AbortSignal): Promise<ActivityPageResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '') params.set(key, String(value));
+  return getJson(`activities/page?${params}`, {signal}, ActivityPageResponseSchema);
+}
 export async function fetchActivities(filters?: ActivityListFilter): Promise<{ items: Activity[] }> {
   const params = new URLSearchParams();
   if (filters?.q) params.set('q', filters.q);
@@ -593,9 +598,11 @@ export async function createImageAttempt(
   return postJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts`, input);
 }
 
-export async function fetchImageAttempts(id: string, slotId?: string): Promise<{ items: GenerationAttempt[] }> {
-  const query = slotId ? `?slotId=${encodeURIComponent(slotId)}` : '';
-  return getJson(`/api/admin/activities/${encodeURIComponent(id)}/image-attempts${query}`);
+export async function fetchImageAttempts(id: string, slotId?: string, cursor?: string, signal?: AbortSignal): Promise<ImageAttemptPage> {
+  const params = new URLSearchParams({limit: '50'});
+  if (slotId) params.set('slotId', slotId);
+  if (cursor) params.set('cursor', cursor);
+  return getJson(`activities/${encodeURIComponent(id)}/image-attempts?${params}`, {signal}, ImageAttemptPageSchema);
 }
 
 export async function fetchImageAttempt(id: string, attemptId: string): Promise<GenerationAttempt> {

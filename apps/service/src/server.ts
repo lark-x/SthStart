@@ -55,6 +55,8 @@ import { StoryRuntime } from './story/runtime.js';
 import { registerStoryRoutes } from './story/routes.js';
 import { registerPublicationRoutes } from './publication/routes.js';
 import { registerWorkspaceRoutes } from './workspace.js';
+import { registerProjectRoutes } from './projects.js';
+import { registerMediaLibraryRoutes } from './media-library.js';
 import { startImageKnowledgeScheduler } from './generation/image-knowledge-index.js';
 
 const SERVICE_VERSION = '0.1.0';
@@ -234,6 +236,8 @@ export async function createService(options: ServiceOptions = {}) {
   registerCreativeRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
   registerWorkspaceRoutes(app, database);
+  registerProjectRoutes(app, config, database, narrativeDatabase);
+  registerMediaLibraryRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerSharedAssetRoutes(app, config, database);
   registerLinsheBridgeRoutes(app, config, database, options.fetcher);

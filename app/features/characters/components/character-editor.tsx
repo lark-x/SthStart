@@ -1,4 +1,5 @@
 'use client';
+import { CharacterVisualPreview, CharacterAssetImage } from './character-image-fallback';
 
 import { useQuery } from '@tanstack/react-query';
 import type { GenerationTaskDescriptor } from '@sthstart/contracts';
@@ -591,7 +592,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         {/* ================= 左栏：角色卡预览、上下文微操作、资产库、衍生形态 ================= */}
         <div className="order-2 lg:order-1 space-y-5 lg:sticky lg:top-6">
           {/* 移动端紧凑可展开条目：在小屏上收纳预览，不挡主表单首屏 */}
-          <div className="lg:hidden rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+          <div className="lg:hidden rounded-panel border border-border-subtle bg-surface p-3">
             <button
               type="button"
               onClick={() => setMobileVisualExpanded((v) => !v)}
@@ -599,7 +600,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
               aria-expanded={mobileVisualExpanded}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="relative h-8 w-8 flex-none overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken">
+                <div className="relative h-8 w-8 flex-none overflow-hidden rounded-control border border-border-subtle bg-surface-sunken">
                   {currentAvatarUrl ? (
                     <Image src={currentAvatarUrl} alt="" fill unoptimized className="object-cover" />
                   ) : currentPortraitUrl ? (
@@ -624,7 +625,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
           <div className={`space-y-5 ${mobileVisualExpanded ? 'block' : 'hidden lg:block'}`}>
           {/* 角色卡牌预览 */}
-          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-3">
+          <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">
                 视觉预览
@@ -635,53 +636,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             </div>
 
             {/* 立绘与头像展示区 */}
-            <div className="group relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken shadow-inner flex items-center justify-center">
-              {currentPortraitUrl ? (
-                <Image
-                  src={currentPortraitUrl}
-                  alt={draft.displayName || '角色立绘'}
-                  fill
-                  unoptimized
-                  className="object-contain"
-                />
-              ) : currentAvatarUrl ? (
-                <Image
-                  src={currentAvatarUrl}
-                  alt={draft.displayName || '角色头像'}
-                  fill
-                  unoptimized
-                  className="object-cover opacity-85"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-muted">
-                  <User className="h-12 w-12 opacity-30" />
-                  <span className="mt-2 text-xs text-muted">暂无立绘与头像</span>
-                </div>
-              )}
-
-              {/* 头像徽章（左上角微圆图） */}
-              {currentAvatarUrl && (
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-surface/90 backdrop-blur-md p-1 pr-2 shadow-sm border border-border-subtle">
-                  <div className="relative h-7 w-7 overflow-hidden rounded-full border border-border-subtle bg-surface-sunken">
-                    <Image
-                      src={currentAvatarUrl}
-                      alt={draft.displayName || '角色头像'}
-                      fill
-                      unoptimized
-                      className="object-cover"
-                    />
-                  </div>
-                  <span className="text-xs font-semibold text-ink">当前头像</span>
-                </div>
-              )}
-
-              {/* 立绘标记（右上角） */}
-              {currentPortraitUrl && (
-                <div className="absolute top-2.5 right-2.5 rounded-md bg-surface/85 backdrop-blur-md px-1.5 py-0.5 text-xs font-medium text-ink shadow-sm border border-border-subtle">
-                  当前立绘
-                </div>
-              )}
-            </div>
+            <CharacterVisualPreview portraitUrl={currentPortraitUrl} avatarUrl={currentAvatarUrl} displayName={draft.displayName || ""} />
 
             {/* 紧凑微操作工具行（替代原 7 按钮平铺） */}
             <div className="grid grid-cols-4 gap-1.5 pt-1">
@@ -810,6 +765,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             <input
               ref={avatarInputRef}
               type="file"
+              aria-label="上传头像图标"
               accept="image/png,image/jpeg,image/webp"
               className="hidden"
               onChange={(e) => handleUploadAsset(e, 'avatar')}
@@ -817,6 +773,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
             <input
               ref={portraitInputRef}
               type="file"
+              aria-label="上传立绘大图"
               accept="image/png,image/jpeg,image/webp"
               className="hidden"
               onChange={(e) => handleUploadAsset(e, 'portrait')}
@@ -824,7 +781,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
 
           {/* 形象资产库 */}
-          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-3">
+          <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-semibold text-ink flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-accent" />
@@ -878,11 +835,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                           : 'border-border-subtle hover:border-border-subtle'
                       }`}
                     >
-                      <Image
+                      <CharacterAssetImage
                         src={asset.url}
                         alt="资产缩略图"
                         fill
-                        unoptimized
                         className="object-cover"
                       />
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 p-1">
@@ -915,7 +871,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
 
           {/* 衍生形态管理 */}
-          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-2.5">
+          <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-2.5">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-semibold text-ink flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-accent" />
@@ -979,7 +935,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         {/* ================= 右栏：行内档案头 + 分段创作画布 ================= */}
-        <div className="order-1 lg:order-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 sm:p-6 space-y-6 max-w-[780px] w-full min-w-0">
+        <div className="order-1 lg:order-2 rounded-panel border border-border-subtle bg-surface p-4 sm:p-6 space-y-6 max-w-[780px] w-full min-w-0">
           {/* 行内原生档案头 (无需点击弹窗直接编辑) */}
           <div className="space-y-3 pb-5 border-b border-border-subtle">
             <div className="flex items-center justify-between gap-3">
@@ -1053,6 +1009,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                   setStatus('dirty');
                 }}
                 placeholder="添加角色特征标签，回车完成（如：枫丹、水神、戏剧家）"
+                aria-label="角色标签"
+                className="w-full bg-transparent text-base sm:text-sm text-ink outline-none placeholder:text-fg-subtle"
               />
             </div>
           </div>
@@ -1311,7 +1269,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         description="根据角色外观生成图片，预览后再应用为头像。"
       >
         <div className="space-y-4">
-          {(isDirty || status === 'dirty' || status === 'saving') && <p role="status" className="rounded-[var(--radius-control)] bg-surface-sunken p-3 text-xs text-muted">角色修改尚未保存完成；生成读取已保存的角色版本。请先保存外观或 LoRA 修改，再生成头像。</p>}
+          {(isDirty || status === 'dirty' || status === 'saving') && <p role="status" className="rounded-control bg-surface-sunken p-3 text-xs text-muted">角色修改尚未保存完成；生成读取已保存的角色版本。请先保存外观或 LoRA 修改，再生成头像。</p>}
           <ImageGenerationPanel
             appId="characters"
             purpose="character-avatar"
@@ -1350,7 +1308,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                     key={item.artifactId}
                     src={`/api/admin/artifacts/${encodeURIComponent(item.artifactId)}/file`}
                     alt="新生成的角色头像"
-                    className="mx-auto max-h-80 max-w-full rounded-[var(--radius-panel)] object-contain"
+                    className="mx-auto max-h-80 max-w-full rounded-panel object-contain"
                   />
                 ))}
               <Button

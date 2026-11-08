@@ -19,6 +19,7 @@ import { cn } from '../../lib/cn';
 const BOTTOM_GUTTER = 24;
 const MIN_AVAILABLE = 360;
 const DEAD_ZONE = 4;
+const HANDLE_WIDTH = 24;
 
 export type SplitFrom = 'lg' | 'xl';
 
@@ -104,6 +105,7 @@ export function SplitPanes({
     const el = containerRef.current;
     if (!el) return;
     let lastAvailable = Number.NaN;
+    let frame = 0;
 
     const update = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
@@ -115,14 +117,33 @@ export function SplitPanes({
     };
 
     update();
-    window.addEventListener('resize', update);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    // Defer geometry writes outside the observer delivery cycle.
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    window.addEventListener('resize', schedule);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
     observer?.observe(document.body);
     return () => {
-      window.removeEventListener('resize', update);
+      window.removeEventListener('resize', schedule);
       observer?.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, []);
+
+  // Re-clamp saved ratios after resize; pointer-only limits miss restored layouts.
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || !resizable || !isWide) return;
+    const clamp = () => {
+      const width = element.clientWidth - HANDLE_WIDTH;
+      if (width <= 0) return;
+      const min = minLeftWidth / width;
+      const max = 1 - minRightWidth / width;
+      setSplitRatio(previous => min > max ? 0.5 : Math.max(min, Math.min(max, previous)));
+    };
+    const observer = new ResizeObserver(clamp);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isWide, resizable, minLeftWidth, minRightWidth]);
 
   // 3. 双击分割手柄：复位至 50/50 基准
   const handleDoubleClick = useCallback(() => {
@@ -171,7 +192,7 @@ export function SplitPanes({
         setIsDragging(true);
       }
 
-      const containerWidth = containerRef.current.offsetWidth;
+      const containerWidth = containerRef.current.offsetWidth - HANDLE_WIDTH;
       if (containerWidth <= 0) return;
 
       let rawRatio = pointerStartRef.current.ratio + deltaX / containerWidth;
@@ -195,7 +216,7 @@ export function SplitPanes({
 
   // 6. 指针松开与取消 (Pointer Up / Cancel)
   const handlePointerRelease = useCallback(
-    (e: React.PointerEvent) => {
+    () => {
       if (pointerStartRef.current) {
         if (isDragging && storageKey) {
           try {
@@ -245,7 +266,7 @@ export function SplitPanes({
         const step = e.shiftKey ? 0.05 : 0.02;
         const delta = e.key === 'ArrowLeft' ? -step : step;
         setSplitRatio((prev) => {
-          const containerWidth = containerRef.current?.offsetWidth || 1000;
+          const containerWidth = (containerRef.current?.offsetWidth || 1000) - HANDLE_WIDTH;
           let minRatio = minLeftWidth / containerWidth;
           let maxRatio = (containerWidth - minRightWidth) / containerWidth;
           if (minRatio > maxRatio) { minRatio = 0.5; maxRatio = 0.5; }
@@ -274,11 +295,13 @@ export function SplitPanes({
       onPointerCancel={showResizableSplit ? handlePointerRelease : undefined}
       data-from={from}
       data-pane-dragging={isDragging ? 'true' : undefined}
+      style={showResizableSplit ? { gap: 0 } : undefined}
       className={cn(
         'split-panes min-w-0 relative',
         showResizableSplit
           ? 'flex flex-row items-start gap-0'
-          : cn('grid grid-cols-1 gap-4', className),
+          : 'grid grid-cols-1 gap-4',
+        className,
       )}
     >
       {/* 拖拽期间全局激活的 Iframe / 画布防吞噬透明护盾 */}
@@ -292,7 +315,7 @@ export function SplitPanes({
       {/* 左栏 */}
       <div
         className={cn('min-w-0 relative transition-[width] duration-75', leftClassName)}
-        style={showResizableSplit ? { width: `${splitRatio * 100}%`, flexShrink: 0 } : undefined}
+        style={showResizableSplit ? { width: `calc((100% - ${HANDLE_WIDTH}px) * ${splitRatio})`, flexShrink: 0 } : undefined}
         aria-label={labels?.left}
       >
         {isDragging && <div className="absolute inset-0 z-40 pointer-events-none bg-transparent" />}
@@ -311,14 +334,14 @@ export function SplitPanes({
           onDoubleClick={handleDoubleClick}
           onKeyDown={handleHandleKeyDown}
           className={cn(
-            'split-pane-handle group relative z-30 flex items-center justify-center w-3 -mx-1.5 cursor-col-resize select-none outline-none touch-none transition-colors self-stretch',
+            'split-pane-handle group relative z-30 flex w-6 shrink-0 items-center justify-center cursor-col-resize select-none outline-none touch-none transition-colors self-stretch focus-visible:bg-accent/10',
             isDragging ? 'bg-accent/20' : 'hover:bg-accent/10',
           )}
         >
           {/* 1px 发丝线 */}
           <div
             className={cn(
-              'w-[1px] h-full transition-colors',
+              'w-px h-full transition-colors',
               isDragging ? 'bg-accent' : 'bg-border-subtle group-hover:bg-accent',
             )}
           />
@@ -341,7 +364,7 @@ export function SplitPanes({
       {/* 右栏 */}
       <div
         className={cn('min-w-0 relative transition-[width] duration-75', rightClassName)}
-        style={showResizableSplit ? { width: `${(1 - splitRatio) * 100}%`, flexGrow: 1 } : undefined}
+        style={showResizableSplit ? { width: `calc((100% - ${HANDLE_WIDTH}px) * ${1 - splitRatio})`, flexGrow: 1 } : undefined}
         aria-label={labels?.right}
       >
         {isDragging && <div className="absolute inset-0 z-40 pointer-events-none bg-transparent" />}

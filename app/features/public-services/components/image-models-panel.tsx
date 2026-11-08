@@ -180,6 +180,7 @@ export function ImageModelsPanel({
             />
           </div>
           <Select
+            aria-label="按引擎类型筛选"
             value={filterKind}
             onChange={(e) => setFilterKind(e.target.value)}
             className="w-48"

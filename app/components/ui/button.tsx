@@ -10,18 +10,18 @@ import { cn } from '../../lib/cn';
  * 桌面默认 40px、紧凑 36px；移动端至少 44px，大按钮 48px。
  */
 export const buttonVariants = cva(
-  'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] text-sm font-medium transition-colors duration-[var(--motion-fast)] focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)] focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-wait aria-disabled:opacity-60 cursor-pointer select-none',
+  'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--motion-fast)] enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-focus-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-wait aria-disabled:opacity-60 cursor-pointer select-none',
   {
     variants: {
       variant: {
         primary:
-          'border border-transparent bg-primary text-primary-foreground enabled:hover:bg-[var(--action-primary-hover)] font-semibold',
+          'border border-transparent bg-primary text-primary-foreground shadow-sm enabled:hover:bg-action-primary-hover enabled:hover:shadow-md font-semibold',
         accent:
-          'border border-transparent bg-accent text-[var(--fg-on-accent)] enabled:hover:bg-accent-dark font-semibold',
+          'border border-transparent bg-accent text-fg-on-accent shadow-sm enabled:hover:bg-accent-dark enabled:hover:shadow-md font-semibold',
         secondary:
-          'border border-transparent bg-[var(--action-secondary)] text-ink enabled:hover:bg-[var(--action-secondary-hover)]',
+          'border border-transparent bg-action-secondary text-ink enabled:hover:bg-action-secondary-hover',
         outline:
-          'border border-border-subtle bg-transparent text-ink enabled:hover:border-border-default enabled:hover:bg-surface-hover',
+          'border border-border-default bg-surface text-ink shadow-xs enabled:hover:bg-surface-hover',
         ghost: 'border border-transparent bg-transparent text-muted enabled:hover:text-ink enabled:hover:bg-surface-hover',
         danger:
           'border border-transparent bg-danger-solid text-danger-on-solid enabled:hover:bg-[color-mix(in_srgb,var(--danger-solid)_88%,black)] font-semibold',

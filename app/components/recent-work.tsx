@@ -1,25 +1,37 @@
 'use client';
 
 import Link from 'next/link';
-import { CalendarDays, PenLine, Users, ArrowRight } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchRecentWork } from '../features/workspace/api';
+import { CalendarDays, PenLine, Users, ArrowRight, BookOpen, Film } from 'lucide-react';
+import { useRecentWork } from '../features/workspace/queries';
 import { useLocalNotebookNotes } from '../features/notebook/hooks';
 import { Skeleton } from './ui/skeleton';
+import type { NavTone } from './shared/navigation';
+
+export type WorkKind = '项目' | '制作' | '活动' | '笔记' | '角色';
 
 interface WorkItem {
   id: string;
   title: string;
   href: string;
-  kind: '活动' | '笔记' | '角色';
+  kind: WorkKind;
   updatedAt: string;
 }
 
-const KIND_ICON = {
+const KIND_ICON: Record<WorkKind, React.ComponentType<{ className?: string; 'data-visual-dynamic'?: string }>> = {
+  项目: BookOpen,
+  制作: Film,
   活动: CalendarDays,
   笔记: PenLine,
   角色: Users,
-} as const;
+};
+
+const KIND_TONE: Record<WorkKind, NavTone> = {
+  项目: 'blue',
+  制作: 'pink',
+  活动: 'orange',
+  笔记: 'green',
+  角色: 'violet',
+};
 
 function formatUpdated(value: string) {
   if (!value) return '';
@@ -34,34 +46,70 @@ function formatUpdated(value: string) {
   });
 }
 
-/** 工作台主区：按更新时间合并展示最近处理过的活动、笔记与角色。 */
+function resolveWorkHref(kind: string, id: string): string {
+  switch (kind) {
+    case 'story':
+      return `/apps/projects/${encodeURIComponent(id)}`;
+    case 'publication':
+    case 'activity':
+      return `/apps/activities/${encodeURIComponent(id)}`;
+    case 'note':
+      return `/apps/notebook/${encodeURIComponent(id)}`;
+    case 'character':
+      return `/apps/characters/${encodeURIComponent(id)}`;
+    default:
+      return `/apps/projects/${encodeURIComponent(id)}`;
+  }
+}
+
+const KIND_LABELS: Record<string, WorkKind> = {
+  story: '项目',
+  publication: '制作',
+  activity: '活动',
+  note: '笔记',
+  character: '角色',
+};
+
+/** 工作台主区：按更新时间合并展示最近处理过的创作项目、制作、活动、笔记与角色。 */
 export function RecentWork({ limit = 8 }: { limit?: number }) {
   const visibleLimit = Math.min(50, Math.max(1, Math.trunc(limit) || 8));
   const localNotes = useLocalNotebookNotes();
-  const deleted = new Set(localNotes.filter(record => record.status === 'deleted').map(record => record.noteId));
+  const deleted = new Set(localNotes.filter((record) => record.status === 'deleted').map((record) => record.noteId));
   const requestLimit = Math.min(50, visibleLimit + deleted.size);
-  const recent = useQuery({
-    queryKey: ['workspace', 'recent', requestLimit],
-    queryFn: ({ signal }) => fetchRecentWork(requestLimit, signal),
-    staleTime: 0,
-  });
-  const kinds = { activity: '活动', note: '笔记', character: '角色' } as const;
-  const paths = { activity: 'activities', note: 'notebook', character: 'characters' } as const;
-  const merged = new Map<string, WorkItem>((recent.data?.items ?? [])
-    .filter(item => item.kind !== 'note' || !deleted.has(item.id))
-    .map(item => [`${item.kind}-${item.id}`, {
-      id: `${item.kind}-${item.id}`, title: item.title || `未命名${kinds[item.kind]}`,
-      href: `/apps/${paths[item.kind]}/${encodeURIComponent(item.id)}`, kind: kinds[item.kind], updatedAt: item.updatedAt,
-    }]));
+  const recent = useRecentWork(requestLimit);
+
+  const merged = new Map<string, WorkItem>(
+    (recent.data?.items ?? [])
+      .filter((item) => item.kind !== 'note' || !deleted.has(item.id))
+      .map((item) => {
+        const kindLabel: WorkKind = KIND_LABELS[item.kind] ?? '项目';
+        return [
+          `${item.kind}-${item.id}`,
+          {
+            id: `${item.kind}-${item.id}`,
+            title: item.title || `未命名${kindLabel}`,
+            href: resolveWorkHref(item.kind, item.id),
+            kind: kindLabel,
+            updatedAt: item.updatedAt,
+          },
+        ];
+      })
+  );
+
   // Pending local drafts remain visible even before the background sync finishes.
   for (const record of localNotes) {
     if (record.status === 'deleted' || (record.status === 'synced' && !recent.isError)) continue;
     const id = `note-${record.noteId}`;
     if (record.status === 'synced' && merged.has(id)) continue;
-    merged.set(id, { id, title: record.note.title || '未命名笔记', kind: '笔记',
+    merged.set(id, {
+      id,
+      title: record.note.title || '未命名笔记',
+      kind: '笔记',
       href: `/apps/notebook/${encodeURIComponent(record.noteId)}`,
-      updatedAt: record.status === 'synced' ? record.note.updatedAt ?? '' : new Date(record.updatedAt).toISOString() });
+      updatedAt: record.status === 'synced' ? record.note.updatedAt ?? '' : new Date(record.updatedAt).toISOString(),
+    });
   }
+
   const items = [...merged.values()]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, visibleLimit);
@@ -91,18 +139,20 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
       <div className="mb-4 flex items-baseline justify-between gap-3 border-b border-border-subtle pb-3">
         <div>
           <h2 id="recent-work-title" className="tpl-section-title">最近工作</h2>
-          <p className="mt-0.5 text-xs text-muted">最近编辑的活动、笔记与角色</p>
+          <p className="mt-0.5 text-xs text-muted">最近编辑的创作项目、活动、笔记与角色</p>
         </div>
-        <Link href="/apps/activities" className="inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-accent">
-          <span>全部活动</span>
+        <Link href="/apps/projects" className="inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-accent">
+          <span>全部项目</span>
           <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
 
-      {recent.isError && items.length > 0 && <p role="status" className="mb-3 text-xs text-muted">
-        暂时无法刷新服务端最近工作，当前显示缓存与本机笔记。
-        <button type="button" className="ml-2 text-sm underline" onClick={() => void recent.refetch()}>重试</button>
-      </p>}
+      {recent.isError && items.length > 0 && (
+        <p role="status" className="mb-3 text-xs text-muted">
+          暂时无法刷新服务端最近工作，当前显示缓存与本机笔记。
+          <button type="button" className="ml-2 text-sm underline" onClick={() => void recent.refetch()}>重试</button>
+        </p>
+      )}
 
       {loading && items.length === 0 ? (
         <>
@@ -119,37 +169,35 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
         </button>
       ) : items.length === 0 ? (
         <div className="space-y-4 py-4">
-          <p className="text-sm text-muted">还没有记录。先新建一个角色或活动，这里会显示最近处理过的内容。</p>
+          <p className="text-sm text-muted">还没有记录。先新建一个创作项目或角色，这里会显示最近处理过的内容。</p>
           <div className="flex flex-wrap gap-2">
-            <Link href="/apps/characters/new" className="inline-flex min-h-9 items-center rounded-[var(--radius-control)] bg-accent px-3.5 text-sm font-semibold text-[var(--fg-on-accent)] transition-colors hover:bg-accent-dark">
-              新建角色
+            <Link href="/apps/projects" className="inline-flex min-h-9 items-center rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent transition-colors hover:bg-accent-dark">
+              创作项目
             </Link>
-            <Link href="/apps/activities/new" className="inline-flex min-h-9 items-center rounded-[var(--radius-control)] border border-border-default bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-surface-hover">
-              新建活动
+            <Link href="/apps/resources" className="inline-flex min-h-9 items-center rounded-control border border-border-default bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-surface-hover">
+              资料库
+            </Link>
+            <Link href="/apps/characters/new" className="inline-flex min-h-9 items-center rounded-control border border-border-default bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-surface-hover">
+              新建角色
             </Link>
           </div>
         </div>
       ) : (
         <ul className="home-list" data-testid="recent-work-list">
-          {/*
-           * 行数固定为 limit，行距与图标属于版式，纳入基线；
-           * 标题与时间来自真实库（含随机夹具后缀），单独标为动态以免每次运行都污染基线。
-           */}
           {items.map((item) => {
-            const Icon = KIND_ICON[item.kind];
+            const Icon = KIND_ICON[item.kind] ?? BookOpen;
             const updated = formatUpdated(item.updatedAt);
             return (
               <li key={item.id}>
                 <Link
                   href={item.href}
-          className="recent-work-row group flex min-h-[44px] items-center gap-3 px-2 py-2.5 rounded-[var(--radius-control)] transition-colors hover:bg-surface-hover"
+                  className="recent-work-row home-row group transition-colors"
                 >
-                  {/* 每行图标随条目类型变化，类型由真实数据决定，故同样按动态内容遮罩。 */}
-          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[var(--radius-control)] bg-surface-sunken text-muted group-hover:text-ink transition-colors">
-            <Icon className="h-3.5 w-3.5" aria-hidden="true" data-visual-dynamic="true" />
+                  <span className="home-row-icon" data-tone={KIND_TONE[item.kind]}>
+                    <Icon className="h-4 w-4" aria-hidden="true" data-visual-dynamic="true" />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink" data-visual-dynamic="true">{item.title}</span>
-          <span className="flex-none text-xs text-fg-subtle px-1.5 py-0.5 rounded bg-surface-sunken font-normal" data-visual-dynamic="true">{item.kind}</span>
+                  <span className="flex-none text-xs text-fg-subtle" data-visual-dynamic="true">{item.kind}</span>
                   {updated && <time className="hidden flex-none text-xs text-fg-subtle tabular-nums sm:inline" dateTime={item.updatedAt} data-visual-dynamic="true">{updated}</time>}
                 </Link>
               </li>

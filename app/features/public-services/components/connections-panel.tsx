@@ -301,6 +301,7 @@ export function ConnectionsPanel({
             />
           </div>
           <Select
+            aria-label="按连接类型筛选"
             value={filterKind}
             onChange={(e) => setFilterKind(e.target.value)}
             className="w-48"

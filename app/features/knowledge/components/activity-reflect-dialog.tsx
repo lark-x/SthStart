@@ -8,6 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
+import { notebookKeys } from '@/app/lib/query-keys';
 
 /**
  * 把活动内容整理成个人设定。
@@ -51,7 +52,7 @@ export function ActivityReflectDialog({ open, onOpenChange, activityId, activity
       });
       const payload = await response.json().catch(() => null) as { noteId?: string; message?: string } | null;
       if (!response.ok || !payload?.noteId) throw new Error(payload?.message || '整理为个人设定失败。');
-      void client.invalidateQueries({ queryKey: ['notebook'] });
+      void client.invalidateQueries({ queryKey: notebookKeys.all });
       onOpenChange(false);
       router.push('/apps/notebook/' + payload.noteId);
     } catch (caught) {

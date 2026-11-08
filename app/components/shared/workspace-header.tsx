@@ -62,7 +62,7 @@ export function WorkspaceHeader({
         {backHref && (
           <Link
             href={backHref}
-            className="inline-flex h-10 w-10 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2 sm:px-2.5 rounded-[var(--radius-control)] text-sm font-medium text-muted hover:text-ink hover:bg-surface-sunken transition-[background-color,color,transform] duration-150 active:scale-[0.98] shrink-0"
+            className="inline-flex h-10 w-10 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2 sm:px-2.5 rounded-control text-sm font-medium text-muted hover:text-ink hover:bg-surface-sunken transition-[background-color,color,transform] duration-150 active:scale-[0.98] shrink-0"
             aria-label={`返回${backLabel}`}
             title={`返回 ${backLabel}`}
           >
@@ -88,7 +88,7 @@ export function WorkspaceHeader({
         <button
           type="button"
           onClick={handleOpenNav}
-          className="inline-flex h-10 w-10 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2 sm:px-2.5 rounded-[var(--radius-control)] text-sm font-medium text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
+          className="inline-flex h-10 w-10 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2 sm:px-2.5 rounded-control text-sm font-medium text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
           title="全站导航"
           aria-label="打开全站导航"
         >
@@ -99,7 +99,7 @@ export function WorkspaceHeader({
         <button
           type="button"
           onClick={handleOpenTasks}
-          className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-sm text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
+          className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-sm text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
           title="全局任务抽屉"
           aria-label="打开全局任务抽屉"
         >

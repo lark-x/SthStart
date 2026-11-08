@@ -63,7 +63,7 @@ export function StudioImageFallbackPanel({activityId,job,beforeAction,onSelectJo
         {options.isPending&&<p role="status">读取已有预设…</p>}
         {options.isError&&<><p role="alert" className="text-sm text-danger-fg">{options.error.message}</p><Button variant="outline" onClick={()=>void options.refetch()}>重新读取预设</Button></>}
         {options.data&&<p role="status" className="text-sm">{options.data.reason}</p>}
-        {(options.data?.allowed||pending.current)&&<FormField label="本次图片预设"><select aria-label="本次备用图片预设" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm"
+        {(options.data?.allowed||pending.current)&&<FormField label="本次图片预设"><select aria-label="本次备用图片预设" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm"
           value={presetId} disabled={busy||operations.imageFallback.isPending||Boolean(pending.current)} onChange={event=>{generation.current++;setPresetId(event.target.value);setPreview(null);setError('');pending.current=null;remember({open:true,presetId:event.target.value,preview:null,error:''},null);}}>
           <option value="">选择启用的图片预设</option>{options.data?.presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name} · {preset.model??'未记录模型'}</option>)}
           {pending.current&&!options.data?.presets.some(preset=>preset.id===presetId)&&<option value={presetId}>{preview?.presetName??presetId} · 已保存的相同确认</option>}

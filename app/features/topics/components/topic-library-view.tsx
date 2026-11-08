@@ -2,11 +2,12 @@
 import { TopicWorkFilter } from './topic-work-filter';
 import { useTopicSelection } from '../use-topic-selection';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CalendarClock, ChevronLeft, ChevronRight, ExternalLink, Link2, Lightbulb, RefreshCw, Settings2, SlidersHorizontal, Wand2, X,
+  CalendarClock, ExternalLink, Link2, Lightbulb, RefreshCw, Settings2, SlidersHorizontal, Wand2, X,
 } from 'lucide-react';
 import type { ActivityIdea, ActivityIdeaBatch, Topic, TopicKind } from '@sthstart/contracts';
 import { PageHeader } from '@/app/components/shared/page-header';
@@ -23,6 +24,7 @@ import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Pagination } from '@/app/components/ui/pagination';
 import { CharacterPickerDialog } from '@/app/features/activities/components/character-picker-dialog';
 import {
   TOPIC_KIND_LABELS, TOPIC_NATURE_LABELS, TOPIC_VIEWS, applyIdea, createIdeaBatch, fetchCollectionRuns,
@@ -31,8 +33,12 @@ import {
 } from '../api';
 import { saveTopicToKnowledge } from '@/app/features/notebook/api';
 import { TopicSummaryCard, formatTopicTime as formatDateTime, publishedLabel } from './topic-card';
+import { characterFacetKeys, ideaBatchKeys, mcpSourceKeys, notebookKeys, topicCollectionKeys, topicKeys } from '@/app/lib/query-keys';
+import {
+  applyTopicListState, defaultTopicDays, parseTopicListState, TOPIC_EMBEDDED_URL_PREFIX,
+  TOPIC_PAGE_SIZE_OPTIONS, topicListParams, topicListUrl, type TopicView,
+} from '../url-state';
 
-const PAGE_SIZE = 24;
 const MAX_SELECTED = 5;
 const TIME_RANGES = [
   { value: 0, label: '全部时间' },
@@ -41,22 +47,27 @@ const TIME_RANGES = [
   { value: 90, label: '最近 90 天' },
 ];
 
-export function TopicLibraryView() {
+export function TopicLibraryView({ embedded = false }: { embedded?: boolean } = {}) {
+  const searchParams = useSearchParams();
   const router = useRouter();
   const client = useQueryClient();
-  const [view, setView] = useState<'all' | 'favorite' | 'used' | 'ignored'>('all');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [workFilter, setWorkFilter] = useState<string[]>([]);
-  const [kindFilter, setKindFilter] = useState<TopicKind | ''>('');
-  const [days, setDays] = useState(30);
+  const urlPrefix = embedded ? TOPIC_EMBEDDED_URL_PREFIX : '';
+  const [initial] = useState(() => parseTopicListState(searchParams?.toString() ?? '', urlPrefix));
+  const [view, setView] = useState<TopicView>(initial.view);
+  const [searchInput, setSearchInput] = useState(initial.q);
+  const [search, setSearch] = useState(initial.q);
+  const [debouncedSearch, setDebouncedSearch] = useState(initial.q);
+  const [workFilter, setWorkFilter] = useState<string[]>(initial.works);
+  const [kindFilter, setKindFilter] = useState<TopicKind | ''>(initial.kind);
+  const [days, setDays] = useState(initial.days);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftWorkFilter, setDraftWorkFilter] = useState<string[]>([]);
   const [draftKindFilter, setDraftKindFilter] = useState<TopicKind | ''>('');
-  const [draftDays, setDraftDays] = useState(30);
-  const [page, setPage] = useState(1);
+  const [draftDays, setDraftDays] = useState(initial.days);
+  const [page, setPage] = useState(initial.page);
+  const [pageSize, setPageSize] = useState(initial.pageSize);
   const { selected, setSelected, selectedTopics, toggleSelected } = useTopicSelection();
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(() => searchParams.get('topic'));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ideaOpen, setIdeaOpen] = useState(false);
   const [requirement, setRequirement] = useState('');
@@ -68,55 +79,90 @@ export function TopicLibraryView() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmIdea, setConfirmIdea] = useState<{ batch: ActivityIdeaBatch; idea: ActivityIdea } | null>(null);
+  const composingRef = useRef(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 250);
+    const timer = setTimeout(() => {
+      if (!composingRef.current) setDebouncedSearch(search);
+    }, 250);
     return () => clearTimeout(timer);
   }, [search]);
 
   // 收藏视图默认不限时间，其余视图默认最近 30 天。
   const effectiveDays = days;
-  const listParams: TopicListParams = {
-    ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-    ...(workFilter.length ? { works: workFilter } : {}),
-    ...(kindFilter ? { kinds: [kindFilter] } : {}),
-    days: effectiveDays,
-    view,
-    page,
-    pageSize: PAGE_SIZE,
-  };
+  const listParams: TopicListParams = topicListParams({
+    q: debouncedSearch, works: workFilter, kind: kindFilter, days: effectiveDays,
+    view, page, pageSize,
+  });
+
+  const restoreFromUrl = useCallback((input: string | URLSearchParams) => {
+    const next = parseTopicListState(input, urlPrefix);
+    setView(next.view);
+    setSearchInput(next.q);
+    setSearch(next.q);
+    setDebouncedSearch(next.q);
+    setWorkFilter(next.works);
+    setKindFilter(next.kind);
+    setDays(next.days);
+    setPage(next.page);
+    setPageSize(next.pageSize);
+    setDetailId(new URLSearchParams(input instanceof URLSearchParams ? input.toString() : input).get('topic'));
+  }, [urlPrefix]);
+
+  // 浏览器前进/后退恢复页码、搜索、筛选和当前详情。
+  useEffect(() => {
+    const restore = () => restoreFromUrl(window.location.search);
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, [restoreFromUrl]);
+
+  // 页码、搜索与筛选同步进 URL，保留 topic 详情参数。
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    applyTopicListState(params, {
+      q: debouncedSearch, works: workFilter, kind: kindFilter, days,
+      view, page, pageSize,
+    }, urlPrefix);
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, '', nextUrl);
+    }
+  }, [debouncedSearch, workFilter, kindFilter, days, view, page, pageSize, urlPrefix]);
 
   const runsQuery = useQuery({
-    queryKey: ['topic-collection', 'runs'],
+    queryKey: topicCollectionKeys.runs(),
     queryFn: () => fetchCollectionRuns(5),
     refetchInterval: (query) => (query.state.data?.items.some((run) => run.status === 'queued' || run.status === 'running') ? 2_000 : 30_000),
   });
   // 有搜集任务在跑时列表跟着刷新，补采完成后不需要手动刷新页面。
   const topicsQuery = useQuery({
-    queryKey: ['topics', listParams],
-    queryFn: () => fetchTopics(listParams),
+    queryKey: topicKeys.list(listParams),
+    queryFn: ({ signal }) => fetchTopics(listParams, { signal }),
     staleTime: 15_000,
+    placeholderData: keepPreviousData,
     refetchInterval: () => (runsQuery.data?.items.some((run) => run.status === 'queued' || run.status === 'running') ? 3_000 : false),
   });
-  const settingsQuery = useQuery({ queryKey: ['topic-collection', 'settings'], queryFn: fetchCollectionSettings, staleTime: 15_000 });
+  const settingsQuery = useQuery({ queryKey: topicCollectionKeys.settings(), queryFn: fetchCollectionSettings, staleTime: 15_000 });
   const detailQuery = useQuery({
-    queryKey: ['topics', 'detail', detailId],
+    queryKey: topicKeys.detail(detailId),
     queryFn: () => fetchTopic(detailId!),
     enabled: Boolean(detailId),
   });
   const batchQuery = useQuery({
-    queryKey: ['idea-batch', batchId],
+    queryKey: ideaBatchKeys.detail(batchId),
     queryFn: () => fetchIdeaBatch(batchId!),
     enabled: Boolean(batchId),
     refetchInterval: (query) => (['queued', 'running'].includes(query.state.data?.status ?? '') ? 2_000 : false),
   });
-  const historyQuery = useQuery({ queryKey: ['idea-batches'], queryFn: () => fetchIdeaBatches(20), staleTime: 15_000 });
+  const historyQuery = useQuery({ queryKey: ideaBatchKeys.list(), queryFn: () => fetchIdeaBatches(20), staleTime: 15_000 });
 
   const topics = useMemo(() => topicsQuery.data?.items ?? [], [topicsQuery.data]);
   const latestRun = runsQuery.data?.items[0] ?? null;
   const settings = settingsQuery.data;
   const activeRun = latestRun && ['queued', 'running'].includes(latestRun.status) ? latestRun : null;
-  const defaultDays = view === 'favorite' ? 0 : 30;
+  const defaultDays = defaultTopicDays(view);
   const activeFilterCount = Number(workFilter.length > 0) + Number(Boolean(kindFilter)) + Number(days !== defaultDays);
   const openFilters = () => {
     setDraftWorkFilter([...workFilter]);
@@ -138,8 +184,8 @@ export function TopicLibraryView() {
     const key = latestRun.id + ':' + latestRun.updatedAt;
     if (lastCompletedRun.current === key) return;
     lastCompletedRun.current = key;
-    void client.invalidateQueries({ queryKey: ['topics'] });
-    void client.invalidateQueries({ queryKey: ['topic-collection', 'settings'] });
+    void client.invalidateQueries({ queryKey: topicKeys.all });
+    void client.invalidateQueries({ queryKey: topicCollectionKeys.settings() });
   }, [latestRun, client]);
 
   const patchTopic = async (topic: Topic, patch: { favorite?: boolean; ignored?: boolean }) => {
@@ -147,7 +193,7 @@ export function TopicLibraryView() {
     try {
       await updateTopicFlags(topic.id, patch);
       if (patch.ignored) setSelected((current) => current.filter((id) => id !== topic.id));
-      void client.invalidateQueries({ queryKey: ['topics'] });
+      void client.invalidateQueries({ queryKey: topicKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '更新素材失败。');
     }
@@ -157,9 +203,9 @@ export function TopicLibraryView() {
     setError(null); setNotice(null); setBusy(true);
     try {
       const result = await startCollectionRun(retryRunId ? { retryRunId } : {});
-      void client.invalidateQueries({ queryKey: ['topic-collection', 'runs'] });
+      void client.invalidateQueries({ queryKey: topicCollectionKeys.runs() });
       // 立刻刷新一次素材列表；任务结束前列表会持续轮询。
-      void client.invalidateQueries({ queryKey: ['topics'] });
+      void client.invalidateQueries({ queryKey: topicKeys.all });
       setNotice(result.reused ? '已有一次搜集正在进行，已显示该任务的进度。' : retryRunId ? '已重试上次搜集；有保存的原始候选时会直接重试整理。' : '已开始搜集，页面会自动刷新进度。');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '启动搜集失败。');
@@ -171,7 +217,7 @@ export function TopicLibraryView() {
     try {
       if (append && batchId) {
         await createIdeaBatch({ topicIds: selected, appendToBatchId: batchId, ideaCount: 3 });
-        void client.invalidateQueries({ queryKey: ['idea-batch', batchId] });
+        void client.invalidateQueries({ queryKey: ideaBatchKeys.detail(batchId) });
       } else {
         const batch = await createIdeaBatch({
           topicIds: selected,
@@ -179,7 +225,7 @@ export function TopicLibraryView() {
           ...(leadCharacterId ? { leadCharacterId } : {}),
         });
         setBatchId(batch.id);
-        void client.invalidateQueries({ queryKey: ['idea-batches'] });
+        void client.invalidateQueries({ queryKey: ideaBatchKeys.list() });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '生成点子失败。');
@@ -192,7 +238,7 @@ export function TopicLibraryView() {
     try {
       // 从素材库进入会新建企划会话；会话必须有参与角色，所以要用这里选好的主角。
       const result = await applyIdea(batch.id, idea.id, {});
-      void client.invalidateQueries({ queryKey: ['topics'] });
+      void client.invalidateQueries({ queryKey: topicKeys.all });
       router.push('/apps/activities/new?session=' + result.sessionId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '采用点子失败。');
@@ -200,11 +246,52 @@ export function TopicLibraryView() {
     } finally { setBusy(false); }
   };
 
-  const totalPages = topicsQuery.data ? Math.max(1, Math.ceil(topicsQuery.data.total / PAGE_SIZE)) : 1;
+  const totalPages = topicsQuery.data ? Math.max(1, Math.ceil(topicsQuery.data.total / pageSize)) : 1;
+  useEffect(() => {
+    if (!topicsQuery.data || page <= totalPages) return;
+    const timer = setTimeout(() => setPage(totalPages), 0);
+    return () => clearTimeout(timer);
+  }, [page, topicsQuery.data, totalPages]);
+  const isPageTransition = topicsQuery.isFetching && topicsQuery.isPlaceholderData;
+  const displayedPage = isPageTransition && topicsQuery.data ? topicsQuery.data.page : page;
+  const hasListCriteria = Boolean(debouncedSearch.trim()) || activeFilterCount > 0;
+  const clearSearchAndFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setDebouncedSearch('');
+    setWorkFilter([]);
+    setKindFilter('');
+    setDays(defaultDays);
+    setPage(1);
+  };
+  const currentListState = {
+    q: debouncedSearch, works: workFilter, kind: kindFilter, days,
+    view, page, pageSize,
+  };
+  const pushPageState = (nextPage: number, nextPageSize = pageSize) => {
+    if (typeof window === 'undefined') return;
+    const next = topicListUrl(window.location.href, {
+      ...currentListState,
+      page: nextPage,
+      pageSize: nextPageSize,
+    }, urlPrefix);
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) window.history.pushState(window.history.state, '', next);
+  };
+  const changePage = (nextPage: number) => {
+    pushPageState(nextPage);
+    setPage(nextPage);
+  };
+  const changePageSize = (nextPageSize: number) => {
+    pushPageState(1, nextPageSize);
+    setPageSize(nextPageSize);
+    setPage(1);
+  };
 
   return (
     <div className="w-full bg-paper text-ink">
     <PageContainer className="topic-library-page space-y-5 py-6 text-ink">
+        {!embedded ? (
         <PageHeader
           title="灵感素材"
           description="后台定时搜集关注作品的新梗与讨论；勾选素材后可以让模型生成活动点子，再带入企划。"
@@ -217,6 +304,14 @@ export function TopicLibraryView() {
             </div>
           )}
         />
+      ) : (
+        <div className="flex items-center justify-end gap-2 pb-1">
+          <Button size="sm" variant="outline" disabled={busy || Boolean(activeRun)} onClick={() => void runCollection()}>
+            <RefreshCw className="h-3.5 w-3.5" />{activeRun ? '正在搜集…' : '立即补采'}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)}><Settings2 className="h-3.5 w-3.5" />自动搜集设置</Button>
+        </div>
+      )}
 
         {error && <Alert variant="danger" title="操作未完成">{error}</Alert>}
         {notice && <Alert variant="info">{notice}</Alert>}
@@ -248,13 +343,33 @@ export function TopicLibraryView() {
                 <PageTabs
                   ariaLabel="素材视图"
                   value={view}
-                  onChange={(value) => { setView(value as typeof view); setDays(value === 'favorite' ? 0 : 30); setPage(1); }}
+                  onChange={(value) => { const nextView = value as TopicView; setView(nextView); setDays(defaultTopicDays(nextView)); setPage(1); }}
                   tabs={TOPIC_VIEWS.map((item) => ({ id: item.id, label: item.label }))}
                 />
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="min-w-40 flex-1 space-y-1">
                     <span className="text-xs text-muted">关键词</span>
-                    <Input aria-label="搜索素材" value={search} placeholder="搜索标题、摘要、作品或角色" onChange={(event) => setSearch(event.target.value)} className="h-9 text-sm" />
+                    <Input
+                      aria-label="搜索素材"
+                      value={searchInput}
+                      placeholder="搜索标题、摘要、作品或角色"
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSearchInput(value);
+                        if (composingRef.current) return;
+                        setSearch(value);
+                        setPage(1);
+                      }}
+                      onCompositionStart={() => { composingRef.current = true; }}
+                      onCompositionEnd={(event) => {
+                        composingRef.current = false;
+                        const value = event.currentTarget.value;
+                        setSearchInput(value);
+                        setSearch(value);
+                        setPage(1);
+                      }}
+                      className="h-9 text-sm"
+                    />
                   </label>
                   <Button type="button" size="sm" variant="outline" onClick={openFilters} aria-expanded={filtersOpen}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
                 </div>
@@ -266,15 +381,20 @@ export function TopicLibraryView() {
                 </div>}
 
                 {topicsQuery.isLoading && <Spinner size="sm" label="正在加载素材…" />}
+                {isPageTransition && <span className="text-xs text-muted" role="status">正在更新素材…</span>}
                 {topicsQuery.isError && <Alert variant="warning" title="素材加载失败">{topicsQuery.error instanceof Error ? topicsQuery.error.message : '请稍后重试'}。<Button size="sm" variant="ghost" onClick={() => { void topicsQuery.refetch(); }}>重试读取素材</Button></Alert>}
                 {!topicsQuery.isLoading && !topicsQuery.isError && !topics.length && (
                   <EmptyState
                     icon={Lightbulb}
-                    title={view === 'all' ? '还没有素材' : '这个视图里没有素材'}
-                    description={settings?.settings.sources.length
-                      ? '点击右上角「立即补采」，或等待自动搜集按计划执行。搜集结果会按来源与链接去重。'
-                      : '先在「自动搜集设置」里选择资料源与检索工具，再执行一次补采。'}
-                    actions={<Button size="sm" onClick={() => setSettingsOpen(true)}><Settings2 className="h-3.5 w-3.5" />配置自动搜集</Button>}
+                    title={hasListCriteria ? '没有匹配的素材' : view === 'all' ? '还没有素材' : '这个视图里没有素材'}
+                    description={hasListCriteria
+                      ? '换一个关键词，或清除搜索与筛选后再试。'
+                      : settings?.settings.sources.length
+                        ? '点击右上角「立即补采」，或等待自动搜集按计划执行。搜集结果会按来源与链接去重。'
+                        : '先在「自动搜集设置」里选择资料源与检索工具，再执行一次补采。'}
+                    actions={hasListCriteria
+                      ? <Button size="sm" variant="outline" onClick={clearSearchAndFilters}>清除搜索与筛选</Button>
+                      : <Button size="sm" onClick={() => setSettingsOpen(true)}><Settings2 className="h-3.5 w-3.5" />配置自动搜集</Button>}
                   />
                 )}
 
@@ -293,7 +413,7 @@ export function TopicLibraryView() {
                         try {
                           const result = await saveTopicToKnowledge(item.id);
                           setNotice(result.created ? '已收藏到创作资料库（默认仅记录，可在资料属性里改成可参考）。' : '这个话题之前已经收藏过，已打开原有资料。');
-                          void client.invalidateQueries({ queryKey: ['notebook'] });
+                          void client.invalidateQueries({ queryKey: notebookKeys.all });
                           router.push('/apps/notebook/' + result.noteId);
                         } catch (caught) {
                           setError(caught instanceof Error ? caught.message : '收藏到资料库失败。');
@@ -303,14 +423,17 @@ export function TopicLibraryView() {
                   ))}
                 </ul>
 
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between pt-1 text-sm">
-                    <span className="text-muted">第 {page} / {totalPages} 页</span>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-3.5 w-3.5" />上一页</Button>
-                      <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>下一页<ChevronRight className="h-3.5 w-3.5" /></Button>
-                    </div>
-                  </div>
+                {topicsQuery.data && (
+                  <Pagination
+                    total={topicsQuery.data.total}
+                    page={displayedPage}
+                    pageSize={pageSize}
+                    onPageChange={changePage}
+                    onPageSizeChange={changePageSize}
+                    pageSizeOptions={TOPIC_PAGE_SIZE_OPTIONS}
+                    loading={isPageTransition}
+                    compact
+                  />
                 )}
               </section>
 
@@ -418,6 +541,7 @@ export function TopicLibraryView() {
               <Badge variant="secondary" className="text-xs">{TOPIC_NATURE_LABELS[detailQuery.data.topic.infoNature]}</Badge>
               {detailQuery.data.topic.usedActivityId && <Badge variant="online" className="text-xs">已用于活动</Badge>}
             </div>
+            <AdoptIntoProject source={{ kind: 'topic', id: detailQuery.data.topic.id }} />
             <p className="whitespace-pre-wrap">{detailQuery.data.topic.summary}</p>
             {!!detailQuery.data.topic.characters.length && <p className="text-muted">涉及角色：{detailQuery.data.topic.characters.join('、')}</p>}
             {!!detailQuery.data.topic.adaptationTags.length && (
@@ -464,7 +588,7 @@ export function TopicLibraryView() {
         footer={<Button variant="outline" onClick={() => setSettingsOpen(false)}>关闭</Button>}
       >
         <CollectionSettingsForm
-          onSaved={(message) => { setNotice(message); void client.invalidateQueries({ queryKey: ['topic-collection'] }); }}
+          onSaved={(message) => { setNotice(message); void client.invalidateQueries({ queryKey: topicCollectionKeys.all }); }}
           onError={(message) => setError(message)}
         />
       </Dialog>
@@ -529,10 +653,10 @@ export function TopicLibraryView() {
 
 /** 自动搜集设置：来源只从已启用的 MCP 中选择，工具从该来源已发现的工具中选择。 */
 function CollectionSettingsForm({ onSaved, onError }: { onSaved: (message: string) => void; onError: (message: string) => void }) {
-  const { data, isLoading, isError, error } = useQuery({ queryKey: ['topic-collection', 'settings'], queryFn: fetchCollectionSettings });
-  const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: () => import('@/app/features/mcp-sources/api').then((mod) => mod.fetchMcpSources()), staleTime: 30_000 });
+  const { data, isLoading, isError, error } = useQuery({ queryKey: topicCollectionKeys.settings(), queryFn: fetchCollectionSettings });
+  const sourcesQuery = useQuery({ queryKey: mcpSourceKeys.all, queryFn: () => import('@/app/features/mcp-sources/api').then((mod) => mod.fetchMcpSources()), staleTime: 30_000 });
   const worksQuery = useQuery({
-    queryKey: ['characters', 'works-facets'],
+    queryKey: characterFacetKeys.works(),
     queryFn: () => import('@/app/features/characters/api').then((mod) => mod.browseCharacters({ page: 1, pageSize: 1 })),
     staleTime: 60_000,
   });
@@ -724,7 +848,7 @@ function IdeaWorkspace({ batch, loading, busy, selectedTopics, onUse }: {
       {batch.status === 'succeeded' && !batch.ideas.length && <Alert variant="warning">模型没有返回可用点子，请调整素材或要求后重试。</Alert>}
       <div className="grid gap-3 lg:grid-cols-3">
         {batch.ideas.map((idea) => (
-          <article key={idea.id} className="flex flex-col gap-2 rounded-[var(--radius-panel)] border border-border-default bg-surface p-3">
+          <article key={idea.id} className="flex flex-col gap-2 rounded-panel border border-border-default bg-surface p-3">
             <header className="space-y-1">
               <h3 className="text-sm font-semibold text-ink">{idea.name}</h3>
               <p className="text-xs text-muted">{idea.overview}</p>

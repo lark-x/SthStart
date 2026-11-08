@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { Bookmark, Sparkles } from 'lucide-react';
 import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { cn } from '@/app/lib/cn';
 
@@ -103,7 +104,7 @@ export function NarrativeReader({
                   href={artifact.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="block overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-surface"
+                  className="block overflow-hidden rounded-control border border-border-subtle bg-surface"
                 >
                   <img src={artifact.url} alt="剧情概念图" loading="lazy" className="aspect-video w-full object-cover" />
                 </a>
@@ -139,7 +140,7 @@ export function NarrativeReader({
                       className={cn(
                         'group relative',
                         isChoice
-                          ? 'ml-4 rounded-[var(--radius-control)] border border-border-subtle bg-surface-muted px-3.5 py-2.5'
+                          ? 'ml-4 rounded-control border border-border-subtle bg-surface-muted px-3.5 py-2.5'
                           : cn('border-l-2 pl-3.5', isNarration ? 'border-border-subtle' : 'border-border-default'),
                       )}
                     >
@@ -161,6 +162,8 @@ export function NarrativeReader({
                         <small className="mt-1.5 block font-sans text-xs text-fg-subtle">条件：{line.condition}</small>
                       )}
 
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                      <AdoptIntoProject source={{kind: 'narrative', id: line.id}} />
                       <Button
                         type="button"
                         size="sm"
@@ -172,6 +175,7 @@ export function NarrativeReader({
                         <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>摘录到笔记</span>
                       </Button>
+                      </div>
                     </div>
                   );
                 })}

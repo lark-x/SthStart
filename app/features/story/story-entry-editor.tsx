@@ -454,7 +454,7 @@ export function StoryEntryEditor({
           </div>
 
           {/* 视图模式切换 */}
-          <div className="flex rounded-[var(--radius-control)] border border-border-default p-0.5 bg-surface" role="group" aria-label="编辑器视图">
+          <div className="flex rounded-control border border-border-default p-0.5 bg-surface" role="group" aria-label="编辑器视图">
             {(
               isReflection
                 ? [
@@ -497,7 +497,7 @@ export function StoryEntryEditor({
               <MoreHorizontal className="size-4" />
             </Button>
             {editorMenuOpen && (
-              <div role="menu" aria-label="更多编辑器操作" className="absolute right-0 top-full z-50 mt-2 w-56 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-1.5 shadow-lg">
+              <div role="menu" aria-label="更多编辑器操作" className="absolute right-0 top-full z-50 mt-2 w-56 rounded-panel border border-border-subtle bg-surface p-1.5 shadow-lg">
                 <button
                   type="button"
                   role="menuitem"
@@ -554,7 +554,7 @@ export function StoryEntryEditor({
       {/* 编辑器核心内容滚动区（多列高度隔离，仅自身纵向滚动） */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-1" data-autohide-scroll>
         {draft.recoveryAvailable && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
             <p className="min-w-0 flex-1">找到本机未同步的编辑文本。恢复后会先与当前服务器版本核对，不会静默覆盖。</p>
             <Button size="sm" onClick={() => void draft.recoverLocal()}><RotateCcw className="size-4" />恢复本机文本</Button>
             <Button size="sm" variant="outline" onClick={() => void draft.discardLocal()}>使用服务器版本</Button>
@@ -562,14 +562,14 @@ export function StoryEntryEditor({
         )}
 
         {draft.error && (
-          <div role="alert" className="mb-4 rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
+          <div role="alert" className="mb-4 rounded-control border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
             <p>{draft.error}</p>
             {draft.status === 'local-only' && <Button size="sm" variant="outline" className="mt-2" onClick={draft.retry}>重新保存</Button>}
           </div>
         )}
 
         {draft.status === 'conflict' && (
-          <div className="mb-4 rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken p-3">
+          <div className="mb-4 rounded-control border border-border-subtle bg-surface-sunken p-3">
             <h3 className="font-semibold text-ink">服务器与本机内容冲突</h3>
             <p className="mt-1 text-xs text-muted">服务器 v{entry.revision} 的内容不会被自动覆盖。逐项比较下方预览后，可选择丢弃本地文本，或明确确认以本地文本覆盖。</p>
             <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-2">
@@ -615,7 +615,7 @@ export function StoryEntryEditor({
               <button
                 type="button"
                 onClick={() => setShowFormatBar(true)}
-                className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]"
+                className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
               >
                 <Type className="size-3.5" />
                 <span>排版工具</span>
@@ -629,7 +629,7 @@ export function StoryEntryEditor({
 
         {/* 目录折叠面板 */}
         {headings.length > 0 && (
-          <details className={`mb-4 mx-auto w-full rounded-[var(--radius-control)] border border-border-default bg-surface/60 px-3 py-2 transition-all ${
+          <details className={`mb-4 mx-auto w-full rounded-control border border-border-default bg-surface/60 px-3 py-2 transition-all ${
             canvasWidth === 'full' ? 'max-w-none' : (canvasWidth === 'comfortable' ? 'max-w-3xl' : 'max-w-5xl')
           }`}>
             <summary className="cursor-pointer text-xs font-medium text-muted hover:text-ink">章节目录（{headings.length}）</summary>
@@ -654,7 +654,7 @@ export function StoryEntryEditor({
         {/* 沉浸式稿纸核心主画布 */}
         <div
           data-reading-theme={theme}
-          className={`story-reading-paper relative mx-auto w-full motion-reduce:transition-none transition-colors rounded-[var(--radius-panel)] p-4 sm:p-8 border ${
+          className={`story-reading-paper relative mx-auto w-full motion-reduce:transition-none transition-colors rounded-panel p-4 sm:p-8 border ${
             mode === 'split' ? 'max-w-7xl' : (
               canvasWidth === 'full' ? 'max-w-none' : (
                 canvasWidth === 'comfortable' ? 'max-w-3xl' : 'max-w-5xl'
@@ -743,7 +743,7 @@ export function StoryEntryEditor({
                           )}
                         </div>
                         <div
-                          className="rounded-[var(--radius-control)] px-4 py-3 text-base leading-relaxed break-words"
+                          className="rounded-control px-4 py-3 text-base leading-relaxed break-words"
                           style={{
                             backgroundColor: currentTheme.bubbleBg,
                             borderColor: currentTheme.borderColor,

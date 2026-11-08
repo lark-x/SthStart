@@ -50,7 +50,7 @@ export function VideoGenerator({
   const lastFrameMaxBytes = creativeInputMaxBytes(binding, 'lastFrame');
 
   return (
-    <div className="space-y-4 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-5">
+    <div className="space-y-4 rounded-panel border border-border-subtle bg-surface p-5">
       <div className="border-b border-border-subtle pb-3">
         <h3 className="text-base font-semibold text-ink">视频创作配置</h3>
         <p className="text-xs text-muted mt-0.5">配置镜头提示词与画幅参数，提交至视频合成工作流。</p>
@@ -73,7 +73,7 @@ export function VideoGenerator({
           <ArtifactPicker
             id="creative-first-frame"
             label="首帧图片"
-            hint={`图片会先安全保存到中央媒体库，最大 ${formatByteLimit(firstFrameMaxBytes)}。和`}
+            hint={`最大 ${formatByteLimit(firstFrameMaxBytes)}，上传后可预览或替换。`}
             accept={creativeImageAccept(binding, 'firstFrame')}
             previewUrl={firstFramePreview}
             artifact={firstFrameArtifact}
@@ -87,7 +87,7 @@ export function VideoGenerator({
           <ArtifactPicker
             id="creative-last-frame"
             label="尾帧图片"
-            hint={`尾帧会与首帧一起提交给 H3 工作流，最大 ${formatByteLimit(lastFrameMaxBytes)}。和`}
+            hint={`尾帧会与首帧一起生成视频，最大 ${formatByteLimit(lastFrameMaxBytes)}。`}
             accept={creativeImageAccept(binding, 'lastFrame')}
             previewUrl={lastFramePreview}
             artifact={lastFrameArtifact}

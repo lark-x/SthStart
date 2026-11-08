@@ -27,19 +27,11 @@ export function MediaGallery({
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between border-b border-border-subtle pb-3">
-        <div>
-          <h3 className="text-base font-semibold text-ink">媒体库</h3>
-          <p className="text-xs text-muted">保存生成结果与参考素材，随时预览和复用。</p>
-        </div>
-        <span className="text-xs text-fg-subtle">{total} 个作品</span>
-      </div>
-
       {isLoading && !artifacts.length ? (
         <div className="flex justify-center py-10 text-xs text-muted">正在读取媒体库…</div>
       ) : artifacts.length ? (
         <>
-          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-4">
             {artifacts.map((artifact) => (
               <GalleryCard key={artifact.id} artifact={artifact} onPin={onPin} onDelete={onDelete} />
             ))}
@@ -53,14 +45,12 @@ export function MediaGallery({
           )}
         </>
       ) : (
-        <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-8">
           <EmptyState
-            className="min-h-[140px] py-4"
+            className="min-h-64 shadow-none"
             icon={ImagePlus}
             title="媒体库还是空的"
-            description="生成一张图片，或在图生图模式上传参考素材。"
+            description="在左侧描述画面并生成，完成的图片与视频会保存在这里。也可以切换到图生图上传参考素材。"
           />
-        </div>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -13,14 +13,9 @@ import { Input } from '@/app/components/ui/input';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useCalendarEvents, useCalendarFacets } from './queries';
 import type { CalendarEvent, CalendarFilter } from './api';
+import { daysInMonth, leadingBlanks, shiftCalendarMonth, toDateKey } from './calendar-state';
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-
-function pad(value: number) { return String(value).padStart(2, '0'); }
-function toDateKey(year: number, month: number, day: number) { return `${year}-${pad(month)}-${pad(day)}`; }
-function daysInMonth(year: number, month: number) { return new Date(year, month, 0).getDate(); }
-/** 周一作为每周第一天。 */
-function leadingBlanks(year: number, month: number) { return (new Date(year, month - 1, 1).getDay() + 6) % 7; }
 
 export function CalendarView() {
   const router = useRouter();
@@ -29,11 +24,21 @@ export function CalendarView() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today.getFullYear(), today.getMonth() + 1, today.getDate()));
   const [picked, setPicked] = useState<string[]>([]);
+  const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [favorite, setFavorite] = useState(false);
   const [work, setWork] = useState('');
   const [kind, setKind] = useState<'all' | 'birthday' | 'activity'>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const composingSearchRef = useRef(false);
+
+  useEffect(() => {
+    if (composingSearchRef.current) return;
+    const timer = setTimeout(() => {
+      if (!composingSearchRef.current) setQuery(searchInput);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const gridStart = useMemo(() => {
     const blanks = leadingBlanks(year, month);
@@ -88,9 +93,10 @@ export function CalendarView() {
   const dayEvents = byDate.get(selectedDate) || [];
   const birthdays = dayEvents.filter((event) => event.kind === 'birthday');
   const shiftMonth = (delta: number) => {
-    const next = new Date(year, month - 1 + delta, 1);
-    setYear(next.getFullYear());
-    setMonth(next.getMonth() + 1);
+    const next = shiftCalendarMonth(year, month, delta, selectedDate);
+    setYear(next.year);
+    setMonth(next.month);
+    setSelectedDate(next.selectedDate);
     setPicked([]);
   };
   const goToday = () => {
@@ -124,7 +130,19 @@ export function CalendarView() {
             </Button>
             <Button size="sm" variant="ghost" onClick={goToday}>今天</Button>
           </div>
-          <Input aria-label="搜索角色或活动" placeholder="搜索角色姓名或活动标题…" value={query} onChange={(event) => setQuery(event.target.value)} className="w-full sm:ml-auto sm:w-64" />
+          <Input
+            aria-label="搜索角色或活动"
+            placeholder="搜索角色姓名或活动标题…"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            onCompositionStart={() => { composingSearchRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingSearchRef.current = false;
+              setSearchInput(event.currentTarget.value);
+              setQuery(event.currentTarget.value);
+            }}
+            className="w-full sm:ml-auto sm:w-64"
+          />
           <div className="flex items-center gap-4 text-sm">
             {([['all', '全部'], ['birthday', '仅生日'], ['activity', '仅活动']] as const).map(([value, label]) => (
               <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`border-b-2 py-1.5 text-sm transition-colors cursor-pointer ${kind === value ? 'border-accent font-semibold text-ink' : 'border-transparent text-muted hover:text-ink'}`}>{label}</button>
@@ -147,14 +165,15 @@ export function CalendarView() {
         >
           <div className="space-y-4">
             <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="calendar-work-filter">作品
-              <select id="calendar-work-filter" className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal" value={work} onChange={(event) => setWork(event.target.value)}>
+              <select id="calendar-work-filter" disabled={facets.isLoading} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal disabled:opacity-60" value={work} onChange={(event) => setWork(event.target.value)}>
                 <option value="">全部作品</option>
                 {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
               </select>
+              {facets.isError && <span role="alert" className="block text-xs font-normal text-danger-fg">作品列表读取失败。{facets.error instanceof Error ? facets.error.message : '已有作品筛选不会被删除。'}</span>}
             </label>
             <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-muted/50 px-3 text-sm text-ink">
-              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
-              仅显示收藏角色的生日
+              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-accent" />
+              仅显示收藏角色相关的事件
             </label>
           </div>
         </ResponsiveEditOverlay>
@@ -191,7 +210,7 @@ export function CalendarView() {
                     aria-pressed={isSelected}
                     className={`min-h-20 p-1.5 text-left align-top text-sm transition-colors ${isSelected ? 'bg-accent/5 ring-1 ring-inset ring-accent/30' : inMonth ? 'bg-surface hover:bg-surface-hover' : 'bg-surface-sunken/35 opacity-45'}`}
                   >
-                    <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${isToday ? 'text-accent' : 'text-ink'}`}>{cell.day}</span>
+                    <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${isToday ? 'text-accent-dark' : 'text-ink'}`}>{cell.day}</span>
                     <span className="mt-1 flex flex-col gap-1">
                       {events.slice(0, 3).map((event) => (
                         <span key={event.id} className="flex min-w-0 items-center gap-1 truncate py-0.5 text-xs text-ink">

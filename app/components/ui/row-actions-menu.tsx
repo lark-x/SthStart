@@ -81,14 +81,14 @@ export function RowActionsMenu({
           const items = detailsRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
           if (items?.length) items[event.key === 'ArrowUp' ? items.length - 1 : 0].focus();
         }}
-        className="flex h-10 w-10 sm:h-9 sm:w-9 cursor-pointer list-none items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent [&::-webkit-details-marker]:hidden"
+        className="flex h-10 w-10 sm:h-9 sm:w-9 cursor-pointer list-none items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent [&::-webkit-details-marker]:hidden"
       >
         <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
       </summary>
       <div
         role="menu"
         aria-label={label}
-        className="absolute right-0 top-full z-40 mt-1 w-44 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-1 shadow-floating"
+        className="absolute right-0 top-full z-40 mt-1 w-44 rounded-control border border-border-subtle bg-surface p-1 shadow-floating"
         onClick={(event) => {
           if ((event.target as Element).closest('button')) {
             requestAnimationFrame(() => {

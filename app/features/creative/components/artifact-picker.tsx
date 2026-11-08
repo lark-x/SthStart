@@ -28,7 +28,7 @@ export function ArtifactPicker({
   onRemove: () => void;
 }) {
   return (
-    <div className="rounded-[var(--radius-panel)] border border-dashed border-border-strong bg-paper/60 p-4">
+    <div className="rounded-panel border border-dashed border-border-strong bg-paper/60 p-4">
       <InputLabel htmlFor={id}>{label}</InputLabel>
       <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
         {previewUrl ? <img src={previewUrl} alt={`${label}预览`} className="h-20 w-20 rounded object-cover" /> : <div className="flex h-20 w-20 items-center justify-center rounded bg-ink/8 text-muted"><Upload className="h-5 w-5" aria-hidden="true" /></div>}

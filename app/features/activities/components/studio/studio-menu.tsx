@@ -53,14 +53,14 @@ export function StudioMenu({ label, summaryContent, children, className = '' }: 
         aria-haspopup="menu"
         aria-expanded={open}
         title={label}
-        className="flex h-9 cursor-pointer list-none items-center justify-center gap-1 rounded-[var(--radius-control)] px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent motion-reduce:transition-none"
+        className="flex h-9 cursor-pointer list-none items-center justify-center gap-1 rounded-control px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent motion-reduce:transition-none"
       >
         {summaryContent ?? <MoreHorizontal className="size-4" aria-hidden="true" />}
       </summary>
       <div
         role="menu"
         aria-label={label}
-        className="absolute right-0 top-full z-30 mt-2 flex w-52 flex-col gap-0.5 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-1.5 shadow-lg"
+        className="absolute right-0 top-full z-30 mt-2 flex w-52 flex-col gap-0.5 rounded-control border border-border-subtle bg-surface p-1.5 shadow-lg"
       >
         {children}
       </div>
@@ -86,7 +86,7 @@ export function StudioMenuItem({ children, onSelect, danger = false, disabled = 
         event.currentTarget.closest('details')?.removeAttribute('open');
         onSelect();
       }}
-      className={`flex h-9 w-full items-center rounded-[var(--radius-control)] px-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`flex h-9 w-full items-center rounded-control px-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
         danger ? 'text-danger-fg hover:bg-danger-bg' : 'text-ink hover:bg-surface-hover'
       } ${className}`}
     >

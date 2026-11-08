@@ -97,6 +97,22 @@ export function PlaybackWorkstation({
       ? 'desktop'
       : 'phone'
   );
+  /*
+   * 已保存的回放版本是异步读取的：浮层可能先于它打开。版本到达（或换成另一份）时，
+   * 只要本地还没有自行编排的时间线，就采用它；已在编辑的时间线不会被覆盖。
+   */
+  const [syncedRevisionId, setSyncedRevisionId] = useState<string | null>(() =>
+    currentPlaybackMatches ? currentPlaybackRevision?.id ?? null : null
+  );
+  if (currentPlaybackMatches && currentPlaybackRevision && currentPlaybackRevision.id !== syncedRevisionId) {
+    setSyncedRevisionId(currentPlaybackRevision.id);
+    if (!playbackDoc) {
+      setPlaybackDoc({ ...currentPlaybackRevision.document, mediaRevisionId: playbackMediaRevisionId });
+      if (currentPlaybackRevision.document.viewerActorId) setViewerActorId(currentPlaybackRevision.document.viewerActorId);
+      const output = currentPlaybackRevision.document.output;
+      setDeviceLayout((output?.width || 1080) > (output?.height || 1920) ? 'desktop' : 'phone');
+    }
+  }
   const [playbackMode, setPlaybackMode] = useState<'by_stage' | 'story_order' | 'chat_only' | 'moments_only'>(()=>normalizeCreationProfile((document.activity.creationProfile?.values||{}) as Record<string,unknown>).playbackMode);
   const [expandMedia, setExpandMedia] = useState<boolean>(()=>normalizeCreationProfile((document.activity.creationProfile?.values||{}) as Record<string,unknown>).expandMedia);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('');
@@ -336,7 +352,7 @@ export function PlaybackWorkstation({
 
   const modeSwitcher = (
     <div className="flex shrink-0 items-center justify-between border-b border-border-default bg-surface px-3 py-2">
-      <div className="inline-flex rounded-[var(--radius-control)] bg-surface-muted p-1" role="tablist" aria-label="活动回放模式">
+      <div className="inline-flex rounded-control bg-surface-muted p-1" role="tablist" aria-label="活动回放模式">
         {([
           { id: 'playback', label: '原回放' }, { id: 'comic', label: '漫画' },
         ] as const).map((mode) => (
@@ -347,7 +363,7 @@ export function PlaybackWorkstation({
               if (mode.id === 'comic') params.set('mode', 'comic'); else params.delete('mode');
               router.replace(`${pathname}?${params.toString()}`, { scroll: false });
             }}
-            className={`rounded-[var(--radius-control)] px-3 py-1.5 text-sm font-medium ${mode.id === (comicMode ? 'comic' : 'playback') ? 'bg-surface text-accent shadow-xs' : 'text-muted hover:text-ink'}`}>
+            className={`rounded-control px-3 py-1.5 text-sm font-medium ${mode.id === (comicMode ? 'comic' : 'playback') ? 'bg-surface text-accent shadow-xs' : 'text-muted hover:text-ink'}`}>
             {mode.label}
           </button>
         ))}
@@ -371,7 +387,7 @@ export function PlaybackWorkstation({
        * 单一工具栏：标题、主动作与全部参数收在一块，不再分成「标题卡 + 设置行」两段，
        * 页头到预览之间因此只剩一条带子。
        */}
-      <div className="space-y-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
+      <div className="space-y-3 p-3 rounded-panel bg-surface border border-border-default">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Smartphone className="h-4 w-4 text-accent" />
@@ -396,7 +412,7 @@ export function PlaybackWorkstation({
             size="sm"
             onClick={handleSavePlayback}
             disabled={disabled || !playbackDoc || playbackRevisionIsStale || savePlaybackMutation.isPending}
-            className="text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5 shadow-xs"
+            className="text-sm bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5 shadow-xs"
           >
             <Save className="h-3.5 w-3.5" />
             {savePlaybackMutation.isPending ? '保存中…' : '保存回放版本'}
@@ -429,7 +445,7 @@ export function PlaybackWorkstation({
         <div className="flex items-center gap-2">
           <Monitor className="h-4 w-4 text-muted" />
           <span className="text-sm font-semibold text-ink">设备布局：</span>
-          <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] bg-surface-muted p-0.5">
+          <div className="inline-flex items-center gap-0.5 rounded-control bg-surface-muted p-0.5">
             {([
               { id: 'phone' as const, label: '手机' },
               { id: 'desktop' as const, label: '电脑' },
@@ -440,7 +456,7 @@ export function PlaybackWorkstation({
                 onClick={() => setDeviceLayout(option.id)}
                 disabled={disabled}
                 aria-pressed={deviceLayout === option.id}
-                className={`rounded-[var(--radius-control)] px-2.5 py-1 text-sm font-medium transition-colors ${
+                className={`rounded-control px-2.5 py-1 text-sm font-medium transition-colors ${
                   deviceLayout === option.id
                     ? 'bg-surface text-ink shadow-xs'
                     : 'text-muted hover:text-ink'
@@ -463,7 +479,7 @@ export function PlaybackWorkstation({
                 onClick={() => setSpeed(s)}
                 className={`px-2 py-1 rounded text-sm font-mono font-medium transition-colors ${
                   speed === s
-                    ? 'bg-accent text-[var(--fg-on-accent)]'
+                    ? 'bg-accent text-fg-on-accent'
                     : 'bg-surface-raised text-ink hover:bg-surface-hover border border-border-default'
                 }`}
               >
@@ -587,7 +603,7 @@ export function PlaybackWorkstation({
                 <div className="w-20 h-1 bg-stone-700 rounded-full mx-auto mt-1.5 flex-shrink-0" />
               </div>
             ) : (
-              <div ref={previewBoxRef} className="w-full rounded-[var(--radius-panel)] overflow-hidden border border-border-default bg-surface-muted" style={{ height: previewHeight || 240 }}>
+              <div ref={previewBoxRef} className="w-full rounded-panel overflow-hidden border border-border-default bg-surface-muted" style={{ height: previewHeight || 240 }}>
                 {previewHtml ? <iframe ref={iframeRef} title="活动真实回放预览" srcDoc={previewHtml}
                   sandbox="allow-scripts allow-same-origin" onLoad={() => { setTimeout(syncPreview, 100); }}
                   style={{ border: 0, width: canvasWidth, height: canvasHeight,
@@ -637,7 +653,7 @@ export function PlaybackWorkstation({
                 size="sm"
                 onClick={() => setIsPlaying(!isPlaying)}
                 disabled={!playbackDoc || playbackRevisionIsStale}
-                className="h-8 px-4 text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5 shadow-xs"
+                className="h-8 px-4 text-sm bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5 shadow-xs"
               >
                 {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 {isPlaying ? '暂停' : '播放'}
@@ -655,7 +671,7 @@ export function PlaybackWorkstation({
           </div>
 
           {/* 外层右栏已经独立滚动，这里不再叠加第二层 max-height，避免出现嵌套滚动条。 */}
-          <div className="rounded-[var(--radius-panel)] bg-surface border border-border-default p-3 space-y-2">
+          <div className="rounded-panel bg-surface border border-border-default p-3 space-y-2">
             {actions.length === 0 ? (
               <div className="py-16 text-center text-sm text-muted space-y-2">
                 <Clock className="h-8 w-8 mx-auto text-fg-subtle opacity-60" />

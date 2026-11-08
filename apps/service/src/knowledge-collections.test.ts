@@ -495,6 +495,13 @@ test('collections: 待整理可以显式选入企划并保留未确认状态与�
   await app.inject({ method: 'PATCH', url: '/api/v1/admin/knowledge/pending', headers: adminHeaders, payload: { ids: [String(item.id)], state: 'kept' } });
   const kept = await app.inject({ url: '/api/v1/admin/knowledge/pending', headers: adminHeaders });
   assert.equal(kept.json().items.length, 2);
+  const firstPage = await app.inject({ url: '/api/v1/admin/knowledge/pending?limit=1&offset=0', headers: adminHeaders });
+  const secondPage = await app.inject({ url: '/api/v1/admin/knowledge/pending?limit=1&offset=1', headers: adminHeaders });
+  assert.equal(firstPage.json().total, 2);
+  assert.equal(secondPage.json().items.length, 1);
+  assert.notEqual(firstPage.json().items[0].id, secondPage.json().items[0].id, '分页不重复来源');
+  const invalidPage = await app.inject({ url: '/api/v1/admin/knowledge/pending?offset=-1', headers: adminHeaders });
+  assert.equal(invalidPage.statusCode, 400);
   assert.equal(kept.json().items.find((entry: { id: string }) => entry.id === item.id).state, 'kept');
   const notesCount = database.connection.prepare('SELECT COUNT(*) count FROM creative_notes').get() as { count: number };
   assert.equal(notesCount.count, 0, '“保留”不应自动生成笔记');

@@ -114,7 +114,7 @@ export function StageRailNav({
                 <div className="flex items-center justify-between text-xs">
                   <span
                     className={`font-mono text-xs font-bold px-1.5 py-0.2 rounded ${
-                      isActive ? 'bg-accent text-[var(--fg-on-accent)]' : 'bg-surface-muted text-muted'
+                      isActive ? 'bg-accent text-fg-on-accent' : 'bg-surface-muted text-muted'
                     }`}
                   >
                     第 {idx + 1} 幕
@@ -159,7 +159,7 @@ export function StageRailNav({
                 aria-current={isActive ? 'true' : undefined}
                 className={`relative flex flex-col items-center justify-center h-10 w-10 rounded-xl font-mono text-xs font-bold transition-all shadow-2xs cursor-pointer ${
                   isActive
-                    ? 'bg-accent text-[var(--fg-on-accent)] shadow-md scale-105'
+                    ? 'bg-accent text-fg-on-accent shadow-md scale-105'
                     : 'bg-surface hover:bg-surface-muted text-ink/80 hover:text-ink border border-border-default/80 hover:border-accent/40'
                 }`}
                 title={`第 ${idx + 1} 幕：${stage.title}`}

@@ -72,9 +72,7 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
           {/* 同上：行数与行距纳入基线，日期与标题按动态内容遮罩。 */}
           {events.map((event) => (
             <li key={event.id} className="home-row">
-              <span
-                className="home-row-icon"
-              >
+              <span className="home-row-icon" data-tone={event.kind === 'birthday' ? 'pink' : 'orange'}>
                 {event.kind === 'birthday'
                   ? <Cake className="h-4 w-4" aria-hidden="true" />
                   : <CalendarDays className="h-4 w-4" aria-hidden="true" />}

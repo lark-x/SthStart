@@ -262,7 +262,19 @@ export function useImageAttempts(id?: string, slotId?: string) {
     queryKey: activityKeys.attempts(id ?? '', slotId),
     queryFn: () => import('./api').then(m => m.fetchImageAttempts(id!, slotId)),
     enabled: Boolean(id),
-    refetchInterval: (q) => q.state.data?.items.some(item => ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(item.status)) ? 3_000 : 30_000,
+    refetchInterval: q => q.state.data?.items.some(item => ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(item.status)) ? 3000 : 30000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useImageAttemptPages(id?: string, slotId?: string) {
+  return useInfiniteQuery({
+    queryKey: [...activityKeys.attempts(id ?? '', slotId), 'pages'],
+    queryFn: ({pageParam, signal}) => import('./api').then(m => m.fetchImageAttempts(id!, slotId, pageParam, signal)),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: last => last.nextCursor ?? undefined,
+    enabled: Boolean(id),
+    refetchInterval: (q) => q.state.data?.pages.some(page => page.items.some(item => ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(item.status))) ? 3_000 : 30_000,
     refetchOnWindowFocus: true,
   });
 }

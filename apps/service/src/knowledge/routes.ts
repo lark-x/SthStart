@@ -1,4 +1,6 @@
 import { Value } from '@sinclair/typebox/value';
+import { KnowledgeSearchQuerySchema } from '@sthstart/contracts';
+import { KnowledgePendingListQuerySchema, KnowledgePendingListResponseSchema, type KnowledgePendingListQuery } from '@sthstart/contracts';
 import { PlanningKnowledgeReferenceSchema, PlanningKnowledgeSnapshotSchema } from '@sthstart/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
@@ -146,19 +148,24 @@ function saveTopicToKnowledge(database: ServiceDatabase, topicId: string): { not
   void secrets;
 
   /** 一起检索资料与本地叙事摘录。只读，不触发联网。 */
-  app.get<{ Querystring: { q?: string; workId?: string; works?: string | string[]; characters?: string | string[]; kinds?: string | string[]; limit?: string } }>(
+  app.get<{ Querystring: { q?: string; workId?: string; works?: string | string[]; characters?: string | string[]; kinds?: string | string[]; limit?: string; offset?: string } }>(
     '/api/v1/admin/knowledge/search',
     async (request, reply) => {
       if (!checkAdmin(config, request, reply)) return;
       const query = request.query ?? {};
-      const result: KnowledgeSearchResponse = searchKnowledge(dependencies, {
+      const normalized = {
         q: query.q,
         workId: query.workId,
         works: parseList(query.works, 20),
         characters: parseList(query.characters, 20),
         kinds: parseList(query.kinds, 4),
-        limit: Number(query.limit) || undefined,
-      });
+        limit: query.limit === undefined ? undefined : Number(query.limit),
+        offset: query.offset === undefined ? undefined : Number(query.offset),
+      };
+      if (!Value.Check(KnowledgeSearchQuerySchema, normalized)) {
+        return reply.code(400).send({ error: 'invalid_knowledge_search', message: '资料检索参数无效。' });
+      }
+      const result: KnowledgeSearchResponse = searchKnowledge(dependencies, normalized);
       return result;
     },
   );
@@ -409,14 +416,15 @@ function saveTopicToKnowledge(database: ServiceDatabase, topicId: string): { not
 
   // ------------------------------------------------------------------ 待整理
 
-  app.get<{ Querystring: { state?: string; collectionId?: string; limit?: string } }>('/api/v1/admin/knowledge/pending', async (request, reply) => {
+  app.get<{ Querystring: KnowledgePendingListQuery }>('/api/v1/admin/knowledge/pending', { schema: { querystring: KnowledgePendingListQuerySchema, response: { 200: KnowledgePendingListResponseSchema } } }, async (request, reply) => {
     if (!checkAdmin(config, request, reply)) return;
     const items = collections.listPending({
       state: request.query?.state,
       collectionId: request.query?.collectionId,
       limit: Number(request.query?.limit) || 60,
+      offset: Number(request.query?.offset) || 0,
     });
-    return { items, counts: countsByPendingState(database) };
+    return { items, counts: countsByPendingState(database), total: collections.countPending(request.query) };
   });
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/knowledge/pending/:id', async (request, reply) => {

@@ -59,7 +59,7 @@ export function StudioRefinePanel({ activityId,content,beatId,panelId,job,before
   return <section aria-label="画面调整" className="space-y-4">
     <p className="text-sm text-muted">只调整景别、角度、光影、构图和表情。不会修改角色、台词、剧情或模型，也不会编辑源图片文件。</p>
     {!job ? <fieldset disabled={busy} className="space-y-4">
-      <FormField label="调整对象"><select aria-label="画面调整对象" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm" value={targetKey} onChange={event=>update(instructions,event.target.value)}>
+      <FormField label="调整对象"><select aria-label="画面调整对象" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm" value={targetKey} onChange={event=>update(instructions,event.target.value)}>
         <option value="">选择镜头或漫画画格</option>{targets.map(target=><option key={target.key} value={target.key}>{target.label}</option>)}</select></FormField>
       <div className="flex flex-wrap gap-2">{['拉远一点','换成俯视角度','改为暖光','表情更平静'].map(text=><Button key={text} size="sm" variant="outline" onClick={()=>update([instructions,text].filter(Boolean).join('，'),targetKey)}>{text}</Button>)}</div>
       <FormField label="视觉调整要求"><Textarea aria-label="画面调整要求" rows={4} value={instructions} onChange={event=>update(event.target.value,targetKey)}/></FormField>

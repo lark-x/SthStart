@@ -23,7 +23,7 @@ export function EmptyState({
     <div
       className={cn(
         // 空态自然收缩：带有精致纸片边框与微妙内衬层次
-        'flex min-h-[220px] flex-col items-center justify-center rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-8 text-center shadow-[var(--shadow-panel)]',
+        'flex min-h-[220px] flex-col items-center justify-center rounded-panel border border-border-subtle bg-surface p-8 text-center shadow-panel',
         className
       )}
       {...props}

@@ -122,7 +122,7 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <select
-              className="h-9 rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+              className="h-9 rounded-control border border-border-default bg-surface px-2 text-sm"
               value={cleanupTargetId}
               onChange={(event) => setCleanupTargetId(event.target.value)}
             >
@@ -170,7 +170,7 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <select
-              className="h-9 rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+              className="h-9 rounded-control border border-border-default bg-surface px-2 text-sm"
               value={remoteTargetId}
               onChange={(event) => { setRemoteTargetId(event.target.value); setRemoteItems(null); }}
             >
@@ -217,7 +217,7 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
             <div className="space-y-2">
               {remoteItems.length === 0 && <p className="text-sm text-muted">这个目标上没有可登记的版本。</p>}
               {remoteItems.map((item) => (
-                <div key={item.snapshotId} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-panel)] border border-border-default p-3 text-sm">
+                <div key={item.snapshotId} className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-border-default p-3 text-sm">
                   <span className="font-mono text-xs">{item.snapshotId.slice(0, 8)} · {formatBytes(item.size)}</span>
                   {item.adopted
                     ? <Badge variant="accent">已登记</Badge>
@@ -280,7 +280,7 @@ function RestoreDialog({ snapshot, targetId, targetLabel, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
+      <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-panel border border-border-default bg-surface p-4">
         <h2 className="text-lg font-semibold">恢复预览</h2>
         <p className="mt-1 text-sm text-muted">
           {formatTime(snapshot.createdAt)} 的版本 · 来自「{targetLabel}」。下载与验证不会修改当前数据。

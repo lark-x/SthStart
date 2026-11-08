@@ -121,7 +121,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
             >
               进行中
               {activeCount > 0 && (
-                <span className="bg-accent text-[var(--fg-on-accent)] text-xs font-semibold px-1.5 py-0.2 rounded-full">
+                <span className="bg-accent text-fg-on-accent text-xs font-semibold px-1.5 py-0.2 rounded-full">
                   {activeCount}
                 </span>
               )}

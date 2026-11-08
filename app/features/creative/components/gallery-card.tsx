@@ -1,6 +1,7 @@
 'use client';
 
 import { FileAudio, Pin, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import type { ArtifactDescriptor } from '@sthstart/contracts';
 import { formatDate } from '../types';
 
@@ -13,6 +14,7 @@ export function GalleryCard({
   onPin: (artifact: ArtifactDescriptor) => Promise<void>;
   onDelete: (artifact: ArtifactDescriptor) => Promise<void>;
 }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const isVideo = artifact.mediaType === 'video' || artifact.contentType?.startsWith('video/');
   const isAudio = artifact.mediaType === 'audio' || artifact.contentType?.startsWith('audio/');
   const thumbnailUrl = artifact.thumbnailArtifactId
@@ -20,21 +22,22 @@ export function GalleryCard({
     : `${artifact.url}${artifact.url.includes('?') ? '&' : '?'}thumbnail=true`;
 
   return (
-    <article className="group flex items-center justify-between gap-3 p-3 transition-colors hover:bg-surface-elevated">
-      <div className="flex items-center gap-3 min-w-0">
+    <article className="group overflow-hidden rounded-panel border border-border-subtle bg-surface">
+      <div className="min-w-0">
         <a
           href={artifact.url}
           target="_blank"
           rel="noreferrer"
-          className="relative flex-none h-14 w-14 overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-paper"
+          className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden border-b border-border-subtle bg-surface-sunken focus-visible:outline focus-visible:outline-accent"
           aria-label={`查看${artifact.originalName ?? '创作素材'}`}
         >
-          {isVideo ? (
+          {failedUrl === artifact.url ? <span className="p-4 text-sm text-muted">素材无法读取，点击打开原文件</span> : isVideo ? (
             <img
               src={thumbnailUrl}
               alt={artifact.originalName ?? '创作素材'}
               loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              onError={() => setFailedUrl(artifact.url)}
+              className="h-full w-full object-contain"
             />
           ) : isAudio ? (
             <div className="flex h-full w-full items-center justify-center text-muted">
@@ -45,7 +48,8 @@ export function GalleryCard({
               src={artifact.url}
               alt={artifact.originalName ?? '创作素材'}
               loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              onError={() => setFailedUrl(artifact.url)}
+              className="h-full w-full object-contain"
             />
           )}
           {artifact.pinned && (
@@ -54,13 +58,13 @@ export function GalleryCard({
             </span>
           )}
         </a>
-        <div className="min-w-0">
+        <div className="min-w-0 px-3 pt-3">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-semibold text-ink">
               {artifact.originalName ?? (isVideo ? '生成视频' : isAudio ? '生成音频' : '生成图片')}
             </p>
             {artifact.pinned && (
-              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-surface-sunken text-fg-subtle border border-border-subtle">
+              <span className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-sunken text-muted">
                 已固定
               </span>
             )}
@@ -72,11 +76,11 @@ export function GalleryCard({
         </div>
       </div>
 
-      <div className="flex flex-none items-center gap-1">
+      <div className="flex items-center justify-end gap-1 px-2 pb-2 pt-1">
         <button
           type="button"
           onClick={() => void onPin(artifact)}
-          className={`flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken/80 transition-colors ${
+          className={`flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken/80 transition-colors ${
             artifact.pinned ? 'text-accent' : ''
           }`}
           aria-label={artifact.pinned ? '取消固定' : isVideo ? '固定视频' : '固定图片'}
@@ -87,7 +91,7 @@ export function GalleryCard({
         <button
           type="button"
           onClick={() => void onDelete(artifact)}
-          className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
           aria-label={isVideo ? '删除视频' : '删除图片'}
           title="删除素材"
         >

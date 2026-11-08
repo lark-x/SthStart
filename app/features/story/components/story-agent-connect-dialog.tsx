@@ -17,6 +17,7 @@ import {
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { storyApi } from '../api';
+import { storyKeys } from '@/app/lib/query-keys';
 
 interface StoryAgentConnectDialogProps {
   open: boolean;
@@ -42,7 +43,7 @@ export function StoryAgentConnectDialog({
   const [notice, setNotice] = useState('');
 
   const bridge = useQuery({
-    queryKey: ['story', projectId, 'bridge-status'],
+    queryKey: storyKeys.bridgeStatus(projectId),
     queryFn: () => storyApi.bridgeStatus(projectId),
     enabled: open,
     refetchInterval: open ? 15_000 : false,
@@ -59,7 +60,7 @@ export function StoryAgentConnectDialog({
     try {
       const res = await storyApi.createBridgeGrant(projectId);
       setCreatedToken(res.token);
-      await queryClient.invalidateQueries({ queryKey: ['story', projectId, 'bridge-status'] });
+      await queryClient.invalidateQueries({ queryKey: storyKeys.bridgeStatus(projectId) });
       setNotice('已生成新的安全 Bridge 访问令牌。请妥善保存并配置到 Agent 中。');
     } catch (e) {
       setNotice(e instanceof Error ? e.message : '生成令牌失败。');
@@ -140,13 +141,13 @@ export function StoryAgentConnectDialog({
     >
       <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
         {notice && (
-          <div className="rounded-[var(--radius-control)] bg-accent/10 border border-accent/20 px-3 py-2 text-xs text-accent">
+          <div className="rounded-control bg-accent/10 border border-accent/20 px-3 py-2 text-xs text-accent">
             {notice}
           </div>
         )}
 
         {/* 状态总览卡片 */}
-        <div className="rounded-[var(--radius-panel)] border border-border-default bg-surface-muted p-4 space-y-3">
+        <div className="rounded-panel border border-border-default bg-surface-muted p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldCheck className="size-5 text-accent" />
@@ -224,7 +225,7 @@ export function StoryAgentConnectDialog({
         </div>
 
         {/* Antigravity / Cursor / Claude 配置卡片 */}
-        <div className="rounded-[var(--radius-panel)] border border-border-default p-4 space-y-3">
+        <div className="rounded-panel border border-border-default p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Code2 className="size-4 text-accent" />
@@ -246,13 +247,13 @@ export function StoryAgentConnectDialog({
           <p className="text-xs text-muted leading-relaxed">
             将以下配置粘贴至您的智能体配置中（例如 Antigravity 的 MCP 设置、Cursor 的 <code>.cursor/mcp.json</code> 或 Claude Desktop 的 <code>claude_desktop_config.json</code>）：
           </p>
-          <pre className="p-3 rounded-[var(--radius-control)] bg-zinc-950 text-zinc-100 font-mono text-xs overflow-x-auto leading-5 border border-zinc-800">
+          <pre className="p-3 rounded-control bg-zinc-950 text-zinc-100 font-mono text-xs overflow-x-auto leading-5 border border-zinc-800">
             {mcpConfigJson}
           </pre>
         </div>
 
         {/* 开放能力与安全工具一览 */}
-        <div className="rounded-[var(--radius-panel)] border border-border-default p-4 space-y-3">
+        <div className="rounded-panel border border-border-default p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-accent" />
             <h3 className="text-sm font-semibold">支持的原生 MCP 工具集 (安全沙箱)</h3>
@@ -289,7 +290,7 @@ export function StoryAgentConnectDialog({
         </div>
 
         {/* 可视化调试 Inspector 提示 */}
-        <div className="rounded-[var(--radius-panel)] bg-surface-muted p-3 text-xs text-muted flex items-start gap-2.5">
+        <div className="rounded-panel bg-surface-muted p-3 text-xs text-muted flex items-start gap-2.5">
           <Terminal className="size-4 shrink-0 text-accent mt-0.5" />
           <div className="space-y-1">
             <p className="font-medium text-foreground">如何使用 MCP Inspector 进行交互式调试？</p>

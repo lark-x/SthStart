@@ -22,6 +22,7 @@ interface StudioHeaderProps {
   onOpenSettings: () => void;
   onOpenExport: () => void;
   onOpenArt: () => void;
+  onOpenRework: () => void;
 }
 
 export function StudioHeader({
@@ -38,6 +39,7 @@ export function StudioHeader({
   onOpenSettings,
   onOpenExport,
   onOpenArt,
+  onOpenRework,
 }: StudioHeaderProps) {
   const title = document.activity.title || activity.title || '';
   const [sourceTitle, setSourceTitle] = useState(title);
@@ -75,7 +77,7 @@ export function StudioHeader({
       status={<span role="status" title={saveError || undefined} className={`text-xs ${saveStatus === 'error' || saveStatus === 'conflict' ? 'text-danger-fg' : 'text-muted'}`}>
         {saveStatus === 'saving' ? '保存中…' : saveStatus === 'saved' ? '已保存' : saveStatus === 'unsaved' ? '有未保存修改' : saveStatus === 'conflict' ? '草稿冲突，请在设置中处理' : '保存失败，请重试保存'}
       </span>}
-      centerSlot={<div className="hidden min-w-0 items-center gap-1 rounded-[var(--radius-control)] bg-surface-sunken p-1 lg:flex" role="group" aria-label="工作台视图">
+      centerSlot={<div className="hidden min-w-0 items-center gap-1 rounded-control bg-surface-sunken p-1 lg:flex" role="group" aria-label="工作台视图">
         {(['storyboard', 'comic', 'materials'] as const).map(mode => <button
           key={mode} type="button" aria-pressed={viewMode === mode}
           onClick={() => onViewModeChange(mode)}
@@ -104,6 +106,7 @@ export function StudioHeader({
           <StudioMenuItem onSelect={onBatchGenerate} disabled={isBatchGenerating || viewMode !== 'storyboard'}>{isBatchGenerating ? '正在排队…' : '为当前幕批量出图'}</StudioMenuItem>
           <StudioMenuItem onSelect={onOpenSettings}>活动设置</StudioMenuItem>
           <StudioMenuItem onSelect={onOpenExport}>导出交付</StudioMenuItem>
+          <StudioMenuItem onSelect={onOpenRework}>内容变化与处理历史</StudioMenuItem>
         </StudioMenu>
       </>}
     />

@@ -21,6 +21,7 @@ export async function setMcpSourceStatus(id: string, status: 'enabled' | 'disabl
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ status }),
   });
+  if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
   return (await response.json()) as McpSource;
 }
 

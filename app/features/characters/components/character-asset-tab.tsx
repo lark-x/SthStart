@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
-import Image from 'next/image';
 import {
   CHARACTER_ASSET_CATEGORIES,
   type CharacterAssetCategory,
@@ -21,6 +20,7 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
+import { CharacterAssetImage } from './character-image-fallback';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
@@ -272,12 +272,12 @@ export function CharacterAssetTab({
           onClick={() => setSelectedCategory('all')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${
             selectedCategory === 'all'
-              ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs'
+              ? 'bg-accent text-fg-on-accent shadow-2xs'
               : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
           }`}
         >
           <span>全部</span>
-          <span className="opacity-75 text-[10px]">({categoryCounts.all || 0})</span>
+          <span className="opacity-75 text-xs">({categoryCounts.all || 0})</span>
         </button>
         {CHARACTER_ASSET_CATEGORIES.map((cat) => (
           <button
@@ -286,12 +286,12 @@ export function CharacterAssetTab({
             onClick={() => setSelectedCategory(cat.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${
               selectedCategory === cat.id
-                ? 'bg-accent text-[var(--fg-on-accent)] shadow-2xs'
+                ? 'bg-accent text-fg-on-accent shadow-2xs'
                 : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
             }`}
           >
             <span>{cat.label}</span>
-            <span className="opacity-75 text-[10px]">({categoryCounts[cat.id] || 0})</span>
+            <span className="opacity-75 text-xs">({categoryCounts[cat.id] || 0})</span>
           </button>
         ))}
       </div>
@@ -299,14 +299,14 @@ export function CharacterAssetTab({
       {/* 标签过滤条 */}
       {allTags.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
-          <span className="text-muted flex items-center gap-1 text-[11px]">
+          <span className="text-muted flex items-center gap-1 text-xs">
             <Tag className="h-3 w-3" /> 标签:
           </span>
           {selectedTag && (
             <button
               type="button"
               onClick={() => setSelectedTag(null)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent/15 text-accent text-[11px] font-medium"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent/15 text-accent text-xs font-medium"
             >
               <span>{selectedTag}</span>
               <X className="h-3 w-3" />
@@ -320,7 +320,7 @@ export function CharacterAssetTab({
                 key={tag}
                 type="button"
                 onClick={() => setSelectedTag(tag)}
-                className="px-2 py-0.5 rounded-md bg-surface border border-border-default/60 text-muted hover:text-ink text-[11px] transition-colors"
+                className="px-2 py-0.5 rounded-md bg-surface border border-border-default/60 text-muted hover:text-ink text-xs transition-colors"
               >
                 #{tag}
               </button>
@@ -361,21 +361,20 @@ export function CharacterAssetTab({
                   className="relative aspect-square w-full bg-surface-muted/50 overflow-hidden cursor-pointer"
                   onClick={() => setPreviewAsset(asset)}
                 >
-                  <img
+                  <CharacterAssetImage
                     src={asset.url}
                     alt={asset.title || '角色资产'}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                    loading="lazy"
                   />
                   {/* 角标状态徽标 */}
                   <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
                     {isAvatar && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500 text-white shadow-2xs flex items-center gap-0.5">
+                      <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-500 text-white shadow-2xs flex items-center gap-0.5">
                         <Check className="h-2.5 w-2.5" /> 当前头像
                       </span>
                     )}
                     {isPortrait && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500 text-white shadow-2xs flex items-center gap-0.5">
+                      <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-500 text-white shadow-2xs flex items-center gap-0.5">
                         <Check className="h-2.5 w-2.5" /> 当前立绘
                       </span>
                     )}
@@ -383,13 +382,13 @@ export function CharacterAssetTab({
 
                   {/* 分类徽标 */}
                   <div className="absolute bottom-2 left-2">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 backdrop-blur-xs text-white/90">
+                    <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-black/60 backdrop-blur-xs text-white/90">
                       {catMeta?.label || '其它'}
                     </span>
                   </div>
 
                   {/* 悬停放大镜 */}
-                  <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="pointer-events-none absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <Eye className="h-5 w-5 text-white/90" />
                   </div>
                 </div>
@@ -406,7 +405,7 @@ export function CharacterAssetTab({
                         {asset.tags.slice(0, 3).map((tag) => (
                           <span
                             key={tag}
-                            className="px-1.5 py-0.2 rounded text-[10px] bg-surface-muted text-muted"
+                            className="px-1.5 py-0.2 rounded text-xs bg-surface-muted text-muted"
                           >
                             #{tag}
                           </span>
@@ -422,7 +421,7 @@ export function CharacterAssetTab({
                         <button
                           type="button"
                           onClick={() => handleSetActive(asset, 'avatar')}
-                          className="px-1.5 py-0.5 rounded text-[10px] text-muted hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          className="px-1.5 py-0.5 rounded text-xs text-muted hover:text-amber-600 hover:bg-amber-50 transition-colors"
                           title="设为当前生效头像"
                         >
                           设头像
@@ -432,7 +431,7 @@ export function CharacterAssetTab({
                         <button
                           type="button"
                           onClick={() => handleSetActive(asset, 'portrait')}
-                          className="px-1.5 py-0.5 rounded text-[10px] text-muted hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          className="px-1.5 py-0.5 rounded text-xs text-muted hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                           title="设为当前生效立绘"
                         >
                           设立绘
@@ -490,7 +489,7 @@ export function CharacterAssetTab({
                   if (!uploadTitle) setUploadTitle(f.name.replace(/\.[^.]+$/, ''));
                 }
               }}
-              className="block w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-[var(--fg-on-accent)] hover:file:bg-accent/90 cursor-pointer"
+              className="block w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-fg-on-accent hover:file:bg-accent/90 cursor-pointer"
               required
             />
           </div>

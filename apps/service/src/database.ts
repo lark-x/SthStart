@@ -1994,6 +1994,15 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'CREATE INDEX IF NOT EXISTS idx_shared_assets_category ON shared_assets(category, created_at DESC)',
     'CREATE INDEX IF NOT EXISTS idx_shared_assets_created ON shared_assets(created_at DESC)',
   ] },
+  { version: 54, name: 'creative-project-links', statements: [
+    `CREATE TABLE project_links (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES story_projects(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('note','narrative','topic','collection','artifact','activity')),
+      source_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, captured_at TEXT NOT NULL,
+      adopted_entry_id TEXT REFERENCES story_documents(id) ON DELETE SET NULL,
+      UNIQUE(project_id,kind,source_id))`,
+    'CREATE INDEX idx_project_links_source ON project_links(kind,source_id)',
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

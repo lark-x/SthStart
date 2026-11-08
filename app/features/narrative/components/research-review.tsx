@@ -117,7 +117,7 @@ export function ResearchReview({
   const claimsPanel = (
         <aside
           className={cn(
-            'h-full min-h-0 w-full flex flex-col rounded-[var(--radius-panel)] border border-border-default bg-surface overflow-hidden',
+            'h-full min-h-0 w-full flex flex-col rounded-panel border border-border-default bg-surface overflow-hidden',
             !isStandaloneWorkspace && 'max-h-[600px]'
           )}
         >
@@ -135,7 +135,7 @@ export function ResearchReview({
                   type="button"
                   onClick={() => { setSelectedId(claim.id); setClaimsDrawerOpen(false); }}
                   className={cn(
-                    'w-full rounded-[var(--radius-control)] p-2.5 text-left transition-colors cursor-pointer',
+                    'w-full rounded-control p-2.5 text-left transition-colors cursor-pointer',
                     isSelected ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
                   )}
                 >
@@ -167,7 +167,7 @@ export function ResearchReview({
   const evidencePanel = (
           <aside
             className={cn(
-              'h-full min-h-0 w-full flex flex-col rounded-[var(--radius-panel)] border border-border-default bg-surface overflow-hidden',
+              'h-full min-h-0 w-full flex flex-col rounded-panel border border-border-default bg-surface overflow-hidden',
               !isStandaloneWorkspace && 'max-h-[600px]'
             )}
           >
@@ -180,7 +180,7 @@ export function ResearchReview({
                   type="button"
                   onClick={() => setEvidenceWide(!evidenceWide)}
                   hidden={!showEvidenceInline}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
                   title={evidenceWide ? '还原宽度' : '展开更宽证据视口'}
                 >
                   {evidenceWide ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -188,7 +188,7 @@ export function ResearchReview({
                 <button
                   type="button"
                   onClick={() => { setEvidenceOpen(false); setEvidenceDrawerOpen(false); }}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
                   title="收起证据面板"
                 >
                   <PanelRightClose className="size-3.5" />
@@ -386,7 +386,7 @@ export function ResearchReview({
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-muted">总稿标题</span>
                   <input
-                    className="h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium"
+                    className="h-9 w-full rounded-control border border-border-default bg-surface px-3 text-sm font-medium"
                     value={draftTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
                   />

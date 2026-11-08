@@ -234,7 +234,9 @@ const COLLECT_CONTROLS = `(() => {
     const bg = backgroundUnder(el);
     if (!bg) continue;
     const borderWidth = parseFloat(style.borderTopWidth) || 0;
-    const border = borderWidth > 0 ? parseColor(style.borderTopColor) : null;
+    /* 全透明边框是刻意的无边框写作区（如笔记正文块），与 0 宽边框同样跳过，聚焦态另有用例覆盖。 */
+    const rawBorder = borderWidth > 0 ? parseColor(style.borderTopColor) : null;
+    const border = rawBorder && rawBorder.a > 0.05 ? rawBorder : null;
     const outlineVisible = style.outlineStyle !== 'none' && (parseFloat(style.outlineWidth) || 0) > 0;
     const shadowColors = colorsIn(style.boxShadow).map(parseColor).filter((c) => c && c.a > 0.05);
     const candidates = (outlineVisible ? [parseColor(style.outlineColor)] : [])
@@ -283,9 +285,17 @@ function reportControls(failures: Array<ControlSample & { route: string }>) {
     .join('\n');
 }
 
-async function sweepText(page: Page, warm: boolean) {
-  const expectedTheme = warm ? 'warm' : 'neutral';
-  await page.addInitScript((mode) => window.localStorage.setItem('sthstart_theme', mode), expectedTheme);
+/*
+ * 主题 ID 与 app/lib/theme-preference.ts 的 THEMES 一致：两套日间（暖白 light-paper、
+ * 云白 light-zinc）与两套夜间（暖夜 dark-espresso、深空 dark-obsidian）。
+ * 旧的 warm / neutral 只作为迁移值读取，落到 data-theme 上的已是新 ID。
+ */
+const THEME_IDS = ['light-paper', 'light-zinc', 'dark-espresso', 'dark-obsidian'] as const;
+type ThemeId = (typeof THEME_IDS)[number];
+
+async function sweepText(page: Page, themeId: ThemeId) {
+  const expectedTheme = themeId;
+  await page.addInitScript((id) => window.localStorage.setItem('sthstart_theme_id', id), expectedTheme);
   const failures: Array<Sample & { route: string }> = [];
   let checked = 0;
   for (const route of ROUTES) {
@@ -301,18 +311,23 @@ async function sweepText(page: Page, warm: boolean) {
   return { failures, checked };
 }
 
-test('neutral theme text meets 4.5:1 on real surfaces', async ({ page }) => {
-  const { failures, checked } = await sweepText(page, false);
-  // 取样量过低说明选择器或渲染出了问题，不能算通过。
-  expect(checked, '取样文字数量').toBeGreaterThan(200);
-  expect(failures.length, `低于 4.5:1 的文字：\n${reportText(failures)}`).toBe(0);
-});
+for (const themeId of THEME_IDS) {
+  test(`${themeId} theme text meets 4.5:1 on real surfaces`, async ({ page }) => {
+    const { failures, checked } = await sweepText(page, themeId);
+    // 取样量过低说明选择器或渲染出了问题，不能算通过。
+    expect(checked, '取样文字数量').toBeGreaterThan(200);
+    expect(failures.length, `低于 4.5:1 的文字：\n${reportText(failures)}`).toBe(0);
+  });
+}
 
-test('warm theme text meets 4.5:1 on real surfaces', async ({ page }) => {
-  const { failures, checked } = await sweepText(page, true);
-  expect(checked, '取样文字数量').toBeGreaterThan(200);
-  expect(failures.length, `低于 4.5:1 的文字：\n${reportText(failures)}`).toBe(0);
-});
+/*
+ * 并发跑时后端响应慢，固定等待 250ms 有时还停在「正在读取…」占位上，表单没渲染出来，
+ * 取样数就会掉到阈值以下。先等加载占位消失再取样。
+ */
+async function waitForPageData(page: Page) {
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
+  await expect(page.locator('[role="status"]').filter({ hasText: /^(正在|加载中)/ })).toHaveCount(0, { timeout: 10_000 });
+}
 
 test('form control borders reach 3:1 in the resting state', async ({ page }) => {
   const failures: Array<ControlSample & { route: string }> = [];
@@ -320,6 +335,7 @@ test('form control borders reach 3:1 in the resting state', async ({ page }) => 
   for (const route of ROUTES) {
     const response = await page.goto(route);
     if (response && response.status() >= 400) continue;
+    await waitForPageData(page);
     await page.waitForTimeout(250);
     for (const control of await collectControls(page)) {
       if (control.borderWidth <= 0) continue;

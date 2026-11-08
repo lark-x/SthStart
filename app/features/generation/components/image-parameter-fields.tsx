@@ -22,7 +22,7 @@ export function ImageParameterFields({ fields, values, onChange, disabled, model
     const locked = field.type === 'model' && field.modelEditable !== true;
     return <div key={field.key} className={`min-w-0 space-y-1.5 ${field.type === 'long-text' || locked ? 'sm:col-span-2' : ''}`}>
       <label htmlFor={id} className="block text-sm font-medium text-ink">{field.label}{locked ? ' · 随预设切换' : ''}</label>
-      {locked ? <p id={id} className="break-words rounded-[var(--radius-control)] bg-surface-muted p-2.5 text-sm text-muted">{String(value) || '未指定'}</p>
+      {locked ? <p id={id} className="break-words rounded-control bg-surface-muted p-2.5 text-sm text-muted">{String(value) || '未指定'}</p>
         : options.length || field.type === 'model' ? <Select id={id} disabled={disabled || (field.type === 'model' && !options.length)} value={String(value)} onChange={event => onChange(field.key, event.target.value || undefined)}>
           <option value="">使用默认</option>
           {!options.includes(String(value)) && value !== '' && <option value={String(value)}>{String(value)}（当前值）</option>}

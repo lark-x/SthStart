@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { storyApi } from '../api';
+import { storyKeys } from '@/app/lib/query-keys';
 
 interface StoryDshFrameProps {
   projectId: string;
@@ -35,7 +36,7 @@ export function StoryDshFrame({
   const [contextCopied, setContextCopied] = useState(false);
 
   const statusQuery = useQuery({
-    queryKey: ['story', projectId, 'dsh-status'],
+    queryKey: storyKeys.dshStatus(projectId),
     queryFn: () => storyApi.dshStatus(projectId),
     refetchInterval: (query) => (query.state.data?.running ? 4000 : 15000),
   });
@@ -68,8 +69,8 @@ ${activeEntryContent || '（暂无正文）'}
     mutationFn: () => storyApi.startDsh(projectId),
     onSuccess: (data) => {
       setErrorMsg(null);
-      void queryClient.invalidateQueries({ queryKey: ['story', projectId, 'dsh-status'] });
-      void queryClient.invalidateQueries({ queryKey: ['story', projectId, 'bridge-status'] });
+      void queryClient.invalidateQueries({ queryKey: storyKeys.dshStatus(projectId) });
+      void queryClient.invalidateQueries({ queryKey: storyKeys.bridgeStatus(projectId) });
       setIframeKey((prev) => prev + 1);
     },
     onError: (err: unknown) => {
@@ -81,8 +82,8 @@ ${activeEntryContent || '（暂无正文）'}
     mutationFn: () => storyApi.stopDsh(projectId),
     onSuccess: () => {
       setErrorMsg(null);
-      void queryClient.invalidateQueries({ queryKey: ['story', projectId, 'dsh-status'] });
-      void queryClient.invalidateQueries({ queryKey: ['story', projectId, 'bridge-status'] });
+      void queryClient.invalidateQueries({ queryKey: storyKeys.dshStatus(projectId) });
+      void queryClient.invalidateQueries({ queryKey: storyKeys.bridgeStatus(projectId) });
     },
     onError: (err: unknown) => {
       setErrorMsg(err instanceof Error ? err.message : '停止 DSH 终端失败');

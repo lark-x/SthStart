@@ -1,8 +1,63 @@
 # Story 垂直路径测试学习指南
 
-更新时间：2026-10-13（Asia/Shanghai）  
+更新时间：2026-11-06（Asia/Shanghai）
 项目目录：`F:/Project/SthStart`  
 学习方式：你设计和编写 Python 测试，助手解释思路、审阅代码、提示和记录进度。
+
+需要先补基础时，从 [软件测试基础总教材](SOFTWARE_TESTING_FOUNDATIONS.md) 开始；[Python 配套教材](TESTING_FOUNDATIONS.md) 解释脚本语法，完成相应练习后再继续本指南。
+
+希望边读边做时，用 [SthStart 实训手册](STHSTART_TESTING_WORKBOOK.md) 安排每节动手任务，本指南用作环境、接口和定位速查。
+
+## 0. 2026-11-06 前端重构后的学习入口
+
+本次按当前源码更新教学任务，尚未重新运行浏览器或业务测试。历史通过记录保留日期，不作为重构后的通过证据。Python 测试仍由你编写；第 13 章的 Python 讲解继续适用。
+
+### 0.1 新入口与兼容入口
+
+| 页面 | 路径 | 本期测试用途 |
+| --- | --- | --- |
+| 创作项目列表 | `/apps/projects` | 验证重构后主入口，标题“创作项目” |
+| 项目总览 | `/apps/projects/{project_id}` | 本期新增入口检查；“继续写作”链接进入正式编辑器 |
+| 正式编辑器 | `/apps/story/{project_id}` | 保留保存、失败草稿、MCP 提案与作者决定练习 |
+| 旧剧情列表 | `/apps/story` | 兼容检查；默认标题“剧情与记录工作室” |
+| 对话感想列表 | `/apps/story?type=reflection` | 后续范围，本期不混入 fiction 正文流程 |
+
+项目总览与 Story 编辑器复用项目 ID；不要因为新 URL 出现 projects 就把管理员 Story API 全部替换为 `/api/v1/admin/projects`。各 API 的职责由各自客户端与后端契约决定。练习数据明确使用 `projectType="fiction"`，避免把感想项目当剧情项目测试。
+
+### 0.2 更新后的最小任务顺序
+
+1. **A API 收尾**：继续四个提案行为；先单独验证原有接口，排除环境问题。
+2. **B0 主入口**：API 创建项目 → 打开项目总览 → 核对本次项目标题 → 点击“继续写作” → 到达该项目编辑器。随后确认旧列表仍可打开。
+3. **B1/B2 浏览器**：选择目标章节、确认源码视图，完成保存刷新和模拟 503 保留草稿。
+4. **C MCP**：沿用真实 stdio 与同一隔离 Portal/Service，验证读取、提案和撤销凭据。
+5. **D 综合**：从新项目总览进入编辑器，再执行保存 B → MCP 建议 C → 菜单审阅接受 → 正式数据与刷新页面为 C。
+6. **E Skill**：使用当前宿主实际加载的创作套件或源模块，明确本次被评估内容与哈希。
+
+### 0.3 当前定位与交互约定
+
+| 目标 | 当前角色/名称 | 使用注意 |
+| --- | --- | --- |
+| 项目总览标题 | heading / 本次项目标题 | 名称从创建响应取得 |
+| 进入编辑器 | link / 继续写作 | 不是 button |
+| 章节目录切换 | tab / 章节目录（含数量） | 不写死完整计数；断言 aria-selected |
+| 正式目录 | navigation / 正式剧情资料树 | 桌面 aside 与移动抽屉可能包含相似内容，先限定可见容器 |
+| 编辑器区域 | region / 正式资料编辑器 | 继续作为正文与保存状态的定位范围 |
+| 标题框 | textbox / 条目标题 | 不用占位符猜控件 |
+| 正文框 | textbox / 小说正文编辑 | 先选择源码视图；预览/剧本流视图可能没有该框 |
+| 视图切换 | group / 编辑器视图 → button / 源码 | 检查 aria-pressed=true |
+| 审阅入口 | button / 更多项目操作 → menuitem / 审阅提案（可能含数量） | 菜单项用前缀匹配并检查唯一 |
+| 审阅面板 | dialog / 审阅与项目连接 | 再按本次建议标题限定 article |
+| 接受 | button / 接受并保存 | 点击前订阅原生 confirm，之后验证真实 decision 请求 |
+
+当前源码可见的文字和角色来自 [项目总览](../../app/features/projects/project-workspace.tsx)、[Story 工作区](../../app/features/story/story-workspace.tsx)、[编辑器](../../app/features/story/story-entry-editor.tsx)、[审阅面板](../../app/features/story/story-review-panel.tsx)。它们是编写定位器的依据，实际可操作性仍需浏览器运行确认。
+
+### 0.4 本次范围与参考测试
+
+首轮使用桌面 1440×900，完成后再在 390×844 检查“进入项目 → 打开资料目录 → 选章节 → 编辑器可见”。移动端目录由“项目资料”抽屉承载，不能沿用桌面隐藏 aside 的定位。当前练习不要求重测全项目所有新增模块。
+
+[产品模块职责](../PRODUCT_WORKSPACE.md) 说明新入口与来源边界。现有 [TypeScript 学习流程](../../tests/e2e/learning-story.spec.ts) 已采用更多项目操作菜单，但仍有 `.first()`、字符串包含断言和未注册的项目 DELETE 清理，不能整段当作 Python 标准答案；继续用独立临时数据库清理。其运行依赖独立 learning 配置，普通根 Playwright 配置会忽略它。
+
+新资料库、角色采用、媒体引用与制作冻结来源可在本路径跑通后各挑一项扩展；不把“引用来源”误认为“正式设定已更新”，也不把“创建制作版本”误认为“导出成功”。详细迁移清单见 [前端重构测试更新](FRONTEND_REFACTOR_TEST_UPDATE.md)。
 
 ## 1. 这份文档怎么用
 
@@ -251,7 +306,7 @@ Fixture 设计参考 [pytest 官方生命周期说明](https://docs.pytest.org/e
 ### 5.1 准备项目、章节与会话
 
 ```python
-project_payload = {"title": "pytest-剧情项目"}
+project_payload = {"title": "pytest-剧情项目", "projectType": "fiction"}
 chapter_payload = {
     "kind": "chapter",
     "title": "学习章节",
@@ -360,7 +415,7 @@ from playwright.sync_api import Page, expect
 
 def test_story_home_opens(page: Page, portal_url):
     page.goto(f"{portal_url}/apps/story")
-    heading = page.get_by_role("heading", name="剧情工作室")
+    heading = page.get_by_role("heading", name="剧情与记录工作室")
     expect(heading).to_be_visible()
 ```
 
@@ -784,6 +839,20 @@ mcp_step_result = anyio.run(
 
 ### 9.3 定位本次提案并处理确认框
 
+先通过重构后的项目菜单打开审阅面板：
+
+```python
+import re
+
+page.get_by_role("button", name="更多项目操作", exact=True).click()
+proposal_menu = page.get_by_role("menuitem", name=re.compile(r"^审阅提案"))
+expect(proposal_menu).to_have_count(1)
+proposal_menu.click()
+```
+
+`re.compile()` 把匹配规则编译为正则表达式，`r"..."` 是原始字符串写法，`^` 表示从文字开头匹配。这里允许名称末尾附带待审数量；它比 exact=True 匹配固定标题适合当前菜单，但仍要检查唯一。
+
+
 给 proposed_title 加上本次数据的唯一后缀。打开审阅面板后，可按 article 和该标题缩小范围；实际执行前应确认只匹配一张卡片：
 
 ```python
@@ -863,7 +932,7 @@ page.once("dialog", confirm_this_accept)
 
 程序侧检查章节 title/body/revision 和提案 ID 集合在运行前后保持不变。人工评分必须附具体理由和原文证据，不能只写“模型表现好”。每组先运行一次，只能形成案例观察；不能据此断言 Skill 普遍有效。
 
-Skill 的可编辑源文件为 [continuity-check/SKILL.md](../../apps/service/src/story/skills/continuity-check/SKILL.md)；`.agents/skills/story-continuity-check/SKILL.md` 是同步产物。此练习观察既有 Skill，不要求你修改它。
+Skill 的连贯性源模块为 [continuity-check/SKILL.md](../../apps/service/src/story/skills/continuity-check/SKILL.md)。当前仓库同步产物已合并为 [story-creative-suite](../../.agents/skills/story-creative-suite/SKILL.md)；宿主若加载套件，实验名称和哈希必须记录整个实际套件，不能标成只加载 continuity-check。此练习观察既有 Skill，不要求修改它。
 
 ### 10.3 第一次实验怎么准备
 
@@ -899,7 +968,7 @@ skill_sha256 = hashlib.sha256(skill_path.read_bytes()).hexdigest()
 
 这段只证明你记录了哪份文件，不能证明模型读到了它。再记录宿主读取/加载了哪个路径，以及实际发送给模型的 Skill 指令证据。宿主可能剥离 frontmatter；如果比较的是指令正文而不是完整文件，应分别注明哈希对象和加载依据。
 
-本项目有两种名称：原始 Skill 的 frontmatter 为 continuity-check，同步到 `.agents/skills/` 的文件名/名称可能带 story 前缀。使用当前宿主实际识别的 Skill，不因名称相似就认定加载的是同一份内容。
+源模块的 frontmatter 为 continuity-check，当前同步套件名称为 story-creative-suite。上面代码只计算源模块哈希；若实际加载套件，应将 skill_path 改为 `.agents/skills/story-creative-suite/SKILL.md` 并另记源模块哈希。使用当前宿主实际加载内容，不因包含连贯性章节就声称是单模块实验。
 
 如果两个组都自动带入了同一份 Skill，实验条件已经不成立，不能把得分差异归因为 Skill。如果宿主看不到发送给模型的指令，只能记录可获得的加载事件和证据限制；不编造“已完整加载”。
 

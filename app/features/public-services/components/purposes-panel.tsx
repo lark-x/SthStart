@@ -183,10 +183,11 @@ export function PurposesPanel({
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-ink mb-1.5">
+                    <label htmlFor={`assignment-text-${app.id}`} className="block text-xs font-semibold text-ink mb-1.5">
                       默认文本推理模型 (Primary Text Model)
                     </label>
                     <Select
+                      id={`assignment-text-${app.id}`}
                       value={selection.textProfileId ?? ''}
                       onChange={(e) => handleModelChange(app.id, 'textProfileId', e.target.value)}
                     >
@@ -199,10 +200,11 @@ export function PurposesPanel({
                     </Select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-ink mb-1.5">
+                    <label htmlFor={`assignment-vision-${app.id}`} className="block text-xs font-semibold text-ink mb-1.5">
                       多模态与视觉模型 (Vision / Multimodal)
                     </label>
                     <Select
+                      id={`assignment-vision-${app.id}`}
                       value={selection.multimodalProfileId ?? ''}
                       onChange={(e) => handleModelChange(app.id, 'multimodalProfileId', e.target.value)}
                     >
@@ -265,8 +267,9 @@ export function PurposesPanel({
       >
         <form onSubmit={handleCreatePurposeBinding} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-ink mb-1">目标应用</label>
+            <label htmlFor="purpose-binding-app" className="block text-xs font-semibold text-ink mb-1">目标应用</label>
             <Select
+              id="purpose-binding-app"
               value={bindingAppId}
               onChange={(e) => setBindingAppId(e.target.value)}
               required
@@ -289,8 +292,9 @@ export function PurposesPanel({
             <p className="text-2xs text-muted mt-1">业务模块在调用公共 AI 内核时指定的特定用途名称。</p>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-ink mb-1">绑定模型</label>
+            <label htmlFor="purpose-binding-target" className="block text-xs font-semibold text-ink mb-1">绑定模型</label>
             <Select
+              id="purpose-binding-target"
               value={bindingTargetId}
               onChange={(e) => setBindingTargetId(e.target.value)}
               required

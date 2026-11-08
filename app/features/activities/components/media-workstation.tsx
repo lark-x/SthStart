@@ -223,7 +223,7 @@ export function MediaWorkstation({
 
       <label className="text-sm"><input type="checkbox" checked={reworkOnly} onChange={e=>setReworkOnly(e.target.checked)}/> 仅看待复核 / 待返工镜头（{reviewSlots.size}）</label>
       {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-[var(--radius-panel)] bg-surface border border-border-default">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-panel bg-surface border border-border-default">
         <div>
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Camera className="h-4 w-4 text-accent" />
@@ -312,7 +312,7 @@ export function MediaWorkstation({
             return (
               <div
                 key={slot.id}
-                className={`p-4 rounded-[var(--radius-panel)] bg-surface border transition-all space-y-3 shadow-2xs ${
+                className={`p-4 rounded-panel bg-surface border transition-all space-y-3 shadow-2xs ${
                   isSlotLocked ? 'border-amber-300 ring-1 ring-amber-200' : 'border-border-default'
                 }`}
               >
@@ -359,7 +359,7 @@ export function MediaWorkstation({
                   {slot.shotDescription}
                 </p>
 
-                {reviewSlots.has(slot.id)&&<p className="text-xs text-amber-700">此镜头有待复核变化，当前采用的素材仍会保留；可从活动顶部查看来源与处理方式。</p>}
+                {reviewSlots.has(slot.id)&&<p className="text-xs text-amber-700">此镜头有待复核变化，当前采用的素材仍会保留；可从页头「更多 → 内容变化与处理历史」查看来源与处理方式。</p>}
                 {/* Bound Asset Preview or Placeholder */}
                 <div className="p-2.5 rounded-lg bg-surface border border-border-subtle space-y-2">
                   <div className="text-sm font-medium text-ink flex items-center justify-between">
@@ -460,7 +460,7 @@ export function MediaWorkstation({
             type="button"
             size="sm"
             onClick={() => setActiveSlotId(null)}
-            className="text-sm bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)]"
+            className="text-sm bg-accent hover:bg-accent-dark text-fg-on-accent"
           >
             完成选择
           </Button>

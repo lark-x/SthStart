@@ -36,7 +36,7 @@ export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeSta
             ] as const).map(([key, label]) => {
               const binding = modes[key];
               return (
-                <div key={key} className="flex items-start justify-between gap-3 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-3">
+                <div key={key} className="flex items-start justify-between gap-3 rounded-control border border-border-subtle bg-surface p-3">
                   <div className="flex min-w-0 items-start gap-2.5">
                     <CircleDashed className={`mt-0.5 h-4 w-4 flex-none ${binding.ready ? 'text-success' : 'text-warning'}`} aria-hidden="true" />
                     <div className="min-w-0">

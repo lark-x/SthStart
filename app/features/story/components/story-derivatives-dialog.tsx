@@ -17,6 +17,7 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import type { StoryScriptProject } from '@sthstart/contracts';
 import { storyApi } from '../api';
+import { storyKeys } from '@/app/lib/query-keys';
 import { createActivity } from '@/app/features/activities/api';
 
 interface StoryDerivativesDialogProps {
@@ -44,7 +45,7 @@ export function StoryDerivativesDialog({
 
   // 编译为剧本工程
   const scriptQuery = useQuery({
-    queryKey: ['story', projectId, 'compile-script', chapterTitle, chapterBody],
+    queryKey: storyKeys.compileScript(projectId, chapterTitle, chapterBody),
     queryFn: () =>
       storyApi.compileScript(projectId, chapterBody, {
         chapterTitle,
@@ -220,7 +221,7 @@ export function StoryDerivativesDialog({
                 {createdActivityId ? (
                   <Link
                     href={`/apps/activities/${createdActivityId}`}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-control)] bg-emerald-600 px-3 text-xs font-medium text-white shadow-2xs hover:bg-emerald-700"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-control bg-emerald-600 px-3 text-xs font-medium text-white shadow-2xs hover:bg-emerald-700"
                     target="_blank"
                   >
                     <Check className="size-3.5" />
@@ -277,7 +278,7 @@ export function StoryDerivativesDialog({
             )}
 
             {/* 剧本预览 */}
-            <div className="max-h-[46vh] min-h-[16rem] overflow-y-auto rounded-[var(--radius-control)] border border-border-default bg-surface p-3 font-mono text-xs" data-autohide-scroll>
+            <div className="max-h-[46vh] min-h-[16rem] overflow-y-auto rounded-control border border-border-default bg-surface p-3 font-mono text-xs" data-autohide-scroll>
               {scriptQuery.isLoading ? (
                 <div className="flex h-36 items-center justify-center text-muted">
                   正在编译剧本工程…
@@ -335,7 +336,7 @@ export function StoryDerivativesDialog({
             <textarea
               readOnly
               value={generateActivityChatText()}
-              className="h-[46vh] w-full rounded-[var(--radius-control)] border border-border-default bg-surface p-3 font-mono text-xs leading-relaxed text-ink outline-none"
+              className="h-[46vh] w-full rounded-control border border-border-default bg-surface p-3 font-mono text-xs leading-relaxed text-ink outline-none"
             />
           </div>
         )}
@@ -374,7 +375,7 @@ export function StoryDerivativesDialog({
             <textarea
               readOnly
               value={chapterBody}
-              className="h-[46vh] w-full rounded-[var(--radius-control)] border border-border-default bg-surface p-3 font-mono text-xs leading-relaxed text-ink outline-none"
+              className="h-[46vh] w-full rounded-control border border-border-default bg-surface p-3 font-mono text-xs leading-relaxed text-ink outline-none"
             />
           </div>
         )}

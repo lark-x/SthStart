@@ -30,7 +30,7 @@ export function Alert({
     <div
       role={variant === 'danger' ? 'alert' : 'status'}
       className={cn(
-        'relative flex items-start gap-3 rounded-[var(--radius-control)] border p-4 text-sm leading-relaxed',
+        'relative flex items-start gap-3 rounded-control border p-4 text-sm leading-relaxed',
         variant === 'success' && 'border-success-border bg-success-bg text-success-fg',
         variant === 'warning' && 'border-warning-border bg-warning-bg text-warning-fg',
         variant === 'danger' && 'border-danger-border bg-danger-bg text-danger-fg',
@@ -49,7 +49,7 @@ export function Alert({
         <button
           type="button"
           onClick={onDismiss}
-          className="flex h-9 w-9 shrink-0 items-center justify-center -mr-1 -mt-1 rounded-[var(--radius-control)] opacity-70 hover:opacity-100 hover:bg-surface-hover"
+          className="flex h-9 w-9 shrink-0 items-center justify-center -mr-1 -mt-1 rounded-control opacity-70 hover:opacity-100 hover:bg-surface-hover"
           aria-label="关闭提示"
         >
           <X className="h-4 w-4" aria-hidden="true" />

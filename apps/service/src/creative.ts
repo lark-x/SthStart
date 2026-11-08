@@ -1,3 +1,5 @@
+import { HistoryListQuerySchema, CreativeTaskListResponseSchema, type HistoryListQuery } from '@sthstart/contracts';
+import { decodeListCursor, encodeListCursor } from './list-cursor.js';
 import { randomUUID } from 'node:crypto';
 import { imageGenerationAudit, buildImagePurposeOptions, resolveImageConfiguration } from './generation/image-configuration.js';
 import { assertPreparedImageContext } from './generation/image-context.js';
@@ -734,12 +736,18 @@ export function registerCreativeRoutes(
     }
   });
 
-  app.get('/api/v1/admin/creative/tasks', async (request, reply) => {
+  app.get<{Querystring: HistoryListQuery}>('/api/v1/admin/creative/tasks', {schema: {querystring: HistoryListQuerySchema, response: {200: CreativeTaskListResponseSchema}}}, async (request, reply) => {
     try {
-      const rawLimit = Number((request.query as { limit?: string }).limit ?? 30);
-      const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 30;
-      const rows = database.connection.prepare('SELECT id FROM generation_tasks WHERE app_id=? ORDER BY created_at DESC LIMIT ?').all(CREATIVE_APP_ID, limit) as Array<{ id: string }>;
-      return { items: rows.map((row) => safeTask(database, row.id)).filter(Boolean) };
+      let after: [string, string] | null;
+      try { after = decodeListCursor(request.query.cursor); } catch { return reply.code(400).send({error: 'invalid_list_cursor'}); }
+      const limit = request.query.limit ?? 30;
+      const params: (string | number)[] = [CREATIVE_APP_ID];
+      let where = 'app_id=?';
+      if (after) { where += ' AND (created_at < ? OR (created_at = ? AND id < ?))'; params.push(after[0], after[0], after[1]); }
+      const rows = database.connection.prepare('SELECT id, created_at FROM generation_tasks WHERE ' + where + ' ORDER BY created_at DESC, id DESC LIMIT ?').all(...params, limit + 1) as {id: string; created_at: string}[];
+      const page = rows.slice(0, limit);
+      const last = page.at(-1);
+      return { items: page.map(row => safeTask(database, row.id)).filter(Boolean), nextCursor: rows.length > limit && last ? encodeListCursor(last.created_at, last.id) : null };
     } catch (error) {
       return sendCreativeError(reply, error);
     }

@@ -187,7 +187,7 @@ export function TestRunPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ink">试运行 · {workflowName}</h2>
         {onClose && (
-          <button type="button" onClick={onClose} aria-label="关闭试运行" className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] border border-border-default text-muted lg:hidden">
+          <button type="button" onClick={onClose} aria-label="关闭试运行" className="inline-flex h-8 w-8 items-center justify-center rounded-control border border-border-default text-muted lg:hidden">
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         )}
@@ -208,7 +208,7 @@ export function TestRunPanel({
             ) : field.type === 'integer' || field.type === 'number' ? (
               <Input id={`test-${field.key}`} type="number" value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value === '' ? undefined : Number(event.target.value) }))} />
             ) : field.type === 'long-text' ? (
-              <textarea id={`test-${field.key}`} className="min-h-20 w-full rounded-[var(--radius-control)] border border-border-default bg-surface p-2 text-sm" value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
+              <textarea id={`test-${field.key}`} className="min-h-20 w-full rounded-control border border-border-default bg-surface p-2 text-sm" value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
             ) : (
               <Input id={`test-${field.key}`} value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
             )}
@@ -222,7 +222,7 @@ export function TestRunPanel({
           <div key={slotKey}>
             <label htmlFor={`test-media-${slotKey}`} className="mb-1 block text-sm font-medium text-ink">媒体槽位 {slotKey}</label>
             <div className="flex items-center gap-2">
-              <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-[var(--radius-control)] border border-border-default px-3 text-sm">
+              <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-control border border-border-default px-3 text-sm">
                 <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
                 {media[slotKey]?.name ?? '选择文件'}
                 <input type="file" className="sr-only" accept="image/*" onChange={(event) => { void uploadMedia(slotKey, event.target.files?.[0]); event.target.value = ''; }} />
@@ -241,7 +241,7 @@ export function TestRunPanel({
       <p className="text-sm text-muted">先保存为不可变工作流版本，再创建真实任务；保存版本不会自动开放到图像工坊。</p>
 
       {detail && (
-        <section className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3" data-testid="test-run-detail">
+        <section className="rounded-panel border border-border-subtle bg-surface p-3" data-testid="test-run-detail">
           <div className="flex items-center justify-between gap-2">
             <Badge variant={STATUS_VARIANTS[detail.status] ?? 'default'}>{STATUS_LABELS[detail.status] ?? detail.status}</Badge>
             <span className="text-sm text-muted">v{detail.workflowVersion} · seed {detail.actualSeed ?? '—'}{formatDuration(detail) ? ` · ${formatDuration(detail)}` : ''}</span>
@@ -254,7 +254,7 @@ export function TestRunPanel({
             <div className="mt-2 grid grid-cols-2 gap-2">
               {detail.artifacts.map((artifact) => (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img key={artifact.artifactId} src={artifactUrl(artifact.url)} alt={`试运行产物 ${artifact.outputName}`} className="w-full rounded-[var(--radius-control)] border border-border-subtle" />
+                <img key={artifact.artifactId} src={artifactUrl(artifact.url)} alt={`试运行产物 ${artifact.outputName}`} className="w-full rounded-control border border-border-subtle" />
               ))}
             </div>
           )}
@@ -270,7 +270,7 @@ export function TestRunPanel({
           )}
           <details className="mt-2">
             <summary className="cursor-pointer text-sm text-muted">实际使用参数（来自任务快照）</summary>
-            <pre className="mt-1 max-h-40 overflow-auto rounded-[var(--radius-control)] bg-ink/4 p-2 font-mono text-xs">{JSON.stringify(detail.requestInputs, null, 2)}</pre>
+            <pre className="mt-1 max-h-40 overflow-auto rounded-control bg-ink/4 p-2 font-mono text-xs">{JSON.stringify(detail.requestInputs, null, 2)}</pre>
           </details>
         </section>
       )}
@@ -281,7 +281,7 @@ export function TestRunPanel({
         <ul className="mt-1 space-y-1">
           {runs.map((run) => (
             <li key={run.id}>
-              <button type="button" onClick={() => { void openDetail(run.id); }} className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface px-2.5 py-2 text-left text-sm hover:bg-ink/4">
+              <button type="button" onClick={() => { void openDetail(run.id); }} className="flex w-full items-center justify-between gap-2 rounded-control border border-border-subtle bg-surface px-2.5 py-2 text-left text-sm hover:bg-ink/4">
                 <span className="min-w-0 truncate">
                   <Badge variant={STATUS_VARIANTS[run.status] ?? 'default'}>{STATUS_LABELS[run.status] ?? run.status}</Badge>
                   <span className="ml-2 text-muted">v{run.workflowVersion}</span>

@@ -16,6 +16,7 @@ import {
   type ImportPreviewReport,
 } from '../api';
 import { Button } from '@/app/components/ui/button';
+import { Alert } from '@/app/components/ui/alert';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -45,9 +46,15 @@ const sampleJson = JSON.stringify(
 
 export function NarrativeImport({
   connectors,
+  connectorsLoading = false,
+  connectorsError = null,
+  onRetryConnectors,
   onImportComplete,
 }: {
   connectors: NarrativeConnector[];
+  connectorsLoading?: boolean;
+  connectorsError?: string | null;
+  onRetryConnectors?: () => void;
   onImportComplete: (workId: string) => void | Promise<void>;
 }) {
   const toast = useToast();
@@ -158,6 +165,17 @@ export function NarrativeImport({
        * data-testid 供视觉回归等待“连接器已就绪”，避免截到半加载画面。
        */}
       <div className="grid grid-cols-1 divide-y divide-border-subtle md:grid-cols-2 md:divide-y-0 md:gap-8 [&>*]:py-3" data-testid="narrative-connectors">
+        {connectorsError && (
+          <div className="md:col-span-2">
+            <Alert variant="danger" title="数据源连接器读取失败">
+              {connectorsError}
+              {onRetryConnectors && <Button size="sm" variant="ghost" onClick={onRetryConnectors}>重试读取</Button>}
+            </Alert>
+          </div>
+        )}
+        {connectorsLoading && !connectors.length && !connectorsError && (
+          <p role="status" className="md:col-span-2 text-sm text-muted">正在读取数据源连接器…</p>
+        )}
         {connectors.map((c) => (
           <div
             key={c.id}
@@ -179,10 +197,13 @@ export function NarrativeImport({
             </small>
           </div>
         ))}
+        {!connectorsLoading && !connectorsError && !connectors.length && (
+          <p className="md:col-span-2 text-sm text-muted">还没有可用的数据源连接器；本地 JSON 导入仍可使用。</p>
+        )}
       </div>
 
       {/* Akasha MCP Research Section */}
-      <div className="p-6 rounded-[var(--radius-panel)] bg-surface-muted border border-border-default space-y-4">
+      <div className="p-6 rounded-panel bg-surface-muted border border-border-default space-y-4">
         <div>
           <h3 className="tpl-section-title">虚空终端检索</h3>
           <p className="mt-1 text-sm leading-relaxed text-muted">
@@ -262,7 +283,7 @@ export function NarrativeImport({
         )}
 
         {remoteDoc && (
-          <div className="space-y-2 rounded-[var(--radius-control)] bg-surface-dark p-4 text-[#dae2de]">
+          <div className="space-y-2 rounded-control bg-surface-dark p-4 text-[#dae2de]">
             <div className="flex justify-between text-sm">
               <strong>{remoteDoc.fileName}</strong>
               <span>
@@ -278,7 +299,7 @@ export function NarrativeImport({
 
       {/* JSON Import Workbench */}
       {/* 专用深色代码面板（§8.9）：仅 JSON 原文查看使用深色，正文与表单沿用全站主题。 */}
-      <div className="space-y-4 rounded-[var(--radius-panel)] bg-surface-dark p-5 text-[#dae2de]">
+      <div className="space-y-4 rounded-panel bg-surface-dark p-5 text-[#dae2de]">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">
             规范化剧情 JSON 工作台

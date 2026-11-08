@@ -2,13 +2,19 @@
 
 import React, { useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import type {
+  ActivityReviewItem,
   ActivityScene,
   SceneBeat,
   StageDefinition,
 } from '@sthstart/contracts';
 import { useToast } from '@/app/providers/ui-provider';
+import { getJson } from '@/app/lib/api-client';
 import { useActivity, useActivityDraft, useActivityPlaybackRevision } from '../../queries';
+import { useCommitDraft } from '../../mutations';
+import { resolveActivityStudioRoute } from '../../studio-route';
 import { useStudioDraft } from '../../hooks/use-studio-draft';
 import { getEffectiveStageScenes, writeStageScenes } from '../../scene-beat-utils';
 import { submitBeatRender } from '../../beat-renders-api';
@@ -20,7 +26,9 @@ import { StudioBeatStream } from './studio-beat-stream';
 import { BeatRenderWorkbench } from '../beat-render-workbench';
 import { MediaWorkstation } from '../media-workstation';
 import { ArtDirectionDialog } from '../art-direction-dialog';
-import { StudioSettingsDrawer } from './studio-settings-drawer';
+import { StudioSettingsDrawer, type StudioSettingsTab } from './studio-settings-drawer';
+import { StudioCandidateDialog } from './studio-candidate-dialog';
+import { ReworkPanel } from '../rework-panel';
 import { ComicWorkstation } from '../../comic/comic-workstation';
 import { PlaybackWorkstation } from '../playback-workstation';
 import { ExportPanel } from '../export-panel';
@@ -46,11 +54,35 @@ function getServerSnapshot() {
   return false;
 }
 
+/** 深链接打开的浮层关闭后，从地址栏去掉这些参数，刷新时不会再次弹出。 */
+const DEEP_LINK_PARAMS = ['tab', 'view', 'mode', 'panel', 'recordView', 'actorId', 'stageId', 'factId', 'recordId', 'jobId', 'slotId', 'batchId', 'reworkSlots'];
+
+/** 与服务端 studioHash 一致：忽略键顺序与 undefined 字段，只比较内容本身。 */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]));
+}
+function sameDocument(a: unknown, b: unknown) {
+  return a !== undefined && a !== null && JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
 function createStudioId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-const COMPACT_WORKBENCH_QUERY = '(min-width: 768px) and (max-width: 1279px)';
+/** 试演 / 导出浮层顶部的内容准备提示：准备中只读提示，失败时可重试，草稿始终保留。 */
+function PrepareNotice({ status, error, onRetry }: { status: 'idle' | 'preparing' | 'ready' | 'error'; error: string | null; onRetry: () => void }) {
+  if (status === 'preparing') return <p role="status" className="shrink-0 border-b border-border-subtle bg-surface-sunken px-4 py-1.5 text-xs text-muted">正在把最新草稿准备为试演内容…</p>;
+  if (status !== 'error') return null;
+  return <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger-fg/20 bg-danger-bg px-4 py-2 text-sm text-danger-fg">
+    <span className="min-w-0 flex-1">{error || '准备试演内容失败'}；下方仍是上一版正式内容，你的草稿已保留。</span>
+    <Button size="sm" variant="ghost" onClick={onRetry}>重新准备</Button>
+  </div>;
+}
+
+const COMPACT_WORKBENCH_QUERY ='(min-width: 768px) and (max-width: 1279px)';
 function subscribeCompactWorkbench(callback: () => void) {
   const mql = window.matchMedia(COMPACT_WORKBENCH_QUERY);
   mql.addEventListener('change', callback);
@@ -106,8 +138,32 @@ export function StudioShell({ activityId }: StudioShellProps) {
 
   // 浮层状态
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<StudioSettingsTab>('basics');
+  const [settingsFocusId, setSettingsFocusId] = useState<string | null>(null);
   const [playbackOpen, setPlaybackOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [reworkOpen, setReworkOpen] = useState(false);
+  const [candidateJobId, setCandidateJobId] = useState<string | null>(null);
+
+  // 试演与导出消费正式内容版本：打开前把草稿落成版本（无变化时不新增版本）
+  const [prepareStatus, setPrepareStatus] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle');
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+  const preparing = useRef<Promise<boolean> | null>(null);
+  const commitDraftMutation = useCommitDraft();
+
+  // 深链接：任务中心、复核面板等处的 ?tab=…&actorId=… / ?tab=records&jobId=… 打开对应浮层或视图
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
+  const appliedSearch = useRef<string | null>(null);
+
+  const { data: reviewData } = useQuery({
+    queryKey: ['activity-review', activityId, activity?.headVersion],
+    queryFn: () => getJson<{ items: ActivityReviewItem[] }>(`/api/admin/activities/${activityId}/review-items`),
+    enabled: Boolean(activity),
+  });
+  const reviewCount = reviewData?.items.filter(item => item.decision === 'pending' || item.decision === 'rework').length ?? 0;
 
   // 正在生图的镜头 ID 集合
   const [generatingBeatIds, setGeneratingBeatIds] = useState<Set<string>>(new Set());
@@ -138,14 +194,99 @@ export function StudioShell({ activityId }: StudioShellProps) {
     if (!activeScene || !activeScene.beats.length) return null;
     return activeScene.beats.find((b) => b.id === selectedBeatId) || activeScene.beats[0] || null;
   }, [activeScene, selectedBeatId]);
+  // 深链接打开的浮层或视图离开后，去掉地址栏里的定位参数，刷新不会再次打开
+  const clearDeepLink = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (!DEEP_LINK_PARAMS.some(key => params.has(key))) return;
+    for (const key of DEEP_LINK_PARAMS) params.delete(key);
+    const next = params.toString();
+    appliedSearch.current = next;
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  };
+
   const changeView = async (mode: typeof viewMode) => {
     if (mode === viewMode) return;
     if (mediaFlush.current && !await mediaFlush.current()) return;
     if (await draft.flush()) {
       mediaFlush.current = null;
       setViewMode(mode);
+      clearDeepLink();
     }
   };
+
+  /*
+   * 试演与导出读取正式内容版本。进入前先保存草稿，草稿与当前版本不同才提交一次新版本，
+   * 内容没变时不增加版本号；多次点击共用同一次准备。
+   */
+  const prepareContent = () => {
+    if (preparing.current) return preparing.current;
+    setPrepareStatus('preparing');
+    setPrepareError(null);
+    const run = (async () => {
+      try {
+        if (mediaFlush.current && !await mediaFlush.current()) throw new Error('素材修改尚未保存，请先处理素材页的提示。');
+        if (!await draftFlushRef.current()) throw new Error('草稿尚未保存，请先处理页头下方的保存提示。');
+        const latest = await refetchActivity();
+        if (!latest.data) throw new Error('无法读取活动，请重试。');
+        if (sameDocument(latest.data.currentContentRevision?.document, latest.data.draft.document)) return true;
+        await commitDraftMutation.mutateAsync({
+          id: activityId,
+          expectedHeadVersion: latest.data.activity.headVersion,
+          expectedDraftVersion: draft.version(),
+        });
+        // 提交后服务端草稿版本号会重置；同步过来，后续自动保存才不会误报冲突。
+        const fresh = await refetchDraft();
+        if (fresh.data?.draft) draft.resolve(fresh.data.draft, !draft.isClean());
+        await refetchActivity();
+        return true;
+      } catch (error) {
+        setPrepareError(error instanceof Error ? error.message : '准备试演内容失败');
+        return false;
+      }
+    })().then(ok => {
+      setPrepareStatus(ok ? 'ready' : 'error');
+      return ok;
+    }).finally(() => { preparing.current = null; });
+    preparing.current = run;
+    return run;
+  };
+
+  const openPlayback = () => {
+    setExportOpen(false);
+    setPlaybackOpen(true);
+    void prepareContent();
+  };
+  const openExport = () => {
+    setPlaybackOpen(false);
+    setExportOpen(true);
+    void prepareContent();
+  };
+
+  const documentReady = Boolean(document && activity);
+  useEffect(() => {
+    if (!documentReady || appliedSearch.current === search) return;
+    appliedSearch.current = search;
+    const params = new URLSearchParams(search);
+    const { route } = resolveActivityStudioRoute(search);
+    /* eslint-disable react-hooks/set-state-in-effect -- 地址栏是外部状态：每个链接只在载入后应用一次 */
+    const jobId = params.get('jobId');
+    if (jobId) setCandidateJobId(jobId);
+    if (route.panel === 'activity-settings') {
+      const actorId = params.get('actorId');
+      const stageId = params.get('stageId');
+      setSettingsTab(actorId ? 'actors' : stageId ? 'stages' : 'basics');
+      setSettingsFocusId(actorId ? `actor-${actorId}` : stageId ? `stage-${stageId}` : null);
+      setSettingsOpen(true);
+    } else if (route.panel === 'art-direction') {
+      setArtOpen(true);
+    }
+    if (route.tab === 'theater') openPlayback();
+    else if (route.tab === 'delivery') openExport();
+    else if (route.view === 'assets') setViewMode('materials');
+    else if (route.view === 'comic') setViewMode('comic');
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只响应地址变化，打开函数每次渲染都会重建
+  }, [documentReady, search]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -162,12 +303,18 @@ export function StudioShell({ activityId }: StudioShellProps) {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
+  const clearDeepLinkRef = useRef(clearDeepLink);
+  useEffect(() => {
+    clearDeepLinkRef.current = clearDeepLink;
+  });
+
   useEffect(() => {
     if (!playbackOpen && !exportOpen) return;
     const handleEscape = (event: KeyboardEvent) => {
       if (event.isComposing || event.keyCode === 229 || event.key !== 'Escape') return;
       setPlaybackOpen(false);
       setExportOpen(false);
+      clearDeepLinkRef.current();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
@@ -442,13 +589,21 @@ export function StudioShell({ activityId }: StudioShellProps) {
         viewMode={viewMode}
         onViewModeChange={mode => { void changeView(mode); }}
         onUpdateTitle={handleUpdateTitle}
-        onOpenPlayback={() => setPlaybackOpen(true)}
+        onOpenPlayback={openPlayback}
         onBatchGenerate={handleBatchGenerate}
         isBatchGenerating={isBatchGenerating}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenExport={() => setExportOpen(true)}
+        onOpenSettings={() => { setSettingsFocusId(null); setSettingsOpen(true); }}
+        onOpenExport={openExport}
         onOpenArt={() => setArtOpen(true)}
+        onOpenRework={() => setReworkOpen(true)}
       />
+      {/* 发布新版本后产生的复核项：保留、返工与处理历史都在复核面板里 */}
+      {reviewCount > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-warning-border bg-warning-bg px-3 py-1.5 text-sm text-warning-fg">
+          <span className="min-w-0 flex-1">内容修改影响了已有镜头、图片或回放，确认保留或加入返工后提示会消失。</span>
+          <Button size="sm" variant="outline" className="shrink-0" onClick={() => setReworkOpen(true)}>查看 {reviewCount} 项内容变化</Button>
+        </div>
+      )}
       {(saveStatus === 'error' || saveStatus === 'conflict') && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger-fg/20 bg-danger-bg px-3 py-2 text-sm text-danger-fg">
           <span className="min-w-0 flex-1">{saveError || '草稿尚未同步，你的输入仍保留在本机。'}</span>
@@ -466,8 +621,8 @@ export function StudioShell({ activityId }: StudioShellProps) {
       )}
       <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-surface px-2 py-2 md:hidden">
         {viewMode === 'storyboard' ? <>
-          <select aria-label="当前幕" className="h-9 min-w-0 flex-1 rounded-[var(--radius-control)] border border-border-control bg-surface px-2 text-base text-ink" value={activeStage?.id ?? ''} onChange={event => { setActiveStageId(event.target.value); setActiveSceneId(null); }}>{document.stages.map(stage => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select>
-          <select aria-label="当前场次" className="h-9 min-w-0 flex-1 rounded-[var(--radius-control)] border border-border-control bg-surface px-2 text-base text-ink" value={activeScene?.id ?? ''} onChange={event => { setActiveSceneId(event.target.value); setSelectedBeatId(null); }}>{scenes.map(scene => <option key={scene.id} value={scene.id}>{scene.title}</option>)}</select>
+          <select aria-label="当前幕" className="h-9 min-w-0 flex-1 rounded-control border border-border-control bg-surface px-2 text-base text-ink" value={activeStage?.id ?? ''} onChange={event => { setActiveStageId(event.target.value); setActiveSceneId(null); }}>{document.stages.map(stage => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select>
+          <select aria-label="当前场次" className="h-9 min-w-0 flex-1 rounded-control border border-border-control bg-surface px-2 text-base text-ink" value={activeScene?.id ?? ''} onChange={event => { setActiveSceneId(event.target.value); setSelectedBeatId(null); }}>{scenes.map(scene => <option key={scene.id} value={scene.id}>{scene.title}</option>)}</select>
           <Button size="sm" variant="outline" className="h-9 shrink-0" onClick={() => setMobileDrawing(value => !value)}>{mobileDrawing ? '返回剧情' : '镜头绘制'}</Button>
           <StudioMenu label="工作台操作">
             <StudioMenuItem onSelect={handleAddStage}>新增一幕</StudioMenuItem>
@@ -478,7 +633,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
 
       {viewMode === 'storyboard' && mobileDrawing && (
         <div className="shrink-0 border-b border-border-subtle bg-surface px-2 py-2 md:hidden">
-          <select aria-label="选择镜头" className="h-9 w-full min-w-0 rounded-[var(--radius-control)] border border-border-control bg-surface px-2 text-base text-ink" value={`${activeScene?.id ?? ''}|${selectedBeat?.id ?? ''}`} onChange={event => { const [sceneId, beatId] = event.target.value.split('|'); setActiveSceneId(sceneId); setSelectedBeatId(beatId); }}>{scenes.flatMap(scene => scene.beats.map((beat, index) => <option key={beat.id} value={`${scene.id}|${beat.id}`}>{scene.title} · {index + 1} · {beat.action || beat.dialogue || '镜头'}</option>))}</select>
+          <select aria-label="选择镜头" className="h-9 w-full min-w-0 rounded-control border border-border-control bg-surface px-2 text-base text-ink" value={`${activeScene?.id ?? ''}|${selectedBeat?.id ?? ''}`} onChange={event => { const [sceneId, beatId] = event.target.value.split('|'); setActiveSceneId(sceneId); setSelectedBeatId(beatId); }}>{scenes.flatMap(scene => scene.beats.map((beat, index) => <option key={beat.id} value={`${scene.id}|${beat.id}`}>{scene.title} · {index + 1} · {beat.action || beat.dialogue || '镜头'}</option>))}</select>
         </div>
       )}
 
@@ -563,7 +718,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
               <button
                 type="button"
                 onClick={() => setRightInspectorCollapsed(!rightInspectorCollapsed)}
-                className={`hidden md:flex h-7 w-7 rounded-[var(--radius-control)] items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer shrink-0 ${
+                className={`hidden md:flex h-7 w-7 rounded-control items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer shrink-0 ${
                   rightInspectorCollapsed ? 'mx-auto' : ''
                 }`}
                 title={rightInspectorCollapsed ? '展开镜头工坊' : '收起镜头工坊'}
@@ -626,10 +781,32 @@ export function StudioShell({ activityId }: StudioShellProps) {
       {/* 统一全局设置抽屉 */}
       <StudioSettingsDrawer
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => { setSettingsOpen(false); setSettingsFocusId(null); clearDeepLink(); }}
+        activity={activity}
         document={document}
         onUpdateDocument={(nextDoc) => draft.update(nextDoc)}
+        tab={settingsTab}
+        onTabChange={setSettingsTab}
+        focusId={settingsFocusId}
+        profileDisabled={saveStatus === 'error' || saveStatus === 'conflict'}
+        beforeApplyProfile={prepareContent}
+        onProfileApplied={() => { void refetchActivity(); void refetchDraft(); }}
       />
+      <ReworkPanel
+        open={reworkOpen}
+        onOpenChange={setReworkOpen}
+        activityId={activityId}
+        headVersion={activity.headVersion}
+        document={document}
+        onSaved={() => { void refetchActivity(); }}
+      />
+      {candidateJobId && <StudioCandidateDialog
+        key={candidateJobId}
+        activityId={activityId}
+        jobId={candidateJobId}
+        onClose={() => { setCandidateJobId(null); clearDeepLink(); }}
+        onApplied={() => { void refetchActivity(); void refetchDraft(); }}
+      />}
       <ArtDirectionDialog activity={activity} open={artOpen} onOpenChange={setArtOpen} beforeApply={draft.flush} onApplied={async () => { await refetchActivity(); }} />
 
       {/* 连贯试演弹窗 */}
@@ -639,16 +816,18 @@ export function StudioShell({ activityId }: StudioShellProps) {
             <span className="text-xs font-semibold text-ink">连贯试演与演播预览</span>
             <button
               type="button"
-              onClick={() => setPlaybackOpen(false)}
-              className="h-7 w-7 rounded-[var(--radius-control)] flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+              onClick={() => { setPlaybackOpen(false); clearDeepLink(); }}
+              className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
               title="关闭试演预览"
               aria-label="关闭试演预览"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
+          <PrepareNotice status={prepareStatus} error={prepareError} onRetry={() => { void prepareContent(); }} />
           <div className="flex-1 min-h-0 overflow-hidden">
             <PlaybackWorkstation
+              key={`${activity.currentContentRevisionId || 'none'}:${activity.currentMediaRevisionId || 'none'}`}
               activity={activity}
               document={document}
               currentPlaybackRevision={playbackRevision}
@@ -667,15 +846,18 @@ export function StudioShell({ activityId }: StudioShellProps) {
               <span className="text-xs font-bold text-ink">活动资产与格式导出</span>
               <button
                 type="button"
-                onClick={() => setExportOpen(false)}
+                onClick={() => { setExportOpen(false); clearDeepLink(); }}
                 className="h-7 w-7 rounded flex items-center justify-center text-muted hover:text-ink cursor-pointer"
+                aria-label="关闭导出交付"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
+            <PrepareNotice status={prepareStatus} error={prepareError} onRetry={() => { void prepareContent(); }} />
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
               <ExportPanel
                 activity={activity}
+                creationProfile={document.activity.creationProfile}
                 contentRevision={activityData?.currentContentRevision || null}
                 mediaRevision={activityData?.currentMediaRevision || null}
                 playbackRevision={playbackRevision || null}

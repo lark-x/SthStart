@@ -140,7 +140,7 @@ export function ModelFieldsEditor({
       {modelsStale && !modelsError && <p className="text-sm text-warning-fg">模型列表来自过期缓存，建议刷新。</p>}
       {!engine && <p className="text-sm text-warning-fg">尚未选择连接；保存版本前请在下方选择，模型库存无法读取。</p>}
 
-      <div className="flex flex-wrap gap-4 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+      <div className="flex flex-wrap gap-4 rounded-panel border border-border-subtle bg-surface p-3">
         <label className="flex items-center gap-2 text-sm">
           <input type="radio" name="model-selection" checked={editorConfig.modelSelection === 'individual'} onChange={() => updateDraft((current) => current.editorConfig ? { ...current, editorConfig: { ...current.editorConfig, modelSelection: 'individual' } } : current)} />
           允许单独切换主模型
@@ -159,7 +159,7 @@ export function ModelFieldsEditor({
           const allowed = field.allowedModels ?? [];
           const relevant = visibleModels.filter((item) => !field.modelCategory || !categories.size || item.category === field.modelCategory);
           return (
-            <div key={field.key} className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4">
+            <div key={field.key} className="rounded-panel border border-border-subtle bg-surface p-4">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-0 flex-1">
                   <label htmlFor={`model-label-${field.key}`} className="mb-1 block text-sm font-medium text-ink">显示名称</label>
@@ -178,7 +178,7 @@ export function ModelFieldsEditor({
               </div>
               <div className="mt-3">
                 <p className="text-sm font-medium text-ink">允许选择的模型（不勾选任何项 = 允许库存中全部同类别模型）</p>
-                <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto rounded-[var(--radius-control)] border border-border-subtle p-2">
+                <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto rounded-control border border-border-subtle p-2">
                   {relevant.length === 0 && <p className="text-sm text-muted">没有可用模型；请刷新库存或检查连接。</p>}
                   {relevant.map((item) => (
                     <label key={`${item.category}/${item.name}`} className="flex items-center gap-2 text-sm">
@@ -199,7 +199,7 @@ export function ModelFieldsEditor({
       </div>
 
       {editorConfig.loraSlots.length > 0 && (
-        <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4">
+        <div className="rounded-panel border border-border-subtle bg-surface p-4">
           <h3 className="text-sm font-semibold text-ink">LoRA 槽位</h3>
           <p className="mt-1 text-sm text-muted">LoRA 槽位来自工作流已有的加载节点；关闭语义由工作流定义（映射开关或强度归零），不动态插入节点。</p>
           <div className="mt-2 space-y-2">

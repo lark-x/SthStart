@@ -82,7 +82,7 @@ export const McpToolDecisionCard: React.FC<McpToolDecisionCardProps> = ({
       role="region"
       aria-label={`MCP 决策卡片: ${toolCall.toolName}`}
       className={cn(
-        'relative w-full rounded-[var(--radius-panel)] border overflow-hidden transition-all duration-200 text-xs font-sans',
+        'relative w-full rounded-panel border overflow-hidden transition-all duration-200 text-xs font-sans',
         isPending && 'border-accent/40 bg-surface shadow-sm',
         isRunning && 'border-border-default bg-surface',
         isSuccess && 'border-emerald-500/30 bg-surface',
@@ -155,7 +155,7 @@ export const McpToolDecisionCard: React.FC<McpToolDecisionCardProps> = ({
         </div>
 
         {isJsonExpanded && (
-          <pre className="max-h-48 overflow-auto rounded-[var(--radius-control)] bg-surface-muted p-2.5 font-mono text-[11px] leading-relaxed text-ink border border-border-subtle/50">
+          <pre className="max-h-48 overflow-auto rounded-control bg-surface-muted p-2.5 font-mono text-[11px] leading-relaxed text-ink border border-border-subtle/50">
             {JSON.stringify(toolCall.inputParams, null, 2)}
           </pre>
         )}
@@ -179,7 +179,7 @@ export const McpToolDecisionCard: React.FC<McpToolDecisionCardProps> = ({
             {isResultExpanded && (
               <pre
                 className={cn(
-                  'max-h-48 overflow-auto rounded-[var(--radius-control)] p-2.5 font-mono text-[11px] leading-relaxed border',
+                  'max-h-48 overflow-auto rounded-control p-2.5 font-mono text-[11px] leading-relaxed border',
                   toolCall.errorMessage
                     ? 'border-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400'
                     : 'border-border-subtle/50 bg-surface-muted text-ink',

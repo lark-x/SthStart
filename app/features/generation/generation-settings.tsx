@@ -30,7 +30,6 @@ import { ActivityImageQuickSettings } from './components/activity-image-quick-se
 export function GenerationSettingsFeature() {
   const toast = useToast();
   const [section, setSection] = useState('quick');
-  const [advancedSection, setAdvancedSection] = useState('workflows');
   const [engines, setEngines] = useState<Engine[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [diagnostics, setDiagnostics] = useState<MediaDiagnostics | null>(null);
@@ -71,8 +70,6 @@ export function GenerationSettingsFeature() {
     <PageContainer width="wide" className="space-y-3 sm:space-y-4 py-4 sm:py-6">
       <PageHeader
         compact
-        backHref="/apps/creative"
-        backLabel="返回图像工坊"
         title="生成配置"
         description="管理连接、工作流、生成方案与提示词策略。生图页面中的修改仅用于本次任务；这里保存的设置用于后续任务。"
         actions={(
@@ -88,7 +85,11 @@ export function GenerationSettingsFeature() {
         onChange={setSection}
         tabs={[
           { id: 'quick', label: '常用设置', panelId: 'generation-panel-quick' },
-          { id: 'advanced', label: '专业配置', panelId: 'generation-panel-advanced' },
+          { id: 'workflows', label: '工作流', panelId: 'generation-panel-workflows' },
+          { id: 'connections', label: '连接与节点', panelId: 'generation-panel-connections' },
+          { id: 'presets', label: '预设与用途', panelId: 'generation-panel-presets' },
+          { id: 'prompts', label: '提示词策略', panelId: 'generation-panel-prompts' },
+          { id: 'loras', label: 'LoRA / 细化', panelId: 'generation-panel-loras' },
         ]}
       />
       {loading ? (
@@ -96,33 +97,29 @@ export function GenerationSettingsFeature() {
       ) : (
         <>
           <div id="generation-panel-quick" role="tabpanel" hidden={section !== 'quick'}>
-            <ActivityImageQuickSettings workflows={workflows} assignments={assignments} onDataChanged={load} onManagePrompts={() => { setSection('advanced'); setAdvancedSection('prompts'); }} />
+            <ActivityImageQuickSettings
+              workflows={workflows}
+              assignments={assignments}
+              onDataChanged={load}
+              onManagePrompts={() => setSection('prompts')}
+            />
           </div>
-          <div id="generation-panel-advanced" role="tabpanel" hidden={section !== 'advanced'} className="space-y-4">
-            <PageTabs ariaLabel="高级生成配置分类" value={advancedSection} onChange={setAdvancedSection} tabs={[
-              { id: 'workflows', label: '工作流', panelId: 'generation-advanced-workflows' },
-              { id: 'connections', label: '连接', panelId: 'generation-advanced-connections' },
-              { id: 'presets', label: '预设与用途', panelId: 'generation-advanced-presets' },
-              { id: 'prompts', label: '提示词策略', panelId: 'generation-advanced-prompts' },
-              { id: 'loras', label: 'LoRA / 细化', panelId: 'generation-advanced-loras' },
-            ]} />
-          <div id="generation-advanced-workflows" role="tabpanel" hidden={advancedSection !== 'workflows'}>
+          <div id="generation-panel-workflows" role="tabpanel" hidden={section !== 'workflows'}>
             <WorkflowWorkspace
               workflows={workflows}
               engines={engines}
               onDataChanged={load}
               onSaveAsPreset={(values, workflowId, workflowVersion) => {
                 setSavePresetRequest({ workflowId, workflowVersion, values });
-                setSection('advanced');
-                setAdvancedSection('presets');
+                setSection('presets');
                 toast.info('请在预设面板确认参数', '已带入试运行参数，保存后可在图像工坊选择。');
               }}
             />
           </div>
-          <div id="generation-advanced-connections" role="tabpanel" hidden={advancedSection !== 'connections'}>
+          <div id="generation-panel-connections" role="tabpanel" hidden={section !== 'connections'}>
             <ConnectionsPanel engines={engines} workers={workers} diagnostics={diagnostics} onRefresh={load} />
           </div>
-          <div id="generation-advanced-presets" role="tabpanel" hidden={advancedSection !== 'presets'}>
+          <div id="generation-panel-presets" role="tabpanel" hidden={section !== 'presets'}>
             <PresetPanel
               workflows={workflows}
               engines={engines}
@@ -131,14 +128,13 @@ export function GenerationSettingsFeature() {
               onDataChanged={load}
             />
           </div>
-          <div id="generation-advanced-prompts" role="tabpanel" hidden={advancedSection !== 'prompts'} className="space-y-3">
+          <div id="generation-panel-prompts" role="tabpanel" hidden={section !== 'prompts'} className="space-y-3">
             <p className="text-sm text-muted">策略按工作流版本保存；图像工坊与角色头像使用各自应用绑定的文本模型，活动使用活动文本模型。手动最终提示词会跳过 AI 改写。</p>
             <ActivityImagePromptPolicyPanel workflows={workflows} />
           </div>
-          <div id="generation-advanced-loras" role="tabpanel" hidden={advancedSection !== 'loras'}>
+          <div id="generation-panel-loras" role="tabpanel" hidden={section !== 'loras'}>
             <p className="mb-3 text-sm text-muted">活动可继承全局与角色 LoRA；其他用途的 LoRA 通过工作流映射参数配置。放大细化继承原图冻结配置，在结果旁进入。</p>
             <ActivityLoraPolicyPanel workflows={workflows} />
-          </div>
           </div>
         </>
       )}

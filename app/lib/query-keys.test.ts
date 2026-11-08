@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runtimeKeys, characterKeys, notebookKeys, narrativeKeys, providerKeys } from './query-keys';
+import {
+  runtimeKeys, characterKeys, notebookKeys, narrativeKeys, providerKeys,
+  storyKeys, projectKeys, topicKeys, topicCollectionKeys, ideaBatchKeys,
+  knowledgeCollectionKeys, knowledgePendingKeys, mcpSourceKeys, characterFacetKeys, aiCallKeys,
+  workspaceKeys, mediaLibraryKeys,
+} from './query-keys';
 import { cn } from './cn';
 import { Value } from '@sinclair/typebox/value';
 import {
@@ -23,6 +28,59 @@ test('query key factories generate structured immutable key tuples', () => {
   assert.deepEqual(notebookKeys.list({ kind: 'diary' }), ['notebook', 'list', { kind: 'diary' }]);
   assert.deepEqual(narrativeKeys.tree('w1'), ['narrative', 'tree', 'w1']);
   assert.deepEqual(providerKeys.overview(), ['providers', 'overview']);
+});
+
+test('migrated key factories keep the exact shapes of the literals they replaced', () => {
+  const params = { view: 'all', page: 1 };
+  // 左边是工厂输出，右边是迁移前组件里的字面量；两者必须逐元素相等，缓存与前缀失效才不变。
+  const cases: Array<[readonly unknown[], unknown[]]> = [
+    [workspaceKeys.recent(10), ['workspace', 'recent', 10]],
+    [mediaLibraryKeys.summary(), ['media-library', 'summary']],
+    [storyKeys.projects(), ['story', 'projects']],
+    [storyKeys.scope('p1'), ['story', 'p1']],
+    [storyKeys.project('p1'), ['story', 'p1', 'project']],
+    [storyKeys.documents('p1'), ['story', 'p1', 'documents']],
+    [storyKeys.characters('p1'), ['story', 'p1', 'characters']],
+    [storyKeys.proposals('p1'), ['story', 'p1', 'proposals']],
+    [storyKeys.bridgeStatus('p1'), ['story', 'p1', 'bridge-status']],
+    [storyKeys.dshStatus('p1'), ['story', 'p1', 'dsh-status']],
+    [storyKeys.search('p1', 'q'), ['story', 'p1', 'search', 'q']],
+    [storyKeys.archiveSessions('p1'), ['story', 'p1', 'archive-sessions']],
+    [storyKeys.archiveMessages('p1', 's1'), ['story', 'p1', 'archive-messages', 's1']],
+    [storyKeys.revisions('p1', 'chapter', 'e1'), ['story', 'p1', 'revisions', 'chapter', 'e1']],
+    [storyKeys.compileScript('p1', 't', 'b'), ['story', 'p1', 'compile-script', 't', 'b']],
+    [projectKeys.all, ['projects']],
+    [projectKeys.overview('p1'), ['projects', 'p1']],
+    [topicKeys.all, ['topics']],
+    [topicKeys.list(params), ['topics', params]],
+    [topicKeys.picker(params), ['topics', 'picker', params]],
+    [topicKeys.detail('t1'), ['topics', 'detail', 't1']],
+    [topicCollectionKeys.all, ['topic-collection']],
+    [topicCollectionKeys.runs(), ['topic-collection', 'runs']],
+    [topicCollectionKeys.settings(), ['topic-collection', 'settings']],
+    [ideaBatchKeys.list(), ['idea-batches']],
+    [ideaBatchKeys.detail('b1'), ['idea-batch', 'b1']],
+    [knowledgeCollectionKeys.all, ['knowledge-collections']],
+    [knowledgeCollectionKeys.poll('r1,r2'), ['knowledge-collections', 'poll', 'r1,r2']],
+    [knowledgeCollectionKeys.run('r1'), ['knowledge-run', 'r1']],
+    [knowledgePendingKeys.all, ['knowledge-pending']],
+    [knowledgePendingKeys.list('open'), ['knowledge-pending', 'open']],
+    [knowledgePendingKeys.detail('d1'), ['knowledge-pending', 'detail', 'd1']],
+    [mcpSourceKeys.all, ['mcp-sources']],
+    [characterFacetKeys.works(), ['characters', 'works-facets']],
+    [aiCallKeys.list(params, 'c1'), ['ai-calls', params, 'c1']],
+    [aiCallKeys.storage(), ['ai-calls-storage']],
+    [aiCallKeys.detail('a1'), ['ai-call', 'a1']],
+  ];
+  for (const [actual, expected] of cases) assert.deepEqual(actual, expected);
+
+  // 项目级失效必须仍能命中项目内的所有子键。
+  const scope = storyKeys.scope('p1');
+  for (const key of [storyKeys.documents('p1'), storyKeys.bridgeStatus('p1'), storyKeys.revisions('p1', 'chapter', 'e1')]) {
+    assert.deepEqual(key.slice(0, scope.length), [...scope]);
+  }
+  // 共享的全量角色列表落在 characterKeys.all 前缀下，编辑角色后的 ['characters'] 失效仍会刷新它。
+  assert.deepEqual(characterKeys.list(undefined).slice(0, 1), ['characters']);
 });
 
 test('cn utility merges tailwind classes properly', () => {

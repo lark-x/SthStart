@@ -1,0 +1,12 @@
+/* Skin-only finishing. Shared geometry lives in shell.css, workspace-b.css and resources.css.
+ * Keep every theme's existing palette, including warm night, in theme.css. */
+html[data-theme='light-paper'] {
+  --shadow-button-primary: none;
+  --shadow-button-primary-hover: none;
+  --shadow-nav-active: none;
+}
+html[data-theme='light-paper'] :is(button, a)[data-variant='primary'],
+html[data-theme='light-paper'] :is(button, a)[data-variant='outline'] { box-shadow: none; }
+html[data-theme='light-paper'] ::selection { background: var(--accent-soft); color: var(--fg-default); }
+html[data-theme='light-paper'] :is(input, textarea, [contenteditable='true']) { caret-color: var(--accent); }
+html[data-theme='light-paper'] input[type='checkbox'] { accent-color: var(--accent); }

@@ -107,6 +107,86 @@ export const taskKeys = {
     [...taskKeys.all, 'list', filters] as const,
 };
 
+/** 剧情项目。键形状与既有缓存保持一致：项目内数据都以 ['story', projectId] 为前缀，便于整体失效。 */
+export const storyKeys = {
+  all: ['story'] as const,
+  projects: () => [...storyKeys.all, 'projects'] as const,
+  scope: (projectId: string) => [...storyKeys.all, projectId] as const,
+  project: (projectId: string) => [...storyKeys.scope(projectId), 'project'] as const,
+  documents: (projectId: string) => [...storyKeys.scope(projectId), 'documents'] as const,
+  characters: (projectId: string) => [...storyKeys.scope(projectId), 'characters'] as const,
+  proposals: (projectId: string) => [...storyKeys.scope(projectId), 'proposals'] as const,
+  bridgeStatus: (projectId: string) => [...storyKeys.scope(projectId), 'bridge-status'] as const,
+  dshStatus: (projectId: string) => [...storyKeys.scope(projectId), 'dsh-status'] as const,
+  search: (projectId: string, query: string) => [...storyKeys.scope(projectId), 'search', query] as const,
+  archiveSessions: (projectId: string) => [...storyKeys.scope(projectId), 'archive-sessions'] as const,
+  archiveMessages: (projectId: string, sessionId?: string) => [...storyKeys.scope(projectId), 'archive-messages', sessionId] as const,
+  revisionsAll: (projectId: string) => [...storyKeys.scope(projectId), 'revisions'] as const,
+  revisions: (projectId: string, kind: string, entryId?: string) => [...storyKeys.revisionsAll(projectId), kind, entryId] as const,
+  compileScript: (projectId: string, chapterTitle: string, chapterBody: string) =>
+    [...storyKeys.scope(projectId), 'compile-script', chapterTitle, chapterBody] as const,
+};
+
+export const projectKeys = {
+  all: ['projects'] as const,
+  overview: (projectId: string) => [...projectKeys.all, projectId] as const,
+};
+
+/** 以下键沿用迁移前的字面量形状，保证已有缓存与前缀失效行为不变。 */
+export const topicKeys = {
+  all: ['topics'] as const,
+  list: (params: object) => [...topicKeys.all, params] as const,
+  picker: (params: object) => [...topicKeys.all, 'picker', params] as const,
+  detail: (id: string | null) => [...topicKeys.all, 'detail', id] as const,
+};
+
+export const topicCollectionKeys = {
+  all: ['topic-collection'] as const,
+  runs: () => [...topicCollectionKeys.all, 'runs'] as const,
+  settings: () => [...topicCollectionKeys.all, 'settings'] as const,
+};
+
+export const ideaBatchKeys = {
+  list: () => ['idea-batches'] as const,
+  detail: (batchId: string | null) => ['idea-batch', batchId] as const,
+};
+
+export const knowledgeCollectionKeys = {
+  all: ['knowledge-collections'] as const,
+  poll: (runIds: string) => [...knowledgeCollectionKeys.all, 'poll', runIds] as const,
+  run: (runId: string) => ['knowledge-run', runId] as const,
+};
+
+export const knowledgePendingKeys = {
+  all: ['knowledge-pending'] as const,
+  list: (state: string) => [...knowledgePendingKeys.all, state] as const,
+  detail: (id: string | null) => [...knowledgePendingKeys.all, 'detail', id] as const,
+};
+
+export const mcpSourceKeys = {
+  all: ['mcp-sources'] as const,
+};
+
+export const characterFacetKeys = {
+  works: () => [...characterKeys.all, 'works-facets'] as const,
+};
+
+export const aiCallKeys = {
+  list: (filters: object, cursor?: string | null) => ['ai-calls', filters, cursor] as const,
+  storage: () => ['ai-calls-storage'] as const,
+  detail: (id: string | null) => ['ai-call', id] as const,
+};
+
+export const workspaceKeys = {
+  all: ['workspace'] as const,
+  recent: (limit: number) => [...workspaceKeys.all, 'recent', limit] as const,
+};
+
+export const mediaLibraryKeys = {
+  all: ['media-library'] as const,
+  summary: () => [...mediaLibraryKeys.all, 'summary'] as const,
+};
+
 export const backupKeys = {
   all: ['backups'] as const,
   overview: () => [...backupKeys.all, 'overview'] as const,

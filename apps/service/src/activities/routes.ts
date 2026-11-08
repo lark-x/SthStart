@@ -1,3 +1,5 @@
+import { ActivityPageQuerySchema, ActivityPageResponseSchema, HistoryListQuerySchema, ImageAttemptPageSchema, type ActivityPageQuery, type HistoryListQuery } from '@sthstart/contracts';
+import { decodeListCursor } from '../list-cursor.js';
 import { registerReworkRoutes } from './rework-routes.js';
 import { buildActivityGallery } from './gallery.js';
 import { registerArtDirectionRoutes } from './art-direction-routes.js';
@@ -95,7 +97,7 @@ import {
   cancelImageAttempt,
   createImageGenerationAttempt,
   getImageAttempt,
-  listImageAttempts,
+  listImageAttemptsPage,
   resolveImageCapabilityDescriptor,
   syncAttemptOutputs,
   syncImageExecutionSnapshots,
@@ -237,6 +239,10 @@ export function registerActivityRoutes(
     });
 
   // 1. List activities
+  app.get<{ Querystring: ActivityPageQuery }>('/api/v1/admin/activities/page', { schema: { querystring: ActivityPageQuerySchema, response: {200: ActivityPageResponseSchema} } }, async (request, reply) => {
+    if (!checkAdmin(request, reply)) return;
+    return store.pageActivities(request.query);
+  });
   app.get<{ Querystring: { q?: string; archived?: string; limit?: string } }>(
     '/api/v1/admin/activities',
     async (request, reply) => {
@@ -1746,12 +1752,12 @@ export function registerActivityRoutes(
 
   app.get<{
     Params: { id: string };
-    Querystring: { slotId?: string; limit?: string };
-  }>('/api/v1/admin/activities/:id/image-attempts', async (request, reply) => {
+    Querystring: HistoryListQuery;
+  }>('/api/v1/admin/activities/:id/image-attempts', {schema: {querystring: HistoryListQuerySchema, response: {200: ImageAttemptPageSchema}}}, async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
-    const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
-    const items = listImageAttempts(database, request.params.id, request.query.slotId, limit);
-    return { items: items.map(item => syncAttemptOutputs(database, request.params.id, item.id) || item) };
+    try { decodeListCursor(request.query.cursor); } catch { return reply.code(400).send({error: 'invalid_list_cursor'}); }
+    const result = listImageAttemptsPage(database, request.params.id, request.query.slotId, request.query.limit ?? 50, request.query.cursor);
+    return { ...result, items: result.items.map(item => syncAttemptOutputs(database, request.params.id, item.id) || item) };
   });
 
   app.get<{ Params: { id: string; attemptId: string } }>(

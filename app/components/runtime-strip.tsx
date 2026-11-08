@@ -20,7 +20,7 @@ export function RuntimeStrip() {
           <small className="text-xs text-muted">{detail}</small>
         </div>
       </div>
-      <Link href="/settings/control-center" className="runtime-strip-action inline-flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-2 text-sm font-medium text-muted hover:bg-surface-hover hover:text-ink transition-colors">
+      <Link href="/settings/control-center" className="runtime-strip-action inline-flex items-center gap-2 rounded-control px-2 py-2 text-sm font-medium text-muted hover:bg-surface-hover hover:text-ink transition-colors">
         <span>打开控制中心</span>
         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
       </Link>

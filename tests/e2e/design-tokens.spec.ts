@@ -17,19 +17,21 @@ test('shape and shell tokens resolve to the planned computed values', async ({ p
       sidebarCollapsed: css.getPropertyValue('--shell-sidebar-collapsed').trim(),
       reading: css.getPropertyValue('--shell-reading').trim(),
       navSurface: css.getPropertyValue('--nav-surface').trim(),
+      bgApp: css.getPropertyValue('--bg-app').trim(),
     };
   });
 
   expect(tokens.control).toBe('10px');
   expect(tokens.panel).toBe('16px');
   expect(tokens.dialog).toBe('20px');
-  expect(tokens.sidebar).toBe('236px');
-  expect(tokens.sidebarCollapsed).toBe('68px');
+  expect(tokens.sidebar).toBe('248px');
+  expect(tokens.sidebarCollapsed).toBe('72px');
   expect(Number.parseFloat(tokens.reading)).toBeGreaterThan(600);
-  expect(tokens.navSurface).toBe('#f3efe6');
+  // 侧栏与画布同色。
+  expect(tokens.navSurface).toBe(tokens.bgApp);
 
-  // 真实内容表面（面板与卡片）使用 panel 圆角。
-  await expect(page.locator('section.tpl-panel').first()).toHaveCSS('border-radius', '16px');
+  // 真实内容表面（首页模块卡片）使用 panel 圆角。
+  await expect(page.locator('.home-module').first()).toHaveCSS('border-radius', '16px');
 });
 
 test('interactive controls use the control radius', async ({ page }) => {
@@ -42,7 +44,7 @@ test('interactive controls use the control radius', async ({ page }) => {
 
   // 表单控件最小高度 36px，移动端热区 44px。
   await page.goto('/settings/public-services');
-  const inputHeight = await page.getByLabel('搜索模型模板').evaluate((el) => el.getBoundingClientRect().height);
+  const inputHeight = await page.getByPlaceholder('搜索连接名称、地址或 ID...').evaluate((el) => el.getBoundingClientRect().height);
   expect(inputHeight).toBeGreaterThanOrEqual(36);
 });
 

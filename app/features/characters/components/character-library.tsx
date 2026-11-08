@@ -1,7 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, ArrowRight } from 'lucide-react';
@@ -19,8 +18,12 @@ import { CharacterFilters, CharacterPagination, useCharacterBrowser } from './ch
 import { CharacterOrganizationFields, emptyOrganizationFields, splitLabels } from './character-organization-editor';
 import { editCharacterOrganization, saveCharacterWork } from '../api';
 import { useBatchMatchOfficialAvatars } from '../mutations';
+import { CharacterAvatar } from './character-image-fallback';
+import { characterFilterUrl } from '../filter-url';
 import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
 import { SharedAssetVault } from './shared-asset-vault';
+import { LinsheCharacterVault } from './linshe-character-vault';
+import { characterKeys } from '@/app/lib/query-keys';
 
 export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterBrowseQuery | null } = {}) {
   const browser = useCharacterBrowser({}, true, { persist: true, initialFilter });
@@ -28,7 +31,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const client = useQueryClient();
   const batchMatchMutation = useBatchMatchOfficialAvatars();
   const [assetsVisited, setAssetsVisited] = useState(false);
-  const [viewTab, setViewTab] = useState<'characters' | 'shared-assets'>('characters');
+  const [viewTab, setViewTab] = useState<'characters' | 'shared-assets' | 'linshe'>('characters');
   const [importOpen, setImportOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
@@ -39,6 +42,12 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const [batchAvatarResult, setBatchAvatarResult] = useState<import('@sthstart/contracts').CharacterBatchAvatarResponse | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const pushCharacterPage = (next: CharacterBrowseQuery) => {
+    if (typeof window === 'undefined') return;
+    const href = characterFilterUrl(window.location.href, next);
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (href !== current) window.history.pushState(window.history.state, '', href);
+  };
   const [fields, setFields] = useState(emptyOrganizationFields);
   const [replaceTags, setReplaceTags] = useState(false);
   const [replaceGroups, setReplaceGroups] = useState(false);
@@ -70,7 +79,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     };
   }, []);
 
-  const refresh = () => { void client.invalidateQueries({ queryKey: ['characters'] }); };
+  const refresh = () => { void client.invalidateQueries({ queryKey: characterKeys.all }); };
   const handleBatchAvatar = async () => {
     setBusy(true);
     setError('');
@@ -115,7 +124,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               {viewTab === 'characters' && (
                 <>
                   <Link
-                    className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-control)] bg-accent px-3.5 text-sm font-semibold text-[var(--fg-on-accent)] shadow-xs transition-colors hover:bg-accent-dark focus-visible:outline focus-visible:outline-accent"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent shadow-xs transition-colors hover:bg-accent-dark focus-visible:outline focus-visible:outline-accent"
                     href="/apps/characters/new"
                   >
                     <Plus className="h-4 w-4" aria-hidden="true" />
@@ -150,14 +159,14 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               <details ref={moreMenuRef} className="relative">
                 <summary
                   aria-label="更多角色操作"
-                  className="flex h-9 cursor-pointer list-none items-center justify-center gap-1 rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent"
+                  className="flex h-9 cursor-pointer list-none items-center justify-center gap-1 rounded-control border border-border-default bg-surface px-2.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent"
                 >
                   <MoreHorizontal className="size-4" aria-hidden="true" />
                 </summary>
                 <div
                   role="menu"
                   aria-label="更多角色操作"
-                  className="absolute right-0 top-full z-30 mt-1.5 flex w-44 flex-col gap-0.5 rounded-[var(--radius-control)] border border-border-subtle bg-surface p-1 shadow-floating"
+                  className="absolute right-0 top-full z-30 mt-1.5 flex w-44 flex-col gap-0.5 rounded-control border border-border-subtle bg-surface p-1 shadow-floating"
                 >
                   <button
                     type="button"
@@ -172,6 +181,19 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                   >
                     <Sparkles className="size-3.5 text-muted" aria-hidden="true" />
                     <span>批量获取头像</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover cursor-pointer"
+                    onClick={() => {
+                      if (moreMenuRef.current) moreMenuRef.current.open = false;
+                      setError('');
+                      setBatchOpen(true);
+                    }}
+                  >
+                    <Upload className="size-3.5 text-muted" aria-hidden="true" />
+                    <span>批量导入角色</span>
                   </button>
                   <button
                     type="button"
@@ -192,8 +214,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           }
         />
 
-        {/* 视图切换：专属角色卡 vs 多角色公共资产库 */}
-        <div className="flex max-w-full flex-nowrap overflow-x-auto items-center gap-1 bg-surface-sunken p-1 rounded-[var(--radius-control)] w-fit border border-border-subtle/70" role="group" aria-label="角色资料视图">
+        {/* 视图切换：专属角色卡 vs 多角色公共资产库 vs 邻舍角色 */}
+        <div className="flex max-w-full flex-nowrap overflow-x-auto items-center gap-1 bg-surface-sunken p-1 rounded-control w-fit border border-border-subtle/70" role="group" aria-label="角色资料视图">
           <button
             type="button"
             aria-pressed={viewTab === 'characters'}
@@ -220,7 +242,19 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             <Users className="h-3.5 w-3.5" />
             <span>多角色公共资产库</span>
           </button>
-
+          <button
+            type="button"
+            aria-pressed={viewTab === 'linshe'}
+            onClick={() => setViewTab('linshe')}
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
+              viewTab === 'linshe'
+                ? 'bg-surface text-ink font-semibold shadow-xs'
+                : 'text-muted hover:text-ink font-normal'
+            }`}
+          >
+            <Sparkles className="h-3.5 w-3.5 text-muted" />
+            <span>邻舍角色</span>
+          </button>
         </div>
 
         {assetsVisited && (
@@ -232,8 +266,18 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             />
           </div>
         )}
+        {viewTab === 'linshe' && <LinsheCharacterVault />}
         <div hidden={viewTab !== 'characters'} className="space-y-4">
-          {(error || browser.error) && <p role="alert" className="text-sm text-danger-fg">{error || String(browser.error)}</p>}
+          {(error || browser.error) && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
+              <span>{error || (browser.error instanceof Error ? browser.error.message : '角色列表加载失败')}</span>
+              {browser.error && (
+                <Button size="sm" variant="outline" onClick={() => void browser.refetch()}>
+                  重试
+                </Button>
+              )}
+            </div>
+          )}
           <CharacterFilters
             filter={browser.filter}
             onChange={browser.change}
@@ -246,25 +290,13 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                 </span>
                 <Button
                   size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setError('');
-                    setBatchOpen(true);
-                  }}
-                  className="h-8 px-2 text-xs font-medium text-muted hover:text-ink"
-                >
-                  <Upload className="size-3.5 text-muted" aria-hidden="true" />
-                  <span>批量导入</span>
-                </Button>
-                <Button
-                  size="sm"
                   variant={selectionMode ? 'secondary' : 'ghost'}
                   onClick={() => {
                     const nextMode = !selectionMode;
                     setSelectionMode(nextMode);
                     if (!nextMode) setSelected({});
                   }}
-                  className="h-8 px-2 text-xs font-medium"
+                  className="h-8 px-2 text-sm font-medium"
                 >
                   <CheckSquare className="size-3.5 text-muted" aria-hidden="true" />
                   <span>{selectionMode ? '退出管理' : '批量管理'}</span>
@@ -283,7 +315,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                   <button
                     key={id}
                     type="button"
-                    className="inline-flex items-center gap-1 rounded-[var(--radius-control)] border border-border-default bg-surface px-2 py-0.5 text-xs text-ink hover:border-accent/50"
+                    className="inline-flex items-center gap-1 rounded-control border border-border-default bg-surface px-2 py-0.5 text-xs text-ink hover:border-accent/50"
                     onClick={() =>
                       setSelected((current) => {
                         const next = { ...current };
@@ -357,17 +389,18 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             </Button>
           </FloatingActionBar>
 
-          {/* 角色列表：连续行列表展示，去卡片化 */}
+          {/* 角色卡片自适应多列网格 */}
           {browser.isLoading ? (
-            <div className="divide-y divide-border-subtle border-y border-border-subtle">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <div key={n} className="flex items-center gap-3 p-3 sm:px-4 sm:py-3">
-                  <Skeleton className="h-10 w-10 rounded-[var(--radius-control)] flex-none" />
-                  <div className="flex-1 space-y-1.5">
-                    <Skeleton className="h-4 w-1/4" />
+            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <div key={n} className="flex items-center gap-3 p-3 rounded-panel border border-border-subtle bg-surface">
+                  <Skeleton className="h-20 w-20 rounded-control flex-none" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
                     <Skeleton className="h-3 w-1/3" />
+                    <Skeleton className="h-4 w-2/3" />
                   </div>
-                  <Skeleton className="h-8 w-8 rounded-[var(--radius-control)] flex-none" />
+                  <Skeleton className="h-8 w-8 rounded-control flex-none" />
                 </div>
               ))}
             </div>
@@ -383,7 +416,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                   </Button>
                   <Link
                     href="/apps/characters/new"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-control)] bg-accent px-3.5 text-sm font-semibold text-[var(--fg-on-accent)] shadow-xs transition-colors hover:bg-accent-dark"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent shadow-xs transition-colors hover:bg-accent-dark"
                   >
                     <Plus className="h-4 w-4" />
                     <span>新建角色</span>
@@ -392,104 +425,123 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               }
             />
           ) : (
-            <ul className="divide-y divide-border-subtle border-y border-border-subtle">
-              {browser.data?.items.map((character) => (
-                <li
-                  key={character.id}
-                  className="group flex min-h-[48px] items-center justify-between gap-3 py-2.5 transition-colors hover:bg-surface-hover sm:min-h-[52px] sm:py-3"
-                >
-                  {selectionMode && (
-                    <input
-                      aria-label={`选择 ${character.displayName}`}
-                      type="checkbox"
-                      checked={!!selected[character.id]}
-                      onChange={(e) =>
-                        setSelected((current) => {
-                          const next = { ...current };
-                          if (e.target.checked) next[character.id] = character.displayName;
-                          else delete next[character.id];
-                          return next;
-                        })
-                      }
-                      className="size-4 rounded accent-accent shrink-0 cursor-pointer"
-                    />
-                  )}
+            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+              {browser.data?.items.map((character) => {
+                const workName = (character.draft.work || '').trim().toLowerCase();
+                const displayTags = (character.tags || [])
+                  .filter((tag) => {
+                    const t = tag.trim().toLowerCase();
+                    return t && t !== workName && t !== character.displayName.trim().toLowerCase();
+                  })
+                  .slice(0, 3);
 
-                  <Link
-                    href={`/apps/characters/${character.id}`}
-                    className="flex flex-1 items-center gap-3 min-w-0"
+                return (
+                  <li
+                    key={character.id}
+                    className="group relative flex items-center gap-3 rounded-panel border border-border-subtle bg-surface p-3 transition-colors hover:border-border-control"
                   >
-                    <div
-                      className="relative flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken text-sm font-semibold text-muted shadow-xs"
-                    >
-                      {character.avatarUrl ? (
-                        <Image
-                          src={character.avatarUrl}
-                          alt=""
-                          fill
-                          unoptimized
-                          className="object-cover transition-transform duration-200 group-hover:scale-105"
-                        />
-                      ) : (
-                        character.displayName.slice(0, 1)
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm sm:text-base font-semibold text-ink transition-colors group-hover:text-accent">
-                          {character.displayName}
-                        </span>
-                        {character.organization?.favorite && (
-                          <span className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-label="已收藏" />
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-                        <span className="truncate">{character.draft.work || '未设置作品'}</span>
-                        {character.tags?.length ? (
-                          <span className="hidden sm:inline-flex items-center gap-1 text-fg-subtle">
-                            <span>·</span>
-                            {character.tags.slice(0, 3).map((tag) => (
-                              <span key={tag} className="rounded bg-surface-sunken px-1.5 py-0.5 text-[11px] text-muted border border-border-subtle/50">
-                                {tag}
-                              </span>
-                            ))}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </Link>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface-sunken hover:text-accent focus-visible:outline focus-visible:outline-accent"
-                      aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
-                      aria-pressed={character.organization?.favorite || false}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void toggleFavorite(character.id, !character.organization?.favorite);
-                      }}
-                    >
-                      <Star
-                        className={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`}
+                    {selectionMode && (
+                      <input
+                        aria-label={`选择 ${character.displayName}`}
+                        type="checkbox"
+                        checked={!!selected[character.id]}
+                        onChange={(e) =>
+                          setSelected((current) => {
+                            const next = { ...current };
+                            if (e.target.checked) next[character.id] = character.displayName;
+                            else delete next[character.id];
+                            return next;
+                          })
+                        }
+                        className="size-4 rounded accent-accent shrink-0 cursor-pointer"
                       />
-                    </button>
+                    )}
 
                     <Link
                       href={`/apps/characters/${character.id}`}
-                      className="hidden sm:flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors group-hover:text-accent hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent"
-                      aria-label={`查看 ${character.displayName}`}
+                      className="relative h-20 w-20 shrink-0 overflow-hidden rounded-control border border-border-subtle bg-surface-sunken flex items-center justify-center"
                     >
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                      <CharacterAvatar
+                        src={character.avatarUrl}
+                        name={character.displayName}
+                        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      />
                     </Link>
-                  </div>
-                </li>
-              ))}
+
+                    <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+                      <Link
+                        href={`/apps/characters/${character.id}`}
+                        className="min-w-0 flex-1 space-y-1 block"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-sm sm:text-base font-semibold text-ink transition-colors group-hover:text-accent">
+                            {character.displayName}
+                          </span>
+                          {character.organization?.favorite && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" aria-label="已收藏" />
+                          )}
+                        </div>
+                        <p className="truncate text-xs text-muted">
+                          {character.draft.work || '未设置作品'}
+                        </p>
+                        {displayTags.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                            {displayTags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center rounded bg-surface-sunken px-1.5 py-0.5 text-xs text-muted border border-border-subtle/60"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </Link>
+
+                      <div className="flex flex-col items-center justify-between self-stretch shrink-0 gap-1 pl-1">
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-sunken hover:text-accent focus-visible:outline focus-visible:outline-accent cursor-pointer"
+                          aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
+                          aria-pressed={character.organization?.favorite || false}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void toggleFavorite(character.id, !character.organization?.favorite);
+                          }}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`}
+                          />
+                        </button>
+
+                        <Link
+                          href={`/apps/characters/${character.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-control text-muted transition-colors group-hover:text-accent hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent"
+                          aria-label={`查看 ${character.displayName}`}
+                        >
+                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </Link>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
 
-          <CharacterPagination data={browser.data} onPage={(page) => browser.change({ page })} />
+          <CharacterPagination
+            data={browser.data}
+            onPage={(page) => {
+              pushCharacterPage({ ...browser.filter, page });
+              browser.change({ page });
+            }}
+            onPageSizeChange={(pageSize) => {
+              pushCharacterPage({ ...browser.filter, page: 1, pageSize });
+              browser.change({ pageSize, page: 1 });
+            }}
+            loading={browser.isFetching && browser.isPlaceholderData}
+          />
         </div>
 
         {previewArtifact && (
@@ -509,7 +561,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             <img
               src={previewArtifact.url}
               alt={`${previewArtifact.name} 的立绘`}
-              className="mx-auto max-h-[65vh] w-auto rounded-[var(--radius-control)] object-contain"
+              className="mx-auto max-h-[65vh] w-auto rounded-control object-contain"
             />
           </Dialog>
         )}
@@ -589,7 +641,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             <label className="block text-sm font-medium text-ink">
               <span>选择已有作品</span>
               <select
-                className="mt-1 h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-base sm:text-sm text-ink"
+                className="mt-1 h-10 w-full rounded-control border border-border-control bg-surface px-3 text-base sm:text-sm text-ink"
                 value=""
                 onChange={(e) => {
                   const next = browser.facets?.works.find((w) => w.name === e.target.value);
@@ -626,7 +678,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             <label className="block text-sm font-medium text-ink">
               <span>作品类型</span>
               <select
-                className="mt-1 h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-base sm:text-sm text-ink"
+                className="mt-1 h-10 w-full rounded-control border border-border-control bg-surface px-3 text-base sm:text-sm text-ink"
                 value={work.mediaType}
                 onChange={(e) => setWork({ ...work, mediaType: e.target.value })}
               >

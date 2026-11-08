@@ -7,7 +7,7 @@ export const RecentWorkResponseSchema = Type.Object({
   items: Type.Array(Type.Object({
     id: Type.String(),
     title: Type.String(),
-    kind: Type.Union([Type.Literal('activity'), Type.Literal('note'), Type.Literal('character')]),
+    kind: Type.Union([Type.Literal('activity'), Type.Literal('note'), Type.Literal('character'), Type.Literal('story'), Type.Literal('publication')]),
     updatedAt: Type.String(),
   })),
 });

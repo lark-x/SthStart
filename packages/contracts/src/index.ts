@@ -11,6 +11,8 @@ export * from './activity-image-operations.js';
 export * from './activity-image-hires.js';
 export * from './activity-comic.js';
 export * from './story.js';
+export * from './projects.js';
+export * from './media-library.js';
 export * from './activities.js';
 import { CharacterAssetDetailSchema, type CharacterAssetDetail } from './character-assets.js';
 export * from './character-assets.js';
@@ -698,7 +700,14 @@ export type CreativeTaskResponse = Static<typeof CreativeTaskResponseSchema>;
 
 export const CreativeTaskListResponseSchema = Type.Object({
   items: Type.Array(CreativeTaskResponseSchema),
+  nextCursor: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
+export const HistoryListQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  cursor: Type.Optional(Type.String({ maxLength: 2048 })),
+  slotId: Type.Optional(Type.String()),
+});
+export type HistoryListQuery = Static<typeof HistoryListQuerySchema>;
 export type CreativeTaskListResponse = Static<typeof CreativeTaskListResponseSchema>;
 
 export const CreativeArtifactListResponseSchema = Type.Object({
@@ -2884,8 +2893,8 @@ export interface NoteListQuery {
 }
 
 export const KnowledgeSearchItemSchema = Type.Object({
-  /** 检索结果类型：资料或叙事片段。 */
-  kind: Type.Union([Type.Literal('note'), Type.Literal('narrative')]),
+  /** 保留实际来源类型，供项目与企划解析权威引用。 */
+  kind: Type.Union([Type.Literal('note'), Type.Literal('narrative'), Type.Literal('topic'), Type.Literal('collection')]),
   id: Type.String(),
   title: Type.String(),
   excerpt: Type.String(),
@@ -2907,11 +2916,15 @@ export type KnowledgeSearchItem = Static<typeof KnowledgeSearchItemSchema>;
 
 export const KnowledgeSearchResponseSchema = Type.Object({
   items: Type.Array(KnowledgeSearchItemSchema),
-  /** 命中总数与是否被截断，便于界面如实说明“已截取”。 */
+  /** 当前筛选下的真实总数；truncated 保留给旧消费者，等同 hasMore。 */
   total: Type.Number(),
   truncated: Type.Boolean(),
+  offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1 })),
+  hasMore: Type.Optional(Type.Boolean()),
 });
 export type KnowledgeSearchResponse = Static<typeof KnowledgeSearchResponseSchema>;
+export * from './knowledge-search.js';
 
 /** 引用在本次生成里的用途：背景参考或本次要求。 */
 export const PlanningReferenceUsageSchema = Type.Union([
@@ -3112,6 +3125,19 @@ export const KnowledgePendingItemSchema = Type.Object({
   updatedAt: Type.String(),
 });
 export type KnowledgePendingItem = Static<typeof KnowledgePendingItemSchema>;
+export const KnowledgePendingListQuerySchema = Type.Object({
+  state: Type.Optional(Type.Union([Type.Literal('pending'), Type.Literal('kept'), Type.Literal('ignored'), Type.Literal('organized')])),
+  collectionId: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0 })),
+});
+export type KnowledgePendingListQuery = Static<typeof KnowledgePendingListQuerySchema>;
+export const KnowledgePendingListResponseSchema = Type.Object({
+  items: Type.Array(KnowledgePendingItemSchema),
+  counts: Type.Record(Type.String(), Type.Number()),
+  total: Type.Integer({ minimum: 0 }),
+});
+export type KnowledgePendingListResponse = Static<typeof KnowledgePendingListResponseSchema>;
 
 /** 来源版本：同一来源身份的内容版本，变化时保留旧版本。 */
 export const KnowledgeSourceVersionSchema = Type.Object({
@@ -4085,6 +4111,19 @@ export const ActivitySchema = Type.Object({
   updatedAt: Type.String(),
 });
 export type Activity = Static<typeof ActivitySchema>;
+export const ActivityPageQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 500 })),
+  archived: Type.Optional(Type.Boolean()),
+  independent: Type.Optional(Type.Boolean()),
+  page: Type.Optional(Type.Integer({ minimum: 1 })),
+  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+export type ActivityPageQuery = Static<typeof ActivityPageQuerySchema>;
+export const ActivityPageResponseSchema = Type.Object({
+  items: Type.Array(ActivitySchema), total: Type.Integer({ minimum: 0 }),
+  page: Type.Integer({ minimum: 1 }), pageSize: Type.Integer({ minimum: 1, maximum: 100 }),
+});
+export type ActivityPageResponse = Static<typeof ActivityPageResponseSchema>;
 
 export const ActivityDraftSchema = Type.Object({
   activityId: Type.String(),
@@ -4537,6 +4576,11 @@ export const GenerationAttemptSchema = Type.Object({
   imageOperation: Type.Optional(ImageOperationMetadataSchema),
 });
 export type GenerationAttempt = Static<typeof GenerationAttemptSchema>;
+export const ImageAttemptPageSchema = Type.Object({
+  items: Type.Array(GenerationAttemptSchema),
+  nextCursor: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+export type ImageAttemptPage = Static<typeof ImageAttemptPageSchema>;
 
 export const ExecutionSnapshotSchema = Type.Object({
   attemptId: Type.String(),

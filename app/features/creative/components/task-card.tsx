@@ -57,7 +57,7 @@ export function TaskCard({
       </div>
 
       {Boolean(task.errorMessage) && (
-        <p className="mt-3 rounded-[var(--radius-control)] border border-danger/25 bg-danger/8 px-3 py-2 text-xs leading-relaxed text-danger-fg">
+        <p className="mt-3 rounded-control border border-danger/25 bg-danger/8 px-3 py-2 text-xs leading-relaxed text-danger-fg">
           {task.errorMessage}
         </p>
       )}
@@ -113,7 +113,7 @@ export function TaskCard({
               href={artifact.url}
               target="_blank"
               rel="noreferrer"
-              className="group relative aspect-square overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-paper"
+              className="group relative aspect-square overflow-hidden rounded-control border border-border-subtle bg-paper"
               aria-label={`打开生成结果 ${artifact.outputName}`}
             >
               {artifact.mediaKind === 'video' || artifact.contentType?.startsWith('video/') ? (

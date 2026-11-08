@@ -2,6 +2,9 @@
 /* Keep design tokens in Tailwind's compilation graph so semantic utilities
    (bg-accent, text-ink, border-border-default, etc.) are actually emitted. */
 @import './styles/theme.css';
+@import './styles/workspace-b.css';
+@import './styles/resources.css';
+@import './styles/warm-white-skin.css';
 
 @font-face {
   font-family: 'Sthstart Comic Noto Sans SC';
@@ -201,7 +204,7 @@ button.primary-action {
   gap: 20px;
   padding: 16px clamp(18px, 4vw, 40px);
   border-bottom: 1px solid rgb(244 240 231 / 10%);
-  color: var(--paper);
+  color: #f4f0e7;
 }
 
 .embed-toolbar-main,
@@ -218,7 +221,7 @@ button.primary-action {
   place-items: center;
   border: 1px solid rgb(244 240 231 / 16%);
   border-radius: 50%;
-  color: var(--paper);
+  color: #f4f0e7;
   font-size: 18px;
 }
 
@@ -233,7 +236,7 @@ button.primary-action {
   border: 1px solid rgb(244 240 231 / 18%);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--paper);
+  color: #f4f0e7;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
@@ -281,7 +284,7 @@ button.primary-action {
   align-content: center;
   padding: 40px 24px;
   text-align: center;
-  color: var(--paper);
+  color: #f4f0e7;
 }
 
 .empty-symbol {
@@ -291,7 +294,7 @@ button.primary-action {
   place-items: center;
   border-radius: 50%;
   background: #252e2a;
-  color: var(--paper);
+  color: #f4f0e7;
   font-family: var(--font-serif);
   font-size: 40px;
   margin-bottom: 24px;

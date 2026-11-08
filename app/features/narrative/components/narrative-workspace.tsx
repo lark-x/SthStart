@@ -51,8 +51,8 @@ export function NarrativeWorkspace() {
     if (next !== 'research') { params.delete('project'); params.delete('view'); }
     router.push(`${pathname}?${params}`, { scroll: false });
   };
-  const [selectedWorkId, setSelectedWorkId] = useState<string>('');
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('');
+  const [selectedWorkId, setSelectedWorkId] = useState<string>(() => searchParams.get('work') ?? '');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => searchParams.get('node') ?? '');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [conceptTaskId, setConceptTaskId] = useState<string | null>(null);
   const [submittingConcept, setSubmittingConcept] = useState(false);
@@ -81,9 +81,30 @@ export function NarrativeWorkspace() {
   useEffect(() => {
     activeNodeIdRef.current = activeNodeId;
   }, [activeNodeId]);
-  const { data: searchData } = useNarrativeSearch(searchQuery, activeWorkId);
-  const { data: connectorsData } = useNarrativeConnectors();
+  const { data: searchData, isLoading: searchLoading, isError: searchError, error: searchFailure, refetch: refetchSearch } = useNarrativeSearch(searchQuery, activeWorkId);
+  const { data: connectorsData, isLoading: connectorsLoading, isError: connectorsError, error: connectorsFailure, refetch: refetchConnectors } = useNarrativeConnectors();
   const connectors = connectorsData?.items ?? [];
+  const searchErrorMessage = searchError
+    ? (searchFailure instanceof Error ? searchFailure.message : '原文检索失败')
+    : null;
+  const connectorsErrorMessage = connectorsError
+    ? (connectorsFailure instanceof Error ? connectorsFailure.message : '数据源连接器读取失败')
+    : null;
+
+  // 选中的作品与节点进入 URL，刷新、前进后退和从检索结果跳转后都能恢复阅读位置。
+  useEffect(() => {
+    if (mode !== 'read' || worksLoading || treeLoading || !activeWorkId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get('work') !== activeWorkId) params.set('work', activeWorkId);
+    if (activeNodeId) {
+      if (params.get('node') !== activeNodeId) params.set('node', activeNodeId);
+    } else {
+      params.delete('node');
+    }
+    const next = `${pathname}?${params.toString()}`;
+    const current = `${pathname}?${searchParams.toString()}`;
+    if (next !== current) router.replace(next, { scroll: false });
+  }, [activeNodeId, activeWorkId, mode, pathname, router, searchParams, treeLoading, worksLoading]);
 
   const handleGenerateConcept = async () => {
     if (!activeNodeId || conceptTaskId || submittingConcept) return;
@@ -218,7 +239,7 @@ export function NarrativeWorkspace() {
                   type="button"
                   aria-expanded={treeOpen}
                   onClick={() => setTreeOpen((open) => !open)}
-                  className="inline-flex h-11 sm:h-9 items-center rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
+                  className="inline-flex h-11 sm:h-9 items-center rounded-control border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
                 >
                   目录
                 </button>
@@ -228,7 +249,7 @@ export function NarrativeWorkspace() {
                   aria-expanded={inspectorOpen}
                   onClick={() => setInspectorOpen((open) => !open)}
                   className={cn(
-                    'inline-flex h-11 sm:h-9 items-center rounded-[var(--radius-control)] border px-3 text-sm font-medium transition-colors',
+                    'inline-flex h-11 sm:h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors',
                     inspectorOpen
                       ? 'border-accent/30 bg-accent/12 font-semibold text-accent-dark'
                       : 'border-border-default bg-surface text-muted hover:text-ink',
@@ -286,11 +307,14 @@ export function NarrativeWorkspace() {
               query={searchQuery}
               onQueryChange={setSearchQuery}
               results={searchData?.items ?? []}
+              loading={searchLoading}
+              error={searchErrorMessage}
+              onRetry={() => { void refetchSearch(); }}
               onSelectResult={handleSelectSearchResult}
             /></div>}
             <Drawer open={narrow && treeOpen} onOpenChange={setTreeOpen} title="作品目录" className="md:hidden">{treePanel}</Drawer>
             <Drawer open={narrow && inspectorOpen} onOpenChange={setInspectorOpen} title="检索原文" className="md:hidden">
-              <NarrativeInspector query={searchQuery} onQueryChange={setSearchQuery} results={searchData?.items ?? []} onSelectResult={handleSelectSearchResult} />
+              <NarrativeInspector query={searchQuery} onQueryChange={setSearchQuery} results={searchData?.items ?? []} loading={searchLoading} error={searchErrorMessage} onRetry={() => { void refetchSearch(); }} onSelectResult={handleSelectSearchResult} />
             </Drawer>
           </>
         ) : mode === 'research' ? (
@@ -298,6 +322,9 @@ export function NarrativeWorkspace() {
         ) : (
           <NarrativeImport
             connectors={connectors}
+            connectorsLoading={connectorsLoading}
+            connectorsError={connectorsErrorMessage}
+            onRetryConnectors={() => { void refetchConnectors(); }}
             onImportComplete={handleImportComplete}
           />
         )}

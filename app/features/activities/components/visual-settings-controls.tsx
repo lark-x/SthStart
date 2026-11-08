@@ -8,12 +8,12 @@ export function StructuredDirectorControls({ value = {}, onChange, disabled, inc
   value?: DirectorSettings; onChange(value: DirectorSettings): void; disabled?: boolean; includeShotSize?: boolean;
 }) {
   const labels = { shotSize: '景别', angle: '角度', lighting: '光影', mood: '氛围' };
-  return <div aria-label="结构化导演设置" className="space-y-2 rounded-[var(--radius-control)] bg-surface-muted p-3">
+  return <div aria-label="结构化导演设置" className="space-y-2 rounded-control bg-surface-muted p-3">
     {(Object.keys(DIRECTOR_OPTIONS) as Array<keyof DirectorSettings>).filter(key => includeShotSize || key !== 'shotSize').map(key => <fieldset key={key} className="flex min-w-0 flex-wrap items-center gap-1.5">
       <legend className="float-left mr-2 text-xs font-semibold text-muted">{labels[key]}</legend>
       {DIRECTOR_OPTIONS[key].map(option => <button key={option.value} type="button" disabled={disabled} aria-pressed={value[key] === option.value}
         onClick={() => onChange(toggleDirectorSetting(value, key, option.value))}
-        className={`rounded-full px-2.5 py-1 text-xs transition-colors ${value[key] === option.value ? 'bg-accent text-[var(--fg-on-accent)]' : 'bg-surface text-ink hover:bg-surface-hover'} disabled:opacity-50`}>{option.label}</button>)}
+        className={`rounded-full px-2.5 py-1 text-xs transition-colors ${value[key] === option.value ? 'bg-accent text-fg-on-accent' : 'bg-surface text-ink hover:bg-surface-hover'} disabled:opacity-50`}>{option.label}</button>)}
     </fieldset>)}
     <p className="text-xs text-muted">未选择的项跟随描述；这些设置不会改写你填写的补充提示词。</p>
   </div>;

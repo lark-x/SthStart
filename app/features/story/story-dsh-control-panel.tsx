@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { BookOpen, ExternalLink, Play, RefreshCw } from 'lucide-react';
 import { storyApi } from './api';
+import { useStoryProjects } from './queries';
+import { storyKeys } from '@/app/lib/query-keys';
 import { Alert } from '@/app/components/ui/alert';
 import { Button, buttonVariants } from '@/app/components/ui/button';
 
@@ -18,15 +20,11 @@ function makeLaunchHref(projectId: string) {
 
 export function StoryDshControlPanel() {
   const localAccess = typeof window !== 'undefined' && isLoopbackHost(window.location.hostname);
-  const projects = useQuery({
-    queryKey: ['story', 'projects'],
-    queryFn: storyApi.listProjects,
-    refetchInterval: 30_000,
-  });
+  const projects = useStoryProjects({ refetchInterval: 30_000 });
   const items = projects.data?.items ?? [];
   const statuses = useQueries({
     queries: items.map((project) => ({
-      queryKey: ['story', project.id, 'bridge-status'],
+      queryKey: storyKeys.bridgeStatus(project.id),
       queryFn: () => storyApi.bridgeStatus(project.id),
       refetchInterval: 10_000,
       retry: 1,
@@ -62,9 +60,9 @@ export function StoryDshControlPanel() {
       {projects.error instanceof Error ? projects.error.message : '请检查 SthStart 服务连接后重试。'}
     </Alert>}
 
-    {projects.isLoading && <p className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-5 text-sm text-muted">正在检查项目与 DSH 状态…</p>}
+    {projects.isLoading && <p className="rounded-panel border border-border-default bg-surface p-5 text-sm text-muted">正在检查项目与 DSH 状态…</p>}
 
-    {!projects.isLoading && items.length === 0 && <div className="rounded-[var(--radius-panel)] border border-dashed border-border-default bg-surface p-8 text-center">
+    {!projects.isLoading && items.length === 0 && <div className="rounded-panel border border-dashed border-border-default bg-surface p-8 text-center">
       <BookOpen className="mx-auto size-8 text-muted" />
       <p className="mt-3 font-medium">还没有剧情项目</p>
       <p className="mt-1 text-sm text-muted">先创建项目，再为项目配对 DSH。</p>
@@ -83,7 +81,7 @@ export function StoryDshControlPanel() {
         const startHref = localAccess && status?.paired && !status.running && !anotherProjectRunning
           ? makeLaunchHref(project.id) : undefined;
 
-        return <article key={project.id} className="min-w-0 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
+        return <article key={project.id} className="min-w-0 rounded-panel border border-border-default bg-surface p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="truncate font-semibold">{project.title}</h3>
@@ -118,12 +116,12 @@ export function StoryDshControlPanel() {
       })}
     </div>
 
-    <details className="rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
+    <details className="rounded-panel border border-border-default bg-surface p-4">
       <summary className="cursor-pointer text-sm font-medium">首次启用一键启动 · 注册 Windows 启动协议</summary>
       <div className="mt-3 space-y-3 text-sm leading-6 text-muted">
         <p>浏览器不能直接启动 Windows 进程，因此需要在运行 SthStart 的电脑上注册一次本地协议。它只会调用项目自带启动器，并传递项目 ID 与本机 Portal 地址，不包含桥接 Token。</p>
         <p>在 SthStart 仓库根目录打开 PowerShell，执行：</p>
-        <pre className="overflow-x-auto rounded-[var(--radius-control)] bg-surface-muted p-3 text-xs text-ink">powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\story-dsh\register-protocol.ps1</pre>
+        <pre className="overflow-x-auto rounded-control bg-surface-muted p-3 text-xs text-ink">powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\story-dsh\register-protocol.ps1</pre>
         <p>注册后刷新本页即可使用。需要移除时运行 <code>unregister-protocol.ps1</code>。若该项目尚未配对，先打开“项目与配对设置”完成配对；DSH 模型仍需在 DSH 页面单独配置。</p>
       </div>
     </details>

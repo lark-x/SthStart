@@ -22,7 +22,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
           disabled={disabled}
           aria-describedby={[describedBy, description ? inputId + '-description' : undefined].filter(Boolean).join(' ') || undefined}
           className={cn(
-            'h-4 w-4 shrink-0 rounded border-border-control accent-[var(--action-primary)] mt-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
+            'h-4 w-4 shrink-0 rounded border-border-control accent-action-primary mt-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
             className
           )}
           {...props}

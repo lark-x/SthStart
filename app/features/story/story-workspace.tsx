@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown, ArrowUp, BookOpen, Check, FileClock, FolderOpen, Film,
   Plus, Search, Settings2, ShieldCheck, MoreHorizontal, UserPlus,
@@ -14,13 +15,18 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { storyApi } from './api';
+import {
+  useInvalidateStoryContent, useStoryBridgeStatus, useStoryCharacters, useStoryDocuments,
+  useStoryProject, useStoryProposals, useStorySearch,
+} from './queries';
+import { storyKeys } from '@/app/lib/query-keys';
 import { StoryEntryEditor } from './story-entry-editor';
 import { StoryReviewPanel } from './story-review-panel';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { StoryAgentConnectDialog } from './components/story-agent-connect-dialog';
 import { StoryWorkCastDialog } from './components/story-work-cast-dialog';
 import { StoryDerivativesDialog } from './components/story-derivatives-dialog';
-import { fetchCharacters } from '@/app/features/characters/api';
+import { useCharacters } from '@/app/features/characters/queries';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { CreatePublicationDialog } from './components/create-publication-dialog';
 import { ScrollFadeContainer } from '@/app/components/ui/scroll-fade-container';
@@ -40,17 +46,14 @@ const documentOf = (entry: StoryEntry): entry is StoryDocument => !('name' in en
 const menuLinkClass = 'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-hover';
 
 export function StoryWorkspace({ projectId }: { projectId: string }) {
+  const searchParams = useSearchParams();
   const client = useQueryClient();
-  const project = useQuery({ queryKey: ['story', projectId, 'project'], queryFn: () => storyApi.getProject(projectId) });
-  const documents = useQuery({ queryKey: ['story', projectId, 'documents'], queryFn: () => storyApi.listDocuments(projectId) });
-  const characters = useQuery({ queryKey: ['story', projectId, 'characters'], queryFn: () => storyApi.listCharacters(projectId) });
-  const charactersLibrary = useQuery({
-    queryKey: ['characters', 'all-for-cast'],
-    queryFn: () => fetchCharacters(),
-    staleTime: 60_000,
-  });
-  const proposals = useQuery({ queryKey: ['story', projectId, 'proposals'], queryFn: () => storyApi.listProposals(projectId), refetchInterval: 20_000 });
-  const bridge = useQuery({ queryKey: ['story', projectId, 'bridge-status'], queryFn: () => storyApi.bridgeStatus(projectId), refetchInterval: 20_000 });
+  const project = useStoryProject(projectId);
+  const documents = useStoryDocuments(projectId);
+  const characters = useStoryCharacters(projectId);
+  const charactersLibrary = useCharacters();
+  const proposals = useStoryProposals(projectId, { refetchInterval: 20_000 });
+  const bridge = useStoryBridgeStatus(projectId, { refetchInterval: 20_000 });
   const [selected, setSelected] = useState<{ kind: 'document' | 'character'; id: string } | null>(null);
   const [search, setSearch] = useState('');
   const creationDrafts = useRef<Partial<Record<NewKind, { title: string; body: string }>>>({});
@@ -141,7 +144,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
 
   const castList = useMemo(() => {
     return (characters.data?.items ?? []).map((c) => {
-      const lib = (c.sourceCharacterId ? libraryMap.get(c.sourceCharacterId) : null) || libraryMap.get(c.name);
+      const lib = c.sourceCharacterId ? libraryMap.get(c.sourceCharacterId) : null;
       return {
         id: c.id,
         name: c.name,
@@ -169,29 +172,23 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     return firstChapter ?? entries[0]?.item ?? null;
   }, [documents.data, entries, isReflection, outlineDoc]);
   const activeEntry = entries.find((entry) => entry.kind === selected?.kind && entry.item.id === selected.id)?.item
+    ?? entries.find(entry => !selected && entry.item.id === searchParams.get('entry'))?.item
     ?? defaultEntry;
   const activeId = activeEntry?.id;
   const activeKind = activeEntry ? documentOf(activeEntry) ? 'document' : 'character' : null;
   const pendingProposalCount = proposals.data?.items.filter((item) => item.status === 'pending').length ?? 0;
-  const searchResults = useQuery({ queryKey: ['story', projectId, 'search', search.trim()],
-    queryFn: () => storyApi.searchEntries(projectId, search.trim()), enabled: search.trim().length >= 2 });
+  const searchResults = useStorySearch(projectId, search);
 
   const flushCurrent = useCallback(() => flushRef.current(), []);
   const registerFlush = useCallback((flush: () => Promise<boolean>) => { flushRef.current = flush; }, []);
-  const refreshEntry = useCallback(async () => {
-    await Promise.all([
-      client.invalidateQueries({ queryKey: ['story', projectId, 'documents'] }),
-      client.invalidateQueries({ queryKey: ['story', projectId, 'characters'] }),
-      client.invalidateQueries({ queryKey: ['story', projectId, 'project'] }),
-    ]);
-  }, [client, projectId]);
+  const refreshEntry = useInvalidateStoryContent(projectId);
   const onSaved = useCallback((entry: StoryEntry) => {
     if (documentOf(entry)) {
-      client.setQueryData<{ items: StoryDocument[] }>(['story', projectId, 'documents'], (old) => old && ({ items: old.items.map((item) => item.id === entry.id ? entry : item) }));
+      client.setQueryData<{ items: StoryDocument[] }>(storyKeys.documents(projectId), (old) => old && ({ items: old.items.map((item) => item.id === entry.id ? entry : item) }));
     } else {
-      client.setQueryData<{ items: StoryCharacter[] }>(['story', projectId, 'characters'], (old) => old && ({ items: old.items.map((item) => item.id === entry.id ? entry : item) }));
+      client.setQueryData<{ items: StoryCharacter[] }>(storyKeys.characters(projectId), (old) => old && ({ items: old.items.map((item) => item.id === entry.id ? entry : item) }));
     }
-    void client.invalidateQueries({ queryKey: ['story', projectId, 'proposals'] });
+    void client.invalidateQueries({ queryKey: storyKeys.proposals(projectId) });
   }, [client, projectId]);
   const onConflict = useCallback(() => { void refreshEntry(); }, [refreshEntry]);
 
@@ -243,8 +240,8 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     [ids[index], ids[next]] = [ids[next]!, ids[index]!];
     try {
       const updated = await storyApi.reorderChapters(projectId, project.data.revision, ids);
-      client.setQueryData(['story', projectId, 'project'], updated);
-      await client.invalidateQueries({ queryKey: ['story', projectId, 'documents'] });
+      client.setQueryData(storyKeys.project(projectId), updated);
+      await client.invalidateQueries({ queryKey: storyKeys.documents(projectId) });
     } catch (cause) { setNotice(cause instanceof Error ? cause.message : '章节顺序更新失败。'); }
   };
 
@@ -262,7 +259,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
         summary: projectSummary,
         workId: projectWorkId.trim() || null,
       });
-      client.setQueryData(['story', projectId, 'project'], updated);
+      client.setQueryData(storyKeys.project(projectId), updated);
       setProjectSettingsOpen(false); setNotice('项目资料已保存。');
     } catch (cause) { setNotice(cause instanceof Error ? cause.message : '项目保存失败。'); }
   };
@@ -362,7 +359,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
 
         {/* 核心双模切换：章节正文 vs 故事设定集（仅剧情项目） */}
         {!isReflection && (
-          <div className="mt-2.5 grid grid-cols-2 gap-1 rounded-[var(--radius-control)] bg-surface-muted/80 p-0.5" role="tablist">
+          <div className="mt-2.5 grid grid-cols-2 gap-1 rounded-control bg-surface-muted/80 p-0.5" role="tablist">
             <button
               type="button"
               role="tab"
@@ -415,7 +412,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                   key={`${result.kind}-${result.id}`}
                   type="button"
                   onClick={() => row && void chooseEntry(row)}
-                  className="mb-1 block w-full rounded-[var(--radius-control)] px-2 py-2 text-left hover:bg-surface-hover"
+                  className="mb-1 block w-full rounded-control px-2 py-2 text-left hover:bg-surface-hover"
                 >
                   <span className="block truncate text-sm font-medium">{result.title}</span>
                   <span className="line-clamp-2 text-xs text-muted">
@@ -449,7 +446,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               </div>
               {outlineDoc ? (
                 <div
-                  className={`group flex min-w-0 items-center rounded-[var(--radius-control)] transition-colors ${
+                  className={`group flex min-w-0 items-center rounded-control transition-colors ${
                     activeId === outlineDoc.id
                       ? 'bg-surface-sunken text-ink'
                       : 'text-muted hover:bg-surface-hover'
@@ -503,7 +500,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               </div>
 
               {filteredChapters.length === 0 ? (
-                <div className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-4 text-center">
+                <div className="rounded-panel border border-dashed border-border-default p-4 text-center">
                   <p className="text-xs text-muted">尚未记录对话感想。</p>
                   <Button
                     size="sm"
@@ -524,7 +521,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                     return (
                       <div
                         key={chapter.id}
-                        className={`group flex min-w-0 items-center rounded-[var(--radius-control)] transition-colors ${
+                        className={`group flex min-w-0 items-center rounded-control transition-colors ${
                           active
                             ? 'bg-surface-sunken text-ink'
                             : 'text-muted hover:bg-surface-hover'
@@ -594,7 +591,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                 </div>
 
                 {filteredChapters.length === 0 ? (
-                  <div className="rounded-[var(--radius-panel)] border border-dashed border-border-default p-4 text-center">
+                  <div className="rounded-panel border border-dashed border-border-default p-4 text-center">
                     <p className="text-xs text-muted">{search.trim() ? '没有匹配的章节，请调整搜索。' : '尚未创建小说章节。'}</p>
                     <Button
                       size="sm"
@@ -620,7 +617,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                       return (
                         <div
                           key={chapter.id}
-                          className={`group flex min-w-0 items-center rounded-[var(--radius-control)] transition-colors ${
+                          className={`group flex min-w-0 items-center rounded-control transition-colors ${
                             active
                               ? 'bg-surface-sunken text-ink'
                               : 'text-muted hover:bg-surface-hover'
@@ -718,7 +715,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
                         return (
                           <div
                             key={row.item.id}
-                            className={`group flex min-w-0 items-center rounded-[var(--radius-control)] border transition-all ${
+                            className={`group flex min-w-0 items-center rounded-control border transition-all ${
                               active
                                 ? 'border-transparent bg-surface-sunken text-ink'
                                 : 'border-transparent hover:border-border-default/60 hover:bg-surface-hover'
@@ -792,8 +789,8 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     )}
     <WorkspaceHeader
       title={project.data.title}
-      backHref="/apps/story"
-      backLabel={isReflection ? '全部项目' : '剧情项目'}
+      backHref={isReflection ? '/apps/story?type=reflection' : '/apps/projects/' + projectId}
+      backLabel={isReflection ? '随笔' : '项目总览'}
       status={
         <div className="flex min-w-0 items-center gap-1.5">
           {isReflection && <span className="shrink-0 text-xs text-muted">对话感想</span>}
@@ -837,7 +834,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
               <MoreHorizontal className="size-4" />
             </Button>
             {headerMenuOpen && (
-              <div role="menu" aria-label="更多项目操作" className="absolute right-0 top-full z-50 mt-2 w-56 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-1.5 shadow-lg">
+              <div role="menu" aria-label="更多项目操作" className="absolute right-0 top-full z-50 mt-2 w-56 rounded-panel border border-border-subtle bg-surface p-1.5 shadow-lg">
                 {!isReflection && <button type="button" role="menuitem" className={menuLinkClass} onClick={() => { setHeaderMenuOpen(false); setPublicationOpen(true); }}><Film className="size-4 text-muted" />制作作品</button>}
                 <button type="button" role="menuitem" className={menuLinkClass} onClick={() => { setHeaderMenuOpen(false); openReview('proposals'); }}>
                   <Check className="size-4 text-muted" />审阅提案{pendingProposalCount > 0 ? `（${pendingProposalCount}）` : ''}
@@ -956,7 +953,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
       onOpenChange={setWorkCastOpen}
       projectId={projectId}
       defaultWorkId={project.data.workId}
-      existingNames={new Set(characters.data?.items.map((c) => c.name) ?? [])}
+      existingSources={new Set(characters.data?.items.filter(c => c.sourceCharacterId).map(c => c.sourceCharacterId + ':' + c.sourceVersion) ?? [])}
       onCharacterAdded={() => void refreshEntry()}
     />
 
@@ -999,7 +996,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
           <Input autoFocus value={newTitle} maxLength={120} onChange={(event) => { setNewTitle(event.target.value); if (newKind) creationDrafts.current[newKind] = { title: event.target.value, body: newBody }; }} className="mt-1"
             placeholder={newKind === 'character' ? '主角姓名' : isReflection ? (newKind === 'chapter' ? '例如：关于智能体认知的若干反思' : '例如：核心思考脉络') : (newKind === 'chapter' ? '第一章' : '核心设定')} />
         </label>
-        <label className="block text-sm font-medium">初始正文（可选）<textarea value={newBody} maxLength={100000} onChange={(event) => { setNewBody(event.target.value); if (newKind) creationDrafts.current[newKind] = { title: newTitle, body: event.target.value }; }} className="mt-1 min-h-48 w-full rounded-[var(--radius-control)] border border-border-control bg-surface p-3 font-mono text-sm leading-6 outline-none focus:border-accent" placeholder="Markdown 正文…" /></label>
+        <label className="block text-sm font-medium">初始正文（可选）<textarea value={newBody} maxLength={100000} onChange={(event) => { setNewBody(event.target.value); if (newKind) creationDrafts.current[newKind] = { title: newTitle, body: event.target.value }; }} className="mt-1 min-h-48 w-full rounded-control border border-border-control bg-surface p-3 font-mono text-sm leading-6 outline-none focus:border-accent" placeholder="Markdown 正文…" /></label>
         {createError && <p role="alert" className="text-sm text-danger-fg">{createError}</p>}
       </form>
     </Dialog>
@@ -1017,7 +1014,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
           <Input value={projectWorkId} maxLength={120} onChange={(event) => setProjectWorkId(event.target.value)} className="mt-1"
             placeholder={isReflection ? '例如：智能体对话、系统架构哲学' : '例如：原神、崩坏：星穹铁道，或留空'} />
         </label>
-        <label className="block text-sm font-medium">项目简介<textarea value={projectSummary} maxLength={4000} onChange={(event) => setProjectSummary(event.target.value)} className="mt-1 min-h-32 w-full rounded-[var(--radius-control)] border border-border-control bg-surface p-3 text-sm leading-6" /></label>
+        <label className="block text-sm font-medium">项目简介<textarea value={projectSummary} maxLength={4000} onChange={(event) => setProjectSummary(event.target.value)} className="mt-1 min-h-32 w-full rounded-control border border-border-control bg-surface p-3 text-sm leading-6" /></label>
       </form>
     </Dialog>
   </main>;

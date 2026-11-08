@@ -57,7 +57,7 @@ export function Dialog({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-[var(--overlay-backdrop)] transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -72,7 +72,7 @@ export function Dialog({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-[var(--radius-dialog)] border border-border-subtle bg-surface p-6 shadow-dialog focus:outline-none animate-in zoom-in-95',
+          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-dialog border border-border-subtle bg-surface p-6 shadow-dialog focus:outline-none animate-in zoom-in-95',
           sizeClassName[size],
           className
         )}
@@ -91,7 +91,7 @@ export function Dialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭对话框"
           >
             <X className="h-5 w-5" aria-hidden="true" />

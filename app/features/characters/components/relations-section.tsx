@@ -62,7 +62,7 @@ export function RelationsSection({
       </div>
 
       {/* Relationship Creator */}
-      <div className="p-4 rounded-[var(--radius-panel)] border border-border-subtle bg-surface space-y-3">
+      <div className="p-4 rounded-panel border border-border-subtle bg-surface space-y-3">
         <h4 className="text-xs font-semibold text-fg-subtle uppercase tracking-wider">
           添加人物关系
         </h4>
@@ -138,7 +138,7 @@ export function RelationsSection({
         </h4>
 
         {detail?.relationships && detail.relationships.length > 0 ? (
-          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
+          <div className="rounded-panel border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
             {detail.relationships.map((rel) => {
               const otherId = rel.fromCharacterId === detail.id ? rel.toCharacterId : rel.fromCharacterId;
               const other = library.find((c) => c.id === otherId);
@@ -163,7 +163,7 @@ export function RelationsSection({
                     <button
                       type="button"
                       onClick={() => void onRemoveRelationship(rel.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
                       title="删除关系"
                       aria-label="删除关系"
                     >
@@ -175,7 +175,7 @@ export function RelationsSection({
             })}
           </div>
         ) : (
-          <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-6 text-center text-xs text-muted">
+          <div className="rounded-panel border border-border-subtle bg-surface p-6 text-center text-xs text-muted">
             暂无已配置的人物关系。
           </div>
         )}

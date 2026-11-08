@@ -8,7 +8,7 @@ import baseConfig from '../../playwright.config';
  * 关键点：Playwright 的 webServer 会用 `vinext start` 服务 **cwd 下的 dist**，
  * 光换容器里的产物是没用的。因此这里把服务进程的工作目录做成显式输入：
  *   CAPTURE_SERVER_CWD 指向哪个检出，就截哪个构建。
- * 数据库路径强制指向主仓库的同一份 e2e 库，保证前后两次是同一份数据。
+ * 数据目录强制指向主仓库的 data/e2e-capture，保证前后两次是同一份数据。
  *
  * 用法（前后各跑一次）：
  *   $env:CAPTURE_OUT='...'; $env:CAPTURE_TAG='after'
@@ -22,8 +22,11 @@ const serverCwd = process.env.CAPTURE_SERVER_CWD
   ? path.resolve(process.env.CAPTURE_SERVER_CWD)
   : mainRepo;
 
-// 前后两版共用同一份 e2e 数据库，避免「不同数据」导致的假差异。
-const dataDir = path.join(mainRepo, 'data');
+/*
+ * 前后两版共用同一份数据，避免「不同数据」导致的假差异。主 e2e 每轮用完即删的临时目录，
+ * 截图对照需要跨两次运行保留，所以单独放在 data/e2e-capture/，不用时可整个删掉。
+ */
+const dataDir = path.join(mainRepo, 'data', 'e2e-capture');
 
 const baseServers = baseConfig.webServer
   ? Array.isArray(baseConfig.webServer)
@@ -39,6 +42,8 @@ export default defineConfig({
   retries: 0,
   reporter: 'list',
   use: { baseURL: baseConfig.use?.baseURL, trace: 'off' },
+  // 载入主配置时会顺带建一个本轮临时目录，这里不用它，交给同一个清理步骤删掉。
+  globalSetup: path.resolve(mainRepo, 'tests', 'e2e', 'global-setup.ts'),
   projects: [{ name: 'chromium', use: { ...baseConfig.projects?.[0]?.use } }],
   /*
    * 只切换「前端构建」这一个变量：portal 进程按 CAPTURE_SERVER_CWD 走，
@@ -51,8 +56,10 @@ export default defineConfig({
       : serverCwd,
     env: {
       ...server.env,
-      STHSTART_DATABASE_PATH: path.join(dataDir, 'e2e-sthstart.db'),
-      STHSTART_NARRATIVE_DATABASE_PATH: path.join(dataDir, 'e2e-narrative.db'),
+      STHSTART_DATABASE_PATH: path.join(dataDir, 'service.db'),
+      STHSTART_NARRATIVE_DATABASE_PATH: path.join(dataDir, 'narrative.db'),
+      STHSTART_ARTIFACT_DIR: path.join(dataDir, 'artifacts'),
+      STHSTART_LOG_DIR: path.join(dataDir, 'logs'),
     },
   })),
 });

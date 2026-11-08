@@ -118,10 +118,10 @@ export function ThemeSwitcher({ className, compact = false, dropDirection = 'dow
         )}
       </button>
       {open && createPortal(
-        <div ref={menuRef} id={menuId} role="menu" aria-label="主题与外观" onKeyDown={handleMenuKey} style={position} className="fixed z-[var(--z-overlay)] overflow-y-auto rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-2 shadow-floating">
+        <div ref={menuRef} id={menuId} role="menu" aria-label="主题与外观" onKeyDown={handleMenuKey} style={position} className="fixed z-[var(--z-overlay)] overflow-y-auto rounded-panel border border-border-subtle bg-surface p-2 shadow-floating">
           <p className="px-2 py-2 text-xs font-medium text-muted">主题风格</p>
           {THEMES.map(theme => (
-            <button key={theme.id} type="button" role="menuitemradio" aria-checked={theme.id === themeId} onClick={() => { setThemeId(theme.id); close(true); }} className="flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2 py-3 text-left text-sm text-ink hover:bg-surface-hover focus-visible:bg-surface-hover">
+            <button key={theme.id} type="button" role="menuitemradio" aria-checked={theme.id === themeId} onClick={() => { setThemeId(theme.id); close(true); }} className="flex w-full items-center gap-3 rounded-control px-2 py-3 text-left text-sm text-ink hover:bg-surface-hover focus-visible:bg-surface-hover">
               <span className="flex h-6 w-8 flex-none overflow-hidden rounded border border-border-subtle" style={{ backgroundColor: theme.bg }} aria-hidden="true">
                 <span className="h-full w-1/2" style={{ backgroundColor: theme.surface }} />
               </span>
@@ -129,7 +129,7 @@ export function ThemeSwitcher({ className, compact = false, dropDirection = 'dow
               {theme.id === themeId && <Check className="h-4 w-4 flex-none" aria-hidden="true" />}
             </button>
           ))}
-          <button type="button" role="menuitem" onClick={toggleColorMode} className="mt-1 flex w-full items-center gap-3 rounded-[var(--radius-control)] px-2 py-3 text-left text-sm text-ink hover:bg-surface-hover">
+          <button type="button" role="menuitem" onClick={toggleColorMode} className="mt-1 flex w-full items-center gap-3 rounded-control px-2 py-3 text-left text-sm text-ink hover:bg-surface-hover">
             {isDark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
             {isDark ? '切换至日间模式' : '切换至夜间模式'}
           </button>

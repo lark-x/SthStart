@@ -135,7 +135,7 @@ export class StoryStore {
   getDocument(projectId: string, id: string): StoryDocument | null {
     const row = this.get('SELECT * FROM story_documents WHERE project_id=? AND id=?', projectId, id); return row ? document(row) : null;
   }
-  createDocument(projectId: string, input: CreateStoryDocument): StoryDocument {
+  createDocument(projectId: string, input: CreateStoryDocument, onCreated?: (document: StoryDocument) => void): StoryDocument {
     this.requireProject(projectId);
     if (input.kind === 'outline') throw new StoryError('story_outline_exists', 409, '项目已有主线大纲。');
     const id = randomUUID(); const now = nowIso();
@@ -145,6 +145,7 @@ export class StoryStore {
         .run(id, projectId, input.kind, requiredText(input.title, '条目标题'), input.body ?? '', position, 1, now, now);
       const created = this.getDocument(projectId, id)!;
       this.recordRevision(projectId, created, 'manual');
+      onCreated?.(created);
       return created;
     });
   }

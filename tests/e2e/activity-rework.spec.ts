@@ -14,19 +14,26 @@ test('rework: source change can be kept across refresh, with a working source li
     const published = await request.post(`${service}/api/v1/admin/activities/${activity.id}/commit`, { headers, data: { expectedHeadVersion: activity.headVersion, expectedDraftVersion: (await saved.json()).draftVersion } });
     expect(published.ok()).toBeTruthy();
     await page.goto(`/apps/activities/${activity.id}`);
-    await page.getByRole('button', { name: /查看 \d+ 项内容变化/ }).click();
+    await expect(page.getByRole('textbox', { name: '活动标题' })).toBeVisible({ timeout: 15_000 });
+    // 发布新版本后工作台应提示内容变化复核入口（ProductionOverview / ReworkPanel）。
+    const reviewEntry = page.getByRole('button', { name: /查看 \d+ 项内容变化/ });
+    await expect(reviewEntry, '活动工作台缺少「查看 N 项内容变化」复核入口').toBeVisible();
+    await reviewEntry.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText(/服装已修改/).first()).toBeVisible();
     await dialog.getByRole('button', { name: '选择可处理项' }).click();
     await dialog.getByRole('button', { name: '确认保留', exact: true }).click();
     await expect(dialog.getByText('没有待复核内容，可以继续创作。')).toBeVisible();
     await page.reload();
-    await page.getByText('更多操作', { exact: true }).click();
-    await page.getByRole('button', { name: '内容变化与处理历史' }).click();
+    // 工作台页头的「更多工作台操作」菜单里进入处理历史。
+    await page.getByRole('button', { name: '更多工作台操作' }).click();
+    await page.getByRole('menuitem', { name: '内容变化与处理历史' }).click();
     await page.getByLabel('显示已处理和历史变化').check();
     await expect(page.getByText(/已确认保留/).first()).toBeVisible();
+    // 源头链接（?tab=settings&actorId=…）打开活动全局设置抽屉，服装字段已是新值。
     await page.getByRole('link', { name: '修改本场源头' }).first().click();
-    await expect(page.getByLabel('服装', { exact: true }).first()).toHaveValue('本场新礼服');
+    await expect(page.getByRole('dialog', { name: '活动全局设置' })).toBeVisible();
+    await expect(page.getByLabel('服装与外貌装扮', { exact: true }).first()).toHaveValue('本场新礼服');
     await page.screenshot({ path: '/tmp/sthstart-rework-source.png', fullPage: true });
 });
 test('rework: default profile and template role selection are visible in creation', async ({ page, request }) => {
@@ -38,11 +45,19 @@ test('rework: default profile and template role selection are visible in creatio
         const template = await request.post(service + '/api/v1/admin/activity-presets', { headers, data: { kind: 'activity_template', name: 'UI 职责模板', payload: { schemaVersion: 2, roleSlots: [{ id: 'lead', label: '主角', required: true, multiple: false }], stages: [{ title: '欢迎 {{role.lead}}', roleSlotIds: ['lead'] }, { title: '合照', roleSlotIds: ['lead'] }] } } });
         const t = await template.json();
         /*
-         * 手动表单已移除，模板与角色职责映射改到向导第一步验证。
+         * 新建页默认是快速制作入口（章节 / 角色 / 空白），模板与角色职责映射在
+         * 「切换传统企划向导」后的向导第一步。hydration 前的点击可能被丢弃，重试到模板下拉出现为止。
          * 向导用「活动模板」下拉，选中自定义模板后会出现职责映射面板。
          */
         await page.goto('/apps/activities/new');
-        await page.getByLabel('活动模板').selectOption(t.id);
+        const templateSelect = page.getByLabel('活动模板');
+        await expect(async () => {
+            if (!(await templateSelect.isVisible())) await page.getByRole('button', { name: '切换传统企划向导' }).click();
+            await expect(templateSelect).toBeVisible({ timeout: 1_000 });
+        }).toPass({ timeout: 15_000 });
+        // 默认创作配置自动带入向导。
+        await expect(page.getByLabel('创作配置', { exact: true })).toHaveValue(p.id);
+        await templateSelect.selectOption(t.id);
         await page.getByRole('button', { name: '自定义参与者' }).first().click();
         await page.getByLabel('自定义参与者 1 名称').fill('旅行者');
         await expect(page.getByText('本次活动的角色职责')).toBeVisible();
@@ -76,7 +91,8 @@ test('rework: compare and adopt two messages, then resume the remaining one', as
         database.close();
     }
     await page.goto(`/apps/activities/${activity.id}?tab=records&jobId=${jobId}`);
-    await expect(page.getByText('对比并采用所选内容')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '活动标题' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('对比并采用所选内容'), '带 jobId 的记录链接应打开候选对比（CandidateReviewPanel）').toBeVisible();
     const articles = page.getByRole('dialog').locator('article');
     await articles.nth(0).getByRole('checkbox').check();
     await articles.nth(1).getByRole('checkbox').check();
@@ -99,8 +115,20 @@ test('rework: applying a profile to an existing activity requires preview and up
     const { activity } = await created.json();
     const response = await request.post(service + '/api/v1/admin/activity-presets', { headers, data: { kind: 'creation_profile', name: '本场水彩配置', payload: { globalStylePrompt: 'watercolor', candidateCount: 2 } } });
     const profile = await response.json();
-    await page.goto(`/apps/activities/${activity.id}?tab=settings`);
-    await page.getByText('高级选项：创作偏好与模板（可选）').click();
+    // 活动设置收进工作台页头「更多工作台操作」菜单，打开为「活动全局设置」抽屉。
+    await page.goto(`/apps/activities/${activity.id}`);
+    await expect(page.getByRole('textbox', { name: '活动标题' })).toBeVisible({ timeout: 15_000 });
+    const settings = page.getByRole('dialog', { name: '活动全局设置' });
+    await expect(async () => {
+        if (!(await settings.isVisible())) {
+            await page.getByRole('button', { name: '更多工作台操作' }).click();
+            await page.getByRole('menuitem', { name: '活动设置' }).click();
+        }
+        await expect(settings).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
+    const advanced = settings.getByText('高级选项：创作偏好与模板（可选）');
+    await expect(advanced, '活动设置缺少创作配置套用入口（ActivityCreationProfile）').toBeVisible();
+    await advanced.click();
     await page.getByLabel('创作配置', { exact: true }).selectOption(profile.id);
     await expect(page.getByText('套用「本场水彩配置」的参数预览')).toBeVisible();
     const applied = page.waitForResponse(r => r.url().endsWith('/creation-profile/apply') && r.request().method() === 'POST');

@@ -121,7 +121,7 @@ export function StudioBeatCard({
                   e.stopPropagation();
                   onInsertBelow();
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent lg:h-7 lg:w-7"
+                className="flex h-9 w-9 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent lg:h-7 lg:w-7"
                 title="在下方插入镜头 (Shift+Enter)"
                 aria-label={`在分镜 ${index + 1} 下方插入镜头`}
               >
@@ -133,7 +133,7 @@ export function StudioBeatCard({
                   e.stopPropagation();
                   onDelete();
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted transition-colors hover:bg-danger-bg hover:text-danger-fg focus-visible:outline focus-visible:outline-accent lg:h-7 lg:w-7"
+                className="flex h-9 w-9 items-center justify-center rounded-control text-muted transition-colors hover:bg-danger-bg hover:text-danger-fg focus-visible:outline focus-visible:outline-accent lg:h-7 lg:w-7"
                 title="删除此分镜"
                 aria-label={`删除分镜 ${index + 1}`}
               >
@@ -169,7 +169,7 @@ export function StudioBeatCard({
         {/* 固定右列：镜头画面 */}
         <div className="col-start-2 lg:col-start-3 lg:row-start-1">
           {beat.mediaUrl ? (
-            <div className="group/media relative h-36 w-full overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-surface-sunken lg:aspect-video lg:h-auto">
+            <div className="group/media relative h-36 w-full overflow-hidden rounded-control border border-border-subtle bg-surface-sunken lg:aspect-video lg:h-auto">
               <Image
                 src={beat.mediaUrl}
                 alt={beat.action || `分镜 ${index + 1} 画面`}
@@ -199,7 +199,7 @@ export function StudioBeatCard({
                 onQuickGenerate();
               }}
               disabled={isGenerating}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-surface-sunken/40 text-muted transition-colors hover:bg-surface-sunken hover:text-ink disabled:cursor-wait lg:aspect-video lg:h-auto lg:flex-col"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-control bg-surface-sunken/40 text-muted transition-colors hover:bg-surface-sunken hover:text-ink disabled:cursor-wait lg:aspect-video lg:h-auto lg:flex-col"
               title="生成此镜头画面"
               aria-label={`生成分镜 ${index + 1} 画面`}
             >

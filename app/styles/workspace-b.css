@@ -1,0 +1,135 @@
+/* Shared B geometry. Theme files supply colors; themes never select layouts. */
+html,
+html[data-color-mode] {
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+  --workspace-panel-gap: 16px;
+}
+
+.shell-nav-tooltip {
+  position: fixed;
+  z-index: var(--z-overlay);
+  max-width: min(24rem, calc(100vw - 100px));
+  transform: translateY(-50%);
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--fg-default);
+  color: var(--fg-inverse);
+  box-shadow: var(--elev-sm);
+  font: 500 14px/1.5 var(--font-sans);
+  pointer-events: none;
+}
+
+.shell-sidebar[data-collapsed='true'] .shell-nav { flex: 1 1 auto; width: 100%; }
+.shell-sidebar[data-collapsed='true'] :is(.shell-nav-group, .shell-nav-list) { align-items: center; gap: 4px; }
+.shell-sidebar[data-collapsed='true'] .shell-sidebar-foot .shell-command-action { width: 44px; min-height: 44px; padding: 0; }
+.shell-drawer .shell-collapse-btn { display: none; }
+.shell-drawer .shell-nav { flex: 1 0 auto; overflow: visible; }
+.shell-drawer .shell-nav-link { min-height: 44px; }
+
+/* Independent surfaces apply to every shared page template and workbench. */
+.shell-root .tpl-panel,
+.shell-root .home-card {
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--elev-xs);
+}
+.shell-root .tpl-panel .tpl-panel { border-radius: 0; background: transparent; box-shadow: none; }
+.shell-root .tpl-title-icon { width: 32px; height: 32px; border-radius: var(--radius-control); background: transparent; color: var(--fg-muted); }
+.shell-root .tpl-title { line-height: 1.35; letter-spacing: -0.025em; }
+.shell-root .tpl-description { margin-top: 4px; }
+.shell-root .tpl-header { padding-block: 8px 16px; }
+.shell-root .split-panes { gap: var(--workspace-panel-gap); }
+.shell-root .split-panes > :not(.split-pane-handle):not(.fixed) { min-width: 0; min-height: 0; }
+
+/* Resizable panes already reserve 24px for the handle; do not add another gap. */
+.shell-root .split-pane-handle { background: transparent; border-radius: var(--radius-control); }
+.shell-root .split-pane-handle > div { opacity: .3; transition: opacity var(--motion-fast) var(--motion-ease); }
+.shell-root .split-pane-handle:hover > div,
+.shell-root .split-pane-handle:focus-visible > div,
+.shell-root [data-pane-dragging='true'] > .split-pane-handle > div { opacity: 1; }
+.shell-root .split-pane-handle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -4px; }
+
+/* Generator configuration and results each have one working surface. */
+.shell-root .creative-split > :not(.split-pane-handle):not(.fixed) {
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--elev-xs);
+}
+.shell-root .creative-split > :not(.creative-configuration):not(.split-pane-handle):not(.fixed) { padding: 16px; }
+.shell-root .creative-configuration .image-generation-panel { border: 0; border-radius: inherit; box-shadow: none; }
+@media (min-width: 1280px) {
+  /* SplitPanes already reserves the bottom gutter; a second shell gutter overflows. */
+  .shell-content:has(.creative-split) { padding-bottom: 0; }
+  .shell-root .creative-split:not([data-short='true']) > :not(.split-pane-handle):not(.fixed) { height: var(--split-available); }
+}
+
+/* The compatible notebook entry inherits the same panels; resources owns its inset. */
+@media (min-width: 1024px) {
+  .shell-root .notebook-workspace-body { gap: var(--workspace-panel-gap); padding: 16px; }
+  .shell-root .resources-workspace-shell .notebook-workspace-body { padding: 0; }
+  .shell-root .notebook-master-pane,
+  .shell-root .notebook-detail-pane { border: 0; border-radius: var(--radius-panel); }
+  .shell-root .notebook-master-pane { background: var(--surface); }
+  .shell-root .notebook-detail-pane { background: var(--surface-raised); }
+}
+
+/* Lists stay in normal document flow, with separate cards on the desk. */
+.project-library { max-width: 1440px; gap: 24px; padding: 16px 24px 24px; }
+.project-library-tools { gap: 16px; padding-block: 4px; border: 0; }
+.project-library-tools > input { flex: 1 1 240px; }
+.project-library-tools > select { width: auto; min-width: 144px; flex: 0 1 176px; }
+.project-library-grid { gap: 20px; }
+.project-library-card {
+  min-height: 224px;
+  padding: 24px;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  box-shadow: var(--elev-xs);
+  transition: background-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+}
+.project-library-card:hover { background: var(--surface); box-shadow: var(--elev-sm); }
+.project-library-card h2 { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.project-library-card > p { margin-block: 12px 24px; line-height: 1.8; }
+.project-library-card > div:last-child { border: 0; gap: 8px 16px; padding-top: 16px; }
+
+/* Settings retain natural form scrolling, with category and form surfaces.
+ * The marker belongs to the shared shell, avoiding per-route layout edits. */
+.shell-content[data-section='settings'] > div > div > .grid { gap: var(--workspace-panel-gap); align-items: start; }
+.shell-content[data-section='settings'] > div > div > .grid > :first-child {
+  padding: 16px;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.shell-content[data-section='settings'] > div > div > .grid > :last-child {
+  padding: 24px;
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  box-shadow: var(--elev-xs);
+}
+.shell-content[data-section='settings'] .settings-navigation-link { font-size: 14px; border-radius: var(--radius-control); }
+.shell-content[data-section='settings'] .tpl-container { padding-top: 0; }
+
+@media (min-width: 1536px) {
+  html,
+  html[data-color-mode] { --workspace-panel-gap: 20px; }
+  .project-library { padding-inline: 32px; }
+}
+@media (max-width: 1023px) {
+  .shell-toolbar-inner { background: var(--bg-app); }
+  .shell-command-action { min-width: 44px; min-height: 44px; }
+  .shell-content[data-section='settings'] > div > div > .grid > :first-child { padding: 8px; }
+}
+@media (max-width: 639px) {
+  .project-library { padding: 16px; }
+  .project-library-grid { gap: 16px; }
+  .project-library-tools > input { flex-basis: 100%; max-width: none; }
+  .project-library-card { min-height: 192px; padding: 20px; }
+  .shell-content[data-section='settings'] > div > div > .grid > :last-child { padding: 16px; }
+}

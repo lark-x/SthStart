@@ -14,6 +14,7 @@ import { Spinner } from '@/app/components/ui/spinner';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
 import { natureLabels, usageLabels } from '@/app/features/notebook/schemas';
 import { createCollection, runCollection } from '../api';
+import { mcpSourceKeys } from '@/app/lib/query-keys';
 /**
  * 角色的相关资料：按角色与作品查询资料库。
  * 可以从不完整开始——资料只要填了角色名就能关联，不要求先建人设卡。
@@ -91,7 +92,7 @@ function CharacterCollectForm({ characterName, work, onDone }: { characterName: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, staleTime: 30_000 });
+  const sourcesQuery = useQuery({ queryKey: mcpSourceKeys.all, queryFn: fetchMcpSources, staleTime: 30_000 });
   const usable = (sourcesQuery.data ?? []).filter((source) => source.status === 'enabled' && (source.discoveredTools?.length || source.allowedTools.length));
   const effective = sourceId || usable[0]?.id || '';
 

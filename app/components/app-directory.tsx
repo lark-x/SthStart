@@ -8,7 +8,7 @@ import { NAV_APPS, NAV_SECTIONS, navDisplayLabel, type NavSection } from './shar
 type DirectoryFilter = '常用' | NavSection | '全部';
 
 const FILTERS: DirectoryFilter[] = ['常用', ...NAV_SECTIONS, '全部'];
-const COMMON_APP_IDS = new Set(['activities', 'story', 'creative', 'characters', 'notebook']);
+const COMMON_APP_IDS = new Set(['projects', 'resources', 'characters', 'media', 'creative', 'calendar']);
 
 /** 门户应用入口：优先展示高频创作工具，其余模块可按分类或名称快速查找。 */
 export function AppDirectory() {
@@ -75,9 +75,9 @@ export function AppDirectory() {
               <li key={app.id}>
                 <Link
                   href={app.href}
-                  className="group flex items-center gap-3 px-2 py-3 transition-colors hover:bg-surface-hover rounded-[var(--radius-control)]"
+                  className="group flex items-center gap-3 px-2 py-3 transition-colors hover:bg-surface-hover rounded-control"
                 >
-                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-[var(--radius-control)] bg-surface-sunken text-muted transition-colors group-hover:text-ink">
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-control bg-surface-sunken text-muted transition-colors group-hover:text-ink">
                     <Icon size={16} aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center sm:gap-4">

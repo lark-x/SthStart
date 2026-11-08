@@ -1,28 +1,54 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import Image from 'next/image';
 import { Drawer } from '@/app/components/ui/drawer';
 import { PageTabs } from '@/app/components/ui/page-tabs';
-import type { ContentDocument } from '@sthstart/contracts';
+import type { Activity, ContentDocument } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
+import { ActivityCreationProfile } from '../creation-profile-picker';
+
+export type StudioSettingsTab = 'basics' | 'actors' | 'stages';
 
 interface StudioSettingsDrawerProps {
   open: boolean;
   onClose: () => void;
+  activity: Activity;
   document: ContentDocument;
   onUpdateDocument: (doc: ContentDocument) => void;
+  tab: StudioSettingsTab;
+  onTabChange: (tab: StudioSettingsTab) => void;
+  /** 复核面板「修改本场源头」链接定位的元素 id（actor-… / stage-…）。 */
+  focusId?: string | null;
+  /** 草稿处于冲突或保存失败时禁止套用创作配置。 */
+  profileDisabled?: boolean;
+  /** 套用创作配置前把草稿保存为正式版本。 */
+  beforeApplyProfile?: () => Promise<boolean>;
+  onProfileApplied: () => void;
 }
 
 export function StudioSettingsDrawer({
   open,
   onClose,
+  activity: activityRecord,
   document,
   onUpdateDocument,
+  tab,
+  onTabChange: setTab,
+  focusId,
+  profileDisabled,
+  beforeApplyProfile,
+  onProfileApplied,
 }: StudioSettingsDrawerProps) {
-  const [tab, setTab] = useState<'basics' | 'actors' | 'stages'>('basics');
+  useEffect(() => {
+    if (!open || !focusId) return;
+    const frame = requestAnimationFrame(() => {
+      window.document.getElementById(focusId)?.scrollIntoView({ block: 'center' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, focusId, tab]);
 
   if (!open) return null;
 
@@ -103,13 +129,26 @@ export function StudioSettingsDrawer({
                   className="text-base sm:text-sm"
                 />
               </div>
+
+              {/* 高级选项：把创作配置套用到本场活动（先预览参数差异，再确认冻结） */}
+              <details className="rounded-control border border-border-subtle bg-surface-sunken px-3 py-2">
+                <summary className="cursor-pointer py-1 font-semibold text-ink">高级选项：创作偏好与模板（可选）</summary>
+                <ActivityCreationProfile
+                  activityId={activityRecord.id}
+                  headVersion={activityRecord.headVersion}
+                  value={activity.creationProfile}
+                  disabled={profileDisabled}
+                  beforeApply={beforeApplyProfile}
+                  onApplied={onProfileApplied}
+                />
+              </details>
             </div>
           )}
 
           {tab === 'actors' && (
             <div className="space-y-3">
               {actors.map((actor) => (
-                <div key={actor.id} className="space-y-2 border-b border-border-subtle py-3 last:border-b-0">
+                <div key={actor.id} id={`actor-${actor.id}`} className={`space-y-2 border-b border-border-subtle py-3 last:border-b-0 ${focusId === `actor-${actor.id}` ? 'rounded-control bg-accent-soft px-2' : ''}`}>
                   <div className="flex items-center gap-2">
                     <div className="relative h-7 w-7 rounded-full overflow-hidden bg-surface-muted border border-border-default shrink-0">
                       {actor.avatarUrl ? (
@@ -168,7 +207,7 @@ export function StudioSettingsDrawer({
           {tab === 'stages' && (
             <div className="space-y-3">
               {stages.map((stage, idx) => (
-                <div key={stage.id} className="space-y-2 border-b border-border-subtle py-3 last:border-b-0">
+                <div key={stage.id} id={`stage-${stage.id}`} className={`space-y-2 border-b border-border-subtle py-3 last:border-b-0 ${focusId === `stage-${stage.id}` ? 'rounded-control bg-accent-soft px-2' : ''}`}>
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sm text-muted">第 {idx + 1} 幕</span>
                   </div>

@@ -388,7 +388,7 @@ export function MediaBatchPanel({
                       onClick={() => setCandidateCount(count)}
                       className={`px-3 py-1 text-xs font-medium rounded border transition-colors ${
                         candidateCount === count
-                          ? 'border-accent bg-accent text-[var(--fg-on-accent)]'
+                          ? 'border-accent bg-accent text-fg-on-accent'
                           : 'border-border-default bg-surface hover:bg-surface-hover text-ink'
                       }`}
                     >
@@ -567,7 +567,7 @@ export function MediaBatchPanel({
                 size="sm"
                 onClick={handleStartBatch}
                 disabled={disabled || starting || selectedSlotIds.length === 0 || createBatchMutation.isPending}
-                className="bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)] flex items-center gap-1.5"
+                className="bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5"
               >
                 {starting || createBatchMutation.isPending ? (
                   <>
@@ -797,7 +797,7 @@ export function MediaBatchPanel({
                                       className={`w-full h-6 text-xs flex items-center justify-center gap-1 ${
                                         isAdopted
                                           ? 'border-emerald-400 text-emerald-700 bg-emerald-50'
-                                          : 'bg-accent hover:bg-accent-dark text-[var(--fg-on-accent)]'
+                                          : 'bg-accent hover:bg-accent-dark text-fg-on-accent'
                                       }`}
                                     >
                                       {isItemAdopting ? (

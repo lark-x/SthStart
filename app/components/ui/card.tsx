@@ -10,12 +10,12 @@ export function Card({ className, interactive, variant = 'default', children, ..
   return (
     <div
       className={cn(
-        'min-w-0 rounded-[var(--radius-panel)] border p-5 transition-colors duration-[var(--motion-fast)]',
-        variant === 'default' && 'border-border-subtle bg-surface',
-        variant === 'raised' && 'border-border-subtle bg-surface-raised shadow-xs',
+        'min-w-0 rounded-panel border p-5 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-base)]',
+        variant === 'default' && 'border-border-subtle bg-surface shadow-xs',
+        variant === 'raised' && 'border-transparent bg-surface-raised shadow-sm',
         variant === 'sunken' && 'border-transparent bg-surface-sunken',
         variant === 'glass' && 'border-border-subtle bg-surface/95',
-        interactive && 'cursor-pointer hover:border-border-strong hover:bg-surface-raised',
+        interactive && 'cursor-pointer hover:-translate-y-px hover:shadow-md',
         className
       )}
       {...props}

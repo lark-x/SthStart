@@ -125,7 +125,7 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
       <h2 id="activity-image-default-title" className="text-base font-semibold text-ink">默认绘制模式</h2>
       <p className="mt-1 text-sm text-muted">按用途管理默认生成方案与画幅；本次出图的修改在业务页面进行。</p>
       <label className="mt-4 block max-w-xl space-y-1.5 text-sm font-medium text-ink">图片用途<Select aria-label="默认图片用途" value={targetId} disabled={busy} onChange={event => { if (dimensionsDirty && !window.confirm('当前尺寸尚未保存，确定切换用途吗？')) return; setLoading(true); setSelectedId(''); setNotice(''); setError(''); setTargetId(event.target.value); }}>{targets.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></label>
-      <p className="mt-3 rounded-[var(--radius-control)] bg-surface-muted px-3 py-2 text-sm text-ink">
+      <p className="mt-3 rounded-control bg-surface-muted px-3 py-2 text-sm text-ink">
         当前{target.label}默认：{defaultPreset ? `${defaultPreset.name} · v${defaultPreset.workflowVersion}` : assignment ? `${workflows.find((item) => item.id === assignment.workflow_id)?.name ?? assignment.workflow_id} v${assignment.workflow_version}（未绑定预设）` : '未配置'}
       </p>
       {loading ? <p className="mt-4 text-sm text-muted">正在读取可用预设…</p> : available.length ? <div className="mt-4 space-y-4">
@@ -139,13 +139,13 @@ export function ActivityImageQuickSettings({ workflows, assignments, onDataChang
         </label>
         {selected && <>
           <div className="flex flex-wrap gap-2">{resolutions.filter((item) => item.width <= widthLimit.maximum && item.height <= heightLimit.maximum).map((item) => <Button type="button" key={item.label} size="sm" variant={width === String(item.width) && height === String(item.height) ? 'accent' : 'outline'} onClick={() => { setWidth(String(item.width)); setHeight(String(item.height)); }}>{item.label} · {item.width}×{item.height}</Button>)}</div>
-          <details className="max-w-xl rounded-[var(--radius-control)] border border-border-subtle px-3 py-2"><summary className="cursor-pointer text-sm text-muted">自定义宽高</summary>
+          <details className="max-w-xl rounded-control border border-border-subtle px-3 py-2"><summary className="cursor-pointer text-sm text-muted">自定义宽高</summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="space-y-1 text-sm text-ink">宽度<Input type="number" min={widthLimit.minimum} max={widthLimit.maximum} step={widthLimit.step} value={width} onChange={(event) => setWidth(event.target.value)} /></label><label className="space-y-1 text-sm text-ink">高度<Input type="number" min={heightLimit.minimum} max={heightLimit.maximum} step={heightLimit.step} value={height} onChange={(event) => setHeight(event.target.value)} /></label></div>
           </details>
           <div className="flex flex-wrap gap-2"><Button type="button" variant="accent" disabled={busy || dimensionsDirty || selected.id === assignment?.default_preset_id} onClick={() => void applyDefault()}>{busy ? '正在保存…' : selected.id === assignment?.default_preset_id ? '已是用途默认' : '设为用途默认'}</Button><Button type="button" variant="outline" disabled={busy || !dimensionsDirty} onClick={() => void saveDimensions()}>保存尺寸</Button></div>
           <p className="text-xs text-muted">修改尺寸只影响这个预设；用途默认影响后续未单独选方案的生图，不改已有图片和业务设置。</p>
         </>}
-      </div> : <Alert variant="warning" title="此用途暂无可用生成方案">请在专业配置中为该用途创建并启用已发布的图片预设。</Alert>}
+      </div> : <Alert variant="warning" title="此用途暂无可用生成方案">请在「预设与用途」中为该用途创建并启用已发布的图片预设。</Alert>}
       {notice && <p role="status" className="mt-3 text-sm text-success">{notice}</p>}
       {error && <Alert variant="danger" title="常用设置未保存">{error}</Alert>}
     </section>

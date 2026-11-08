@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { creativeKeys } from '@/app/lib/query-keys';
-import { fetchCreativeArtifacts, fetchCreativeGenerationOptions, fetchCreativeStatus, fetchCreativeTasks } from './api';
+import { fetchCreativeArtifacts, fetchCreativeGenerationOptions, fetchCreativeStatus, fetchCreativeTaskPage, fetchCreativeTasks } from './api';
 
 export function useCreativeStatus() {
   return useQuery({
@@ -25,10 +25,19 @@ export function useCreativeGenerationOptions() {
 
 export function useCreativeTasks() {
   return useQuery({
-    queryKey: creativeKeys.tasks(),
-    queryFn: fetchCreativeTasks,
+    queryKey: creativeKeys.tasks(), queryFn: fetchCreativeTasks, staleTime: 1000,
+    refetchInterval: query => (query.state.data ?? []).some(task => ['queued', 'submitting', 'accepted', 'running'].includes(task.status)) ? 3000 : 30000,
+  });
+}
+
+export function useCreativeTaskPages() {
+  return useInfiniteQuery({
+    queryKey: [...creativeKeys.tasks(), 'pages'],
+    queryFn: ({pageParam, signal}) => fetchCreativeTaskPage(pageParam, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: last => last.nextCursor ?? undefined,
     refetchInterval: (query) => {
-      const tasks = query.state.data ?? [];
+      const tasks = query.state.data?.pages.flatMap(page => page.items) ?? [];
       return tasks.some((task) => ['queued', 'submitting', 'accepted', 'running'].includes(task.status)) ? 3_000 : 30_000;
     },
     staleTime: 1_000,
