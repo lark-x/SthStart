@@ -44,9 +44,12 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
   const [worksText, setWorksText] = useState('');
   const [charactersText, setCharactersText] = useState('');
   const [locationsText, setLocationsText] = useState('');
+  const [showAllReferences, setShowAllReferences] = useState(false);
   const [sourceDraft, setSourceDraft] = useState({ title: '', url: '', excerpt: '' });
   const current = useMemo<NoteKnowledge>(() => knowledge ?? EMPTY_KNOWLEDGE, [knowledge]);
   const references = useNoteReferences(open && note.id ? note.id : undefined);
+  const referenceItems = references.data?.items ?? [];
+  const visibleReferences = showAllReferences ? referenceItems : referenceItems.slice(0, 6);
 
   const patch = (changes: Partial<NoteKnowledge>) => onChange({ ...current, ...changes });
 
@@ -248,15 +251,27 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
           <div className="space-y-1.5 border-t border-border-subtle pt-2">
             <span className="text-xs text-muted">引用记录</span>
             {!note.id && <p className="text-xs text-muted">保存后才能查看引用记录。</p>}
-            {note.id && references.data?.items.length === 0 && <p className="text-xs text-muted">还没有被任何企划或活动引用。</p>}
+            {note.id && references.isLoading && <p role="status" className="text-xs text-muted">正在读取引用记录…</p>}
+            {note.id && references.isError && (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded border border-danger/20 bg-danger/10 px-2.5 py-2 text-xs text-danger-fg">
+                <span>{references.error instanceof Error ? references.error.message : '引用记录读取失败'}</span>
+                <Button size="sm" variant="outline" disabled={references.isFetching} onClick={() => void references.refetch()}>重试</Button>
+              </div>
+            )}
+            {note.id && !references.isLoading && !references.isError && referenceItems.length === 0 && <p className="text-xs text-muted">还没有被任何企划或活动引用。</p>}
             <ul className="space-y-1">
-              {(references.data?.items ?? []).slice(0, 6).map((record) => (
+              {visibleReferences.map((record) => (
                 <li key={record.id} className="text-xs text-muted">
                   {record.createdAt.slice(0, 16).replace('T', ' ')}
                   {record.activityId ? <Link href={'/apps/activities/' + record.activityId} className="ml-2 text-accent hover:underline">查看活动</Link> : record.sessionId ? <span className="ml-2">企划会话 {record.sessionId.slice(0, 8)}</span> : null}
                 </li>
               ))}
             </ul>
+            {referenceItems.length > 6 && (
+              <Button size="sm" variant="ghost" onClick={() => setShowAllReferences((value) => !value)}>
+                {showAllReferences ? '收起引用记录' : `查看全部引用（${referenceItems.length}）`}
+              </Button>
+            )}
           </div>
         </div>
       )}

@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold, Code2, Film, Heading2, Italic, List, Quote, RotateCcw, Save, Sparkles,
-  AlignLeft, Type, Palette, MessageSquare, Check, User, ChevronLeft, ChevronRight, Plus,
-  SlidersHorizontal, ClipboardPaste, X,
+  ChevronLeft, ChevronRight, Plus,
+  SlidersHorizontal, ClipboardPaste, MoreHorizontal, Type,
 } from 'lucide-react';
 import type { StoryDocument, StoryEntry } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import './story-editor.css';
+import { Dialog } from '@/app/components/ui/dialog';
 import { StoryMarkdown } from './story-markdown';
 import { storyEntryIdentity, useStoryEntryDraft } from './use-story-entry-draft';
+import { isImeComposingEvent } from '@/app/lib/hooks/use-cjk-ime-guard';
 
 type ViewMode = 'source' | 'preview' | 'split' | 'script';
-export type PaperTheme = 'parchment' | 'pure' | 'midnight' | 'sage';
+export type PaperTheme = 'interface' | 'parchment' | 'pure' | 'midnight' | 'sage';
 export type FontChoice = 'serif' | 'sans' | 'kai';
 
 interface CastMember {
@@ -23,52 +26,11 @@ interface CastMember {
   notes?: string;
 }
 
-const themeStyles: Record<PaperTheme, {
-  name: string;
-  paperBg: string;
-  textColor: string;
-  mutedColor: string;
-  borderColor: string;
-  ringColor: string;
-  bubbleBg: string;
-}> = {
-  parchment: {
-    name: '水墨暖白',
-    paperBg: '#faf7f0',
-    textColor: '#2c2420',
-    mutedColor: '#7a6f66',
-    borderColor: '#e7e0d2',
-    ringColor: 'rgba(231, 224, 210, 0.7)',
-    bubbleBg: '#f2eee3',
-  },
-  pure: {
-    name: '素笺明净',
-    paperBg: '#ffffff',
-    textColor: '#18181b',
-    mutedColor: '#71717a',
-    borderColor: '#e4e4e7',
-    ringColor: 'rgba(228, 228, 231, 0.8)',
-    bubbleBg: '#f4f4f5',
-  },
-  midnight: {
-    name: '深阁夜读',
-    paperBg: '#181a1d',
-    textColor: '#e2e4e9',
-    mutedColor: '#8a909d',
-    borderColor: '#2b2f38',
-    ringColor: 'rgba(43, 47, 56, 0.8)',
-    bubbleBg: '#22252b',
-  },
-  sage: {
-    name: '竹简素青',
-    paperBg: '#f1f5f2',
-    textColor: '#1a2a20',
-    mutedColor: '#687e71',
-    borderColor: '#d2ded5',
-    ringColor: 'rgba(210, 222, 213, 0.8)',
-    bubbleBg: '#e6ede8',
-  },
+// 独立纸张配色仅作用于阅读/编辑表面，默认跟随全局主题。
+const themeNames: Record<PaperTheme, string> = {
+  interface: '跟随界面', parchment: '水墨暖白', pure: '素笺明净', midnight: '深阁夜读', sage: '竹简素青',
 };
+const editorMenuClass = 'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-hover';
 
 const fontFamilies: Record<FontChoice, { name: string; style: string }> = {
   serif: {
@@ -123,7 +85,7 @@ export function StoryEntryEditor({
   }, [draft.flush, onRegisterFlush]);
 
   const [mode, setMode] = useState<ViewMode>('source');
-  const [theme, setTheme] = useState<PaperTheme>('parchment');
+  const [theme, setTheme] = useState<PaperTheme>('interface');
   const [font, setFont] = useState<FontChoice>('serif');
   const [indent2em, setIndent2em] = useState(true);
   type CanvasWidth = 'comfortable' | 'wide' | 'full';
@@ -226,6 +188,12 @@ export function StoryEntryEditor({
 
   // 监听键盘按键用于 @ 补全导航
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposingEvent(event)) {
+      return;
+    }
+    if (mentionActive && event.key === 'Escape') {
+      event.preventDefault(); setMentionActive(false); setMentionAnchor(null); return;
+    }
     if (mentionActive && filteredCast.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -291,20 +259,22 @@ export function StoryEntryEditor({
     }
   };
 
+  const [clipboardDraft, setClipboardDraft] = useState<string | null>(null);
   const [showPreferences, setShowPreferences] = useState(false);
+  const [showFormatBar, setShowFormatBar] = useState(false);
+  const [editorMenuOpen, setEditorMenuOpen] = useState(false);
   const prefRef = useRef<HTMLDivElement>(null);
+  const editorMenuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部自动关闭排版偏好浮层
+  // 点击外部自动关闭编辑器“更多”菜单
   useEffect(() => {
-    if (!showPreferences) return;
+    if (!editorMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (prefRef.current && !prefRef.current.contains(e.target as Node)) {
-        setShowPreferences(false);
-      }
+      if (editorMenuRef.current && !editorMenuRef.current.contains(e.target as Node)) setEditorMenuOpen(false);
     };
     window.addEventListener('mousedown', handleClickOutside);
     return () => window.removeEventListener('mousedown', handleClickOutside);
-  }, [showPreferences]);
+  }, [editorMenuOpen]);
 
   // 从剪贴板采纳外部生成的内容
   const handleAdoptClipboard = useCallback(async () => {
@@ -314,21 +284,11 @@ export function StoryEntryEditor({
         alert('剪贴板中暂无文本可采纳。');
         return;
       }
-      const current = draft.body;
-      if (!current.trim()) {
-        draft.update({ body: text.trim() });
-      } else {
-        const append = window.confirm('点击【确定】追加到文末，点击【取消】替换全文。');
-        if (append) {
-          draft.update({ body: `${current}\n\n${text.trim()}` });
-        } else {
-          draft.update({ body: text.trim() });
-        }
-      }
+      setClipboardDraft(text.trim());
     } catch {
       alert('请使用键盘快捷键直接粘贴。');
     }
-  }, [draft]);
+  }, []);
 
   const save = useCallback(async () => { await draft.flush(); }, [draft]);
   const localText = `${draft.title}\n\n${draft.body}`;
@@ -339,80 +299,82 @@ export function StoryEntryEditor({
   // 汉字与字数统计及预计阅读用时
   const charCount = [...draft.body.trim()].length;
   const readMinutes = Math.max(1, Math.ceil(charCount / 400));
-  const currentTheme = themeStyles[theme];
+  const currentTheme = {
+    name: themeNames[theme], paperBg: 'var(--story-paper)', textColor: 'var(--story-text)',
+    mutedColor: 'var(--story-muted)', borderColor: 'var(--story-line)', bubbleBg: 'var(--story-inset)',
+  };
   const currentFont = fontFamilies[font];
 
   return (
     <section
       aria-label="正式资料编辑器"
-      className={`flex h-full min-h-0 min-w-0 flex-col ${zenMode ? 'zen-workspace' : ''}`}
+      onKeyDown={event => {
+        if (isImeComposingEvent(event) || event.defaultPrevented) return;
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') { event.preventDefault(); void draft.flush(); }
+      }}
+      className={`story-entry-editor flex h-full min-h-0 min-w-0 flex-col ${zenMode ? 'zen-workspace' : ''}`}
     >
       {/* 顶部现代化工具栏 */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border-default pb-3">
+      <div className="story-editor-toolbar flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-2 py-1 sm:px-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-accent">{label} · v{entry.revision}</span>
-              <span className={`text-xs ${draft.status === 'conflict' || draft.status === 'local-only' ? 'text-amber-800' : 'text-muted'}`} role="status">
+              <span className="hidden text-xs font-medium text-muted sm:inline">{label} · v{entry.revision}</span>
+              <span className={`max-w-16 truncate text-xs sm:max-w-none ${draft.status === 'conflict' || draft.status === 'local-only' ? 'text-danger-fg' : 'text-muted'}`} role="status">
                 {statusLabel}
               </span>
             </div>
-            <p className="mt-0.5 text-[11px] text-muted font-mono">
+            <p className="mt-0.5 hidden text-xs text-muted font-mono sm:block">
               {charCount.toLocaleString('zh-CN')} 字 · 预计阅读 {readMinutes} 分钟
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 排版偏好浮层按钮 */}
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           <div className="relative" ref={prefRef}>
             <Button
               size="sm"
-              variant={showPreferences ? 'accent' : 'outline'}
+              variant="ghost"
               onClick={() => setShowPreferences((v) => !v)}
               title="调整纸感底色、字体与排版偏好"
-              className="gap-1.5"
+              className="hidden gap-1.5 sm:inline-flex"
+              aria-expanded={showPreferences}
+              aria-haspopup="dialog"
             >
               <SlidersHorizontal className="size-3.5" />
               <span>排版偏好</span>
             </Button>
 
-            {showPreferences && (
-              <div className="absolute left-0 top-full mt-2 z-50 w-72 rounded-[var(--radius-panel)] border border-border-default bg-surface p-3.5 shadow-xl animate-in fade-in zoom-in-95">
-                <div className="mb-3 flex items-center justify-between border-b border-border-default/60 pb-2">
-                  <span className="text-xs font-semibold text-ink flex items-center gap-1.5">
-                    <Palette className="size-3.5 text-accent" />排版与底色偏好
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowPreferences(false)}
-                    className="p-1 rounded-sm text-muted hover:text-ink hover:bg-surface-hover transition-colors"
-                    aria-label="关闭排版偏好"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-
+            <Dialog open={showPreferences} onOpenChange={open => {
+              setShowPreferences(open);
+              if (!open) requestAnimationFrame(() => {
+                const desktopTrigger = prefRef.current?.querySelector('button');
+                if (desktopTrigger && desktopTrigger.getClientRects().length) desktopTrigger.focus();
+                else editorMenuRef.current?.querySelector('button')?.focus();
+              });
+            }} title="排版与底色偏好" size="sm">
                 {/* 纸感底色 */}
                 <div className="mb-3">
-                  <label className="text-[11px] font-medium text-muted block mb-1.5">纸感底色</label>
+                  <label className="text-sm font-medium text-muted block mb-1.5">纸感底色</label>
                   <div className="grid grid-cols-2 gap-1.5">
-                    {(['parchment', 'pure', 'midnight', 'sage'] as const).map((t) => (
+                    {(['interface', 'parchment', 'pure', 'midnight', 'sage'] as const).map((t) => (
                       <button
                         key={t}
                         type="button"
+                        aria-pressed={theme === t}
                         onClick={() => setTheme(t)}
-                        className={`flex items-center gap-2 rounded border px-2 py-1.5 text-xs text-left transition-all ${
+                        className={`flex items-center gap-2 min-h-11 min-h-11 rounded border px-2 py-1.5 text-sm text-left transition-all ${
                           theme === t
                             ? 'border-accent bg-accent/10 font-medium text-accent shadow-sm'
                             : 'border-border-default/80 bg-surface-muted/50 text-ink hover:bg-surface-hover'
                         }`}
                       >
                         <span
-                          className="size-3.5 rounded-full border border-black/10 shrink-0"
-                          style={{ backgroundColor: themeStyles[t].paperBg }}
+                          className="story-reading-paper size-3.5 rounded-full border border-border-subtle shrink-0"
+                          data-reading-theme={t}
+                          style={{ backgroundColor: 'var(--story-paper)' }}
                         />
-                        <span className="truncate">{themeStyles[t].name}</span>
+                        <span className="truncate">{themeNames[t]}</span>
                       </button>
                     ))}
                   </div>
@@ -420,14 +382,14 @@ export function StoryEntryEditor({
 
                 {/* 字体家族 */}
                 <div className="mb-3">
-                  <label className="text-[11px] font-medium text-muted block mb-1.5">正文字体</label>
+                  <label className="text-sm font-medium text-muted block mb-1.5">正文字体</label>
                   <div className="grid grid-cols-3 gap-1">
                     {(['serif', 'kai', 'sans'] as const).map((f) => (
                       <button
                         key={f}
                         type="button"
                         onClick={() => setFont(f)}
-                        className={`rounded border px-2 py-1 text-xs text-center transition-all ${
+                        className={`min-h-11 rounded border px-2 py-1 text-sm text-center transition-all ${
                           font === f
                             ? 'border-accent bg-accent/10 font-semibold text-accent'
                             : 'border-border-default/80 bg-surface-muted/50 text-muted hover:text-ink'
@@ -441,7 +403,7 @@ export function StoryEntryEditor({
 
                 {/* 画布宽度 */}
                 <div className="mb-3">
-                  <label className="text-[11px] font-medium text-muted block mb-1.5">写作画布宽度</label>
+                  <label className="text-sm font-medium text-muted block mb-1.5">写作画布宽度</label>
                   <div className="grid grid-cols-3 gap-1">
                     {([
                       ['wide', '宽屏 (1024)'],
@@ -452,7 +414,7 @@ export function StoryEntryEditor({
                         key={val}
                         type="button"
                         onClick={() => handleSetCanvasWidth(val)}
-                        className={`rounded border px-1.5 py-1 text-xs text-center transition-all ${
+                        className={`min-h-11 rounded border px-1.5 py-1 text-sm text-center transition-all ${
                           canvasWidth === val
                             ? 'border-accent bg-accent/10 font-semibold text-accent'
                             : 'border-border-default/80 bg-surface-muted/50 text-muted hover:text-ink'
@@ -466,14 +428,15 @@ export function StoryEntryEditor({
 
                 {/* 段首缩进 */}
                 <div className="pt-2 border-t border-border-default/60 flex items-center justify-between">
-                  <div className="text-xs">
+                  <div className="text-sm">
                     <span className="font-medium text-ink block">段首空两格</span>
-                    <span className="text-[10px] text-muted">正文段落缩进 2em</span>
+                    <span className="text-sm text-muted">正文段落缩进 2em</span>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={indent2em}
+                    aria-label="段首空两格"
                     onClick={() => setIndent2em((prev) => !prev)}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                       indent2em ? 'bg-accent' : 'bg-surface-muted border-border-default'
@@ -487,39 +450,11 @@ export function StoryEntryEditor({
                     />
                   </button>
                 </div>
-              </div>
-            )}
+            </Dialog>
           </div>
 
-          {/* 衍生产物 */}
-          {onOpenDerivatives && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onOpenDerivatives}
-              title="将本章小说编译为剧本工程、活动草稿或导出排版"
-            >
-              <Film className="size-3.5 text-accent" />
-              <span className="hidden sm:inline">衍生产物</span>
-            </Button>
-          )}
-
-          {/* 专注模式 */}
-          {onToggleZen && (
-            <Button
-              size="sm"
-              variant={zenMode ? 'accent' : 'outline'}
-              onClick={onToggleZen}
-              title={zenMode ? '退出专注模式' : '进入禅道专注写作模式'}
-              aria-pressed={zenMode}
-            >
-              <Sparkles className="size-3.5" />
-              <span>{zenMode ? '退出专注' : '专注写作'}</span>
-            </Button>
-          )}
-
           {/* 视图模式切换 */}
-          <div className="flex rounded-[var(--radius-control)] border border-border-default p-0.5 bg-surface" role="group" aria-label="编辑器视图">
+          <div className="flex rounded-control border border-border-default p-0.5 bg-surface" role="group" aria-label="编辑器视图">
             {(
               isReflection
                 ? [
@@ -539,7 +474,7 @@ export function StoryEntryEditor({
                 type="button"
                 aria-pressed={mode === value}
                 onClick={() => setMode(value)}
-                className={`rounded px-2 py-1 text-xs transition-colors ${
+                className={`rounded px-1.5 py-1.5 text-sm transition-colors ${
                   mode === value ? 'bg-accent/10 font-semibold text-accent' : 'text-muted hover:bg-surface-hover'
                 }`}
               >
@@ -547,9 +482,67 @@ export function StoryEntryEditor({
               </button>
             ))}
           </div>
+          {/* 编辑器溢出菜单：排版偏好、专注模式与衍生产物 */}
+          <div className="relative" ref={editorMenuRef}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-haspopup="menu"
+              aria-expanded={editorMenuOpen}
+              aria-label="更多编辑器操作"
+              title="更多编辑器操作"
+              onClick={() => setEditorMenuOpen((open) => !open)}
+              className="text-muted hover:text-ink"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+            {editorMenuOpen && (
+              <div role="menu" aria-label="更多编辑器操作" className="absolute right-0 top-full z-50 mt-2 w-56 rounded-panel border border-border-subtle bg-surface p-1.5 shadow-lg">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={editorMenuClass}
+                  onClick={() => { setEditorMenuOpen(false); setShowPreferences(true); }}
+                >
+                  <SlidersHorizontal className="size-4 text-muted" />排版与底色偏好
+                </button>
+                {onToggleZen && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={editorMenuClass}
+                    onClick={() => { setEditorMenuOpen(false); onToggleZen(); }}
+                  >
+                    <Sparkles className="size-4 text-muted" />{zenMode ? '退出专注模式' : '专注写作模式'}
+                  </button>
+                )}
+                {onOpenDerivatives && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={editorMenuClass}
+                    onClick={() => { setEditorMenuOpen(false); onOpenDerivatives(); }}
+                  >
+                    <Film className="size-4 text-muted" />衍生产物与导出
+                  </button>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={editorMenuClass}
+                  disabled={!draft.dirty || draft.status === 'saving' || draft.status === 'conflict'}
+                  onClick={() => { setEditorMenuOpen(false); void save(); }}
+                >
+                  <Save className="size-4 text-muted" />保存当前修订
+                </button>
+              </div>
+            )}
+          </div>
 
           <Button
             size="sm"
+            variant="primary"
+            className="px-2 sm:px-3"
             onClick={() => void save()}
             disabled={!draft.dirty || draft.status === 'saving' || draft.status === 'conflict'}
           >
@@ -559,9 +552,9 @@ export function StoryEntryEditor({
       </div>
 
       {/* 编辑器核心内容滚动区（多列高度隔离，仅自身纵向滚动） */}
-      <div className="min-h-0 flex-1 overflow-y-auto py-4 px-1" data-autohide-scroll>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-1" data-autohide-scroll>
         {draft.recoveryAvailable && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-control)] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
             <p className="min-w-0 flex-1">找到本机未同步的编辑文本。恢复后会先与当前服务器版本核对，不会静默覆盖。</p>
             <Button size="sm" onClick={() => void draft.recoverLocal()}><RotateCcw className="size-4" />恢复本机文本</Button>
             <Button size="sm" variant="outline" onClick={() => void draft.discardLocal()}>使用服务器版本</Button>
@@ -569,19 +562,19 @@ export function StoryEntryEditor({
         )}
 
         {draft.error && (
-          <div role="alert" className="mb-4 rounded-[var(--radius-control)] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <div role="alert" className="mb-4 rounded-control border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
             <p>{draft.error}</p>
             {draft.status === 'local-only' && <Button size="sm" variant="outline" className="mt-2" onClick={draft.retry}>重新保存</Button>}
           </div>
         )}
 
         {draft.status === 'conflict' && (
-          <div className="mb-4 rounded-[var(--radius-control)] border border-amber-300 bg-amber-50 p-3">
-            <h3 className="font-semibold text-amber-950">服务器与本机内容冲突</h3>
-            <p className="mt-1 text-xs text-amber-900">服务器 v{entry.revision} 的内容不会被自动覆盖。逐项比较下方预览后，可选择丢弃本地文本，或明确确认以本地文本覆盖。</p>
+          <div className="mb-4 rounded-control border border-border-subtle bg-surface-sunken p-3">
+            <h3 className="font-semibold text-ink">服务器与本机内容冲突</h3>
+            <p className="mt-1 text-xs text-muted">服务器 v{entry.revision} 的内容不会被自动覆盖。逐项比较下方预览后，可选择丢弃本地文本，或明确确认以本地文本覆盖。</p>
             <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-2">
-              <div className="min-w-0 rounded border border-amber-300 bg-surface p-3"><b className="text-xs">服务器版本</b><div className="mt-2 max-h-56 overflow-y-auto"><StoryMarkdown source={'notes' in entry ? entry.notes : entry.body} /></div></div>
-              <div className="min-w-0 rounded border border-amber-300 bg-surface p-3"><b className="text-xs">本机保留版本</b><div className="mt-2 max-h-56 overflow-y-auto"><StoryMarkdown source={draft.body} /></div></div>
+              <div className="min-w-0 rounded border border-border-subtle bg-surface p-3"><b className="text-xs">服务器版本</b><div className="mt-2 max-h-56 overflow-y-auto"><StoryMarkdown source={'notes' in entry ? entry.notes : entry.body} /></div></div>
+              <div className="min-w-0 rounded border border-border-subtle bg-surface p-3"><b className="text-xs">本机保留版本</b><div className="mt-2 max-h-56 overflow-y-auto"><StoryMarkdown source={draft.body} /></div></div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(localText).catch(() => {})}>复制本地文本</Button>
@@ -596,36 +589,47 @@ export function StoryEntryEditor({
           <div className={`mb-3 flex flex-wrap items-center justify-between gap-2 w-full mx-auto transition-all ${
             canvasWidth === 'full' ? 'max-w-none' : (canvasWidth === 'comfortable' ? 'max-w-3xl' : 'max-w-5xl')
           }`}>
-            <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label="排版工具">
-              <Button size="sm" variant="ghost" title="二级标题" onClick={() => insert('## ')}><Heading2 className="size-4" /></Button>
-              <Button size="sm" variant="ghost" title="粗体" onClick={() => insert('**', '**')}><Bold className="size-4" /></Button>
-              <Button size="sm" variant="ghost" title="斜体" onClick={() => insert('*', '*')}><Italic className="size-4" /></Button>
-              <Button size="sm" variant="ghost" title="引用" onClick={() => insert('> ')}><Quote className="size-4" /></Button>
-              <Button size="sm" variant="ghost" title="列表项" onClick={() => insert('- ')}><List className="size-4" /></Button>
-              <Button size="sm" variant="ghost" title="代码块" onClick={() => insert('```\n', '\n```')}><Code2 className="size-4" /></Button>
-              <Button size="sm" variant="ghost" title="一键全书段首空两格" onClick={formatChineseIndentation} className="text-xs">
-                段首空两格
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                title="一键将剪贴板中的草稿采纳到正文"
-                onClick={() => void handleAdoptClipboard()}
-                className="text-xs text-accent hover:text-accent-dark hover:bg-accent/10 gap-1 font-medium"
+            {showFormatBar ? (
+              <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label="排版工具">
+                <Button size="sm" variant="ghost" title="二级标题" onClick={() => insert('## ')}><Heading2 className="size-4" /></Button>
+                <Button size="sm" variant="ghost" title="粗体" onClick={() => insert('**', '**')}><Bold className="size-4" /></Button>
+                <Button size="sm" variant="ghost" title="斜体" onClick={() => insert('*', '*')}><Italic className="size-4" /></Button>
+                <Button size="sm" variant="ghost" title="引用" onClick={() => insert('> ')}><Quote className="size-4" /></Button>
+                <Button size="sm" variant="ghost" title="列表项" onClick={() => insert('- ')}><List className="size-4" /></Button>
+                <Button size="sm" variant="ghost" title="代码块" onClick={() => insert('```\n', '\n```')}><Code2 className="size-4" /></Button>
+                <Button size="sm" variant="ghost" title="一键全书段首空两格" onClick={formatChineseIndentation} className="text-xs">
+                  段首空两格
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="一键将剪贴板中的草稿采纳到正文"
+                  onClick={() => void handleAdoptClipboard()}
+                  className="text-xs gap-1 font-medium"
+                >
+                  <ClipboardPaste className="size-3.5" />
+                  <span>采纳草稿</span>
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowFormatBar(true)}
+                className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
               >
-                <ClipboardPaste className="size-3.5" />
-                <span>采纳草稿</span>
-              </Button>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <span>输入 <code className="rounded bg-accent/10 px-1 font-semibold text-accent">@</code> 快速录入角色对白</span>
+                <Type className="size-3.5" />
+                <span>排版工具</span>
+              </button>
+            )}
+            <div className="hidden items-center gap-2 text-xs text-muted sm:flex">
+              <span>输入 <code className="rounded bg-surface-sunken px-1">@</code> 快速录入角色对白</span>
             </div>
           </div>
         )}
 
         {/* 目录折叠面板 */}
         {headings.length > 0 && (
-          <details className={`mb-4 mx-auto w-full rounded-[var(--radius-control)] border border-border-default bg-surface/60 px-3 py-2 transition-all ${
+          <details className={`mb-4 mx-auto w-full rounded-control border border-border-default bg-surface/60 px-3 py-2 transition-all ${
             canvasWidth === 'full' ? 'max-w-none' : (canvasWidth === 'comfortable' ? 'max-w-3xl' : 'max-w-5xl')
           }`}>
             <summary className="cursor-pointer text-xs font-medium text-muted hover:text-ink">章节目录（{headings.length}）</summary>
@@ -633,7 +637,7 @@ export function StoryEntryEditor({
               {headings.map((heading) => (
                 <button
                   key={`${heading.line}-${heading.text}`}
-                  className="block max-w-full truncate text-left text-xs text-muted hover:text-accent"
+                  className="block max-w-full truncate text-left text-xs text-muted hover:text-ink"
                   style={{ paddingLeft: `${(heading.depth - 1) * 12}px` }}
                   onClick={() => {
                     bodyRef.current?.focus();
@@ -649,7 +653,8 @@ export function StoryEntryEditor({
 
         {/* 沉浸式稿纸核心主画布 */}
         <div
-          className={`relative mx-auto w-full transition-all duration-300 rounded-xl p-6 sm:p-8 border ${
+          data-reading-theme={theme}
+          className={`story-reading-paper relative mx-auto w-full motion-reduce:transition-none transition-colors rounded-panel p-4 sm:p-8 border ${
             mode === 'split' ? 'max-w-7xl' : (
               canvasWidth === 'full' ? 'max-w-none' : (
                 canvasWidth === 'comfortable' ? 'max-w-3xl' : 'max-w-5xl'
@@ -660,7 +665,6 @@ export function StoryEntryEditor({
             backgroundColor: currentTheme.paperBg,
             color: currentTheme.textColor,
             borderColor: currentTheme.borderColor,
-            boxShadow: `0 4px 20px -2px ${currentTheme.ringColor}`,
             fontFamily: currentFont.style,
           }}
         >
@@ -671,6 +675,7 @@ export function StoryEntryEditor({
             maxLength={120}
             onChange={(event) => draft.update({ title: event.target.value })}
             onKeyDown={(event) => {
+              if (isImeComposingEvent(event)) return;
               if (event.key === 'Enter') {
                 event.preventDefault();
                 bodyRef.current?.focus();
@@ -678,8 +683,8 @@ export function StoryEntryEditor({
               }
             }}
             placeholder="无标题章节…"
-            className="w-full bg-transparent border-0 border-b border-transparent hover:border-border-default/50 focus:border-accent p-0 pb-2 mb-6 text-2xl sm:text-3xl font-bold tracking-tight outline-none transition-colors"
-            style={{ color: currentTheme.textColor, fontFamily: currentFont.style }}
+            className="w-full bg-transparent border-0 border-b border-transparent hover:border-border-default/50 focus:border-accent p-0 pb-2 mb-6 text-2xl sm:text-3xl font-semibold tracking-tight outline-none transition-colors"
+            style={{ color: currentTheme.textColor, fontFamily: 'var(--font-sans)' }}
           />
 
           {/* 模式渲染分流 */}
@@ -698,7 +703,7 @@ export function StoryEntryEditor({
                 if (/^#{1,3}\s+(.+)$/.test(trimmed) || trimmed.startsWith('场景：') || trimmed.startsWith('场景:')) {
                   const sceneText = trimmed.replace(/^#{1,3}\s+/, '');
                   return (
-                    <div key={index} className="my-6 flex items-center gap-3">
+                    <div key={index} className="my-6 flex min-w-0 items-center gap-3 break-words">
                       <div className="h-px flex-1 bg-border-default/60" />
                       <div className="flex items-center gap-1.5 rounded-full border border-border-default/80 bg-surface/80 px-3 py-1 text-xs font-semibold text-accent shadow-2xs">
                         <Film className="size-3.5" />
@@ -719,7 +724,7 @@ export function StoryEntryEditor({
                   return (
                     <div key={index} className="my-3 flex items-start gap-3">
                       {/* 角色小头像 */}
-                      <div className="size-8 shrink-0 rounded-full overflow-hidden border border-border-default bg-surface-muted flex items-center justify-center text-xs font-bold text-accent shadow-2xs">
+                      <div className="size-8 shrink-0 rounded-full overflow-hidden border border-border-default bg-surface-muted flex items-center justify-center text-xs font-semibold text-muted shadow-2xs">
                         {charInfo?.avatarUrl ? (
                           <img src={charInfo.avatarUrl} alt="" className="size-full object-cover" />
                         ) : (
@@ -730,7 +735,7 @@ export function StoryEntryEditor({
                       {/* 对白气泡 */}
                       <div className="min-w-0 max-w-[85%]">
                         <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs font-semibold text-accent">{speaker}</span>
+                          <span className="text-xs font-semibold text-muted">{speaker}</span>
                           {charInfo?.work && (
                             <span className="rounded border border-border-default/60 px-1 py-0.2 text-[9px] text-muted">
                               {charInfo.work}
@@ -738,7 +743,7 @@ export function StoryEntryEditor({
                           )}
                         </div>
                         <div
-                          className="rounded-2xl px-4 py-2.5 text-sm sm:text-base leading-relaxed break-words shadow-2xs border"
+                          className="rounded-control px-4 py-3 text-base leading-relaxed break-words"
                           style={{
                             backgroundColor: currentTheme.bubbleBg,
                             borderColor: currentTheme.borderColor,
@@ -756,7 +761,7 @@ export function StoryEntryEditor({
                 return (
                   <p
                     key={index}
-                    className={`text-sm sm:text-base leading-relaxed transition-all ${
+                    className={`break-words text-base leading-relaxed ${
                       indent2em ? 'indent-[2em]' : ''
                     }`}
                     style={{ color: currentTheme.mutedColor }}
@@ -778,7 +783,7 @@ export function StoryEntryEditor({
                       role="listbox"
                       aria-label="角色对白补全"
                     >
-                      <div className="px-2 py-1 text-[11px] font-medium text-muted border-b border-border-default/60">
+                      <div className="px-2 py-1 text-xs font-medium text-muted border-b border-border-default/60">
                         登场角色（回车填入对白引号）
                       </div>
                       {filteredCast.map((char, idx) => (
@@ -787,13 +792,14 @@ export function StoryEntryEditor({
                           type="button"
                           role="option"
                           aria-selected={idx === mentionIndex}
+                          onMouseDown={event => event.preventDefault()}
                           onMouseEnter={() => setMentionIndex(idx)}
                           onClick={() => completeCharacterDialogue(char.name)}
                           className={`w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
                             idx === mentionIndex ? 'bg-accent/15 text-accent font-semibold' : 'text-ink hover:bg-surface-hover'
                           }`}
                         >
-                          <div className="size-5 shrink-0 rounded-full overflow-hidden border border-border-default bg-surface-muted flex items-center justify-center text-[10px]">
+                          <div className="size-5 shrink-0 rounded-full overflow-hidden border border-border-default bg-surface-muted flex items-center justify-center text-xs">
                             {char.avatarUrl ? (
                               <img src={char.avatarUrl} alt="" className="size-full object-cover" />
                             ) : (
@@ -802,7 +808,7 @@ export function StoryEntryEditor({
                           </div>
                           <span className="truncate flex-1">{char.name}</span>
                           {char.work && (
-                            <span className="shrink-0 text-[10px] text-muted">{char.work}</span>
+                            <span className="shrink-0 text-xs text-muted">{char.work}</span>
                           )}
                         </button>
                       ))}
@@ -830,7 +836,7 @@ export function StoryEntryEditor({
 
               {mode !== 'source' && (
                 <div
-                  className="min-w-0 rounded-lg p-4 border"
+                  className="min-w-0 rounded-lg p-4 text-base break-words"
                   style={{
                     backgroundColor: currentTheme.bubbleBg,
                     borderColor: currentTheme.borderColor,
@@ -855,14 +861,14 @@ export function StoryEntryEditor({
                 <button
                   type="button"
                   onClick={() => onSwitchChapter?.(prevChapter.id)}
-                  className="flex items-center gap-1.5 rounded-lg border border-border-default/60 px-3 py-1.5 text-muted hover:border-accent hover:text-accent transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg border border-border-default/60 px-3 py-1.5 text-muted hover:border-border-default hover:text-ink transition-colors"
                 >
                   <ChevronLeft className="size-3.5" />
                   <span>上一章：{prevChapter.title}</span>
                 </button>
               ) : <div />}
 
-              <span className="text-[11px] text-muted font-mono">
+              <span className="text-xs text-muted font-mono">
                 第 {(entry as StoryDocument).position + 1} 章 · {charCount} 字
               </span>
 
@@ -870,7 +876,7 @@ export function StoryEntryEditor({
                 <button
                   type="button"
                   onClick={() => onSwitchChapter?.(nextChapter.id)}
-                  className="flex items-center gap-1.5 rounded-lg border border-border-default/60 px-3 py-1.5 text-muted hover:border-accent hover:text-accent transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg border border-border-default/60 px-3 py-1.5 text-muted hover:border-border-default hover:text-ink transition-colors"
                 >
                   <span>下一章：{nextChapter.title}</span>
                   <ChevronRight className="size-3.5" />
@@ -890,9 +896,25 @@ export function StoryEntryEditor({
         </div>
       </div>
 
+      <Dialog open={clipboardDraft !== null} onOpenChange={open => { if (!open) setClipboardDraft(null); }} title="采纳剪贴板草稿"
+        description="先预览内容，再选择追加或替换。取消会保留当前正文。"
+        footer={<>
+          <Button variant="ghost" onClick={() => setClipboardDraft(null)}>取消</Button>
+          <Button variant="outline" onClick={() => {
+            if (clipboardDraft === null || !window.confirm('确认替换当前全文？建议先复制保留原稿。')) return;
+            draft.update({ body: clipboardDraft }); setClipboardDraft(null);
+          }}>替换全文</Button>
+          <Button onClick={() => {
+            if (clipboardDraft === null) return;
+            draft.update({ body: `${draft.body}${draft.body.trim() ? '\n\n' : ''}${clipboardDraft}` }); setClipboardDraft(null);
+          }}>追加到文末</Button>
+        </>}>
+        <p className="max-h-64 whitespace-pre-wrap break-words text-sm text-muted">{clipboardDraft}</p>
+      </Dialog>
+
       {/* 底部极简状态指示器 */}
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border-default pt-3 text-xs text-muted">
-        <div className="flex items-center gap-3">
+      <footer className="hidden shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-2 text-xs text-muted sm:flex">
+        <div className="flex flex-wrap items-center gap-2">
           <span>Ctrl/⌘+S 随时保存</span>
           <span>·</span>
           <span>当前字体：{currentFont.name}</span>

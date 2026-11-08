@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -13,7 +14,7 @@ import {
   Check,
   Plus,
   Loader2,
-  FileText,
+  AlertCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
@@ -21,20 +22,31 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { storyApi } from '@/app/features/story/api';
-import { fetchCharacters } from '@/app/features/characters/api';
+import { publicationApi } from '@/app/features/activities/publication/api';
 import { createActivity } from '@/app/features/activities/api';
 import { PlanningWizard } from '@/app/features/activities/components/planning-wizard';
+import { useCharacters } from '@/app/features/characters/queries';
 
 type EntryMode = 'quick' | 'wizard';
 type QuickTab = 'story' | 'character' | 'blank';
 
 export function NewActivityEntry() {
   const router = useRouter();
-  const [entryMode, setEntryMode] = useState<EntryMode>('quick');
+  const searchParams = useSearchParams();
+  const storyProjectIdParam = searchParams.get('storyProjectId') || '';
+  const hasWizardParams = Boolean(
+    searchParams.get('session') ||
+    (searchParams.get('template') && searchParams.get('template') !== 'blank') ||
+    searchParams.get('refs')
+  );
+
+  const [entryMode, setEntryMode] = useState<EntryMode>(() =>
+    hasWizardParams && !storyProjectIdParam ? 'wizard' : 'quick'
+  );
   const [quickTab, setQuickTab] = useState<QuickTab>('story');
 
-  // 小说项目与章节派生状态
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  // 小说项目与章节制作状态
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => storyProjectIdParam);
   const [selectedChapterId, setSelectedChapterId] = useState<string>('');
   const [deriving, setDeriving] = useState(false);
   const [deriveError, setDeriveError] = useState('');
@@ -42,9 +54,18 @@ export function NewActivityEntry() {
   // 快速角色创建状态
   const [customTitle, setCustomTitle] = useState('');
   const [customTheme, setCustomTheme] = useState('');
-  const [selectedActorNames, setSelectedActorNames] = useState<string[]>([]);
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [quickCreating, setQuickCreating] = useState(false);
   const [quickError, setQuickError] = useState('');
+
+  const [prevParam, setPrevParam] = useState(storyProjectIdParam);
+  if (storyProjectIdParam !== prevParam) {
+    setPrevParam(storyProjectIdParam);
+    if (storyProjectIdParam) {
+      setSelectedProjectId(storyProjectIdParam);
+      setQuickTab('story');
+    }
+  }
 
   // 数据查询
   const projectsQuery = useQuery({
@@ -60,49 +81,41 @@ export function NewActivityEntry() {
     staleTime: 30_000,
   });
 
-  const charactersQuery = useQuery({
-    queryKey: ['characters', 'all-for-activity-new'],
-    queryFn: () => fetchCharacters(),
-    staleTime: 60_000,
-  });
+  const charactersQuery = useCharacters();
 
   const projects = projectsQuery.data?.items ?? [];
-  const chapters = (documentsQuery.data?.items ?? []).filter((d) => d.kind === 'chapter' || d.kind === 'outline');
+  // 不允许 outline 作为正式制作来源，仅允许 chapter 正文
+  const chapters = (documentsQuery.data?.items ?? []).filter((d) => d.kind === 'chapter');
   const allCharacters = charactersQuery.data?.items ?? [];
 
-  // 1. 从小说章节派生创建
+  const selectedCharacters = selectedCharacterIds
+    .map((id) => allCharacters.find((c) => c.id === id))
+    .filter((c): c is (typeof allCharacters)[number] => Boolean(c));
+  const selectedUnpublished = selectedCharacters.filter(
+    (c) => typeof c.latestVersion !== 'number' || c.latestVersion < 1
+  );
+
+  // 1. 从小说章节派生正式制作版本
   const handleDeriveFromStory = async () => {
     if (!selectedProjectId || !selectedChapterId || deriving) return;
     setDeriving(true);
     setDeriveError('');
     try {
-      const project = projects.find((p) => p.id === selectedProjectId);
       const chapter = chapters.find((c) => c.id === selectedChapterId);
-      if (!chapter) throw new Error('未找到所选章节');
+      if (!chapter) throw new Error('未找到所选章节，请重新选择。');
 
-      // 提取章节中的对话角色（剥离表情动作括号）
-      const detectedActors = (chapter.body.match(/^([^\n:：]{1,20})[:：]/gm) || [])
-        .map((s) => s.replace(/[:：]/g, '').replace(/（[^）]*）|\([^)]*\)/g, '').trim())
-        .filter((v, i, a) => v.length > 0 && a.indexOf(v) === i);
+      // 读取所选章节已保存的 revision
+      const revisionsRes = await storyApi.listRevisions(selectedProjectId, 'chapter', selectedChapterId);
+      const latestRevision = revisionsRes.items?.[0];
+      if (!latestRevision) {
+        throw new Error('所选章节尚未保存任何历史修订版本，请先在创作项目中保存章节正文后再进行制作。');
+      }
 
-      const actors = (detectedActors.length > 0 ? detectedActors : ['主角', '伙伴']).map((name) => ({
-        displayName: name,
-        activityRole: '登场角色',
-      }));
-
-      const res = await createActivity({
-        title: `${project?.title || '小说'} · ${chapter.title}`,
-        type: '视觉小说演出',
-        theme: project?.title || '剧情衍生',
-        location: '故事舞台',
-        rules: '由纯文字小说一键编译生成，包含分幕与对白角色安排。',
-        stageTitles: [`${chapter.title} · 开局`, `${chapter.title} · 发展`, `${chapter.title} · 尾声`],
-        actors,
-      });
-
-      router.push(`/apps/activities/${res.activity.id}`);
+      // 正式调用 publicationApi.create 建立制作版本，保留来源
+      const draft = await publicationApi.create(selectedProjectId, [latestRevision.id]);
+      router.push(`/apps/activities/${draft.activityId}`);
     } catch (err) {
-      setDeriveError(err instanceof Error ? err.message : '从小说派生失败');
+      setDeriveError(err instanceof Error ? err.message : '制作版本创建失败');
     } finally {
       setDeriving(false);
     }
@@ -114,8 +127,21 @@ export function NewActivityEntry() {
     setQuickCreating(true);
     setQuickError('');
     try {
-      const actors = (selectedActorNames.length > 0 ? selectedActorNames : ['主角']).map((name) => ({
-        displayName: name,
+      if (selectedCharacters.length === 0) {
+        throw new Error('请至少选择一位出镜角色。');
+      }
+
+      // 检查是否有未发布正式版本的角色，明确提示去角色库发布，不虚构 id 或 version
+      if (selectedUnpublished.length > 0) {
+        throw new Error(
+          `角色《${selectedUnpublished.map((u) => u.displayName).join('》、《')}》尚未发布版本。快速制作要求角色具有已发布版本，请前往角色库发布正式版本后再选用，不可使用未发布角色。`
+        );
+      }
+
+      const actors = selectedCharacters.map((c) => ({
+        sourceCharacterId: c.id,
+        sourceVersion: c.latestVersion as number,
+        displayName: c.displayName,
         activityRole: '核心主角',
       }));
 
@@ -131,7 +157,7 @@ export function NewActivityEntry() {
 
       router.push(`/apps/activities/${res.activity.id}`);
     } catch (err) {
-      setQuickError(err instanceof Error ? err.message : '创建活动失败');
+      setQuickError(err instanceof Error ? err.message : '创建制作工程失败');
     } finally {
       setQuickCreating(false);
     }
@@ -143,7 +169,7 @@ export function NewActivityEntry() {
     setQuickCreating(true);
     try {
       const res = await createActivity({
-        title: '全新漫剧工坊',
+        title: '全新制作工坊',
         type: '分镜漫剧',
         theme: '自由创作',
         location: '舞台',
@@ -152,7 +178,7 @@ export function NewActivityEntry() {
       });
       router.push(`/apps/activities/${res.activity.id}`);
     } catch (err) {
-      setQuickError(err instanceof Error ? err.message : '创建空白活动失败');
+      setQuickError(err instanceof Error ? err.message : '创建空白工坊失败');
     } finally {
       setQuickCreating(false);
     }
@@ -161,10 +187,10 @@ export function NewActivityEntry() {
   if (entryMode === 'wizard') {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-border-default bg-surface px-6 py-2.5">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-6 py-2.5">
           <span className="text-xs text-muted">当前为传统多阶段企划向导</span>
           <Button size="sm" variant="ghost" onClick={() => setEntryMode('quick')} className="text-xs">
-            返回快速创建工坊
+            返回快速制作工坊
           </Button>
         </div>
         <PlanningWizard />
@@ -175,14 +201,14 @@ export function NewActivityEntry() {
   return (
     <PageContainer width="settings" className="space-y-6 py-6">
       <PageHeader
-        title="新建多媒体视觉工坊"
-        description="从小说章节直出一键漫剧，或挑选登场角色快速生成分镜与动态视听工程。"
+        title="新建制作工坊"
+        description="从创作项目章节冻结生成正式制作版本，或挑选已发布角色快速建立分镜漫剧工程。"
         actions={
           <Button
             size="sm"
             variant="ghost"
             onClick={() => setEntryMode('wizard')}
-            className="text-xs text-muted hover:text-ink gap-1"
+            className="text-sm text-muted hover:text-ink gap-1"
           >
             <Compass className="size-3.5" />
             <span>切换传统企划向导</span>
@@ -191,71 +217,78 @@ export function NewActivityEntry() {
       />
 
       {/* 核心方式三选一导航 */}
-      <div className="grid grid-cols-1 gap-2 rounded-[var(--radius-panel)] bg-surface-muted p-1 sm:grid-cols-3">
+      {[projectsQuery, documentsQuery, charactersQuery].map((query, index) => query.isError ? <div key={index} role="alert">{['项目', '章节', '角色'][index]}读取失败。<Button disabled={query.isFetching} onClick={() => void query.refetch()}>重新读取</Button></div> : query.isLoading && query.fetchStatus === 'fetching' ? <p key={index} role="status">正在读取{['项目', '章节', '角色'][index]}…</p> : null)}
+      <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-control border border-border-subtle" role="tablist" aria-label="创建方式">
         <button
           type="button"
+          role="tab"
+          aria-selected={quickTab === 'story'}
           onClick={() => setQuickTab('story')}
-          className={`flex items-center justify-center gap-2 rounded-[var(--radius-control)] py-2.5 text-xs font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 rounded-control py-2 text-sm font-medium transition-all ${
             quickTab === 'story'
-              ? 'bg-surface text-accent shadow-xs'
-              : 'text-muted hover:text-ink hover:bg-surface/50'
+              ? 'bg-surface text-ink font-semibold shadow-xs'
+              : 'text-muted hover:text-ink'
           }`}
         >
-          <BookOpen className="size-4" />
-          <span>从小说章节派生 (推荐)</span>
+          <BookOpen className="size-3.5 text-muted" />
+          <span>从小说章节制作 (推荐)</span>
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={quickTab === 'character'}
           onClick={() => setQuickTab('character')}
-          className={`flex items-center justify-center gap-2 rounded-[var(--radius-control)] py-2.5 text-xs font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 rounded-control py-2 text-sm font-medium transition-all ${
             quickTab === 'character'
-              ? 'bg-surface text-accent shadow-xs'
-              : 'text-muted hover:text-ink hover:bg-surface/50'
+              ? 'bg-surface text-ink font-semibold shadow-xs'
+              : 'text-muted hover:text-ink'
           }`}
         >
-          <Users className="size-4" />
+          <Users className="size-3.5 text-muted" />
           <span>挑选角色与题材生成</span>
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={quickTab === 'blank'}
           onClick={() => setQuickTab('blank')}
-          className={`flex items-center justify-center gap-2 rounded-[var(--radius-control)] py-2.5 text-xs font-semibold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 rounded-control py-2 text-sm font-medium transition-all ${
             quickTab === 'blank'
-              ? 'bg-surface text-accent shadow-xs'
-              : 'text-muted hover:text-ink hover:bg-surface/50'
+              ? 'bg-surface text-ink font-semibold shadow-xs'
+              : 'text-muted hover:text-ink'
           }`}
         >
-          <Layers className="size-4" />
+          <Layers className="size-3.5 text-muted" />
           <span>空白画卷起步</span>
         </button>
       </div>
 
-      {/* 方式 1：从小说章节派生 */}
+      {/* 方式 1：从小说章节制作 */}
       {quickTab === 'story' && (
-        <section className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-6 shadow-xs">
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-              <Sparkles className="size-4 text-accent" />
-              选择要视觉化的小说章节
-            </h3>
-            <p className="text-xs text-muted">
-              系统会自动抽取小说中的分幕、角色台词与情境，一键装配为分镜漫画格与视听工坊。
+        <section className="space-y-5 rounded-panel border border-border-subtle bg-surface p-6">
+          <div className="border-b border-border-subtle pb-3">
+            <h3 className="text-base font-semibold text-ink">选择要制作的正式章节</h3>
+            <p className="text-xs text-muted mt-1 leading-relaxed">
+              冻结已保存章节正文版本，建立关键画面与配音制作工程。完整保留来源项目与章节关联，不会修改正式剧情。
             </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1.5">1. 选择所属小说工程</label>
+              <label htmlFor="select-story-project" className="block text-xs font-medium text-fg-subtle mb-1.5">
+                1. 选择所属创作项目
+              </label>
               <select
-                aria-label="选择所属小说工程"
+                id="select-story-project"
+                aria-label="选择所属创作项目"
                 value={selectedProjectId}
                 onChange={(e) => {
                   setSelectedProjectId(e.target.value);
                   setSelectedChapterId('');
                 }}
-                className="w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                className="w-full rounded-control border border-border-control bg-surface px-3 py-2 text-base sm:text-sm text-ink outline-none focus:border-accent"
               >
-                <option value="">-- 请选择小说工程 --</option>
+                <option value="">-- 请选择创作项目 --</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.title}
@@ -265,40 +298,60 @@ export function NewActivityEntry() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1.5">2. 选择章节正文</label>
+              <label htmlFor="select-story-chapter" className="block text-xs font-medium text-fg-subtle mb-1.5">
+                2. 选择正式章节正文
+              </label>
               <select
-                aria-label="选择章节正文"
+                id="select-story-chapter"
+                aria-label="选择正式章节正文"
                 value={selectedChapterId}
                 disabled={!selectedProjectId || chapters.length === 0}
                 onChange={(e) => setSelectedChapterId(e.target.value)}
-                className="w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
+                className="w-full rounded-control border border-border-control bg-surface px-3 py-2 text-base sm:text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
               >
                 <option value="">
                   {selectedProjectId
                     ? chapters.length > 0
                       ? '-- 请选择章节 --'
-                      : '该工程暂无章节'
-                    : '-- 请先选择工程 --'}
+                      : documentsQuery.isError ? '章节读取失败' : documentsQuery.isLoading ? '正在读取章节…' : '该项目暂无章节正文'
+                    : '-- 请先选择项目 --'}
                 </option>
                 {chapters.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.kind === 'outline' ? `[大纲] ${c.title}` : c.title}
+                    {c.title} (v{c.revision})
                   </option>
                 ))}
               </select>
             </div>
           </div>
 
-          {deriveError && <p className="text-xs text-danger-fg">{deriveError}</p>}
+          {selectedProjectId && !documentsQuery.isLoading && !documentsQuery.isError && chapters.length === 0 && (
+            <div className="flex items-center justify-between rounded-control bg-surface-sunken p-3 text-xs text-muted border border-border-subtle">
+              <span>当前创作项目尚未包含正式章节正文（大纲不可作为正式制作来源）。请先前往该项目撰写并保存章节正文后再制作。</span>
+              <Link
+                href={`/apps/projects/${selectedProjectId}`}
+                className="text-accent underline font-medium hover:text-accent-dark ml-2 shrink-0"
+              >
+                前往编写正文
+              </Link>
+            </div>
+          )}
 
-          <div className="pt-2">
+          {deriveError && (
+            <p className="text-xs text-danger-fg bg-danger/8 border border-danger/20 rounded-control p-2.5">
+              {deriveError}
+            </p>
+          )}
+
+          <div className="border-t border-border-subtle pt-4">
             <Button
+              variant="accent"
               disabled={!selectedProjectId || !selectedChapterId || deriving}
               onClick={() => void handleDeriveFromStory()}
-              className="gap-2 font-semibold"
+              className="font-semibold"
             >
               {deriving ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-              <span>一键派生并进入视觉漫剧工坊</span>
+              <span>创建制作版本并进入制作台</span>
             </Button>
           </div>
         </section>
@@ -306,78 +359,103 @@ export function NewActivityEntry() {
 
       {/* 方式 2：挑选角色与题材生成 */}
       {quickTab === 'character' && (
-        <section className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-6 shadow-xs">
-          <div className="space-y-1">
-            <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-              <Users className="size-4 text-accent" />
-              挑选出镜角色与设定
-            </h3>
-            <p className="text-xs text-muted">
-              直接复用已清洗的 120+ 角色人设外貌与 LoRA 资产，确保 ComfyUI 生图高度一致。
+        <section className="space-y-5 rounded-panel border border-border-subtle bg-surface p-6">
+          <div className="border-b border-border-subtle pb-3">
+            <h3 className="text-base font-semibold text-ink">挑选出镜角色与题材</h3>
+            <p className="text-xs text-muted mt-1 leading-relaxed">
+              从角色库中挑选已发布版本角色，快速建立独立分镜漫剧工程。角色将绑定真实版本与外貌设定。
             </p>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1.5">漫剧工程名称</label>
+              <label htmlFor="custom-activity-title" className="block text-xs font-medium text-fg-subtle mb-1.5">
+                漫剧工程名称
+              </label>
               <Input
+                id="custom-activity-title"
                 value={customTitle}
                 onChange={(e) => setCustomTitle(e.target.value)}
                 placeholder="例如：提瓦特冬日温泉物语"
-                className="max-w-md"
+                className="max-w-md text-base sm:text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1.5">故事梗概或主题 (可选)</label>
+              <label htmlFor="custom-activity-theme" className="block text-xs font-medium text-fg-subtle mb-1.5">
+                故事梗概或主题 (可选)
+              </label>
               <Textarea
+                id="custom-activity-theme"
                 rows={2}
                 value={customTheme}
                 onChange={(e) => setCustomTheme(e.target.value)}
                 placeholder="例如：几人在初雪之夜围坐畅谈，偶遇神秘来客…"
-                className="max-w-md"
+                className="max-w-md text-base sm:text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-muted mb-1.5">
-                挑选登场角色 (已选 {selectedActorNames.length} 位)
+              <label className="block text-xs font-medium text-fg-subtle mb-1.5">
+                挑选登场角色 (已选 {selectedCharacterIds.length} 位)
               </label>
-              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 rounded border border-border-default bg-surface-muted/40">
+              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-2.5 rounded-control border border-border-subtle bg-surface-sunken">
                 {allCharacters.map((c) => {
-                  const selected = selectedActorNames.includes(c.displayName);
+                  const isSelected = selectedCharacterIds.includes(c.id);
+                  const isPublished = typeof c.latestVersion === 'number' && c.latestVersion > 0;
                   return (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => {
-                        setSelectedActorNames((prev) =>
-                          selected ? prev.filter((n) => n !== c.displayName) : [...prev, c.displayName]
+                        setSelectedCharacterIds((prev) =>
+                          isSelected ? prev.filter((id) => id !== c.id) : [...prev, c.id]
                         );
                       }}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition-all ${
-                        selected
-                          ? 'bg-accent text-white font-semibold shadow-xs'
-                          : 'bg-surface border border-border-default text-ink hover:border-accent'
+                      className={`inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-xs transition-colors ${
+                        isSelected
+                          ? 'bg-accent text-fg-on-accent font-medium'
+                          : 'bg-surface border border-border-subtle text-ink hover:border-border-strong'
                       }`}
                     >
-                      {selected && <Check className="size-3" />}
+                      {isSelected && <Check className="size-3" />}
                       <span>{c.displayName}</span>
-                      {c.tags?.[0] && <span className="opacity-60 text-[10px]">· {c.tags[0]}</span>}
+                      {!isPublished ? (
+                        <span className="rounded bg-amber-500/15 px-1 py-0.2 text-[10px] text-amber-700 dark:text-amber-400">
+                          未发布
+                        </span>
+                      ) : (
+                        <span className="opacity-60 text-xs">v{c.latestVersion}</span>
+                      )}
+                      {c.tags?.[0] && <span className="opacity-60 text-xs">· {c.tags[0]}</span>}
                     </button>
                   );
                 })}
               </div>
             </div>
+
+            {selectedUnpublished.length > 0 && (
+              <div className="flex items-center gap-2 rounded-control bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>
+                  已选角色中包含未发布正式版本：{selectedUnpublished.map((c) => `《${c.displayName}》`).join('、')}。快速制作只支持已发布角色，请前往 <Link href="/apps/characters" className="underline font-medium">角色库</Link> 发布正式版本后再选用。
+                </span>
+              </div>
+            )}
           </div>
 
-          {quickError && <p className="text-xs text-danger-fg">{quickError}</p>}
+          {quickError && (
+            <p className="text-xs text-danger-fg bg-danger/8 border border-danger/20 rounded-control p-2.5">
+              {quickError}
+            </p>
+          )}
 
-          <div className="pt-2">
+          <div className="border-t border-border-subtle pt-4">
             <Button
+              variant="accent"
               disabled={!customTitle.trim() || quickCreating}
               onClick={() => void handleQuickCreate()}
-              className="gap-2 font-semibold"
+              className="font-semibold"
             >
               {quickCreating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               <span>创建四幕分镜工程</span>
@@ -388,22 +466,27 @@ export function NewActivityEntry() {
 
       {/* 方式 3：空白起步 */}
       {quickTab === 'blank' && (
-        <section className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-6 shadow-xs text-center">
-          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-accent/10 text-accent">
-            <Plus className="size-6" />
+        <section className="space-y-4 rounded-panel border border-border-subtle bg-surface p-8 text-center">
+          <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-surface-sunken text-fg-subtle border border-border-subtle">
+            <Plus className="size-5" />
           </div>
           <div className="space-y-1 max-w-sm mx-auto">
-            <h3 className="text-base font-bold text-ink">快速建立空白视觉工坊</h3>
-            <p className="text-xs text-muted">
+            <h3 className="text-base font-semibold text-ink">快速建立空白视觉工坊</h3>
+            <p className="text-xs text-muted leading-relaxed">
               不预设剧情与模板，直接进入自由分镜与漫画连环画排版画布。
             </p>
           </div>
-          {quickError && <p className="text-xs text-danger-fg">{quickError}</p>}
-          <div>
+          {quickError && (
+            <p className="text-xs text-danger-fg bg-danger/8 border border-danger/20 rounded-control p-2.5 max-w-sm mx-auto">
+              {quickError}
+            </p>
+          )}
+          <div className="pt-2">
             <Button
+              variant="accent"
               disabled={quickCreating}
               onClick={() => void handleBlankCreate()}
-              className="gap-2 font-semibold"
+              className="font-semibold"
             >
               {quickCreating ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
               <span>直接开启空白工坊</span>

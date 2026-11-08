@@ -1,0 +1,47 @@
+/* Reading paper is an explicit content preference, scoped away from application chrome. */
+.story-reading-paper {
+  --story-paper: var(--surface);
+  --story-text: var(--ink);
+  --story-muted: var(--muted);
+  --story-line: var(--border-subtle);
+  --story-inset: var(--surface-sunken);
+}
+.story-reading-paper[data-reading-theme="parchment"] {
+  --story-paper: #faf7f0; --story-text: #2c2420; --story-muted: #7a6f66;
+  --story-line: #e7e0d2; --story-inset: #f2eee3;
+}
+.story-reading-paper[data-reading-theme="pure"] {
+  --story-paper: #fff; --story-text: #18181b; --story-muted: #71717a;
+  --story-line: #e4e4e7; --story-inset: #f4f4f5;
+}
+.story-reading-paper[data-reading-theme="midnight"] {
+  --story-paper: #181a1d; --story-text: #e2e4e9; --story-muted: #a3a9b6;
+  --story-line: #454a56; --story-inset: #22252b;
+}
+.story-reading-paper[data-reading-theme="sage"] {
+  --story-paper: #f1f5f2; --story-text: #1a2a20; --story-muted: #596e62;
+  --story-line: #d2ded5; --story-inset: #e6ede8;
+}
+.story-reading-paper .story-markdown { color: var(--story-text); overflow-wrap: anywhere; }
+.story-reading-paper .story-markdown blockquote { color: var(--story-muted); }
+.story-reading-paper .story-markdown :is(pre, code, th) { background: var(--story-inset); }
+.story-reading-paper .story-markdown :is(h2, th, td, hr) { border-color: var(--story-line); }
+.story-entry-editor :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.story-entry-editor :is(button, summary, select) { font-size: max(0.875rem, 14px); }
+
+/* Workspace canvas: the writing paper is the single content surface; page background stays quiet. */
+.story-workspace-root .story-editor-frame {
+  background: var(--bg-app);
+}
+.story-workspace-root .story-reading-paper {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+/* Tree rows rely on text color and hover surface, not per-row borders. */
+.story-tree-panel [role="tab"] { font-size: max(0.875rem, 14px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .story-entry-editor *, .story-entry-editor *::before, .story-entry-editor *::after {
+    animation: none; transition: none; scroll-behavior: auto;
+  }
+}

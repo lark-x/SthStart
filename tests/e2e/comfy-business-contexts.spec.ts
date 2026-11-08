@@ -83,6 +83,8 @@ test('current studio exposes drawing and art controls across four viewports with
   await page.goto(`/apps/activities/${(await created.json()).activity.id}`);
   for (const [width, height] of [[1920, 1080], [1440, 900], [1024, 768], [390, 844]]) {
     await page.setViewportSize({ width, height });
+    // 768–1279px 紧凑工作台默认收起镜头工坊；窄屏通过“镜头绘制”切换到绘制面板。
+    if (width === 1024) await page.getByRole('button', { name: '展开镜头工坊', exact: true }).click();
     if (width === 390) await page.getByRole('button', { name: '镜头绘制', exact: true }).click();
     await expect(page.getByRole('button', { name: '绘制设置', exact: true })).toBeVisible();
     await page.waitForLoadState('networkidle');
@@ -91,7 +93,8 @@ test('current studio exposes drawing and art controls across four viewports with
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBeTruthy();
     await page.screenshot({ path: info.outputPath(`studio-${width}.png`), animations: 'disabled' });
   }
-  await page.getByRole('button', { name: '美术', exact: true }).click();
+  await page.getByRole('button', { name: '更多工作台操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: '美术指导', exact: true }).click();
   const art = page.getByRole('dialog', { name: '活动美术设置', exact: true });
   await expect(art.getByLabel('活动画幅')).toBeVisible();
   await expect(art.getByRole('button', { name: '专业模式', exact: true })).toBeVisible();
@@ -107,6 +110,8 @@ test('character avatar retains the draft when closing the generation overlay on 
   expect(created.ok()).toBeTruthy();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/apps/characters/${(await created.json()).id}`);
+  // 窄屏角色页把视觉预览与头像操作收纳在可展开条目中。
+  await page.getByRole('button', { name: '视觉预览与资产形态', exact: false }).click();
   await page.getByRole('button', { name: 'AI 生图', exact: true }).click();
   const panel = page.getByLabel('图片生成配置', { exact: true });
   await expect(panel).toHaveAttribute('data-ready', 'true');
@@ -150,8 +155,7 @@ test('generation settings exposes scoped defaults and remains usable when diagno
   await page.route('**/api/admin/**/diagnostics*', route => route.fulfill({ status: 503, json: { error: 'offline', message: '诊断暂不可用' } }));
   await page.goto('/settings/generation');
   await expect(page.getByRole('heading', { name: '生成配置', exact: true })).toBeVisible();
-  await expect(page.getByText('默认绘制模式', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: '专业配置', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '默认绘制模式', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '提示词策略', exact: true }).click();
   await expect(page.getByText('策略按工作流版本保存', { exact: false })).toBeVisible();
   await page.screenshot({ path: info.outputPath('generation-settings.png'), fullPage: true, animations: 'disabled' });
@@ -231,7 +235,7 @@ test('scene and comic drawing use the same mode semantics without changing sourc
   const saved = await request.put(`${service}/activities/${activity.id}/comic/draft`, { headers, data: { expectedDraftVersion: 1, document: comic } });
   expect(saved.ok(), await saved.text()).toBeTruthy();
   await page.getByRole('button', { name: '漫画工坊', exact: true }).click();
-  await page.getByRole('button', { name: '✦ 绘制新图', exact: true }).click();
+  await page.getByRole('button', { name: '绘制新图', exact: true }).click();
   const comicDialog = page.getByRole('dialog', { name: '画格绘制', exact: true });
   await comicDialog.getByRole('button', { name: '专业模式', exact: true }).click();
   await comicDialog.getByRole('button', { name: '以当前描述为基础编辑最终提示词' }).click();

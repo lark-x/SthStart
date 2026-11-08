@@ -18,25 +18,27 @@ export function PersonalitySection({
   register: UseFormRegister<CharacterFormValues>;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="pb-3 border-b border-border-subtle">
-        <h3 className="text-xl font-medium text-ink">说话方式与行为约束</h3>
-        <p className="text-sm text-muted mt-1 leading-relaxed">
+        <h3 className="text-base font-semibold text-ink">说话方式与行为约束</h3>
+        <p className="text-xs text-muted mt-1 leading-relaxed">
           这里只放角色的「声音」和必须遵守的边界。性格、动机与好恶请写在人设正文里，
           避免同一件事在两个地方各写一遍。
         </p>
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-ink mb-1.5">
+        <label htmlFor="char-speech-text" className="block text-xs font-medium text-fg-subtle mb-1.5">
           说话方式
         </label>
         <Textarea
+          id="char-speech-text"
           rows={5}
           aria-label="说话方式"
           value={draft.speechText}
           onChange={(e) => onChange({ speechText: e.target.value })}
           placeholder={'语气：优雅、舞台戏剧腔，善用反问与咏叹调；私下语速变缓。\n表达习惯：激动时习惯整理帽子。\n常用表达：哼，这正是本神预料之中的！'}
+          className="text-base sm:text-sm"
         />
         <p className="mt-1 text-xs text-muted">
           可以按「语气 / 表达习惯 / 常用表达」分行写；不要每句都重复口头禅。
@@ -55,15 +57,17 @@ export function PersonalitySection({
       </p>
 
       <div>
-        <label className="block text-sm font-semibold text-ink mb-1.5">
+        <label htmlFor="char-behavior-rules" className="block text-xs font-medium text-fg-subtle mb-1.5">
           行为约束（可选）
         </label>
         <Textarea
+          id="char-behavior-rules"
           rows={4}
           aria-label="行为约束"
           value={draft.behaviorRules}
           onChange={(e) => onChange({ behaviorRules: e.target.value })}
           placeholder={'- 不代替其他参与者做决定\n- 绝不在审判庭上退缩'}
+          className="text-base sm:text-sm"
         />
         <p className="mt-1 text-xs text-muted">
           只写角色创作层面的边界。这里的内容不会覆盖应用的输出格式与任务规则。

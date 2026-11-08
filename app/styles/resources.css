@@ -1,0 +1,162 @@
+/* B library: separate browsing and document panels on the shared canvas.
+ * Structure is deliberately independent of the active skin. */
+.resources-workspace-shell {
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 24px 0;
+  background: var(--bg-app);
+}
+.resources-workspace-header {
+  flex-shrink: 0;
+  padding: 12px 0 20px;
+  border: 0;
+  background: transparent;
+}
+.resources-workspace-header .tpl-header { margin-bottom: 0; padding-block: 0; }
+.resources-navigation { padding-top: 16px; }
+.resources-navigation .resources-view-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.resources-view-tabs [role='tab'] {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  font-size: 14px;
+  box-shadow: none;
+}
+.resources-view-tabs [aria-selected='true'] {
+  background: var(--surface-raised);
+  color: var(--fg-default);
+  box-shadow: var(--elev-xs);
+}
+.resources-workspace-content,
+.resources-notes-container,
+.resources-workspace-shell .notebook-workspace-shell {
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+.resources-workspace-shell .notebook-workspace-shell { height: 100%; }
+.resources-workspace-shell .notebook-master-toolbar { flex-shrink: 0; padding: 16px; background: transparent; }
+.resources-workspace-shell .notebook-master-list {
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.resources-workspace-shell .notebook-list-item {
+  width: 100%;
+  margin: 0;
+  padding: 16px 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+}
+.resources-workspace-shell .notebook-list-item + .notebook-list-item { margin-top: 4px; }
+.resources-workspace-shell .notebook-list-item[aria-current='page'] { background: var(--surface-raised); box-shadow: var(--elev-xs); }
+.resources-workspace-shell .notebook-list-pagination {
+  flex-shrink: 0;
+  padding: 12px 8px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface);
+  color: var(--fg-muted);
+}
+/* Compact Pagination owns its controls; keep the footer flexible as they wrap. */
+.resources-workspace-shell .notebook-list-pagination > * { min-width: 0; }
+.resources-workspace-shell .notebook-list-pagination > nav[aria-label='分页'] { padding-top: 0; border-top: 0; }
+.resources-workspace-shell .notebook-list-pagination details { position: static; }
+.resources-workspace-shell .notebook-list-pagination details > div { right: 8px; bottom: 100%; }
+.resources-workspace-shell .notebook-editor-shell { min-width: 0; min-height: 100%; background: var(--surface-raised); }
+.resources-workspace-shell .notebook-editor-header {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 52px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  backdrop-filter: none;
+}
+.resources-workspace-shell .notebook-editor-actions { flex-wrap: wrap; gap: 4px; }
+/* The document IS the panel: no second sheet, frame or shadow around the text. */
+.resources-workspace-shell .notebook-editor-frame:not(.zen-workspace) {
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 32px clamp(24px, 4vw, 64px) 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.resources-workspace-shell .notebook-editor-message {
+  width: 100%;
+  max-width: 56rem;
+  margin-inline: auto;
+  padding-inline: clamp(24px, 4vw, 64px);
+}
+.resources-workspace-shell .notebook-doc-header { padding-bottom: 24px; }
+.resources-workspace-shell .notebook-doc-header > input { font-size: 28px; line-height: 1.5; }
+.resources-workspace-shell .notebook-content-section { padding-top: 16px; }
+.resources-workspace-shell .notebook-content-heading { border-bottom: 0; }
+.resources-workspace-shell .notebook-textarea { font-size: 16px; line-height: 1.9; }
+@media (min-width: 1024px) {
+  .shell-content:has(.resources-workspace-shell) { padding-bottom: 0; }
+  .resources-workspace-shell,
+  .resources-workspace-content { overflow: hidden; }
+  .resources-workspace-shell .notebook-workspace-body { gap: var(--workspace-panel-gap); }
+  .resources-workspace-shell .notebook-master-pane {
+    position: relative;
+    width: 288px;
+    min-width: 288px;
+    height: 100%;
+    flex-shrink: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+  .resources-workspace-shell .notebook-detail-pane {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-radius: var(--radius-panel);
+    background: var(--surface-raised);
+    box-shadow: var(--elev-xs);
+  }
+  .resources-workspace-shell .notebook-master-toolbar { border-radius: var(--radius-panel) var(--radius-panel) 0 0; }
+  .resources-workspace-shell .notebook-list-pagination { position: relative; border-radius: 0 0 var(--radius-panel) var(--radius-panel); }
+  .resources-workspace-shell .notebook-detail-pane > div > .border.shadow-panel { border: 0; background: transparent; box-shadow: none; }
+  .resources-inspiration-container,
+  .resources-sources-container { border-radius: var(--radius-panel); background: var(--surface); overscroll-behavior: contain; }
+}
+@supports (field-sizing: content) {
+  .resources-workspace-shell .notebook-textarea { field-sizing: content; height: auto; min-height: 120px; max-height: none; resize: none; }
+}
+@media (min-width: 1536px) {
+  .resources-workspace-shell { padding-inline: 32px; }
+  .resources-workspace-shell .notebook-master-pane { width: 304px; min-width: 304px; }
+}
+@media (max-width: 1023px) {
+  .resources-workspace-shell { padding: 0 16px 16px; }
+  .resources-workspace-header { padding-block: 16px; }
+  .resources-workspace-shell .notebook-workspace-shell { height: auto; }
+  .resources-workspace-shell .notebook-master-pane,
+  .resources-workspace-shell .notebook-detail-pane { min-height: 0; height: auto; border: 0; border-radius: var(--radius-panel); background: var(--surface); }
+  .resources-workspace-shell .notebook-detail-pane { overflow: visible; }
+  .resources-workspace-shell .notebook-editor-header { top: var(--shell-sticky-top); padding-inline: 16px; }
+  .resources-workspace-shell .notebook-editor-frame:not(.zen-workspace),
+  .resources-workspace-shell .notebook-editor-message { padding-inline: 16px; }
+  .resources-workspace-shell .notebook-master-list { flex: none; }
+  .resources-workspace-shell .notebook-doc-header > input { font-size: 24px; }
+}

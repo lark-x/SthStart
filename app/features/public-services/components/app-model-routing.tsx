@@ -7,7 +7,6 @@ import type { ProviderProfile, PublicServiceOverview } from '@sthstart/contracts
 import type { LlmBindingStatus } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/app/components/ui/card';
 import { Select } from '@/app/components/ui/select';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useAppLlmStatus } from '../queries';
@@ -18,9 +17,9 @@ type AssignmentFormValues = {
 };
 
 function statusTone(status: LlmBindingStatus['status']) {
-  if (status === 'ready') return { color: 'text-green-700', Icon: CheckCircle2 };
-  if (status === 'unassigned') return { color: 'text-amber-700', Icon: AlertCircle };
-  return { color: 'text-red-700', Icon: XCircle };
+  if (status === 'ready') return { color: 'text-success-fg', Icon: CheckCircle2 };
+  if (status === 'unassigned') return { color: 'text-warning-fg', Icon: AlertCircle };
+  return { color: 'text-danger-fg', Icon: XCircle };
 }
 
 /** 应用单角色状态：ready 显示模型名，未就绪显示具体原因，不把失败折叠成「未配置」。 */
@@ -95,8 +94,8 @@ function AssignmentForm({
     <form
       id={`app-row-${app.id}`}
       onSubmit={handleSubmit(onSubmit)}
-      className={`flex flex-col md:flex-row items-start md:items-end justify-between gap-3 p-4 rounded-[var(--radius-panel)] border bg-surface assignment-card transition-shadow ${
-        highlighted ? 'border-accent ring-2 ring-accent' : 'border-border-subtle'
+      className={`flex flex-col items-start justify-between gap-3 border-b border-border-subtle py-5 md:flex-row md:items-end assignment-card ${
+        highlighted ? 'bg-accent/5' : ''
       }`}
     >
       <div className="min-w-[140px] space-y-1">
@@ -173,20 +172,20 @@ export function AppModelRouting({
   );
 
   return (
-    <Card id="app-model-routing">
-      <CardHeader>
-        <CardTitle>应用角色模型绑定</CardTitle>
-        <CardDescription>
+    <section id="app-model-routing" className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">应用角色模型绑定</h2>
+        <p className="mt-1 text-sm text-muted">
           每个接入应用分别绑定文本角色与多模态角色使用的 LLM 模板。系统没有全局默认模型；未绑定的应用在调用生成功能前需要先在此完成选择。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+        </p>
+      </div>
+      <div className="space-y-3">
         {appNotFound && (
           <Alert variant="warning" title="未找到目标应用">
             链接指向的应用不存在或已被移除。下面是当前全部可绑定应用。
           </Alert>
         )}
-        <div className="grid grid-cols-1 gap-3 assignment-grid">
+        <div className="border-t border-border-subtle assignment-grid">
           {overview?.apps.filter((app) => app.capabilities.includes('llm')).map((app) => {
             const assignment = overview.llmAssignments.find((item) => item.appId === app.id);
 
@@ -203,7 +202,7 @@ export function AppModelRouting({
             );
           })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

@@ -9,10 +9,12 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
+import { Pagination } from '@/app/components/ui/pagination';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { Textarea } from '@/app/components/ui/textarea';
-import { useNotes } from '@/app/features/notebook/queries';
+import { useNoteDetail } from '@/app/features/notebook/queries';
+import { NotePicker } from '@/app/features/notebook/components/note-picker';
 import { useKnowledgeSearch } from '@/app/features/notebook/queries';
 import { adoptOrganizeDraft, createOrganizeDraft, fetchOrganizeDraft } from '../api';
 
@@ -54,8 +56,7 @@ function OrganizeBody({ itemIds, items, onAdopted }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const notesQuery = useNotes({ pageSize: 100 });
-  const noteOptions = (notesQuery.data?.items ?? []).filter((note) => note.id);
+  const targetNoteQuery = useNoteDetail(targetNoteId || undefined);
 
   const draftQuery = useQuery({
     queryKey: ['knowledge-draft', draftId],
@@ -66,7 +67,7 @@ function OrganizeBody({ itemIds, items, onAdopted }: {
   const draft = draftQuery.data ?? null;
 
   // 草稿的目标信息用来在采用时提示“目标已被编辑”。
-  const targetRevision = notesQuery.data?.items.find((note) => note.id === targetNoteId)?.revision;
+  const targetRevision = targetNoteQuery.data?.revision;
 
   const selectedSources = items.filter((item) => itemIds.includes(item.id));
   // 标题优先用用户输入，其次用草稿标题；不用 effect 回填，避免多余的级联渲染。
@@ -119,31 +120,23 @@ function OrganizeBody({ itemIds, items, onAdopted }: {
           </Select>
         </label>
         {mode === 'append' && (
-          <label className="space-y-1.5">
-            <span className="text-sm font-semibold text-ink">已有资料</span>
-            <Select aria-label="已有资料" value={targetNoteId} className="h-9 text-sm" disabled={Boolean(draft)} onChange={(event) => setTargetNoteId(event.target.value)}>
-              <option value="">请选择</option>
-              {noteOptions.map((note) => <option key={note.id} value={String(note.id)}>{note.title || '未命名资料'}</option>)}
-            </Select>
-          </label>
+          <fieldset className="space-y-1.5" disabled={Boolean(draft)}>
+            <legend className="text-sm font-semibold text-ink">已有资料</legend>
+            <NotePicker multiple={false} value={targetNoteId ? [targetNoteId] : []} onChange={(ids) => setTargetNoteId(ids[0] ?? '')} />
+          </fieldset>
         )}
       </div>
       <label className="block space-y-1.5">
         <span className="text-sm font-semibold text-ink">整理方向</span>
         <Textarea aria-label="整理方向" rows={2} value={instruction} placeholder="例如：整理成人物关系资料，只保留有来源的部分" className="text-sm" disabled={Boolean(draft)} onChange={(event) => setInstruction(event.target.value)} />
       </label>
-     {!draft && (
-       <Button variant="primary" disabled={busy || (mode === 'append' && !targetNoteId)} onClick={() => void generate()}>
-      {/* 原文片段：可以直接引用叙事档案里的剧情原文，不要求先成为待整理条目。 */}
       {!draft && (
-        <NarrativeFragmentPicker
-          picked={narrativeRefIds}
-          onChange={setNarrativeRefIds}
-        />
-      )}
-
-          {busy ? '正在整理…' : <><Wand2 className="h-3.5 w-3.5" />生成整理草稿</>}
-        </Button>
+        <>
+          <NarrativeFragmentPicker picked={narrativeRefIds} onChange={setNarrativeRefIds} />
+          <Button variant="primary" disabled={busy || (mode === 'append' && !targetNoteId)} onClick={() => void generate()}>
+            {busy ? '正在整理…' : <><Wand2 className="h-3.5 w-3.5" />生成整理草稿</>}
+          </Button>
+        </>
       )}
 
       {/* 两步视图：左边始终是原资料，右边是生成后的建议整理。 */}
@@ -202,12 +195,15 @@ function NarrativeFragmentPicker({ picked, onChange }: {
 }) {
   const [keyword, setKeyword] = useState('');
   const [debounced, setDebounced] = useState('');
+  const [page, setPage] = useState(1);
+  const [composing, setComposing] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(keyword), 250);
+    if (composing) return;
+    const timer = setTimeout(() => { setDebounced(keyword); setPage(1); }, 250);
     return () => clearTimeout(timer);
-  }, [keyword]);
+  }, [keyword, composing]);
 
-  const search = useKnowledgeSearch({ ...(debounced.trim() ? { q: debounced.trim() } : {}), kinds: ['narrative'], limit: 20 }, Boolean(debounced.trim()));
+  const search = useKnowledgeSearch({ ...(debounced.trim() ? { q: debounced.trim() } : {}), kinds: ['narrative'], limit: 20, offset: (page - 1) * 20 }, Boolean(debounced.trim()));
   const items = search.data?.items ?? [];
 
   return (
@@ -216,9 +212,10 @@ function NarrativeFragmentPicker({ picked, onChange }: {
         <span className="text-sm font-semibold text-ink">添加原文片段（可选）</span>
         <p className="text-xs text-muted">从叙事档案里检索剧情原文，和上面的待整理条目一起整理成一篇资料。</p>
       </div>
-      <Input aria-label="搜索原文片段" value={keyword} className="h-9 text-sm" placeholder="输入角色、地点或关键词" onChange={(event) => setKeyword(event.target.value)} />
+      <Input aria-label="搜索原文片段" value={keyword} className="h-9 text-sm" placeholder="输入角色、地点或关键词" onChange={(event) => setKeyword(event.target.value)} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} />
       {search.isLoading && <Spinner size="sm" label="正在检索原文…" />}
-      {Boolean(debounced.trim()) && !search.isLoading && !items.length && (
+      {search.isError && <Alert variant="danger" title="原文读取失败"><Button size="sm" onClick={() => void search.refetch()}>重试</Button></Alert>}
+      {Boolean(debounced.trim()) && !search.isLoading && !search.isError && !items.length && (
         <p className="text-xs text-muted">叙事档案中暂未找到匹配片段；可以先导入规范化 JSON，或换个关键词。</p>
       )}
       <ul className="max-h-40 space-y-1.5 overflow-y-auto">
@@ -243,7 +240,8 @@ function NarrativeFragmentPicker({ picked, onChange }: {
           );
         })}
       </ul>
-      {!!picked.length && <p className="text-xs text-muted">已选 {picked.length} 段原文；行号是叙事档案里的本地行号。</p>}
+      {search.data && <Pagination total={search.data.total} page={page} pageSize={20} onPageChange={setPage} loading={search.isFetching || composing || keyword.trim() !== debounced.trim()} compact />}
+      {!!picked.length && <p className="text-xs text-muted">已选 {picked.length} 段原文（跨页保留）；行号是叙事档案里的本地行号。</p>}
     </div>
   );
 }

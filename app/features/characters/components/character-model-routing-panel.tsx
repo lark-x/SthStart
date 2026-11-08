@@ -71,7 +71,7 @@ export function CharacterModelRoutingPanel({ characterId }: { characterId?: stri
   };
 
   return (
-    <section className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-3">
+    <section className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
       <div><h4 className="text-sm font-semibold text-ink">角色专用模型配置</h4><p className="mt-0.5 text-sm text-muted">可为试演与识图绑定独立文本/多模态配置；留空则沿用角色库应用配置。</p></div>
       {!characterId ? <p className="text-sm text-muted">保存角色后可配置。</p> : <>
         <div className="rounded border border-border-subtle bg-surface px-3 py-2 space-y-1">

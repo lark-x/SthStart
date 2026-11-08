@@ -13,6 +13,7 @@ export function GlobalCommandPalette() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       const target = event.target as HTMLElement | null;
       const isEditable =
         target?.isContentEditable ||

@@ -2,8 +2,8 @@
 import { TopicWorkFilter } from './topic-work-filter';
 import { useTopicSelection } from '../use-topic-selection';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lightbulb, Search, Wand2, X } from 'lucide-react';
 import type { ActivityIdea, ActivityIdeaBatch, TopicKind } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
@@ -14,11 +14,17 @@ import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { Textarea } from '@/app/components/ui/textarea';
+import { Pagination } from '@/app/components/ui/pagination';
 import { TOPIC_KIND_LABELS, TOPIC_VIEWS, createIdeaBatch, fetchIdeaBatch, fetchTopics, type TopicListParams } from '../api';
 import { TopicSummaryCard } from './topic-card';
+import { ideaBatchKeys, topicKeys } from '@/app/lib/query-keys';
+import {
+  applyTopicListState, defaultTopicDays, parseTopicListState, TOPIC_PAGE_SIZE_OPTIONS,
+  topicListParams, topicListUrl, type TopicView,
+} from '../url-state';
 
-const PAGE_SIZE = 8;
 const MAX_SELECTED = 5;
+const PICKER_URL_PREFIX = 'ip';
 
 /**
  * 从话题素材找灵感：复用素材库的筛选与卡片，不触发新的搜集。
@@ -55,49 +61,132 @@ function PickerBody({ onPickIdea, activityType, leadCharacterId, initialRequirem
   initialRequirement?: string;
 }) {
   const client = useQueryClient();
-  const [view, setView] = useState<'all' | 'favorite'>('all');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [workFilter, setWorkFilter] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
-  const [kind, setKind] = useState<TopicKind | ''>('');
-  const [days, setDays] = useState(30);
+  const [initial] = useState(() => parseTopicListState(
+    typeof window === 'undefined' ? '' : window.location.search,
+    PICKER_URL_PREFIX,
+  ));
+  const initialView: 'all' | 'favorite' = initial.view === 'favorite' ? 'favorite' : 'all';
+  const [view, setView] = useState<'all' | 'favorite'>(initialView);
+  const [searchInput, setSearchInput] = useState(initial.q);
+  const [search, setSearch] = useState(initial.q);
+  const [debouncedSearch, setDebouncedSearch] = useState(initial.q);
+  const [workFilter, setWorkFilter] = useState<string[]>(initial.works);
+  const [page, setPage] = useState(initial.page);
+  const [pageSize, setPageSize] = useState(initial.pageSize);
+  const [kind, setKind] = useState<TopicKind | ''>(initial.kind);
+  const [days, setDays] = useState(initial.view === 'favorite' ? 0 : initial.days);
   const { selected, setSelected, selectedTopics, toggleSelected: toggle } = useTopicSelection();
   const [requirement, setRequirement] = useState(initialRequirement || '');
   const [batchId, setBatchId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const composingRef = useRef(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 250);
+    const timer = setTimeout(() => {
+      if (!composingRef.current) setDebouncedSearch(search);
+    }, 250);
     return () => clearTimeout(timer);
   }, [search]);
 
-  const params: TopicListParams = {
-    ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-    ...(workFilter.length ? { works: workFilter } : {}),
-    view, days, ...(kind ? { kinds: [kind] } : {}),
-    page,
-    pageSize: PAGE_SIZE,
-  };
-  const topicsQuery = useQuery({ queryKey: ['topics', 'picker', params], queryFn: () => fetchTopics(params), staleTime: 15_000 });
+  const params: TopicListParams = topicListParams({
+    q: debouncedSearch, works: workFilter, kind, days, view, page, pageSize,
+  });
+  const topicsQuery = useQuery({
+    queryKey: topicKeys.picker(params),
+    queryFn: ({ signal }) => fetchTopics(params, { signal }),
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
   const batchQuery = useQuery({
-    queryKey: ['idea-batch', batchId],
+    queryKey: ideaBatchKeys.detail(batchId),
     queryFn: () => fetchIdeaBatch(batchId!),
     enabled: Boolean(batchId),
     refetchInterval: (query) => (['queued', 'running'].includes(query.state.data?.status ?? '') ? 2_000 : false),
   });
 
   const topics = useMemo(() => topicsQuery.data?.items ?? [], [topicsQuery.data]);
-  const totalPages = topicsQuery.data ? Math.max(1, Math.ceil(topicsQuery.data.total / PAGE_SIZE)) : 1;
   const batch = batchQuery.data ?? null;
+
+  const restoreFromUrl = useCallback((input: string | URLSearchParams) => {
+    const next = parseTopicListState(input, PICKER_URL_PREFIX);
+    const nextView: 'all' | 'favorite' = next.view === 'favorite' ? 'favorite' : 'all';
+    setView(nextView);
+    setSearchInput(next.q);
+    setSearch(next.q);
+    setDebouncedSearch(next.q);
+    setWorkFilter(next.works);
+    setKind(next.kind);
+    setDays(next.days);
+    setPage(next.page);
+    setPageSize(next.pageSize);
+  }, []);
+
+  useEffect(() => {
+    const restore = () => restoreFromUrl(window.location.search);
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, [restoreFromUrl]);
+
+  // 选择器的搜索、筛选与页码也写入 URL，关闭再打开或刷新后可以恢复。
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    applyTopicListState(query, {
+      q: debouncedSearch, works: workFilter, kind, days, view, page, pageSize,
+    }, PICKER_URL_PREFIX);
+    const nextSearch = query.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, '', nextUrl);
+    }
+  }, [debouncedSearch, workFilter, kind, days, view, page, pageSize]);
+
+  const totalPages = topicsQuery.data ? Math.max(1, Math.ceil(topicsQuery.data.total / pageSize)) : 1;
+  useEffect(() => {
+    if (!topicsQuery.data || page <= totalPages) return;
+    const timer = setTimeout(() => setPage(totalPages), 0);
+    return () => clearTimeout(timer);
+  }, [page, topicsQuery.data, totalPages]);
+  const isPageTransition = topicsQuery.isFetching && topicsQuery.isPlaceholderData;
+  const displayedPage = isPageTransition && topicsQuery.data ? topicsQuery.data.page : page;
+  const hasPickerCriteria = Boolean(debouncedSearch.trim()) || workFilter.length > 0 || Boolean(kind) || days !== 30 || view !== 'all';
+  const clearPickerCriteria = () => {
+    setSearchInput('');
+    setSearch('');
+    setDebouncedSearch('');
+    setWorkFilter([]);
+    setKind('');
+    setDays(30);
+    setView('all');
+    setPage(1);
+  };
+  const pickerState = { q: debouncedSearch, works: workFilter, kind, days, view, page, pageSize };
+  const pushPickerPage = (nextPage: number, nextPageSize = pageSize) => {
+    if (typeof window === 'undefined') return;
+    const next = topicListUrl(window.location.href, {
+      ...pickerState,
+      page: nextPage,
+      pageSize: nextPageSize,
+    }, PICKER_URL_PREFIX);
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) window.history.pushState(window.history.state, '', next);
+  };
+  const changePickerPage = (nextPage: number) => {
+    pushPickerPage(nextPage);
+    setPage(nextPage);
+  };
+  const changePickerPageSize = (nextPageSize: number) => {
+    pushPickerPage(1, nextPageSize);
+    setPageSize(nextPageSize);
+    setPage(1);
+  };
 
   const generate = async (append: boolean) => {
     setError(null); setBusy(true);
     try {
       if (append && batchId) {
         await createIdeaBatch({ topicIds: selected, appendToBatchId: batchId, ideaCount: 3 });
-        void client.invalidateQueries({ queryKey: ['idea-batch', batchId] });
+        void client.invalidateQueries({ queryKey: ideaBatchKeys.detail(batchId) });
       } else {
         const created = await createIdeaBatch({
           topicIds: selected,
@@ -118,7 +207,27 @@ function PickerBody({ onPickIdea, activityType, leadCharacterId, initialRequirem
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-40 flex-1 space-y-1">
           <span className="text-xs text-muted">关键词</span>
-          <Input aria-label="搜索素材" value={search} placeholder="搜索标题、摘要、作品或角色" onChange={(event) => setSearch(event.target.value)} className="h-9 text-sm" />
+          <Input
+            aria-label="搜索素材"
+            value={searchInput}
+            placeholder="搜索标题、摘要、作品或角色"
+            onChange={(event) => {
+              const value = event.target.value;
+              setSearchInput(value);
+              if (composingRef.current) return;
+              setSearch(value);
+              setPage(1);
+            }}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const value = event.currentTarget.value;
+              setSearchInput(value);
+              setSearch(value);
+              setPage(1);
+            }}
+            className="h-9 text-sm"
+          />
         </label>
         <label className="space-y-1">
           <span className="text-xs text-muted">作品</span>
@@ -126,32 +235,39 @@ function PickerBody({ onPickIdea, activityType, leadCharacterId, initialRequirem
         </label>
         <label className="space-y-1">
           <span className="text-xs text-muted">视图</span>
-          <Select aria-label="素材视图" value={view} onChange={(event) => { setView(event.target.value as 'all' | 'favorite'); setDays(event.target.value === 'favorite' ? 0 : 30); setPage(1); }} className="h-9 text-sm">
+          <Select aria-label="素材视图" value={view} onChange={(event) => { const nextView = event.target.value as TopicView; setView(nextView === 'favorite' ? 'favorite' : 'all'); setDays(defaultTopicDays(nextView)); setPage(1); }} className="h-9 text-sm">
             {TOPIC_VIEWS.filter((item) => item.id === 'all' || item.id === 'favorite').map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </Select>
         </label>
         <label className="space-y-1"><span className="text-xs text-muted">内容类型</span><Select aria-label="素材内容类型" value={kind} onChange={event => { setKind(event.target.value as TopicKind | ''); setPage(1); }}><option value="">全部类型</option>{(Object.keys(TOPIC_KIND_LABELS) as TopicKind[]).map(value => <option key={value} value={value}>{TOPIC_KIND_LABELS[value]}</option>)}</Select></label>
-        <label className="space-y-1"><span className="text-xs text-muted">时间范围</span><Select aria-label="素材时间范围" value={days} onChange={event => { setDays(Number(event.target.value)); setPage(1); }}><option value={7}>最近七天</option><option value={30}>最近三十天</option><option value={0}>不限时间</option></Select></label>
+        <label className="space-y-1"><span className="text-xs text-muted">时间范围</span><Select aria-label="素材时间范围" value={days} onChange={event => { setDays(Number(event.target.value)); setPage(1); }}><option value={7}>最近七天</option><option value={30}>最近三十天</option><option value={90}>最近九十天</option><option value={0}>不限时间</option></Select></label>
       </div>
 
-      {topicsQuery.isError && <Alert variant="danger">素材加载失败，请稍后重新打开。</Alert>}
+      {topicsQuery.isError && <Alert variant="danger">素材加载失败，请稍后重试。<Button size="sm" variant="ghost" onClick={() => { void topicsQuery.refetch(); }}>重试</Button></Alert>}
       {topicsQuery.isLoading && <Spinner size="sm" label="正在加载素材…" />}
-      {!topicsQuery.isLoading && !topics.length && (
-        <Alert variant="info" title="还没有可用素材">先去「话题素材库」配置自动搜集并补采，或稍后再来。</Alert>
+      {isPageTransition && <span className="text-xs text-muted" role="status">正在更新素材…</span>}
+      {!topicsQuery.isLoading && !topicsQuery.isError && !topics.length && (
+        <Alert variant="info" title={hasPickerCriteria ? '没有匹配的素材' : '还没有可用素材'}>
+          {hasPickerCriteria ? '换一个关键词，或清除筛选后再试。' : '先去「话题素材库」配置自动搜集并补采，或稍后再来。'}
+          {hasPickerCriteria && <Button size="sm" variant="ghost" onClick={clearPickerCriteria}>清除筛选</Button>}
+        </Alert>
       )}
       <ul className="space-y-2">
         {topics.map((topic) => (
           <TopicSummaryCard key={topic.id} topic={topic} selected={selected.includes(topic.id)} onToggle={toggle} showActions={false} />
         ))}
       </ul>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted">第 {page} / {totalPages} 页</span>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>上一页</Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>下一页</Button>
-          </div>
-        </div>
+      {topicsQuery.data && (
+        <Pagination
+          total={topicsQuery.data.total}
+          page={displayedPage}
+          pageSize={pageSize}
+          onPageChange={changePickerPage}
+          onPageSizeChange={changePickerPageSize}
+          pageSizeOptions={TOPIC_PAGE_SIZE_OPTIONS}
+          loading={isPageTransition}
+          compact
+        />
       )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-sm">
@@ -175,7 +291,7 @@ function PickerBody({ onPickIdea, activityType, leadCharacterId, initialRequirem
           {batch.status === 'failed' && <Alert variant="danger" title="生成失败">{batch.errorMessage || '请稍后重试'}</Alert>}
           <div className="grid gap-2 sm:grid-cols-2">
             {batch.ideas.map((idea) => (
-              <article key={idea.id} className="flex flex-col gap-1.5 rounded-[var(--radius-panel)] border border-border-default bg-surface p-3">
+              <article key={idea.id} className="flex flex-col gap-1.5 rounded-panel border border-border-default bg-surface p-3">
                 <h4 className="text-sm font-semibold text-ink">{idea.name}</h4>
                 <p className="text-xs text-muted">{idea.overview}</p>
                 <p className="text-xs text-muted"><span className="font-medium text-ink">改编：</span>{idea.adaptation}</p>

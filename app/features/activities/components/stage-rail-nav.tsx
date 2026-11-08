@@ -54,7 +54,7 @@ export function StageRailNav({
             <div className="flex items-center gap-1.5 font-bold text-xs text-ink">
               <Clapperboard className="h-4 w-4 text-accent" />
               <span>剧本分幕</span>
-              <span className="text-[10px] text-muted font-mono font-bold bg-surface-muted px-1.5 py-0.2 rounded">
+              <span className="text-xs text-muted font-mono font-bold bg-surface-muted px-1.5 py-0.2 rounded">
                 {stages.length}
               </span>
             </div>
@@ -113,8 +113,8 @@ export function StageRailNav({
               >
                 <div className="flex items-center justify-between text-xs">
                   <span
-                    className={`font-mono text-[11px] font-bold px-1.5 py-0.2 rounded ${
-                      isActive ? 'bg-accent text-white' : 'bg-surface-muted text-muted'
+                    className={`font-mono text-xs font-bold px-1.5 py-0.2 rounded ${
+                      isActive ? 'bg-accent text-fg-on-accent' : 'bg-surface-muted text-muted'
                     }`}
                   >
                     第 {idx + 1} 幕
@@ -136,7 +136,7 @@ export function StageRailNav({
                 </div>
 
                 {stage.location && (
-                  <div className="text-[10px] text-muted flex items-center gap-1 truncate pt-0.5">
+                  <div className="text-xs text-muted flex items-center gap-1 truncate pt-0.5">
                     <MapPin className="h-2.5 w-2.5 shrink-0 text-accent/70" />
                     <span className="truncate">{stage.location}</span>
                   </div>
@@ -159,7 +159,7 @@ export function StageRailNav({
                 aria-current={isActive ? 'true' : undefined}
                 className={`relative flex flex-col items-center justify-center h-10 w-10 rounded-xl font-mono text-xs font-bold transition-all shadow-2xs cursor-pointer ${
                   isActive
-                    ? 'bg-accent text-white shadow-md scale-105'
+                    ? 'bg-accent text-fg-on-accent shadow-md scale-105'
                     : 'bg-surface hover:bg-surface-muted text-ink/80 hover:text-ink border border-border-default/80 hover:border-accent/40'
                 }`}
                 title={`第 ${idx + 1} 幕：${stage.title}`}
@@ -199,7 +199,7 @@ export function StageRailNav({
                     {cleanStageTitle(stage.title)}
                   </h4>
 
-                  <div className="text-[11px] text-muted space-y-0.5 border-t border-border-default/50 pt-1.5">
+                  <div className="text-xs text-muted space-y-0.5 border-t border-border-default/50 pt-1.5">
                     {stage.location && (
                       <div className="flex items-center gap-2 truncate">
                         <span className="text-fg-subtle">地点:</span>

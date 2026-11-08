@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import type { NarrativeResearchClaim, NarrativeResearchEvidence, NarrativeResearchDraft } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -89,6 +88,7 @@ export function ResearchReview({
   const showEvidenceInline = paneWidth >= 1200 && evidenceOpen;
   const showClaimsInline = paneWidth >= 900 && !(showEvidenceInline && evidenceWide);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 面板宽度进入内联模式时同步收起对应抽屉，属于外部视口状态同步。
     if (showClaimsInline) setClaimsDrawerOpen(false);
     if (showEvidenceInline) setEvidenceDrawerOpen(false);
   }, [showClaimsInline, showEvidenceInline]);
@@ -117,13 +117,13 @@ export function ResearchReview({
   const claimsPanel = (
         <aside
           className={cn(
-            'h-full min-h-0 w-full flex flex-col rounded-[var(--radius-panel)] border border-border-default bg-surface overflow-hidden',
+            'h-full min-h-0 w-full flex flex-col rounded-panel border border-border-default bg-surface overflow-hidden',
             !isStandaloneWorkspace && 'max-h-[600px]'
           )}
         >
-          <div className="px-3 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
-            <span className="text-xs font-bold text-ink">结论清单 ({claims.length})</span>
-            <span className="text-[11px] text-muted">接受 {accepted}</span>
+          <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-ink">结论清单 ({claims.length})</span>
+            <span className="text-xs text-muted">接受 {accepted}</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
@@ -135,17 +135,15 @@ export function ResearchReview({
                   type="button"
                   onClick={() => { setSelectedId(claim.id); setClaimsDrawerOpen(false); }}
                   className={cn(
-                    'w-full rounded-lg border p-2.5 text-left transition-all cursor-pointer',
-                    isSelected
-                      ? 'border-accent bg-accent/8 shadow-2xs'
-                      : 'border-border-default bg-surface hover:border-accent/40 hover:bg-surface-muted/30'
+                    'w-full rounded-control p-2.5 text-left transition-colors cursor-pointer',
+                    isSelected ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
                   )}
                 >
                   <div className="flex items-center justify-between gap-1.5">
-                    <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold', claimTone(claim.claimType))}>
+                    <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs font-semibold', claimTone(claim.claimType))}>
                       {CLAIM_LABELS[claim.claimType ?? 'open-question'] ?? '未分类'}
                     </span>
-                    <span className="text-[11px] font-medium text-muted">
+                    <span className="text-xs font-medium text-muted">
                       {claim.status === 'accepted' ? (
                         <span className="text-success-fg">已接受</span>
                       ) : claim.status === 'rejected' ? (
@@ -155,8 +153,8 @@ export function ResearchReview({
                       )}
                     </span>
                   </div>
-                  <span className="mt-1.5 block text-xs font-bold leading-snug text-ink line-clamp-2">{claim.title}</span>
-                  <span className="mt-1 block text-[10px] text-muted">
+                  <span className="mt-1.5 block text-xs font-medium leading-snug text-ink line-clamp-2">{claim.title}</span>
+                  <span className="mt-1 block text-xs text-muted">
                     证据 {claim.evidence?.length ?? 0} 条 · {claim.origin === 'ai' ? 'AI 发现' : '手动'}
                   </span>
                 </button>
@@ -169,12 +167,12 @@ export function ResearchReview({
   const evidencePanel = (
           <aside
             className={cn(
-              'h-full min-h-0 w-full flex flex-col rounded-[var(--radius-panel)] border border-border-default bg-surface overflow-hidden',
+              'h-full min-h-0 w-full flex flex-col rounded-panel border border-border-default bg-surface overflow-hidden',
               !isStandaloneWorkspace && 'max-h-[600px]'
             )}
           >
             <div className="px-3 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-ink">
+              <span className="text-xs font-semibold text-ink">
                 证据原文快照 ({activeClaim?.evidence?.length ?? 0})
               </span>
               <div className="flex items-center gap-1">
@@ -182,7 +180,7 @@ export function ResearchReview({
                   type="button"
                   onClick={() => setEvidenceWide(!evidenceWide)}
                   hidden={!showEvidenceInline}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
                   title={evidenceWide ? '还原宽度' : '展开更宽证据视口'}
                 >
                   {evidenceWide ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -190,7 +188,7 @@ export function ResearchReview({
                 <button
                   type="button"
                   onClick={() => { setEvidenceOpen(false); setEvidenceDrawerOpen(false); }}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
                   title="收起证据面板"
                 >
                   <PanelRightClose className="size-3.5" />
@@ -208,12 +206,12 @@ export function ResearchReview({
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold text-ink">{evidence.locator}</p>
+                    <p className="font-semibold text-ink">{evidence.locator}</p>
                     <div className="flex flex-none items-center gap-1">
                       {evidence.archiveHref && (
                         <a
                           href={evidence.archiveHref}
-                          className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-accent hover:underline bg-accent/8"
+                          className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-xs text-accent hover:underline bg-accent/8"
                           title="跳转至归档原文"
                         >
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -233,13 +231,13 @@ export function ResearchReview({
                     </div>
                   </div>
 
-                  {evidence.contextBefore && <p className="text-[11px] leading-relaxed text-muted font-serif">{evidence.contextBefore}</p>}
+                  {evidence.contextBefore && <p className="text-xs leading-relaxed text-muted font-serif">{evidence.contextBefore}</p>}
                   <p className="whitespace-pre-wrap font-serif text-xs leading-relaxed text-ink font-medium bg-surface-muted/40 p-2 rounded border border-border-subtle">
                     {evidence.quoteSnapshot}
                   </p>
-                  {evidence.contextAfter && <p className="text-[11px] leading-relaxed text-muted font-serif">{evidence.contextAfter}</p>}
+                  {evidence.contextAfter && <p className="text-xs leading-relaxed text-muted font-serif">{evidence.contextAfter}</p>}
                   {!evidence.valid && evidence.validationMessage && (
-                    <Alert variant="warning" className="text-[11px] py-1">
+                    <Alert variant="warning" className="text-xs py-1">
                       {evidence.validationMessage}
                     </Alert>
                   )}
@@ -296,7 +294,7 @@ export function ResearchReview({
           )}
         >
           <div className="px-4 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
-            <span className="text-xs font-bold text-ink">审核正文与总稿</span>
+            <span className="text-xs font-semibold text-ink">审核正文与总稿</span>
             <div className="flex items-center gap-2">
 
             </div>
@@ -349,7 +347,7 @@ export function ResearchReview({
                 </div>
 
                 <div className="space-y-2">
-                  <h2 className="text-base sm:text-lg font-bold text-ink leading-snug">{activeClaim.title}</h2>
+                  <h2 className="text-base sm:text-lg font-semibold text-ink leading-snug">{activeClaim.title}</h2>
                   <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink/90 font-serif p-4 rounded-lg bg-surface-muted/30 border border-border-subtle">
                     {activeClaim.body}
                   </div>
@@ -378,7 +376,7 @@ export function ResearchReview({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-accent" aria-hidden="true" />
-                    <h3 className="text-sm font-bold text-ink">研究总稿（第 {draft.revision} 版）</h3>
+                    <h3 className="text-sm font-semibold text-ink">研究总稿（第 {draft.revision} 版）</h3>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => void act(() => onSaveDraft({ title: draftTitle, summary: draftSummary }))} disabled={busy}>
                     <span>保存总稿修改</span>
@@ -388,7 +386,7 @@ export function ResearchReview({
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-muted">总稿标题</span>
                   <input
-                    className="h-9 w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium"
+                    className="h-9 w-full rounded-control border border-border-default bg-surface px-3 text-sm font-medium"
                     value={draftTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
                   />

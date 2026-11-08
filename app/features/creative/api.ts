@@ -64,6 +64,13 @@ export async function fetchCreativeTasks() {
   return response.items.map(withPortalArtifactUrls);
 }
 
+export async function fetchCreativeTaskPage(cursor?: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({limit: '30'});
+  if (cursor) params.set('cursor', cursor);
+  const response = await getJson<CreativeTaskListResponse>(`creative/tasks?${params}`, {signal}, CreativeTaskListResponseSchema);
+  return {...response, items: response.items.map(withPortalArtifactUrls)};
+}
+
 export async function createCreativeTask(input: CreativeTaskInput) {
   const task = await postJson<CreativeTaskResponse>('creative/tasks', input, undefined, CreativeTaskResponseSchema);
   return withPortalArtifactUrls(task);

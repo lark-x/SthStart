@@ -21,9 +21,17 @@ const thumbAlpha = (value: string) => {
 };
 
 test('scrollbars stay invisible until the reader scrolls, then hide again', async ({ page }) => {
-  // 用确实超出一屏的页面：日历页首屏刚好放得下，滚不动就收不到 scroll 事件。
-  await page.goto('/apps/characters');
-  await expect(page.getByRole('heading', { name: '角色资料库' })).toBeVisible();
+  /*
+   * 用确实超出一屏的页面：滚不动就收不到 scroll 事件。
+   * 角色库改为卡片网格后，种子数据下首屏即可放下，不再适用；
+   * 控制中心概览不依赖库内数据，固定高出视口一屏以上。
+   */
+  await page.goto('/settings/control-center');
+  await expect(page.getByRole('heading', { level: 1, name: '控制中心' })).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight),
+    '页面必须能纵向滚动',
+  ).toBeGreaterThan(200);
 
   const htmlColor = () => page.evaluate(() => getComputedStyle(document.documentElement).scrollbarColor);
   const htmlMarked = () => page.evaluate(() => document.documentElement.hasAttribute('data-scrolling'));

@@ -1,4 +1,7 @@
+'use client';
+
 import React, { forwardRef } from 'react';
+import { useImeSafeHandlers } from './use-ime-safe-handlers';
 import { cn } from '../../lib/cn';
 
 export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -6,24 +9,16 @@ export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, error, rows = 3, ...props }, ref) => {
+  ({ className, error, rows = 3, onKeyDown, onCompositionStart, onCompositionEnd, ...props }, ref) => {
+    const imeHandlers = useImeSafeHandlers({ onKeyDown, onCompositionStart, onCompositionEnd });
     return (
       <textarea
         ref={ref}
         rows={rows}
         aria-invalid={Boolean(error) || undefined}
-        className={cn(
-          /*
-           * 多行输入承担的是「主要正文」（活动阶段描述、人设正文、提示词等），
-           * 按计划 §11.3 取 16px；笔记正文早已是 16px，这里与之对齐而不是各写一套。
-           */
-          'flex min-h-[96px] w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3.5 py-3 text-base leading-relaxed text-ink shadow-[var(--shadow-control-inset)] placeholder:text-muted/65',
-          'focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20',
-          'disabled:cursor-not-allowed disabled:opacity-50 resize-y',
-          error && 'border-danger focus-visible:border-danger focus-visible:ring-danger/20',
-          className
-        )}
+        className={cn('ui-control', className)}
         {...props}
+        {...imeHandlers}
       />
     );
   }

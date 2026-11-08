@@ -8,6 +8,8 @@ import { createLinsheHostedEnvironment, hostedReadinessFailure, normalizeService
 const root = resolve(import.meta.dirname, '..');
 const rootEnvironmentPath = resolve(root, '.env');
 if (existsSync(rootEnvironmentPath)) process.loadEnvFile(rootEnvironmentPath);
+const localEnvironmentPath = resolve(root, '.env.local');
+if (existsSync(localEnvironmentPath)) process.loadEnvFile(localEnvironmentPath);
 const environment = resolveLinsheEnvironment(root);
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const appToken = process.env.STHSTART_APP_TOKEN?.trim() ?? '';
@@ -57,6 +59,7 @@ function start(name, command, args, cwd, extraEnvironment = {}) {
     env: { ...process.env, ...extraEnvironment },
     windowsHide: true,
     detached: process.platform !== 'win32',
+    shell: process.platform === 'win32',
   });
   children.add(child);
   child.once('exit', (code) => {
@@ -150,7 +153,8 @@ if (vector && !(await waitFor('http://127.0.0.1:8765/health', vector))) {
 }
 
 const hosted = await readHostedReadiness();
-if (!hosted.ready) {
+const fatalMissing = hosted.missing.filter((item) => !item.includes("向量服务未就绪"));
+if (fatalMissing.length > 0) {
   console.error('[SthStart] 邻舍托管配置未就绪：');
   for (const item of hosted.missing) console.error(`  - ${item}`);
   shutdown(1);

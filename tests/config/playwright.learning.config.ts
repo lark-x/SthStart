@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 
-const directory = mkdtempSync(join(tmpdir(), 'sthstart-browser-learning-'));
+// worker 进程会重新载入本配置；沿用主进程建好的目录，避免每个 worker 各建一个没人清理的空目录。
+const directory = process.env.STHSTART_LEARNING_E2E_DIRECTORY || mkdtempSync(join(tmpdir(), 'sthstart-browser-learning-'));
 process.env.STHSTART_LEARNING_E2E_DIRECTORY = directory;
 const portalPort = process.env.E2E_PORTAL_PORT ?? '4873';
 const servicePort = process.env.E2E_SERVICE_PORT ?? '4800';

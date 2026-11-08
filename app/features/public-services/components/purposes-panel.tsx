@@ -3,10 +3,8 @@
 import React, { useState } from 'react';
 import {
   Check,
-  Layers,
   Plus,
   RefreshCw,
-  Sparkles,
   Trash2,
 } from 'lucide-react';
 import type {
@@ -14,10 +12,8 @@ import type {
   PublicServiceOverview,
   PurposeBinding,
 } from '@sthstart/contracts';
-import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -33,7 +29,6 @@ import type { Engine } from '@/app/features/generation/types';
 export function PurposesPanel({
   overview,
   models,
-  engines,
   purposeBindings,
   onRefresh,
 }: {
@@ -135,12 +130,12 @@ export function PurposesPanel({
           为各个业务应用指定默认的文本推理模型与视觉多模态模型；支持针对特定用途配置粒度覆盖。
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
           <Button
-            variant="primary"
+            variant="outline"
             size="sm"
             onClick={() => {
               setBindingAppId(apps[0]?.id ?? '');
@@ -154,25 +149,25 @@ export function PurposesPanel({
         </div>
       </div>
 
-      {/* 应用绑定卡片列表 */}
-      <div className="space-y-4">
+      {/* 应用绑定：每个应用是一段配置，而不是一张卡片。 */}
+      <div className="divide-y divide-border-subtle border-y border-border-subtle">
         {apps.map((app) => {
           const selection = getEffectiveSelection(app.id);
           const isSaving = savingAppId === app.id;
           const appPurposes = purposeBindings.filter((b) => b.appId === app.id);
 
           return (
-            <Card key={app.id} className="overflow-hidden">
-              <CardHeader className="pb-3 border-b border-border-subtle bg-surface-raised/40">
+            <section key={app.id} className="py-6">
+              <div className="pb-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <CardTitle className="text-base flex items-center gap-2">
+                    <h3 className="flex items-center gap-2 text-base font-semibold text-ink">
                       <span>{app.name}</span>
                       <span className="text-xs font-mono text-muted">({app.id})</span>
-                    </CardTitle>
-                    <CardDescription className="text-xs mt-0.5">
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted">
                       可用能力：{app.capabilities.join(', ')}
-                    </CardDescription>
+                    </p>
                   </div>
                   <Button
                     variant="primary"
@@ -184,14 +179,15 @@ export function PurposesPanel({
                     保存绑定
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent className="p-4 space-y-4">
+              </div>
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-ink mb-1.5">
+                    <label htmlFor={`assignment-text-${app.id}`} className="block text-xs font-semibold text-ink mb-1.5">
                       默认文本推理模型 (Primary Text Model)
                     </label>
                     <Select
+                      id={`assignment-text-${app.id}`}
                       value={selection.textProfileId ?? ''}
                       onChange={(e) => handleModelChange(app.id, 'textProfileId', e.target.value)}
                     >
@@ -204,10 +200,11 @@ export function PurposesPanel({
                     </Select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-ink mb-1.5">
+                    <label htmlFor={`assignment-vision-${app.id}`} className="block text-xs font-semibold text-ink mb-1.5">
                       多模态与视觉模型 (Vision / Multimodal)
                     </label>
                     <Select
+                      id={`assignment-vision-${app.id}`}
                       value={selection.multimodalProfileId ?? ''}
                       onChange={(e) => handleModelChange(app.id, 'multimodalProfileId', e.target.value)}
                     >
@@ -225,7 +222,7 @@ export function PurposesPanel({
                 {appPurposes.length > 0 && (
                   <div className="pt-2 border-t border-border-subtle">
                     <div className="text-xs font-semibold text-ink mb-2">特定用途细化覆盖：</div>
-                    <div className="divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface-raised/30">
+                    <div className="divide-y divide-border-subtle border-y border-border-subtle">
                       {appPurposes.map((p) => {
                         const targetModel = models.find((m) => m.id === p.targetId);
                         return (
@@ -255,8 +252,8 @@ export function PurposesPanel({
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           );
         })}
       </div>
@@ -270,8 +267,9 @@ export function PurposesPanel({
       >
         <form onSubmit={handleCreatePurposeBinding} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-ink mb-1">目标应用</label>
+            <label htmlFor="purpose-binding-app" className="block text-xs font-semibold text-ink mb-1">目标应用</label>
             <Select
+              id="purpose-binding-app"
               value={bindingAppId}
               onChange={(e) => setBindingAppId(e.target.value)}
               required
@@ -294,8 +292,9 @@ export function PurposesPanel({
             <p className="text-2xs text-muted mt-1">业务模块在调用公共 AI 内核时指定的特定用途名称。</p>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-ink mb-1">绑定模型</label>
+            <label htmlFor="purpose-binding-target" className="block text-xs font-semibold text-ink mb-1">绑定模型</label>
             <Select
+              id="purpose-binding-target"
               value={bindingTargetId}
               onChange={(e) => setBindingTargetId(e.target.value)}
               required

@@ -5,6 +5,7 @@ import { Copy, Trash2, Edit3, Route } from 'lucide-react';
 import type { ProviderProfile, PublicServiceOverview } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 
 export function ProviderList({
   profiles,
@@ -25,7 +26,7 @@ export function ProviderList({
 }) {
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
+      <div className="divide-y divide-border-subtle border-y border-border-subtle">
         {profiles.map((profile) => {
           const usedBy =
             overview?.llmAssignments
@@ -41,7 +42,7 @@ export function ProviderList({
             <article
               key={profile.id}
               data-testid="model-card"
-              className={`grid items-center gap-4 p-4 rounded-[var(--radius-panel)] border border-border-default bg-surface lg:grid-cols-[minmax(0,1fr)_auto] ${
+              className={`grid items-center gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] ${
                 profile.enabled ? '' : 'opacity-65'
               }`}
             >
@@ -51,7 +52,7 @@ export function ProviderList({
                     <strong className="text-sm font-semibold text-ink block truncate">
                       {profile.name}
                     </strong>
-                    <code className="text-sm text-accent-dark block truncate mt-0.5 font-mono">
+                    <code className="mt-0.5 block truncate font-mono text-sm text-muted">
                       {profile.model || '尚未选择模型'}
                     </code>
                   </div>
@@ -80,7 +81,7 @@ export function ProviderList({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1 border-t border-border-subtle pt-3 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-0">
+              <div className="flex items-center gap-1 border-t border-border-subtle pt-3 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-0">
                 {usedBy.length === 0 && onAssignToApps && (
                   <Button size="sm" variant="outline" className="mr-auto" onClick={() => onAssignToApps(profile)}>
                     <Route className="h-3.5 w-3.5" />
@@ -91,26 +92,20 @@ export function ProviderList({
                   <Edit3 className="h-3.5 w-3.5" />
                   <span>编辑</span>
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => onClone(profile)}>
-                  <Copy className="h-3.5 w-3.5" />
-                  <span>复制配置</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-danger hover:bg-danger/10"
-                  onClick={() => onDelete(profile)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span>删除</span>
-                </Button>
+                <RowActionsMenu
+                  label={`更多模型操作：${profile.name}`}
+                  items={[
+                    { label: '复制配置', icon: <Copy className="h-3.5 w-3.5 text-muted" />, onSelect: () => onClone(profile) },
+                    { label: '删除', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => onDelete(profile), tone: 'danger', separatorBefore: true },
+                  ]}
+                />
               </div>
             </article>
           );
         })}
 
         {profiles.length === 0 && (
-          <div className="col-span-full p-8 text-center text-sm text-muted border border-dashed border-border-default rounded">
+          <div className="py-10 text-center text-sm text-muted">
             {searching ? '没有匹配的模型，请调整搜索条件。' : '还没有模型模板。点击“新建模板”添加，再到“应用路由”选择生效模型。'}
           </div>
         )}

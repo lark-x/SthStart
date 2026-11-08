@@ -22,7 +22,7 @@ function updateBubble(panel: ComicPanel, bubbleId: string, patch: Partial<ComicB
   return { ...panel, bubbles: panel.bubbles.map((bubble) => bubble.id === bubbleId ? { ...bubble, ...patch } : bubble) };
 }
 
-const fieldClass = 'w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
+const fieldClass = 'w-full rounded-control border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
 const labelClass = 'block space-y-1.5 text-xs font-medium text-muted';
 
 export function ComicPanelInspector({ panel, content, page, selectedBubbleId, issues, onChange, onSelectBubble, onOpenRenderSettings, onRerenderSelected, onMovePanel, onExportPng, canExport }: ComicPanelInspectorProps) {
@@ -50,8 +50,8 @@ export function ComicPanelInspector({ panel, content, page, selectedBubbleId, is
           <button type="button" disabled={panelIndex < 0 || panelIndex >= page.panelIds.length - 1} onClick={() => onMovePanel(1)} className="rounded border border-border-default px-2 py-1 disabled:opacity-40">后移</button>
         </div></div>
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={onOpenRenderSettings} className="rounded-[var(--radius-control)] bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-dark">✦ 绘制新图</button>
-          <button type="button" onClick={onRerenderSelected} disabled={!panel.selectedImage} className="rounded-[var(--radius-control)] border border-border-default bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-surface-hover disabled:opacity-50">按此图配置重绘</button>
+          <button type="button" onClick={onOpenRenderSettings} className="rounded-control bg-accent px-3 py-2 text-sm font-semibold text-fg-on-accent hover:bg-accent-dark">绘制新图</button>
+          <button type="button" onClick={onRerenderSelected} disabled={!panel.selectedImage} className="rounded-control border border-border-default bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-surface-hover disabled:opacity-50">按此图配置重绘</button>
         </div>
         {panel.selectedImage && <p className="text-xs text-muted">当前画面来源：{panel.selectedImage.origin === 'comic_render' ? '漫画绘制历史' : '原镜头绘制历史'}</p>}
         <label className={labelClass}>来源镜头
@@ -81,11 +81,11 @@ export function ComicPanelInspector({ panel, content, page, selectedBubbleId, is
         <label className={labelClass}>气泡预留位置<select className={fieldClass} value={panel.textSafeArea} onChange={(event) => onChange({ ...panel, textSafeArea: event.target.value as ComicPanel['textSafeArea'] })}>
           <option value="none">不预留</option><option value="top_left">左上</option><option value="top_right">右上</option><option value="bottom">底部</option>
         </select></label>
-        {panel.selectedImage && <fieldset className="space-y-2 rounded-[var(--radius-panel)] border border-border-default p-3"><legend className="px-1 text-xs font-semibold text-ink">图片裁切</legend>
+        {panel.selectedImage && <fieldset className="space-y-2 rounded-panel border border-border-default p-3"><legend className="px-1 text-xs font-semibold text-ink">图片裁切</legend>
           {([{ key: 'focalX', label: '水平焦点', min: 0, max: 1, step: 0.01 }, { key: 'focalY', label: '垂直焦点', min: 0, max: 1, step: 0.01 }, { key: 'zoom', label: '放大', min: 1, max: 3, step: 0.05 }] as const).map((field) => <label key={field.key} className={labelClass}>{field.label} · {panel.crop[field.key].toFixed(2)}
             <input className="w-full accent-accent" type="range" min={field.min} max={field.max} step={field.step} value={panel.crop[field.key]} onChange={(event) => onChange({ ...panel, crop: { ...panel.crop, [field.key]: Number(event.target.value) } })} />
           </label>)}</fieldset>}
-        <div className="space-y-2 rounded-[var(--radius-panel)] border border-border-default p-3">
+        <div className="space-y-2 rounded-panel border border-border-default p-3">
           <div className="flex items-center justify-between"><h4 className="text-xs font-semibold text-ink">画格台词</h4><button type="button" disabled={panel.bubbles.length >= 6} onClick={addBubble} className="text-xs font-semibold text-accent disabled:opacity-50">＋ 添加气泡</button></div>
           <div className="flex flex-wrap gap-1.5">
             {panel.bubbles.map((bubble, index) => <button type="button" key={bubble.id} onClick={() => onSelectBubble(bubble.id)}
@@ -122,7 +122,7 @@ export function ComicPanelInspector({ panel, content, page, selectedBubbleId, is
           )}
           {!selectedBubble && panel.bubbles.length > 0 && <p className="text-xs text-muted">点选上方气泡或直接在画布中拖动。</p>}
         </div>
-        <details className="rounded-[var(--radius-panel)] border border-border-default p-3"><summary className="cursor-pointer text-xs font-semibold text-ink">阅读演出</summary><div className="mt-3 space-y-2">
+        <details className="rounded-panel border border-border-default p-3"><summary className="cursor-pointer text-xs font-semibold text-ink">阅读演出</summary><div className="mt-3 space-y-2">
           <label className={labelClass}>镜头移动<select className={fieldClass} value={panel.presentation.camera} onChange={(event) => onChange({ ...panel, presentation: { ...panel.presentation, camera: event.target.value as ComicPanel['presentation']['camera'] } })}>
             <option value="none">无</option><option value="push_in">轻推近</option><option value="pan_left">向左平移</option><option value="pan_right">向右平移</option>
           </select></label>
@@ -131,8 +131,8 @@ export function ComicPanelInspector({ panel, content, page, selectedBubbleId, is
           </select></label>
           <label className={labelClass}>自动播放停留（毫秒，留空自动计算）<input className={fieldClass} type="number" min={500} max={30000} step={100} value={panel.presentation.holdMs ?? ''} onChange={(event) => onChange({ ...panel, presentation: { ...panel.presentation, holdMs: event.target.value ? Math.max(500, Math.min(30000, Number(event.target.value))) : null } })} /></label>
         </div></details>
-        {issues.length > 0 && <div role="alert" className="rounded-[var(--radius-control)] border border-warning/30 bg-warning/5 p-2 text-xs text-warning">{issues.map((issue) => <p key={issue}>{issue}</p>)}</div>}
-        <button type="button" disabled={!canExport} onClick={onExportPng} className="w-full rounded-[var(--radius-control)] bg-accent px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">导出当前页 PNG</button>
+        {issues.length > 0 && <div role="alert" className="rounded-control border border-warning/30 bg-warning/5 p-2 text-xs text-warning">{issues.map((issue) => <p key={issue}>{issue}</p>)}</div>}
+        <button type="button" disabled={!canExport} onClick={onExportPng} className="w-full rounded-control bg-accent px-3 py-2 text-sm font-semibold text-fg-on-accent disabled:cursor-not-allowed disabled:opacity-50">导出当前页 PNG</button>
       </div>
     </aside>
   );

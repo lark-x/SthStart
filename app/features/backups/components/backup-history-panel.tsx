@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { Archive, DownloadCloud, RotateCcw, Trash2 } from 'lucide-react';
 import type { BackupRestorePreview, BackupSnapshot } from '@sthstart/contracts';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
@@ -43,18 +42,18 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
   };
 
   return (
-    <div className="space-y-3">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Archive className="h-4 w-4" aria-hidden="true" />备份版本
-          </CardTitle>
-          <CardDescription>每个版本都要在某个目标上完整发布后才能恢复。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+    <div className="divide-y divide-border-subtle">
+      <section className="border-b border-border-subtle py-5">
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <Archive className="h-4 w-4 text-muted" aria-hidden="true" />备份版本
+          </h2>
+          <p className="mt-1 text-sm text-muted">每个版本都要在某个目标上完整发布后才能恢复。</p>
+        </div>
+        <div className="divide-y divide-border-subtle">
           {snapshots.length === 0 && <EmptyState title="还没有备份版本" description="完成一次备份后，这里会列出可以恢复的版本。" />}
           {snapshots.map((snapshot) => (
-            <div key={snapshot.id} className="rounded-[var(--radius-panel)] border border-border-default p-3">
+            <div key={snapshot.id} className="py-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-medium">
                   {formatTime(snapshot.createdAt)} · {describeScope(snapshot.scope)}
@@ -110,20 +109,20 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Trash2 className="h-4 w-4" aria-hidden="true" />保留清理
-          </CardTitle>
-          <CardDescription>按目标保留最近若干次成功版本；长期保留的版本永不被自动淘汰。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <section className="py-5">
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <Trash2 className="h-4 w-4 text-muted" aria-hidden="true" />保留清理
+          </h2>
+          <p className="mt-1 text-sm text-muted">按目标保留最近若干次成功版本；长期保留的版本永不被自动淘汰。</p>
+        </div>
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <select
-              className="h-9 rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+              className="h-9 rounded-control border border-border-default bg-surface px-2 text-sm"
               value={cleanupTargetId}
               onChange={(event) => setCleanupTargetId(event.target.value)}
             >
@@ -156,22 +155,22 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
               }
             }}
           />
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <DownloadCloud className="h-4 w-4" aria-hidden="true" />从网盘找回版本（换机或本地数据丢失）
-          </CardTitle>
-          <CardDescription>
+      <section className="py-5">
+        <div className="pb-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+            <DownloadCloud className="h-4 w-4 text-muted" aria-hidden="true" />从网盘找回版本（换机或本地数据丢失）
+          </h2>
+          <p className="mt-1 text-sm text-muted">
             只凭远端仓库和一个目标网盘就能列出可恢复版本；找回后会登记到本机，再进行预览与恢复。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+          </p>
+        </div>
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <select
-              className="h-9 rounded-[var(--radius-control)] border border-border-default bg-surface px-2 text-sm"
+              className="h-9 rounded-control border border-border-default bg-surface px-2 text-sm"
               value={remoteTargetId}
               onChange={(event) => { setRemoteTargetId(event.target.value); setRemoteItems(null); }}
             >
@@ -218,7 +217,7 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
             <div className="space-y-2">
               {remoteItems.length === 0 && <p className="text-sm text-muted">这个目标上没有可登记的版本。</p>}
               {remoteItems.map((item) => (
-                <div key={item.snapshotId} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-panel)] border border-border-default p-3 text-sm">
+                <div key={item.snapshotId} className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-border-default p-3 text-sm">
                   <span className="font-mono text-xs">{item.snapshotId.slice(0, 8)} · {formatBytes(item.size)}</span>
                   {item.adopted
                     ? <Badge variant="accent">已登记</Badge>
@@ -243,8 +242,8 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {restoreTarget && (
         <RestoreDialog
@@ -281,7 +280,7 @@ function RestoreDialog({ snapshot, targetId, targetLabel, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-[var(--radius-panel)] border border-border-default bg-surface p-4">
+      <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-panel border border-border-default bg-surface p-4">
         <h2 className="text-lg font-semibold">恢复预览</h2>
         <p className="mt-1 text-sm text-muted">
           {formatTime(snapshot.createdAt)} 的版本 · 来自「{targetLabel}」。下载与验证不会修改当前数据。

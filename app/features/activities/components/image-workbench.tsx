@@ -51,7 +51,7 @@ import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import {
   useImageConfigDraft,
-  useImageAttempts,
+  useImageAttemptPages,
   useActivityCapabilities,
   useActivityGenerationPresets,
   useActivityImageGenerationAssignments,
@@ -127,7 +127,8 @@ export function ImageWorkbench({
 
   // Queries
   const { data: configDraftData, refetch: refetchDraft } = useImageConfigDraft(activity.id);
-  const { data: attemptsData, refetch: refetchAttempts } = useImageAttempts(activity.id, activeSlot?.id);
+  const attemptsQuery = useImageAttemptPages(activity.id, activeSlot?.id);
+  const { refetch: refetchAttempts } = attemptsQuery;
   const { data: capabilitiesData } = useActivityCapabilities();
   const { data: assetsData } = useActivityAssets(activity.id);
 
@@ -457,7 +458,7 @@ export function ImageWorkbench({
     }
   };
 
-  const attempts = attemptsData?.items || [];
+  const attempts = Array.from(new Map((attemptsQuery.data?.pages.flatMap(page => page.items) ?? []).map(item => [item.id, item])).values());
   const currentAttempt = attempts.find((a) => a.id === selectedAttemptId) || attempts[0];
   useEffect(() => {
     let active = true;
@@ -494,7 +495,7 @@ export function ImageWorkbench({
             <select
               value={activeSlot?.id || ''}
               onChange={(e) => setActiveSlotId(e.target.value)}
-              className="min-w-0 w-full sm:w-auto sm:max-w-[26rem] bg-paper border border-border-control text-ink text-sm rounded-[var(--radius-control)] px-2.5 py-1.5 focus:border-accent outline-none"
+              className="min-w-0 w-full sm:w-auto sm:max-w-[26rem] bg-paper border border-border-control text-ink text-sm rounded-control px-2.5 py-1.5 focus:border-accent outline-none"
             >
               {mediaSlots.map((slot, index) => {
                 const stage = stageMap.get(slot.stageId);
@@ -776,7 +777,7 @@ export function ImageWorkbench({
           </div>
 
           {/* Reference Image Section (I2I) */}
-          <div className="bg-surface/60 border border-border-default rounded-[var(--radius-panel)] p-3 space-y-2.5">
+          <div className="bg-surface/60 border border-border-default rounded-panel p-3 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
@@ -868,7 +869,7 @@ export function ImageWorkbench({
             promptOptimization={activeSlotConfig.promptOptimization} finalSupported={visualPreview?.promptAssembly === 'service-finalized-v1'}
             sourcePrompt={visualPreview?.positivePrompt ?? ''} effectiveAI={visualPreview?.promptOptimization?.enabled ?? true}
             disabled={drawing} onChange={patch => { handleUpdateSlotConfig(patch); setPreparedRecipe(null); setPreparedCompilation(null); }} />
-          <div className={`${advanced ? '' : 'hidden'} bg-surface/40 border border-border-default rounded-[var(--radius-panel)] p-3`}>
+          <div className={`${advanced ? '' : 'hidden'} bg-surface/40 border border-border-default rounded-panel p-3`}>
             <PromptSourcePanel
               activityId={activity.id}
               blocks={sourceRecipe?.blocks || []}
@@ -992,7 +993,11 @@ export function ImageWorkbench({
             </Button>
           </div>
 
-          {attempts.length === 0 ? (
+          {attemptsQuery.isError && <div role="alert">图片历史读取失败。<Button variant="outline" disabled={attemptsQuery.isFetching} onClick={() => void (attemptsQuery.isFetchNextPageError ? attemptsQuery.fetchNextPage() : attemptsQuery.refetch())}>重试读取历史</Button></div>}
+          {attemptsQuery.isLoading && <p role="status">正在读取图片历史…</p>}
+          {attemptsQuery.hasNextPage && <Button variant="outline" disabled={attemptsQuery.isFetching} onClick={() => { if (!attemptsQuery.isFetching) void attemptsQuery.fetchNextPage(); }}>{attemptsQuery.isFetchingNextPage ? '正在加载…' : '加载更多图片历史'}</Button>}
+          {!attemptsQuery.isError && !attemptsQuery.isFetching && attempts.length > 0 && !attemptsQuery.hasNextPage && <p role="status">已显示全部图片历史</p>}
+          {attempts.length === 0 && !attemptsQuery.isError && !attemptsQuery.isLoading ? (
             <div className="p-8 text-center text-sm text-slate-500 border border-dashed border-border-default rounded-lg">
               还没有绘制记录。选择上方预设后点击“绘制新图”即可开始。
             </div>

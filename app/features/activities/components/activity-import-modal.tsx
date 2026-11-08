@@ -82,7 +82,7 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
             size="sm"
             disabled={!stagedResult || commitMutation.isPending}
             onClick={handleCommit}
-            className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+            className="text-sm bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5 shadow-xs"
           >
             {commitMutation.isPending ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             {commitMutation.isPending ? '创建新活动中…' : '确认导入活动'}

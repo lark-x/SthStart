@@ -34,7 +34,7 @@ import {
 } from '@/app/features/knowledge/components/reference-assistant';
 import { previewReferences } from '@/app/features/notebook/api';
 import { authorshipLabels, natureLabels } from '@/app/features/notebook/schemas';
-import { activityKeys } from '@/app/lib/query-keys';
+import { activityKeys, characterFacetKeys, characterKeys, mcpSourceKeys } from '@/app/lib/query-keys';
 import {
   cancelPlanningJob, cancelPlanningResearch, createActivityFromPlanningSession, createPlanningSession,
   fetchActivityCharacterSnapshot, fetchPlanningJob, fetchPlanningPersonaDraft, fetchPlanningResearch,
@@ -158,7 +158,7 @@ function StatusToggle({ value, onChange, lockedLabel }: {
           role="radio"
           aria-checked={value === option}
           onClick={() => onChange(option)}
-          className={'rounded-[var(--radius-control)] border px-2 py-1 text-xs transition-colors ' +
+          className={'rounded-control border px-2 py-1 text-xs transition-colors ' +
             (value === option
               ? option === 'excluded' ? 'border-danger bg-danger/10 text-danger-fg' : 'border-accent bg-accent/10 text-accent-dark'
               : 'border-border-default text-muted hover:bg-surface-hover')}
@@ -352,9 +352,9 @@ export function PlanningWizard() {
   }, [params]);
 
   const llmReady = capabilities ? (capabilities.llmStatus ? capabilities.llmStatus.ready : capabilities.llm) : null;
-  const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, staleTime: 30_000 });
+  const sourcesQuery = useQuery({ queryKey: mcpSourceKeys.all, queryFn: fetchMcpSources, staleTime: 30_000 });
   const worksQuery = useQuery({
-    queryKey: ['characters', 'works-facets'],
+    queryKey: characterFacetKeys.works(),
     queryFn: () => browseCharacters({ page: 1, pageSize: 1 }),
     staleTime: 60_000,
   });
@@ -761,7 +761,7 @@ export function PlanningWizard() {
       } else {
         setNotice('已匹配到本地角色快照。');
       }
-      void client.invalidateQueries({ queryKey: ['characters'] });
+      void client.invalidateQueries({ queryKey: characterKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '处理待补人设失败。');
     } finally { setBusy(false); }
@@ -869,7 +869,7 @@ export function PlanningWizard() {
   /** 加入参考资料：同一来源只保留一条，重复添加不产生第二份。 */
   const addReferences = async (items: Array<{ item: KnowledgeSearchItem; usage: PlanningReferenceUsage }>) => {
     try {
-      const result = await previewReferences(items.map(({ item, usage }) => ({ sourceKind: (item.kind === 'note' ? 'note' : 'narrative'), sourceId: item.id, usage })));
+      const result = await previewReferences(items.map(({ item, usage }) => ({ sourceKind: item.kind, sourceId: item.id, usage })));
       addAssistantReferences(result.snapshot.references.map(reference => ({ ...reference, frozenReference: reference })));
     } catch (caught) { setError(caught instanceof Error ? caught.message : '读取引用内容失败。'); }
 
@@ -1102,7 +1102,7 @@ export function PlanningWizard() {
                 disabled={!reachable || generating || researching}
                 aria-current={step === value ? 'step' : undefined}
                 onClick={() => { if (reachable) setStep(value); }}
-                className={'inline-flex min-h-9 items-center gap-2 rounded-[var(--radius-control)] border px-3 text-sm transition-colors ' +
+                className={'inline-flex min-h-9 items-center gap-2 rounded-control border px-3 text-sm transition-colors ' +
                   (step === value ? 'border-accent bg-accent/10 font-semibold text-accent-dark'
                     : reachable ? 'border-border-default text-muted hover:bg-surface-hover' : 'border-border-subtle text-fg-subtle opacity-60')}
               >
@@ -1123,7 +1123,7 @@ export function PlanningWizard() {
           <WorkbenchColumns
             left={(
               <>
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                   <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Compass className="h-4 w-4 text-accent" />活动意图</h3>
                   <label className="block space-y-1.5">
                     <span className="text-xs text-muted">活动模板</span>
@@ -1192,7 +1192,7 @@ export function PlanningWizard() {
                   </details>
                 </section>
 
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Users className="h-4 w-4 text-accent" />主角与参与角色</h3>
@@ -1256,9 +1256,9 @@ export function PlanningWizard() {
             )}
             right={(
               <>
-               <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+               <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                  <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Sparkles className="h-4 w-4 text-accent" />补充要求</h3>
-                <details className="rounded-[var(--radius-control)] bg-surface-muted p-3">
+                <details className="rounded-control bg-surface-muted p-3">
                 <summary className="cursor-pointer text-sm font-medium text-ink">参考资料与话题灵感 · {references.length} 项</summary>
                 <div className="mt-4 space-y-5">
                 {/* 参考资料：手动检索选择，不触发联网；正文由服务端在生成时冻结。 */}
@@ -1341,10 +1341,10 @@ export function PlanningWizard() {
                   </details>
                 </section>
 
-                <details className="rounded-[var(--radius-control)] bg-surface-muted p-3">
+                <details className="rounded-control bg-surface-muted p-3">
                 <summary className="cursor-pointer text-sm font-medium text-ink">资料检索与联动范围 · {intake.sourceIds.length} 个资料源</summary>
                 <div className="mt-4 space-y-5">
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                   <div>
                     <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Link2 className="h-4 w-4 text-accent" />联动范围</h3>
                     <p className="text-xs text-muted">选择允许联动的作品，检索与人物推荐会限制在这些范围内。</p>
@@ -1389,7 +1389,7 @@ export function PlanningWizard() {
                   )}
                 </section>
 
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Search className="h-4 w-4 text-accent" />资料源</h3>
                     <a href={MCP_SETTINGS_HREF} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">配置资料源<ExternalLink className="h-3 w-3" /></a>
@@ -1432,7 +1432,7 @@ export function PlanningWizard() {
         {step === 1 && (
           <WorkbenchColumns
             left={(
-              <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+              <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                 <PageTabs
                   ariaLabel="人物与地点"
                   value={tab}
@@ -1609,7 +1609,7 @@ export function PlanningWizard() {
               </section>
             )}
             right={(
-              <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+              <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Wand2 className="h-4 w-4 text-accent" />生成方案</h3>
                 <p className="text-xs text-muted">必选的人物会进入方案，排除的候选不会被使用；设为「主要地点」的会作为方案首选场地。</p>
                 <label className="block space-y-1.5">
@@ -1658,7 +1658,7 @@ export function PlanningWizard() {
                 const active = plan.id === selectedPlanId;
                 const expanded = expandedPlanId === plan.id;
                 return (
-                  <article key={plan.id} className={'flex flex-col gap-2 rounded-[var(--radius-panel)] border bg-surface p-3 shadow-xs ' + (active ? 'border-accent' : 'border-border-default')}>
+                  <article key={plan.id} className={'flex flex-col gap-2 rounded-panel border bg-surface p-3 shadow-xs ' + (active ? 'border-accent' : 'border-border-default')}>
                     <header className="space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <h3 className="min-w-0 flex-1 text-sm font-semibold text-ink">{payload.activity.title || '未命名方案'}</h3>
@@ -1735,7 +1735,7 @@ export function PlanningWizard() {
           <WorkbenchColumns
             left={(
               <>
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                   <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><Check className="h-4 w-4 text-accent" />最终确认</h3>
                   {!selectedCandidate && <Alert variant="warning">请先在「方案对比」中选择一份方案。</Alert>}
                   {selectedCandidate && activePayload && (
@@ -1769,7 +1769,7 @@ export function PlanningWizard() {
                   )}
                 </section>
 
-                <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+                <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="flex items-center gap-2 text-base font-semibold text-ink"><UserPlus className="h-4 w-4 text-accent" />待处理人设（{pendingActors.length}）</h3>
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => void refreshSession()}><RefreshCw className="h-3.5 w-3.5" />重新读取企划</Button>
@@ -1812,7 +1812,7 @@ export function PlanningWizard() {
               </>
             )}
             right={(
-              <section className="space-y-3 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 shadow-xs">
+              <section className="space-y-3 rounded-panel border border-border-default bg-surface p-4 shadow-xs">
                 <h3 className="text-base font-semibold text-ink">创建前检查</h3>
                 <ul className="space-y-1 text-xs text-muted">
                   <li>{selectedCandidate ? '已选择方案：' + (activePayload?.activity.title || '未命名') : '尚未选择方案'}</li>

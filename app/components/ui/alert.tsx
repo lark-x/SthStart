@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
-export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface AlertProps extends React.ComponentPropsWithRef<'div'> {
   variant?: 'info' | 'success' | 'warning' | 'danger' | 'default';
   title?: string;
   onDismiss?: () => void;
@@ -30,7 +30,7 @@ export function Alert({
     <div
       role={variant === 'danger' ? 'alert' : 'status'}
       className={cn(
-        'relative flex items-start gap-3 rounded-lg border p-4 text-sm leading-relaxed',
+        'relative flex items-start gap-3 rounded-control border p-4 text-sm leading-relaxed',
         variant === 'success' && 'border-success-border bg-success-bg text-success-fg',
         variant === 'warning' && 'border-warning-border bg-warning-bg text-warning-fg',
         variant === 'danger' && 'border-danger-border bg-danger-bg text-danger-fg',
@@ -40,7 +40,7 @@ export function Alert({
       )}
       {...props}
     >
-      <Icon className="h-5 w-5 flex-shrink-0 mt-0.5" aria-hidden="true" />
+      <Icon className="h-4 w-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
         {title && <p className="font-semibold mb-1">{title}</p>}
         <div className="text-sm leading-relaxed">{children}</div>
@@ -49,7 +49,7 @@ export function Alert({
         <button
           type="button"
           onClick={onDismiss}
-          className="flex-shrink-0 p-1 -mr-1 -mt-1 opacity-70 hover:opacity-100 rounded focus-visible:outline-none focus-visible:ring-2"
+          className="flex h-9 w-9 shrink-0 items-center justify-center -mr-1 -mt-1 rounded-control opacity-70 hover:opacity-100 hover:bg-surface-hover"
           aria-label="关闭提示"
         >
           <X className="h-4 w-4" aria-hidden="true" />

@@ -43,7 +43,7 @@ test('portal opens on the work dashboard with full sidebar navigation', async ({
   await expect(page).toHaveTitle(/SthStart/);
   await expect(page.getByRole('heading', { level: 1, name: '工作台' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '最近工作' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '全部应用' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '创作模块' })).toBeVisible();
 
   // 应用入口常驻侧栏，首屏即可到达，不再依赖首页的等权卡片网格。
   const primaryNav = page.getByRole('navigation', { name: '主导航' });
@@ -52,23 +52,26 @@ test('portal opens on the work dashboard with full sidebar navigation', async ({
   expect((neighborLink?.y ?? 720) + (neighborLink?.height ?? 0)).toBeLessThanOrEqual(720);
 });
 
-test('portal app directory starts with frequent tools and can search every module', async ({ page }) => {
+test('portal home lists the four creative modules and opens them', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
 
-  const directory = page.getByTestId('app-directory');
-  await expect(directory.getByRole('heading', { name: '全部应用' })).toBeVisible();
-  await expect(directory.getByRole('button', { name: '常用' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(directory.getByRole('listitem')).toHaveCount(5);
+  // 首页不再放全部应用目录：四个创作模块卡片直达主要工作区，其余应用走侧栏与命令面板。
+  const modules = page.getByRole('navigation', { name: '创作模块' });
+  await expect(modules.getByRole('link')).toHaveCount(4);
+  for (const [name, href] of [
+    ['创作项目', '/apps/projects'],
+    ['角色库', '/apps/characters'],
+    ['资料库', '/apps/resources'],
+    ['媒体库', '/apps/media'],
+  ] as const) {
+    await expect(modules.getByRole('link', { name: new RegExp(`^${name}`) })).toHaveAttribute('href', href);
+  }
+  for (const card of await modules.getByRole('link').all()) await expect(card).toBeInViewport();
 
-  await directory.getByRole('button', { name: '设置' }).click();
-  await expect(directory.getByRole('listitem')).toHaveCount(5);
-  await directory.getByRole('textbox', { name: '搜索应用' }).fill('模型');
-  await expect(directory.getByRole('listitem')).toHaveCount(3);
-
-  await directory.getByRole('button', { name: '全部', exact: true }).click();
-  await directory.getByRole('button', { name: '清空搜索' }).click();
-  await expect(directory.getByRole('listitem')).toHaveCount(14);
+  await modules.getByRole('link', { name: /^角色库/ }).click();
+  await expect(page).toHaveURL(/\/apps\/characters(?:\?.*)?$/);
+  await expect(page.getByRole('heading', { name: '角色资料库', level: 1 })).toBeVisible();
   const noHorizontalOverflow = await page.evaluate(() =>
     document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
   );
@@ -77,10 +80,10 @@ test('portal app directory starts with frequent tools and can search every modul
 
 test('creative center exposes a safe unconfigured image workspace', async ({ page }) => {
   await page.goto('/apps/creative');
-  await expect(page.getByRole('heading', { name: '创作中心' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '自由生成', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: '文本生图' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '图生图' })).toBeVisible();
-  await page.locator('summary').filter({ hasText: '生成服务' }).click();
+  await page.locator('summary').filter({ hasText: /服务(已就绪|待配置)/ }).click();
   await expect(page.getByRole('heading', { name: '公共生成状态' })).toBeVisible();
   await expect(page.getByRole('link', { name: '进入生成配置' })).toBeVisible();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
@@ -95,15 +98,15 @@ test('creative center exposes a safe unconfigured image workspace', async ({ pag
     await tab.click();
     await expect(tab).toHaveAttribute('aria-selected', 'true');
     /*
-     * 共享 e2e 数据库可能已为文本生图配置预设：此时显示契约驱动的预设表单；
-     * 未配置的模式仍显示固定表单。两种形态都必须安全（无密码输入、无裸凭据）。
+     * 图片模式统一走共享的图片生成面板（画面描述 + 生成方案）；
+     * 视频模式仍是固定表单。两种形态都必须安全（无密码输入、无裸凭据）。
      */
-    const presetForm = page.getByLabel('工作流', { exact: true });
-    if (await presetForm.isVisible().catch(() => false)) {
-      await expect(page.getByText('提示词', { exact: true })).toBeVisible();
+    if (mode === '文本生图' || mode === '图生图') {
+      await expect(page.getByLabel('描述你的画面')).toBeVisible();
     } else {
       await expect(page.getByLabel('正向提示词')).toBeVisible();
     }
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '开始生成' })).toBeVisible();
   }
 
@@ -160,86 +163,94 @@ test('local admin session opens the control center and switches tabs', async ({ 
   await expect(page.getByPlaceholder('搜索日志内容…')).toBeVisible();
 });
 
-test('public services creates, discovers, clones, and assigns application models', async ({ page }) => {
+test('public services creates a connection, imports discovered models, and assigns them to an app', async ({ page }) => {
   /*
-   * 这条用例串行走完“新建模板 → 获取模型 → 保存 → 复制 → 编辑 → 建应用 → 绑定 → 解绑”，
-   * 独占跑约 23 秒；它与其余用例并发、且测试库里的模板会逐次累积时，
-   * 30 秒的默认上限会被击穿。这里只放宽时限，断言内容不变。
+   * 这条用例串行走完“新建连接 → 发现并导入模型 → 编辑模型 → 建应用令牌 → 绑定 → 解绑”，
+   * 与其余用例并发、且测试库里的连接与应用会逐次累积时，30 秒的默认上限容易被击穿。
+   * 这里只放宽时限，断言内容不变。
    */
   test.setTimeout(90_000);
   const suffix = Date.now().toString(36);
-  const profileId = `model-${suffix}`;
-  const cloneId = `model-copy-${suffix}`;
+  const connectionId = `conn-e2e-${suffix}`;
+  const connectionName = `测试连接 ${suffix}`;
+  const textModelId = `${connectionId}-text-model`;
+  const visionModelId = `${connectionId}-vision-model`;
+  const visionModelName = `测试视觉模型 ${suffix}`;
   const appId = `writer-${suffix}`;
-  await page.route('**/api/admin/llm/models/discover', async (route) =>
+  // 模型发现会请求远端 /models，这里拦截为固定结果，不访问外部服务。
+  await page.route('**/api/admin/connections/discover-models', async (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ models: ['text-model', 'vision-model'] }),
+      body: JSON.stringify({ models: ['text-model', 'vision-model'], endpoint: 'https://provider.example/v1/models' }),
     })
   );
   await page.goto('/settings/public-services');
-  await expect(page.getByRole('heading', { name: /^模型模板/ })).toBeVisible();
-  const editor = page.locator('form.llm-editor');
-  /*
-   * 页面首帧由服务端渲染，按钮在 hydration 完成前就可见，此时点击会被丢弃。
-   * 高并发跑用例时这段窗口变长，因此重试点击直到表单真正出现，
-   * 断言仍然是“点击新建模板会打开编辑表单”。
-   */
-  const newTemplate = page.getByRole('button', { name: '新建模板' });
-  for (let attempt = 0; attempt < 12 && !(await editor.isVisible()); attempt += 1) {
-    await newTemplate.click();
+  await expect(page.getByRole('heading', { name: '模型与公共服务', level: 1 })).toBeVisible();
+
+  // 服务连接页签：新建一条 OpenAI 兼容文本连接（不填密钥，保存时不做远端探测）。
+  const connectionDialog = page.getByRole('dialog', { name: '新建服务连接' });
+  const newConnection = page.getByRole('button', { name: '新建连接' });
+  for (let attempt = 0; attempt < 12 && !(await connectionDialog.isVisible()); attempt += 1) {
+    await newConnection.click();
     await page.waitForTimeout(150);
   }
-  await expect(editor).toBeVisible();
-  await editor.getByLabel('配置 ID').fill(profileId);
-  await editor.getByLabel('显示名称').fill(`测试模型 ${suffix}`);
-  await editor.getByLabel('API Base URL').fill('https://provider.example/v1');
-  await editor.getByRole('button', { name: '获取模型' }).click();
-  await expect(page.getByText('已获取 2 个模型')).toBeVisible();
-  await editor.getByLabel('模型 ID').fill('vision-model');
-  await editor.getByLabel(/多模态/).check();
-  await editor.getByRole('button', { name: '保存模板配置' }).click();
+  await expect(connectionDialog).toBeVisible();
+  await connectionDialog.getByPlaceholder('e.g. openai-main').fill(connectionId);
+  await connectionDialog.getByPlaceholder('OpenAI 官方连接').fill(connectionName);
+  await connectionDialog.getByPlaceholder('https://api.openai.com/v1').fill('https://provider.example/v1');
+  await connectionDialog.getByRole('button', { name: '立即创建' }).click();
+  await expect(connectionDialog).toBeHidden();
   /*
-   * 测试库里的模板会随每次运行累积（本轮已到 160+ 条），列表首屏不再保证包含刚建的那条，
-   * 而且保存后要等后端写入再重新拉取。用本次运行的唯一后缀过滤，
-   * 断言仍然是「保存后这条记录真的出现在列表里」，不依赖列表规模与排序。
+   * 测试库里的连接会随每次运行累积，列表首屏不保证包含刚建的那条。
+   * 用本次运行的唯一后缀过滤，断言「保存后这条记录真的出现在列表里」。
    */
-  await page.getByLabel('搜索模型模板').fill(suffix);
-  await expect(page.getByText(`测试模型 ${suffix}`).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByPlaceholder('搜索连接名称、地址或 ID...').fill(suffix);
+  await expect(page.getByRole('heading', { name: connectionName })).toBeVisible({ timeout: 15_000 });
 
-  const sourceCard = page.getByTestId('model-card').filter({ hasText: `测试模型 ${suffix}` });
-  await sourceCard.getByRole('button', { name: '复制配置' }).click();
-  await expect(editor).toBeVisible();
-  await editor.getByLabel('配置 ID').fill(cloneId);
-  await editor.getByLabel('显示名称').fill(`测试副本 ${suffix}`);
-  await editor.getByLabel('模型 ID').fill('text-model');
-  await editor.getByRole('button', { name: '创建独立副本' }).click();
-  await expect(page.getByText(`测试副本 ${suffix}`).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: `更多连接操作：${connectionName}` }).click();
+  await page.getByRole('menuitem', { name: '发现模型' }).click();
+  const discoverDrawer = page.getByRole('dialog', { name: '发现并导入远端模型' });
+  await expect(discoverDrawer.getByText('共发现 2 个模型')).toBeVisible();
+  await discoverDrawer.getByRole('button', { name: '一键添加为模型配置 (2)' }).click();
+  await expect(page.getByText('成功导入 2 个模型配置。')).toBeVisible();
 
-  const updatedName = `测试模板已更新 ${suffix}`;
-  await sourceCard.getByRole('button', { name: '编辑' }).click();
-  await expect(editor).toBeVisible();
-  await editor.getByLabel('显示名称').fill(updatedName);
-  await editor.getByRole('button', { name: '保存修改' }).click();
-  await expect(page.getByText(updatedName).first()).toBeVisible({ timeout: 15_000 });
+  // 文本模型页签：导入的两条模型都在；把其中一条改名并标记为多模态。
+  await page.getByRole('tab', { name: /^文本模型/ }).click();
+  await page.getByPlaceholder('搜索模型名称、ID 或实际模型名称...').fill(suffix);
+  await expect(page.getByRole('heading', { name: `${connectionName} - text-model` })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: `更多模型操作：${connectionName} - vision-model` }).click();
+  await page.getByRole('menuitem', { name: '编辑配置' }).click();
+  const modelDialog = page.getByRole('dialog', { name: '编辑模型配置' });
+  await modelDialog.getByPlaceholder('GPT-4o Mini 主力').fill(visionModelName);
+  await modelDialog.getByLabel('多模态视觉 (multimodal)').check();
+  await modelDialog.getByRole('button', { name: '保存修改' }).click();
+  await expect(modelDialog).toBeHidden();
+  await expect(page.getByRole('heading', { name: visionModelName })).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole('button', { name: '访问与其他能力', exact: true }).click();
+  // 其他服务页签：为新应用签发令牌。
+  await page.getByRole('tab', { name: '其他服务' }).click();
   const appForm = page.locator('form').filter({ has: page.getByPlaceholder('应用 ID，例如 my-app') });
   await appForm.getByPlaceholder('应用 ID，例如 my-app').fill(appId);
   await appForm.getByPlaceholder('应用名称').fill(`测试应用 ${suffix}`);
   await appForm.getByRole('button', { name: '创建应用令牌' }).click();
-  await page.getByRole('button', { name: '应用路由', exact: true }).click();
-  const assignment = page.locator('form.assignment-card').filter({ hasText: `测试应用 ${suffix}` });
-  await assignment.getByLabel('文本模型').selectOption(cloneId);
-  await assignment.getByLabel('多模态模型').selectOption(profileId);
-  await assignment.getByRole('button', { name: '保存应用选择' }).click();
-  await expect(page.getByText('应用的生效模型已更新。')).toBeVisible();
+  await expect(page.getByText('应用令牌已生成。')).toBeVisible();
 
-  await assignment.getByLabel('文本模型').selectOption('');
-  await assignment.getByLabel('多模态模型').selectOption('');
-  await assignment.getByRole('button', { name: '保存应用选择' }).click();
-  await expect(page.getByText('应用的生效模型已更新。').first()).toBeVisible();
+  // 用途绑定页签：给新应用指定文本与多模态模型，再清空。
+  await page.getByRole('tab', { name: /^用途绑定/ }).click();
+  const assignment = page.locator('#panel-purposes section').filter({ has: page.getByRole('heading', { name: new RegExp(appId) }) });
+  const [textSelect, visionSelect] = [assignment.getByRole('combobox').nth(0), assignment.getByRole('combobox').nth(1)];
+  await textSelect.selectOption(textModelId);
+  await visionSelect.selectOption(visionModelId);
+  await assignment.getByRole('button', { name: '保存绑定' }).click();
+  await expect(page.getByText('应用模型绑定已保存。')).toBeVisible();
+  await expect(textSelect).toHaveValue(textModelId);
+  await expect(visionSelect).toHaveValue(visionModelId);
+
+  await textSelect.selectOption('');
+  await visionSelect.selectOption('');
+  await assignment.getByRole('button', { name: '保存绑定' }).click();
+  await expect(page.getByText('应用模型绑定已保存。').first()).toBeVisible();
 });
 
 test('character library opens, creates a character and edits fields', async ({ page }) => {
@@ -249,41 +260,16 @@ test('character library opens, creates a character and edits fields', async ({ p
   await page.goto('/apps/characters');
   await expect(page.getByRole('heading', { name: '角色资料库' })).toBeVisible();
 
-  await page.goto('/apps/characters/new');
-  // V2 编辑器只维护四块内容：人设正文、说话方式、基础外貌、默认穿着。
-  await expect(page.getByRole('tab', { name: '身份与经历' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '身份与人设' })).toBeVisible();
-
-  /*
-   * §8.3：预览是可选辅助栏，不是常驻栏。
-   * 宽屏默认收起（常驻时它比表单矮近 900px，会在右栏留一整片空白），
-   * 由页头「预览」按钮切换内联；小屏同一按钮改开抽屉。
-   */
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const widePreviewButton = page.getByRole('button', { name: '预览' });
-  await expect(widePreviewButton).toBeVisible();
-  await expect(page.getByText('资料检查')).toHaveCount(0);
-  await widePreviewButton.click();
-  await expect(page.getByText('资料检查').first()).toBeVisible();
-  await page.getByRole('button', { name: '收起预览' }).click();
-  await expect(page.getByText('资料检查')).toHaveCount(0);
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  const previewButton = page.getByRole('button', { name: '预览' });
-  await expect(previewButton).toBeVisible();
-  await previewButton.click();
-  const previewDrawer = page.getByRole('dialog', { name: '角色卡片预览' });
-  await expect(previewDrawer).toBeVisible();
-  await expect(previewDrawer.getByText('资料检查')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(previewDrawer).toBeHidden();
   await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/apps/characters/new');
+  // 编辑器按「人设 / 外貌 / 资产 / LoRA」分段；角色名称、作品与标签在分段上方行内编辑。
+  await expect(page.getByRole('heading', { name: '新建角色档案', level: 1 })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '人设' })).toHaveAttribute('aria-selected', 'true');
 
   await page.getByLabel('角色名称').fill(characterName);
-  await page.getByLabel('英文名 / 拼音').fill(`Character ${suffix}`);
-  await page.getByLabel('所属作品').fill('SthStart Origin');
-  await page.getByLabel('一句话人物摘要').fill('测试角色的简要身份描述。');
-  await page.getByLabel('人设正文').fill('### 身份\n测试角色，来自港口城市。\n\n### 性格\n- 冷静，习惯先观察再行动');
+  await page.getByPlaceholder('如：原神、星穹铁道、原创世界').fill('SthStart Origin');
+  await page.getByLabel('一句话概述').fill('测试角色的简要身份描述。');
+  await page.getByLabel('详细人设背景').fill('### 身份\n测试角色，来自港口城市。\n\n### 性格\n- 冷静，习惯先观察再行动');
 
   const createdDetailResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -293,41 +279,31 @@ test('character library opens, creates a character and edits fields', async ({ p
       /^\/api\/admin\/characters\/[^/]+$/.test(url.pathname)
     );
   });
-  await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('button', { name: '保存档案' }).click();
+  // 整套并发跑时多个 worker 同时写库，创建请求可能超过默认 5 秒。
+  await expect(page.getByText('角色档案创建成功')).toBeVisible({ timeout: 15_000 });
   await createdDetailResponse;
   await expect(page).toHaveURL(/\/apps\/characters\/[^/]+$/);
-  await expect(page.getByText(characterName).first()).toBeVisible();
+  await expect(page.getByLabel('角色名称')).toHaveValue(characterName);
 
-  // 性格相关的创作内容留在人设正文；这里只维护说话方式与行为约束。
-  await page.getByRole('tab', { name: '性格与表达' }).click();
-  await expect(page.getByRole('heading', { name: '说话方式与行为约束' })).toBeVisible();
-
-  await page.getByLabel('说话方式').fill('语气：冷静克制，很少提高音量');
-  await page.getByRole('button', { name: '添加' }).first().click();
-  await page.getByRole('textbox', { name: '对话示例 1' }).fill('示例：先看完证据再说结论。');
-  await page.getByLabel('行为约束').fill('不代替其他参与者做决定');
-  await page.getByRole('button', { name: '保存草稿' }).click();
-  await expect(page.getByText('草稿已保存')).toBeVisible();
+  await page.getByRole('tab', { name: '外貌' }).click();
+  await page.getByLabel('基础外貌特征').fill('短发，佩戴圆框眼镜；身材娇小、步态轻盈。');
+  await page.getByLabel('代表性装扮与配饰').fill('深色风衣与围巾。');
+  await page.getByRole('button', { name: '保存档案' }).click();
+  await expect(page.getByText('角色档案已保存')).toBeVisible();
 
   // 刷新后仍要从权威草稿里读回这几块内容。
   await page.reload();
-  await page.getByRole('tab', { name: '性格与表达' }).click();
-  await expect(page.getByLabel('说话方式')).toHaveValue('语气：冷静克制，很少提高音量');
-  await expect(page.getByRole('textbox', { name: '对话示例 1' })).toHaveValue('示例：先看完证据再说结论。');
-  await expect(page.getByLabel('行为约束')).toHaveValue('不代替其他参与者做决定');
+  await expect(page.getByLabel('一句话概述')).toHaveValue('测试角色的简要身份描述。');
+  await expect(page.getByPlaceholder('如：原神、星穹铁道、原创世界')).toHaveValue('SthStart Origin');
+  await page.getByRole('tab', { name: '外貌' }).click();
+  await expect(page.getByLabel('基础外貌特征')).toHaveValue('短发，佩戴圆框眼镜；身材娇小、步态轻盈。');
+  await expect(page.getByLabel('代表性装扮与配饰')).toHaveValue('深色风衣与围巾。');
 
-  await page.getByRole('tab', { name: '外观与素材' }).click();
-  await page.getByLabel('基础外貌').fill('短发，佩戴圆框眼镜；身材娇小、步态轻盈。');
-  await page.getByLabel('默认穿着').fill('深色风衣与围巾。');
-  await page.getByRole('button', { name: '保存草稿' }).click();
-  await expect(page.getByText('草稿已保存')).toBeVisible();
-
-  await expect(page.getByRole('button', { name: '导出' })).toBeEnabled();
-  await page.getByRole('button', { name: '保存并使用' }).click();
-  await expect(page.getByText(/已成功发布版本 v\d+/)).toBeVisible();
-
+  // 导出收在视觉预览卡的「更多」菜单里。
+  await page.getByRole('button', { name: '更多', exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出' }).click();
+  await page.getByRole('button', { name: '导出酒馆卡 (JSON)' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.json$/);
 });
@@ -352,11 +328,11 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   });
 
   await page.goto('/apps/notebook');
-  await expect(page.getByRole('heading', { name: '创作笔记' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作资料库', level: 1 })).toBeVisible();
 
   await page.goto('/apps/notebook/new');
-  await page.getByPlaceholder('输入笔记标题…').fill(noteTitle);
-  await page.getByPlaceholder('添加标签（用逗号分隔，如：灵感，第 2 章）…').fill('灵感, 测试');
+  await page.getByPlaceholder('无标题笔记').fill(noteTitle);
+  await page.getByPlaceholder('添加标签，按回车确定...').fill('灵感, 测试');
   await page.getByPlaceholder('写下一段文字记录…').fill('这是一段通过现代化编辑器记录的灵感正文。');
 
   const firstSync = page.waitForResponse((response) => response.request().method() === 'PUT'
@@ -369,7 +345,7 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   expect(noteWrites).toBe(1);
 
   const editedTitle = `${noteTitle}（已编辑）`;
-  await page.getByPlaceholder('输入笔记标题…').fill(editedTitle);
+  await page.getByPlaceholder('无标题笔记').fill(editedTitle);
   const secondSync = page.waitForResponse((response) => response.request().method() === 'PUT'
     && /\/api\/admin\/notebook\/notes\/[^/]+$/.test(new URL(response.url()).pathname));
   await page.getByRole('button', { name: '保存' }).click();
@@ -380,14 +356,16 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   // 编辑器；恢复入口是笔记列表（IndexedDB 中已有该记录）。
   await page.reload();
   await page.goto('/apps/notebook');
-  await page.getByRole('button', { name: '展开笔记列表' }).click();
+  // 列表默认展开；只有之前被收起时才需要再展开。
+  const expandList = page.getByRole('button', { name: '展开笔记列表' });
+  if (await expandList.isVisible().catch(() => false)) await expandList.click();
   await page.getByText(editedTitle).first().click();
-  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue(editedTitle);
+  await expect(page.getByPlaceholder('无标题笔记')).toHaveValue(editedTitle);
 
   expectedOfflineDisconnects = true;
   await page.context().setOffline(true);
   const offlineTitle = `${editedTitle}（离线）`;
-  await page.getByPlaceholder('输入笔记标题…').fill(offlineTitle);
+  await page.getByPlaceholder('无标题笔记').fill(offlineTitle);
   await expect(page.getByText('离线 · 待同步')).toBeVisible();
   expect(noteWrites).toBe(2);
   const resumedSync = page.waitForResponse((response) => response.request().method() === 'PUT'
@@ -405,7 +383,16 @@ test('notebook mobile roundtrip returns to the list and picks another note', asy
   for (const t of [titleA, titleB]) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/apps/notebook/new');
-    await page.getByPlaceholder('输入笔记标题…').fill(t);
+    /*
+     * 并发跑时 hydration 可能晚于 fill，受控输入会被重置为空，最后存成「未命名笔记」。
+     * 填完稍等再确认值仍在，丢了就重填。
+     */
+    const titleInput = page.getByPlaceholder('无标题笔记');
+    await expect(async () => {
+      await titleInput.fill(t);
+      await page.waitForTimeout(300);
+      await expect(titleInput).toHaveValue(t, { timeout: 500 });
+    }).toPass({ timeout: 15_000 });
     await page.getByRole('button', { name: '保存' }).click();
     await expect(page.getByText('已保存到本机').first()).toBeVisible();
     await page.waitForTimeout(1200);
@@ -416,27 +403,27 @@ test('notebook mobile roundtrip returns to the list and picks another note', asy
   await expect(page.getByRole('heading', { name: titleA })).toBeVisible();
   await page.getByRole('heading', { name: titleA }).click();
   await page.waitForTimeout(2000);
-  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue(titleA);
+  await expect(page.getByPlaceholder('无标题笔记')).toHaveValue(titleA);
 
   // 返回列表后不得被 initialNoteId 自动拉回编辑器
-  await page.getByRole('button', { name: '返回笔记列表' }).click();
+  await page.getByRole('link', { name: '返回资料列表' }).click();
   await page.waitForTimeout(1200);
   await expect(page.locator('.notebook-master-pane')).toBeVisible();
-  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveCount(0);
+  await expect(page.getByPlaceholder('无标题笔记')).toHaveCount(0);
 
   await expect(page.getByRole('heading', { name: titleB })).toBeVisible();
   await page.getByRole('heading', { name: titleB }).click();
   await page.waitForTimeout(2000);
-  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue(titleB);
+  await expect(page.getByPlaceholder('无标题笔记')).toHaveValue(titleB);
 });
 
 test('notebook mobile layout stays compact and within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/apps/notebook');
 
-  await expect(page.getByRole('heading', { name: '创作笔记' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作资料库', level: 1 })).toBeVisible();
   await expect(page.getByPlaceholder('搜索标题、正文或标签…')).toBeVisible();
-  await expect(page.locator('.notebook-list-header .page-header-actions a')).toHaveText(/新建记录/);
+  await expect(page.locator('.notebook-list-header .page-header-actions a')).toHaveText(/新建/);
 
   const listGeometry = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
@@ -450,7 +437,7 @@ test('notebook mobile layout stays compact and within the viewport', async ({ pa
   }
 
   await page.goto('/apps/notebook/new');
-  await expect(page.getByPlaceholder('输入笔记标题…')).toBeVisible();
+  await expect(page.getByPlaceholder('无标题笔记')).toBeVisible();
   await expect(page.getByPlaceholder('写下一段文字记录…')).toBeVisible();
   await expect(page.getByRole('button', { name: '保存' })).toBeVisible();
   await expect(page.getByRole('button', { name: '段落文本' })).toBeVisible();
@@ -461,9 +448,9 @@ test('notebook mobile layout stays compact and within the viewport', async ({ pa
   }));
   expect(editorGeometry.documentWidth).toBeLessThanOrEqual(editorGeometry.viewportWidth + 1);
 
-  await page.getByPlaceholder('输入笔记标题…').fill('移动端布局验收');
+  await page.getByPlaceholder('无标题笔记').fill('移动端布局验收');
   await page.getByPlaceholder('写下一段文字记录…').fill('手机端输入保持稳定，不应触发页面缩放。');
-  await expect(page.getByPlaceholder('输入笔记标题…')).toHaveValue('移动端布局验收');
+  await expect(page.getByPlaceholder('无标题笔记')).toHaveValue('移动端布局验收');
   await expect(page.getByPlaceholder('写下一段文字记录…')).toHaveValue('手机端输入保持稳定，不应触发页面缩放。');
 });
 
@@ -499,7 +486,7 @@ test('narrative workspace opens and supports reading and import views', async ({
   // Switch back to read view
   await page.getByRole('tab', { name: '阅读' }).click();
 
-  const saveToNotebook = page.getByRole('button', { name: '存入创作笔记' }).first();
+  const saveToNotebook = page.getByRole('button', { name: /^摘录到笔记/ }).first();
   await expect(saveToNotebook).toBeAttached();
   await saveToNotebook.click({ force: true });
   await expect(page).toHaveURL(/\/apps\/notebook\//);
@@ -509,7 +496,7 @@ test('generation settings creates isolated engine and workflow records', async (
   const suffix = Date.now().toString(36);
   const engineName = `测试引擎 ${suffix}`;
   await page.goto('/settings/generation');
-  await expect(page.getByRole('heading', { name: '生成配置工作台', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '生成配置', level: 1 })).toBeVisible();
   await page.getByRole('button', { name: '刷新' }).click();
 
   // 连接页签：新建连接默认 ComfyUI 直连，只需名称与地址。
@@ -526,12 +513,14 @@ test('generation settings creates isolated engine and workflow records', async (
   await expect(page.getByText(engineName).first()).toBeVisible();
 
   // 工作流页签：导入原生 API JSON（先分析后创建），ID 由系统生成，不再手填。
+  // 空库时只有空状态里的「导入工作流」，已有工作流时是头部的「导入」，两种入口打开同一个导入对话框。
   const workflowsTab = page.getByRole('tab', { name: '工作流', exact: true });
-  for (let attempt = 0; attempt < 12 && !(await page.getByRole('button', { name: '导入', exact: true }).isVisible().catch(() => false)); attempt += 1) {
+  const importWorkflow = page.getByRole('button', { name: /^导入(?:工作流)?$/ }).first();
+  for (let attempt = 0; attempt < 12 && !(await importWorkflow.isVisible().catch(() => false)); attempt += 1) {
     await workflowsTab.click();
     await page.waitForTimeout(150);
   }
-  await page.getByRole('button', { name: '导入', exact: true }).click();
+  await importWorkflow.click();
   const importDialog = page.getByRole('dialog');
   await importDialog.getByLabel('工作流 JSON 内容').fill(JSON.stringify({
     '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'sd15/model.safetensors' } },
@@ -583,7 +572,8 @@ test('mobile application navigation exposes every action without clipping', asyn
   await page.getByRole('button', { name: '打开导航' }).click();
   const drawerNav = page.getByRole('dialog', { name: '导航' }).getByRole('navigation', { name: '主导航' });
   await expect(drawerNav.getByRole('link', { name: '邻舍' })).toBeInViewport();
-  await expect(drawerNav.getByRole('link', { name: '活动' })).toBeInViewport();
+  // 侧栏最后一项是系统设置：它在视口内就说明整列导航都没有被裁掉。
+  await expect(drawerNav.getByRole('link', { name: '系统设置' })).toBeInViewport();
   await page.getByRole('button', { name: '关闭导航' }).click();
 
   for (const [route, selector] of [
@@ -593,20 +583,26 @@ test('mobile application navigation exposes every action without clipping', asyn
     ['/settings/control-center', '.page-tabs button'],
   ] as const) {
     await page.goto(route);
-    const geometry = await page.locator(selector).evaluateAll((elements) => ({
+    const controls = page.locator(selector);
+    await expect(controls.first(), route).toBeVisible();
+    const viewport = await page.evaluate(() => ({
       viewportWidth: document.documentElement.clientWidth,
       documentWidth: document.documentElement.scrollWidth,
-      controls: elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
-      }),
     }));
-    expect(geometry.documentWidth, route).toBeLessThanOrEqual(geometry.viewportWidth + 1);
-    expect(geometry.controls.length, route).toBeGreaterThan(0);
-    for (const control of geometry.controls) {
-      expect(control.left, route).toBeGreaterThanOrEqual(-1);
-      expect(control.right, route).toBeLessThanOrEqual(geometry.viewportWidth + 1);
-      expect(control.height, route).toBeGreaterThanOrEqual(40);
+    expect(viewport.documentWidth, route).toBeLessThanOrEqual(viewport.viewportWidth + 1);
+    const count = await controls.count();
+    expect(count, route).toBeGreaterThan(0);
+    // 窄屏 tab 条按设计横向滚动（globals.css .page-tabs），逐个滚入视野后再量，确认每项都能完整露出。
+    for (let index = 0; index < count; index += 1) {
+      const control = controls.nth(index);
+      await control.scrollIntoViewIfNeeded();
+      const rect = await control.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return { left: box.left, right: box.right, height: box.height };
+      });
+      expect(rect.left, route).toBeGreaterThanOrEqual(-1);
+      expect(rect.right, route).toBeLessThanOrEqual(viewport.viewportWidth + 1);
+      expect(rect.height, route).toBeGreaterThanOrEqual(40);
     }
   }
 });
@@ -614,7 +610,7 @@ test('mobile application navigation exposes every action without clipping', asyn
 test('character editor tabs stay inside a 390px viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/apps/characters/new');
-  await expect(page.getByRole('tab', { name: '身份与经历' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '人设' })).toBeVisible();
 
   // 头部操作行曾经是 shrink-0，无法收缩就把文档撑到 474px。
   const measure = async () => page.evaluate(() => ({
@@ -638,17 +634,18 @@ test('character editor tabs stay inside a 390px viewport', async ({ page }) => {
   }
 
   // 逐个分区都要能打开，且都不横向溢出。
-  for (const name of ['性格与表达', '外观与素材', '应用与版本']) {
+  for (const name of ['外貌', '资产', 'LoRA', '人设']) {
     await page.getByRole('tab', { name }).click();
+    await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
     const geometry = await measure();
     expect(geometry.document, `${name} 不应横向溢出`).toBeLessThanOrEqual(geometry.viewport + 1);
   }
 
-  // 「关系与来源」要先进更多设置才可见。
-  await page.getByRole('button', { name: /更多设置|更多/ }).click();
-  await page.getByRole('tab', { name: '关系与来源' }).click();
-  const relations = await measure();
-  expect(relations.document, '关系与来源不应横向溢出').toBeLessThanOrEqual(relations.viewport + 1);
+  // 视觉预览与资产在小屏收进折叠条，展开后同样不能横向溢出。
+  await page.getByRole('button', { name: /视觉预览与资产形态/ }).click();
+  await expect(page.getByRole('heading', { name: '形象资产库' })).toBeVisible();
+  const expanded = await measure();
+  expect(expanded.document, '展开视觉预览不应横向溢出').toBeLessThanOrEqual(expanded.viewport + 1);
 });
 
 test('runtime polls and logs receive a new SSE event', async ({ page, request }) => {

@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
@@ -286,11 +288,65 @@ export function registerSharedAssetRoutes(
   // GET /api/v1/admin/shared-assets/file/:id — 读取公共资产二进制流
   app.get<{ Params: { id: string } }>('/api/v1/admin/shared-assets/file/:id', async (request, reply) => {
     const row = database.connection
-      .prepare(`SELECT artifact_id FROM shared_assets WHERE id=?`)
-      .get(request.params.id) as { artifact_id: string } | undefined;
+      .prepare(`SELECT artifact_id, source_url FROM shared_assets WHERE id=?`)
+      .get(request.params.id) as { artifact_id: string; source_url?: string } | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
 
-    const artifact = await readArtifact(database, row.artifact_id, config.artifactDirectory);
+    let artifact = await readArtifact(database, row.artifact_id, config.artifactDirectory);
+
+    // 自愈机制：若本地文件因清理或首次迁移缺失，自动按 source_url 回源修复并更新 artifacts
+    if ((!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) && row.source_url) {
+      try {
+        let buffer: Buffer | null = null;
+        let contentType = 'image/png';
+
+        if (row.source_url.startsWith('/')) {
+          const localCandidates = [
+            resolve(process.cwd(), `data${row.source_url}`),
+            resolve(process.cwd(), `data/${row.source_url.replace(/^\/(?:images|events)\//, '')}`),
+            resolve(process.cwd(), `upstream/linshe/agent-core/data${row.source_url}`),
+          ];
+          for (const candidate of localCandidates) {
+            if (existsSync(candidate)) {
+              buffer = await readFile(candidate);
+              break;
+            }
+          }
+        } else if (row.source_url.startsWith('http://') || row.source_url.startsWith('https://')) {
+          const res = await fetch(row.source_url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (res.ok) {
+            buffer = Buffer.from(await res.arrayBuffer());
+            contentType = res.headers.get('content-type') || 'image/png';
+          }
+        }
+
+        if (buffer) {
+          const ext = contentType.includes('webp') ? '.webp' : contentType.includes('jpeg') ? '.jpg' : '.png';
+          const artifactDir = config.artifactDirectory || process.env.STHSTART_ARTIFACT_DIR || resolve(process.cwd(), 'data/artifacts');
+          const directory = resolve(artifactDir, 'characters');
+          await mkdir(directory, { recursive: true });
+          const filePath = resolve(directory, `${row.artifact_id}${ext}`);
+          await writeFile(filePath, buffer);
+
+          const now = nowIso();
+          const byteSize = buffer.length;
+          const sha256 = createHash('sha256').update(buffer).digest('hex');
+
+          database.connection.prepare(`UPDATE artifacts SET local_path=?, content_type=?, byte_size=?, sha256=?, file_status='ready', updated_at=? WHERE id=?`)
+            .run(filePath, contentType, byteSize, sha256, now, row.artifact_id);
+
+          artifact = await readArtifact(database, row.artifact_id, config.artifactDirectory);
+        }
+      } catch (e) {
+        console.warn(`[shared-assets] Failed to self-heal asset ${request.params.id} from ${row.source_url}:`, e);
+      }
+    }
+
     if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) {
       return reply.code(404).send({ error: 'file_not_found' });
     }

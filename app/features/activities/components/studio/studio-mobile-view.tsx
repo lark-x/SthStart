@@ -5,18 +5,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   ArrowLeft,
-  Calendar,
-  Compass,
   Laptop,
-  Layers,
   MapPin,
-  MessageSquare,
-  Sparkles,
-  Users,
   Copy,
   Check,
 } from 'lucide-react';
-import type { Activity, ContentDocument, StageDefinition } from '@sthstart/contracts';
+import type { Activity, ContentDocument } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { getEffectiveStageScenes } from '../../scene-beat-utils';
@@ -30,7 +24,6 @@ interface StudioMobileViewProps {
 export function StudioMobileView({
   activity,
   document,
-  onOpenPlayback,
 }: StudioMobileViewProps) {
   const [activeStageId, setActiveStageId] = useState<string>(
     document.stages[0]?.id || ''
@@ -53,7 +46,7 @@ export function StudioMobileView({
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-paper text-ink pb-12">
+    <div className="flex flex-col h-full min-h-0 min-w-0 bg-paper text-ink overflow-y-auto pb-12" data-autohide-scroll>
       {/* 顶部紧凑导航 */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border-default bg-surface/95 px-4 py-2.5 backdrop-blur-sm">
         <Link
@@ -156,7 +149,7 @@ export function StudioMobileView({
               onClick={() => setActiveStageId(stage.id)}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 isSelected
-                  ? 'bg-accent text-white shadow-2xs'
+                  ? 'bg-accent text-fg-on-accent shadow-2xs'
                   : 'bg-surface border border-border-default text-muted hover:text-ink'
               }`}
             >

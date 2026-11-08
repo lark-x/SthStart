@@ -5,7 +5,6 @@ import type { PublicServiceOverview } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/app/components/ui/card';
 
 export function OtherProviders({
   overview,
@@ -49,19 +48,19 @@ export function OtherProviders({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>向量与图片能力</CardTitle>
-        <CardDescription>
+    <section className="min-w-0 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-ink">向量与图片能力</h2>
+        <p className="mt-1 text-sm text-muted">
           接入向量检索嵌入模型与 ComfyUI / 绘图服务。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2 record-list">
+        </p>
+      </div>
+      <div className="space-y-4">
+        <div className="divide-y divide-border-subtle border-y border-border-subtle record-list">
           {otherProfiles.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between p-3 rounded border border-border-subtle bg-surface"
+              className="flex flex-wrap items-center justify-between gap-2 py-3"
             >
               <div>
                 <strong className="text-sm font-semibold text-ink">{item.name}</strong>
@@ -75,7 +74,7 @@ export function OtherProviders({
             </div>
           ))}
           {otherProfiles.length === 0 && (
-            <div className="p-4 text-center text-sm text-muted border border-dashed border-border-default rounded">
+            <div className="py-6 text-center text-sm text-muted">
               暂未配置向量或独立生图 Provider
             </div>
           )}
@@ -135,7 +134,7 @@ export function OtherProviders({
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

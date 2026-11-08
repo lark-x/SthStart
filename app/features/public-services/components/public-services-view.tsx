@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
 import type {
   ModelProfile,
-  PublicServiceOverview,
   PurposeBinding,
   ServiceConnection,
 } from '@sthstart/contracts';
@@ -25,7 +23,7 @@ import { OtherServicesPanel } from './other-services-panel';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageTabs } from '@/app/components/ui/page-tabs';
-import { Button, buttonVariants } from '@/app/components/ui/button';
+import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
@@ -81,7 +79,7 @@ function keyringLabel(backend: string | null | undefined) {
 
 export function PublicServicesSettings() {
   const toast = useToast();
-  const { data: overview, isLoading: overviewLoading, error: queryError, refetch: refetchOverview } = usePublicOverview();
+  const { data: overview, error: queryError, refetch: refetchOverview } = usePublicOverview();
 
   const tab = useSyncExternalStore(subscribeToLocation, readTabFromUrl, () => DEFAULT_TAB);
 
@@ -133,6 +131,7 @@ export function PublicServicesSettings() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 页面挂载时读取外部管理 API。
     void loadData();
   }, [loadData]);
 
@@ -145,46 +144,18 @@ export function PublicServicesSettings() {
   ];
 
   return (
-    <PageContainer width="settings" className="py-5 space-y-4">
+    <PageContainer width="settings" className="py-3 sm:py-5 space-y-3 sm:space-y-4">
       <PageHeader
+        compact
         title="模型与公共服务"
         description="分层管理服务连接凭据、文本模型推理、云端与本地生图引擎，并为各应用配置业务用途绑定。"
-      />
-
-      {/* 服务概况横条 */}
-      <section
-        aria-label="服务概况"
-        className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border-default bg-surface px-4 py-2.5 text-sm"
-      >
-        <span>
-          <strong>{connections.length}</strong> 个连接
-        </span>
-        <span>
-          <strong>{models.length}</strong> 个模型
-        </span>
-        <span>
-          <strong>{engines.length}</strong> 个绘图引擎
-        </span>
-        <span>
-          <strong>{overview?.apps.length ?? 0}</strong> 个应用
-        </span>
-        <span className="text-muted">
-          安全存储：
-          {!overview ? '检查中' : overview.keyring.available ? keyringLabel(overview.keyring.backend) : '未连接'}
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <Link href="/apps/characters" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-            角色资料库
-          </Link>
-          <Link href="/settings/control-center" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-            控制中心
-          </Link>
+        actions={(
           <Button size="sm" variant="ghost" onClick={() => void handleRefreshAll()}>
             <RefreshCw className="h-3.5 w-3.5" />
-            刷新
+            <span className="hidden sm:inline">刷新</span>
           </Button>
-        </div>
-      </section>
+        )}
+      />
 
       {queryError && (
         <Alert variant="danger" title="公共服务数据读取失败">
@@ -198,6 +169,26 @@ export function PublicServicesSettings() {
         </Alert>
       )}
 
+      {/* 低频服务概况收敛到 details，避免手机首屏反复挤占 */}
+      <details className="group border-y border-border-subtle py-2 text-xs text-muted">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>服务概览：<span className="font-semibold text-ink">{connections.length}</span> 连接 · <span className="font-semibold text-ink">{models.length}</span> 模型 · <span className="font-semibold text-ink">{engines.length}</span> 绘图引擎</span>
+            <span className="hidden sm:inline">· 安全存储：{!overview ? '检查中' : overview.keyring.available ? keyringLabel(overview.keyring.backend) : '未连接'}</span>
+          </div>
+          <span className="ml-2 text-xs text-fg-subtle group-open:rotate-180 transition-transform duration-150">▼</span>
+        </summary>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-subtle/50 pt-2 text-xs">
+          <span><span className="font-semibold text-ink">{connections.length}</span> 个连接</span>
+          <span><span className="font-semibold text-ink">{models.length}</span> 个模型</span>
+          <span><span className="font-semibold text-ink">{engines.length}</span> 个绘图引擎</span>
+          <span><span className="font-semibold text-ink">{overview?.apps.length ?? 0}</span> 个应用</span>
+          <span>
+            安全存储：{!overview ? '检查中' : overview.keyring.available ? keyringLabel(overview.keyring.backend) : '未连接'}
+          </span>
+        </div>
+      </details>
+
       {/* 5 个核心页签切换 */}
       <PageTabs
         ariaLabel="公共服务分类"
@@ -208,7 +199,7 @@ export function PublicServicesSettings() {
 
       {/* 各页签面板 */}
       {dataLoading && !connections.length && !models.length ? (
-        <Skeleton className="h-64 w-full rounded-lg" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       ) : (
         <>
           <div id="panel-connections" role="tabpanel" hidden={tab !== 'connections'}>

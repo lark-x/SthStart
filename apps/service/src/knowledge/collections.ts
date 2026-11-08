@@ -447,7 +447,14 @@ export class KnowledgeCollectionStore {
     return { pendingId: id, duplicated: false };
   }
 
-  listPending(options: { state?: string; collectionId?: string; runId?: string; limit?: number } = {}): KnowledgePendingItem[] {
+  countPending(options: { state?: string; collectionId?: string } = {}): number {
+    const clauses = [options.state ? 'state=?' : "state IN ('pending','kept')"];
+    const params: string[] = options.state ? [options.state] : [];
+    if (options.collectionId) { clauses.push('collection_id=?'); params.push(options.collectionId); }
+    return Number((this.connection.prepare('SELECT COUNT(*) total FROM knowledge_pending_items WHERE ' + clauses.join(' AND ')).get(...params) as { total: number }).total);
+  }
+
+  listPending(options: { state?: string; collectionId?: string; runId?: string; limit?: number; offset?: number } = {}): KnowledgePendingItem[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
     // 按执行查询时不套用默认状态过滤：执行详情要能列出这次发现的所有结果，
@@ -464,8 +471,8 @@ export class KnowledgeCollectionStore {
       + ' JOIN knowledge_sources s ON s.id=v.source_id'
       + ' LEFT JOIN knowledge_collections c ON c.id=p.collection_id'
       + ' WHERE ' + clauses.join(' AND ')
-      + ' ORDER BY p.created_at DESC LIMIT ?';
-    const rows = this.connection.prepare(sql).all(...params as never[], limit) as Record<string, unknown>[];
+      + ' ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?';
+    const rows = this.connection.prepare(sql).all(...params as never[], limit, Math.max(0, Math.floor(options.offset ?? 0))) as Record<string, unknown>[];
     return rows.map((row) => this.mapPending(row));
   }
 

@@ -32,18 +32,21 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
 
   useEffect(() => {
     if (!versions.length || selection) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 工作流异步加载后选择首个可用版本。
     setSelection(`${versions[0].id}::${versions[0].version}`);
   }, [selection, versions]);
 
   useEffect(() => {
     if (!preferredWorkflow) return;
     const value = `${preferredWorkflow.id}::${preferredWorkflow.version}`;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 活动首选工作流变化时切换对应策略。
     if (versions.some((item) => `${item.id}::${item.version}` === value)) setSelection(value);
   }, [preferredWorkflow?.id, preferredWorkflow?.version, versions]);
 
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换工作流版本后进入异步策略读取态。
     setLoading(true);
     setError('');
     setSaved(false);
@@ -80,7 +83,7 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
   };
 
   return (
-    <section className="space-y-4 rounded-[var(--radius-panel)] border border-border-default bg-surface p-4 sm:p-6" aria-labelledby="activity-image-prompt-policy-title">
+    <section className="space-y-4 border-y border-border-subtle py-6" aria-labelledby="activity-image-prompt-policy-title">
       <div>
         <h2 id="activity-image-prompt-policy-title" className="text-base font-semibold text-ink">画风与提示词</h2>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">参考邻舍：画面描述、画师标签和质量词分开设置。这里只调整提交给所选工作流的提示词，不会改动模型或已有图片。</p>
@@ -89,16 +92,16 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
       {!versions.length ? <Alert variant="warning" title="暂无可配置工作流">请先导入并发布图片工作流，再为具体版本配置提示词策略。</Alert> : <>
         {preferredWorkflow && selected && <p className="text-sm text-muted">当前模式：{selected.name} v{selected.version}</p>}
         <details className="max-w-2xl" open={!preferredWorkflow ? true : undefined}>
-          {preferredWorkflow && <summary className="cursor-pointer text-sm text-muted">配置其他工作流的画风</summary>}
+          <summary className="cursor-pointer text-sm font-medium text-muted hover:text-ink">{preferredWorkflow ? '配置其他工作流的画风' : '切换工作流版本'}</summary>
           <label className="mt-2 block space-y-1.5">
             <span className="text-sm font-medium text-ink">应用到工作流版本</span>
-            <select aria-label="提示词策略工作流版本" value={selection} onChange={(event) => setSelection(event.target.value)} className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink">
+            <select aria-label="提示词策略工作流版本" value={selection} onChange={(event) => setSelection(event.target.value)} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
               {versions.map((item) => <option key={`${item.id}::${item.version}`} value={`${item.id}::${item.version}`}>{item.name} · {item.id} · v{item.version}</option>)}
             </select>
           </label>
         </details>
 
-        {optimizer?.ready && <div className="flex items-start gap-2 rounded-[var(--radius-control)] border border-success/30 bg-success/5 px-3 py-2.5 text-sm text-ink">
+        {optimizer?.ready && <div className="flex items-start gap-2 rounded-control border border-success/30 bg-success/5 px-3 py-2.5 text-sm text-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
           <div className="font-medium">复用活动文本模型：{optimizer.profileName} · {optimizer.model}</div>
         </div>}
@@ -145,7 +148,7 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
           <Checkbox checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
             label="自动整理画面描述" description="开启时先用活动文本模型整理人物与动作；关闭时直接使用原描述，但仍追加上方画风。" />
           {draft.enabled && optimizer && !optimizer.ready && <Alert variant="warning" title="自动整理暂不可用">{optimizer.message ?? '活动文本模型尚未就绪。请先配置文本模型，或关闭自动整理再绘制。'}</Alert>}
-          <details className="rounded-[var(--radius-control)] border border-border-subtle p-3"><summary className="cursor-pointer text-sm font-medium text-ink">高级提示词规则</summary>
+          <details className="rounded-control border border-border-subtle p-3"><summary className="cursor-pointer text-sm font-medium text-ink">高级提示词规则</summary>
             <div className="mt-3 space-y-3"><label className="block space-y-1.5"><span className="text-sm font-medium text-ink">通用改写规则</span>
               <Textarea rows={7} value={draft.instructions} onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} placeholder="描述需要保留的人物、动作、场景与构图规则" />
               <span className="block text-xs text-muted">只控制文本模型如何整理画面；质量和画师标签由上面的画风设置负责。</span>

@@ -6,20 +6,16 @@ import {
   Activity,
   CheckCircle2,
   Cpu,
-  ExternalLink,
-  Image as ImageIcon,
   Pencil,
   Plus,
   RefreshCw,
   Search,
-  Trash2,
   XCircle,
 } from 'lucide-react';
 import type { GenerationConnectionTestResult } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
-import { Button, buttonVariants } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
@@ -184,6 +180,7 @@ export function ImageModelsPanel({
             />
           </div>
           <Select
+            aria-label="按引擎类型筛选"
             value={filterKind}
             onChange={(e) => setFilterKind(e.target.value)}
             className="w-48"
@@ -195,14 +192,7 @@ export function ImageModelsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/settings/generation"
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          >
-            <ExternalLink className="h-3.5 w-3.5 mr-1" />
-            高级生图工作台
-          </Link>
-          <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
@@ -214,32 +204,32 @@ export function ImageModelsPanel({
       </div>
 
       {/* 提示信息条 */}
-      <div className="p-3.5 rounded-lg border border-border-default bg-surface-raised flex items-center justify-between gap-3 text-xs text-muted">
+      <div className="flex items-center justify-between gap-3 border-y border-border-subtle py-3 text-xs text-muted">
         <div className="flex items-center gap-2">
-          <Cpu className="h-4 w-4 text-accent shrink-0" />
+          <Cpu className="h-4 w-4 shrink-0 text-muted" />
           <span>支持本地 ComfyUI GPU 算力集群与 OpenAI 兼容云端生图接口（DALL-E 3、聚合绘图等）双模调度。</span>
         </div>
-        <Link href="/settings/generation" className="text-accent hover:underline shrink-0">
-          管理生图配方与工作流 &rarr;
+        <Link href="/settings/generation" className="shrink-0 text-ink hover:text-accent">
+          高级工作台
         </Link>
       </div>
 
       {/* 引擎列表 */}
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-muted">
+        <div className="border-y border-border-subtle py-10 text-center text-muted">
           <p className="text-sm">暂无匹配的绘图引擎。点击上方“新建绘图引擎”添加一个。</p>
-        </Card>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ul className="divide-y divide-border-subtle border-y border-border-subtle">
           {filtered.map((eng) => (
-            <Card key={eng.id} className="relative flex flex-col justify-between overflow-hidden">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
+            <li key={eng.id} className="grid gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <CardTitle className="text-base truncate">{eng.name}</CardTitle>
-                    <CardDescription className="text-xs font-mono text-muted truncate mt-0.5">
+                    <h3 className="truncate text-base font-semibold text-ink">{eng.name}</h3>
+                    <p className="mt-0.5 truncate font-mono text-xs text-muted">
                       ID: {eng.id}
-                    </CardDescription>
+                    </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant={eng.enabled ? 'online' : 'unknown'}>
@@ -254,44 +244,29 @@ export function ImageModelsPanel({
                     </Badge>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm pt-0">
-                <div className="text-xs font-mono bg-surface-raised px-2.5 py-1.5 rounded border border-border-subtle truncate text-ink">
+                <div className="truncate font-mono text-xs text-muted">
                   {eng.base_url}
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted">
                   <span>并发调度上限：{eng.concurrency_limit} 任务</span>
                   {eng.lastTest && (
-                    <span className={eng.lastTest.ok ? 'text-emerald-600' : 'text-danger'}>
+                    <span className={eng.lastTest.ok ? 'text-success-fg' : 'text-danger-fg'}>
                       {eng.lastTest.ok ? '连接正常' : '连接异常'}
                     </span>
                   )}
                 </div>
-
-                <div className="pt-2 border-t border-border-subtle flex items-center justify-between gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenTestDrawer(eng)}
-                    className="text-xs h-7 px-2.5 text-accent"
-                  >
-                    <Activity className="h-3 w-3" />
-                    探测连通性
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleOpenEdit(eng)}
-                    className="h-7 w-7 p-0"
-                    aria-label="编辑引擎"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex flex-wrap items-center gap-1 md:justify-end">
+                <Button variant="ghost" size="sm" onClick={() => handleOpenTestDrawer(eng)}>
+                  <Activity className="h-3.5 w-3.5" />探测
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(eng)}>
+                  <Pencil className="h-3.5 w-3.5" />编辑
+                </Button>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* 新建/编辑引擎对话框 */}

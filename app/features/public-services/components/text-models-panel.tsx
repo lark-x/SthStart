@@ -2,11 +2,8 @@
 
 import React, { useState } from 'react';
 import {
-  Brain,
   CheckCircle2,
   Copy,
-  ExternalLink,
-  MessageSquare,
   Pencil,
   Play,
   Plus,
@@ -25,12 +22,12 @@ import type {
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   deleteModelProfile,
@@ -257,6 +254,7 @@ export function TextModelsPanel({
             />
           </div>
           <Select
+            aria-label="按关联连接筛选"
             value={filterConn}
             onChange={(e) => setFilterConn(e.target.value)}
             className="w-48"
@@ -270,7 +268,7 @@ export function TextModelsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
             <RefreshCw className="h-4 w-4" />
             刷新
           </Button>
@@ -283,22 +281,22 @@ export function TextModelsPanel({
 
       {/* 模型列表 */}
       {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-muted">
+        <div className="border-y border-border-subtle py-10 text-center text-muted">
           <p className="text-sm">暂无匹配的模型配置。点击上方“新建模型配置”添加一个。</p>
-        </Card>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ul className="divide-y divide-border-subtle border-y border-border-subtle">
           {filtered.map((m) => {
             const conn = connectionMap.get(m.connectionId);
             return (
-              <Card key={m.id} className="relative flex flex-col justify-between overflow-hidden">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
+              <li key={m.id} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <CardTitle className="text-base truncate">{m.name}</CardTitle>
-                      <CardDescription className="text-xs font-mono text-muted truncate mt-0.5">
+                      <h3 className="truncate text-base font-semibold text-ink">{m.name}</h3>
+                      <p className="mt-0.5 truncate font-mono text-xs text-muted">
                         ID: {m.id}
-                      </CardDescription>
+                      </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Badge variant={m.enabled ? 'online' : 'unknown'}>
@@ -309,67 +307,39 @@ export function TextModelsPanel({
                       {m.testStatus === 'untested' && <Badge variant="unknown">未测试</Badge>}
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm pt-0">
-                  <div className="flex items-center justify-between text-xs font-mono bg-surface-raised px-2.5 py-1.5 rounded border border-border-subtle">
-                    <span className="text-ink truncate font-medium">{m.modelId}</span>
+                  <div className="flex items-center justify-between gap-3 font-mono text-xs">
+                    <span className="truncate font-medium text-ink">{m.modelId}</span>
                     <span className="text-muted shrink-0 ml-2">
                       连接：{conn ? conn.name : m.connectionId}
                     </span>
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                     {m.capabilities.map((cap) => (
-                      <span
-                        key={cap}
-                        className="text-2xs font-mono px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20"
-                      >
-                        {cap}
-                      </span>
+                      <span key={cap} className="font-mono">{cap}</span>
                     ))}
                     {m.contextLength && (
-                      <span className="text-2xs font-mono px-2 py-0.5 rounded-full bg-surface-raised text-muted border border-border-subtle">
+                      <span className="font-mono">
                         {Math.round(m.contextLength / 1000)}k 窗口
                       </span>
                     )}
                   </div>
-
-                  <div className="pt-2 border-t border-border-subtle flex items-center justify-between gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenTestDrawer(m)}
-                      className="text-xs h-7 px-2.5 text-accent"
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      能力推理测试
-                    </Button>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenEdit(m)}
-                        className="h-7 w-7 p-0"
-                        aria-label="编辑模型"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteModel(m)}
-                        className="h-7 w-7 p-0 text-danger"
-                        aria-label="删除模型"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className="flex items-center gap-1 md:justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => handleOpenTestDrawer(m)}>
+                    <Sparkles className="h-3.5 w-3.5" />推理测试
+                  </Button>
+                  <RowActionsMenu
+                    label={`更多模型操作：${m.name}`}
+                    items={[
+                      { label: '编辑配置', icon: <Pencil className="h-3.5 w-3.5 text-muted" />, onSelect: () => handleOpenEdit(m) },
+                      { label: '删除配置', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => void handleDeleteModel(m), tone: 'danger', separatorBefore: true },
+                    ]}
+                  />
+                </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
 
       {/* 新建/编辑模型对话框 */}

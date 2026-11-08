@@ -10,6 +10,7 @@ import { editCharacterOrganization } from '@/app/features/characters/api';
 import { useActivityCapabilities } from '../queries';
 import { fetchActivityCharacterSnapshot } from '../api';
 import type { ActorSnapshot, CharacterProfile } from '@sthstart/contracts';
+import { characterKeys } from '@/app/lib/query-keys';
 
 interface CharacterPickerDialogProps {
   open: boolean; onOpenChange: (open: boolean) => void; existingSourceCharacterIds: string[]; existingActorCount: number;
@@ -24,6 +25,7 @@ export function CharacterPickerDialog({ open, onOpenChange, existingSourceCharac
   const [selected, setSelected] = useState<Record<string, CharacterProfile>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const isPageTransition = browser.isFetching && browser.isPlaceholderData;
   const candidates = Object.values(selected).filter(c => !existingSourceCharacterIds.includes(c.id));
   const toggle = (character: CharacterProfile) => setSelected(current => { const next = { ...current }; if (next[character.id]) delete next[character.id]; else next[character.id] = character; return next; });
   const confirm = async () => {
@@ -40,7 +42,7 @@ export function CharacterPickerDialog({ open, onOpenChange, existingSourceCharac
     finally { setBusy(false); }
   };
   const favorite = async (character: CharacterProfile) => {
-    try { await editCharacterOrganization({ ids: [character.id], favorite: !character.organization?.favorite }); void client.invalidateQueries({ queryKey: ['characters'] }); }
+    try { await editCharacterOrganization({ ids: [character.id], favorite: !character.organization?.favorite }); void client.invalidateQueries({ queryKey: characterKeys.all }); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
   return <Dialog open={open} onOpenChange={v => { if (!busy) onOpenChange(v); }} title="选择活动角色" description="可跨页多选。加入时使用角色已发布版本；尚未发布的角色使用当前草稿。" className="max-w-4xl" footer={<div className="flex w-full items-center justify-between gap-2"><span className="text-sm">已选 {candidates.length} 位 · 还可加入 {remaining} 位</span><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={busy || !candidates.length || candidates.length > remaining} onClick={() => void confirm()}>{busy ? '正在添加…' : `确认加入 ${candidates.length} 位`}</Button></div></div>}>
@@ -48,13 +50,19 @@ export function CharacterPickerDialog({ open, onOpenChange, existingSourceCharac
       <CharacterFilters filter={browser.filter} onChange={browser.change} onReset={() => { browser.reset(); setHideAdded(false); }} facets={browser.facets} />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={hideAdded} disabled={!existingSourceCharacterIds.length} onChange={e => { setHideAdded(e.target.checked); browser.change({ page: 1 }); }} />隐藏已加入角色</label>
       {!!candidates.length && <div className="flex flex-wrap gap-2 rounded-lg bg-accent/5 p-3">{candidates.map(c => <button key={c.id} type="button" className="rounded bg-surface px-2 py-1 text-sm" onClick={() => toggle(c)}>{c.displayName} ×</button>)}<Button size="sm" variant="ghost" onClick={() => setSelected({})}>清空已选</Button></div>}
-      {(error || browser.error) && <p role="alert" className="text-sm text-accent-dark">{error || String(browser.error)}</p>}
-      {browser.isLoading ? <p className="py-6 text-center text-muted">正在加载…</p> : <div className="grid gap-2 sm:grid-cols-2">{browser.data?.items.map(character => {
+      {(error || browser.error) && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-fg"><span>{error || (browser.error instanceof Error ? browser.error.message : '角色列表读取失败')}</span>{browser.error && <Button size="sm" variant="outline" disabled={browser.isFetching} onClick={() => void browser.refetch()}>重试</Button>}</div>}
+      {isPageTransition && <p role="status" className="text-xs text-muted">筛选或页码已变化，正在读取新结果；下方暂时保留上一次结果。</p>}
+      {browser.isLoading ? <p role="status" className="py-6 text-center text-muted">正在加载角色…</p> : <div className="grid gap-2 sm:grid-cols-2">{browser.data?.items.map(character => {
         const added = existingSourceCharacterIds.includes(character.id);
         return <div key={character.id} className={`flex items-center gap-3 rounded-lg border p-3 ${selected[character.id] ? 'border-accent bg-accent/5' : 'border-border-subtle'}`}><label className={`flex min-w-0 flex-1 items-center gap-3 ${added ? 'opacity-50' : 'cursor-pointer'}`}><input type="checkbox" checked={added || !!selected[character.id]} disabled={added || (!selected[character.id] && candidates.length >= remaining)} onChange={() => toggle(character)} />{character.avatarUrl ? <Image src={character.avatarUrl} width={40} height={40} alt="" unoptimized className="h-10 w-10 rounded object-cover" /> : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-surface-muted">{character.displayName.slice(0, 1)}</span>}<span className="min-w-0"><span className="block truncate text-sm font-medium">{character.displayName}{added ? ' · 已加入' : ''}</span><span className="block truncate text-sm text-muted">{character.draft.work || '未分类'} · {character.organization?.interpretation || (character.latestVersion ? `v${character.latestVersion}` : '草稿')}</span></span></label><button type="button" aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`} onClick={() => void favorite(character)}><Star className={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`} /></button></div>;
       })}</div>}
-      {!browser.isLoading && browser.data?.total === 0 && <p className="py-6 text-center text-muted">没有匹配角色，请调整筛选。</p>}
-      <CharacterPagination data={browser.data} onPage={page => browser.change({ page })} />
+      {!browser.isLoading && !browser.isError && browser.data?.total === 0 && <p className="py-6 text-center text-muted">没有匹配角色，请调整筛选。</p>}
+      <CharacterPagination
+        data={browser.data}
+        onPage={(page) => browser.change({ page })}
+        onPageSizeChange={(pageSize) => browser.change({ pageSize, page: 1 })}
+        loading={isPageTransition}
+      />
     </fieldset>
   </Dialog>;
 }

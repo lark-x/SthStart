@@ -123,7 +123,7 @@ export function StringListField({
   return (
     <div className={className}>
       <div className="flex items-center justify-between gap-2 mb-1.5">
-        <label className="text-sm font-semibold text-ink">{label}</label>
+        <label className="text-xs font-medium text-fg-subtle">{label}</label>
         <Button
           type="button"
           size="sm"
@@ -137,7 +137,7 @@ export function StringListField({
 
       <div className="space-y-2">
         {fields.length === 0 && (
-          <p className="rounded border border-dashed border-border-default px-3 py-2 text-sm text-muted">
+          <p className="rounded-control border border-dashed border-border-subtle px-3 py-2 text-xs text-muted">
             暂无条目，点击“添加”开始填写。
           </p>
         )}
@@ -149,6 +149,7 @@ export function StringListField({
                 {...register(fieldName)}
                 aria-label={`${label} ${index + 1}`}
                 placeholder={placeholder}
+                className="text-base sm:text-sm"
               />
               <IconButton
                 type="button"

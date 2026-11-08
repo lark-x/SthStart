@@ -12,6 +12,7 @@ import {
   type KnowledgeReferenceCheckResponse,
   type KnowledgeSearchItem,
   type KnowledgeSearchResponse,
+  type KnowledgeSearchQuery,
   type NoteKnowledge,
   type PlanningKnowledgeSnapshot,
   type PlanningReferenceSelection,
@@ -109,16 +110,9 @@ export async function fetchNoteReferences(id: string): Promise<{ items: NoteRefe
   return getJson('knowledge/notes/' + id + '/references');
 }
 
-export interface KnowledgeSearchParams {
-  q?: string;
-  workId?: string;
-  works?: string[];
-  characters?: string[];
-  kinds?: Array<'note' | 'narrative'>;
-  limit?: number;
-}
+export type KnowledgeSearchParams = KnowledgeSearchQuery;
 
-export async function searchKnowledge(params: KnowledgeSearchParams): Promise<KnowledgeSearchResponse> {
+export async function searchKnowledge(params: KnowledgeSearchParams, signal?: AbortSignal): Promise<KnowledgeSearchResponse> {
   const search = new URLSearchParams();
   if (params.q?.trim()) search.set('q', params.q.trim());
   if (params.workId) search.set('workId', params.workId);
@@ -126,8 +120,9 @@ export async function searchKnowledge(params: KnowledgeSearchParams): Promise<Kn
   for (const character of params.characters ?? []) search.append('characters', character);
   for (const kind of params.kinds ?? []) search.append('kinds', kind);
   if (params.limit) search.set('limit', String(params.limit));
+  if (params.offset !== undefined) search.set('offset', String(params.offset));
   const qs = search.toString();
-  return getJson<KnowledgeSearchResponse>('knowledge/search' + (qs ? '?' + qs : ''), undefined, KnowledgeSearchResponseSchema);
+  return getJson<KnowledgeSearchResponse>('knowledge/search' + (qs ? '?' + qs : ''), { signal }, KnowledgeSearchResponseSchema);
 }
 
 /** 引用预览：按选择读取权威内容并编译快照，但不保存。 */

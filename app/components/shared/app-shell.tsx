@@ -1,51 +1,52 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo, ChevronDown } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, Search, X, ListTodo, ChevronDown, MoreHorizontal, SlidersHorizontal, Sun, Moon } from 'lucide-react';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp, type NavSection } from './navigation';
+import { findBestActiveApp } from './nav-match';
 import { ThemeSwitcher } from './theme-switcher';
 import { AutoHideScrollbars } from './auto-hide-scrollbars';
 import { useOverlayAccessibility } from '../ui/overlay';
 import { TaskDrawer } from './task-drawer';
+import { useTheme } from '@/app/providers/ui-provider';
 import { useGlobalTasks } from '@/app/features/tasks/queries';
 
 const COLLAPSE_KEY = 'sthstart_nav_collapsed';
 const COLLAPSED_SECTIONS_KEY = 'sthstart_nav_collapsed_sections';
+const subscribePlatform = () => () => {};
+const readCommandKey = () => /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K';
+const serverCommandKey = () => 'Ctrl K';
 
-function readCollapsedSectionsPref(): Set<NavSection> {
-  if (typeof window === 'undefined') return new Set();
+let collapsedSectionsFallback = '[]';
+let collapsedPrefFallback = true;
+
+function readCollapsedSectionsSnapshot() {
   try {
-    const raw = localStorage.getItem(COLLAPSED_SECTIONS_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return new Set(parsed as NavSection[]);
-    }
+    return localStorage.getItem(COLLAPSED_SECTIONS_KEY) ?? collapsedSectionsFallback;
   } catch {
-    /* ignore */
+    return collapsedSectionsFallback;
   }
-  return new Set();
 }
 
-/** 1024–1439px 默认收窄为图标栏，用户显式选择过则沿用其偏好。 */
-const NARROW_QUERY = '(min-width: 1024px) and (max-width: 1439px)';
+function serverSectionsSnapshot() { return '[]'; }
 
 /** 邻舍与工作区嵌入模式：使用精简外框，由页面自身提供退回全站导航的动作。 */
 const EMBED_PREFIXES = ['/apps/linshe'];
 
-function isActive(pathname: string, app: NavApp) {
-  if (app.href === '/') return pathname === '/';
-  return pathname === app.href || pathname.startsWith(`${app.href}/`);
-}
-
-function currentApp(pathname: string): NavApp | undefined {
-  return NAV_APPS.find((app) => isActive(pathname, app));
+/** 导航图标：放进模块色小方块，选中时由 CSS 铺上模块浅底。 */
+function NavIcon({ app }: { app: NavApp }) {
+  return (
+    <span className="shell-nav-icon-wrap" data-tone={app.tone}>
+      <app.icon className="shell-nav-icon" aria-hidden="true" />
+    </span>
+  );
 }
 
 /**
- * 导航偏好以外部存储形式读取：localStorage 记忆用户选择，未选择时按视口宽度决定。
+ * B 导航默认使用图标栏；显式选择保留到下次访问，存储不可用时保留会话偏好。
  */
 const navPrefListeners = new Set<() => void>();
 
@@ -55,12 +56,9 @@ function emitNavPref() {
 
 function subscribeNavPref(listener: () => void) {
   navPrefListeners.add(listener);
-  const media = window.matchMedia(NARROW_QUERY);
-  media.addEventListener('change', listener);
   window.addEventListener('storage', listener);
   return () => {
     navPrefListeners.delete(listener);
-    media.removeEventListener('change', listener);
     window.removeEventListener('storage', listener);
   };
 }
@@ -71,54 +69,62 @@ function readCollapsedPref() {
     if (stored === 'true') return true;
     if (stored === 'false') return false;
   } catch {
-    /* localStorage 不可用时退回视口判断 */
+    /* localStorage 不可用时沿用会话偏好。 */
   }
-  return window.matchMedia(NARROW_QUERY).matches;
+  return collapsedPrefFallback;
 }
 
 function serverCollapsedPref() {
-  return false;
+  return true;
 }
 
 /**
- * 全站应用外框：负责导航、48px 顶部指令条与抽屉，并承载页面内容。
+ * B 外框：紧凑导航、全局工具条与共享画布，各页面在画布上组织独立工作面。
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const commandKey = useSyncExternalStore(subscribePlatform, readCommandKey, serverCommandKey);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const collapsedPref = useSyncExternalStore(subscribeNavPref, readCollapsedPref, serverCollapsedPref);
-  const [mobileCollapsed, setMobileCollapsed] = useState<boolean | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const { data: globalTasksData } = useGlobalTasks({ state: 'active' });
   const activeTasksCount = globalTasksData?.activeCount ?? 0;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuId = React.useId();
+  const [navHint, setNavHint] = useState<{ text: string; left: number; top: number } | null>(null);
 
-  const collapsed = mobileCollapsed ?? collapsedPref;
-  const [collapsedSections, setCollapsedSections] = useState<Set<NavSection>>(new Set());
+  const { colorMode, toggleColorMode } = useTheme();
+  const isDark = colorMode === 'dark';
 
-  useEffect(() => {
-    setCollapsedSections(readCollapsedSectionsPref());
-  }, []);
+  const collapsed = collapsedPref;
+  const sectionsSnapshot = useSyncExternalStore(subscribeNavPref, readCollapsedSectionsSnapshot, serverSectionsSnapshot);
+  const collapsedSections = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(sectionsSnapshot);
+      return new Set<NavSection>(Array.isArray(parsed) ? parsed.filter((value): value is NavSection => NAV_SECTIONS.includes(value)) : []);
+    } catch {
+      return new Set<NavSection>();
+    }
+  }, [sectionsSnapshot]);
 
   const toggleSection = useCallback((section: NavSection) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) {
-        next.delete(section);
-      } else {
-        next.add(section);
-      }
-      try {
-        localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        /* 忽略持久化失败 */
-      }
-      return next;
-    });
-  }, []);
+    const next = new Set(collapsedSections);
+    if (next.has(section)) next.delete(section);
+    else next.add(section);
+    collapsedSectionsFallback = JSON.stringify(Array.from(next));
+    try {
+      localStorage.setItem(COLLAPSED_SECTIONS_KEY, collapsedSectionsFallback);
+    } catch {
+      /* Storage 不可用时保留本次会话偏好。 */
+    }
+    emitNavPref();
+  }, [collapsedSections]);
 
   const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
   const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
@@ -127,17 +133,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio || isStoryWorkspace || isNotebookEditor || isNarrativeFocus;
 
   const toggleCollapsed = useCallback(() => {
-    setMobileCollapsed((prev) => {
-      const next = !(prev ?? collapsedPref);
-      try {
-        localStorage.setItem(COLLAPSE_KEY, String(next));
-      } catch {
-        /* 忽略持久化失败 */
-      }
-      emitNavPref();
-      return next;
-    });
+    collapsedPrefFallback = !collapsedPref;
+    try {
+      localStorage.setItem(COLLAPSE_KEY, String(collapsedPrefFallback));
+    } catch {
+      /* 外部存储仍通过会话回退值通知所有订阅者。 */
+    }
+    setNavHint(null);
+    emitNavPref();
   }, [collapsedPref]);
+
+  const showNavHint = (target: EventTarget) => {
+    if (!collapsed || !(target instanceof Element)) return;
+    const item = target.closest<HTMLElement>('[data-nav-label]');
+    if (!item) { setNavHint(null); return; }
+    const rect = item.getBoundingClientRect();
+    setNavHint({
+      text: item.dataset.navLabel ?? '',
+      left: rect.right + 12,
+      top: Math.max(24, Math.min(window.innerHeight - 24, rect.top + rect.height / 2)),
+    });
+  };
 
   const closeDrawer = useCallback((restoreFocus = true) => {
     setDrawerOpen(false);
@@ -154,6 +170,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('sthstart:open-task-drawer', handleOpenTasks);
     };
   }, []);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!moreMenuRef.current?.contains(event.target as Node) && !moreTriggerRef.current?.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMoreMenuOpen(false);
+        moreTriggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   useOverlayAccessibility({
     open: drawerOpen,
@@ -172,7 +210,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => desktop.removeEventListener('change', onDesktop);
   }, [drawerOpen, embed, closeDrawer]);
 
-  const active = currentApp(pathname);
+  const activeSidebarApp = useMemo(() => {
+    const visible = NAV_APPS.filter((app) => !app.hiddenFromSidebar);
+    return findBestActiveApp(pathname, visible);
+  }, [pathname]);
 
   const navContent = (
     <>
@@ -187,30 +228,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onClick={() => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
         }}
-        title="搜索与命令 (Cmd+K)"
+        title={`搜索与命令 (${commandKey})`}
+        data-nav-label={`搜索与命令 (${commandKey})`}
         aria-label="搜索与命令快捷键"
       >
-        <Search className="shell-nav-icon" aria-hidden="true" />
+        <span className="shell-nav-icon-wrap" data-tone="slate"><Search className="shell-nav-icon" aria-hidden="true" /></span>
         <span className="shell-nav-text flex-1">搜索与命令</span>
-        <kbd className="shell-nav-text rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-nav-muted">⌘K</kbd>
+        <kbd className="shell-nav-text shell-nav-kbd">{commandKey}</kbd>
       </button>
 
       <nav className="shell-nav" aria-label="主导航">
         <div className="shell-nav-group">
           <Link
             href={NAV_PORTAL.href}
+            title={collapsed ? navDisplayLabel(NAV_PORTAL) : undefined}
+            data-nav-label={navDisplayLabel(NAV_PORTAL)}
             className="shell-nav-link"
-            data-active={isActive(pathname, NAV_PORTAL) || undefined}
-            aria-current={isActive(pathname, NAV_PORTAL) ? 'page' : undefined}
+            data-active={(pathname === '/' && !activeSidebarApp) || undefined}
+            aria-current={pathname === '/' ? 'page' : undefined}
             onClick={() => closeDrawer(false)}
           >
-            <NAV_PORTAL.icon className="shell-nav-icon" aria-hidden="true" />
+            <NavIcon app={NAV_PORTAL} />
             <span className="shell-nav-text">{navDisplayLabel(NAV_PORTAL)}</span>
           </Link>
         </div>
 
         {NAV_SECTIONS.map((section) => {
-          const apps = NAV_APPS.filter((app) => app.navSection === section);
+          const apps = NAV_APPS.filter((app) => app.navSection === section && !app.hiddenFromSidebar);
           if (apps.length === 0) return null;
           const isSectionCollapsed = collapsedSections.has(section);
           return (
@@ -229,7 +273,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {(!isSectionCollapsed || collapsed) && (
                 <div className="shell-nav-list">
                   {apps.map((app) => {
-                    const selected = isActive(pathname, app);
+                    const selected = activeSidebarApp?.id === app.id;
                     return (
                       <Link
                         key={app.href}
@@ -238,9 +282,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         data-active={selected || undefined}
                         aria-current={selected ? 'page' : undefined}
                         title={collapsed ? navDisplayLabel(app) : undefined}
+                        data-nav-label={navDisplayLabel(app)}
                         onClick={() => closeDrawer(false)}
                       >
-                        <app.icon className="shell-nav-icon" aria-hidden="true" />
+                        <NavIcon app={app} />
                         <span className="shell-nav-text">{navDisplayLabel(app)}</span>
                       </Link>
                     );
@@ -253,10 +298,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="shell-sidebar-foot">
-        <ThemeSwitcher className="w-full" compact={collapsed} dropDirection="up" variant="sidebar" />
+        <ThemeSwitcher className="w-full" compact={collapsed && !drawerOpen} dropDirection="up" variant="sidebar" />
         <button
           type="button"
           className="shell-collapse-btn"
+          data-nav-label={collapsed ? '展开导航' : '收起导航'}
           onClick={toggleCollapsed}
           aria-pressed={collapsed}
           aria-label={collapsed ? '展开导航' : '收起导航'}
@@ -265,7 +311,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {collapsed
             ? <PanelLeftOpen className="shell-nav-icon" aria-hidden="true" />
             : <PanelLeftClose className="shell-nav-icon" aria-hidden="true" />}
-          <span className="shell-nav-text">{collapsed ? '展开' : '收起'}</span>
+          <span className="shell-nav-text">{collapsed ? '展开侧栏' : '收起侧栏'}</span>
         </button>
       </div>
     </>
@@ -273,7 +319,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (embed) {
     return (
-      <div className="shell-root" data-embed="true">
+      <div className="shell-root" data-layout="b" data-embed="true">
         <AutoHideScrollbars />
         <div className="shell-main">{children}</div>
         {drawerOpen && (
@@ -283,7 +329,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 ref={closeButtonRef}
                 type="button"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+                className="shell-drawer-close"
                 onClick={() => closeDrawer()}
                 aria-label="关闭导航"
               >
@@ -299,91 +345,122 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="shell-root">
+    <div className="shell-root" data-layout="b">
       <AutoHideScrollbars />
+      <a href={`${pathname}#shell-content`} className="shell-skip-link" onClick={event => { event.preventDefault(); document.getElementById('shell-content')?.focus(); }}>跳至主要内容</a>
       <aside
         className="shell-sidebar"
         data-collapsed={collapsed || undefined}
         aria-label="侧边导航"
+        onMouseOver={(event) => showNavHint(event.target)}
+        onMouseLeave={() => setNavHint(null)}
+        onFocusCapture={(event) => showNavHint(event.target)}
+        onBlurCapture={() => setNavHint(null)}
+        onScrollCapture={() => setNavHint(null)}
+        onKeyDown={(event) => { if (event.key === 'Escape') setNavHint(null); }}
       >
         {navContent}
       </aside>
 
       <div className="shell-main">
-        {/* Slim 48px Top Command Header */}
-        <header className="shell-command-header" aria-label="全局指令条">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              ref={triggerRef}
-              type="button"
-              className="lg:hidden inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-default/70 bg-surface/70 text-ink transition-colors hover:bg-surface-hover"
-              aria-label="打开导航"
-              aria-expanded={drawerOpen}
-              onClick={() => setDrawerOpen(true)}
-            >
-              <Menu className="h-4 w-4" aria-hidden="true" />
-            </button>
+        <div className="shell-surface">
+          {/* 全局工具只放通用操作；当前位置由侧栏与页面主标题表达。 */}
+          <header className="shell-toolbar" aria-label="全局指令条" data-testid="shell-header">
+            <div className="shell-toolbar-inner">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <button
+                  ref={triggerRef}
+                  type="button"
+                  className="shell-command-action shell-nav-trigger"
+                  aria-label="打开导航"
+                  aria-expanded={drawerOpen}
+                  onClick={() => setDrawerOpen(true)}
+                >
+                  <Menu className="h-4 w-4" aria-hidden="true" />
+                </button>
 
-            {/* Breadcrumb Hierarchy */}
-            <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted font-sans">
-              {pathname === '/' ? (
-                <span className="font-serif font-bold text-sm tracking-tight text-ink">工作台</span>
-              ) : active ? (
-                <>
-                  <span className="hidden sm:inline hover:text-ink transition-colors">{active.navSection}</span>
-                  <span className="hidden sm:inline text-muted/60">/</span>
-                  <span className="font-medium text-ink truncate">{active.title}</span>
-                </>
-              ) : pathname.startsWith('/settings') ? (
-                <>
-                  <span className="hidden sm:inline hover:text-ink transition-colors">系统与应用</span>
-                  <span className="hidden sm:inline text-muted/60">/</span>
-                  <span className="font-medium text-ink truncate">系统设置</span>
-                </>
-              ) : (
-                <span className="font-serif font-bold text-sm tracking-tight text-ink">工作台</span>
-              )}
+              </div>
+
+              <div className="shell-toolbar-actions">
+                <button
+                  type="button"
+                  className="shell-command-action shell-search-trigger"
+                  onClick={() => {
+                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
+                  }}
+                  title={`搜索与命令 (${commandKey})`}
+                  aria-label="搜索与命令快捷键"
+                >
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden md:inline">搜索</span>
+                  <kbd className="hidden md:inline" aria-hidden="true">{commandKey}</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  className="shell-command-action relative"
+                  aria-label="打开任务中心"
+                  title="全局任务抽屉"
+                  onClick={() => setTaskDrawerOpen(true)}
+                >
+                  <ListTodo className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">任务</span>
+                  {activeTasksCount > 0 && <span className="shell-task-count">{activeTasksCount}</span>}
+                </button>
+
+                {/* 更多菜单：收纳低频次要操作（主题切换、快速设置等） */}
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    ref={moreTriggerRef}
+                    type="button"
+                    className="shell-command-action"
+                    aria-label="更多操作"
+                    aria-haspopup="menu"
+                    aria-expanded={moreMenuOpen}
+                    aria-controls={moreMenuOpen ? moreMenuId : undefined}
+                    onClick={() => setMoreMenuOpen((v) => !v)}
+                    title="更多操作"
+                  >
+                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                  </button>
+
+                  {moreMenuOpen && (
+                    <div
+                      id={moreMenuId}
+                      role="menu"
+                      aria-label="更多操作菜单"
+                      className="absolute right-0 z-[var(--z-menu)] mt-1.5 w-52 overflow-hidden rounded-panel border border-border-subtle bg-surface-raised p-1 shadow-floating"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          toggleColorMode();
+                          setMoreMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-control px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-hover"
+                      >
+                        {isDark ? <Sun className="h-4 w-4 text-muted" aria-hidden="true" /> : <Moon className="h-4 w-4 text-muted" aria-hidden="true" />}
+                        <span>{isDark ? '切换至日间模式' : '切换至夜间模式'}</span>
+                      </button>
+                      <Link
+                        href="/settings/public-services"
+                        role="menuitem"
+                        onClick={() => setMoreMenuOpen(false)}
+                        className="flex w-full items-center gap-2.5 rounded-control px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface-hover"
+                      >
+                        <SlidersHorizontal className="h-4 w-4 text-muted" aria-hidden="true" />
+                        <span>模型与系统设置</span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          </header>
 
-          {/* Quick Access Control Capsules */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-default/70 bg-surface/70 px-2.5 text-xs text-muted hover:text-ink hover:border-border-default transition-colors"
-              onClick={() => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
-              }}
-              title="搜索与命令 (Cmd+K)"
-              aria-label="搜索与命令快捷键"
-            >
-              <Search className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">搜索与命令</span>
-              <kbd className="hidden md:inline font-mono text-[10px] text-muted bg-surface-sunken px-1 rounded border border-border-subtle">⌘K</kbd>
-            </button>
-
-            <button
-              type="button"
-              className="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-default/70 bg-surface/70 px-2.5 text-xs text-muted hover:text-ink hover:border-border-default transition-colors"
-              aria-label="打开任务中心"
-              title="全局任务中心"
-              onClick={() => setTaskDrawerOpen(true)}
-            >
-              <ListTodo className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-              <span className="hidden sm:inline">任务</span>
-              {activeTasksCount > 0 && (
-                <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                  {activeTasksCount}
-                </span>
-              )}
-            </button>
-
-            <ThemeSwitcher />
-          </div>
-        </header>
-
-        <main className="shell-content" id="shell-content">{children}</main>
+          <main className="shell-content" data-section={pathname.startsWith('/settings') ? 'settings' : undefined} id="shell-content" tabIndex={-1}>{children}</main>
+        </div>
       </div>
 
       {drawerOpen && (
@@ -393,7 +470,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               ref={closeButtonRef}
               type="button"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-[var(--radius-control)] border border-border-default bg-surface text-muted"
+              className="shell-drawer-close"
               onClick={() => closeDrawer()}
               aria-label="关闭导航"
             >
@@ -405,6 +482,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <TaskDrawer isOpen={taskDrawerOpen} onClose={() => setTaskDrawerOpen(false)} />
+      {navHint && collapsed && !drawerOpen && createPortal(
+        <div className="shell-nav-tooltip" role="tooltip" style={{ left: navHint.left, top: navHint.top }}>{navHint.text}</div>,
+        document.body,
+      )}
     </div>
   );
 }

@@ -1,7 +1,16 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 const service = `http://127.0.0.1:${process.env.E2E_SERVICE_PORT || 4200}`;
 const headers = { 'x-sthstart-admin-token': 'sthstart-e2e-secret-0123456789abcdef' };
+
+/* 工作室改为「剧情大纲 / 分镜流 / 镜头工坊」三栏后，活动设定统一在「更多 → 活动设置」抽屉里。 */
+async function openSettings(page: Page) {
+  await page.getByRole('button', { name: '更多工作台操作' }).click();
+  await page.getByRole('menuitem', { name: '活动设置' }).click();
+  const drawer = page.getByRole('dialog', { name: '活动全局设置' });
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
 
 test('activity opens on the current screenplay and creates scenes from a single focused action', async ({ page, request }) => {
   const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
@@ -11,35 +20,58 @@ test('activity opens on the current screenplay and creates scenes from a single 
   expect(response.ok()).toBeTruthy();
   const { activity } = await response.json();
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`/apps/activities/${activity.id}?tab=script`);
-  await expect(page.getByRole('heading', { name: '简明流程验收活动' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '场次导轨导航' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '本阶段还没有场次' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '新建场次（设定时间与地点）' })).toBeVisible();
+  await page.goto(`/apps/activities/${activity.id}`);
+  await expect(page.getByRole('heading', { name: '简明流程验收活动', level: 1 })).toBeAttached();
+  await expect(page.getByLabel('活动标题', { exact: true })).toHaveValue('简明流程验收活动');
+  // 「场次导轨导航」改为左侧「剧情大纲」：幕列表 + 当前幕的「加场」单一主动作。
+  await expect(page.getByText('剧情大纲', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '本幕暂无场次' })).toBeVisible();
+  const addScene = page.getByRole('button', { name: '加场', exact: true });
+  await expect(addScene).toHaveCount(1);
   await expect(page.getByText('not_configured', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '新建场次（设定时间与地点）' }).click();
-  await expect(page.getByRole('heading', { name: '新场次 1' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '编辑场次' })).toBeVisible();
-  await expect(page.getByLabel('场次标题')).toHaveCount(0);
+  await addScene.click();
+  /*
+   * 原来场次标题收在「编辑场次」对话框里；现在场次工具条直接提供行内标题输入，
+   * 新场次自带第一个空镜头，可立即写台词。
+   */
+  await expect(page.getByLabel('场次标题')).toHaveValue('新场次 1');
+  await expect(page.getByRole('heading', { name: '本幕暂无场次' })).toHaveCount(0);
+  await expect(page.getByLabel('分镜 1 对白')).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加分镜', exact: true })).toBeVisible();
 });
 
-test('activity workflow navigation moves to a second row until the header has enough room', async ({ page, request }) => {
+test('activity view switch stays in the header when there is room and moves into the more menu otherwise', async ({ page, request }) => {
   const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
   const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
   expect(response.ok()).toBeTruthy();
   const { activity } = await response.json();
 
+  /*
+   * 「活动流程 / 流水线阶段」两套流程导航已合并为页头的「工作台视图」切换
+   * （分镜漫剧 / 漫画工坊 / 素材制作）。1280px 下它留在单行页头里；
+   * 页头放不下时收进「更多工作台操作」菜单，同样不能撑出横向滚动。
+   */
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto(`/apps/activities/${activity.id}?tab=script`);
-  const compactNavigation = page.getByRole('navigation', { name: '活动流程' });
-  await expect(compactNavigation).toBeVisible();
-  expect(await compactNavigation.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(52);
+  await page.goto(`/apps/activities/${activity.id}`);
+  const views = page.getByRole('group', { name: '工作台视图' });
+  await expect(views).toBeVisible();
+  expect(await views.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(40);
+  expect(await views.evaluate((element) => element.closest('header')!.getBoundingClientRect().height)).toBeLessThanOrEqual(52);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expect(views).not.toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.getByRole('button', { name: '更多工作台操作' }).click();
+  const menu = page.getByRole('menu', { name: '更多工作台操作' });
+  await expect(menu.getByRole('menuitem', { name: '素材制作' })).toBeVisible();
+  await menu.getByRole('menuitem', { name: '素材制作' }).click();
+  await expect(page.getByRole('heading', { name: '图片与视频' })).toBeVisible();
+
   await page.setViewportSize({ width: 1600, height: 900 });
-  await expect(page.getByRole('navigation', { name: '流水线阶段' })).toBeVisible();
-  await expect(compactNavigation).not.toBeVisible();
-  expect(await page.getByRole('navigation', { name: '流水线阶段' }).evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(40);
+  await expect(views).toBeVisible();
+  await expect(views.getByRole('button', { name: '素材制作' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await views.evaluate((element) => element.closest('header')!.getBoundingClientRect().height)).toBeLessThanOrEqual(52);
 });
 
 test('moving from editing to preview prepares the latest content once without a manual version step', async ({ page, request }) => {
@@ -47,64 +79,77 @@ test('moving from editing to preview prepares the latest content once without a 
   const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
   expect(response.ok()).toBeTruthy();
   const { activity } = await response.json();
-  await page.goto(`/apps/activities/${activity.id}?tab=script`);
-  const message = '进入回放前自动准备这条新内容';
-  await page.getByRole('button', { name: /对话台词 \(/ }).click();
-  await page.getByPlaceholder('追加角色台词或剧本旁白，按回车快速添加…').fill(message);
-  await page.getByRole('button', { name: '追加', exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/apps/activities/${activity.id}`);
+  /*
+   * 群聊台词编辑已随记录视图移除；回放的阶段卡片取自幕次标题，
+   * 因此改一个幕次标题作为「进入回放前必须带上的新内容」。
+   * 「回放预览」流程按钮改为页头「试演」。
+   */
+  const stageTitle = '进入试演前自动准备这条新内容';
+  const settings = await openSettings(page);
+  await settings.getByRole('tab', { name: /幕次目标/ }).click();
+  await settings.getByLabel('幕次标题').first().fill(stageTitle);
+  await settings.getByRole('button', { name: '完成' }).click();
   await expect(page.getByRole('status').getByText('已保存')).toBeVisible({ timeout: 15_000 });
-  const workflowNavigation = page.getByRole('navigation', { name: /^(流水线阶段|活动流程)$/ });
-  await workflowNavigation.getByRole('button', { name: /回放预览/ }).click();
-  await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
   const read = async () => (await (await request.get(`${service}/api/v1/admin/activities/${activity.id}`, { headers })).json());
-  const published = await read();
-  expect(published.currentContentRevision.document.messages.some((item: { text: string }) => item.text === message)).toBeTruthy();
-  const version = published.activity.headVersion;
-  await workflowNavigation.getByRole('button', { name: /剧情创作/ }).click();
-  await workflowNavigation.getByRole('button', { name: /回放预览/ }).click();
+  const draft = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}/draft`, { headers })).json();
+  expect(draft.document.stages[0].title).toBe(stageTitle);
+
+  await page.getByRole('button', { name: '试演', exact: true }).click();
+  await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
+  /*
+   * 进入预览时应把已保存的草稿准备成正式内容版本，无需手动「保存新版本」。
+   * 注意（2026-11-06）：当前 StudioShell 的「试演」只打开浮层，不调用 commit / prepare-context，
+   * 浮层按旧的 currentContentRevisionId 编排，预览不到新内容。这是产品回归，断言保持不变。
+   */
+  await expect.poll(async () => (await read()).currentContentRevision.document.stages[0].title, { timeout: 10_000 }).toBe(stageTitle);
+  const version = (await read()).activity.headVersion;
+  await page.getByRole('button', { name: '关闭试演预览' }).click();
+  await page.getByRole('button', { name: '试演', exact: true }).click();
   await expect(page.getByText('回放编排与设备模拟预览')).toBeVisible();
   expect((await read()).activity.headVersion).toBe(version);
 });
 
 /**
-* 阶段字段精简：默认只显示标题与「这一段发生什么」，
-* 地点、结束条件、必须发生的行动收进「更多」，展开后仍可编辑。
+* 幕次字段精简：「活动设置 → 幕次目标」每一幕只显示标题与「本幕目标与核心事件」。
+* 旧阶段编辑器里收在「更多」的地点 / 结束条件 / 必须发生的行动已随改版移除，不再有编辑入口。
 */
-test('stage fields stay compact until the more section is opened', async ({ page, request }) => {
+test('stage fields stay compact in the activity settings drawer and save to the draft', async ({ page, request }) => {
   const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
   const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
   expect(response.ok()).toBeTruthy();
   const { activity } = await response.json();
-  await page.goto(`/apps/activities/${activity.id}?tab=settings`);
+  await page.goto(`/apps/activities/${activity.id}`);
 
-  // 默认展开第一个阶段：标题与内容安排在，地点/结束条件/必须行动不在。
-  await expect(page.getByLabel('阶段 1 标题')).toBeVisible();
-  await expect(page.getByLabel('阶段 1 内容安排')).toBeVisible();
-  await expect(page.getByText('阶段地点').first()).not.toBeVisible();
-  await expect(page.getByText('阶段结束条件').first()).not.toBeVisible();
+  const settings = await openSettings(page);
+  await settings.getByRole('tab', { name: /幕次目标/ }).click();
+  await expect(settings.getByLabel('幕次标题')).toHaveCount(document.stages.length);
+  await expect(settings.getByLabel('本幕目标与核心事件')).toHaveCount(document.stages.length);
+  await expect(settings.getByLabel('幕次标题').first()).toHaveValue(document.stages[0].title);
+  await expect(settings.getByText('阶段地点')).toHaveCount(0);
+  await expect(settings.getByText('阶段结束条件')).toHaveCount(0);
 
-  // 展开「更多」后这些字段才出现。
-  await page.getByText('更多：地点、结束条件与必须发生的行动').first().click();
-  await expect(page.getByText('阶段地点').first()).toBeVisible();
-  await expect(page.getByText('阶段结束条件').first()).toBeVisible();
-  await expect(page.getByText('必须发生的行动').first()).toBeVisible();
-
-  // 必须发生的行动此前没有编辑入口，这里确认能改并落到草稿。
-  await page.getByRole('button', { name: '添加行动' }).first().click();
-  const beat = page.getByLabel('阶段 1 必须发生的行动 1');
-  await beat.fill('确认到场名单');
-  await expect(beat).toHaveValue('确认到场名单');
+  const instruction = settings.getByLabel('本幕目标与核心事件').first();
+  await instruction.fill('确认到场名单');
+  await expect(instruction).toHaveValue('确认到场名单');
+  await settings.getByRole('button', { name: '完成' }).click();
   await expect(page.getByRole('status').getByText('已保存')).toBeVisible({ timeout: 15_000 });
-  const saved = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}`, { headers })).json();
   /*
-   * 编辑先落在草稿上，只有保存新版本才写进内容版本；这里读草稿来验证改动确实被保存了。
+   * 编辑先落在草稿上；这里读草稿来验证改动确实被保存了，其余幕次字段原样保留。
    */
   const draft = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}/draft`, { headers })).json();
-  const beats = draft.document.stages[0].requiredBeats;
-  expect(beats.some((item: { text: string }) => item.text === '确认到场名单')).toBeTruthy();
+  expect(draft.document.stages[0].instruction).toBe('确认到场名单');
+  expect(draft.document.stages[0].location).toBe(document.stages[0].location);
+  expect(draft.document.stages[0].requiredBeats).toEqual(document.stages[0].requiredBeats);
 });
 
-test('scene title and setting fields are edited in a temporary dialog before applying to the activity draft', async ({ page, request }) => {
+/*
+ * 「编辑场次」临时对话框（含放弃确认）已随分镜工作台改版移除：场次标题改在场次工具条上
+ * 行内编辑并自动保存，时间与地点作为只读信息显示。这里验证行内编辑只改标题、不丢设定字段，
+ * 并且窄屏下可从「当前场次」选择器到达同一场次且无横向溢出。
+ */
+test('scene title is edited inline in the scene toolbar and keeps its setting fields', async ({ page, request }) => {
   const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
   const stageId = document.stages[0].id;
   document.scenes = [{
@@ -131,69 +176,30 @@ test('scene title and setting fields are edited in a temporary dialog before app
   expect(response.ok()).toBeTruthy();
   const { activity } = await response.json();
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/apps/activities/${activity.id}?tab=script`);
+  await page.goto(`/apps/activities/${activity.id}`);
 
-  await expect(page.getByRole('heading', { name: '雪山低温萃取' })).toBeVisible();
-  await expect(page.getByLabel('场次标题')).toHaveCount(0);
-  await page.getByRole('button', { name: '编辑场次' }).click();
-  let dialog = page.getByRole('dialog', { name: '编辑场次' });
-  await expect(dialog.getByLabel('场次标题')).toHaveValue('雪山低温萃取');
-  await expect(dialog.getByLabel('时间')).toHaveValue('傍晚 18:30');
+  const sceneTitle = page.getByLabel('场次标题');
+  await expect(sceneTitle).toHaveValue('雪山低温萃取');
+  await expect(page.getByText('龙脊雪山营地', { exact: true })).toBeVisible();
+  await expect(page.getByText('傍晚 18:30', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('分镜 1 动作')).toHaveValue('检查实验记录');
 
-  await dialog.getByLabel('场次标题').fill('临时标题，不应保存');
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  const discard = page.getByRole('dialog', { name: '放弃场次修改？' });
-  await expect(discard).toBeVisible();
-  await discard.getByRole('button', { name: '继续编辑' }).click();
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('dialog', { name: '放弃场次修改？' }).getByRole('button', { name: '放弃修改' }).click();
-  await expect(page.getByRole('heading', { name: '雪山低温萃取' })).toBeVisible();
-
-  await page.getByRole('button', { name: '编辑场次' }).click();
-  dialog = page.getByRole('dialog', { name: '编辑场次' });
-  await dialog.getByLabel('场次标题').fill('新的场次标题');
-  await dialog.getByLabel('地点').fill('营地实验桌旁');
-  await dialog.getByRole('button', { name: '应用修改' }).click();
-
-  await expect(page.getByRole('heading', { name: '新的场次标题' })).toBeVisible();
-  await expect(page.getByText('营地实验桌旁')).toBeVisible();
+  await sceneTitle.fill('新的场次标题');
+  await sceneTitle.press('Enter');
+  await expect(sceneTitle).toHaveValue('新的场次标题');
   await expect(page.getByRole('status').getByText('已保存')).toBeVisible({ timeout: 15_000 });
   const draft = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}/draft`, { headers })).json();
   const savedScene = draft.document.scenes.find((item: { id: string }) => item.id === 'scene-compact-edit-test');
   expect(savedScene.title).toBe('新的场次标题');
-  expect(savedScene.locationText).toBe('营地实验桌旁');
+  expect(savedScene.locationText).toBe('龙脊雪山营地');
   expect(savedScene.timeText).toBe('傍晚 18:30');
+  expect(savedScene.environment).toBe('风雪渐起');
+  expect(savedScene.beats.map((beat: { id: string }) => beat.id)).toEqual(['beat-compact-edit-test']);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: '编辑场次' }).click();
-  dialog = page.getByRole('dialog', { name: '编辑场次' });
-  await expect(dialog.getByLabel('场次标题')).toHaveValue('新的场次标题');
+  const sceneSelect = page.getByLabel('当前场次');
+  await expect(sceneSelect).toBeVisible();
+  await expect(sceneSelect.locator('option:checked')).toHaveText('新的场次标题');
+  await expect(page.getByLabel('场次标题')).toHaveValue('新的场次标题');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
-  await dialog.getByLabel('场次标题').fill('窄屏临时内容');
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('dialog', { name: '放弃场次修改？' }).getByRole('button', { name: '放弃修改' }).click();
-  await expect(page.getByRole('heading', { name: '新的场次标题' })).toBeVisible();
-});
-
-/**
-* 群聊与朋友圈的视图内生成入口：按钮存在，自动续聊默认关闭。
-*/
-test('the AI writing assistant stays collapsed until requested and then exposes its writing modes', async ({ page, request }) => {
-  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
-  const response = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
-  expect(response.ok()).toBeTruthy();
-  const { activity } = await response.json();
-  await page.goto(`/apps/activities/${activity.id}?tab=script`);
-  await expect(page.getByRole('button', { name: '展开 AI 助手' })).toBeVisible();
-  await page.getByRole('button', { name: '展开 AI 助手' }).click();
-  const assistant = page.getByRole('complementary');
-  await expect(assistant.getByText('AI 创作伴侣')).toBeVisible();
-  await expect(assistant.getByRole('button', { name: /续写对话/ })).toBeVisible();
-  await expect(assistant.getByRole('button', { name: /朋友圈文案/ })).toBeVisible();
-  await expect(assistant.getByRole('button', { name: '生成候选' })).toBeDisabled();
-  await page.getByRole('button', { name: '收起 AI 助手' }).click();
-  await expect(page.getByRole('button', { name: '展开 AI 助手' })).toBeVisible();
-  const draft = await (await request.get(`${service}/api/v1/admin/activities/${activity.id}/draft`, { headers })).json();
-  expect(draft.document.messages.length).toBe(document.messages.length);
 });

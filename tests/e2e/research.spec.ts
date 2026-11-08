@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const headers = { 'x-sthstart-admin-token': 'sthstart-e2e-secret-0123456789abcdef' };
 /*
@@ -36,15 +36,27 @@ async function ensureWork(request: import('@playwright/test').APIRequestContext)
   return (await commit.json()).workId as string;
 }
 
+/*
+ * 生产构建下页面先于水合可点：过早的点击只移动焦点、不切换标签，
+ * 重试到标签真正被选中，后续断言才有意义。
+ */
+async function openResearchTab(page: Page) {
+  const tab = page.getByRole('tab', { name: '研究专题' });
+  await expect(async () => {
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true', { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 test('研究专题入口提供 AI 选题与自定主题两条路', async ({ page, request }) => {
   // 研究专题需要至少一个本地作品才会出现选题入口。
   await ensureWork(request);
   await page.goto('/apps/narrative');
   await expect(page.getByRole('tab', { name: '研究专题' })).toBeVisible();
-  await page.getByRole('tab', { name: '研究专题' }).click();
+  await openResearchTab(page);
 
-  // 空态先给一个明确入口，避免一进来就铺满两个选项。
-  await page.getByRole('button', { name: '新建', exact: true }).click();
+  // 空态先给一个明确入口（左栏「新建专题」），避免一进来就铺满两个选项。
+  await page.getByRole('button', { name: '新建专题', exact: true }).click();
 
   // 第一次确认之前的两个入口都要可达。
   await expect(page.getByRole('button', { name: /AI 发现研究主题/ })).toBeVisible();
@@ -63,8 +75,8 @@ test('用户自定主题创建后处于草稿态，确认前不能开始研究',
   // 保证本地至少有一个可研究的作品，界面才能进入选题流程。
   await ensureWork(request);
   await page.goto('/apps/narrative');
-  await page.getByRole('tab', { name: '研究专题' }).click();
-  await page.getByRole('button', { name: '新建', exact: true }).click();
+  await openResearchTab(page);
+  await page.getByRole('button', { name: '新建专题', exact: true }).click();
   await page.getByRole('button', { name: /自己提出研究主题/ }).click();
   await page.getByPlaceholder('例如：赤王文明与禁忌知识的联系').fill(`E2E 主题 ${Date.now()}`);
   await page.getByPlaceholder('例如：不同书籍对灾难原因的描述是否一致？').fill('两块石碑的记载是否一致？');
@@ -86,8 +98,8 @@ test('研究专题视图在窄屏下不横向溢出', async ({ page, request }) 
   await ensureWork(request);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/apps/narrative');
-  await page.getByRole('tab', { name: '研究专题' }).click();
-  await page.getByRole('button', { name: '新建' }).first().click();
+  await openResearchTab(page);
+  await page.getByRole('button', { name: '新建专题', exact: true }).click();
   await expect(page.getByRole('button', { name: /AI 发现研究主题/ })).toBeVisible();
 
   const overflow = await page.evaluate(() => {

@@ -199,7 +199,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
     finally { running.current = false; setPhase('idle'); }
   };
 
-  return <section data-ready={hydrated ? 'true' : 'false'} aria-label="图片生成配置" className="min-w-0 rounded-[var(--radius-panel)] border border-border-subtle bg-surface">
+  return <section data-ready={hydrated ? 'true' : 'false'} aria-label="图片生成配置" className="image-generation-panel min-w-0 rounded-panel border border-border-subtle bg-surface">
     <div className="border-b border-border-subtle p-4"><ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={professionalChanges} onRestore={restoreProfessional} disabled={busy || !hydrated} /></div>
     <fieldset disabled={busy || !hydrated} className="min-w-0 space-y-5 p-4">
       <div className="space-y-2">
@@ -219,9 +219,9 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
                   setPrepared(null);
                   setError('');
                 }}
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 ${
+                className={`rounded-full px-2.5 py-0.5 text-sm font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 ${
                   activeStyle === style.id
-                    ? 'bg-accent/15 text-accent font-semibold'
+                    ? 'bg-accent/15 text-ink font-semibold'
                     : 'bg-surface-sunken/60 text-muted hover:bg-surface-sunken hover:text-ink'
                 }`}
               >
@@ -287,7 +287,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
         <div className="grid grid-cols-2 gap-2">{configuration.sizePresets.map(size => <button key={`${size.width}x${size.height}`} type="button"
           aria-pressed={values.width === size.width && values.height === size.height}
           onClick={() => { update('width', size.width); update('height', size.height); }}
-          className={`flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] border p-2.5 text-left ${values.width === size.width && values.height === size.height ? 'border-accent bg-accent/10 text-ink' : 'border-border-subtle text-muted'}`}>
+          className={`flex min-w-0 items-center gap-2 rounded-control border p-2.5 text-left ${values.width === size.width && values.height === size.height ? 'border-accent bg-accent/10 text-ink' : 'border-border-subtle text-muted'}`}>
           <span aria-hidden="true" className="block shrink-0 rounded-sm border border-current" style={{ width: size.width >= size.height ? 24 : 24 * size.width / size.height, height: size.height >= size.width ? 24 : 24 * size.height / size.width }} />
           <span className="min-w-0 text-xs">{size.label}<span className="block text-xs text-muted">{size.width} × {size.height}</span></span>
         </button>)}</div>
@@ -315,7 +315,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
         {configuration.modelChoicesStale && <p className="text-xs text-warning-fg">模型清单来自过期缓存，请刷新连接发现结果后再选择。</p>}
       </div>}
       {configuration?.warnings.map(warning => <p key={warning} className="text-xs leading-relaxed text-muted">{warning}</p>)}
-      {advanced && prepared?.diagnostics && <details className="rounded-[var(--radius-control)] border border-border-subtle p-3 text-sm">
+      {advanced && prepared?.diagnostics && <details className="rounded-control border border-border-subtle p-3 text-sm">
         <summary className="cursor-pointer text-ink">来源与诊断</summary>
         <div className="mt-3 space-y-2 text-xs text-muted">
           {prepared.diagnostics.contextSources.map(source => <p key={source.id}>{source.label} · 修订 {source.revision}</p>)}
@@ -333,10 +333,16 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
           setManual(true); setPrepared(null); attempt.current = null; setError('');
         }}>采用新配置，保留提示词</Button>
       </Alert>}
-      {(!ready && !loading && !configurationChanged) && <Alert variant="warning" title="生成方案尚未就绪">{selected?.unavailableReason || (effectivePresetId && !selected ? '先前选择的方案已不可用，请选择有效方案。' : options?.status) || '请先配置图片工作流。'} <a href="/settings/generation" className="underline">前往生成设置</a>{onRefresh && <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>重新读取</Button>}</Alert>}
       {blockedReason && <p className="text-xs text-muted">{blockedReason}</p>}
     </fieldset>
-    <div className="xl:sticky xl:bottom-0 z-10 space-y-3 border-t border-border-subtle bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div className="image-generation-actions shrink-0 space-y-2 border-t border-border-subtle bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {(!ready && !loading && !configurationChanged) && <div role="status" className="space-y-1 text-sm text-muted">
+        <p>生成方案尚未就绪，<a href="/settings/generation" className="text-accent underline underline-offset-2">前往生成设置</a>。</p>
+        <details className="text-xs"><summary className="cursor-pointer py-1">查看原因</summary>
+          <p className="break-words py-2">{selected?.unavailableReason || (effectivePresetId && !selected ? '先前选择的方案已不可用，请选择有效方案。' : options?.status) || '请先配置图片工作流。'}</p>
+          {onRefresh && <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>重新读取</Button>}
+        </details>
+      </div>}
       {error && <Alert variant="danger" title="本次生成未完成">{error}<div className="mt-2 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => { setAi(false); setPrepared(null); setError(''); }}>关闭 AI 后继续编辑</Button><a href="/settings/public-services" className="text-xs underline">配置文本模型</a>{onRefresh && <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>刷新生成配置</Button>}</div></Alert>}
       <Button type="button" variant="accent" className="w-full" loading={busy} disabled={!hydrated || !ready || busy || Boolean(blockedReason)} onClick={() => void run(true)}><Sparkles className="h-4 w-4" aria-hidden="true" />{phase === 'preparing' ? '准备提示词…' : phase === 'submitting' ? '提交图片任务…' : submitLabel}</Button>
       <p role="status" aria-live="polite" className="text-center text-xs text-muted">{busy ? '当前参数已锁定，完成后会保留在此处。' : '生成结果保留在当前业务中，不自动覆盖已有图片。'}</p>

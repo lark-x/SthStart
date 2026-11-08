@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardProps extends React.ComponentPropsWithRef<'div'> {
   interactive?: boolean;
   variant?: 'default' | 'raised' | 'sunken' | 'glass';
 }
@@ -10,12 +10,12 @@ export function Card({ className, interactive, variant = 'default', children, ..
   return (
     <div
       className={cn(
-        'rounded-[var(--radius-panel)] border p-5 shadow-panel transition-[transform,box-shadow,border-color] duration-200 ease-[var(--motion-ease)]',
-        variant === 'default' && 'border-border-subtle/80 bg-surface',
-        variant === 'raised' && 'border-border-subtle bg-surface-raised shadow-floating',
-        variant === 'sunken' && 'border-border-subtle/60 bg-surface-sunken/60 shadow-xs',
-        variant === 'glass' && 'border-border-subtle/80 bg-surface/85 backdrop-blur-md shadow-panel',
-        interactive && 'cursor-pointer hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-panel-hover active:translate-y-0',
+        'min-w-0 rounded-panel border p-5 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-base)]',
+        variant === 'default' && 'border-border-subtle bg-surface shadow-xs',
+        variant === 'raised' && 'border-transparent bg-surface-raised shadow-sm',
+        variant === 'sunken' && 'border-transparent bg-surface-sunken',
+        variant === 'glass' && 'border-border-subtle bg-surface/95',
+        interactive && 'cursor-pointer hover:-translate-y-px hover:shadow-md',
         className
       )}
       {...props}
@@ -25,7 +25,7 @@ export function Card({ className, interactive, variant = 'default', children, ..
   );
 }
 
-export function CardHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function CardHeader({ className, children, ...props }: React.ComponentPropsWithRef<'div'>) {
   return (
     <div className={cn('mb-5 flex flex-col space-y-1.5', className)} {...props}>
       {children}
@@ -33,12 +33,12 @@ export function CardHeader({ className, children, ...props }: React.HTMLAttribut
   );
 }
 
-/** 面板标题规范（§3.2）：无衬线 18px/600；页面级 H1 才使用衬线。 */
-export function CardTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+/** 面板标题规范（§3.2）：无衬线 18px/600；全局 UI 标题使用无衬线。 */
+export function CardTitle({ className, children, ...props }: React.ComponentPropsWithRef<'h3'>) {
   return (
     <h3
       className={cn(
-        'text-lg font-bold tracking-tight text-ink',
+        'text-lg font-semibold tracking-tight text-ink',
         className
       )}
       {...props}
@@ -48,7 +48,7 @@ export function CardTitle({ className, children, ...props }: React.HTMLAttribute
   );
 }
 
-export function CardDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+export function CardDescription({ className, children, ...props }: React.ComponentPropsWithRef<'p'>) {
   return (
     <p className={cn('text-sm text-muted leading-relaxed', className)} {...props}>
       {children}
@@ -56,7 +56,7 @@ export function CardDescription({ className, children, ...props }: React.HTMLAtt
   );
 }
 
-export function CardContent({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function CardContent({ className, children, ...props }: React.ComponentPropsWithRef<'div'>) {
   return (
     <div className={cn('space-y-3', className)} {...props}>
       {children}
@@ -64,7 +64,7 @@ export function CardContent({ className, children, ...props }: React.HTMLAttribu
   );
 }
 
-export function CardFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function CardFooter({ className, children, ...props }: React.ComponentPropsWithRef<'div'>) {
   return (
     <div className={cn('mt-5 flex items-center justify-between gap-3 rounded-xl bg-surface-sunken/55 px-3 py-2.5', className)} {...props}>
       {children}

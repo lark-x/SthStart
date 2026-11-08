@@ -38,17 +38,17 @@ export function ImportConfigDialog({
       <div className="space-y-3 text-sm text-muted">
         <div className="p-3 bg-ink/6 rounded">
           <div>
-            <strong>启动器路径:</strong> {preview?.launcher.path || '未找到'}
+            <span className="font-semibold">启动器路径:</span> {preview?.launcher.path || '未找到'}
           </div>
           <div>
-            <strong>状态:</strong>{' '}
+            <span className="font-semibold">状态:</span>{' '}
             {preview?.launcher.available ? '可用配置' : '不可用'}
           </div>
         </div>
 
         {preview?.businessError && (
           <div className="p-3 bg-danger/10 text-danger rounded">
-            <strong>业务数据提示:</strong> {preview.businessError}
+            <span className="font-semibold">业务数据提示:</span> {preview.businessError}
           </div>
         )}
       </div>

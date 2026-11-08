@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import type { CreativeNote, NoteBlock, NoteKind, NoteStage } from '@sthstart/contracts';
 import { useNoteDetail } from '../queries';
-import { useCharacters } from '@/app/features/characters/queries';
+import { useCharacterDetail } from '@/app/features/characters/queries';
+import { useCharacterBrowser } from '@/app/features/characters/components/character-filters';
 import { kindLabels, stageLabels, newBlock, summaryFromBlocks } from '../schemas';
 import { notebookKeys } from '@/app/lib/query-keys';
 import { addLocalAsset, getLocalNote, localAssetId, markLocalNoteDeleted, saveLocalNote, subscribeNotebookLocalChanges, preserveConflictCopy, removeLocalAsset } from '../local-store';
@@ -34,11 +35,14 @@ import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { Pagination } from '@/app/components/ui/pagination';
+import { Input } from '@/app/components/ui/input';
 import { TagsInput } from '@/app/components/shared/tags-input';
 import { useToast } from '@/app/providers/ui-provider';
 import { generateId } from '@/app/lib/uuid';
 import { LocalNoteImage } from './local-note-image';
 import { NoteKnowledgePanel } from './note-knowledge-panel';
+import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
 
 const initialNote: CreativeNote = {
   title: '',
@@ -55,11 +59,13 @@ export function NoteEditor({
   initialKind = 'note',
   standalone = true,
   onDeleted,
+  onPersisted,
 }: {
   noteId?: string;
   initialKind?: NoteKind;
   standalone?: boolean;
   onDeleted?: () => void;
+  onPersisted?: (id: string) => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,6 +75,8 @@ export function NoteEditor({
   const hydratedRef = useRef(!noteId);
   const editVersionRef = useRef(0);
   const saveRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const queryKind = searchParams?.get('kind') as NoteKind | null;
   const allowedKinds = new Set<NoteKind>(['diary', 'idea', 'note', 'story', 'character', 'world']);
@@ -80,6 +88,7 @@ export function NoteEditor({
   });
   const [effectiveNoteId] = useState(() => noteId ?? generateId());
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
   const [savingLocal, setSavingLocal] = useState(false);
   const [online, setOnline] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -93,8 +102,6 @@ export function NoteEditor({
 
   const { data: detailData, isLoading: detailLoading, error: detailError, refetch: refetchDetail } = useNoteDetail(noteId);
   const { record: localRecord, loaded: localNoteLoaded } = useLocalNotebookNote(effectiveNoteId);
-  const { data: charData } = useCharacters();
-  const characters = charData?.items ?? [];
   const detailFailed = Boolean(noteId && detailError);
   const editorReady = !noteId || (localNoteLoaded && (Boolean(localRecord) || (!detailLoading && !detailFailed)));
 
@@ -115,7 +122,8 @@ export function NoteEditor({
     queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) => {
       if (!current) return current;
       const exists = current.items.some((item) => item.id === saved.id);
-      return { items: exists ? current.items.map((item) => item.id === saved.id ? saved : item) : [saved, ...current.items] };
+      // Keep each server page and its count intact. Local drafts are merged by the list.
+      return exists ? { ...current, items: current.items.map((item) => item.id === saved.id ? saved : item) } : current;
     });
   }, [queryClient]);
 
@@ -136,9 +144,11 @@ export function NoteEditor({
       const record = await saveLocalNote(payload);
       if (editVersionRef.current === editVersion) {
         updateNoteCaches(record.note);
+        dirtyRef.current = false;
         setDirty(false);
       }
-      if (!noteId && standalone) router.replace("/apps/notebook/" + effectiveNoteId);
+      if (mountedRef.current && !noteId && standalone) router.replace("/apps/notebook/" + effectiveNoteId);
+      if (mountedRef.current && !standalone) onPersisted?.(effectiveNoteId);
       if (!quiet && editVersionRef.current === editVersion) {
         toast.success('已保存到本机', online ? '正在后台同步。' : '联网后会自动同步。');
       }
@@ -153,7 +163,7 @@ export function NoteEditor({
     } finally {
       if (saveRequestRef.current === requestId) setSavingLocal(false);
     }
-  }, [effectiveNoteId, note, noteId, online, router, standalone, toast, updateNoteCaches]);
+  }, [effectiveNoteId, note, noteId, online, router, standalone, toast, updateNoteCaches, onPersisted]);
 
   const handleSave = useCallback(async (quiet = false) => {
     const record = await persistLocal(quiet);
@@ -183,6 +193,7 @@ export function NoteEditor({
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
         void handleSave();
@@ -203,7 +214,6 @@ export function NoteEditor({
   // 编辑器随笔记切换/返回列表而重挂载，防抖定时器在卸载时被取消，
   // 因此卸载和页面隐藏时必须把未落盘的修改立即写入 IndexedDB。
   const persistRef = useRef(persistLocal);
-  const dirtyRef = useRef(dirty);
   useEffect(() => {
     persistRef.current = persistLocal;
     dirtyRef.current = dirty;
@@ -213,9 +223,17 @@ export function NoteEditor({
       if (dirtyRef.current && effectiveNoteId) void persistRef.current(true);
     };
     const handlePageHide = () => flushPending();
+    const protectPending = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      flushPending();
+      event.preventDefault();
+      event.returnValue = '';
+    };
     window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', protectPending);
     return () => {
       window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', protectPending);
       flushPending();
     };
   }, [effectiveNoteId]);
@@ -253,6 +271,7 @@ export function NoteEditor({
 
   const updateNoteState = (updater: (prev: CreativeNote) => CreativeNote) => {
     editVersionRef.current += 1;
+    dirtyRef.current = true;
     setNote((prev) => updater(prev));
     setDirty(true);
   };
@@ -300,11 +319,6 @@ export function NoteEditor({
     }
   };
 
-  const openMetaEditor = () => {
-    setMetaDraft({ title: note.title, tags: [...note.tags], kind: note.kind, stage: note.stage });
-    setMetaEditorOpen(true);
-  };
-
   const metaDraftChanged = Boolean(metaDraft && (
     metaDraft.title !== note.title || metaDraft.kind !== note.kind || metaDraft.stage !== note.stage ||
     JSON.stringify(metaDraft.tags) !== JSON.stringify(note.tags)
@@ -334,9 +348,11 @@ export function NoteEditor({
     if (!effectiveNoteId || !window.confirm('确定删除此条笔记及其本地图片素材吗？')) return;
     try {
       await markLocalNoteDeleted(effectiveNoteId, { ...note, id: effectiveNoteId });
+      dirtyRef.current = false;
+      setDirty(false);
       queryClient.removeQueries({ queryKey: notebookKeys.detail(effectiveNoteId) });
       queryClient.setQueriesData<{ items: CreativeNote[] }>({ queryKey: [...notebookKeys.all, 'list'] }, (current) =>
-        current ? { items: current.items.filter((item) => item.id !== effectiveNoteId) } : current);
+        current ? { ...current, items: current.items.filter((item) => item.id !== effectiveNoteId) } : current);
       void syncPendingNotebookData(queryClient, { force: true, noteId: effectiveNoteId });
       toast.success('已从本机移除', online ? '正在后台同步删除。' : '联网后会自动同步删除。');
       // 嵌入工作台时删除后交回父组件清除选中态；router.push 会整页跳走，
@@ -551,7 +567,7 @@ export function NoteEditor({
           <Button
             type="button"
             size="sm"
-            variant={zenMode ? 'accent' : 'outline'}
+            variant={zenMode ? 'secondary' : 'ghost'}
             className="h-8 px-2.5 text-sm"
             onClick={() => setZenMode((prev) => !prev)}
             title={zenMode ? '退出专注模式' : '进入禅道专注模式'}
@@ -571,11 +587,12 @@ export function NoteEditor({
           >
             <Star className={"h-4 w-4 " + (note.favorite ? "fill-current" : "")} />
           </button>
+          <AdoptIntoProject source={{ kind: 'note', id: effectiveNoteId }} disabled={dirty || savingLocal || !online || localRecord?.status !== 'synced'} />
 
           <Button
             size="sm"
             variant="primary"
-            className="notebook-save-button min-h-[30px] px-3 font-bold shadow-xs text-sm"
+            className="notebook-save-button min-h-[30px] px-3 font-semibold text-sm"
             onClick={() => void handleSave()}
           >
             <Save className="h-3.5 w-3.5" />
@@ -634,19 +651,19 @@ export function NoteEditor({
             value={note.title}
             onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
             placeholder="无标题笔记"
-            className="w-full text-2xl sm:text-3xl font-bold bg-transparent border-b border-transparent hover:border-border-default focus:border-accent outline-none text-ink placeholder:text-muted/40 py-1 transition-colors"
+            className="w-full text-2xl sm:text-[28px] font-semibold tracking-tight bg-transparent border-0 outline-none text-ink placeholder:text-muted/40 py-1"
           />
 
           {!zenMode && (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               {/* Kind Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-muted text-[11px]">类型:</span>
+                <span className="text-muted text-xs">类型:</span>
                 <select
                   aria-label="资料分类"
                   value={note.kind}
                   onChange={(e) => updateNoteState((prev) => ({ ...prev, kind: e.target.value as NoteKind }))}
-                  className="rounded-md border border-border-default/60 bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  className="rounded-control border-0 bg-surface-sunken px-2 py-1 text-base sm:text-sm text-ink outline-none"
                 >
                   {Object.entries(kindLabels).map(([k, label]) => (
                     <option key={k} value={k}>{label}</option>
@@ -656,12 +673,12 @@ export function NoteEditor({
 
               {/* Stage Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-muted text-[11px]">阶段:</span>
+                <span className="text-muted text-xs">阶段:</span>
                 <select
                   aria-label="阶段状态"
                   value={note.stage}
                   onChange={(e) => updateNoteState((prev) => ({ ...prev, stage: e.target.value as NoteStage }))}
-                  className="rounded-md border border-border-default/60 bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  className="rounded-control border-0 bg-surface-sunken px-2 py-1 text-base sm:text-sm text-ink outline-none"
                 >
                   {Object.entries(stageLabels).map(([s, label]) => (
                     <option key={s} value={s}>{label}</option>
@@ -675,6 +692,8 @@ export function NoteEditor({
                   value={note.tags}
                   onChange={(newTags) => updateNoteState((prev) => ({ ...prev, tags: newTags }))}
                   placeholder="添加标签，按回车确定..."
+                  aria-label="资料标签"
+                  className="w-full rounded-control border-0 bg-surface-sunken px-2 py-1 text-base sm:text-sm text-ink outline-none placeholder:text-fg-subtle"
                 />
               </div>
             </div>
@@ -696,19 +715,19 @@ export function NoteEditor({
             <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
               正文内容
             </span>
-            <span className="notebook-block-count text-sm text-muted bg-ink/5 px-2 py-0.5 rounded-full font-medium">
+            <span className="notebook-block-count text-xs text-fg-subtle">
               {note.content.length} 个内容块
             </span>
           </div>
 
-          <div className="notebook-blocks space-y-3">
+          <div className="notebook-blocks divide-y divide-border-subtle">
             {note.content.map((block, index) => (
               <div
                 key={block.id}
-                className="notebook-block group relative p-3 rounded-xl border border-border-subtle bg-surface hover:border-border-default shadow-2xs space-y-2 transition-all"
+                className="notebook-block group relative py-3 first:pt-1 space-y-2"
               >
                 <div className="notebook-block-header flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase tracking-wider text-muted">
+                  <span className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
                     {block.type === 'text'
                       ? '段落文本'
                       : block.type === 'image'
@@ -760,7 +779,7 @@ export function NoteEditor({
                     value={block.text}
                     onChange={(e) => handleUpdateBlock(block.id, { text: e.target.value })}
                     placeholder="写下一段文字记录…"
-                    className="notebook-textarea w-full bg-transparent text-[16px] sm:text-[17px] leading-[1.85] text-ink placeholder:text-muted/40 outline-none p-1"
+                    className="notebook-textarea w-full bg-transparent text-base leading-[1.85] text-ink placeholder:text-muted/40 outline-none p-0"
                   />
                 )}
 
@@ -826,49 +845,10 @@ export function NoteEditor({
                 )}
 
                 {block.type === 'character-reference' && (
-                  <div className="p-3.5 rounded-lg bg-surface-muted/70 border-l-4 border-l-accent-dark border border-border-subtle space-y-2 mt-1">
-                    <select
-                      value={block.characterId}
-                      onChange={(e) =>
-                        handleUpdateBlock(block.id, { characterId: e.target.value })
-                      }
-                      className="w-full h-8 rounded border border-border-control bg-surface-raised px-2.5 text-sm text-ink outline-none"
-                    >
-                      <option value="">选择资料库中的角色</option>
-                      {characters.map((c) => (
-                        <option value={c.id} key={c.id}>
-                          {c.displayName}
-                          {c.draft.work ? (" · " + c.draft.work) : ''}
-                        </option>
-                      ))}
-                    </select>
-
-                    {block.characterId && (
-                      <div className="p-2.5 rounded bg-surface-raised/80 border border-border-subtle text-sm space-y-1">
-                        <strong className="text-sm font-semibold text-ink block">
-                          {characters.find((c) => c.id === block.characterId)?.displayName}
-                        </strong>
-                        <p className="text-muted line-clamp-2 text-sm">
-                          {characters.find((c) => c.id === block.characterId)?.draft.summary ||
-                            '尚未填写摘要'}
-                        </p>
-                        <Link
-                          href={"/apps/characters/" + block.characterId}
-                          className="inline-block text-accent-dark font-medium hover:underline pt-0.5 text-sm"
-                        >
-                          前往角色资料库 →
-                        </Link>
-                      </div>
-                    )}
-
-                    <textarea
-                      rows={2}
-                      value={block.note}
-                      onChange={(e) => handleUpdateBlock(block.id, { note: e.target.value })}
-                      placeholder="这条笔记与该角色的关系（可选）"
-                      className="w-full bg-transparent text-sm text-muted outline-none"
-                    />
-                  </div>
+                  <CharacterReferenceBlock
+                    block={block}
+                    onChange={(patch) => handleUpdateBlock(block.id, patch)}
+                  />
                 )}
 
                 {block.type === 'archive-reference' && (
@@ -891,16 +871,16 @@ export function NoteEditor({
         </section>
 
         {/* Layer 4: Compact Action Dock (添加内容工具坞 - 紧凑小药丸) */}
-        <section className="notebook-add-panel p-2.5 rounded-lg border border-border-subtle bg-surface-muted/70 flex flex-wrap items-center justify-between gap-2" aria-label="添加内容块">
+        <section className="notebook-add-panel flex flex-wrap items-center gap-1.5 pt-1" aria-label="添加内容块">
           <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
-            ＋ 添加内容块
+            添加内容块
           </span>
           <div className="notebook-add-grid flex flex-wrap gap-1.5">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('text')}
             >
               <Plus className="h-3 w-3" />
@@ -911,7 +891,7 @@ export function NoteEditor({
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => fileInputRef.current?.click()}
             >
               <ImageIcon className="h-3 w-3" />
@@ -922,7 +902,7 @@ export function NoteEditor({
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('link')}
             >
               <LinkIcon className="h-3 w-3" />
@@ -933,7 +913,7 @@ export function NoteEditor({
               type="button"
               size="sm"
               variant="outline"
-              className="notebook-add-button h-7 px-2.5 text-sm bg-surface-raised"
+              className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('character-reference')}
             >
               <User className="h-3 w-3" />
@@ -965,16 +945,16 @@ export function NoteEditor({
       >
         {metaDraft && <div className="space-y-5">
           <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-title">标题
-            <input id="note-meta-title" autoFocus value={metaDraft.title} onChange={(event) => setMetaDraft({ ...metaDraft, title: event.target.value })} placeholder="输入笔记标题" className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus" />
+            <input id="note-meta-title" autoFocus value={metaDraft.title} onChange={(event) => setMetaDraft({ ...metaDraft, title: event.target.value })} placeholder="输入笔记标题" className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus" />
           </label>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-kind">类型
-              <select id="note-meta-kind" value={metaDraft.kind} onChange={(event) => setMetaDraft({ ...metaDraft, kind: event.target.value as NoteKind })} className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
+              <select id="note-meta-kind" value={metaDraft.kind} onChange={(event) => setMetaDraft({ ...metaDraft, kind: event.target.value as NoteKind })} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
                 {Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
             <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-stage">阶段
-              <select id="note-meta-stage" value={metaDraft.stage} onChange={(event) => setMetaDraft({ ...metaDraft, stage: event.target.value as NoteStage })} className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
+              <select id="note-meta-stage" value={metaDraft.stage} onChange={(event) => setMetaDraft({ ...metaDraft, stage: event.target.value as NoteStage })} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
                 {Object.entries(stageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
@@ -1004,5 +984,153 @@ export function NoteEditor({
         onChange={handleUploadImage}
       />
     </MainTag>
+  );
+}
+
+type CharacterReferenceBlockModel = Extract<NoteBlock, { type: 'character-reference' }>;
+
+/** 角色引用使用服务端分页搜索；已选角色的详情独立于当前搜索结果。 */
+function CharacterReferenceBlock({
+  block,
+  onChange,
+}: {
+  block: CharacterReferenceBlockModel;
+  onChange: (patch: Partial<CharacterReferenceBlockModel>) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const composingRef = useRef(false);
+  const browser = useCharacterBrowser({}, pickerOpen);
+  const selected = useCharacterDetail(block.characterId || undefined);
+  const isPageTransition = browser.isFetching && browser.isPlaceholderData;
+  const items = browser.data?.items ?? [];
+
+  return (
+    <div className="p-3.5 rounded-lg bg-surface-muted/70 border-l-4 border-l-accent-dark border border-border-subtle space-y-2 mt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-ink">角色资料</span>
+        <div className="flex items-center gap-1.5">
+          {block.characterId && (
+            <Button size="sm" variant="ghost" onClick={() => onChange({ characterId: '' })}>清除引用</Button>
+          )}
+          <Button size="sm" variant="outline" aria-expanded={pickerOpen} onClick={() => setPickerOpen((open) => !open)}>
+            {block.characterId ? '更换角色' : '选择角色'}
+          </Button>
+        </div>
+      </div>
+
+      {pickerOpen && (
+        <div className="space-y-2 rounded-control border border-border-default bg-surface p-2.5">
+          <Input
+            aria-label="搜索可引用角色"
+            placeholder="搜索姓名、作品或标签…"
+            value={searchText}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSearchText(value);
+              if (!composingRef.current) browser.change({ q: value });
+            }}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const value = event.currentTarget.value;
+              setSearchText(value);
+              browser.change({ q: value });
+            }}
+            className="h-9 text-sm"
+          />
+
+          {browser.isError && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded border border-danger/20 bg-danger/10 px-2.5 py-2 text-xs text-danger-fg">
+              <span>{browser.error instanceof Error ? browser.error.message : '角色搜索失败'}</span>
+              <Button size="sm" variant="outline" onClick={() => void browser.refetch()}>重试</Button>
+            </div>
+          )}
+          {isPageTransition && <p role="status" className="text-xs text-muted">搜索条件已更新，当前仍显示上一次结果…</p>}
+          {browser.isLoading ? (
+            <p role="status" className="py-3 text-center text-xs text-muted">正在读取角色…</p>
+          ) : items.length ? (
+            <ul className="max-h-48 divide-y divide-border-subtle overflow-y-auto border-y border-border-subtle">
+              {items.map((character) => (
+                <li key={character.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left text-sm hover:bg-surface-hover"
+                    onClick={() => {
+                      onChange({ characterId: character.id });
+                      setPickerOpen(false);
+                    }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-ink">{character.displayName}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {character.draft.work || '未分类'}{character.tags.length ? ' · ' + character.tags.slice(0, 2).join('、') : ''}
+                      </span>
+                    </span>
+                    {character.id === block.characterId && <span className="shrink-0 text-xs text-accent">当前</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : !browser.isError ? (
+            <p className="py-3 text-center text-xs text-muted">没有匹配角色，请调整搜索条件。</p>
+          ) : null}
+
+          {browser.data && (
+            <Pagination
+              total={browser.data.total}
+              page={browser.data.page}
+              pageSize={browser.data.pageSize}
+              onPageChange={(page) => browser.change({ page })}
+              onPageSizeChange={(pageSize) => browser.change({ pageSize, page: 1 })}
+              pageSizeOptions={[20, 50, 100]}
+              loading={isPageTransition}
+              compact
+            />
+          )}
+        </div>
+      )}
+
+      {block.characterId ? (
+        <div className="p-2.5 rounded bg-surface-raised/80 border border-border-subtle text-sm space-y-1">
+          {selected.isLoading ? (
+            <p role="status" className="text-xs text-muted">正在读取已选角色…</p>
+          ) : selected.isError ? (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-xs text-danger-fg">
+              <span>{selected.error instanceof Error ? selected.error.message : '已选角色详情读取失败'}</span>
+              <Button size="sm" variant="outline" onClick={() => void selected.refetch()}>重试</Button>
+            </div>
+          ) : selected.data ? (
+            <>
+              <strong className="text-sm font-semibold text-ink block">{selected.data.displayName}</strong>
+              <p className="text-xs text-muted">
+                {selected.data.draft.work || '未分类'}
+              </p>
+              <p className="text-muted line-clamp-2 text-sm">
+                {selected.data.draft.summary || '尚未填写摘要'}
+              </p>
+              <Link
+                href={'/apps/characters/' + selected.data.id}
+                className="inline-block text-accent-dark font-medium hover:underline pt-0.5 text-sm"
+              >
+                前往角色资料库 →
+              </Link>
+            </>
+          ) : (
+            <p className="text-xs text-muted">角色资料当前不可用，仍保留引用 ID。</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-muted">尚未选择角色。</p>
+      )}
+
+      <textarea
+        rows={2}
+        value={block.note}
+        onChange={(event) => onChange({ note: event.target.value })}
+        placeholder="这条笔记与该角色的关系（可选）"
+        className="w-full bg-transparent text-sm text-muted outline-none"
+      />
+    </div>
   );
 }

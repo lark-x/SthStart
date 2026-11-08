@@ -35,7 +35,7 @@ export function useNoteReferences(id?: string) {
 export function useKnowledgeSearch(params: KnowledgeSearchParams, enabled = true) {
   return useQuery({
     queryKey: knowledgeKeys.search(params),
-    queryFn: () => searchKnowledge(params),
+    queryFn: ({ signal }) => searchKnowledge(params, signal),
     enabled,
     staleTime: 15_000,
   });

@@ -96,7 +96,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
           size="sm"
           onClick={handleAddStage}
           disabled={disabled}
-          className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5"
+          className="text-sm bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5"
         >
           <Plus className="h-3.5 w-3.5" />
           新增阶段
@@ -115,7 +115,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
           return (
           <div
             key={stage.id} id={`stage-${stage.id}`}
-            className={`p-3 rounded-[var(--radius-panel)] border transition-all ${
+            className={`p-3 rounded-panel border transition-all ${
               stage.locked
                 ? 'bg-amber-50/40 border-amber-300/60'
                 : 'bg-surface border-border-default'

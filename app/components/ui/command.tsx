@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, CornerDownLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useOverlayAccessibility } from './overlay';
+import { Input } from './input';
 
 export interface CommandItem {
   id: string;
@@ -59,6 +60,9 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
   }, [open]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    // Buttons retain native Enter activation when reached using Tab.
+    if (event.target !== inputRef.current) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       setSelectedIndex((prev) => (prev + 1) % Math.max(1, filteredItems.length));
@@ -85,7 +89,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4"
     >
       <div
-        className="fixed inset-0 bg-ink/50 backdrop-blur-sm transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -94,11 +98,11 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
         ref={dialogRef}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="relative z-50 w-full max-w-xl overflow-hidden rounded-[var(--radius-panel)] border border-border-default/80 bg-surface shadow-dialog animate-in zoom-in-95"
+        className="relative z-50 w-full max-w-xl overflow-hidden rounded-panel border border-border-subtle bg-surface shadow-dialog animate-in zoom-in-95"
       >
         <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3 bg-surface">
           <Search className="h-5 w-5 text-muted" aria-hidden="true" />
-          <input
+          <Input
             ref={inputRef}
             aria-label="搜索命令"
             value={query}
@@ -107,7 +111,7 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
               setSelectedIndex(0);
             }}
             placeholder="搜索应用、操作、角色或笔记… (↑↓ 导航, Enter 执行)"
-            className="flex-1 bg-transparent text-sm text-ink placeholder:text-muted/70 outline-none"
+            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-ink"
           />
           {query && (
             <button

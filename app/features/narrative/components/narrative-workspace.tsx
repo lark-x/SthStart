@@ -24,6 +24,7 @@ import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/lib/cn';
 
 export function NarrativeWorkspace() {
@@ -50,8 +51,8 @@ export function NarrativeWorkspace() {
     if (next !== 'research') { params.delete('project'); params.delete('view'); }
     router.push(`${pathname}?${params}`, { scroll: false });
   };
-  const [selectedWorkId, setSelectedWorkId] = useState<string>('');
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('');
+  const [selectedWorkId, setSelectedWorkId] = useState<string>(() => searchParams.get('work') ?? '');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => searchParams.get('node') ?? '');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [conceptTaskId, setConceptTaskId] = useState<string | null>(null);
   const [submittingConcept, setSubmittingConcept] = useState(false);
@@ -60,14 +61,14 @@ export function NarrativeWorkspace() {
   // 避免用户切换节点后轮询用新节点查询旧任务导致 404 和任务孤儿。
   const submittedNodeIdRef = useRef('');
 
-  const { data: worksData, refetch: refetchWorks } = useNarrativeWorks();
+  const { data: worksData, refetch: refetchWorks, isPending: worksLoading, error: worksError } = useNarrativeWorks();
   const works = worksData?.items ?? [];
 
   const activeWorkId = works.some((work) => work.id === selectedWorkId)
     ? selectedWorkId
     : works[0]?.id ?? '';
 
-  const { data: treeData } = useNarrativeTree(activeWorkId);
+  const { data: treeData, refetch: refetchTree, isLoading: treeLoading, error: treeError } = useNarrativeTree(activeWorkId);
   const nodes = treeData?.items ?? [];
 
   const firstReadableNode = nodes.find((node) => node.kind !== 'chapter') ?? nodes[0];
@@ -75,13 +76,35 @@ export function NarrativeWorkspace() {
     ? selectedNodeId
     : firstReadableNode?.id ?? '';
 
-  const { data: readingData, isLoading: readingLoading, refetch: refetchReading } = useNarrativeReading(activeNodeId);
+  const { data: readingData, isLoading: readingLoading, refetch: refetchReading, error: readingError } = useNarrativeReading(activeNodeId);
+  const sourceError = worksError ?? treeError ?? readingError;
   useEffect(() => {
     activeNodeIdRef.current = activeNodeId;
   }, [activeNodeId]);
-  const { data: searchData } = useNarrativeSearch(searchQuery, activeWorkId);
-  const { data: connectorsData } = useNarrativeConnectors();
+  const { data: searchData, isLoading: searchLoading, isError: searchError, error: searchFailure, refetch: refetchSearch } = useNarrativeSearch(searchQuery, activeWorkId);
+  const { data: connectorsData, isLoading: connectorsLoading, isError: connectorsError, error: connectorsFailure, refetch: refetchConnectors } = useNarrativeConnectors();
   const connectors = connectorsData?.items ?? [];
+  const searchErrorMessage = searchError
+    ? (searchFailure instanceof Error ? searchFailure.message : '原文检索失败')
+    : null;
+  const connectorsErrorMessage = connectorsError
+    ? (connectorsFailure instanceof Error ? connectorsFailure.message : '数据源连接器读取失败')
+    : null;
+
+  // 选中的作品与节点进入 URL，刷新、前进后退和从检索结果跳转后都能恢复阅读位置。
+  useEffect(() => {
+    if (mode !== 'read' || worksLoading || treeLoading || !activeWorkId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get('work') !== activeWorkId) params.set('work', activeWorkId);
+    if (activeNodeId) {
+      if (params.get('node') !== activeNodeId) params.set('node', activeNodeId);
+    } else {
+      params.delete('node');
+    }
+    const next = `${pathname}?${params.toString()}`;
+    const current = `${pathname}?${searchParams.toString()}`;
+    if (next !== current) router.replace(next, { scroll: false });
+  }, [activeNodeId, activeWorkId, mode, pathname, router, searchParams, treeLoading, worksLoading]);
 
   const handleGenerateConcept = async () => {
     if (!activeNodeId || conceptTaskId || submittingConcept) return;
@@ -216,7 +239,7 @@ export function NarrativeWorkspace() {
                   type="button"
                   aria-expanded={treeOpen}
                   onClick={() => setTreeOpen((open) => !open)}
-                  className="inline-flex h-11 sm:h-9 items-center rounded-[var(--radius-control)] border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
+                  className="inline-flex h-11 sm:h-9 items-center rounded-control border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
                 >
                   目录
                 </button>
@@ -226,7 +249,7 @@ export function NarrativeWorkspace() {
                   aria-expanded={inspectorOpen}
                   onClick={() => setInspectorOpen((open) => !open)}
                   className={cn(
-                    'inline-flex h-11 sm:h-9 items-center rounded-[var(--radius-control)] border px-3 text-sm font-medium transition-colors',
+                    'inline-flex h-11 sm:h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors',
                     inspectorOpen
                       ? 'border-accent/30 bg-accent/12 font-semibold text-accent-dark'
                       : 'border-border-default bg-surface text-muted hover:text-ink',
@@ -237,10 +260,12 @@ export function NarrativeWorkspace() {
               </div>
   );
 
+  const WorkspaceRoot = mode === 'read' ? 'main' : 'div';
+
   return (
-    <div className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
+    <WorkspaceRoot className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
       {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
-      {mode === 'read' ? <WorkspaceHeader title="叙事档案" centerSlot={modeTabs} actions={readingActions} /> : <div className="narrative-workspace-header shrink-0 bg-surface">
+      {mode === 'read' ? <WorkspaceHeader title="叙事档案" centerSlotOnMobile centerSlot={modeTabs} actions={readingActions} /> : <div className="narrative-workspace-header shrink-0 bg-surface">
         <PageContainer className="pt-4">
           <PageHeader
             compact
@@ -265,24 +290,31 @@ export function NarrativeWorkspace() {
               {treePanel}
             </div>
 
-            <NarrativeReader
+            {sourceError ? <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
+              <h2 className="text-base font-semibold text-ink">档案暂时无法读取</h2>
+              <p className="max-w-md text-sm text-muted">已有内容未被删除。请重试读取，不必重新导入。</p>
+              <Button size="sm" onClick={() => { void refetchWorks(); if (activeWorkId) void refetchTree(); if (activeNodeId) void refetchReading(); }}>重试读取</Button>
+            </section> : worksLoading || treeLoading ? <div role="status" className="flex flex-1 items-center justify-center p-6 text-sm text-muted">正在读取档案…</div> : <NarrativeReader
               reading={readingData ?? null}
               loading={readingLoading}
               onSaveUtteranceToNotebook={handleSaveToNotebook}
               onOpenImport={() => setMode('import')}
               onGenerateConcept={() => void handleGenerateConcept()}
               generatingConcept={Boolean(conceptTaskId) || submittingConcept}
-            />
+            />}
 
             {inspectorOpen && <div className="hidden min-h-0 md:flex"><NarrativeInspector
               query={searchQuery}
               onQueryChange={setSearchQuery}
               results={searchData?.items ?? []}
+              loading={searchLoading}
+              error={searchErrorMessage}
+              onRetry={() => { void refetchSearch(); }}
               onSelectResult={handleSelectSearchResult}
             /></div>}
             <Drawer open={narrow && treeOpen} onOpenChange={setTreeOpen} title="作品目录" className="md:hidden">{treePanel}</Drawer>
             <Drawer open={narrow && inspectorOpen} onOpenChange={setInspectorOpen} title="检索原文" className="md:hidden">
-              <NarrativeInspector query={searchQuery} onQueryChange={setSearchQuery} results={searchData?.items ?? []} onSelectResult={handleSelectSearchResult} />
+              <NarrativeInspector query={searchQuery} onQueryChange={setSearchQuery} results={searchData?.items ?? []} loading={searchLoading} error={searchErrorMessage} onRetry={() => { void refetchSearch(); }} onSelectResult={handleSelectSearchResult} />
             </Drawer>
           </>
         ) : mode === 'research' ? (
@@ -290,10 +322,13 @@ export function NarrativeWorkspace() {
         ) : (
           <NarrativeImport
             connectors={connectors}
+            connectorsLoading={connectorsLoading}
+            connectorsError={connectorsErrorMessage}
+            onRetryConnectors={() => { void refetchConnectors(); }}
             onImportComplete={handleImportComplete}
           />
         )}
       </div>
-    </div>
+    </WorkspaceRoot>
   );
 }

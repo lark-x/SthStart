@@ -61,7 +61,7 @@ export function StudioTextFallbackPanel({activityId,job,beforeAction,onSelectJob
         {options.isPending&&<p role="status">读取已有配置…</p>}
         {options.isError&&<><p role="alert" className="text-sm text-danger-fg">{options.error.message}</p><Button variant="outline" onClick={()=>void options.refetch()}>重新读取配置</Button></>}
         {options.data&&<p role="status" className="text-sm">{options.data.reason}</p>}
-        {(options.data?.allowed||pending.current)&&<FormField label="本次备用模型"><select aria-label="本次备用文本模型" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm"
+        {(options.data?.allowed||pending.current)&&<FormField label="本次备用模型"><select aria-label="本次备用文本模型" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm"
           value={profileId} disabled={busy||operations.textFallback.isPending||Boolean(pending.current)} onChange={event=>{generation.current++;setProfileId(event.target.value);setPreview(null);setError('');pending.current=null;remember({open:true,profileId:event.target.value,preview:null,error:''},null);}}>
           <option value="">选择已有的启用模型</option>{options.data?.profiles.map(profile=><option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}
           {pending.current&&!options.data?.profiles.some(profile=>profile.id===profileId)&&<option value={profileId}>{preview?.profileName??profileId} · 已保存的相同确认</option>}

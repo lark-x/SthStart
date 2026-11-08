@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Cake, CalendarDays } from 'lucide-react';
+import { Cake, CalendarDays, ArrowRight } from 'lucide-react';
 import { useCalendarEvents } from '../features/calendar/queries';
 import { Skeleton } from './ui/skeleton';
 
@@ -28,10 +28,10 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
 
   /* 骨架与真实日程行同构，保证载入完成时不出现整块高度跳变。 */
   const skeletonRows = (
-    <ul className="space-y-2" aria-hidden="true">
+    <ul className="home-list" aria-hidden="true">
       {Array.from({ length: limit }, (_, index) => (
-        <li key={index} className="flex items-start gap-3 rounded-xl bg-surface-sunken/45 px-3 py-2.5">
-          <Skeleton className="mt-0.5 h-4 w-4 flex-none" />
+        <li key={index} className="home-row">
+          <Skeleton className="mt-0.5 h-8 w-8 rounded-lg flex-none" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-4 w-3/4" data-visual-dynamic="true" />
             <Skeleton className="h-3 w-1/3" data-visual-dynamic="true" />
@@ -42,11 +42,15 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
   );
 
   return (
-    <section className="tpl-panel p-4" aria-labelledby="upcoming-title">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 id="upcoming-title" className="tpl-section-title">近期日程</h2>
-        <Link href="/apps/calendar" className="text-sm font-medium text-muted transition-colors hover:text-accent">
-          打开日历
+    <section className="home-section" aria-labelledby="upcoming-title">
+      <div className="mb-4 flex items-baseline justify-between gap-3 border-b border-border-subtle pb-3">
+        <div>
+          <h2 id="upcoming-title" className="tpl-section-title">近期日程</h2>
+          <p className="mt-0.5 text-xs text-muted">未来 {days} 天角色生辰与活动排期</p>
+        </div>
+        <Link href="/apps/calendar" className="inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-accent">
+          <span>打开日历</span>
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
 
@@ -60,20 +64,24 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
           读取失败，点击重试
         </button>
       ) : events.length === 0 ? (
-        <p className="text-sm text-muted">未来 {days} 天内没有生日或已排期活动。</p>
+        <div className="py-4 text-sm text-muted">
+          未来 {days} 天内没有生日或已排期活动。
+        </div>
       ) : (
-        <ul className="space-y-2" data-testid="upcoming-schedule-list">
+        <ul className="home-list" data-testid="upcoming-schedule-list">
           {/* 同上：行数与行距纳入基线，日期与标题按动态内容遮罩。 */}
           {events.map((event) => (
-            <li key={event.id} className="flex items-start gap-3 rounded-xl bg-surface-sunken/45 px-3 py-2.5">
-              {event.kind === 'birthday'
-                ? <Cake className="mt-0.5 h-4 w-4 flex-none text-accent" aria-hidden="true" />
-                : <CalendarDays className="mt-0.5 h-4 w-4 flex-none text-muted" aria-hidden="true" />}
+            <li key={event.id} className="home-row">
+              <span className="home-row-icon" data-tone={event.kind === 'birthday' ? 'pink' : 'orange'}>
+                {event.kind === 'birthday'
+                  ? <Cake className="h-4 w-4" aria-hidden="true" />
+                  : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-ink" data-visual-dynamic="true">{event.title}</p>
                 <p className="mt-0.5 text-xs text-fg-subtle" data-visual-dynamic="true">
                   {formatDay(event.date)}
-                  {event.kind === 'birthday' ? ' · 生日' : event.participantCount ? ` · ${event.participantCount} 位参与` : ''}
+                  {event.kind === 'birthday' ? ' · 角色生日' : event.participantCount ? ` · ${event.participantCount} 位参与` : ''}
                 </p>
               </div>
             </li>

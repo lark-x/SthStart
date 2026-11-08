@@ -1,19 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  ChevronDown,
-  ChevronRight,
   Layers,
-  MapPin,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  Trash2,
   Film,
 } from 'lucide-react';
-import type { ActivityScene, ContentDocument, StageDefinition } from '@sthstart/contracts';
-import { Button } from '@/app/components/ui/button';
+import type { ContentDocument } from '@sthstart/contracts';
+import { ScrollFadeContainer } from '@/app/components/ui/scroll-fade-container';
 import { getEffectiveStageScenes, countStageBeats } from '../../scene-beat-utils';
 
 interface StudioOutlineRailProps {
@@ -43,62 +39,71 @@ export function StudioOutlineRail({
 
   if (collapsed) {
     return (
-      <aside className="w-12 border-r border-border-default bg-surface flex flex-col items-center py-2.5 shrink-0 select-none z-10">
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-ink hover:bg-surface-muted transition-colors mb-2 cursor-pointer"
-          title="展开剧情大纲"
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
-
-        <div className="flex-1 flex flex-col gap-1.5 w-full items-center overflow-y-auto">
-          {stages.map((stage, idx) => {
-            const isSelected = stage.id === activeStageId;
-            return (
-              <button
-                key={stage.id}
-                type="button"
-                onClick={() => onSelectStage(stage.id)}
-                className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-mono font-bold transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-accent text-white shadow-2xs'
-                    : 'text-muted hover:text-ink hover:bg-surface-muted'
-                }`}
-                title={`第 ${idx + 1} 幕 · ${stage.title}`}
-              >
-                {idx + 1}
-              </button>
-            );
-          })}
+      <aside className="w-12 border-r border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
+        {/* 44px 统一连续基线顶栏 */}
+        <div className="h-11 border-b border-border-default bg-surface flex items-center justify-center shrink-0">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
+            title="展开剧情大纲"
+            aria-label="展开剧情大纲"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onAddStage}
-          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-accent hover:bg-surface-muted transition-colors mt-2 cursor-pointer"
-          title="添加新的一幕"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        <ScrollFadeContainer orientation="vertical" fadeSize={12} className="flex-1 min-h-0 w-full py-2">
+          <div className="flex flex-col gap-1.5 w-full items-center">
+            {stages.map((stage, idx) => {
+              const isSelected = stage.id === activeStageId;
+              return (
+                <button
+                  key={stage.id}
+                  type="button"
+                  onClick={() => onSelectStage(stage.id)}
+                  className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-mono font-bold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-accent text-fg-on-accent shadow-2xs'
+                      : 'text-muted hover:text-ink hover:bg-surface-muted'
+                  }`}
+                  title={`第 ${idx + 1} 幕 · ${stage.title}`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+        </ScrollFadeContainer>
+
+        <div className="p-2 border-t border-border-default/60 flex items-center justify-center shrink-0">
+          <button
+            type="button"
+            onClick={onAddStage}
+            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-accent hover:bg-surface-muted transition-colors cursor-pointer"
+            title="添加新的一幕"
+            aria-label="添加新的一幕"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </aside>
     );
   }
 
   return (
     <aside className="w-56 lg:w-60 border-r border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
-      {/* 侧栏顶栏 */}
-      <div className="h-10 px-3 border-b border-border-default flex items-center justify-between shrink-0 bg-surface-muted/30">
-        <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-          <Layers className="h-3.5 w-3.5 text-accent" />
+      {/* 44px 统一连续基线顶栏 */}
+      <div className="h-11 px-3 border-b border-border-default flex items-center justify-between shrink-0 bg-surface select-none">
+        <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
+          <Layers className="h-3.5 w-3.5 text-muted" />
           <span>剧情大纲</span>
         </span>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={onAddStage}
-            className="h-6 px-1.5 rounded text-[11px] font-semibold text-accent hover:bg-accent/10 transition-colors flex items-center gap-0.5 cursor-pointer"
+            className="flex h-7 cursor-pointer items-center gap-1 rounded-control px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
             title="新增一幕"
           >
             <Plus className="h-3 w-3" />
@@ -107,16 +112,17 @@ export function StudioOutlineRail({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="h-6 w-6 rounded flex items-center justify-center text-muted hover:text-ink hover:bg-surface-muted transition-colors cursor-pointer"
+            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
             title="收起侧栏"
+            aria-label="收起侧栏"
           >
-            <PanelLeftClose className="h-3.5 w-3.5" />
+            <PanelLeftClose className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* 幕次与场次树形列表（独立滚动） */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
+      {/* 幕次与场次树形列表（非线性边缘消隐） */}
+      <ScrollFadeContainer orientation="vertical" fadeSize={16} className="flex-1 min-h-0 px-2 py-1" data-autohide-scroll>
         {stages.map((stage, stageIdx) => {
           const isStageActive = stage.id === activeStageId;
           const scenes = getEffectiveStageScenes(stage, document.scenes);
@@ -126,38 +132,37 @@ export function StudioOutlineRail({
           return (
             <div
               key={stage.id}
-              className={`rounded-xl border transition-all ${
-                isStageActive
-                  ? 'border-border-default bg-surface-raised/50 shadow-2xs'
-                  : 'border-transparent hover:border-border-subtle hover:bg-surface-muted/40'
+              className={`border-b border-border-subtle transition-colors last:border-b-0 ${
+                isStageActive ? 'bg-surface-sunken/60' : 'hover:bg-surface-hover'
               }`}
             >
               {/* 幕标题条 */}
-              <div
+              <button
+                type="button"
                 onClick={() => onSelectStage(stage.id)}
-                className="p-2 flex items-center justify-between cursor-pointer group"
+                className="group flex w-full cursor-pointer items-center justify-between px-2 py-2.5 text-left focus-visible:outline focus-visible:outline-accent"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
-                    isStageActive ? 'bg-accent text-white' : 'bg-surface-muted text-muted'
+                    isStageActive ? 'bg-accent text-fg-on-accent' : 'bg-surface-muted text-muted'
                   }`}>
                     {stageIdx + 1}
                   </span>
-                  <span className="text-xs font-bold text-ink truncate max-w-[110px]" title={stage.title}>
+                  <span className="max-w-[110px] truncate text-sm font-medium text-ink" title={stage.title}>
                     {cleanTitle}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1 text-[10px] font-mono text-muted shrink-0">
+                <div className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted">
                   <span title={`本幕共 ${totalBeats} 镜，已配图 ${mediaCount}`}>
                     {mediaCount}/{totalBeats}图
                   </span>
                 </div>
-              </div>
+              </button>
 
               {/* 展开的场次列表（当本幕被激活时展示） */}
               {isStageActive && (
-                <div className="px-2 pb-2 pt-0.5 space-y-1">
+                <div className="space-y-0.5 pb-2 pl-4 pr-1">
                   {scenes.map((scene, sceneIdx) => {
                     const isSceneActive = scene.id === activeSceneId;
                     const beatCount = scene.beats?.length || 0;
@@ -171,10 +176,10 @@ export function StudioOutlineRail({
                           e.stopPropagation();
                           onSelectScene(stage.id, scene.id);
                         }}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-all flex items-center justify-between cursor-pointer ${
+                        className={`flex w-full cursor-pointer items-center justify-between rounded-control px-2 py-1.5 text-left text-sm transition-colors ${
                           isSceneActive
-                            ? 'bg-accent/10 font-bold text-accent'
-                            : 'text-muted hover:text-ink hover:bg-surface-muted'
+                            ? 'bg-surface font-medium text-ink'
+                            : 'text-muted hover:bg-surface-hover hover:text-ink'
                         }`}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
@@ -197,7 +202,7 @@ export function StudioOutlineRail({
                       e.stopPropagation();
                       onAddScene(stage.id);
                     }}
-                    className="w-full py-1 px-2 rounded-lg border border-dashed border-border-default text-[11px] text-muted hover:text-accent hover:border-accent/40 transition-colors flex items-center justify-center gap-1 cursor-pointer mt-1"
+                    className="mt-1 flex w-full cursor-pointer items-center justify-center gap-1 rounded-control px-2 py-1.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
                   >
                     <Plus className="h-3 w-3" />
                     <span>加场</span>
@@ -207,7 +212,7 @@ export function StudioOutlineRail({
             </div>
           );
         })}
-      </div>
+      </ScrollFadeContainer>
     </aside>
   );
 }

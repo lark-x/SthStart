@@ -28,9 +28,11 @@ test('calendar shows same-day birthdays and prefills a joint birthday activity',
   const dayCell = page.getByRole('button', { name: new RegExp(`^${dateKey}，\\d+ 项事件`) });
   await expect(dayCell).toBeVisible();
   await dayCell.click();
-  await expect(page.getByText(new RegExp(`寿星（\\d+）`))).toBeVisible();
-  await expect(page.getByText(first)).toBeVisible();
-  await expect(page.getByText(second)).toBeVisible();
+  // 详情面板的寿星计数改为「寿星 N 位」。
+  await expect(page.getByText(/^寿星 \d+ 位$/)).toBeVisible();
+  // 日期格本身也会显示「某某的生日」，这里只核对详情面板的寿星行（姓名 · 作品）。
+  await expect(page.getByText(`${first} · 原神`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`${second} · 原神`, { exact: true })).toBeVisible();
   await page.getByLabel(`选择${first}`).check();
   await page.getByLabel(`选择${second}`).check();
   await page.getByRole('button', { name: /为选中的 2 位寿星合办生日活动/ }).click();

@@ -55,9 +55,26 @@ async function overflowAt(page: Page, viewport: (typeof VIEWPORTS)[number]) {
   return page.evaluate(() => {
     const doc = document.documentElement;
     if (doc.scrollWidth <= doc.clientWidth + 1) return null;
-    const offenders = Array.from(document.querySelectorAll('*'))
-      .filter((el) => el.getBoundingClientRect().width > doc.clientWidth + 1)
-      .map((el) => el.tagName.toLowerCase() + '.' + String(el.className || '').slice(0, 50))
+    /*
+     * 溢出可能来自比视口还宽的元素，也可能来自宽度正常、但被定位或撑到右边界之外的元素；
+     * 按右边缘判断才能把后一种也列出来，否则报错信息只有数字没有元凶。
+     * 取最深的越界元素（其后代都不越界），避免整条祖先链刷屏。
+     */
+    const limit = doc.clientWidth + 1;
+    const beyond = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.right > limit;
+    };
+    const offenders = Array.from(document.querySelectorAll('body *'))
+      // 收起的 <details> 内容不参与绘制，不能算作元凶。
+      .filter((el) => !el.closest('details:not([open]) > :not(summary)'))
+      .filter((el) => beyond(el) && !Array.from(el.querySelectorAll('*')).some(beyond))
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        const label = el.tagName.toLowerCase() + '.' + String(el.getAttribute('class') || '').trim().split(/\s+/).slice(0, 4).join('.');
+        const text = (el.textContent || '').trim().slice(0, 16);
+        return `${label}「${text}」right=${Math.round(rect.right)} w=${Math.round(rect.width)}`;
+      })
       .slice(0, 5)
       .join(', ');
     return doc.scrollWidth + ' > ' + doc.clientWidth + '：' + offenders;

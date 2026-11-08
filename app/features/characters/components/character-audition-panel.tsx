@@ -47,7 +47,7 @@ export function CharacterAuditionPanel({
   };
 
   return (
-    <section className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-4 space-y-3">
+    <section className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="flex items-center gap-2 text-sm font-semibold text-ink"><MessageCircle className="h-4 w-4 text-accent" />轻量试演</h4>

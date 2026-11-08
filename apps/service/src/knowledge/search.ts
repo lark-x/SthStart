@@ -1,9 +1,9 @@
-import type { KnowledgeRecommendation, KnowledgeSearchItem, KnowledgeSearchResponse, NoteKnowledge } from '@sthstart/contracts';
+import type { KnowledgeRecommendation, KnowledgeSearchItem, KnowledgeSearchQuery, KnowledgeSearchResponse, NoteKnowledge } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import type { NarrativeDatabase } from '../narrative-database.js';
 import { noteReferenceText } from './store.js';
 
-/** 检索结果总上限：界面按实际返回说明是否截断。 */
+/** 单页默认容量；offset 可访问完整匹配集合。 */
 export const KNOWLEDGE_SEARCH_LIMIT = 60;
 const EXCERPT_LENGTH = 260;
 
@@ -84,7 +84,7 @@ function noteToItem(row: NoteRow, knowledge: NoteKnowledge | null, needle: strin
  */
 export function searchNotes(
   database: ServiceDatabase,
-  query: { q?: string; works?: string[]; characters?: string[]; usage?: string; nature?: string; category?: string; limit?: number; includeRecord?: boolean },
+  query: { q?: string; works?: string[]; characters?: string[]; usage?: string; nature?: string; category?: string; limit?: number; offset?: number; includeRecord?: boolean },
 ): { items: KnowledgeSearchItem[]; total: number; truncated: boolean } {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -92,8 +92,8 @@ export function searchNotes(
   const escape = '\\';
   if (q) {
     const like = '%' + escapeLike(q) + '%';
-    clauses.push("(n.title LIKE ? ESCAPE '" + escape + "' OR n.summary LIKE ? ESCAPE '" + escape + "' OR n.content_json LIKE ? ESCAPE '" + escape + "')");
-    params.push(like, like, like);
+    clauses.push("(n.title LIKE ? ESCAPE '" + escape + "' OR n.summary LIKE ? ESCAPE '" + escape + "' OR n.content_json LIKE ? ESCAPE '" + escape + "' OR k.works_json LIKE ? ESCAPE '" + escape + "' OR k.characters_json LIKE ? ESCAPE '" + escape + "')");
+    params.push(like, like, like, like, like);
   }
   for (const work of query.works ?? []) {
     clauses.push("k.works_json LIKE ? ESCAPE '" + escape + "'");
@@ -110,12 +110,14 @@ export function searchNotes(
   if (!query.usage && !query.includeRecord) clauses.push("ifnull(k.usage,'record')='reference'");
   const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
   const limit = Math.min(Math.max(query.limit ?? KNOWLEDGE_SEARCH_LIMIT, 1), 200);
+  const offset = Math.max(0, Math.trunc(query.offset ?? 0));
+  const from = ' FROM creative_notes n LEFT JOIN note_knowledge k ON k.note_id=n.id ' + where;
+  const total = Number((database.connection.prepare('SELECT count(*) total' + from).get(...params as never[]) as { total: number }).total);
   const sql = 'SELECT n.*, k.works_json, k.characters_json, k.locations_json, k.category, k.nature, k.authorship, k.usage, k.sources_json'
-    + ' FROM creative_notes n LEFT JOIN note_knowledge k ON k.note_id=n.id '
-    + where + ' ORDER BY n.updated_at DESC LIMIT ?';
-  const rows = database.connection.prepare(sql).all(...params as never[], limit) as NoteRow[];
+    + from + ' ORDER BY n.updated_at DESC, n.id DESC LIMIT ? OFFSET ?';
+  const rows = database.connection.prepare(sql).all(...params as never[], limit, offset) as NoteRow[];
   const items = rows.map((row) => noteToItem(row, knowledgeOfRow(row), q || null));
-  return { items, total: items.length, truncated: items.length >= limit };
+  return { items, total, truncated: offset + items.length < total };
 }
 
 interface NarrativeHit {
@@ -124,101 +126,147 @@ interface NarrativeHit {
   sourceLine?: number | null; pathHash?: string | null;
 }
 
-function likeSearch(narrativeDatabase: NarrativeDatabase, like: string, workId: string | null, limit: number): NarrativeHit[] {
-  const escape = '\\';
-  const sql = 'SELECT * FROM ('
-    + " SELECT n.work_id workId,'utterance' kind,u.id refId,n.id nodeId,COALESCE(u.speaker,'') title,u.body excerpt,"
-    + " json_extract(u.metadata_json,'$.sourceLine') sourceLine, json_extract(u.metadata_json,'$.pathHash') pathHash, u.speaker speaker"
-    + ' FROM narrative_utterances u JOIN narrative_scenes s ON s.id=u.scene_id JOIN narrative_nodes n ON n.id=s.node_id'
-    + " WHERE u.body LIKE ? ESCAPE '" + escape + "'"
-    + " UNION ALL SELECT e.work_id,'entity',e.id,NULL,e.name,e.description,NULL,NULL,NULL FROM narrative_entities e"
-    + " WHERE e.name LIKE ? ESCAPE '" + escape + "' OR e.description LIKE ? ESCAPE '" + escape + "'"
-    + " UNION ALL SELECT n.work_id,'node',n.id,n.id,n.title,n.summary,NULL,NULL,NULL FROM narrative_nodes n"
-    + " WHERE n.title LIKE ? ESCAPE '" + escape + "' OR n.summary LIKE ? ESCAPE '" + escape + "'"
-    + ') WHERE (? IS NULL OR workId=?) LIMIT ?';
-  return narrativeDatabase.connection.prepare(sql).all(like, like, like, like, like, workId, workId, limit) as unknown as NarrativeHit[];
-}
-
-function ftsSearch(database: NarrativeDatabase, q: string, workId: string | null, limit: number): NarrativeHit[] | null {
-  const match = q.split(/\s+/).filter(Boolean).map((word) => '"' + word.replaceAll('"', '""') + '"*').join(' AND ');
-  if (!match) return null;
-  try {
-    const sql = 'SELECT narrative_fts.work_id workId,narrative_fts.kind,narrative_fts.ref_id refId,'
-      + ' CASE narrative_fts.kind WHEN "node" THEN narrative_fts.ref_id WHEN "utterance" THEN s.node_id ELSE NULL END nodeId,'
-      + " narrative_fts.title, snippet(narrative_fts,4,'','','…',24) excerpt,"
-      + " json_extract(u.metadata_json,'$.sourceLine') sourceLine, json_extract(u.metadata_json,'$.pathHash') pathHash, u.speaker speaker"
-      + ' FROM narrative_fts'
-      + " LEFT JOIN narrative_utterances u ON narrative_fts.kind='utterance' AND narrative_fts.ref_id=u.id"
-      + ' LEFT JOIN narrative_scenes s ON u.scene_id=s.id'
-      + ' WHERE narrative_fts MATCH ? AND (? IS NULL OR narrative_fts.work_id=?) LIMIT ?';
-    return database.connection.prepare(sql).all(match, workId, workId, limit) as unknown as NarrativeHit[];
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 叙事片段检索：复用叙事库已有的实体别名与原文索引。
- * 两个数据库分别查询再汇总，不假设跨库外键或 JOIN。
- * 行号标记为本地行号：Akasha 原文按去空行后重新编号，不能当作远端真实行号。
- */
-export function searchNarrative(
-  narrativeDatabase: NarrativeDatabase | null,
-  query: { q?: string; workId?: string; limit?: number },
-): { items: KnowledgeSearchItem[]; truncated: boolean } {
-  const q = String(query.q ?? '').trim();
-  if (!narrativeDatabase || !q) return { items: [], truncated: false };
-  const limit = Math.min(Math.max(query.limit ?? 30, 1), 100);
-  const workTitles = new Map<string, string>(
-    (narrativeDatabase.connection.prepare('SELECT id,title FROM narrative_works').all() as Array<{ id: string; title: string }>)
-      .map((row) => [String(row.id), String(row.title)]),
-  );
+function narrativeQuery(q: string, workId: string | null, fts: boolean) {
+  const match = q.split(/\s+/).filter(Boolean).map(word => '"' + word.replaceAll('"', '""') + '"*').join(' AND ');
   const like = '%' + escapeLike(q) + '%';
-  const workId = query.workId ?? null;
-  try {
-    const short = Array.from(q).length < 3;
-    const rows = short ? likeSearch(narrativeDatabase, like, workId, limit)
-      : (ftsSearch(narrativeDatabase, q, workId, limit) ?? likeSearch(narrativeDatabase, like, workId, limit));
-    const items: KnowledgeSearchItem[] = rows.map((row) => ({
-      kind: 'narrative' as const,
-      id: String(row.refId),
-      title: String(row.title ?? '').trim() || String(row.speaker ?? '') || '叙事片段',
-      excerpt: makeExcerpt(String(row.excerpt ?? ''), q),
-      ...(workTitles.get(String(row.workId)) ? { work: workTitles.get(String(row.workId))! } : {}),
-      nature: 'canon',
-      authorship: 'excerpt',
-      sourceKind: 'narrative',
-      sourceTitle: workTitles.get(String(row.workId)) ?? '叙事档案',
-      locator: {
-        workId: String(row.workId),
-        kind: String(row.kind ?? 'utterance'),
-        ...(row.nodeId ? { nodeId: String(row.nodeId) } : {}),
-        ...(row.speaker ? { speaker: String(row.speaker) } : {}),
-        ...(row.sourceLine ? { sourceLine: Number(row.sourceLine), lineKind: 'local' } : {}),
-        ...(row.pathHash ? { pathHash: String(row.pathHash) } : {}),
-      },
-    }));
-    return { items, truncated: items.length >= limit };
-  } catch {
-    return { items: [], truncated: false };
-  }
+  const sql = fts
+    ? "SELECT f.work_id workId,f.kind,f.ref_id refId, CASE f.kind WHEN 'node' THEN f.ref_id WHEN 'utterance' THEN s.node_id ELSE NULL END nodeId,"
+      + " f.title,f.body excerpt,json_extract(u.metadata_json,'$.sourceLine') sourceLine,json_extract(u.metadata_json,'$.pathHash') pathHash,u.speaker"
+      + ' FROM narrative_fts f LEFT JOIN narrative_utterances u ON f.kind=\'utterance\' AND f.ref_id=u.id'
+      + ' LEFT JOIN narrative_scenes s ON u.scene_id=s.id WHERE narrative_fts MATCH ? AND (? IS NULL OR f.work_id=?)'
+    : "SELECT * FROM (SELECT n.work_id workId,'utterance' kind,u.id refId,n.id nodeId,COALESCE(u.speaker,'') title,u.body excerpt,"
+      + " json_extract(u.metadata_json,'$.sourceLine') sourceLine,json_extract(u.metadata_json,'$.pathHash') pathHash,u.speaker"
+      + ' FROM narrative_utterances u JOIN narrative_scenes s ON s.id=u.scene_id JOIN narrative_nodes n ON n.id=s.node_id'
+      + " WHERE u.body LIKE ? ESCAPE '\\'"
+      + " UNION ALL SELECT e.work_id,'entity',e.id,NULL,e.name,e.description,NULL,NULL,NULL FROM narrative_entities e"
+      + " WHERE e.name LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\'"
+      + " UNION ALL SELECT n.work_id,'node',n.id,n.id,n.title,n.summary,NULL,NULL,NULL FROM narrative_nodes n"
+      + " WHERE n.title LIKE ? ESCAPE '\\' OR n.summary LIKE ? ESCAPE '\\') WHERE (? IS NULL OR workId=?)";
+  return { sql, params: fts ? [match, workId, workId] : [like, like, like, like, like, workId, workId] };
 }
 
-/** 一起查两个库：资料 + 本地叙事摘录。只读，不触发联网。 */
+/** Full-text ranking is not needed for pagination: use stable source/kind/id ordering. */
+export function searchNarrative(
+  database: NarrativeDatabase | null,
+  query: { q?: string; workId?: string; limit?: number; offset?: number },
+): { items: KnowledgeSearchItem[]; total: number; truncated: boolean } {
+  const q = String(query.q ?? '').trim();
+  if (!database || !q) return { items: [], total: 0, truncated: false };
+  const limit = Math.min(Math.max(query.limit ?? 30, 1), 200);
+  const offset = Math.max(0, Math.trunc(query.offset ?? 0));
+  const read = (fts: boolean) => {
+    const { sql, params } = narrativeQuery(q, query.workId ?? null, fts);
+    const total = Number((database.connection.prepare('SELECT count(*) total FROM (' + sql + ')').get(...params as never[]) as { total: number }).total);
+    const rows = database.connection.prepare('SELECT * FROM (' + sql + ') ORDER BY workId ASC,kind ASC,refId ASC LIMIT ? OFFSET ?')
+      .all(...params as never[], limit, offset) as unknown as NarrativeHit[];
+    return { rows, total };
+  };
+  let result: ReturnType<typeof read>;
+  if (Array.from(q).length < 3) result = read(false);
+  else {
+    try { result = read(true); } catch { result = read(false); }
+    // An unavailable/stale FTS index must not hide searchable original text.
+    if (!result.total) result = read(false);
+  }
+  const titles = new Map((database.connection.prepare('SELECT id,title FROM narrative_works').all() as Array<{ id: string; title: string }>).map(row => [row.id, row.title]));
+  const items: KnowledgeSearchItem[] = result.rows.map(row => ({
+    kind: 'narrative', id: String(row.refId),
+    title: String(row.title ?? '').trim() || String(row.speaker ?? '') || '叙事片段',
+    excerpt: makeExcerpt(String(row.excerpt ?? ''), q),
+    ...(titles.get(row.workId) ? { work: titles.get(row.workId)! } : {}),
+    nature: 'canon', authorship: 'excerpt', sourceKind: 'narrative',
+    sourceTitle: titles.get(row.workId) ?? '叙事档案',
+    locator: {
+      workId: row.workId, kind: row.kind,
+      ...(row.nodeId ? { nodeId: row.nodeId } : {}),
+      ...(row.speaker ? { speaker: row.speaker } : {}),
+      ...(row.sourceLine ? { sourceLine: Number(row.sourceLine), lineKind: 'local' } : {}),
+      ...(row.pathHash ? { pathHash: row.pathHash } : {}),
+    },
+  }));
+  return { items, total: result.total, truncated: offset + items.length < result.total };
+}
+
+/** Topics and collected source VERSIONS keep the ids accepted by resolveReference. */
+function searchOtherSources(database: ServiceDatabase, kind: 'topic' | 'collection', query: KnowledgeSearchQuery) {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  const q = query.q?.trim() ?? '';
+  const limit = query.limit ?? KNOWLEDGE_SEARCH_LIMIT;
+  const offset = query.offset ?? 0;
+  let from: string;
+  let columns: string;
+  let order: string;
+  if (kind === 'topic') {
+    from = ' FROM topics t';
+    clauses.push('t.ignored=0');
+    if (q) {
+      clauses.push("(t.title LIKE ? ESCAPE '\\' OR t.summary LIKE ? ESCAPE '\\' OR t.works_json LIKE ? ESCAPE '\\' OR t.characters_json LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM topic_sources ts WHERE ts.topic_id=t.id AND (ts.title LIKE ? ESCAPE '\\' OR ts.excerpt LIKE ? ESCAPE '\\')))" );
+      params.push(...Array(6).fill('%' + escapeLike(q) + '%'));
+    }
+    for (const work of query.works ?? []) { clauses.push("t.works_json LIKE ? ESCAPE '\\'"); params.push('%' + escapeLike(work) + '%'); }
+    for (const character of query.characters ?? []) { clauses.push("t.characters_json LIKE ? ESCAPE '\\'"); params.push('%' + escapeLike(character) + '%'); }
+    columns = 't.id,t.title,t.summary excerpt,t.works_json,t.info_nature,t.updated_at';
+    order = 't.updated_at DESC,t.id DESC';
+  } else {
+    from = ' FROM knowledge_source_versions v JOIN knowledge_sources s ON s.id=v.source_id';
+    // Only actual collection findings are exposed; ignored results stay excluded.
+    clauses.push("EXISTS (SELECT 1 FROM knowledge_pending_items p WHERE p.source_version_id=v.id AND p.state!='ignored')");
+    if (q) {
+      clauses.push("(v.title LIKE ? ESCAPE '\\' OR v.excerpt LIKE ? ESCAPE '\\' OR v.organized_text LIKE ? ESCAPE '\\' OR s.work LIKE ? ESCAPE '\\' OR s.source_name LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM knowledge_pending_items p WHERE p.source_version_id=v.id AND p.state!='ignored' AND p.characters_json LIKE ? ESCAPE '\\'))");
+      params.push(...Array(6).fill('%' + escapeLike(q) + '%'));
+    }
+    for (const work of query.works ?? []) { clauses.push("s.work LIKE ? ESCAPE '\\'"); params.push('%' + escapeLike(work) + '%'); }
+    for (const character of query.characters ?? []) {
+      clauses.push("EXISTS (SELECT 1 FROM knowledge_pending_items p WHERE p.source_version_id=v.id AND p.state!='ignored' AND p.characters_json LIKE ? ESCAPE '\\')");
+      params.push('%' + escapeLike(character) + '%');
+    }
+    columns = "v.id,v.title,COALESCE(NULLIF(v.organized_text,''),v.excerpt) excerpt,v.organized_text,v.retrieved_at updated_at,s.work,s.source_name,s.nature";
+    order = 'v.retrieved_at DESC,v.id DESC';
+  }
+  const where = ' WHERE ' + clauses.join(' AND ');
+  const total = Number((database.connection.prepare('SELECT count(*) total' + from + where).get(...params as never[]) as { total: number }).total);
+  const rows = database.connection.prepare('SELECT ' + columns + from + where + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?')
+    .all(...params as never[], limit, offset) as Array<Record<string, unknown>>;
+  const items: KnowledgeSearchItem[] = rows.map(row => {
+    const works = kind === 'topic' ? JSON.parse(String(row.works_json ?? '[]')) as string[] : row.work ? [String(row.work)] : [];
+    return {
+      kind, id: String(row.id), title: String(row.title || row.source_name || '搜集来源'),
+      excerpt: makeExcerpt(String(row.excerpt ?? ''), q || null),
+      ...(works.length ? { works, work: works[0] } : {}),
+      nature: kind === 'topic' ? row.info_nature === 'official' ? 'canon' : 'community' : String(row.nature ?? 'unconfirmed'),
+      authorship: row.organized_text ? 'ai-organized' : 'excerpt',
+      updatedAt: String(row.updated_at), sourceKind: kind,
+      sourceTitle: kind === 'topic' ? '灵感素材' : String(row.source_name || '搜集来源'),
+    };
+  });
+  return { items, total, truncated: offset + items.length < total };
+}
+
+/** Combined pagination: notes, narrative, topics, collection versions, each stably ordered.
+ * Sequential source segments permit true SQL OFFSET without fetching every prior page. */
 export function searchKnowledge(
   dependencies: { database: ServiceDatabase; narrativeDatabase: NarrativeDatabase | null },
-  query: { q?: string; workId?: string; works?: string[]; characters?: string[]; kinds?: string[]; limit?: number },
+  query: KnowledgeSearchQuery,
 ): KnowledgeSearchResponse {
-  const wantNotes = !query.kinds?.length || query.kinds.includes('note');
-  const wantNarrative = !query.kinds?.length || query.kinds.includes('narrative');
-  const notes = wantNotes
-    ? searchNotes(dependencies.database, { q: query.q, works: query.works, characters: query.characters, limit: query.limit })
-    : { items: [] as KnowledgeSearchItem[], total: 0, truncated: false };
-  const narrative = wantNarrative
-    ? searchNarrative(dependencies.narrativeDatabase, { q: query.q, workId: query.workId, limit: query.limit ?? 30 })
-    : { items: [] as KnowledgeSearchItem[], truncated: false };
-  const items = [...notes.items, ...narrative.items];
-  return { items, total: items.length, truncated: notes.truncated || narrative.truncated };
+  const limit = Math.min(200, Math.max(1, Math.trunc(query.limit ?? KNOWLEDGE_SEARCH_LIMIT)));
+  const offset = Math.max(0, Math.trunc(query.offset ?? 0));
+  const kinds = ['note', 'narrative', 'topic', 'collection'] as const;
+  const selected = kinds.filter(kind => !query.kinds?.length || query.kinds.includes(kind));
+  let skip = offset;
+  let total = 0;
+  const items: KnowledgeSearchItem[] = [];
+  for (const kind of selected) {
+    const page = { ...query, limit: Math.max(1, limit - items.length), offset: skip };
+    const result = kind === 'note' ? searchNotes(dependencies.database, page)
+      : kind === 'narrative' ? searchNarrative(dependencies.narrativeDatabase, page)
+      : searchOtherSources(dependencies.database, kind, page);
+    total += result.total;
+    if (items.length < limit) items.push(...result.items.slice(0, limit - items.length));
+    skip = Math.max(0, skip - result.total);
+  }
+  const hasMore = offset + items.length < total;
+  return { items, total, offset, limit, hasMore, truncated: hasMore };
 }
 
 /**

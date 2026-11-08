@@ -143,7 +143,7 @@ export function registerNotebookRoutes(app: FastifyInstance, config: ServiceConf
       : LEGACY_LIMIT;
     const page = Math.max(1, Math.trunc(Number(query.page) || 1));
     const rows = database.connection.prepare(
-      'SELECT n.*' + from + where + ' ORDER BY n.favorite DESC, n.updated_at DESC LIMIT ? OFFSET ?',
+      'SELECT n.*' + from + where + ' ORDER BY n.favorite DESC, n.updated_at DESC, n.id DESC LIMIT ? OFFSET ?',
     ).all(...values as never[], pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
 
     const knowledgeMap = knowledgeStore.listKnowledge(rows.map((row) => String(row.id)));

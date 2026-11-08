@@ -1,4 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const service = `http://127.0.0.1:${process.env.E2E_SERVICE_PORT ?? 4200}`;
+const headers = { 'x-sthstart-admin-token': 'sthstart-e2e-secret-0123456789abcdef' };
 
 /**
  * 计划 §11.3 中此前没有实测的三条可量化目标：
@@ -45,7 +49,7 @@ test('列表页首屏内容顶部在 1440×900 下不超过 240px', async ({ pag
   expect(failures.length, failures.join('\n')).toBe(0);
 });
 
-test('1280×720 下生成配置入口与活动工作区主要操作可见', async ({ page }) => {
+test('1280×720 下生成配置入口与活动工作区主要操作可见', async ({ page, request }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
 
   const failures: string[] = [];
@@ -66,44 +70,57 @@ test('1280×720 下生成配置入口与活动工作区主要操作可见', asyn
     if (!box || box.y > 720) failures.push('生成配置页主动作在首屏之外');
   }
 
-  // 活动工作区：以当前选中阶段和场次操作作为主要入口。
-  await page.goto('/apps/activities');
-  await page.waitForTimeout(400);
-  const hrefs = await page
-    .locator('a[href]')
-    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href') ?? ''));
-  const activityPath = hrefs.find(
-    (href) =>
-      href.indexOf('/apps/activities/') === 0 &&
-      href !== '/apps/activities/new' &&
-      href.length > '/apps/activities/'.length + 6
-  );
-  if (!activityPath) {
-    test.info().annotations.push({ type: 'warning', description: '没有可打开的活动，跳过活动页检查' });
-  } else {
-    await page.goto(activityPath);
-    await page.waitForTimeout(600);
-    const stageRail = page.getByRole('navigation', { name: '场次导轨导航' });
-    if (!(await stageRail.isVisible())) failures.push('活动页在 1280×720 下看不到阶段/场次导航');
+  /*
+   * 活动工作区：左侧「剧情大纲」定位当前幕，展开的当前幕下有「加场」，
+   * 中间场次工具条有「添加分镜」。自建一场带场次与分镜的活动，不依赖其他用例留下的数据。
+   */
+  const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
+  const stage = document.stages[0];
+  document.scenes = [{
+    id: 'scene-quantitative-1280', stageId: stage.id, title: '营地搭建', timeText: '午后', locationText: '湖边营地',
+    environment: '', orderIndex: 0,
+    beats: [{ id: 'beat-quantitative-1280', sceneId: 'scene-quantitative-1280', stageId: stage.id, characterId: 'narrator',
+      characterName: '旁白', action: '支起帐篷', dialogue: '', outcome: '', orderIndex: 0 }],
+  }];
+  const created = await request.post(`${service}/api/v1/admin/activities`, { headers, data: { document } });
+  expect(created.ok()).toBeTruthy();
+  const { activity } = await created.json();
+  await page.goto(`/apps/activities/${activity.id}`);
+  const outline = page.getByRole('complementary').filter({ hasText: '剧情大纲' });
+  await expect(outline, '活动页应渲染剧情大纲').toBeVisible({ timeout: 15_000 });
 
-    const selectedStage = page.locator('main').getByRole('heading', { level: 2 }).first();
-    if (!(await selectedStage.isVisible())) failures.push('活动页看不到当前选中阶段标题');
-
-    const sceneAction = page.getByRole('button', { name: /新建场次|添加分镜|追加下一镜/ }).first();
-    if ((await sceneAction.count()) === 0) failures.push('活动页找不到场次或分镜编辑入口');
-    else if (!(await sceneAction.isVisible())) failures.push('活动页场次或分镜编辑入口不可见');
-  }
+  const checkVisible = async (locator: Locator, message: string) => {
+    if ((await locator.count()) === 0) failures.push(`${message}：找不到`);
+    else if (!(await locator.isVisible())) failures.push(`${message}：存在但不可见`);
+    else {
+      const box = await locator.boundingBox();
+      if (!box || box.y > 720) failures.push(`${message}：在首屏之外`);
+    }
+  };
+  await checkVisible(outline.getByRole('button', { name: new RegExp(stage.title) }).first(), '活动页在 1280×720 下看不到当前幕');
+  await checkVisible(outline.getByRole('button', { name: '加场' }), '活动页看不到当前幕的加场入口');
+  await checkVisible(page.getByLabel('场次标题'), '活动页看不到当前场次标题');
+  await checkVisible(page.getByRole('button', { name: '添加分镜' }), '活动页看不到分镜编辑入口');
 
   expect(failures.length, failures.join('\n')).toBe(0);
 });
 
 test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动', async ({ page }) => {
-  await page.addInitScript(() => window.localStorage.setItem('sthstart_theme', 'neutral'));
+  // 主题 ID 与 app/lib/theme-preference.ts 的 THEMES 一致：从云白（light-zinc）切到暖白（light-paper）。
+  await page.addInitScript(() => window.localStorage.setItem('sthstart_theme_id', 'light-zinc'));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/apps/activities/new');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light-zinc');
 
+  /*
+   * 新建页默认是快速制作入口（章节 / 角色 / 空白）；带标题与模板下拉的表单在
+   * 「切换传统企划向导」后出现。hydration 前的点击可能被丢弃，重试到标题输入出现为止。
+   */
   const title = page.getByLabel('活动标题');
-  await expect(title).toBeVisible();
+  await expect(async () => {
+    if (!(await title.isVisible())) await page.getByRole('button', { name: '切换传统企划向导' }).click();
+    await expect(title).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   await title.fill('保持输入的验证标题');
 
   /*
@@ -121,12 +138,19 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   await page.evaluate(() => window.scrollTo(0, 400));
   const before = await page.evaluate(() => window.scrollY);
 
-  // 切换主题（侧栏底部的护眼开关）。
-  await page.getByRole('button', { name: /主题/ }).first().click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'warm');
+  // 切换主题：侧栏底部的「选择主题与外观」菜单里选暖白。
+  const sidebar = page.getByRole('complementary', { name: '侧边导航' });
+  const chooseTheme = async (name: string, id: string) => {
+    await sidebar.getByRole('button', { name: /^选择主题与外观/ }).click();
+    await page.getByRole('menu', { name: '主题与外观' }).getByRole('menuitemradio', { name: new RegExp(`^${name}`) }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', id);
+  };
+  await chooseTheme('暖白', 'light-paper');
 
   // 收起侧栏。
-  await page.getByRole('button', { name: /收起|展开/ }).first().click();
+  const collapse = sidebar.getByRole('button', { name: '收起导航' });
+  await collapse.click();
+  await expect(sidebar.getByRole('button', { name: '展开导航' })).toHaveAttribute('aria-pressed', 'true');
   await page.waitForTimeout(300);
 
   await expect(title, '主题与侧栏变化后标题输入应保留').toHaveValue('保持输入的验证标题');
@@ -136,6 +160,7 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   expect(Math.abs(after - before), `滚动位置从 ${before} 跳到 ${after}`).toBeLessThanOrEqual(8);
 
   // 复原，避免影响后续用例的显示偏好。
-  await page.getByRole('button', { name: /主题/ }).first().click();
-  await page.getByRole('button', { name: /收起|展开/ }).first().click();
+  await chooseTheme('云白', 'light-zinc');
+  await sidebar.getByRole('button', { name: '展开导航' }).click();
+  await expect(collapse).toHaveAttribute('aria-pressed', 'false');
 });

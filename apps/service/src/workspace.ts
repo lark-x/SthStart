@@ -8,7 +8,13 @@ export function registerWorkspaceRoutes(app: FastifyInstance, database: ServiceD
   }, async (request): Promise<RecentWorkResponse> => {
     const items = database.connection.prepare(`
       SELECT id,title,kind,updatedAt FROM (
-        SELECT id,title,'activity' AS kind,updated_at AS updatedAt FROM activities WHERE archived=0
+        SELECT id,title,CASE WHEN type='publication' THEN 'publication' ELSE 'activity' END AS kind,updated_at AS updatedAt FROM activities WHERE archived=0
+        UNION ALL
+        SELECT p.id,p.title,'story' AS kind,MAX(p.updated_at,
+          COALESCE((SELECT MAX(updated_at) FROM story_documents WHERE project_id=p.id),p.updated_at),
+          COALESCE((SELECT MAX(updated_at) FROM story_characters WHERE project_id=p.id),p.updated_at),
+          COALESCE((SELECT MAX(captured_at) FROM project_links WHERE project_id=p.id),p.updated_at)) AS updatedAt
+          FROM story_projects p WHERE project_type='fiction'
         UNION ALL
         SELECT id,title,'note' AS kind,updated_at AS updatedAt FROM creative_notes
         UNION ALL

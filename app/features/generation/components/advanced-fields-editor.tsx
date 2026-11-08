@@ -59,7 +59,7 @@ export function AdvancedFieldsEditor({
     <div className="space-y-4">
       <Alert variant="info" title="高级区">这里展示原始 ComfyUI API JSON 与节点绑定。可视化编辑器不会删除未映射内容；直接修改 JSON 请自行确认结构有效。</Alert>
 
-      <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+      <div className="rounded-panel border border-border-subtle bg-surface p-3">
         <h3 className="text-sm font-semibold text-ink">配置信息</h3>
         <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           <div className="flex justify-between gap-3"><dt className="text-muted">工作流 ID</dt><dd><code>{workflowId}</code></dd></div>
@@ -76,18 +76,18 @@ export function AdvancedFieldsEditor({
           <a
             href={`/api/admin/generation/workflows/${encodeURIComponent(workflowId)}/versions/${workflow?.latest_version ?? 1}/export`}
             download
-            className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-border-default px-3 text-sm font-medium text-ink hover:bg-ink/4"
+            className="inline-flex h-8 items-center gap-1.5 rounded-control border border-border-default px-3 text-sm font-medium text-ink hover:bg-ink/4"
           >
             <Download className="h-3.5 w-3.5" aria-hidden="true" />导出当前版本配置包
           </a>
         </div>
       </div>
 
-      <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+      <div className="rounded-panel border border-border-subtle bg-surface p-3">
         <h3 className="text-sm font-semibold text-ink">ComfyUI API JSON</h3>
         <textarea
           aria-label="ComfyUI API JSON"
-          className="mt-2 h-72 w-full rounded-[var(--radius-control)] border border-border-default bg-surface p-2 font-mono text-xs"
+          className="mt-2 h-72 w-full rounded-control border border-border-default bg-surface p-2 font-mono text-xs"
           value={definitionText}
           onChange={(event) => setDefinitionText(event.target.value)}
           onBlur={applyDefinition}
@@ -96,9 +96,9 @@ export function AdvancedFieldsEditor({
         {definitionError && <p className="mt-1 text-sm text-danger-fg" role="alert">JSON 无效：{definitionError}（未应用修改）</p>}
       </div>
 
-      <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+      <div className="rounded-panel border border-border-subtle bg-surface p-3">
         <h3 className="text-sm font-semibold text-ink">节点绑定</h3>
-        <pre className="mt-2 max-h-48 overflow-auto rounded-[var(--radius-control)] bg-ink/4 p-2 font-mono text-xs">{JSON.stringify(draft.nodeBindings, null, 2)}</pre>
+        <pre className="mt-2 max-h-48 overflow-auto rounded-control bg-ink/4 p-2 font-mono text-xs">{JSON.stringify(draft.nodeBindings, null, 2)}</pre>
       </div>
     </div>
   );

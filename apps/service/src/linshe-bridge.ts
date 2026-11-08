@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { existsSync, createReadStream } from 'node:fs';
+import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   CHARACTER_PERSONA_COMPILER_VERSION,
@@ -356,6 +359,189 @@ export function registerLinsheBridgeRoutes(
         url: `/api/admin/characters/assets/${id}`,
         title: cleanTitle,
       });
+    }
+  });
+
+  // GET /api/v1/admin/linshe-bridge/characters — 读取邻舍全部角色（含运行状态与 SthStart 关联）
+  app.get('/api/v1/admin/linshe-bridge/characters', async (request, reply) => {
+    try {
+      let linsheChars: any[] = [];
+      try {
+        const scheduleRes = await fetcher(`${linsheBaseUrl}/api/schedule`, {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (scheduleRes.ok) {
+          const scheduleData = (await scheduleRes.json()) as { characters?: any[] };
+          linsheChars = scheduleData.characters || [];
+        }
+      } catch {
+        // Fallback to /api/characters
+      }
+
+      if (linsheChars.length === 0) {
+        const charsRes = await fetcher(`${linsheBaseUrl}/api/characters`, {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (charsRes.ok) {
+          const charsData = (await charsRes.json()) as { characters?: any[] };
+          linsheChars = charsData.characters || [];
+        }
+      }
+
+      // 查询本地 app_character_links
+      const links = database.connection
+        .prepare(`
+          SELECT l.character_id, l.local_id, l.source_version, p.display_name, p.latest_version
+          FROM app_character_links l
+          JOIN character_profiles p ON p.id = l.character_id
+          WHERE l.app_id = 'linshe'
+        `)
+        .all() as {
+          character_id: string;
+          local_id: string;
+          source_version: number;
+          display_name: string;
+          latest_version: number | null;
+        }[];
+
+      const linkMap = new Map<string, { id: string; displayName: string; latestVersion: number | null }>();
+      for (const link of links) {
+        linkMap.set(String(link.local_id), {
+          id: link.character_id,
+          displayName: link.display_name,
+          latestVersion: link.latest_version,
+        });
+      }
+
+      const characters = linsheChars.map((c) => {
+        const rawAct = c.current_activity || '';
+        const sep = rawAct.indexOf(' · ');
+        const location = sep > -1 ? rawAct.slice(0, sep) : rawAct;
+        const behavior = sep > -1 ? rawAct.slice(sep + 3) : rawAct;
+        const noSchedule = !rawAct || rawAct === '未设置日程';
+
+        const sthLink = linkMap.get(String(c.id));
+
+        // 头像通过本地 bridge asset 代理，确保跨源和鉴权顺畅
+        const avatarUrl = c.avatar_path
+          ? (c.avatar_path.startsWith('http')
+              ? c.avatar_path
+              : `/api/admin/linshe-bridge/asset?url=${encodeURIComponent(c.avatar_path)}`)
+          : null;
+
+        return {
+          id: c.id,
+          display_name: c.display_name || c.name || '未命名角色',
+          name: c.name || c.display_name || 'unknown',
+          avatar_path: c.avatar_path,
+          avatarUrl,
+          current_activity: c.current_activity || '自由行动',
+          _location: noSchedule ? '未知地点' : (location || '未知地点'),
+          _behavior: noSchedule ? '自由行动' : (behavior || '暂无信息'),
+          _description: c._desc || (!noSchedule ? behavior : '') || (noSchedule ? '自由行动中...' : ''),
+          is_sleeping: Boolean(c.is_sleeping),
+          is_temp_woken: Boolean(c.is_temp_woken),
+          was_door_woken: Number(c.was_door_woken || 0),
+          wake_attempts: Number(c.wake_attempts || 0),
+          reply_delay: Number(c.reply_delay || 0),
+          pinned: Boolean(c.pinned),
+          tags: Array.isArray(c.tags) ? c.tags : (typeof c.tags === 'string' && c.tags ? c.tags.split(',') : []),
+          sthLink: sthLink || null,
+        };
+      });
+
+      return { characters };
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'linshe_unreachable', message: err.message });
+    }
+  });
+
+  // GET /api/v1/admin/linshe-bridge/asset — 静态资产/头像安全代理
+  app.get<{
+    Querystring: {
+      url?: string;
+    };
+  }>('/api/v1/admin/linshe-bridge/asset', async (request, reply) => {
+    const rawUrl = request.query.url;
+    if (!rawUrl) return reply.code(400).send({ error: 'url_param_required' });
+
+    let targetUrl: string;
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      const parsed = new URL(rawUrl);
+      if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') {
+        return reply.code(403).send({ error: 'forbidden_host' });
+      }
+      targetUrl = rawUrl;
+    } else {
+      const cleanPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+      targetUrl = `${linsheBaseUrl}${cleanPath}`;
+    }
+
+    try {
+      const res = await fetcher(targetUrl, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) {
+        return reply.code(res.status).send({ error: 'upstream_asset_not_found' });
+      }
+      const contentType = res.headers.get('content-type') || 'image/png';
+      const buffer = Buffer.from(await res.arrayBuffer());
+
+      return reply
+        .header('Content-Type', contentType)
+        .header('Cache-Control', 'public, max-age=86400')
+        .send(buffer);
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'fetch_asset_failed', message: err.message });
+    }
+  });
+
+  // POST /api/v1/admin/linshe-bridge/pin — 切换角色置顶
+  app.post<{
+    Body: {
+      characterId: number | string;
+      pinned: number | boolean;
+    };
+  }>('/api/v1/admin/linshe-bridge/pin', async (request, reply) => {
+    const { characterId, pinned } = request.body || {};
+    if (characterId === undefined) return reply.code(400).send({ error: 'character_id_required' });
+
+    try {
+      const res = await fetcher(`${linsheBaseUrl}/api/characters/${encodeURIComponent(characterId)}/pin`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: pinned ? 1 : 0 }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        return reply.code(res.status).send({ error: 'linshe_pin_failed' });
+      }
+      const data = await res.json().catch(() => ({}));
+      return { ok: true, pinned: Boolean(pinned), data };
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'linshe_unreachable', message: err.message });
+    }
+  });
+
+  // POST /api/v1/admin/linshe-bridge/wake — 叫醒角色（电话/上门）
+  app.post<{
+    Body: {
+      characterId: number | string;
+      mode?: 'phone' | 'door';
+    };
+  }>('/api/v1/admin/linshe-bridge/wake', async (request, reply) => {
+    const { characterId, mode } = request.body || {};
+    if (characterId === undefined) return reply.code(400).send({ error: 'character_id_required' });
+
+    const endpoint = mode === 'door' ? 'wake-up-door' : 'wake-up-phone';
+    try {
+      const res = await fetcher(`${linsheBaseUrl}/api/schedule/${encodeURIComponent(characterId)}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json().catch(() => ({}));
+      return reply.code(res.status).send(data);
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'linshe_unreachable', message: err.message });
     }
   });
 }

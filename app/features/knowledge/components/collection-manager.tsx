@@ -19,7 +19,8 @@ import { EmptyState } from '@/app/components/ui/empty-state';
 import { formatTopicTime } from '@/app/features/topics/components/topic-card';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
 import { browseCharacters } from '@/app/features/characters/api';
-import { useNotes } from '@/app/features/notebook/queries';
+import { NotePicker } from '@/app/features/notebook/components/note-picker';
+import { characterFacetKeys, knowledgeCollectionKeys, mcpSourceKeys, taskKeys } from '@/app/lib/query-keys';
 import {
   cancelCollectionRun, createCollection, deleteCollection, fetchCollectionRun, fetchCollections,
   runCollection, setCollectionEnabled, updateCollection, type CollectionSaveInput, type RunFinding,
@@ -83,18 +84,17 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [runDetailId, setRunDetailId] = useState<string | null>(null);
 
-  const collectionsQuery = useQuery({ queryKey: ['knowledge-collections'], queryFn: fetchCollections, staleTime: 10_000 });
-  const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, staleTime: 30_000 });
+  const collectionsQuery = useQuery({ queryKey: knowledgeCollectionKeys.all, queryFn: fetchCollections, staleTime: 10_000 });
+  const sourcesQuery = useQuery({ queryKey: mcpSourceKeys.all, queryFn: fetchMcpSources, staleTime: 30_000 });
   const worksQuery = useQuery({
-    queryKey: ['characters', 'works-facets'],
+    queryKey: characterFacetKeys.works(),
     queryFn: () => browseCharacters({ page: 1, pageSize: 1 }),
     staleTime: 60_000,
   });
-  const notesQuery = useNotes({ pageSize: 100 });
   // 有执行在跑时轮询，页面能自己更新状态。
   const activeRuns = (collectionsQuery.data?.runs ?? []).filter((run) => run.status === 'queued' || run.status === 'running');
   useQuery({
-    queryKey: ['knowledge-collections', 'poll', activeRuns.map((run) => run.id).join(',')],
+    queryKey: knowledgeCollectionKeys.poll(activeRuns.map((run) => run.id).join(',')),
     queryFn: async () => { await collectionsQuery.refetch(); return null; },
     enabled: activeRuns.length > 0,
     refetchInterval: 2_500,
@@ -104,12 +104,12 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
   const runs = collectionsQuery.data?.runs ?? [];
   const enabledSources = (sourcesQuery.data ?? []).filter((source) => source.status === 'enabled');
   const workOptions = (worksQuery.data?.facets.works ?? []).map((work) => work.name);
-  const noteOptions = (notesQuery.data?.items ?? []).filter((note) => note.id);
 
   const openNew = () => { setDraft(EMPTY_DRAFT); setError(null); setEditorOpen(true); };
   const openEdit = (collection: KnowledgeCollection) => { setDraft(draftFrom(collection)); setError(null); setEditorOpen(true); };
 
   const save = async (runAfterSave: boolean) => {
+    if (busy) return;
     setError(null); setNotice(null);
     if (!draft.goal.trim() && !draft.name.trim()) { setError('请填写任务名称或搜集目标。'); return; }
     setBusy(true);
@@ -130,15 +130,15 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
       };
       const saved = draft.id ? await updateCollection(draft.id, payload) : await createCollection(payload);
       setEditorOpen(false);
-      void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
-      void client.invalidateQueries({ queryKey: ['tasks'] });
+      void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
+      void client.invalidateQueries({ queryKey: taskKeys.all });
       if (saved.pausedReason) setNotice('任务已保存，但' + saved.pausedReason);
       else if (!runAfterSave) setNotice('任务已保存' + (saved.nextRunAt ? '；下次执行：' + formatTopicTime(saved.nextRunAt) : '；一次性任务不会自动安排下一次') + '。');
       if (runAfterSave) {
         if (!saved.sources.length) { setError('该任务还没有资料源，无法立即执行。'); return; }
         const started = await runCollection(saved.id);
         setNotice(started.reused ? '已有一次执行正在进行，已显示该执行的进度。' : '已开始执行，页面会自动更新进度。');
-        void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
+        void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '保存任务失败。');
@@ -153,8 +153,8 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
         ? '已有一次执行正在进行，已显示该执行的进度。'
         : retryRunId ? '已用上次保存的来源重试整理，不会重新搜索资料源。' : '已开始执行，页面会自动更新进度。');
       setExpandedId(collection.id);
-      void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
-      void client.invalidateQueries({ queryKey: ['tasks'] });
+      void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
+      void client.invalidateQueries({ queryKey: taskKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '启动执行失败。');
     } finally { setBusy(false); }
@@ -164,8 +164,8 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
     setError(null);
     try {
       await setCollectionEnabled(collection.id, !collection.enabled);
-      void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
-      void client.invalidateQueries({ queryKey: ['tasks'] });
+      void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
+      void client.invalidateQueries({ queryKey: taskKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '切换状态失败。');
     }
@@ -177,8 +177,8 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
     try {
       await deleteCollection(collection.id);
       setNotice('任务已删除；已保存的资料与来源仍然保留。');
-      void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
-      void client.invalidateQueries({ queryKey: ['tasks'] });
+      void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
+      void client.invalidateQueries({ queryKey: taskKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '删除任务失败。');
     }
@@ -202,7 +202,7 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
       {error && <Alert variant="danger" title="操作未完成">{error}</Alert>}
       {notice && <Alert variant="info">{notice}</Alert>}
       {/* 批量导入入口：复用现有叙事档案的规范化 JSON 导入流程，不在资料库里另做一套导入。 */}
-      <section className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-panel)] border border-dashed border-border-default bg-surface px-3 py-2">
+      <section className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-dashed border-border-default bg-surface px-3 py-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">从叙事档案批量导入</p>
           <p className="text-xs text-muted">导入规范化 JSON 后，原文会进入本地检索；可以挑选片段整理成资料。重复导入同一份数据不会重复建资料。</p>
@@ -210,10 +210,10 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
         <Link href="/apps/narrative" className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-border-default bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-hover">打开叙事档案</Link>
       </section>
 
-      {collectionsQuery.isError && <Alert variant="warning" title="任务加载失败">{collectionsQuery.error instanceof Error ? collectionsQuery.error.message : '请稍后重试'}</Alert>}
+      {collectionsQuery.isError && <Alert variant="warning" title="任务加载失败">{collectionsQuery.error instanceof Error ? collectionsQuery.error.message : '请稍后重试'}<Button size="sm" onClick={() => void collectionsQuery.refetch()}>重试</Button></Alert>}
       {collectionsQuery.isLoading && <Spinner size="sm" label="正在加载任务…" />}
 
-      {!collectionsQuery.isLoading && !collections.length && (
+      {!collectionsQuery.isLoading && !collectionsQuery.isError && !collections.length && (
         <EmptyState
           icon={CalendarClock}
           title="还没有搜集任务"
@@ -228,7 +228,7 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
           const latest = collectionRuns[0];
           const expanded = expandedId === collection.id;
           return (
-            <li key={collection.id} className="space-y-2 rounded-[var(--radius-panel)] border border-border-default bg-surface p-3">
+            <li key={collection.id} className="space-y-2 rounded-panel border border-border-default bg-surface p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -308,12 +308,12 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
           </div>
         )}
       >
+        {error && <Alert variant="danger" title="操作未完成">{error}</Alert>}
         <CollectionForm
           draft={draft}
           onChange={setDraft}
           sources={enabledSources}
           workOptions={workOptions}
-          noteOptions={noteOptions.map((note) => ({ id: String(note.id), title: note.title || '未命名资料' }))}
         />
       </Dialog>
 
@@ -337,8 +337,8 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
     setError(null);
     try {
       await cancelCollectionRun(runId);
-      void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
-      void client.invalidateQueries({ queryKey: ['tasks'] });
+      void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
+      void client.invalidateQueries({ queryKey: taskKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '取消失败。');
     }
@@ -346,12 +346,11 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
 }
 
 /** 任务表单：资料源与工具只从已配置的 MCP 中选择，不在这里重复录入密钥。 */
-function CollectionForm({ draft, onChange, sources, workOptions, noteOptions }: {
+function CollectionForm({ draft, onChange, sources, workOptions }: {
   draft: DraftFields;
   onChange: (next: DraftFields) => void;
   sources: Array<{ id: string; name: string; purpose: string; url: string; discoveredTools?: Array<{ name: string }> }>;
   workOptions: string[];
-  noteOptions: Array<{ id: string; title: string }>;
 }) {
   const patch = (changes: Partial<DraftFields>) => onChange({ ...draft, ...changes });
   const toolsFor = (sourceId: string) => sources.find((source) => source.id === sourceId)?.discoveredTools ?? [];
@@ -490,20 +489,7 @@ function CollectionForm({ draft, onChange, sources, workOptions, noteOptions }: 
       <div className="space-y-1.5">
         <span className="text-sm font-semibold text-ink">关联资料（可选）</span>
         <p className="text-xs text-muted">只把结果关联到这些资料，方便回看；不会自动改写它们的正文。</p>
-        <div className="max-h-32 space-y-1 overflow-y-auto rounded border border-border-subtle p-2">
-          {!noteOptions.length && <p className="text-xs text-muted">还没有可关联的资料。</p>}
-          {noteOptions.slice(0, 40).map((note) => (
-            <label key={note.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                aria-label={'关联资料 ' + note.title}
-                checked={draft.targetNoteIds.includes(note.id)}
-                onChange={(event) => patch({ targetNoteIds: event.target.checked ? [...draft.targetNoteIds, note.id] : draft.targetNoteIds.filter((id) => id !== note.id) })}
-              />
-              <span className="truncate">{note.title}</span>
-            </label>
-          ))}
-        </div>
+        <NotePicker value={draft.targetNoteIds} onChange={(targetNoteIds) => patch({ targetNoteIds })} />
       </div>
     </div>
   );
@@ -511,7 +497,7 @@ function CollectionForm({ draft, onChange, sources, workOptions, noteOptions }: 
 
 /** 执行详情：列出本次发现（含重复），并允许对失败/部分完成重试整理。 */
 function RunDetail({ runId, onRetry }: { runId: string; onRetry: (collectionId: string) => Promise<void> }) {
-  const detail = useQuery({ queryKey: ['knowledge-run', runId], queryFn: () => fetchCollectionRun(runId), staleTime: 5_000 });
+  const detail = useQuery({ queryKey: knowledgeCollectionKeys.run(runId), queryFn: () => fetchCollectionRun(runId), staleTime: 5_000 });
   const [busy, setBusy] = useState(false);
   const run = detail.data?.run;
   const findings: RunFinding[] = detail.data?.findings ?? [];

@@ -100,7 +100,7 @@ test('selected context survives refresh and is sent with preparation at desktop 
   await expect(page.getByLabel('浮空世界', { exact: true })).toBeChecked();
   for (const [width, height] of [[1440, 900], [390, 844], [1024, 768], [1920, 1080]]) {
     await page.setViewportSize({ width, height });
-    if (width === 390) { const configuration = page.getByRole('button', { name: '配置', exact: true }); if (await configuration.count()) await configuration.click(); }
+    if (width === 390) { const configuration = page.getByRole('button', { name: '参数配置', exact: true }); if (await configuration.count()) await configuration.click(); }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await page.screenshot({ path: info.outputPath(`context-${width}.png`), fullPage: true, animations: 'disabled' });
   }
@@ -115,9 +115,11 @@ test('mobile retains configuration across tabs and AI failure can recover withou
   await page.goto('/apps/creative');
   const description = '夜晚窗边的少女，保持角色服装，远处是城市灯光。'.repeat(15);
   await page.getByLabel('描述你的画面').fill(description);
-  await page.getByRole('button', { name: '结果', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '图片预览' })).toBeVisible();
-  await page.getByRole('button', { name: '配置', exact: true }).click();
+  // 窄屏分栏切换改名为“参数配置 / 作品 / 任务”；尚无图片时结果栏只显示媒体库与任务分页。
+  await page.getByRole('button', { name: '作品 / 任务', exact: true }).click();
+  await expect(page.getByRole('tablist', { name: '创作结果视图' })).toBeVisible();
+  await expect(page.getByLabel('描述你的画面')).toBeHidden();
+  await page.getByRole('button', { name: '参数配置', exact: true }).click();
   await expect(page.getByLabel('描述你的画面')).toHaveValue(description);
   await page.getByRole('button', { name: '开始生成', exact: true }).click();
   await expect(page.getByText('本次生成未完成')).toBeVisible();

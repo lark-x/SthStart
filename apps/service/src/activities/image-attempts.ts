@@ -1,3 +1,4 @@
+import { decodeListCursor, encodeListCursor } from '../list-cursor.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type {
   ActivityAsset,
@@ -541,7 +542,11 @@ export function listImageAttempts(
   slotId?: string,
   limit = 50,
 ): GenerationAttempt[] {
-  let query = 'SELECT id FROM activity_image_attempts WHERE activity_id = ?';
+  return listImageAttemptsPage(database, activityId, slotId, limit).items;
+}
+
+export function listImageAttemptsPage(database: ServiceDatabase, activityId: string, slotId?: string, limit = 50, cursor?: string) {
+  let query = 'SELECT id, created_at FROM activity_image_attempts WHERE activity_id = ?';
   const params: (string | number)[] = [activityId];
 
   if (slotId) {
@@ -549,11 +554,13 @@ export function listImageAttempts(
     params.push(slotId);
   }
 
-  query += ' ORDER BY created_at DESC LIMIT ?';
-  params.push(limit);
-
-  const rows = database.connection.prepare(query).all(...params) as Array<{ id: string }>;
-  return rows.map((r) => getImageAttempt(database, activityId, r.id)!).filter(Boolean);
+  const after = decodeListCursor(cursor);
+  if (after) { query += ' AND (created_at < ? OR (created_at = ? AND id < ?))'; params.push(after[0], after[0], after[1]); }
+  const size = Math.max(1, Math.min(100, Math.trunc(limit)));
+  const rows = database.connection.prepare(query + ' ORDER BY created_at DESC, id DESC LIMIT ?').all(...params, size + 1) as {id: string; created_at: string}[];
+  const page = rows.slice(0, size);
+  const last = page.at(-1);
+  return {items: page.map(row => getImageAttempt(database, activityId, row.id)!).filter(Boolean), nextCursor: rows.length > size && last ? encodeListCursor(last.created_at, last.id) : null};
 }
 
 export async function cancelImageAttempt(

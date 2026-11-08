@@ -427,7 +427,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
         {job?.status === 'result_unknown' && <Alert variant="warning" title="任务中断">服务重启导致任务中断，可继续原任务，保留已经生成的成功阶段。</Alert>}
 
         {activeCandidate && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border-default bg-surface-muted/40 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border-default bg-surface-muted/40 p-3">
             <span className="text-sm text-ink">候选已就绪；请在右侧差异审阅中选择并采用。</span>
             <Button type="button" size="sm" onClick={() => onReviewCandidate(activeCandidate.id)}>打开差异审阅</Button>
           </div>
@@ -460,7 +460,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                       onClick={() => setPickedCandidateId(candidate.id)}
                       className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                         isSelected
-                          ? 'bg-accent text-white shadow-xs'
+                          ? 'bg-accent text-fg-on-accent shadow-xs'
                           : 'bg-surface-raised border border-border-subtle text-muted hover:text-ink'
                       }`}
                     >
@@ -518,7 +518,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                             {speakerName.slice(0, 1)}
                           </div>
                           <div className="space-y-1 max-w-[85%]">
-                            <div className="text-[11px] font-medium text-muted">
+                            <div className="text-xs font-medium text-muted">
                               {speakerName}
                             </div>
                             <div className="rounded-2xl rounded-tl-xs border border-border-subtle bg-surface px-3 py-2 text-sm text-ink shadow-2xs">
@@ -571,7 +571,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                           <span>{String(slot.caption || '待出图')}</span>
                         </div>
                         {Boolean(slot.shotDescription) && (
-                          <p className="text-muted text-[11px] leading-relaxed">
+                          <p className="text-muted text-xs leading-relaxed">
                             {String(slot.shotDescription)}
                           </p>
                         )}

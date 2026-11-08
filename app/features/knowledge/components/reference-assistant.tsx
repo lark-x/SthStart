@@ -16,6 +16,7 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
 import { checkReferences, previewReferences, recommendKnowledge } from '@/app/features/notebook/api';
 import { createCollection, fetchCollectionRun, runCollection, type RunFinding } from '../api';
+import { knowledgeCollectionKeys, knowledgePendingKeys, mcpSourceKeys } from '@/app/lib/query-keys';
 
 export interface AssistantSelection {
   sourceKind: PlanningReferenceSelection['sourceKind'];
@@ -259,7 +260,7 @@ export function GapCollectionDialog({ open, onOpenChange, sessionId, works, char
     enabled: open && Boolean(sessionId),
     staleTime: 30_000,
   });
-  const sourcesQuery = useQuery({ queryKey: ['mcp-sources'], queryFn: fetchMcpSources, enabled: open, staleTime: 30_000 });
+  const sourcesQuery = useQuery({ queryKey: mcpSourceKeys.all, queryFn: fetchMcpSources, enabled: open, staleTime: 30_000 });
 
   const gaps = useMemo(() => gapsQuery.data?.items ?? [], [gapsQuery.data]);
   const usableSources = (sourcesQuery.data ?? []).filter((source) => source.status === 'enabled' && (source.discoveredTools?.length || source.allowedTools.length));
@@ -303,8 +304,8 @@ export function GapCollectionDialog({ open, onOpenChange, sessionId, works, char
         if (!['queued', 'running'].includes(detail.run.status)) { result = detail; break; }
         await new Promise((resolve) => setTimeout(resolve, 1_500));
       }
-      void client.invalidateQueries({ queryKey: ['knowledge-pending'] });
-      void client.invalidateQueries({ queryKey: ['knowledge-collections'] });
+      void client.invalidateQueries({ queryKey: knowledgePendingKeys.all });
+      void client.invalidateQueries({ queryKey: knowledgeCollectionKeys.all });
       if (!result) { setNotice('补查仍在后台运行，可以去「待整理」查看结果。'); return; }
       const pending = result.findings.filter((finding) => finding.state !== 'ignored');
       setFindings(pending);

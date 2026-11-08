@@ -43,6 +43,7 @@ export function FloatingActionBar({
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape') {
         if (onClose) onClose();
         else if (onClear) onClear();
@@ -62,15 +63,15 @@ export function FloatingActionBar({
         'fixed bottom-6 left-1/2 -translate-x-1/2 z-50',
         'flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-between gap-3',
         'rounded-full border border-border-default/80 bg-surface/92 px-4 py-2 sm:px-5 sm:py-2.5',
-        'shadow-[0_12px_36px_-6px_rgba(0,0,0,0.18),0_4px_12px_-2px_rgba(0,0,0,0.1)]',
-        'backdrop-blur-md backdrop-saturate-150',
-        'animate-in fade-in slide-in-from-bottom-5 duration-200',
+        'shadow-floating',
+        'backdrop-blur-sm',
+        'animate-in fade-in slide-in-from-bottom-2',
         className
       )}
     >
       {/* 计数指示 */}
       <div className="flex items-center gap-2 pr-1 text-sm font-medium text-ink">
-        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-accent/15 px-2 text-xs font-semibold text-accent">
+        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-sunken px-2 text-xs font-semibold text-ink">
           {selectedCount}
         </span>
         <span className="hidden whitespace-nowrap text-xs text-muted sm:inline">
@@ -94,7 +95,7 @@ export function FloatingActionBar({
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 px-2.5 text-xs text-muted hover:text-ink"
+            className="h-9 px-3 text-sm text-muted hover:text-ink"
             onClick={onClear}
           >
             清空

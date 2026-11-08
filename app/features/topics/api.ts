@@ -27,8 +27,8 @@ function topicQuery(params: TopicListParams): string {
   return query ? '?' + query : '';
 }
 
-export async function fetchTopics(params: TopicListParams = {}): Promise<TopicListResponse> {
-  return getJson<TopicListResponse>('/api/admin/topics' + topicQuery(params));
+export async function fetchTopics(params: TopicListParams = {}, options?: { signal?: AbortSignal }): Promise<TopicListResponse> {
+  return getJson<TopicListResponse>('/api/admin/topics' + topicQuery(params), options);
 }
 
 export async function fetchTopic(id: string): Promise<TopicDetail> {

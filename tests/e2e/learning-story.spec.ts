@@ -38,11 +38,14 @@ test('学习流程：编辑保存 → MCP 读正文并提交提案 → 作者接
         baseRevision: current.revision, proposedTitle: current.title, proposedBody: body, reason: `学习 ${decision}` } });
       expect(submitted.isError).toBeFalsy();
       await page.reload();
-      await page.getByRole('button', { name: '提案审阅', exact: false }).click();
+      // 审阅入口收进了“更多项目操作”菜单；接受提案前会弹出浏览器确认框。
+      await page.getByRole('button', { name: '更多项目操作', exact: true }).click();
+      await page.getByRole('menuitem', { name: '审阅提案', exact: false }).click();
       const dialog = page.getByRole('dialog', { name: '审阅与项目连接' });
       await expect(dialog).toBeVisible();
+      if (decision === 'accepted') page.once('dialog', confirm => void confirm.accept());
       await dialog.getByRole('button', { name: decision === 'accepted' ? '接受并保存' : '拒绝', exact: true }).click();
-      await expect(dialog.getByText(decision === 'accepted' ? '已接受' : '已拒绝', { exact: false })).toBeVisible();
+      await expect(dialog.getByText(decision === 'accepted' ? '提案已接受' : '提案已拒绝', { exact: false })).toBeVisible();
       const updated = (await (await request.get(`${f.root}/documents`, { headers })).json()).items.find((item: { id: string }) => item.id === f.chapter.id);
       expect(updated.body).toBe(decision === 'accepted' ? body : current.body);
     }

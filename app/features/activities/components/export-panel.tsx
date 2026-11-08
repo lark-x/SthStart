@@ -81,7 +81,7 @@ export function ExportPanel({ activity, creationProfile, contentRevision, mediaR
         </p>
       </div>
 
-      <section aria-label="导出版本状态" className="grid gap-2 rounded-[var(--radius-panel)] border border-border-default bg-surface p-3 text-xs sm:grid-cols-3">
+      <section aria-label="导出版本状态" className="grid gap-2 rounded-panel border border-border-default bg-surface p-3 text-xs sm:grid-cols-3">
         <div className="min-w-0">
           <p className="font-semibold text-muted">内容版本</p>
           <p className="mt-1 truncate font-mono text-ink" title={currentContentRevisionId}>{currentContentRevisionId || '尚未提交'}</p>
@@ -107,7 +107,7 @@ export function ExportPanel({ activity, creationProfile, contentRevision, mediaR
           type="button"
           aria-pressed={mode === 'full'}
           onClick={() => setMode('full')}
-          className={`w-full p-3.5 rounded-[var(--radius-control)] border text-left transition-all cursor-pointer ${
+          className={`w-full p-3.5 rounded-control border text-left transition-all cursor-pointer ${
             mode === 'full'
               ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
               : 'border-border-subtle hover:border-accent/40 bg-surface'
@@ -128,7 +128,7 @@ export function ExportPanel({ activity, creationProfile, contentRevision, mediaR
           type="button"
           aria-pressed={mode === 'project'}
           onClick={() => setMode('project')}
-          className={`w-full p-3.5 rounded-[var(--radius-control)] border text-left transition-all cursor-pointer ${
+          className={`w-full p-3.5 rounded-control border text-left transition-all cursor-pointer ${
             mode === 'project'
               ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
               : 'border-border-subtle hover:border-accent/40 bg-surface'
@@ -149,7 +149,7 @@ export function ExportPanel({ activity, creationProfile, contentRevision, mediaR
           type="button"
           aria-pressed={mode === 'reader'}
           onClick={() => setMode('reader')}
-          className={`w-full p-3.5 rounded-[var(--radius-control)] border text-left transition-all cursor-pointer ${
+          className={`w-full p-3.5 rounded-control border text-left transition-all cursor-pointer ${
             mode === 'reader'
               ? 'border-accent bg-accent/5 shadow-xs ring-1 ring-accent'
               : 'border-border-subtle hover:border-accent/40 bg-surface'
@@ -173,7 +173,7 @@ export function ExportPanel({ activity, creationProfile, contentRevision, mediaR
           size="sm"
           disabled={isExporting}
           onClick={handleExport}
-          className="text-sm bg-accent hover:bg-accent-dark text-white flex items-center gap-1.5 shadow-xs"
+          className="text-sm bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5 shadow-xs"
         >
           {isExporting ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           {isExporting ? '打包流式压缩中…' : '开始打包并下载 ZIP'}

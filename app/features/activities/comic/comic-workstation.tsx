@@ -7,6 +7,7 @@ import { zipSync } from 'fflate';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Button } from '@/app/components/ui/button';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { getEffectiveStageScenes } from '../scene-beat-utils';
 import { useComicDraft } from './use-comic-draft';
 import { useActivityContentRevision, useComicJob, useComicJobs } from '../queries';
@@ -21,6 +22,7 @@ import { ComicImageHistory } from './comic-image-history';
 import { ComicReader } from './comic-reader';
 import { useComicAssets } from './use-comic-assets';
 import { exportComicOfflineReader, fetchComicRevisions } from './api';
+import { ArrowLeft, BookOpen, Sparkles, SlidersHorizontal, Save, RefreshCw } from 'lucide-react';
 
 interface ComicWorkstationProps {
   activity: Activity;
@@ -33,7 +35,7 @@ interface ComicWorkstationProps {
 }
 
 const templatePanelCounts: Record<ComicPage['template'], number> = { single: 1, duo: 2, trio: 3, quad: 4 };
-const fieldClass = 'w-full rounded-[var(--radius-control)] border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
+const fieldClass = 'w-full rounded-control border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
 const emptyComicDocument: ComicDocument = {
   schemaVersion: 1, contentRevisionId: 'pending', style: 'ink-paper-v1', canvas: { width: 1920, height: 1080 }, pages: [], panels: [],
 };
@@ -377,33 +379,96 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
   const resultPanels = (result?.panels ?? []) as ComicPanel[];
   const canApply = latestStoryboardJob?.status === 'succeeded' && resultPanels.length > 0;
 
+  const mobileOverflowItems = [
+    {
+      label: '生成分镜草案',
+      icon: <Sparkles className="h-4 w-4" />,
+      onSelect: () => setStoryboardDialogOpen(true),
+      hidden: !revisionId || !draftState.version || isSaving,
+    },
+    {
+      label: '逐格阅读',
+      icon: <BookOpen className="h-4 w-4" />,
+      onSelect: () => setReadingMode(true),
+      hidden: !comic.pages.length || draftState.status !== 'saved',
+    },
+    {
+      label: '编辑选中画格',
+      icon: <SlidersHorizontal className="h-4 w-4" />,
+      onSelect: () => setMobileInspectorOpen(true),
+    },
+    ...(draftState.status === 'conflict' ? [
+      {
+        label: '使用服务器版本',
+        icon: <RefreshCw className="h-4 w-4" />,
+        onSelect: () => draftState.resolveConflict(false),
+        separatorBefore: true,
+      },
+      {
+        label: '保留本地并保存',
+        icon: <Save className="h-4 w-4" />,
+        onSelect: () => draftState.resolveConflict(true),
+      },
+    ] : []),
+    ...(draftState.status === 'error' ? [
+      {
+        label: '重试保存',
+        icon: <RefreshCw className="h-4 w-4" />,
+        onSelect: () => draftState.retry(),
+        separatorBefore: true,
+      },
+    ] : []),
+  ];
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border-default px-3 py-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={onBack}>← 原回放</Button><span className="text-sm font-semibold text-ink">漫画编辑</span>
-          <span className="text-xs text-muted">{draftState.status === 'saving' ? '保存中…' : draftState.status === 'saved' ? `已保存 · v${draftState.version ?? '—'}` : draftState.status === 'loading' ? '载入中…' : draftState.status === 'conflict' ? '版本冲突' : '保存失败'}</span>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-default px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={onBack} aria-label="返回原回放" className="px-2">
+            <ArrowLeft className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">原回放</span>
+          </Button>
+          <span className="truncate text-sm font-semibold text-ink">漫画编辑</span>
+          <span className="shrink-0 text-xs text-muted hidden xs:inline">{draftState.status === 'saving' ? '保存中…' : draftState.status === 'saved' ? `已保存 · v${draftState.version ?? '—'}` : draftState.status === 'loading' ? '载入中…' : draftState.status === 'conflict' ? '版本冲突' : '保存失败'}</span>
           {draftState.error && <span role="alert" className="max-w-[min(70vw,520px)] truncate text-xs text-danger" title={draftState.error}>{draftState.error}</span>}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Desktop actions: show full toolbar */}
+        <div className="hidden sm:flex flex-wrap items-center justify-end gap-2">
           {draftState.status === 'conflict' && <><Button size="sm" variant="outline" onClick={() => draftState.resolveConflict(false)}>使用服务器版本</Button><Button size="sm" variant="outline" onClick={() => draftState.resolveConflict(true)}>保留本地并保存</Button></>}
           {draftState.status === 'error' && <Button size="sm" variant="outline" onClick={draftState.retry}>重试保存</Button>}
           <Button size="sm" variant="outline" onClick={() => setStoryboardDialogOpen(true)} disabled={!revisionId || !draftState.version || isSaving}>✦ 生成分镜草案</Button>
-          <Button size="sm" variant="outline" onClick={saveVersion} disabled={!draftState.version || isSaving || createRevision.isPending}>保存漫画版本</Button>
+          <Button size="sm" variant="primary" onClick={saveVersion} disabled={!draftState.version || isSaving || createRevision.isPending}>保存漫画版本</Button>
           <Button size="sm" variant="outline" onClick={() => setMobileInspectorOpen(true)} className="xl:hidden">编辑选中画格</Button>
           <Button size="sm" variant="outline" onClick={() => setReadingMode(true)} disabled={!comic.pages.length || draftState.status !== 'saved'}>逐格阅读</Button>
+        </div>
+        {/* Mobile actions: Single primary CTA + overflow RowActionsMenu */}
+        <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={saveVersion}
+            disabled={!draftState.version || isSaving || createRevision.isPending}
+            className="text-xs px-2.5 h-8 flex items-center gap-1"
+          >
+            <Save className="h-3.5 w-3.5" />
+            保存版本
+          </Button>
+          <RowActionsMenu
+            label="漫画工坊操作菜单"
+            items={mobileOverflowItems}
+          />
         </div>
       </div>
       {!revisionId && <div role="alert" className="shrink-0 border-b border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">当前活动还没有已保存的剧情版本。请先在活动编辑中保存内容版本，再创建漫画草稿。</div>}
       {comic.contentRevisionId !== revisionId && <div role="status" className="shrink-0 border-b border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">这份漫画绑定较早的剧情版本。画格来源、角色和分镜生成都使用原版本；当前活动的新剧情不会自动改写漫画。</div>}
       {fontError && <div role="alert" className="shrink-0 border-b border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">漫画字体未能载入，导出已停用。请检查应用是否包含本地字体文件。</div>}
       {!fontReady && !fontError && <div aria-live="polite" className="shrink-0 border-b border-border-default px-3 py-1 text-xs text-muted">正在载入漫画字体…</div>}
-      {(storyboardError || latestStoryboardJob?.errorMessage) && <div role="alert" className="mx-3 mt-2 shrink-0 rounded-[var(--radius-control)] border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{storyboardError ?? latestStoryboardJob?.errorMessage}</div>}
-      {latestStoryboardJob && <section className="mx-3 mt-2 max-h-48 shrink-0 overflow-y-auto rounded-[var(--radius-panel)] border border-border-default bg-surface-muted/40 p-3" aria-label="分镜生成任务">
+      {(storyboardError || latestStoryboardJob?.errorMessage) && <div role="alert" className="mx-3 mt-2 shrink-0 rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{storyboardError ?? latestStoryboardJob?.errorMessage}</div>}
+      {latestStoryboardJob && <section className="mx-3 mt-2 max-h-48 shrink-0 overflow-y-auto rounded-panel border border-border-default bg-surface-muted/40 p-3" aria-label="分镜生成任务">
         <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-ink">分镜草案任务</h3><p className="text-xs text-muted">{busy(latestStoryboardJob) ? '生成中…' : latestStoryboardJob.status === 'succeeded' ? `已生成 ${resultPanels.length} 格；尚未应用到漫画` : `状态：${latestStoryboardJob.status}`}</p></div>
           {latestStoryboardJob.callId && <a className="text-xs font-medium text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(latestStoryboardJob.callId)}`} target="_blank" rel="noreferrer">查看调用日志 ↗</a>}
         </div>
-        {canApply && <><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{resultPanels.map((item, index) => <article key={item.id} className="min-w-0 rounded-[var(--radius-control)] border border-border-default bg-surface p-2 text-xs"><p className="font-semibold text-ink">{index + 1}. {item.shotSize}</p><p className="mt-1 line-clamp-3 text-muted">{item.visualDescription}</p><p className="mt-1 line-clamp-2 text-muted">{item.bubbles.map((bubble) => bubble.text).join(' / ')}</p></article>)}</div>
+        {canApply && <><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{resultPanels.map((item, index) => <article key={item.id} className="min-w-0 rounded-control border border-border-default bg-surface p-2 text-xs"><p className="font-semibold text-ink">{index + 1}. {item.shotSize}</p><p className="mt-1 line-clamp-3 text-muted">{item.visualDescription}</p><p className="mt-1 line-clamp-2 text-muted">{item.bubbles.map((bubble) => bubble.text).join(' / ')}</p></article>)}</div>
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="primary" loading={applyStoryboard.isPending} onClick={() => void applyStoryboardResult('append')} disabled={draftState.status !== 'saved'}>追加到漫画</Button><Button size="sm" variant="outline" loading={applyStoryboard.isPending} onClick={() => void applyStoryboardResult('replace_scene')} disabled={draftState.status !== 'saved'}>替换该场次页面…</Button></div>
         </>}
       </section>}
@@ -443,8 +508,8 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
         <div className="space-y-3">
           <p className="text-sm text-muted">PNG 与离线阅读包共用漫画画布和排版。离线阅读包可解压后直接双击 index.html 打开。</p>
           {comicAssets.loading && <p className="text-sm text-muted">正在载入画格图片…</p>}
-          {comicAssets.missingArtifactIds.length > 0 && <p role="alert" className="rounded-[var(--radius-control)] border border-danger/30 bg-danger/5 p-2 text-sm text-danger">有 {comicAssets.missingArtifactIds.length} 张图片无法读取，导出将被阻止。</p>}
-          {exportError && <p role="alert" className="whitespace-pre-line rounded-[var(--radius-control)] border border-danger/30 bg-danger/5 p-2 text-sm text-danger">{exportError}</p>}
+          {comicAssets.missingArtifactIds.length > 0 && <p role="alert" className="rounded-control border border-danger/30 bg-danger/5 p-2 text-sm text-danger">有 {comicAssets.missingArtifactIds.length} 张图片无法读取，导出将被阻止。</p>}
+          {exportError && <p role="alert" className="whitespace-pre-line rounded-control border border-danger/30 bg-danger/5 p-2 text-sm text-danger">{exportError}</p>}
           <div className="grid gap-2 sm:grid-cols-1">
             <Button variant="outline" loading={exporting} disabled={!fontReady || comicAssets.loading || !page} onClick={() => void runExport(exportCurrentPage)}>导出当前页 PNG</Button>
             <Button variant="outline" loading={exporting} disabled={!fontReady || comicAssets.loading || !comic.pages.length} onClick={() => void runExport(exportAllPages)}>导出全部页面 PNG（ZIP）</Button>

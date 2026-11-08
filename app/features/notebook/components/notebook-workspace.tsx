@@ -27,6 +27,7 @@ import { EmptyState } from '@/app/components/ui/empty-state';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Pagination } from '@/app/components/ui/pagination';
 
 const COLLAPSED_KEY = 'sthstart_notebook_sidebar_collapsed';
 
@@ -73,39 +74,50 @@ export function NotebookWorkspace({
   initialNoteId,
   isNew = false,
   initialKind = 'diary',
+  embedded = false,
 }: {
   initialNoteId?: string;
   isNew?: boolean;
   initialKind?: NoteKind;
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const focused = pathname !== '/apps/notebook' && pathname !== '/apps/notebook/offline';
+  const focused = !embedded && pathname !== '/apps/notebook' && pathname !== '/apps/notebook/offline';
   const workspaceRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = workspaceRef.current;
     if (!el) return;
     const update = () => {
-      if (focused || window.innerWidth < 1024) { el.style.removeProperty('height'); return; }
+      if (embedded || focused || window.innerWidth < 1024) { el.style.removeProperty('height'); return; }
       const top = el.getBoundingClientRect().top + window.scrollY;
       const available = window.innerHeight - top - 16;
       el.style.height = available >= 360 ? `${available}px` : '';
     };
     update(); window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, [focused]);
+  }, [embedded, focused]);
 
   // 初次访问默认显示列表，保留用户主动收起的偏好。
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, getServerCollapsed);
+  const collapsedPreference = useSyncExternalStore(subscribeCollapsed, readCollapsed, getServerCollapsed);
+  const collapsed = !embedded && collapsedPreference;
 
   const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>(() => filterOptions.find((item) => item.value === searchParams.get('filterKind'))?.value ?? 'all');
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const [composing, setComposing] = useState(false);
+  useEffect(() => {
+    if (composing) return;
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query, composing]);
   const [page, setPage] = useState(Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1));
+  const [pageSize, setPageSize] = useState(() => { const size = Number(searchParams.get('pageSize')); return [20, 50, 100].includes(size) ? size : 20; });
   const [filters, setFilters] = useState({ work: searchParams.get('work') ?? '', character: searchParams.get('character') ?? '', usage: searchParams.get('usage') ?? '', nature: searchParams.get('nature') ?? '', category: searchParams.get('category') ?? '' });
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
-  const [activeId, setActiveId] = useState<string | null>(initialNoteId ?? null);
+  const [activeId, setActiveId] = useState<string | null>(initialNoteId ?? (embedded ? searchParams.get('note') : null));
   const [isCreating, setIsCreating] = useState<boolean>(isNew);
   // 用户在移动端点过“返回笔记列表”后不再被 initialNoteId 自动拉回编辑器：
   // initialNoteId 是固定 prop，若不加此标记，返回会被 effect 立即撤销，
@@ -128,10 +140,40 @@ export function NotebookWorkspace({
     (searchParams?.get('kind') as NoteKind) || initialKind
   );
 
-  const { data, isLoading, isError, error, refetch } = useNotes({ q: query, kind: selectedFilter, page, pageSize: 50,
+  const { data, isLoading, isFetching, isError, error, refetch } = useNotes({ q: debouncedQuery, kind: selectedFilter, page, pageSize,
     works: filters.work ? [filters.work] : [], characters: filters.character ? [filters.character] : [],
     usage: filters.usage, nature: filters.nature, category: filters.category });
   const localRecords = useLocalNotebookNotes(data?.items);
+  const unsyncedCount = localRecords.filter(record => record.status !== 'synced' && record.status !== 'deleted').length;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reconcile the current page with a completed server response after deletion.
+    if (data && !isFetching && data.total !== undefined) setPage(current => Math.min(current, Math.max(1, Math.ceil(data.total! / pageSize))));
+  }, [data, isFetching, pageSize]);
+
+  const restoringBrowse = useRef(false);
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      restoringBrowse.current = true;
+      setQuery(params.get('q') ?? '');
+      setDebouncedQuery(params.get('q') ?? '');
+      setSelectedFilter(filterOptions.find(item => item.value === params.get('filterKind'))?.value ?? 'all');
+      setPage(Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1));
+      const size = Number(params.get('pageSize'));
+      setPageSize([20, 50, 100].includes(size) ? size : 20);
+      setFilters({ work: params.get('work') ?? '', character: params.get('character') ?? '', usage: params.get('usage') ?? '', nature: params.get('nature') ?? '', category: params.get('category') ?? '' });
+    };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+  useEffect(() => {
+    if (restoringBrowse.current) { restoringBrowse.current = false; return; }
+    const params = new URLSearchParams(window.location.search);
+    const values = { q: query, filterKind: selectedFilter === 'all' ? '' : selectedFilter, page: page > 1 ? String(page) : '', pageSize: String(pageSize), ...filters };
+    for (const [key, value] of Object.entries(values)) { if (value) params.set(key, value); else params.delete(key); }
+    const next = window.location.pathname + (params.size ? '?' + params.toString() : '');
+    if (next !== window.location.pathname + window.location.search) window.history.replaceState(null, '', next);
+  }, [query, selectedFilter, page, pageSize, filters]);
 
   const notes = useMemo(() => {
     const merged = new Map(
@@ -142,7 +184,7 @@ export function NotebookWorkspace({
       else if (!data || record.status !== 'synced') merged.set(record.noteId, record.note);
     }
     return [...merged.values()].sort((left, right) =>
-      String(right.updatedAt ?? '').localeCompare(String(left.updatedAt ?? ''))
+      Number(Boolean(right.favorite)) - Number(Boolean(left.favorite)) || String(right.updatedAt ?? '').localeCompare(String(left.updatedAt ?? '')) || String(right.id).localeCompare(String(left.id))
     );
   }, [data, localRecords]);
 
@@ -155,10 +197,10 @@ export function NotebookWorkspace({
       if (filters.usage && (knowledge?.usage ?? 'record') !== filters.usage) return false;
       if (filters.nature && (knowledge?.nature ?? 'unconfirmed') !== filters.nature) return false;
       if (filters.category && knowledge?.category !== filters.category) return false;
-      const needle = query.trim().toLowerCase();
+      const needle = debouncedQuery.trim().toLowerCase();
       return !needle || JSON.stringify([item.title, item.summary, item.tags, item.content, knowledge]).toLowerCase().includes(needle);
     });
-  }, [notes, selectedFilter, query, filters]);
+  }, [notes, selectedFilter, debouncedQuery, filters]);
 
   const toggleCollapsed = useCallback(() => {
     const next = !readCollapsed();
@@ -197,6 +239,7 @@ export function NotebookWorkspace({
     if (selectedFilter !== 'all') params.set('filterKind', selectedFilter);
     if (query) params.set('q', query);
     if (page > 1) params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
     for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
     if (kind) params.set('kind', kind);
     return `${path}${params.size ? `?${params}` : ''}`;
@@ -205,15 +248,24 @@ export function NotebookWorkspace({
   const handleSelectNote = (id: string) => {
     setIsCreating(false);
     setActiveId(id);
-    router.push(browseHref("/apps/notebook/" + id), { scroll: false });
+    if (!embedded) router.push(browseHref("/apps/notebook/" + id), { scroll: false });
+    else {
+      const params = new URLSearchParams(window.location.search); params.set('note', id);
+      window.history.replaceState(window.history.state, '', window.location.pathname + '?' + params);
+    }
   };
 
   const handleStartNew = (kind: NoteKind = 'diary') => {
     setCreateKind(kind);
     setIsCreating(true);
     setActiveId(null);
-    router.push(browseHref("/apps/notebook/new", kind), { scroll: false });
+    if (!embedded) router.push(browseHref("/apps/notebook/new", kind), { scroll: false });
   };
+  const rememberPersistedNote = useCallback((id: string) => {
+    if (!embedded || window.location.pathname !== '/apps/resources') return;
+    const params = new URLSearchParams(window.location.search); params.set('note', id);
+    window.history.replaceState(window.history.state, '', window.location.pathname + '?' + params);
+  }, [embedded]);
 
   // 退出编辑态回到列表：移动端“返回列表”按钮与删除笔记共用。
   // exitedToMobileList 同时防止 initialNoteId 自动把刚删除/刚退出的笔记拉回编辑器。
@@ -221,7 +273,7 @@ export function NotebookWorkspace({
     setExitedToMobileList(true);
     setActiveId(null);
     setIsCreating(false);
-    router.push(browseHref('/apps/notebook'), { scroll: false });
+    router.push(browseHref(embedded ? '/apps/resources' : '/apps/notebook'), { scroll: false });
   };
 
   const isEditingOnMobile = Boolean(activeId || isCreating);
@@ -242,7 +294,7 @@ export function NotebookWorkspace({
               <button
                 type="button"
                 onClick={toggleCollapsed}
-                className="hidden lg:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[var(--radius-control)] border border-border-default bg-surface text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-ink cursor-pointer"
+                className={(embedded ? 'hidden' : 'hidden lg:inline-flex') + ' items-center gap-1.5 h-8 px-2.5 rounded-control border border-border-default bg-surface text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-ink cursor-pointer'}
                 title={collapsed ? '展开笔记列表' : '收起笔记列表'}
                 aria-label={collapsed ? '展开笔记列表' : '收起笔记列表'}
               >
@@ -257,7 +309,7 @@ export function NotebookWorkspace({
                 handleStartNew('diary');
               }
             }}
-            className="notebook-new-note-action inline-flex items-center gap-1.5 h-11 sm:h-9 px-3 rounded-[var(--radius-control)] bg-accent text-[var(--fg-on-accent)] hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shrink-0"
+            className="notebook-new-note-action inline-flex items-center gap-1.5 h-11 sm:h-9 px-3 rounded-control bg-accent text-fg-on-accent hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">新建资料</span>
@@ -266,19 +318,21 @@ export function NotebookWorkspace({
             </>
   );
 
+  const WorkspaceRoot = focused ? 'main' : 'div';
+
   return (
-    <div ref={workspaceRef} className={"notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col " + (focused ? 'notebook-focused h-dvh overflow-hidden' : '')}>
+    <WorkspaceRoot ref={workspaceRef} className={"notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col " + (focused ? 'notebook-focused h-dvh overflow-hidden' : '')}>
       {/* Top Global Header Bar */}
-      {focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" actions={headerActions} /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
+      {!embedded && (focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" actions={headerActions} /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
         <PageHeader
           compact
           title="创作资料库"
           actions={headerActions}
         />
-      </header>}
+      </header>)}
 
       {/* 资料库视图切换：资料 / 搜集任务 / 待整理 */}
-      <div className="border-b border-border-subtle px-4 py-2 sm:px-6">
+      {!embedded && <div className="border-b border-border-subtle px-4 py-2 sm:px-6">
         <PageTabs
           ariaLabel="资料库视图"
           value={view}
@@ -287,8 +341,7 @@ export function NotebookWorkspace({
             if (next === 'notes' || next === 'collections' || next === 'pending') setView(next);
           }}
         />
-      </div>
-
+      </div>}
       {view !== 'notes' && (
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="mx-auto w-full max-w-[1400px]">
@@ -310,6 +363,7 @@ export function NotebookWorkspace({
         >
           {/* List Search & Filter Toolbar */}
           <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-border-subtle bg-surface/70">
+            {embedded && <div className="flex items-center justify-between pb-1">{headerActions}</div>}
             <div className="relative w-full">
               <Search
                 className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
@@ -317,9 +371,11 @@ export function NotebookWorkspace({
               />
               <Input
                 value={query}
+                onCompositionStart={() => setComposing(true)}
+                onCompositionEnd={() => setComposing(false)}
                 onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                 placeholder="搜索标题、正文或标签…"
-                className="pl-7.5 h-8 border-border-control text-sm placeholder:text-muted/50"
+                className="pl-7.5 h-9 border-border-control text-base sm:text-sm placeholder:text-muted/50"
               />
             </div>
 
@@ -337,10 +393,10 @@ export function NotebookWorkspace({
                     type="button"
                     aria-pressed={isActive}
                     onClick={() => { setSelectedFilter(opt.value); setPage(1); }}
-                    className={"px-2.5 py-1 rounded-full text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer " + (
+                    className={"px-2.5 py-1 rounded-lg border text-sm font-medium whitespace-nowrap transition-colors cursor-pointer " + (
                       isActive
-                        ? 'bg-ink text-paper'
-                        : 'text-muted hover:text-ink hover:bg-ink/6'
+                        ? 'border-border-subtle bg-surface text-ink font-semibold shadow-xs'
+                        : 'border-transparent text-muted hover:text-ink hover:bg-surface-hover'
                     )}
                   >
                     {opt.label}
@@ -351,13 +407,13 @@ export function NotebookWorkspace({
           </div>
 
           {/* Advanced Filter Toggle & Drawer */}
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle bg-surface/50 text-xs">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle bg-surface/50 text-sm">
             <button
               type="button"
               onClick={() => setFilterPanelOpen((v) => !v)}
-              className={`inline-flex items-center gap-1.5 py-1 px-2 rounded-md font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 py-1 px-2 rounded-control font-medium transition-colors cursor-pointer ${
                 filterPanelOpen || activeFilterCount > 0
-                  ? 'bg-accent/10 text-accent font-semibold'
+                  ? 'bg-surface-sunken text-ink'
                   : 'text-muted hover:text-ink'
               }`}
             >
@@ -371,7 +427,7 @@ export function NotebookWorkspace({
                   setFilters({ work: '', character: '', usage: '', nature: '', category: '' });
                   setPage(1);
                 }}
-                className="text-muted hover:text-accent cursor-pointer"
+                  className="text-muted hover:text-ink cursor-pointer"
               >
                 重置
               </button>
@@ -391,7 +447,7 @@ export function NotebookWorkspace({
                   key={key}
                   aria-label={label}
                   value={filters[key]}
-                  className="min-w-0 rounded-md border border-border-control bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                  className="min-w-0 rounded-md border border-border-control bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
                   onChange={(event) => {
                     setFilters((current) => ({ ...current, [key]: event.target.value }));
                     setPage(1);
@@ -413,16 +469,13 @@ export function NotebookWorkspace({
             <Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>重试</Button>
           </Alert>}
           {/* Note Items List Stream */}
-          <div className="notebook-master-list flex-1 overflow-y-auto p-2 space-y-1.5">
+          <div className="notebook-master-list flex-1 overflow-y-auto px-2 py-1 [&>*+*]:border-t [&>*+*]:border-border-subtle">
             {isLoading && notes.length === 0 ? (
-              <div className="p-2 space-y-2">
+              <div className="py-1">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <div
-                    key={n}
-                    className="p-3 rounded-lg border border-border-subtle bg-surface space-y-2"
-                  >
-                    <Skeleton className="h-3 w-1/3" />
+                  <div key={n} className="space-y-1.5 px-2 py-3">
                     <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
                   </div>
                 ))}
               </div>
@@ -435,53 +488,24 @@ export function NotebookWorkspace({
                     type="button"
                     onClick={() => handleSelectNote(item.id!)}
                     aria-current={isSelected ? 'page' : undefined}
-                    className={"notebook-list-item group relative p-3 rounded-[var(--radius-control)] border transition-all duration-150 cursor-pointer " + (
-                      isSelected
-                        ? 'bg-surface border-accent shadow-xs ring-1 ring-accent/30'
-                        : 'bg-surface/60 border-border-subtle hover:bg-surface hover:border-border-default'
-                    )}
+                    className={
+                      'notebook-list-item group -mx-2 w-[calc(100%+16px)] rounded-control px-2 py-2.5 text-left transition-colors cursor-pointer ' +
+                      (isSelected ? 'bg-surface-sunken' : 'hover:bg-surface-hover')
+                    }
                   >
-                    <div className="flex items-center justify-between text-sm text-muted mb-1">
-                      <span className="font-semibold text-accent-dark">
-                        {kindLabels[item.kind]}
-                      </span>
-                      <time className="text-xs tabular-nums">{formatDate(item.updatedAt)}</time>
+                    <div className="flex items-baseline gap-2">
+                      <h4 className={"min-w-0 flex-1 truncate text-sm " + (isSelected ? 'font-semibold text-ink' : 'font-medium text-ink')}>
+                        {item.title || '未命名笔记'}
+                      </h4>
+                      <time className="flex-none text-xs tabular-nums text-fg-subtle">{formatDate(item.updatedAt)}</time>
                     </div>
-
-                    <h4
-                      className={"text-sm font-semibold truncate transition-colors" + (
-                        isSelected
-                          ? 'text-ink'
-                          : 'text-ink group-hover:text-accent'
+                    <p className="mt-0.5 line-clamp-1 text-sm text-muted">{item.summary || '写下一段文字记录…'}</p>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-fg-subtle">
+                      <span>{kindLabels[item.kind]}</span>
+                      <span>{stageLabels[item.stage]}</span>
+                      {item.favorite && (
+                        <Star className="h-3 w-3 fill-warning text-warning" aria-hidden="true" />
                       )}
-                    >
-                      {item.title || '未命名笔记'}
-                    </h4>
-
-                    <p className="mt-1 text-sm text-muted line-clamp-2 leading-relaxed">
-                      {item.summary || '写下一段文字记录…'}
-                    </p>
-
-                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-ink/6 text-sm text-muted">
-                      <span className="text-xs text-fg-subtle">
-                        {stageLabels[item.stage]}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {item.tags.slice(0, 2).map((t) => (
-                          <span
-                            key={t}
-                            className="bg-ink/5 px-1.5 py-0.2 rounded text-sm"
-                          >
-                            #{t}
-                          </span>
-                        ))}
-                        {item.favorite && (
-                          <Star
-                            className="h-3 w-3 fill-warning text-warning"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </div>
                     </div>
                   </button>
                 );
@@ -492,24 +516,28 @@ export function NotebookWorkspace({
                 <button
                   type="button"
                   onClick={() => handleStartNew(selectedFilter === 'all' ? 'diary' : selectedFilter)}
-                  className="text-accent font-semibold hover:underline cursor-pointer"
+                  className="text-accent-dark font-semibold hover:underline cursor-pointer"
                 >
                   ＋ 新建资料
                 </button>
               </div>
             )}
           </div>
-          {data && <div className="flex items-center justify-between gap-2 border-t p-2 text-sm">
-            <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</Button>
-            <span>{page} 页 · 共 {data.total ?? data.items.length} 条</span>
-            <Button size="sm" variant="ghost" disabled={page * 50 >= (data.total ?? data.items.length)} onClick={() => setPage((value) => value + 1)}>下一页</Button>
-          </div>}
+          <div className="notebook-list-pagination shrink-0 space-y-2 border-t border-border-subtle p-2">
+            {unsyncedCount > 0 && <p className="text-xs text-muted">另有 {unsyncedCount} 条本机待同步资料，不计入服务器总数。</p>}
+            {data && <Pagination total={data.total ?? data.items.length} page={page} pageSize={pageSize} compact loading={isFetching} pageSizeOptions={[20, 50, 100]} onPageSizeChange={size => { setPageSize(size); setPage(1); }} onPageChange={next => {
+              const params = new URLSearchParams(window.location.search); params.set('page', String(next));
+              window.history.pushState(null, '', window.location.pathname + '?' + params.toString());
+              setPage(next);
+              document.querySelector('.notebook-master-list')?.scrollTo({ top: 0 });
+            }} />}
+          </div>
         </aside>
 
         {/* Right Column: Detail Canvas Pane */}
         <section
           className={
-            "notebook-detail-pane flex-1 min-w-0 bg-surface flex flex-col min-h-0 overflow-y-auto " +
+            "notebook-detail-pane flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto " +
             (isEditingOnMobile ? 'flex' : 'hidden lg:flex')
           }
         >
@@ -534,6 +562,7 @@ export function NotebookWorkspace({
               initialKind={createKind}
               standalone={false}
               onDeleted={handleExitEditor}
+              onPersisted={rememberPersistedNote}
             />
           ) : activeId ? (
             <NoteEditor
@@ -541,6 +570,7 @@ export function NotebookWorkspace({
               noteId={activeId}
               standalone={false}
               onDeleted={handleExitEditor}
+              onPersisted={rememberPersistedNote}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center p-8">
@@ -563,6 +593,6 @@ export function NotebookWorkspace({
           )}
         </section>
       </div>
-    </div>
+    </WorkspaceRoot>
   );
 }

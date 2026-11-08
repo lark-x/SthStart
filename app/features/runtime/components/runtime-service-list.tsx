@@ -35,14 +35,14 @@ export function RuntimeServiceList({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <ul className="divide-y divide-border-subtle border-y border-border-subtle">
       {services.map((service) => {
         const isRunning = service.state === 'running';
 
         return (
-          <div
+          <li
             key={service.id}
-            className="flex items-center justify-between gap-4 p-4 rounded-[var(--radius-panel)] border border-ink/13 bg-surface"
+            className="flex flex-wrap items-center justify-between gap-3 py-4"
           >
             <div className="flex items-center gap-3.5 min-w-0">
               <StatusIndicator status={service.state} />
@@ -78,7 +78,7 @@ export function RuntimeServiceList({
                 <>
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => onRestart(service.id)}
                     disabled={Boolean(busy)}
                     title="重启服务"
@@ -88,7 +88,7 @@ export function RuntimeServiceList({
                   </Button>
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
                     className="text-danger hover:bg-danger/10"
                     onClick={() => onStop(service.id)}
                     disabled={Boolean(busy)}
@@ -101,7 +101,7 @@ export function RuntimeServiceList({
               ) : (
                 <Button
                   size="sm"
-                  variant="primary"
+                  variant="outline"
                   onClick={() => onStart(service.id)}
                   disabled={Boolean(busy) || !service.installed}
                   title={service.installed ? '启动服务' : '未检测到安装'}
@@ -111,9 +111,9 @@ export function RuntimeServiceList({
                 </Button>
               )}
             </div>
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }

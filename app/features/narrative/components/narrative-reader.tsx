@@ -4,12 +4,13 @@ import React, { useEffect, useRef } from 'react';
 import { Bookmark, Sparkles } from 'lucide-react';
 import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { cn } from '@/app/lib/cn';
 
 /**
  * 叙事正文（§8.9）：正文是视觉中心，行宽受控、字号稳定。
- * 只使用全站语义 token，不再使用页面自带的暖色硬编码与英文眉标。
+ * 沉浸式阅读区保留衬线字体 (--font-serif)，界面控件与标题保持现代无衬线体 (--font-sans)。
  */
 export function NarrativeReader({
   reading,
@@ -71,19 +72,21 @@ export function NarrativeReader({
       <div className="mx-auto w-full max-w-[var(--shell-reading)] px-4 py-8 sm:px-8">
         <header className="narrative-reader-header space-y-3 pb-6">
           <div className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
-            <span>{reading.scenes.length} 个场景</span>
+            <span className="rounded-full bg-surface-sunken px-2.5 py-0.5 font-medium text-muted border border-border-subtle">
+              {reading.scenes.length} 个场景
+            </span>
           </div>
 
-          <h2 className="text-2xl font-semibold leading-snug text-ink">
+          <h2 className="font-sans text-[26px] font-semibold tracking-tight leading-snug text-ink">
             {reading.node.title}
           </h2>
 
           {reading.node.summary && (
-            <p className="text-sm leading-relaxed text-muted">{reading.node.summary}</p>
+            <p className="font-serif text-sm leading-relaxed text-muted">{reading.node.summary}</p>
           )}
 
           <Button type="button" size="sm" variant="outline" onClick={onGenerateConcept} loading={generatingConcept}>
-            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
             <span>生成概念图</span>
           </Button>
         </header>
@@ -101,7 +104,7 @@ export function NarrativeReader({
                   href={artifact.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="block overflow-hidden rounded-[var(--radius-control)] border border-border-subtle bg-surface"
+                  className="block overflow-hidden rounded-control border border-border-subtle bg-surface"
                 >
                   <img src={artifact.url} alt="剧情概念图" loading="lazy" className="aspect-video w-full object-cover" />
                 </a>
@@ -112,21 +115,21 @@ export function NarrativeReader({
 
         <div className="mt-8 space-y-10">
           {reading.scenes.map((scene, index) => (
-            <section key={scene.id} className="space-y-3">
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-semibold tabular-nums text-fg-subtle">
+            <section key={scene.id} className="space-y-3.5">
+              <div className="flex items-baseline gap-2.5 border-b border-border-subtle/70 pb-2">
+                <span className="font-mono text-xs font-medium tabular-nums text-fg-subtle">
                   {String(index + 1).padStart(2, '0')}
                 </span>
-                <h3 className="text-base font-semibold text-ink">
+                <h3 className="font-sans text-base font-semibold tracking-tight text-ink">
                   {scene.title || `场景 ${index + 1}`}
                 </h3>
               </div>
 
               {scene.summary && (
-                <p className="text-sm italic leading-relaxed text-muted">{scene.summary}</p>
+                <p className="font-serif text-sm italic leading-relaxed text-muted">{scene.summary}</p>
               )}
 
-              <div className="space-y-2 pt-1">
+              <div className="space-y-2.5 pt-1">
                 {scene.utterances.map((line) => {
                   const isNarration = line.kind === 'narration';
                   const isChoice = line.kind === 'choice';
@@ -137,36 +140,42 @@ export function NarrativeReader({
                       className={cn(
                         'group relative',
                         isChoice
-                          ? 'ml-4 rounded-[var(--radius-control)] border border-border-default bg-surface-sunken px-3 py-2.5'
-                          : cn('border-l-2 pl-3', isNarration ? 'border-border-default' : 'border-accent-soft'),
+                          ? 'ml-4 rounded-control border border-border-subtle bg-surface-muted px-3.5 py-2.5'
+                          : cn('border-l-2 pl-3.5', isNarration ? 'border-border-subtle' : 'border-border-default'),
                       )}
                     >
                       {line.speaker && (
-                        <strong className="mb-1 block text-sm font-semibold text-accent-dark">
+                        <strong className="mb-1 block font-sans text-sm font-semibold text-ink">
                           {line.speaker}
                         </strong>
                       )}
 
-                      {/* data-reading-surface 供计划 §11.3 的正文≥16px 验收定位真实正文，而非卡片元信息。 */}
+                      {/* data-reading-surface 供计划 §11.3 的正文≥16px 验收定位真实正文，沉浸式阅读区启用衬线体。 */}
                       <p
                         data-reading-surface="true"
-                        className={cn('text-base leading-relaxed', isNarration ? 'italic text-muted' : 'text-ink')}
+                        className={cn('font-serif text-base leading-loose', isNarration ? 'italic text-muted' : 'text-ink')}
                       >
                         {line.text}
                       </p>
 
                       {line.condition && (
-                        <small className="mt-1.5 block text-xs text-fg-subtle">条件：{line.condition}</small>
+                        <small className="mt-1.5 block font-sans text-xs text-fg-subtle">条件：{line.condition}</small>
                       )}
 
-                      <button
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                      <AdoptIntoProject source={{kind: 'narrative', id: line.id}} />
+                      <Button
                         type="button"
-                        onClick={() => onSaveUtteranceToNotebook(line.id)}
-                        className="mt-1.5 inline-flex items-center gap-1 text-sm font-medium text-muted opacity-70 transition-opacity hover:text-accent focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void onSaveUtteranceToNotebook(line.id)}
+                        aria-label={`摘录到笔记：${line.speaker || '旁白'}`}
+                        className="mt-1.5 h-8 px-2.5 text-sm text-fg-subtle opacity-100 transition-opacity hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                       >
-                        <Bookmark className="h-3 w-3" aria-hidden="true" />
-                        <span>存入创作笔记</span>
-                      </button>
+                        <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>摘录到笔记</span>
+                      </Button>
+                      </div>
                     </div>
                   );
                 })}

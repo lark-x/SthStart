@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useOverlayAccessibility } from './overlay';
 
-export interface DrawerProps {
+export interface DrawerProps extends Omit<React.ComponentPropsWithRef<'div'>, 'title' | 'children'> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -25,6 +25,8 @@ export function Drawer({
   footer,
   position = 'right',
   className,
+  ref,
+  ...props
 }: DrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -41,27 +43,28 @@ export function Drawer({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      aria-describedby={description ? descriptionId : undefined}
       className="fixed inset-0 z-50 flex"
     >
       <div
-        className="fixed inset-0 bg-ink/50 backdrop-blur-sm transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
 
       <div
-        ref={drawerRef}
+        {...props}
+        ref={(node) => { drawerRef.current = node; if (typeof ref === 'function') ref(node); else if (ref) ref.current = node; }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
           'relative z-50 flex flex-col bg-surface shadow-dialog transition-transform',
           position === 'right' &&
-            'ml-auto h-full w-full max-w-md border-l border-border-default/80 p-6 animate-in slide-in-from-right',
+            'ml-auto h-full w-full max-w-md border-l border-border-subtle p-6 animate-in slide-in-from-right',
           position === 'bottom' &&
-            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-default/80 p-6 safe-area-bottom animate-in slide-in-from-bottom',
+            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-subtle p-6 safe-area-bottom animate-in slide-in-from-bottom',
           className
         )}
       >
@@ -77,7 +80,7 @@ export function Drawer({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭抽屉"
           >
             <X className="h-5 w-5" aria-hidden="true" />

@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useOverlayAccessibility } from './overlay';
 
-export interface DialogProps {
+export interface DialogProps extends Omit<React.ComponentPropsWithRef<'div'>, 'title' | 'children'> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -35,6 +35,8 @@ export function Dialog({
   size = 'md',
   initialFocusRef,
   className,
+  ref,
+  ...props
 }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -51,31 +53,32 @@ export function Dialog({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      aria-describedby={description ? descriptionId : undefined}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-ink/50 backdrop-blur-sm transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
 
       {/* Content */}
       <div
-        ref={dialogRef}
+        {...props}
+        ref={(node) => { dialogRef.current = node; if (typeof ref === 'function') ref(node); else if (ref) ref.current = node; }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-[var(--radius-dialog)] border border-border-default/80 bg-surface p-6 shadow-dialog focus:outline-none animate-in zoom-in-95',
+          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-dialog border border-border-subtle bg-surface p-6 shadow-dialog focus:outline-none animate-in zoom-in-95',
           sizeClassName[size],
           className
         )}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 mb-4">
-          <div>
+          <div className="min-w-0">
             <h2 id={titleId} className="text-lg font-semibold text-ink">
               {title}
             </h2>
@@ -88,7 +91,7 @@ export function Dialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-lg p-1.5 text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             aria-label="关闭对话框"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -99,7 +102,7 @@ export function Dialog({
         <div className="my-4 min-h-0 overflow-y-auto pr-1" data-autohide-scroll>{children}</div>
 
         {footer && (
-          <div className="flex shrink-0 items-center justify-end gap-3 mt-6 pt-4 border-t border-border-subtle">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 mt-6 pt-4 border-t border-border-subtle">
             {footer}
           </div>
         )}

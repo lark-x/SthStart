@@ -175,7 +175,7 @@ export function ProviderForm({
                 type="button"
                 onClick={handleDiscover}
                 disabled={discovering}
-                className="min-h-[42px] px-4 rounded-[var(--radius-control)] border border-border-default bg-surface hover:bg-ink/6 text-sm font-medium text-ink cursor-pointer transition-colors"
+                className="min-h-[42px] px-4 rounded-control border border-border-default bg-surface hover:bg-ink/6 text-sm font-medium text-ink cursor-pointer transition-colors"
               >
                 {discovering ? '正在获取…' : '获取模型'}
               </button>
@@ -212,7 +212,7 @@ export function ProviderForm({
         </div>
 
         <fieldset className="capability-picker p-3.5 rounded border border-border-subtle space-y-2">
-          <legend className="text-sm font-bold text-muted px-1">模型能力</legend>
+          <legend className="text-sm font-semibold text-muted px-1">模型能力</legend>
           <div className="flex gap-6">
             <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
               <input

@@ -9,7 +9,7 @@ export const badgeVariants = cva(
     variants: {
       variant: {
         default: 'bg-ink/8 text-ink',
-        secondary: 'bg-[rgb(108_107_91/10%)] text-muted',
+        secondary: 'bg-surface-sunken text-muted',
         outline: 'border border-border-default text-muted',
         online: 'bg-success/12 text-success-fg font-semibold',
         running: 'bg-success/12 text-success-fg font-semibold',
@@ -18,8 +18,10 @@ export const badgeVariants = cva(
         unknown: 'bg-warning/15 text-warning-fg',
         warning: 'bg-warning/15 text-warning-fg',
         error: 'bg-danger/15 text-danger-fg',
-        accent: 'bg-accent/12 text-accent-dark',
-        system: 'bg-accent/10 text-accent-dark font-bold text-sm uppercase px-1.5 py-0.5',
+        accent: 'bg-accent-soft text-accent-dark',
+        /** 跟随最近的 [data-tone] 容器（模块识别色）。 */
+        tone: 'bg-tone-soft text-tone-fg',
+        system: 'bg-accent-soft text-accent-dark font-semibold text-sm uppercase px-1.5 py-0.5',
       },
     },
     defaultVariants: {
@@ -29,7 +31,7 @@ export const badgeVariants = cva(
 );
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLSpanElement>,
+  extends React.ComponentPropsWithRef<'span'>,
     VariantProps<typeof badgeVariants> {
   dot?: boolean;
 }
@@ -40,7 +42,7 @@ export function Badge({ className, variant, dot, children, ...props }: BadgeProp
       {dot && (
         <span
           className={cn(
-            'h-1.5 w-1.5 rounded-full flex-shrink-0',
+            'h-1.5 w-1.5 rounded-full flex-shrink-0 bg-current',
             (variant === 'online' || variant === 'running') && 'bg-success',
             (variant === 'offline' || variant === 'error') && 'bg-danger',
             (variant === 'unknown' || variant === 'warning') && 'bg-warning',

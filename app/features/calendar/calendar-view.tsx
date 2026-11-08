@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -13,14 +13,9 @@ import { Input } from '@/app/components/ui/input';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useCalendarEvents, useCalendarFacets } from './queries';
 import type { CalendarEvent, CalendarFilter } from './api';
+import { daysInMonth, leadingBlanks, shiftCalendarMonth, toDateKey } from './calendar-state';
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-
-function pad(value: number) { return String(value).padStart(2, '0'); }
-function toDateKey(year: number, month: number, day: number) { return `${year}-${pad(month)}-${pad(day)}`; }
-function daysInMonth(year: number, month: number) { return new Date(year, month, 0).getDate(); }
-/** 周一作为每周第一天。 */
-function leadingBlanks(year: number, month: number) { return (new Date(year, month - 1, 1).getDay() + 6) % 7; }
 
 export function CalendarView() {
   const router = useRouter();
@@ -29,11 +24,21 @@ export function CalendarView() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(today.getFullYear(), today.getMonth() + 1, today.getDate()));
   const [picked, setPicked] = useState<string[]>([]);
+  const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [favorite, setFavorite] = useState(false);
   const [work, setWork] = useState('');
   const [kind, setKind] = useState<'all' | 'birthday' | 'activity'>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const composingSearchRef = useRef(false);
+
+  useEffect(() => {
+    if (composingSearchRef.current) return;
+    const timer = setTimeout(() => {
+      if (!composingSearchRef.current) setQuery(searchInput);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const gridStart = useMemo(() => {
     const blanks = leadingBlanks(year, month);
@@ -54,7 +59,7 @@ export function CalendarView() {
     ...(favorite ? { favorite: true } : {}),
     ...(kind === 'all' ? {} : { kinds: [kind] }),
   };
-  const { data, isLoading, error } = useCalendarEvents(gridStart, gridEnd, filter);
+  const { data, isLoading, error, refetch } = useCalendarEvents(gridStart, gridEnd, filter);
   const facets = useCalendarFacets();
 
   const byDate = useMemo(() => {
@@ -88,9 +93,10 @@ export function CalendarView() {
   const dayEvents = byDate.get(selectedDate) || [];
   const birthdays = dayEvents.filter((event) => event.kind === 'birthday');
   const shiftMonth = (delta: number) => {
-    const next = new Date(year, month - 1 + delta, 1);
-    setYear(next.getFullYear());
-    setMonth(next.getMonth() + 1);
+    const next = shiftCalendarMonth(year, month, delta, selectedDate);
+    setYear(next.year);
+    setMonth(next.month);
+    setSelectedDate(next.selectedDate);
     setPicked([]);
   };
   const goToday = () => {
@@ -109,37 +115,46 @@ export function CalendarView() {
         <PageHeader
           title="角色日历"
           description="按月份查看角色生日与已排期的活动，从生日直接为一位或多位寿星创建活动。"
-          actions={
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" aria-label="上个月" onClick={() => shiftMonth(-1)}>
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <span className="min-w-24 text-center text-sm font-semibold text-ink" aria-live="polite">
-                {year} 年 {month} 月
-              </span>
-              <Button size="sm" variant="outline" aria-label="下个月" onClick={() => shiftMonth(1)}>
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <Button size="sm" variant="outline" onClick={goToday}>回到今天</Button>
-            </div>
-          }
         />
 
-        {/* 第二层工具栏：搜索与筛选（§8.7）。 */}
-        <Toolbar>
-          <Input aria-label="搜索角色或活动" placeholder="搜索角色姓名或活动标题…" value={query} onChange={(event) => setQuery(event.target.value)} className="w-full sm:w-64" />
-          <div className="flex overflow-hidden rounded-xl bg-surface-sunken/65 p-1 text-sm">
+        <Toolbar className="border-b border-border-subtle">
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" aria-label="上个月" onClick={() => shiftMonth(-1)}>
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <span className="min-w-28 text-center text-sm font-semibold text-ink" aria-live="polite">
+              {year} 年 {month} 月
+            </span>
+            <Button size="sm" variant="ghost" aria-label="下个月" onClick={() => shiftMonth(1)}>
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={goToday}>今天</Button>
+          </div>
+          <Input
+            aria-label="搜索角色或活动"
+            placeholder="搜索角色姓名或活动标题…"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            onCompositionStart={() => { composingSearchRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingSearchRef.current = false;
+              setSearchInput(event.currentTarget.value);
+              setQuery(event.currentTarget.value);
+            }}
+            className="w-full sm:ml-auto sm:w-64"
+          />
+          <div className="flex items-center gap-4 text-sm">
             {([['all', '全部'], ['birthday', '仅生日'], ['activity', '仅活动']] as const).map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`px-3 py-2 ${kind === value ? 'bg-accent text-white' : 'bg-surface text-muted hover:text-ink'}`}>{label}</button>
+              <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`border-b-2 py-1.5 text-sm transition-colors cursor-pointer ${kind === value ? 'border-accent font-semibold text-ink' : 'border-transparent text-muted hover:text-ink'}`}>{label}</button>
             ))}
           </div>
-          <Button type="button" size="sm" variant="outline" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1.5 h-4 w-4" />更多筛选{work || favorite ? ' · 已启用' : ''}</Button>
+          <Button type="button" size="sm" variant="ghost" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{work || favorite ? ' · 已启用' : ''}</Button>
           {isLoading && <span className="text-sm text-muted">正在更新…</span>}
         </Toolbar>
         {(work || favorite) && <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="当前筛选条件">
           {work && <span className="rounded-full bg-surface-muted px-2.5 py-1">作品：{work}</span>}
           {favorite && <span className="rounded-full bg-surface-muted px-2.5 py-1">仅收藏角色</span>}
-          <button type="button" className="text-accent hover:underline" onClick={() => { setWork(''); setFavorite(false); }}>清除</button>
+          <button type="button" className="text-ink hover:underline" onClick={() => { setWork(''); setFavorite(false); }}>清除</button>
         </div>}
         <ResponsiveEditOverlay
           open={filtersOpen}
@@ -150,19 +165,20 @@ export function CalendarView() {
         >
           <div className="space-y-4">
             <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="calendar-work-filter">作品
-              <select id="calendar-work-filter" className="h-11 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-base font-normal" value={work} onChange={(event) => setWork(event.target.value)}>
+              <select id="calendar-work-filter" disabled={facets.isLoading} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal disabled:opacity-60" value={work} onChange={(event) => setWork(event.target.value)}>
                 <option value="">全部作品</option>
                 {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
               </select>
+              {facets.isError && <span role="alert" className="block text-xs font-normal text-danger-fg">作品列表读取失败。{facets.error instanceof Error ? facets.error.message : '已有作品筛选不会被删除。'}</span>}
             </label>
             <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-muted/50 px-3 text-sm text-ink">
-              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
-              仅显示收藏角色的生日
+              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-accent" />
+              仅显示收藏角色相关的事件
             </label>
           </div>
         </ResponsiveEditOverlay>
 
-        {error && <p role="alert" className="text-sm text-accent-dark">{error instanceof Error ? error.message : String(error)}</p>}
+        {error && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger-fg"><p>{error instanceof Error ? error.message : String(error)}</p><Button size="sm" variant="outline" onClick={() => { void refetch(); }}>重试读取日历</Button></div>}
 
         {/* 左月历与右当天详情各自滚动：右侧生日名单再长也不会把月历拉长（§4.4）。 */}
         <SplitPanes
@@ -170,14 +186,15 @@ export function CalendarView() {
           from="lg"
           labels={{ left: '月历', right: '当天详情' }}
           left={
-          <section className="calendar-month-panel tpl-panel p-4">
-            <div className="mb-3 flex items-center justify-end">
-              <span className="text-sm text-muted">本月共 {(data?.events || []).length} 项</span>
+          <section className="calendar-month-panel overflow-hidden rounded-xl border border-border-subtle bg-surface">
+            <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5">
+              <h2 className="text-sm font-semibold text-ink">{year} 年 {month} 月</h2>
+              <span className="text-xs text-muted">{error ? '记录暂不可用' : `共 ${(data?.events || []).length} 项`}</span>
             </div>
-            <div className="mb-1 grid grid-cols-7 gap-1.5 text-center text-xs font-semibold tracking-wide text-muted">
-              {WEEKDAYS.map((label) => <div key={label} className="py-1">{label}</div>)}
+            <div className="grid grid-cols-7 border-b border-border-subtle bg-surface-sunken/60 text-center text-xs font-semibold text-muted">
+              {WEEKDAYS.map((label) => <div key={label} className="py-2">{label}</div>)}
             </div>
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-px bg-border-subtle">
               {cells.map((cell) => {
                 const events = byDate.get(cell.key) || [];
                 const inMonth = cell.day !== undefined;
@@ -191,13 +208,13 @@ export function CalendarView() {
                     onClick={() => { setSelectedDate(cell.key); setPicked([]); }}
                     aria-label={inMonth ? `${cell.key}，${events.length} 项事件` : undefined}
                     aria-pressed={isSelected}
-                    className={`calendar-day min-h-20 rounded-xl p-1.5 text-left align-top text-sm transition-all ${isSelected ? 'is-selected bg-accent/8 ring-2 ring-accent/35' : 'bg-surface'} ${inMonth ? '' : 'opacity-35'}`}
+                    className={`min-h-20 p-1.5 text-left align-top text-sm transition-colors ${isSelected ? 'bg-accent/5 ring-1 ring-inset ring-accent/30' : inMonth ? 'bg-surface hover:bg-surface-hover' : 'bg-surface-sunken/35 opacity-45'}`}
                   >
-                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${isToday ? 'bg-accent text-white' : ''}`}>{cell.day}</span>
-                    <span className="mt-1 flex flex-col gap-0.5">
+                    <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${isToday ? 'text-accent-dark' : 'text-ink'}`}>{cell.day}</span>
+                    <span className="mt-1 flex flex-col gap-1">
                       {events.slice(0, 3).map((event) => (
-                        <span key={event.id} className={`block truncate rounded px-1 flex items-center gap-1 ${event.kind === 'birthday' ? 'bg-warning-bg text-warning-fg' : 'bg-info-bg text-info-fg'}`}>
-                          {event.kind === 'birthday' ? <Cake className="size-3 shrink-0" /> : <Film className="size-3 shrink-0" />}
+                        <span key={event.id} className="flex min-w-0 items-center gap-1 truncate py-0.5 text-xs text-ink">
+                          {event.kind === 'birthday' ? <Cake className="size-3 shrink-0 text-muted" /> : <Film className="size-3 shrink-0 text-muted" />}
                           <span className="truncate">{event.title}</span>
                         </span>
                       ))}
@@ -210,15 +227,18 @@ export function CalendarView() {
           </section>
           }
           right={
-          <section className="calendar-day-detail space-y-4 rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--shadow-panel)]">
-            <h2 className="flex items-center gap-2 text-base font-semibold"><CalendarDays className="h-4 w-4 text-accent" />{selectedDate} 当天</h2>
-            {!dayEvents.length && <p className="text-sm text-muted">这一天没有生日或活动。</p>}
+          <section className="space-y-5 border-t border-border-subtle pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.06em] text-muted">当天安排</p>
+              <h2 className="mt-1 flex items-center gap-2 text-xl font-semibold text-ink"><CalendarDays className="h-4 w-4 text-muted" />{selectedDate}</h2>
+            </div>
+            {error ? <p className="text-sm text-muted">暂时无法确认当天安排，请重试读取日历。</p> : !isLoading && !dayEvents.length && <p className="text-sm text-muted">这一天没有生日或活动。</p>}
             {!!birthdays.length && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">寿星（{birthdays.length}）</p>
-                <ul className="space-y-1">
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-ink">寿星 <span className="font-normal text-muted">{birthdays.length} 位</span></p>
+                <ul className="divide-y divide-border-subtle border-y border-border-subtle">
                   {birthdays.map((event) => (
-                    <li key={event.id} className="flex items-center gap-2 rounded-xl bg-surface-sunken/50 p-2.5 text-sm">
+                    <li key={event.id} className="flex items-center gap-2.5 py-3 text-sm">
                       <input
                         type="checkbox"
                         aria-label={`选择${event.characterName || event.title}`}
@@ -229,28 +249,28 @@ export function CalendarView() {
                         }}
                       />
                       {event.avatarUrl
-                        ? <Image src={event.avatarUrl} alt="" width={24} height={24} unoptimized className="h-6 w-6 rounded object-cover" />
-                        : <Cake className="h-4 w-4 text-rose-500" />}
+                        ? <Image src={event.avatarUrl} alt="" width={24} height={24} unoptimized className="h-6 w-6 rounded-md object-cover" />
+                        : <Cake className="h-4 w-4 text-muted" />}
                       <span className="min-w-0 flex-1 truncate">{event.characterName}{event.work ? <span className="text-muted"> · {event.work}</span> : null}</span>
-                      <Button size="sm" variant="ghost" onClick={() => openPickerFor([String(event.characterId)])}>为 TA 创建</Button>
+                      <Button size="sm" variant="ghost" onClick={() => openPickerFor([String(event.characterId)])}>创建活动</Button>
                     </li>
                   ))}
                 </ul>
-                <Button size="sm" disabled={!picked.length} onClick={() => openPickerFor(picked)}>
+                <Button size="sm" variant="primary" disabled={!picked.length} onClick={() => openPickerFor(picked)}>
                   为选中的 {picked.length} 位寿星合办生日活动
                 </Button>
               </div>
             )}
             {dayEvents.some((event) => event.kind === 'activity') && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">活动</p>
-                <ul className="space-y-1">
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-ink">已排期活动</p>
+                <ul className="divide-y divide-border-subtle border-y border-border-subtle">
                   {dayEvents.filter((event) => event.kind === 'activity').map((event) => (
-                    <li key={event.id} className="rounded-xl bg-surface-sunken/50 p-3 text-sm">
-                      <span className="flex items-center gap-2"><Film className="h-4 w-4 text-sky-600" />{event.title}</span>
-                      <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                    <li key={event.id} className="py-3 text-sm">
+                      <span className="flex items-center gap-2 font-medium text-ink"><Film className="h-4 w-4 text-muted" />{event.title}</span>
+                      <div className="mt-1.5 flex items-center justify-between text-xs text-muted">
                         <span>参与角色 {event.participantCount ?? 0} 位</span>
-                        <Link className="inline-flex items-center gap-1 text-accent" href={`/apps/activities/${event.activityId}`}>打开活动<ExternalLink className="h-3 w-3" /></Link>
+                        <Link className="inline-flex items-center gap-1 text-ink hover:text-accent" href={`/apps/activities/${event.activityId}`}>打开活动<ExternalLink className="h-3 w-3" /></Link>
                       </div>
                     </li>
                   ))}

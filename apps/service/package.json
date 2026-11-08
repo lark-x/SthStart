@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/start.ts",
+    "dev": "node --watch --import tsx src/start.ts",
     "build": "npm run build --workspace @sthstart/activity-playback && tsc -p tsconfig.json && npm run build:comic-reader",
     "build:comic-reader": "vite build --config vite.comic-reader.config.mjs",
     "start": "node --import tsx/esm dist/start.js",

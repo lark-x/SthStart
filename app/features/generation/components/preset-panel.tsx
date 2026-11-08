@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ban, Copy, Plus, Save, Star, Trash2 } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -166,19 +167,34 @@ export function PresetPanel({
 }) {
   const [presets, setPresets] = useState<GenerationPreset[]>([]);
   const [editor, setEditor] = useState<PresetEditorState | null>(null);
+  const [deletingPreset, setDeletingPreset] = useState<GenerationPreset | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [loadingPresets, setLoadingPresets] = useState(true);
 
   const reloadPresets = async () => {
     const response = await fetchGenerationPresets();
     setPresets(response.items);
   };
 
+  const loadPresets = useCallback(async () => {
+    setLoadingPresets(true);
+    setLoadError('');
+    try {
+      const response = await fetchGenerationPresets();
+      setPresets(response.items);
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : '服务未连接，无法读取预设。');
+    } finally {
+      setLoadingPresets(false);
+    }
+  }, []);
   useEffect(() => {
     // 预设列表来自管理 API（外部系统）；挂载时加载一次。
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void reloadPresets();
-  }, []);
+    void loadPresets();
+  }, [loadPresets]);
   useEffect(() => {
     if (draftFor?.workflowId && draftFor.values) {
       // 「另存预设」入口带入试运行参数：仅在该入口变化时打开编辑器。
@@ -285,8 +301,7 @@ export function PresetPanel({
     }
   };
 
-  const removePreset = async (preset: GenerationPreset) => {
-    if (!window.confirm(`确定删除预设「${preset.name}」吗？`)) return;
+  const executeRemovePreset = async (preset: GenerationPreset) => {
     setBusy(`delete-${preset.id}`);
     setError('');
     try {
@@ -328,63 +343,89 @@ export function PresetPanel({
   return (
     <div className="space-y-4">
       {error && <Alert variant="danger" title="预设操作未完成" onDismiss={() => setError('')}>{error}</Alert>}
+      {loadError && <Alert variant="danger" title="预设读取失败">{loadError}<Button variant="outline" disabled={loadingPresets} onClick={() => void loadPresets()}>重新读取预设</Button></Alert>}
+      {loadingPresets && <p role="status" className="text-sm text-muted">正在读取预设…</p>}
 
-      <Card>
-        <CardHeader>
+      <section className="border-y border-border-subtle py-5">
+        <div className="pb-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle>常用生成预设</CardTitle>
-              <CardDescription>预设绑定确切工作流版本与连接，只保存覆盖值；不随 latest 自动升级。</CardDescription>
+              <h2 className="text-base font-semibold text-ink">常用生成预设</h2>
+              <p className="mt-1 text-sm text-muted">预设绑定确切工作流版本与连接，只保存覆盖值；不随 latest 自动升级。</p>
             </div>
             <Button size="sm" variant="primary" onClick={openCreate} disabled={!workflows.length}><Plus className="h-3.5 w-3.5" aria-hidden="true" />新建预设</Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {presets.length === 0 && <p className="text-sm text-fg-subtle">还没有预设。为常用场景（如「角色立绘」「横向场景图」）各建一个，图像工坊即可按预设生成。</p>}
+        </div>
+        <div className="divide-y divide-border-subtle border-t border-border-subtle">
+          {!loadingPresets && !loadError && presets.length === 0 && <p className="text-sm text-fg-subtle">还没有预设。为常用场景（如「角色立绘」「横向场景图」）各建一个，图像工坊即可按预设生成。</p>}
           {presets.map((preset) => {
             const workflow = workflowById.get(preset.workflowId);
             const engine = engines.find((item) => item.id === preset.engineId);
             return (
-              <div key={preset.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+              <div key={preset.id} className="flex items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <strong className="text-sm">{preset.name}</strong>
+                    <span className="text-sm font-semibold text-ink">{preset.name}</span>
                     {preset.isDefault && <Badge variant="accent">默认</Badge>}
                     {!preset.enabled && <Badge variant="stopped">已禁用</Badge>}
                   </div>
-                  <code className="mt-0.5 block truncate text-sm text-muted">
+                  <code className="mt-0.5 block truncate text-xs text-muted">
                     {workflow?.name ?? preset.workflowId} · v{preset.workflowVersion} · {engine?.name ?? '连接缺失'} · {preset.appId}/{preset.purpose}
                   </code>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" variant="outline" onClick={() => { void setDefault(preset); }} loading={busy === `default-${preset.id}`} disabled={preset.isDefault || !preset.enabled}>
-                    <Star className="h-3.5 w-3.5" aria-hidden="true" />设为默认
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={preset.isDefault ? 'outline' : 'secondary'}
+                    onClick={() => openEdit(preset)}
+                  >
+                    编辑
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => openEdit(preset)}>编辑</Button>
-                  <Button size="sm" variant="outline" onClick={() => { void copyPreset(preset); }} loading={busy === `copy-${preset.id}`}>
-                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />复制
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => { void toggleEnabled(preset); }} loading={busy === `toggle-${preset.id}`}>
-                    <Ban className="h-3.5 w-3.5" aria-hidden="true" />{preset.enabled ? '禁用' : '启用'}
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => { void removePreset(preset); }} loading={busy === `delete-${preset.id}`}>
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />删除
-                  </Button>
+                  <RowActionsMenu
+                    label={`${preset.name} 更多操作`}
+                    items={[
+                      {
+                        label: preset.isDefault ? '当前已是默认' : '设为默认',
+                        icon: <Star className="h-4 w-4 text-muted" aria-hidden="true" />,
+                        onSelect: () => { void setDefault(preset); },
+                        hidden: preset.isDefault || !preset.enabled,
+                      },
+                      {
+                        label: '复制预设',
+                        icon: <Copy className="h-4 w-4 text-muted" aria-hidden="true" />,
+                        onSelect: () => { void copyPreset(preset); },
+                      },
+                      {
+                        label: preset.enabled ? '禁用预设' : '启用预设',
+                        icon: <Ban className="h-4 w-4 text-muted" aria-hidden="true" />,
+                        onSelect: () => { void toggleEnabled(preset); },
+                      },
+                      {
+                        label: '删除预设',
+                        icon: <Trash2 className="h-4 w-4" aria-hidden="true" />,
+                        tone: 'danger',
+                        separatorBefore: true,
+                        onSelect: () => {
+                          setDeletingPreset(preset);
+                        },
+                      },
+                    ]}
+                  />
                 </div>
               </div>
             );
           })}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>用途默认配置</CardTitle>
-          <CardDescription>每个用途可以设一个默认预设；未设置时沿用下方高级区的工作流绑定，行为与旧版本一致。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      <section className="border-y border-border-subtle py-5">
+        <div className="pb-4">
+          <h2 className="text-base font-semibold text-ink">用途默认配置</h2>
+          <p className="mt-1 text-sm text-muted">每个用途可以设一个默认预设；未设置时沿用下方高级区的工作流绑定，行为与旧版本一致。</p>
+        </div>
+        <div className="divide-y divide-border-subtle border-t border-border-subtle">
           {purposes.map(({ purpose, label, assignment, presets: purposePresets }) => (
-            <div key={purpose} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-control)] border border-border-subtle bg-surface px-3 py-2">
+            <div key={purpose} className="flex flex-wrap items-center justify-between gap-2 py-3">
               <span className="text-sm font-semibold">{label}</span>
               <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                 {assignment ? (
@@ -412,8 +453,8 @@ export function PresetPanel({
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <Dialog open={editor !== null} onOpenChange={(open) => { if (!open) setEditor(null); }} title={editor?.preset ? '编辑预设' : '新建预设'} size="lg">
         {editor && (
@@ -457,7 +498,7 @@ export function PresetPanel({
               <label htmlFor="preset-desc" className="mb-1 block text-sm font-medium text-ink">说明</label>
               <Input id="preset-desc" value={editor.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} />
             </div>
-            <div className="rounded-[var(--radius-panel)] border border-border-subtle bg-surface p-3">
+            <div className="rounded-panel border border-border-subtle bg-surface p-3">
               <h3 className="text-sm font-semibold text-ink">参数覆盖值</h3>
               <p className="mt-0.5 text-sm text-muted">仅保存与默认不同的值；提示词默认不保存进共享预设，由使用者填写。</p>
               <div className="mt-2">
@@ -479,6 +520,18 @@ export function PresetPanel({
           </div>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={deletingPreset !== null}
+        onOpenChange={(open) => { if (!open) setDeletingPreset(null); }}
+        title="删除生成预设"
+        description={`确定删除预设「${deletingPreset?.name}」吗？已创建的任务不受影响，但后续创作将无法选用该预设。`}
+        confirmLabel="删除"
+        danger
+        onConfirm={async () => {
+          if (deletingPreset) await executeRemovePreset(deletingPreset);
+        }}
+      />
     </div>
   );
 }

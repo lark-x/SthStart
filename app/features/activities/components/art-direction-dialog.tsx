@@ -116,7 +116,7 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
           ...(temporary.globalNegativePrompt !== undefined ? ['已配置活动负面词'] : []),
           ...(direction.renderProfiles.draft || direction.renderProfiles.final ? ['已绑定档位方案'] : []),
         ]} />
-        <FormField label="画风卡"><select aria-label="活动画风卡" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface px-3 text-sm" value={direction.selectedStyle?.id ?? ''} onChange={event => {
+        <FormField label="画风卡"><select aria-label="活动画风卡" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm" value={direction.selectedStyle?.id ?? ''} onChange={event => {
           const style = styles.data?.items.find(item => item.id === event.target.value);
           if (!style || !isActivityArtStylePayload(style.payload)) { updateDirection({ selectedStyle: null }); return; }
           const payload = style.payload;
@@ -134,7 +134,7 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
             .filter((option,index,array) => array.findIndex(item => item.value === option.value) === index)
             .map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
             <span className="mt-1 block text-xs text-muted">尺寸与草稿／成稿档位互相独立；1920×1080 不会自动成为默认。</span></FormField></div>
-        <div className="rounded-[var(--radius-control)] bg-surface-muted p-3">
+        <div className="rounded-control bg-surface-muted p-3">
           <p className="text-sm font-medium text-ink">当前模型摘要</p>
           <ul className="mt-1 space-y-0.5 text-xs text-muted">
             {(['draft','final'] as const).map(quality => {
@@ -149,7 +149,7 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
           <p className="mt-1 text-xs text-muted">模型与采样随档位方案配置，可在专业模式调整绑定。</p>
         </div>
         {advanced && <FormField label="补充画风词" hint="会在画面描述优化之后追加；工作流内部质量词无需重复填写。"><Textarea rows={3} value={temporary.globalStylePrompt ?? ''} onChange={event => setTemporary({ ...temporary, globalStylePrompt: event.target.value })} /></FormField>}
-        <details hidden={!advanced} open={advanced} className="rounded-[var(--radius-control)] bg-surface-muted p-4"><summary className="cursor-pointer text-sm font-semibold">档位方案与负面词</summary><div className="mt-4 space-y-4">
+        <details hidden={!advanced} open={advanced} className="rounded-control bg-surface-muted p-4"><summary className="cursor-pointer text-sm font-semibold">档位方案与负面词</summary><div className="mt-4 space-y-4">
           <p className="text-xs text-muted">两档分别绑定已发布预设，不能仅换 Base/Turbo 模型而共用采样参数。为空时跟随公共生成绑定；未保存前不会改动现有配置。</p>
           {(['draft','final'] as const).map(quality => <FormField key={quality} label={`${quality === 'draft' ? '草图' : '成稿'}预设`}><select aria-label={`${quality}预设`} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={direction.renderProfiles[quality]?.presetId ?? ''} onChange={event => {
             const selected = enabledPresets.find(item => item.id === event.target.value);

@@ -1,3 +1,5 @@
+import { decodeListCursor, encodeListCursor } from '../list-cursor.js';
+import type { ActivityPageQuery, ActivityPageResponse } from '@sthstart/contracts';
 import { recordContentImpacts, recordPlaybackImpact, resolveImageReviews } from './change-impact.js';
 import { assertProtectedContent } from './editing-policy.js';
 import crypto from 'node:crypto';
@@ -22,7 +24,9 @@ export function hashDocument(doc: unknown): string {
 }
 
 export class ActivityStore {
-  constructor(private readonly db: ServiceDatabase) {}
+  constructor(private readonly db: ServiceDatabase) {
+    db.connection.function('activity_search_fold', {deterministic: true}, value => String(value ?? '').toLowerCase());
+  }
 
   private get connection(): DatabaseSync {
     return this.db.connection;
@@ -241,8 +245,15 @@ export class ActivityStore {
     }
 
     if (options.cursor) {
-      where += ' AND updated_at < ?';
-      params.push(options.cursor);
+      // Continue to accept timestamp cursors issued by older store callers.
+      if (/^\d{4}-\d{2}-\d{2}T/.test(options.cursor) && Number.isFinite(Date.parse(options.cursor))) {
+        where += ' AND updated_at < ?';
+        params.push(options.cursor);
+      } else {
+        const cursor = decodeListCursor(options.cursor)!;
+        where += ' AND (updated_at < ? OR (updated_at = ? AND id < ?))';
+        params.push(cursor[0], cursor[0], cursor[1]);
+      }
     }
 
     params.push(limit + 1);
@@ -253,7 +264,7 @@ export class ActivityStore {
               created_at, updated_at
        FROM activities
        ${where}
-       ORDER BY updated_at DESC
+       ORDER BY updated_at DESC, id DESC
        LIMIT ?`
     ).all(...params) as Record<string, unknown>[];
 
@@ -275,8 +286,25 @@ export class ActivityStore {
       updatedAt: String(r.updated_at),
     }));
 
-    const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].updatedAt : null;
+    const last = items.at(-1);
+    const nextCursor = hasMore && last ? encodeListCursor(last.updatedAt, last.id) : null;
     return { items, nextCursor };
+  }
+
+  pageActivities(options: ActivityPageQuery = {}): ActivityPageResponse {
+    const pageSize = Math.max(1, Math.min(100, Math.trunc(options.pageSize || 20)));
+    const params: (string | number)[] = [options.archived ? 1 : 0];
+    let where = 'WHERE archived = ?';
+    if (options.independent) where += " AND type != 'publication'";
+    if (options.q?.trim()) {
+      where += " AND instr(activity_search_fold(title || ' ' || theme || ' ' || type || ' ' || location), ?) > 0";
+      params.push(options.q.trim().toLowerCase());
+    }
+    const total = Number((this.connection.prepare('SELECT count(*) AS count FROM activities ' + where).get(...params) as {count: number}).count);
+    const page = Math.min(Math.max(1, Math.trunc(options.page || 1)), Math.max(1, Math.ceil(total / pageSize)));
+    const rows = this.connection.prepare('SELECT id FROM activities ' + where + ' ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?').all(...params, pageSize, (page - 1) * pageSize) as {id: string}[];
+    const items = rows.map(row => this.getActivity(row.id)!).filter(Boolean);
+    return {items, total, page, pageSize};
   }
 
   updateActivity(

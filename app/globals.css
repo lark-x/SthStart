@@ -2,6 +2,9 @@
 /* Keep design tokens in Tailwind's compilation graph so semantic utilities
    (bg-accent, text-ink, border-border-default, etc.) are actually emitted. */
 @import './styles/theme.css';
+@import './styles/workspace-b.css';
+@import './styles/resources.css';
+@import './styles/warm-white-skin.css';
 
 @font-face {
   font-family: 'Sthstart Comic Noto Sans SC';
@@ -60,29 +63,67 @@
 }
 
 
-/* ---------- 邻舍嵌入页动作按钮 ---------- */
+/* ---------- 全局行动按钮：共用中性操作 token ---------- */
 .primary-action,
 a.primary-action,
 button.primary-action {
   display: inline-flex;
-  min-height: var(--control-h-sm);
+  min-height: var(--control-h);
   align-items: center;
   justify-content: center;
-  padding: 0 14px;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
   border-radius: var(--radius-control);
-  background-color: var(--accent);
-  color: var(--fg-on-accent);
-  /* 计划 §11.3：常用控件文字不低于 14px。 */
-  font-size: 14px;
+  background: var(--action-primary);
+  border: 1px solid transparent;
+  color: var(--action-on-primary);
+  font-size: var(--control-text-size);
   font-weight: 600;
-  transition: background var(--motion-fast) var(--motion-ease);
+  transition: background-color var(--motion-fast) var(--motion-ease);
   cursor: pointer;
 }
 
-.primary-action:hover,
-a.primary-action:hover,
-button.primary-action:hover {
-  background-color: var(--accent-dark);
+.primary-action:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--action-primary-hover);
+}
+
+.primary-action:disabled,
+.primary-action[aria-disabled="true"] {
+  opacity: var(--control-disabled-opacity);
+  cursor: not-allowed;
+}
+
+@layer components {
+  .ui-control {
+    min-width: 0;
+    width: 100%;
+    min-height: var(--control-h);
+    padding: var(--space-2) var(--control-px);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-control);
+    background: var(--surface-input);
+    color: var(--fg-default);
+    font: inherit;
+    font-size: var(--control-text-size);
+    transition: border-color var(--motion-fast) var(--motion-ease),
+      background-color var(--motion-fast) var(--motion-ease);
+  }
+  .ui-control::placeholder { color: var(--control-placeholder); opacity: 1; }
+  .ui-control:hover:not(:disabled) { border-color: var(--border-strong); }
+  .ui-control:focus-visible {
+    outline: var(--control-ring-width) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .ui-control[aria-invalid="true"] { border-color: var(--danger-fg); }
+  .ui-control[aria-invalid="true"]:focus-visible { outline-color: var(--danger-fg); }
+  .ui-control:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+  .ui-control[multiple], .ui-control[size]:not([size="1"]) { min-height: 96px; }
+  textarea.ui-control { min-height: 96px; font-size: 16px; line-height: 1.65; resize: vertical; }
+}
+
+@media (pointer: coarse) {
+  .ui-control, .primary-action { min-height: var(--control-h-touch); }
+  .ui-control { font-size: max(1em, 16px); }
 }
 
 .safe-area-bottom {
@@ -137,12 +178,12 @@ button.primary-action:hover {
   height: 9px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #aaa;
+  background: var(--fg-subtle);
   box-shadow: 0 0 0 5px rgb(104 113 109 / 10%);
 }
 
 .service-light.state-running {
-  background: #4e9b6b;
+  background: var(--success);
   box-shadow: 0 0 0 5px rgb(78 155 107 / 14%);
 }
 
@@ -163,7 +204,7 @@ button.primary-action:hover {
   gap: 20px;
   padding: 16px clamp(18px, 4vw, 40px);
   border-bottom: 1px solid rgb(244 240 231 / 10%);
-  color: var(--paper);
+  color: #f4f0e7;
 }
 
 .embed-toolbar-main,
@@ -180,7 +221,7 @@ button.primary-action:hover {
   place-items: center;
   border: 1px solid rgb(244 240 231 / 16%);
   border-radius: 50%;
-  color: var(--paper);
+  color: #f4f0e7;
   font-size: 18px;
 }
 
@@ -195,7 +236,7 @@ button.primary-action:hover {
   border: 1px solid rgb(244 240 231 / 18%);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--paper);
+  color: #f4f0e7;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
@@ -243,7 +284,7 @@ button.primary-action:hover {
   align-content: center;
   padding: 40px 24px;
   text-align: center;
-  color: var(--paper);
+  color: #f4f0e7;
 }
 
 .empty-symbol {
@@ -253,7 +294,7 @@ button.primary-action:hover {
   place-items: center;
   border-radius: 50%;
   background: #252e2a;
-  color: var(--paper);
+  color: #f4f0e7;
   font-family: var(--font-serif);
   font-size: 40px;
   margin-bottom: 24px;
@@ -271,9 +312,9 @@ button.primary-action:hover {
   margin-left: 8px;
   padding: 3px 7px;
   border-radius: 12px;
-  background: rgb(228 93 53 / 10%);
+  background: var(--accent-soft);
   color: var(--accent-dark);
-  font: 700 9px/1 sans-serif;
+  font: 600 12px/1.2 var(--font-sans);
   vertical-align: middle;
 }
 
@@ -411,7 +452,7 @@ button.primary-action:hover {
   resize: vertical;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgb(24 32 29 / 18%) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   touch-action: manipulation;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
@@ -421,12 +462,12 @@ button.primary-action:hover {
 }
 
 .notebook-textarea::-webkit-scrollbar-thumb {
-  background: rgb(24 32 29 / 18%);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 .notebook-textarea:focus {
-  border-color: rgb(228 93 53 / 25%);
+  border-color: var(--border-control);
   background: var(--surface);
   outline: none;
 }
@@ -510,23 +551,28 @@ button.primary-action:hover {
 
   .character-editor-tabs,
   .page-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
     gap: 6px;
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
   .page-tabs.activity-workflow-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: flex;
   }
 
   .character-editor-tabs button,
   .page-tabs button {
-    width: 100%;
-    min-height: 44px;
+    width: auto !important;
+    flex: 0 0 auto !important;
+    min-height: 40px;
     justify-content: center;
-    padding-inline: 8px;
+    padding-inline: 7px;
     text-align: center;
+    white-space: nowrap;
   }
 
   /* Notebook list / workspace header on phone */
@@ -548,8 +594,8 @@ button.primary-action:hover {
   }
 
   .notebook-list-header .notebook-new-note-action {
-    color: #ffffff !important;
-    background-color: var(--accent, #e45d35) !important;
+    color: var(--action-on-primary) !important;
+    background-color: var(--action-primary) !important;
   }
 
   .notebook-list-filters {

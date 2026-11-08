@@ -48,7 +48,15 @@ function bytesBase64(value: Uint8Array) {
 }
 
 function avatarUrl(database: ServiceDatabase, assetId: unknown, assetPath: string) {
-  return assetId && database.connection.prepare('SELECT 1 FROM character_assets WHERE id=?').get(String(assetId)) ? `${assetPath}/${assetId}` : null;
+  if (!assetId) return null;
+  // 资产记录可能只剩元数据，文件被清理后继续返回 URL 会让前端产生无意义的 404 破图。
+  // URL 只在 artifact 真正可读时暴露；记录本身保留，便于资产页显式清理或重新关联。
+  const artifact = database.connection.prepare(`SELECT art.local_path, art.file_status
+    FROM character_assets a JOIN artifacts art ON art.id=a.artifact_id WHERE a.id=?`).get(String(assetId)) as
+    { local_path: string | null; file_status: string } | undefined;
+  return artifact?.file_status === 'ready' && artifact.local_path && existsSync(artifact.local_path)
+    ? `${assetPath}/${assetId}`
+    : null;
 }
 
 function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, assetPath = '/api/admin/characters/assets'): CharacterProfile {
@@ -304,15 +312,39 @@ async function sendCharacterAsset(database: ServiceDatabase, assetId: string, re
   // 自愈机制：若本地文件因清理或首次迁移缺失，自动按 source_url 回源下载并更新 artifacts
   if ((!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) && asset.source_url) {
     try {
-      const res = await fetch(asset.source_url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (res.ok) {
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const contentType = res.headers.get('content-type') || 'image/png';
+      let buffer: Buffer | null = null;
+      let contentType = 'image/png';
+
+      // 1. 本地相对路径回源 (例如 /images/xxx.png 或 /avatars/xxx.png)
+      if (asset.source_url.startsWith('/')) {
+        const localCandidates = [
+          resolve(process.cwd(), `data${asset.source_url}`),
+          resolve(process.cwd(), `data/${asset.source_url.replace(/^\/(?:images|avatars)\//, '')}`),
+          resolve(process.cwd(), `upstream/linshe/agent-core/data${asset.source_url}`),
+        ];
+        for (const candidate of localCandidates) {
+          if (existsSync(candidate)) {
+            buffer = await readFile(candidate);
+            break;
+          }
+        }
+      }
+
+      // 2. HTTP/HTTPS 远程下载
+      if (!buffer && (asset.source_url.startsWith('http://') || asset.source_url.startsWith('https://'))) {
+        const res = await fetch(asset.source_url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) {
+          buffer = Buffer.from(await res.arrayBuffer());
+          contentType = res.headers.get('content-type') || 'image/png';
+        }
+      }
+
+      if (buffer) {
         const ext = contentType.includes('webp') ? '.webp' : contentType.includes('jpeg') ? '.jpg' : '.png';
         const artifactDir = config?.artifactDirectory || process.env.STHSTART_ARTIFACT_DIR || resolve(process.cwd(), 'data/artifacts');
         const directory = resolve(artifactDir, 'characters');
@@ -1011,7 +1043,11 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/assets', async (request, reply) => {
     const profile = database.connection.prepare('SELECT id, avatar_asset_id, portrait_asset_id FROM character_profiles WHERE id=?').get(request.params.id) as { id: string; avatar_asset_id: string | null; portrait_asset_id: string | null } | undefined;
     if (!profile) return reply.code(404).send({ error: 'not_found' });
-    const rows = database.connection.prepare('SELECT id, character_id, kind, created_at, artifact_id, source_url, source_page, author_note, user_note, category, title, tags_json, metadata_json FROM character_assets WHERE character_id=? ORDER BY created_at DESC').all(request.params.id) as Record<string, unknown>[];
+    const rows = database.connection.prepare(`SELECT a.id, a.character_id, a.kind, a.created_at, a.artifact_id,
+        a.source_url, a.source_page, a.author_note, a.user_note, a.category, a.title, a.tags_json, a.metadata_json
+      FROM character_assets a JOIN artifacts art ON art.id=a.artifact_id
+      WHERE a.character_id=? AND art.file_status='ready' AND art.local_path IS NOT NULL
+      ORDER BY a.created_at DESC`).all(request.params.id) as Record<string, unknown>[];
     return {
       characterId: profile.id,
       avatarAssetId: profile.avatar_asset_id ? String(profile.avatar_asset_id) : null,

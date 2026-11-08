@@ -118,7 +118,7 @@ export function Toolbar({ className, children, ...rest }: React.ComponentProps<'
   return (
     <div
       className={cn(
-        'tpl-toolbar rounded-[var(--radius-panel)] border border-border-default bg-surface px-4 py-3',
+        'tpl-toolbar py-3',
         className,
       )}
       {...rest}
@@ -151,12 +151,12 @@ export function Panel({ className, children, ...rest }: React.ComponentProps<'di
 
 /**
  * WorkspaceShell：全屏工作区外壳原语。
- * 占据 100dvh 全高度并隐藏外层滚动，固定顶栏，各子面板通过 min-h-0 min-w-0 独立滚动。
+ * 按 AppShell 可用高度布局；embed 和 fixed 全屏保留完整视口，子面板独立滚动。
  */
 export function WorkspaceShell({ className, children, ...rest }: React.ComponentProps<'div'>) {
   return (
     <div
-      className={cn('h-[100dvh] w-full min-w-0 flex flex-col overflow-hidden bg-paper select-text', className)}
+      className={cn('tpl-workspace-shell w-full min-h-0 min-w-0 flex flex-col overflow-hidden bg-paper select-text', className)}
       {...rest}
     >
       {children}

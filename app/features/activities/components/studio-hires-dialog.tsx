@@ -138,7 +138,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
         <div className="flex flex-col gap-4 sm:flex-row">
           <div className="w-full space-y-1.5 sm:max-w-[240px] sm:shrink-0">
             <span className="text-sm font-medium text-ink">原图</span>
-            <div className="overflow-hidden rounded-[var(--radius-control)] border border-border-default bg-surface-muted">
+            <div className="overflow-hidden rounded-control border border-border-default bg-surface-muted">
               {sourceImageUrl
                 ? <img src={sourceImageUrl} alt={sourceLabel ? `${sourceLabel} 原图` : '待细化的原图'} className="h-auto w-full object-contain" />
                 : <p className="px-3 py-6 text-center text-xs text-muted">原图预览不可用，仍可继续细化。</p>}
@@ -148,7 +148,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
           <div className="min-w-0 w-full space-y-4 sm:flex-1">
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-ink">最长边</span>
-              <select aria-label="细化最长边" className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink"
+              <select aria-label="细化最长边" className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink"
                 value={maxSize} onChange={(event) => { setMaxSize(Number(event.target.value)); saveDraft({ maxSize: Number(event.target.value) }); setPreview(null); setPreviewError(''); }}>
                 {MAX_SIZE_OPTIONS.map((value) => <option key={value} value={value}>{value} 像素</option>)}
               </select>
@@ -158,7 +158,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
               <span className="text-sm font-medium text-ink">重绘幅度</span>
               <input aria-label="细化重绘幅度" type="number" min={HIRES_DENOISE_MIN} max={HIRES_DENOISE_MAX} step={0.05} value={denoise}
                 onChange={(event) => { setDenoise(Number(event.target.value)); saveDraft({ denoise: Number(event.target.value) }); setPreview(null); setPreviewError(''); }}
-                className="h-10 w-full rounded-[var(--radius-control)] border border-border-control bg-surface-raised px-3 text-sm text-ink" />
+                className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink" />
               <span className="block text-xs text-muted">建议 0.2；越高越偏离原图，范围 0.05–0.35。</span>
             </label>
             {preview && <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted">
@@ -175,7 +175,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
         {preview?.transparencyHint && <Alert variant="info" title="透明图处理">{preview.transparencyHint}</Alert>}
         {preview?.sourceChanged && <Alert variant="warning" title="来源描述已变化">原图基于更早的描述生成；本次沿用原图实际参数，不会自动采纳新描述，也不写回草稿。</Alert>}
 
-        {advanced && preview && <details className="rounded-[var(--radius-control)] border border-border-subtle p-3">
+        {advanced && preview && <details className="rounded-control border border-border-subtle p-3">
           <summary className="cursor-pointer text-sm font-medium text-ink">高级：实际继承的配置（只读）</summary>
           <dl className="mt-3 space-y-2 text-xs">
             <div><dt className="font-medium text-ink">加载器</dt><dd className="break-words text-muted">UNET {preview.loaders.unetName ?? '未声明'} · CLIP {preview.loaders.clipName ?? '未声明'} · VAE {preview.loaders.vaeName ?? '未声明'}</dd></div>
