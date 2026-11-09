@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 import { useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, ExternalLink, FileClock, KeyRound, Plus, X } from 'lucide-react';
 import type { StoryCharacter, StoryDocument, StoryEntry, StoryProposal, StoryProposalKind } from '@sthstart/contracts';
@@ -17,6 +18,12 @@ import { storyKeys } from '@/app/lib/query-keys';
 
 type EntryRow = { kind: 'document'; item: StoryDocument } | { kind: 'character'; item: StoryCharacter };
 type PanelTab = 'proposals' | 'revisions' | 'agent' | 'archive';
+function subscribeWide(listener: () => void) {
+  const query = window.matchMedia('(min-width: 1440px)');
+  query.addEventListener('change', listener);
+  return () => query.removeEventListener('change', listener);
+}
+const readWide = () => window.matchMedia('(min-width: 1440px)').matches;
 const kindName: Record<StoryProposalKind | 'character', string> = {
   outline: '大纲', world: '世界观', scene: '场景', chapter: '章节', character: '角色',
 };
@@ -73,6 +80,7 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
   tab: PanelTab; onTabChange: (tab: PanelTab) => void;
 }) {
   const client = useQueryClient();
+  const wide = useSyncExternalStore(subscribeWide, readWide, () => false);
   const [notice, setNotice] = useState('');
   const proposals = useStoryProposals(projectId, { enabled: open, refetchInterval: open ? 20_000 : false });
   const kind = activeEntry ? ('name' in activeEntry ? 'character' : activeEntry.kind) : null;
@@ -128,10 +136,8 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
     catch (cause) { setNotice(cause instanceof Error ? cause.message : '撤销失败。'); }
   };
 
-  return <Drawer open={open} onOpenChange={onOpenChange} title="审阅与项目连接" description="正式资料仍只由本工作台保存或在接受提案后更新。">
-    <div className="mb-4 grid grid-cols-2 gap-1 rounded-control bg-surface-muted p-1 sm:grid-cols-4">
-      {([['proposals', '提案'], ['revisions', '版本'], ['agent', '代理连接'], ['archive', '旧会话']] as const).map(([key, label]) => <button key={key} onClick={() => onTabChange(key)} className={`rounded-control px-2 py-2 text-sm ${tab === key ? 'bg-surface font-semibold text-accent shadow-sm' : 'text-muted hover:bg-surface-hover'}`}>{label}</button>)}
-    </div>
+  const content = <>
+    <PageTabs variant="local" ariaLabel="审阅内容" className="mb-4" value={tab} onChange={value => onTabChange(value as PanelTab)} tabs={[{id: 'proposals', label: '提案'}, {id: 'revisions', label: '版本'}, {id: 'agent', label: '代理连接'}, {id: 'archive', label: '旧会话'}]} />
     {notice && <div role="status" className="mb-3 flex items-start gap-2 rounded-control border border-border-default bg-surface-muted p-3 text-sm"><span className="min-w-0 flex-1">{notice}</span><button aria-label="关闭提示" onClick={() => setNotice('')}><X className="size-4" /></button></div>}
 
     {tab === 'proposals' && <section className="space-y-3">
@@ -200,5 +206,10 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
     </section>}
 
     {tab === 'archive' && <ReadOnlyArchive projectId={projectId} />}
-  </Drawer>;
+  </>;
+  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-[400px] shrink-0 flex-col border-l border-border-subtle bg-surface">
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-2"><h2 className="text-sm font-semibold">审阅与项目连接</h2><Button size="sm" variant="ghost" aria-label="关闭审阅面板" onClick={() => onOpenChange(false)}><X className="size-4" /></Button></div>
+    <div className="min-h-0 flex-1 overflow-y-auto p-4">{content}</div>
+  </aside> : null;
+  return <Drawer open={open} onOpenChange={onOpenChange} title="审阅与项目连接" description="正式资料仍只由本工作台保存或在接受提案后更新。">{content}</Drawer>;
 }

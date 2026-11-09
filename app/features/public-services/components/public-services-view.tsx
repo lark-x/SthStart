@@ -191,6 +191,7 @@ export function PublicServicesSettings() {
 
       {/* 5 个核心页签切换 */}
       <PageTabs
+        variant="page"
         ariaLabel="公共服务分类"
         value={tab}
         onChange={setTab}

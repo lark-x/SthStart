@@ -21,7 +21,7 @@ export default function Home() {
 
       <div className="dash-grid">
         <div className="home-card">
-          <RecentWork limit={8} />
+          <RecentWork limit={7} />
         </div>
         <aside className="min-w-0 space-y-4" aria-label="日程与服务状态">
           <div className="home-card">

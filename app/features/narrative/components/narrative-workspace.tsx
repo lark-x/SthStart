@@ -43,6 +43,12 @@ export function NarrativeWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const requestedReturn = searchParams.get('returnTo');
+  const resourceReturnHref = requestedReturn === '/apps/resources' || requestedReturn?.startsWith('/apps/resources?')
+    ? requestedReturn
+    : searchParams.get('from') === 'resources'
+    ? '/apps/resources'
+    : undefined;
   const modeParam = searchParams.get('mode');
   const mode = modeParam === 'import' ? 'import' : modeParam === 'research' || searchParams.has('project') ? 'research' : 'read';
   const setMode = (next: 'read' | 'research' | 'import') => {
@@ -223,6 +229,7 @@ export function NarrativeWorkspace() {
 
   const modeTabs = (
             <PageTabs
+              variant="page"
               ariaLabel="叙事工作模式"
               value={mode}
               onChange={(id) => setMode(id as 'read' | 'research' | 'import')}
@@ -260,15 +267,24 @@ export function NarrativeWorkspace() {
               </div>
   );
 
-  const WorkspaceRoot = mode === 'read' ? 'main' : 'div';
+  const WorkspaceRoot = 'div';
 
   return (
     <WorkspaceRoot className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
       {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
-      {mode === 'read' ? <WorkspaceHeader title="叙事档案" centerSlotOnMobile centerSlot={modeTabs} actions={readingActions} /> : <div className="narrative-workspace-header shrink-0 bg-surface">
+      {mode === 'read' ? <WorkspaceHeader
+        title="叙事档案"
+        backHref={resourceReturnHref}
+        backLabel={resourceReturnHref ? "返回资料库" : undefined}
+        centerSlotOnMobile
+        centerSlot={modeTabs}
+        actions={readingActions}
+      /> : <div className="narrative-workspace-header shrink-0 bg-surface">
         <PageContainer className="pt-4">
           <PageHeader
             compact
+            backHref={resourceReturnHref}
+            backLabel={resourceReturnHref ? "返回资料库" : undefined}
             title="叙事档案"
             description="任务链阅读、多作品追溯与原文检索。"
           />

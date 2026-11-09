@@ -20,7 +20,7 @@ test('Activity Studio: external pipeline sync creates activity with scenes and m
   const config = readConfig({
     STHSTART_ADMIN_TOKEN: adminToken,
     STHSTART_DATABASE_PATH: resolve(dir, 'service.db'),
-    STHSTART_DATA_DIR: dir,
+    STHSTART_ARTIFACT_DIR: resolve(dir, 'artifacts'),
   });
   const secrets = new SecretStore({});
   const { app } = await createService({ config, database, secrets });

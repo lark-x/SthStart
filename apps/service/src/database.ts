@@ -2057,8 +2057,10 @@ export function migrateDatabase(connection: DatabaseSync, migrations: readonly D
 
 export class ServiceDatabase {
   readonly connection: DatabaseSync;
+  readonly path: string;
 
   constructor(path: string = ':memory:') {
+    this.path = path;
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.connection = new DatabaseSync(path);
     this.connection.exec('PRAGMA foreign_keys = ON');

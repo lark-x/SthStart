@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useSearchParams } from 'next/navigation';
 import { projectReturnHref } from './list-state';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Plus, BookOpen, Film } from "lucide-react";
+import { ArrowRight, Plus, BookOpen, Film } from "lucide-react";
 import { Button, buttonVariants } from "@/app/components/ui/button";
+import { PageContainer } from "@/app/components/shared/page-layout";
+import { PageHeader } from "@/app/components/shared/page-header";
 import { Input } from "@/app/components/ui/input";
 import { Select } from "@/app/components/ui/select";
 import { Dialog } from "@/app/components/ui/dialog";
@@ -78,19 +80,20 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     (entry ? "?entry=" + encodeURIComponent(entry) : "");
   if (query.isLoading)
     return (
-      <p className="p-8" role="status">
-        正在读取项目…
-      </p>
+      <PageContainer className="space-y-6 pb-10 pt-4">
+        <PageHeader backHref={returnHref} backLabel="创作项目列表" title="创作项目" description="正在读取项目资料…" />
+        <p role="status">正在读取项目…</p>
+      </PageContainer>
     );
   if (!query.data)
     return (
-      <div className="space-y-4 p-8">
+      <PageContainer className="space-y-6 pb-10 pt-4">
+        <PageHeader backHref={returnHref} backLabel="创作项目列表" title="创作项目" />
         <p role="alert">
           {query.error instanceof Error ? query.error.message : "项目不存在"}
         </p>
-        <Link href={returnHref}>返回创作项目</Link>
         <Button onClick={() => void query.refetch()}>重试</Button>
-      </div>
+      </PageContainer>
     );
   const { project, documents, characters, links, productions } = query.data;
   const references = links.filter(
@@ -113,30 +116,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setDialog(null);
   };
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-6 p-6 lg:p-8">
-      <Link
-        href={returnHref}
-        className="inline-flex items-center gap-2 text-sm text-muted hover:text-ink"
-      >
-        <ArrowLeft size={16} />
-        创作项目
-      </Link>
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-3xl">
-          <h1 className="text-2xl font-semibold text-ink">{project.title}</h1>
-          <p className="mt-2 text-sm text-muted">
-            {project.summary ||
-              "从大纲与正文开始，逐步加入角色、参考资料和制作版本。"}
-          </p>
-        </div>
-        <Link
-          href={editor()}
-          className={buttonVariants({ variant: "primary" })}
-        >
-          <BookOpen size={16} />
-          继续写作
-        </Link>
-      </header>
+    <PageContainer className="space-y-6 pb-10 pt-4">
+      <PageHeader
+        backHref={returnHref}
+        backLabel="创作项目列表"
+        title={project.title}
+        description={project.summary || "从大纲与正文开始，逐步加入角色、参考资料和制作版本。"}
+        actions={
+          <Link href={editor()} className={buttonVariants({ variant: "primary", size: "sm" })}>
+            <BookOpen size={16} />
+            继续写作
+          </Link>
+        }
+      />
       <div className="flex flex-wrap gap-x-6 gap-y-2 border-y border-border-subtle py-4 text-sm text-muted">
         <span>{chapters.length} 个章节</span>
         <span>{characters.length} 个角色版本</span>
@@ -158,6 +150,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </p>
       )}
       <PageTabs
+        variant="page"
         ariaLabel="项目内容"
         value={tab}
         onChange={setTab}
@@ -628,7 +621,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           </Button>
         </div>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
 function Empty({ text }: { text: string }) {

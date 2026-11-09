@@ -102,7 +102,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { colorMode, toggleColorMode } = useTheme();
   const isDark = colorMode === 'dark';
 
-  const collapsed = collapsedPref;
   const sectionsSnapshot = useSyncExternalStore(subscribeNavPref, readCollapsedSectionsSnapshot, serverSectionsSnapshot);
   const collapsedSections = useMemo(() => {
     try {
@@ -130,7 +129,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
   const isNarrativeFocus = pathname === '/apps/narrative' && (searchParams.get('view') === 'review' || (!searchParams.has('project') && !['research', 'import'].includes(searchParams.get('mode') ?? 'read')));
   const isNotebookEditor = pathname.startsWith('/apps/notebook/') && pathname !== '/apps/notebook/offline';
-  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || isActivityStudio || isStoryWorkspace || isNotebookEditor || isNarrativeFocus;
+  const embed = EMBED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const workspaceHeader = isActivityStudio || isStoryWorkspace || isNotebookEditor || isNarrativeFocus;
+  const workspace = workspaceHeader || pathname === '/apps/resources' || pathname === '/apps/notebook' || pathname === '/apps/creative';
+  // 工作台临时使用紧凑导航，不写回普通页面的展开偏好。
+  const collapsed = workspaceHeader || collapsedPref;
+  const workspaceKind = pathname === '/apps/creative' ? 'creative' : workspaceHeader ? 'editor' : 'library';
 
   const toggleCollapsed = useCallback(() => {
     collapsedPrefFallback = !collapsedPref;
@@ -303,10 +307,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           type="button"
           className="shell-collapse-btn"
           data-nav-label={collapsed ? '展开导航' : '收起导航'}
-          onClick={toggleCollapsed}
+          onClick={workspaceHeader ? () => setDrawerOpen(true) : toggleCollapsed}
           aria-pressed={collapsed}
-          aria-label={collapsed ? '展开导航' : '收起导航'}
-          title={collapsed ? '展开导航' : '收起导航'}
+          aria-label={workspaceHeader ? '打开完整导航' : collapsed ? '展开导航' : '收起导航'}
+          title={workspaceHeader ? '打开完整导航' : collapsed ? '展开导航' : '收起导航'}
         >
           {collapsed
             ? <PanelLeftOpen className="shell-nav-icon" aria-hidden="true" />
@@ -345,7 +349,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="shell-root" data-layout="b">
+    <div className="shell-root" data-layout="b" data-workspace={workspace ? workspaceKind : undefined} data-workspace-header={workspaceHeader || undefined}>
       <AutoHideScrollbars />
       <a href={`${pathname}#shell-content`} className="shell-skip-link" onClick={event => { event.preventDefault(); document.getElementById('shell-content')?.focus(); }}>跳至主要内容</a>
       <aside
@@ -365,7 +369,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="shell-main">
         <div className="shell-surface">
           {/* 全局工具只放通用操作；当前位置由侧栏与页面主标题表达。 */}
-          <header className="shell-toolbar" aria-label="全局指令条" data-testid="shell-header">
+          {!workspaceHeader && <header className="shell-toolbar" aria-label="全局指令条" data-testid="shell-header">
             <div className="shell-toolbar-inner">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <button
@@ -457,7 +461,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
             </div>
-          </header>
+          </header>}
 
           <main className="shell-content" data-section={pathname.startsWith('/settings') ? 'settings' : undefined} id="shell-content" tabIndex={-1}>{children}</main>
         </div>

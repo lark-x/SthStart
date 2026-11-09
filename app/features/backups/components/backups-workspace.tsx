@@ -194,6 +194,7 @@ export function BackupsWorkspace() {
           )}
 
           <PageTabs
+            variant="page"
             tabs={[
               { id: 'overview', label: '概览' },
               { id: 'plans', label: '备份计划' },

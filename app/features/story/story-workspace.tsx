@@ -22,6 +22,7 @@ import {
 import { storyKeys } from '@/app/lib/query-keys';
 import { StoryEntryEditor } from './story-entry-editor';
 import { StoryReviewPanel } from './story-review-panel';
+import { StoryOutlinePane } from './components/story-outline-pane';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { StoryAgentConnectDialog } from './components/story-agent-connect-dialog';
 import { StoryWorkCastDialog } from './components/story-work-cast-dialog';
@@ -782,7 +783,7 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     </div>
   );
 
-  return <main className="story-workspace-root flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink">
+  return <div className="story-workspace-root flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink">
     {!isReflection && (
       <CreatePublicationDialog open={publicationOpen} onOpenChange={setPublicationOpen} projectId={projectId}
         chapters={(documents.data?.items??[]).filter(d=>d.kind==='chapter')} activeId={activeId} flush={flushCurrent}/>
@@ -860,9 +861,9 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     {/* 三栏式视口锁高工作台主体 */}
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
       {/* 左栏：项目大纲、世界观与出场角色 */}
-      <aside aria-label="正式剧情资料树" className={`story-tree-aside w-64 shrink-0 h-full min-h-0 border-r border-border-default bg-surface transition-all ${zenMode || sidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>
+      <StoryOutlinePane hidden={zenMode || sidebarCollapsed}>
         {treePanel}
-      </aside>
+      </StoryOutlinePane>
 
       {/* 中栏：核心小说正文大画布（支持自适应宽屏排版） */}
       <section aria-label="正式写作工作台" className="flex-1 min-h-0 min-w-0 h-full overflow-hidden flex flex-col">
@@ -927,13 +928,6 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
           </div>
         )}
       </section>
-    </div>
-
-    {/* 抽屉导航（小屏幕模式） */}
-    <Drawer open={treeOpen} onOpenChange={setTreeOpen} title="项目资料" description="选择条目后回到正文编辑。">
-      <div className="h-full min-h-0">{treePanel}</div>
-    </Drawer>
-
     {/* 审阅面板 */}
     <StoryReviewPanel
       open={reviewOpen}
@@ -946,6 +940,12 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
       tab={reviewTab}
       onTabChange={setReviewTab}
     />
+    </div>
+
+    {/* 抽屉导航（小屏幕模式） */}
+    <Drawer open={treeOpen} onOpenChange={setTreeOpen} title="项目资料" description="选择条目后回到正文编辑。">
+      <div className="h-full min-h-0">{treePanel}</div>
+    </Drawer>
 
     {/* 从角色库按作品引入角色弹窗 */}
     <StoryWorkCastDialog
@@ -1017,5 +1017,5 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
         <label className="block text-sm font-medium">项目简介<textarea value={projectSummary} maxLength={4000} onChange={(event) => setProjectSummary(event.target.value)} className="mt-1 min-h-32 w-full rounded-control border border-border-control bg-surface p-3 text-sm leading-6" /></label>
       </form>
     </Dialog>
-  </main>;
+  </div>;
 }

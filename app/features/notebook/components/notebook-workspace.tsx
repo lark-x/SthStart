@@ -30,6 +30,7 @@ import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Pagination } from '@/app/components/ui/pagination';
 
 const COLLAPSED_KEY = 'sthstart_notebook_sidebar_collapsed';
+let collapsedFallback = false;
 
 // 折叠状态以 localStorage 为唯一事实来源：useSyncExternalStore 在服务端
 // 渲染固定返回 false，默认展示列表，客户端挂载后读取偏好。
@@ -37,14 +38,16 @@ const collapsedListeners = new Set<() => void>();
 
 function subscribeCollapsed(onStoreChange: () => void) {
   collapsedListeners.add(onStoreChange);
+  window.addEventListener('storage', onStoreChange);
   return () => {
     collapsedListeners.delete(onStoreChange);
+    window.removeEventListener('storage', onStoreChange);
   };
 }
 
 function readCollapsed() {
-  try { return localStorage.getItem(COLLAPSED_KEY) === 'true'; }
-  catch { return false; }
+  try { const stored = localStorage.getItem(COLLAPSED_KEY); return stored === null ? collapsedFallback : stored === 'true'; }
+  catch { return collapsedFallback; }
 }
 
 function getServerCollapsed() {
@@ -85,23 +88,11 @@ export function NotebookWorkspace({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const focused = !embedded && pathname !== '/apps/notebook' && pathname !== '/apps/notebook/offline';
-  const workspaceRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = workspaceRef.current;
-    if (!el) return;
-    const update = () => {
-      if (embedded || focused || window.innerWidth < 1024) { el.style.removeProperty('height'); return; }
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      const available = window.innerHeight - top - 16;
-      el.style.height = available >= 360 ? `${available}px` : '';
-    };
-    update(); window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, [embedded, focused]);
+  const listPaneId = React.useId();
 
   // 初次访问默认显示列表，保留用户主动收起的偏好。
   const collapsedPreference = useSyncExternalStore(subscribeCollapsed, readCollapsed, getServerCollapsed);
-  const collapsed = !embedded && collapsedPreference;
+  const collapsed = collapsedPreference;
 
   const [selectedFilter, setSelectedFilter] = useState<'all' | NoteKind>(() => filterOptions.find((item) => item.value === searchParams.get('filterKind'))?.value ?? 'all');
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
@@ -204,9 +195,24 @@ export function NotebookWorkspace({
 
   const toggleCollapsed = useCallback(() => {
     const next = !readCollapsed();
+    collapsedFallback = next;
     try { localStorage.setItem(COLLAPSED_KEY, String(next)); } catch { /* 隐私模式仍可使用页面 */ }
     for (const listener of collapsedListeners) listener();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (view !== 'notes' || event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat || event.altKey || event.shiftKey) return;
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'b' || !window.matchMedia('(min-width: 1024px)').matches) return;
+      const target = event.target instanceof Element ? event.target : document.activeElement;
+      // 编辑区保留加粗快捷键；输入法、表单与浮层也不触发列表折叠。
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="alertdialog"]')) return;
+      event.preventDefault();
+      toggleCollapsed();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [toggleCollapsed, view]);
 
   // 路由切换时同步选中项；同一路由上的其他交互不能反复重置编辑状态。
   // 桌面概览在资料加载后自动预览第一条，正式选中则进入详情路由。
@@ -279,24 +285,19 @@ export function NotebookWorkspace({
   const isEditingOnMobile = Boolean(activeId || isCreating);
 
   // 移动端（<1024px）：非编辑态始终整宽显示列表，编辑态只显示编辑器；
-  // 桌面端：折叠即隐藏列表。避免把无前缀 hidden 与 flex 同时挂在一个元素上，
-  // hidden 会在所有断点压过 flex，导致手机上列表整个消失。
-  const masterPaneClass = isEditingOnMobile
-    ? collapsed
-      ? 'hidden'
-      : 'hidden lg:flex lg:w-[280px] lg:min-w-[280px]'
-    : collapsed
-    ? 'flex w-full lg:hidden'
-    : 'flex w-full lg:w-[280px] lg:min-w-[280px]';
+  // 桌面折叠交给 data-list-collapsed；手机忽略桌面偏好，保留列表/编辑器回退。
+  const masterPaneClass = isEditingOnMobile ? 'hidden lg:flex' : 'flex w-full';
 
   const headerActions = (
             <>
               <button
                 type="button"
                 onClick={toggleCollapsed}
-                className={(embedded ? 'hidden' : 'hidden lg:inline-flex') + ' items-center gap-1.5 h-8 px-2.5 rounded-control border border-border-default bg-surface text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-ink cursor-pointer'}
-                title={collapsed ? '展开笔记列表' : '收起笔记列表'}
+                className="hidden lg:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-control border border-border-default bg-surface text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-ink cursor-pointer"
+                title={(collapsed ? '展开笔记列表' : '收起笔记列表') + ' (Ctrl/Cmd+B，编辑区外)'}
                 aria-label={collapsed ? '展开笔记列表' : '收起笔记列表'}
+                aria-expanded={!collapsed}
+                aria-controls={listPaneId}
               >
                 {collapsed ? <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <PanelLeftClose className="h-3.5 w-3.5" aria-hidden="true" />}
                 <span>{collapsed ? '展开列表' : '收起列表'}</span>
@@ -318,10 +319,10 @@ export function NotebookWorkspace({
             </>
   );
 
-  const WorkspaceRoot = focused ? 'main' : 'div';
+  const WorkspaceRoot = 'div';
 
   return (
-    <WorkspaceRoot ref={workspaceRef} className={"notebook-workspace-shell notebook-list-page w-full bg-paper text-ink flex flex-col " + (focused ? 'notebook-focused h-dvh overflow-hidden' : '')}>
+    <WorkspaceRoot className={"notebook-workspace-shell notebook-list-page workspace-fill bg-paper text-ink " + (focused ? 'notebook-focused' : '')} data-list-collapsed={collapsed || undefined}>
       {/* Top Global Header Bar */}
       {!embedded && (focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" actions={headerActions} /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
         <PageHeader
@@ -332,8 +333,9 @@ export function NotebookWorkspace({
       </header>)}
 
       {/* 资料库视图切换：资料 / 搜集任务 / 待整理 */}
-      {!embedded && <div className="border-b border-border-subtle px-4 py-2 sm:px-6">
+      {!embedded && <div className="shrink-0 border-b border-border-subtle px-4 py-2 sm:px-6">
         <PageTabs
+          variant="page"
           ariaLabel="资料库视图"
           value={view}
           tabs={[{ id: 'notes', label: '资料' }, { id: 'collections', label: '搜集任务' }, { id: 'pending', label: '待整理' }]}
@@ -352,10 +354,13 @@ export function NotebookWorkspace({
         </div>
       )}
 
+      {embedded && view === 'notes' && <div className="notebook-embedded-actions shrink-0 flex items-center justify-end gap-2 pb-2">{headerActions}</div>}
+
       {/* 2-Column Master-Detail Workspace Body */}
       <div className={"notebook-workspace-body min-h-0 overflow-hidden " + (view === 'notes' ? 'flex flex-1' : 'hidden')}>
         {/* Left Column: Master List Pane (Collapsible Drawer) */}
         <aside
+          id={listPaneId}
           className={
             "notebook-master-pane flex-col border-r border-border-subtle bg-surface-muted transition-[width,padding] duration-200 ease-in-out " +
             masterPaneClass
@@ -363,7 +368,6 @@ export function NotebookWorkspace({
         >
           {/* List Search & Filter Toolbar */}
           <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-border-subtle bg-surface/70">
-            {embedded && <div className="flex items-center justify-between pb-1">{headerActions}</div>}
             <div className="relative w-full">
               <Search
                 className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
@@ -469,7 +473,7 @@ export function NotebookWorkspace({
             <Button variant="outline" size="sm" className="mt-2" onClick={() => void refetch()}>重试</Button>
           </Alert>}
           {/* Note Items List Stream */}
-          <div className="notebook-master-list flex-1 overflow-y-auto px-2 py-1 [&>*+*]:border-t [&>*+*]:border-border-subtle">
+          <div className="notebook-master-list min-h-0 flex-1 overflow-y-auto px-2 py-1 [&>*+*]:border-t [&>*+*]:border-border-subtle">
             {isLoading && notes.length === 0 ? (
               <div className="py-1">
                 {[1, 2, 3, 4, 5].map((n) => (

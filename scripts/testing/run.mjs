@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { inventory, projectRoot, selectFiles } from './catalog.mjs';
 
@@ -53,6 +54,14 @@ export function execute(command, args, { cwd = projectRoot, timeout = 180000, en
   });
 }
 
+async function removeTestRoot(root) {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  } catch (error) {
+    console.warn(`warning: could not remove test directory ${root}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function main(args = process.argv.slice(2)) {
   const startedAt = new Date().toISOString();
   let options, outputDirectory;
@@ -83,7 +92,25 @@ export async function main(args = process.argv.slice(2)) {
       if (build.exitCode !== 0) throw Object.assign(new Error('播放包准备失败，查看 prepare.log。'), { unavailable: build.unavailable });
     }
     for (const [index, item] of selected.entries()) {
-      const result = await execute(process.execPath, ['--import', 'tsx/esm', '--test', '--test-concurrency=1', '--test-reporter=tap', item.file], { timeout: options.timeout });
+      const testRoot = await mkdtemp(join(tmpdir(), 'sthstart-test-runner-'));
+      let result;
+      try {
+        const artifactDirectory = join(testRoot, 'artifacts');
+        await mkdir(artifactDirectory, { recursive: true });
+        const testEnvironment = {
+          ...process.env,
+          STHSTART_TEST_RUNNER: '1',
+          STHSTART_TEST_DATA_DIR: testRoot,
+          STHSTART_TEST_ARTIFACT_DIR: artifactDirectory,
+          STHSTART_ARTIFACT_DIR: artifactDirectory,
+          STHSTART_DATABASE_PATH: join(testRoot, 'service.db'),
+          STHSTART_NARRATIVE_DATABASE_PATH: join(testRoot, 'narrative.db'),
+          STHSTART_LOG_DIR: join(testRoot, 'logs'),
+        };
+        result = await execute(process.execPath, ['--import', 'tsx/esm', '--test', '--test-concurrency=1', '--test-reporter=tap', item.file], { timeout: options.timeout, env: testEnvironment });
+      } finally {
+        await removeTestRoot(testRoot);
+      }
       const counts = summarizeTap(result.output);
       const status = result.unavailable ? 'environment-unavailable' : result.exitCode !== 0 || result.timedOut || !counts.tests
         ? 'failed' : counts.pass === 0 && (counts.skipped || counts.todo) ? 'skipped' : 'passed';

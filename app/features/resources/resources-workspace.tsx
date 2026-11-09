@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ResourceNav, type ResourceView } from './resource-nav';
 import { NotebookWorkspace } from '@/app/features/notebook/components/notebook-workspace';
@@ -21,28 +21,6 @@ export interface ResourcesWorkspaceProps {
 export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const workspaceRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
-    const updateHeight = () => {
-      if (window.innerWidth < 1024) {
-        workspace.style.removeProperty('height');
-        return;
-      }
-      const top = workspace.getBoundingClientRect().top + window.scrollY;
-      workspace.style.height = `${Math.max(360, window.innerHeight - top - 16)}px`;
-    };
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    const observer = new ResizeObserver(updateHeight);
-    if (workspace.parentElement) observer.observe(workspace.parentElement);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateHeight);
-    };
-  }, []);
 
   const viewParam = searchParams?.get('view') as ResourceView | null;
   const currentView: ResourceView =
@@ -71,7 +49,7 @@ export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspace
   );
 
   return (
-    <div ref={workspaceRef} className="resources-workspace-shell min-h-0 min-w-0 w-full bg-paper text-ink flex flex-col">
+    <div className="resources-workspace-shell workspace-fill bg-paper text-ink">
       {/* 资料库顶部领域说明与统一子导航 */}
       <div className="resources-workspace-header shrink-0 border-b border-border-subtle bg-surface/80 px-4 py-3 sm:px-6">
         <div className="min-w-0 w-full space-y-2">

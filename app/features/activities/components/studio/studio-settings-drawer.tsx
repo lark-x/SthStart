@@ -60,7 +60,7 @@ export function StudioSettingsDrawer({
     <Drawer open={open} onOpenChange={next => { if (!next) onClose(); }} title="活动全局设置"
       description="修改会自动保存到活动草稿。" className="p-4"
       footer={<Button size="sm" onClick={onClose}>完成</Button>}>
-        <PageTabs ariaLabel="活动设置分类" value={tab} onChange={id => setTab(id as typeof tab)} tabs={[
+        <PageTabs variant="local" ariaLabel="活动设置分类" value={tab} onChange={id => setTab(id as typeof tab)} tabs={[
           { id: 'basics', label: '基本资料' },
           { id: 'actors', label: '登场演员', count: actors.length },
           { id: 'stages', label: '幕次目标', count: stages.length },

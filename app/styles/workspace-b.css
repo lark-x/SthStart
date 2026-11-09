@@ -1,10 +1,54 @@
-/* Shared B geometry. Theme files supply colors; themes never select layouts. */
-html,
-html[data-color-mode] {
+/* Single source for shared B geometry; palettes never select layouts. */
+@theme static {
   --radius-control: 8px;
   --radius-panel: 12px;
   --radius-dialog: 16px;
+}
+:root {
+  --shell-sidebar: 224px;
+  --shell-sidebar-collapsed: 76px;
+  --shell-topbar: 48px;
+  --shell-topbar-mobile: 52px;
+  --shell-gutter: 24px;
+  --shell-gutter-lg: 32px;
+  --shell-gutter-sm: 16px;
+  --shell-reading: 760px;
+  --shell-content-max: 1440px;
+  --shell-settings-max: 1080px;
+  --shell-aside: 320px;
+  --workspace-list-width: 288px;
   --workspace-panel-gap: 16px;
+}
+
+/* Same keyboard/ARIA contract, two deliberate visual scopes. */
+.page-tabs[data-variant] {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline: 4px;
+}
+.page-tabs[data-variant='page'] { padding: 0; border-radius: 0; background: transparent; }
+.page-tabs[data-variant='local'] { padding: 4px; border-radius: var(--radius-control); background: var(--surface-sunken); }
+.page-tabs[data-variant] > [role='tab'] {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+.page-tabs[data-variant='page'] > [aria-selected='true'] { background: var(--surface-raised); box-shadow: var(--elev-xs); }
+.page-tabs[data-variant='local'] > [role='tab'] { min-height: 32px; padding: 4px 12px; }
+.page-tabs[data-variant='local'] > [aria-selected='true'] { background: var(--surface); box-shadow: var(--elev-xs); }
+.page-tabs[data-variant] > [role='tab']:hover:not(:disabled) { background: var(--surface-hover); }
+@media (max-width: 767px) {
+  .page-tabs[data-variant] > [role='tab'] { min-height: 40px; }
 }
 
 .shell-nav-tooltip {
@@ -29,7 +73,7 @@ html[data-color-mode] {
 .shell-drawer .shell-nav-link { min-height: 44px; }
 
 /* Independent surfaces apply to every shared page template and workbench. */
-.shell-root .tpl-panel,
+.tpl-panel,
 .shell-root .home-card {
   min-width: 0;
   border: 0;
@@ -62,14 +106,11 @@ html[data-color-mode] {
 }
 .shell-root .creative-split > :not(.creative-configuration):not(.split-pane-handle):not(.fixed) { padding: 16px; }
 .shell-root .creative-configuration .image-generation-panel { border: 0; border-radius: inherit; box-shadow: none; }
-@media (min-width: 1280px) {
-  /* SplitPanes already reserves the bottom gutter; a second shell gutter overflows. */
-  .shell-content:has(.creative-split) { padding-bottom: 0; }
-  .shell-root .creative-split:not([data-short='true']) > :not(.split-pane-handle):not(.fixed) { height: var(--split-available); }
-}
 
 /* The compatible notebook entry inherits the same panels; resources owns its inset. */
 @media (min-width: 1024px) {
+  .notebook-workspace-shell .notebook-master-pane { width: var(--workspace-list-width); min-width: var(--workspace-list-width); flex-shrink: 0; }
+  .notebook-workspace-shell[data-list-collapsed='true'] .notebook-master-pane { display: none; }
   .shell-root .notebook-workspace-body { gap: var(--workspace-panel-gap); padding: 16px; }
   .shell-root .resources-workspace-shell .notebook-workspace-body { padding: 0; }
   .shell-root .notebook-master-pane,
@@ -77,6 +118,10 @@ html[data-color-mode] {
   .shell-root .notebook-master-pane { background: var(--surface); }
   .shell-root .notebook-detail-pane { background: var(--surface-raised); }
 }
+.notebook-workspace-shell .notebook-master-pane { min-height: 0; }
+.shell-root .notebook-workspace-shell .notebook-master-pane { overflow: visible; }
+.notebook-workspace-shell .notebook-master-pane > :not(.notebook-master-list) { flex-shrink: 0; }
+.notebook-workspace-shell .notebook-master-list { min-height: 0; overscroll-behavior: contain; }
 
 /* Lists stay in normal document flow, with separate cards on the desk. */
 .project-library { max-width: 1440px; gap: 24px; padding: 16px 24px 24px; }
@@ -98,16 +143,15 @@ html[data-color-mode] {
 .project-library-card > p { margin-block: 12px 24px; line-height: 1.8; }
 .project-library-card > div:last-child { border: 0; gap: 8px 16px; padding-top: 16px; }
 
-/* Settings retain natural form scrolling, with category and form surfaces.
- * The marker belongs to the shared shell, avoiding per-route layout edits. */
-.shell-content[data-section='settings'] > div > div > .grid { gap: var(--workspace-panel-gap); align-items: start; }
-.shell-content[data-section='settings'] > div > div > .grid > :first-child {
+/* Settings retain natural form scrolling; layout owns explicit surface roles. */
+.settings-workspace-grid { gap: var(--workspace-panel-gap); align-items: start; }
+.settings-workspace-sidebar {
   padding: 16px;
   border: 0;
   border-radius: var(--radius-panel);
   background: var(--surface);
 }
-.shell-content[data-section='settings'] > div > div > .grid > :last-child {
+.settings-workspace-content {
   padding: 24px;
   border-radius: var(--radius-panel);
   background: var(--surface-raised);
@@ -117,19 +161,18 @@ html[data-color-mode] {
 .shell-content[data-section='settings'] .tpl-container { padding-top: 0; }
 
 @media (min-width: 1536px) {
-  html,
-  html[data-color-mode] { --workspace-panel-gap: 20px; }
+  :root { --workspace-panel-gap: 20px; --workspace-list-width: 304px; }
   .project-library { padding-inline: 32px; }
 }
 @media (max-width: 1023px) {
   .shell-toolbar-inner { background: var(--bg-app); }
   .shell-command-action { min-width: 44px; min-height: 44px; }
-  .shell-content[data-section='settings'] > div > div > .grid > :first-child { padding: 8px; }
+  .settings-workspace-sidebar { padding: 8px; }
 }
 @media (max-width: 639px) {
   .project-library { padding: 16px; }
   .project-library-grid { gap: 16px; }
   .project-library-tools > input { flex-basis: 100%; max-width: none; }
   .project-library-card { min-height: 192px; padding: 20px; }
-  .shell-content[data-section='settings'] > div > div > .grid > :last-child { padding: 16px; }
+  .settings-workspace-content { padding: 16px; }
 }

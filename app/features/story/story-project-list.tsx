@@ -26,6 +26,10 @@ type FilterType = 'all' | StoryProjectType;
 export function StoryProjectList() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const returnTo = searchParams.get('returnTo') || '';
+  const resourcesHref = searchParams.get('from') === 'resources'
+    ? (/^\/apps\/resources(?:[?#]|$)/.test(returnTo) && !/[\\\u0000-\u0020]/.test(returnTo) ? returnTo : '/apps/resources')
+    : null;
   const queryClient = useQueryClient();
   const projects = useStoryProjects();
 
@@ -124,6 +128,7 @@ export function StoryProjectList() {
   return (
     <div className="min-h-0 w-full bg-paper py-6 text-ink">
       <PageContainer className="space-y-5">
+        {resourcesHref && <Link href={resourcesHref} className="inline-flex items-center gap-2 text-sm text-muted hover:text-ink">返回资料库</Link>}
         <PageHeader
           title={headerTitle}
           description={headerDescription}
@@ -143,6 +148,7 @@ export function StoryProjectList() {
         {/* 视图类型筛选标签 */}
         <div className="border-b border-border-subtle pb-1">
           <PageTabs
+            variant="page"
             ariaLabel="项目类型筛选"
             value={activeTypeTab}
             tabs={[

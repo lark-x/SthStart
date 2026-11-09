@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { resolveArtifactFilePath } from './artifacts.js';
 import { readConfig } from './config.js';
 
 export async function computeFileSha256(filePath: string): Promise<string> {
@@ -89,13 +90,18 @@ export async function createPortableBackup(options?: {
     const db = new DatabaseSync(snapshottedServiceDbPath, { readOnly: true });
     try {
       // Query artifacts table
+      const artifactColumns = db.prepare('PRAGMA table_info(artifacts)').all() as Array<{ name: string }>;
+      const storageKeyProjection = artifactColumns.some(column => column.name === 'storage_key')
+        ? 'storage_key'
+        : 'NULL AS storage_key';
       const artifactRows = db.prepare(`
-        SELECT id, app_id, local_path, byte_size, sha256, content_type, file_status
+        SELECT id, app_id, local_path, ${storageKeyProjection}, byte_size, sha256, content_type, file_status
         FROM artifacts
       `).all() as Array<{
         id: string;
         app_id: string;
         local_path: string | null;
+        storage_key: string | null;
         byte_size: number;
         sha256: string | null;
         content_type: string | null;
@@ -116,7 +122,8 @@ export async function createPortableBackup(options?: {
 
       for (const row of artifactRows) {
         const refs = Array.from(refMap.get(row.id) || [row.app_id || 'general']);
-        if (!row.local_path || !existsSync(row.local_path)) {
+        const resolvedPath = resolveArtifactFilePath(row, config.artifactDirectory);
+        if (!resolvedPath) {
           missingFiles.push({
             id: row.id,
             originalPath: row.local_path || 'null',
@@ -126,14 +133,14 @@ export async function createPortableBackup(options?: {
         }
 
         // Compute relative path
-        const ext = basename(row.local_path).includes('.')
-          ? `.${basename(row.local_path).split('.').pop()}`
+        const ext = basename(resolvedPath).includes('.')
+          ? `.${basename(resolvedPath).split('.').pop()}`
           : '';
         const backupFileName = `${row.id}${ext}`;
         const targetFilePath = resolve(backupArtifactsDir, backupFileName);
         const relPath = `artifacts/${backupFileName}`;
 
-        copyFileSync(row.local_path, targetFilePath);
+        copyFileSync(resolvedPath, targetFilePath);
         const sha = (await computeFileSha256(targetFilePath)) || row.sha256 || '';
         const size = statSync(targetFilePath).size;
         totalBytes += size;
