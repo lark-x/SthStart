@@ -14,30 +14,6 @@
 }
 .resources-workspace-header .tpl-header { margin-bottom: 0; padding-block: 0; }
 .resources-navigation { padding-top: 16px; }
-.resources-navigation .resources-view-tabs {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-.resources-view-tabs [role='tab'] {
-  flex-shrink: 0;
-  min-height: 40px;
-  padding: 8px 16px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  font-size: 14px;
-  box-shadow: none;
-}
-.resources-view-tabs [aria-selected='true'] {
-  background: var(--surface-raised);
-  color: var(--fg-default);
-  box-shadow: var(--elev-xs);
-}
 .resources-workspace-content,
 .resources-notes-container,
 .resources-workspace-shell .notebook-workspace-shell {
@@ -114,8 +90,6 @@
   .resources-workspace-shell .notebook-workspace-body { gap: var(--workspace-panel-gap); }
   .resources-workspace-shell .notebook-master-pane {
     position: relative;
-    width: 288px;
-    min-width: 288px;
     height: 100%;
     flex-shrink: 0;
     overflow: visible;
@@ -145,18 +119,15 @@
 }
 @media (min-width: 1536px) {
   .resources-workspace-shell { padding-inline: 32px; }
-  .resources-workspace-shell .notebook-master-pane { width: 304px; min-width: 304px; }
 }
 @media (max-width: 1023px) {
   .resources-workspace-shell { padding: 0 16px 16px; }
   .resources-workspace-header { padding-block: 16px; }
-  .resources-workspace-shell .notebook-workspace-shell { height: auto; }
   .resources-workspace-shell .notebook-master-pane,
-  .resources-workspace-shell .notebook-detail-pane { min-height: 0; height: auto; border: 0; border-radius: var(--radius-panel); background: var(--surface); }
-  .resources-workspace-shell .notebook-detail-pane { overflow: visible; }
-  .resources-workspace-shell .notebook-editor-header { top: var(--shell-sticky-top); padding-inline: 16px; }
+  .resources-workspace-shell .notebook-detail-pane { min-height: 0; height: 100%; border: 0; border-radius: var(--radius-panel); background: var(--surface); }
+  .resources-workspace-shell .notebook-detail-pane { overflow-y: auto; }
+  .resources-workspace-shell .notebook-editor-header { top: 0; padding-inline: 16px; }
   .resources-workspace-shell .notebook-editor-frame:not(.zen-workspace),
   .resources-workspace-shell .notebook-editor-message { padding-inline: 16px; }
-  .resources-workspace-shell .notebook-master-list { flex: none; }
   .resources-workspace-shell .notebook-doc-header > input { font-size: 24px; }
 }

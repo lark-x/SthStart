@@ -1,0 +1,7 @@
+.panel {
+  --shell-content-max: none;
+  --shell-settings-max: none;
+  --shell-gutter-sm: 0px;
+  --shell-gutter: 0px;
+  min-width: 0;
+}

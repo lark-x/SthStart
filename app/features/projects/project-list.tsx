@@ -11,9 +11,25 @@ import { storyApi } from "@/app/features/story/api";
 import { projectsApi } from "./api";
 import { projectKeys } from '@/app/lib/query-keys';
 import { PageHeader } from '@/app/components/shared/page-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
 import { Pagination } from '@/app/components/ui/pagination';
 import { Select } from '@/app/components/ui/select';
 import { PROJECT_PAGE_SIZES, projectListHref, readProjectListState, type ProjectListState } from './list-state';
+
+const PROJECT_SCROLL_PREFIX = 'project-list-scroll:';
+
+function scrollKey(href: string) {
+  return PROJECT_SCROLL_PREFIX + href;
+}
+
+function readScroll(href: string) {
+  try {
+    const value = Number(sessionStorage.getItem(scrollKey(href)));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
 
 function ProjectSearch({ value, onSearch }: { value: string; onSearch: (value: string) => void }) {
   const [input, setInput] = useState({ source: value, draft: value });
@@ -41,8 +57,7 @@ export function ProjectList() {
   const searchParams = useSearchParams();
   const client = useQueryClient();
   const state = useMemo(() => readProjectListState(searchParams), [searchParams]);
-  const href = projectListHref(state, searchParams.toString());
-  const scrollArea = useRef<HTMLDivElement>(null);
+  const scrollHref = projectListHref(state);
   const query = useQuery({
     queryKey: [...projectKeys.all, 'page', state],
     queryFn: ({ signal }) => projectsApi.page(state, signal),
@@ -54,22 +69,54 @@ export function ProjectList() {
     if ('q' in patch || 'sort' in patch || 'pageSize' in patch) next.page = 1;
     router.push(projectListHref(next, searchParams.toString()), { scroll: false });
   };
-  // Normalize bad URLs and clamp a deleted/out-of-range last page using server metadata.
+  // Normalize bad URLs and clamp a deleted/out-of-range last page using metadata
+  // from the current query. keepPreviousData can briefly expose the preceding
+  // page while a new key is loading, so that placeholder must never canonicalize
+  // the URL (for example, rewriting a restored pageSize=50 request to 20).
   useEffect(() => {
-    const page = query.data && !query.isPlaceholderData ? query.data.page : state.page;
+    // During an App Router back transition useSearchParams can briefly retain
+    // the destination route's query while the browser already points at the
+    // restored list. Never rewrite the list from that stale snapshot.
+    if (window.location.pathname !== '/apps/projects'
+      || new URLSearchParams(window.location.search).toString() !== searchParams.toString()) return;
+    const page = query.data && !query.isPlaceholderData && !query.isFetching
+      && query.data.pageSize === state.pageSize ? query.data.page : state.page;
     const canonical = projectListHref({ ...state, page }, searchParams.toString());
     if ('/apps/projects?' + searchParams.toString() !== canonical) router.replace(canonical, { scroll: false });
-  }, [state, query.data, query.isPlaceholderData, router, searchParams]);
-  const ready = !!query.data && !query.isPlaceholderData;
+  }, [state, query.data, query.isPlaceholderData, query.isFetching, router, searchParams]);
+  const ready = !!query.data && !query.isPlaceholderData && !query.isFetching
+    && query.data.pageSize === state.pageSize;
   useEffect(() => {
-    const element = scrollArea.current;
-    if (!element || !ready) return;
-    const key = 'project-list-scroll:' + href;
-    try { element.scrollTop = Number(sessionStorage.getItem(key)) || 0; } catch { element.scrollTop = 0; }
-    const save = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* storage optional */ } };
-    element.addEventListener('scroll', save, { passive: true });
-    return () => { element.removeEventListener('scroll', save); };
-  }, [href, ready]);
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    return () => { window.history.scrollRestoration = previous; };
+  }, []);
+  // Project browsing uses the document scrollbar. Remember the exact filtered URL so
+  // returning from a project and browser back/forward restore the same reading place.
+  useEffect(() => {
+    if (!ready) return;
+    if (window.location.pathname !== '/apps/projects'
+      || new URLSearchParams(window.location.search).toString() !== searchParams.toString()) return;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: readScroll(scrollHref), left: 0, behavior: 'auto' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollHref, ready, searchParams]);
+  useEffect(() => {
+    let frame = 0;
+    const save = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        try { sessionStorage.setItem(scrollKey(scrollHref), String(window.scrollY)); } catch { /* storage optional */ }
+      });
+    };
+    window.addEventListener('scroll', save, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', save);
+    };
+  }, [scrollHref]);
+  const rememberPosition = () => {
+    try { sessionStorage.setItem(scrollKey(scrollHref), String(window.scrollY)); } catch { /* storage optional */ }
+  };
   const [open, setOpen] = useState(() => searchParams.get("new") === "1");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -90,7 +137,7 @@ export function ProjectList() {
   };
   const items = query.data?.items ?? [];
   return (
-    <div className="project-library mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-6 p-4 lg:p-8">
+    <PageContainer className="project-library space-y-6 pb-10 pt-4 sm:pt-6">
       <PageHeader
         title="创作项目"
         description="围绕一部作品组织正文、角色、参考资料与制作版本。"
@@ -113,7 +160,7 @@ export function ProjectList() {
           查看全部制作 <ArrowRight size={16} />
         </Link>
       </div>
-      <div ref={scrollArea} className="min-h-0 flex-1 overflow-y-auto" aria-busy={query.isFetching}>
+      <div aria-busy={query.isFetching}>
       {query.isLoading && <p role="status">正在读取项目…</p>}
       {query.isPlaceholderData && <p role="status" className="pb-4 text-sm text-muted">正在更新，以下为上次查询结果…</p>}
       {query.isError && (
@@ -140,7 +187,8 @@ export function ProjectList() {
           ({ project, chapters, characters, references, productions }) => (
             <Link
               key={project.id}
-              href={"/apps/projects/" + project.id + '?returnTo=' + encodeURIComponent(href)}
+              href={"/apps/projects/" + project.id + '?returnTo=' + encodeURIComponent(scrollHref)}
+              onClick={rememberPosition}
               className="project-library-card group flex min-h-48 flex-col rounded-xl border border-border-subtle bg-surface p-6 transition-colors hover:border-border-default focus-visible:outline-2 focus-visible:outline-accent"
             >
               <div className="flex items-start justify-between gap-4">
@@ -198,6 +246,6 @@ export function ProjectList() {
           </Button>
         </form>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

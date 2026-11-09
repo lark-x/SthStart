@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -17,7 +17,19 @@ import { daysInMonth, leadingBlanks, shiftCalendarMonth, toDateKey } from './cal
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
+const subscribeCalendarClock = () => () => {};
+const clientClockReady = () => true;
+const serverClockReady = () => false;
+
 export function CalendarView() {
+  // The container may use UTC while the browser is already on the next local day.
+  // Render the same loading state for SSR and hydration, then use the user's clock.
+  const ready = useSyncExternalStore(subscribeCalendarClock, clientClockReady, serverClockReady);
+  if (!ready) return <PageContainer><PageHeader title="角色日历" /><p role="status" className="py-8 text-muted">正在载入日历…</p></PageContainer>;
+  return <LocalCalendarView />;
+}
+
+function LocalCalendarView() {
   const router = useRouter();
   const today = useMemo(() => new Date(), []);
   const [year, setYear] = useState(today.getFullYear());

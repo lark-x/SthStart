@@ -675,6 +675,8 @@ export function StudioShell({ activityId }: StudioShellProps) {
         {viewMode === 'materials' ? <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4" data-autohide-scroll><MediaWorkstation activity={activity} document={document} actors={document.actors} currentMediaRevision={activityData?.currentMediaRevision} onUpdateDocument={draft.update} registerFlush={flush => { mediaFlush.current = flush; }} /></div> : viewMode === 'comic' ? (
           <div className="flex-1 min-h-0 overflow-hidden">
             <ComicWorkstation
+              embedded
+              registerFlush={flush => { mediaFlush.current = flush; }}
               activity={activity}
               content={document}
               actors={document.actors}

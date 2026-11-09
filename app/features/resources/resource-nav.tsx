@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BookOpen,
   CalendarClock,
@@ -41,6 +41,20 @@ export function ResourceNav({
   showQuickLinks = true,
 }: ResourceNavProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const withResourceReturn = (href: string, resourceQuery: string) => {
+    const separator = href.indexOf('?');
+    const params = new URLSearchParams(separator >= 0 ? href.slice(separator + 1) : '');
+    params.set('from', 'resources');
+    params.set('returnTo', '/apps/resources' + (resourceQuery ? `?${resourceQuery}` : ''));
+    return `${separator >= 0 ? href.slice(0, separator) : href}?${params.toString()}`;
+  };
+  const openWithResourceContext = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    router.push(withResourceReturn(href, window.location.search.slice(1)));
+  };
 
   const handleTabChange = (nextId: string) => {
     const nextView = nextId as ResourceView;
@@ -56,6 +70,7 @@ export function ResourceNav({
       <div className="resources-navigation flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <PageTabs
           className="resources-view-tabs"
+          variant="page"
           ariaLabel="资料库视图切换"
           value={activeView}
           tabs={RESOURCE_TABS.map((t) => ({ id: t.id, label: t.label }))}
@@ -66,7 +81,8 @@ export function ResourceNav({
           <div className="resources-quick-links flex shrink-0 items-center gap-1 text-sm text-muted" aria-label="相关记录通道">
             <span className="hidden sm:inline text-fg-subtle">记录通道：</span>
             <Link
-              href="/apps/story?type=reflection"
+              href={withResourceReturn('/apps/story?type=reflection', searchParams?.toString() ?? '')}
+              onClick={(event) => openWithResourceContext(event, '/apps/story?type=reflection')}
               className="inline-flex items-center gap-1 rounded-control px-2 py-1 text-muted hover:bg-surface-hover hover:text-ink transition-colors"
               title="查看角色交互与对话体验感想"
             >
@@ -74,7 +90,8 @@ export function ResourceNav({
               <span>对话感想</span>
             </Link>
             <Link
-              href="/apps/narrative"
+              href={withResourceReturn('/apps/narrative', searchParams?.toString() ?? '')}
+              onClick={(event) => openWithResourceContext(event, '/apps/narrative')}
               className="inline-flex items-center gap-1 rounded-control px-2 py-1 text-muted hover:bg-surface-hover hover:text-ink transition-colors"
               title="原作剧情任务链与原文检索"
             >

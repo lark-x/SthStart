@@ -219,6 +219,7 @@ export function ControlCenter() {
 
       {/* 分区导航与其它设置页共用页级 tab（§8.12），移动端热区由 .page-tabs 统一保证。 */}
       <PageTabs
+        variant="page"
         ariaLabel="控制中心分区"
         value={tab}
         onChange={(id) => setTab(id as Tab)}

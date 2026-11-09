@@ -37,7 +37,7 @@ export function StudioCandidateDialog({ activityId, jobId, onClose, onApplied }:
         {running && <Alert variant="info">任务仍在生成，完成后候选会出现在这里。</Alert>}
         {data && !running && !candidates.length && <p className="text-sm text-muted">这个任务没有可采用的候选。</p>}
         {candidates.length > 1 && (
-          <PageTabs ariaLabel="候选列表" value={current?.id ?? ''} onChange={setPickedId}
+          <PageTabs variant="local" ariaLabel="候选列表" value={current?.id ?? ''} onChange={setPickedId}
             tabs={candidates.map((candidate, index) => ({ id: candidate.id, label: `候选 ${index + 1}${candidate.adopted ? ' · 已采用' : ''}` }))} />
         )}
         {current && <CandidateReviewPanel key={current.id} activityId={activityId} candidateId={current.id} onApplied={onApplied} />}

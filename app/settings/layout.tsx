@@ -10,6 +10,7 @@ import {
   Activity,
   CloudUpload,
 } from 'lucide-react';
+import styles from './settings-layout.module.css';
 
 interface SettingsTab {
   href: string;
@@ -61,10 +62,10 @@ export default function SettingsLayout({
   return (
     <div className="min-h-full">
       <div className="mx-auto w-full max-w-[calc(var(--shell-settings-max)_+_13rem)] px-3 py-3 sm:px-6 lg:py-8">
-        <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+        <div className="settings-workspace-grid grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
           <nav
             aria-label="设置中心二级导航"
-            className="min-w-0 border-b border-border-subtle pb-2 lg:border-b-0 lg:pb-0 lg:sticky lg:top-[calc(var(--shell-sticky-top)_+_1.5rem)] lg:self-start"
+            className="settings-workspace-sidebar min-w-0 border-b border-border-subtle pb-2 lg:border-b-0 lg:pb-0 lg:sticky lg:top-[calc(var(--shell-sticky-top)_+_1.5rem)] lg:self-start"
           >
             <div className="mb-4 hidden border-b border-border-subtle pb-4 lg:block">
               <p className="text-xs font-semibold tracking-[0.08em] text-muted">设置中心</p>
@@ -96,7 +97,7 @@ export default function SettingsLayout({
             </div>
           </nav>
 
-          <div className="min-w-0 [&>.tpl-container]:max-w-none [&>.tpl-container]:px-0">
+          <div className={`${styles.panel} settings-workspace-content min-w-0`}>
             {children}
           </div>
         </div>

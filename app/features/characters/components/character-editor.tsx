@@ -590,7 +590,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       {/* 双栏工作台：左栏立绘卡片与资产管理，右栏沉浸式档案创作 */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">
         {/* ================= 左栏：角色卡预览、上下文微操作、资产库、衍生形态 ================= */}
-        <div className="order-2 lg:order-1 space-y-5 lg:sticky lg:top-6">
+        <div
+          className="order-2 space-y-5 lg:order-1 lg:sticky"
+          style={{ top: 'calc(var(--shell-sticky-top) + 1rem)' }}
+        >
           {/* 移动端紧凑可展开条目：在小屏上收纳预览，不挡主表单首屏 */}
           <div className="lg:hidden rounded-panel border border-border-subtle bg-surface p-3">
             <button
@@ -935,7 +938,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         {/* ================= 右栏：行内档案头 + 分段创作画布 ================= */}
-        <div className="order-1 lg:order-2 rounded-panel border border-border-subtle bg-surface p-4 sm:p-6 space-y-6 max-w-[780px] w-full min-w-0">
+        <div className="order-1 w-full min-w-0 space-y-6 rounded-panel border border-border-subtle bg-surface p-4 sm:p-6 lg:order-2">
           {/* 行内原生档案头 (无需点击弹窗直接编辑) */}
           <div className="space-y-3 pb-5 border-b border-border-subtle">
             <div className="flex items-center justify-between gap-3">
@@ -1016,7 +1019,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
           </div>
 
           {/* 分段创作画布导航 (替代纵向无脑连续堆叠) */}
-          <PageTabs ariaLabel="角色档案编辑分段" value={activeTab} onChange={id => setActiveTab(id as typeof activeTab)} className="character-editor-tabs w-full" tabs={[
+          <PageTabs variant="local" ariaLabel="角色档案编辑分段" value={activeTab} onChange={id => setActiveTab(id as typeof activeTab)} className="character-editor-tabs w-full" tabs={[
             {id:'persona',label:<><User className="h-4 w-4" aria-hidden="true" />人设</>},
             {id:'visual',label:<><Camera className="h-4 w-4" aria-hidden="true" />外貌</>},
             {id:'assets',label:<><Images className="h-4 w-4" aria-hidden="true" />资产</>,count:assetsData?.items?.length},
@@ -1025,7 +1028,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
           {/* ================= 视图 1：人设档案 ================= */}
           {activeTab === 'persona' && (
-            <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="mx-auto w-full max-w-[var(--shell-reading)] space-y-5 animate-in fade-in duration-200">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <label htmlFor="char-summary" className="font-semibold text-ink">
@@ -1065,7 +1068,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
 
           {/* ================= 视图 2：外貌与服装 ================= */}
           {activeTab === 'visual' && (
-            <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="mx-auto w-full max-w-[var(--shell-reading)] space-y-5 animate-in fade-in duration-200">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <label htmlFor="char-appearance-base" className="font-semibold text-ink">

@@ -159,7 +159,7 @@ export function registerMediaLibraryRoutes(
         }
 
         let resolvedStatus: MediaLibraryStatus = (row.file_status as MediaLibraryStatus) || 'ready';
-        if (resolvedStatus === 'ready') {
+        if (resolvedStatus === 'ready' || resolvedStatus === 'missing') {
           // minimal 状态判定使用与 file route 完全一致的 resolveArtifactStoragePath(root)，不轻信被 root 拒绝的 local_path
           let resolvedPath: string | null = null;
           if (config.artifactDirectory) {
@@ -167,9 +167,7 @@ export function registerMediaLibraryRoutes(
           } else if (row.local_path && existsSync(row.local_path)) {
             resolvedPath = row.local_path;
           }
-          if (!resolvedPath || !existsSync(resolvedPath)) {
-            resolvedStatus = 'missing';
-          }
+          resolvedStatus = resolvedPath && existsSync(resolvedPath) ? 'ready' : 'missing';
         }
 
         if (status && resolvedStatus !== status) {

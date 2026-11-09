@@ -333,6 +333,28 @@ test('media-library range suffix bytes=-N and non-ready status enforcement', asy
   }
 });
 
+test('media-library detects restored files without releasing quarantined files', async () => {
+  const f = await createFixture();
+  try {
+    const now = nowIso();
+    f.database.connection.prepare(`INSERT INTO managed_apps (id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES ('activities','Activities','hash','[]',1,?,?)`).run(now,now);
+    const filePath = join(f.dir, 'restored.png');
+    const insert = f.database.connection.prepare(`INSERT INTO artifacts (id,app_id,content_type,byte_size,file_status,local_path,storage_key,created_at) VALUES (?,'activities','image/png',8,?,?,?,?)`);
+    insert.run('restored','missing','/old/storage/restored.png','restored.png',now);
+    insert.run('protected','quarantined',filePath,'restored.png',now);
+    const read = (status: string) => f.app.inject({method:'GET',url:'/api/v1/admin/media-library?status='+status,headers:{'x-sthstart-admin-token':f.adminToken}});
+    assert.equal((await read('ready')).json().total,0);
+    await writeFile(filePath,Buffer.from('restored'));
+    const restored = (await read('ready')).json();
+    assert.equal(restored.total,1);
+    assert.equal(restored.items[0].id,'restored');
+    assert.equal(restored.items[0].fileStatus,'ready');
+    assert.equal((await read('missing')).json().total,0);
+    assert.equal((await read('quarantined')).json().total,1);
+    assert.equal(f.database.connection.prepare('SELECT file_status FROM artifacts WHERE id=?').get('protected')?.file_status,'quarantined');
+  } finally { await f.cleanup(); }
+});
+
 test('media-library uses the artifact id as a stable pagination tie-breaker', async () => {
   const f = await createFixture();
   try {

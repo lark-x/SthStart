@@ -1,5 +1,8 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   AppDescriptor,
   AppsResponse,
@@ -7,7 +10,7 @@ import type {
   HealthResponse,
 } from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
-import { readConfig } from './config.js';
+import { DEFAULT_ARTIFACT_DIRECTORY, readConfig } from './config.js';
 import { inspectLinshe } from './registry.js';
 import { ServiceDatabase } from './database.js';
 import { hashToken, issueToken, SecretStore } from './security.js';
@@ -70,10 +73,58 @@ interface ServiceOptions {
   narrativeDatabase?: NarrativeDatabase;
 }
 
+function isInsideDirectory(root: string, candidate: string) {
+  const rel = relative(resolve(root), resolve(candidate));
+  return Boolean(rel) && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+function resolveIsolatedTestArtifactDirectory(value: string) {
+  const candidate = resolve(value);
+  const systemTemp = resolve(tmpdir());
+  if (candidate === DEFAULT_ARTIFACT_DIRECTORY
+    || isInsideDirectory(DEFAULT_ARTIFACT_DIRECTORY, candidate)
+    || !isInsideDirectory(systemTemp, candidate)) {
+    throw new Error('STHSTART_TEST_ARTIFACT_DIR must be an isolated directory inside the system temporary directory.');
+  }
+  let realCandidate: string;
+  let realSystemTemp: string;
+  try {
+    realCandidate = realpathSync(candidate);
+    realSystemTemp = realpathSync(systemTemp);
+  } catch {
+    throw new Error('STHSTART_TEST_ARTIFACT_DIR must already exist and resolve inside the system temporary directory.');
+  }
+  if (realCandidate === DEFAULT_ARTIFACT_DIRECTORY
+    || isInsideDirectory(DEFAULT_ARTIFACT_DIRECTORY, realCandidate)
+    || !isInsideDirectory(realSystemTemp, realCandidate)) {
+    throw new Error('STHSTART_TEST_ARTIFACT_DIR resolves outside the isolated system temporary directory.');
+  }
+  return realCandidate;
+}
+
 export async function createService(options: ServiceOptions = {}) {
-  const config = options.config ?? readConfig();
+  let config = options.config ?? readConfig();
+  let temporaryArtifactDirectory: string | null = null;
+  const usesUnsafeDefaultArtifactRoot = resolve(config.artifactDirectory) === DEFAULT_ARTIFACT_DIRECTORY;
+  if (usesUnsafeDefaultArtifactRoot
+    && (options.database || process.env.STHSTART_TEST_RUNNER === '1')) {
+    const configuredIsolation = process.env.STHSTART_TEST_ARTIFACT_DIR?.trim();
+    if (process.env.STHSTART_TEST_RUNNER === '1' && !configuredIsolation) {
+      throw new Error('Test runner must provide STHSTART_TEST_ARTIFACT_DIR before creating a service.');
+    }
+    const isolated = process.env.STHSTART_TEST_RUNNER === '1'
+      ? resolveIsolatedTestArtifactDirectory(configuredIsolation!)
+      : mkdtempSync(join(tmpdir(), 'sthstart-memory-service-'));
+    config = { ...config, artifactDirectory: isolated };
+    if (process.env.STHSTART_TEST_RUNNER !== '1') temporaryArtifactDirectory = config.artifactDirectory;
+  }
   const startedAt = Date.now();
   const app = Fastify({ logger: false, bodyLimit: 12 * 1024 * 1024 });
+  if (temporaryArtifactDirectory) {
+    app.addHook('onClose', async () => {
+      rmSync(temporaryArtifactDirectory!, { recursive: true, force: true });
+    });
+  }
   const inspectApp = options.inspectApp ?? (() => inspectLinshe(config));
   const database = options.database ?? new ServiceDatabase(config.databasePath);
   // Keep a user-provided token stable for separately started Linshe processes
@@ -277,12 +328,14 @@ export async function createService(options: ServiceOptions = {}) {
   // Finish the initial media reconciliation before exposing routes. Legacy
   // notebook/character uploads share this directory and must not race with the
   // startup orphan scan.
-  await reconcileArtifacts(config, database).catch((err) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!msg.includes('database is not open')) {
-      runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-reconcile', stream: 'system', level: 'warn', message: `媒体库巡检异常：${msg}`, force: true });
-    }
-  });
+  if (database.path !== ':memory:') {
+    await reconcileArtifacts(config, database).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('database is not open')) {
+        runtimeLogs.append({ appId: 'sthstart', serviceId: 'artifact-reconcile', stream: 'system', level: 'warn', message: `媒体库巡检异常：${msg}`, force: true });
+      }
+    });
+  }
   reconcileMediaBatchesOnStartup(database, config, secrets, new ActivityStore(database), options.fetcher);
   resumeGenerationExecutions(database);
   const genScheduler = startGenerationScheduler(config, database, secrets, 2000, options.fetcher);

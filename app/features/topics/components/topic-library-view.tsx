@@ -341,6 +341,7 @@ export function TopicLibraryView({ embedded = false }: { embedded?: boolean } = 
                   <Button size="sm" variant="ghost" onClick={() => void topicsQuery.refetch()}><RefreshCw className="h-3.5 w-3.5" />刷新列表</Button>
                 </div>
                 <PageTabs
+                  variant="local"
                   ariaLabel="素材视图"
                   value={view}
                   onChange={(value) => { const nextView = value as TopicView; setView(nextView); setDays(defaultTopicDays(nextView)); setPage(1); }}

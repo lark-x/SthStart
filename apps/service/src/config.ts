@@ -38,6 +38,7 @@ interface LinsheMetadata {
 }
 
 const projectRoot = resolve(import.meta.dirname, '../../../');
+export const DEFAULT_ARTIFACT_DIRECTORY = resolve(projectRoot, 'data/artifacts');
 
 function projectPath(value: string | undefined, fallback: string) {
   const configured = value?.trim();

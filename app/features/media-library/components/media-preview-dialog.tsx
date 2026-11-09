@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { X, ExternalLink, Download, AlertTriangle, HardDrive, CheckCircle2 } from 'lucide-react';
 import type { MediaLibraryItem } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
@@ -23,6 +23,7 @@ export function MediaPreviewDialog({
   onChooseArtifact,
 }: MediaPreviewDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
   useOverlayAccessibility({
     open: isOpen,
@@ -34,7 +35,8 @@ export function MediaPreviewDialog({
 
   const isMissing = item.fileStatus === 'missing';
   const isQuarantined = item.fileStatus === 'quarantined';
-  const isUnusable = isMissing || isQuarantined;
+  const loadFailed = failedUrl === item.fileUrl;
+  const isUnusable = isMissing || isQuarantined || loadFailed;
   const isImage = item.mediaKind === 'image';
   const isVideo = item.mediaKind === 'video';
   const isAudio = item.mediaKind === 'audio';
@@ -68,6 +70,8 @@ export function MediaPreviewDialog({
               <Badge variant="error" className="gap-1">
                 <AlertTriangle className="h-3 w-3" /> 已隔离
               </Badge>
+            ) : loadFailed ? (
+              <Badge variant="warning">加载失败</Badge>
             ) : (
               <Badge variant="online" className="gap-1">
                 <CheckCircle2 className="h-3 w-3" /> 可用
@@ -93,7 +97,7 @@ export function MediaPreviewDialog({
                 <AlertTriangle className="h-10 w-10 text-warning-fg" />
                 <p className="text-sm font-medium text-ink">源文件缺失或不可访问</p>
                 <p className="text-xs max-w-xs text-muted">
-                  该产物元数据已登记，但在磁盘存储根目录未检测到对应实体文件。禁止打开或下载。
+                  这份素材的记录和引用仍在，但原文件不在当前存储目录。请从包含媒体文件的备份恢复；仅恢复数据库无法找回图片、音频或视频。
                 </p>
               </div>
             ) : isQuarantined ? (
@@ -104,9 +108,16 @@ export function MediaPreviewDialog({
                   该文件已被标记为隔离状态，实体内容已封禁，禁止媒体预览、下载或跨项目采用。
                 </p>
               </div>
+            ) : loadFailed ? (
+              <div role="alert" className="flex flex-col items-center gap-3 p-6 text-center text-muted">
+                <AlertTriangle className="h-10 w-10" />
+                <p>文件加载失败，可能已被移动，或连接暂时不可用。</p>
+                <Button variant="outline" onClick={() => setFailedUrl(null)}>重试预览</Button>
+              </div>
             ) : isImage ? (
               <img
                 src={item.fileUrl}
+                onError={() => setFailedUrl(item.fileUrl)}
                 alt={item.originalName || '完整原图预览'}
                 className="max-h-[60vh] max-w-full rounded object-contain"
               />
@@ -114,13 +125,14 @@ export function MediaPreviewDialog({
               <video
                 controls
                 src={item.fileUrl}
+                onError={() => setFailedUrl(item.fileUrl)}
                 className="max-h-[60vh] max-w-full rounded bg-black"
               >
                 您的浏览器不支持视频播放。
               </video>
             ) : isAudio ? (
               <div className="w-full max-w-md p-6 flex flex-col items-center gap-4">
-                <audio controls src={item.fileUrl} className="w-full" />
+                <audio controls src={item.fileUrl} onError={() => setFailedUrl(item.fileUrl)} className="w-full" />
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2 text-muted">

@@ -7,7 +7,7 @@ import { cn } from '../../lib/cn';
  * 双栏工作区：两栏各自成为**独立滚动区域**。
  *
  * 核心工程物理学（逆向吸收自 Claude Design System）:
- * 1. 视口自适应测高与独立滚动（保持现有 --split-available 变量注入）；
+ * 1. 高度由外框 CSS 链分配，两栏独立滚动；JS 只测量拖拽宽度；
  * 2. 指针捕获与 Iframe 事件防吞噬护盾 (setPointerCapture + 全局防穿透遮罩)；
  * 3. 4px 移动死区 (Dead-Zone) 过滤点击微颤；
  * 4. Escape 键盘撤销拖拽回退机制；
@@ -16,8 +16,6 @@ import { cn } from '../../lib/cn';
  * 7. 移动端/小屏模式优雅回退（保留 from 断点特性，小屏自动堆叠且不渲染手柄）。
  */
 
-const BOTTOM_GUTTER = 24;
-const MIN_AVAILABLE = 360;
 const DEAD_ZONE = 4;
 const HANDLE_WIDTH = 24;
 
@@ -99,35 +97,6 @@ export function SplitPanes({
     mediaQuery.addEventListener('change', updateWide);
     return () => mediaQuery.removeEventListener('change', updateWide);
   }, [from]);
-
-  // 2. 测量文档坐标与可用高度
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    let lastAvailable = Number.NaN;
-    let frame = 0;
-
-    const update = () => {
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      const available = Math.max(0, window.innerHeight - top - BOTTOM_GUTTER);
-      el.dataset.short = String(available < MIN_AVAILABLE);
-      if (Math.abs(available - lastAvailable) < 1) return;
-      lastAvailable = available;
-      el.style.setProperty('--split-available', `${Math.round(available)}px`);
-    };
-
-    update();
-    // Defer geometry writes outside the observer delivery cycle.
-    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
-    window.addEventListener('resize', schedule);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    observer?.observe(document.body);
-    return () => {
-      window.removeEventListener('resize', schedule);
-      observer?.disconnect();
-      cancelAnimationFrame(frame);
-    };
-  }, []);
 
   // Re-clamp saved ratios after resize; pointer-only limits miss restored layouts.
   useEffect(() => {
@@ -260,7 +229,7 @@ export function SplitPanes({
   // 8. 键盘辅助：左右方向键微调比例，Home/Enter 归位 50/50
   const handleHandleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (!resizable || !isWide) return;
+      if (!resizable || !isWide || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         const step = e.shiftKey ? 0.05 : 0.02;
@@ -297,9 +266,9 @@ export function SplitPanes({
       data-pane-dragging={isDragging ? 'true' : undefined}
       style={showResizableSplit ? { gap: 0 } : undefined}
       className={cn(
-        'split-panes min-w-0 relative',
+        'split-panes min-h-0 min-w-0 relative',
         showResizableSplit
-          ? 'flex flex-row items-start gap-0'
+          ? 'flex flex-row items-stretch gap-0'
           : 'grid grid-cols-1 gap-4',
         className,
       )}

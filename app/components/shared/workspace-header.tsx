@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Menu, ListTodo } from 'lucide-react';
+import { ArrowLeft, Menu, ListTodo, Search } from 'lucide-react';
 import { cn } from '@/app/lib/cn';
 import { useGlobalTasks } from '@/app/features/tasks/queries';
 
@@ -52,7 +52,7 @@ export function WorkspaceHeader({
   return (
     <header
       className={cn(
-        'min-h-[52px] px-2.5 sm:px-4 py-0 shrink-0 min-w-0 flex items-center gap-1.5 border-b border-border-subtle bg-surface select-none z-20',
+        'workspace-header min-h-[var(--shell-topbar-mobile)] lg:min-h-[var(--shell-topbar)] px-2.5 sm:px-4 py-0 shrink-0 min-w-0 flex items-center gap-1.5 border-b border-border-subtle bg-surface select-none z-20',
         centerSlot && centerSlotOnMobile && 'max-md:flex-wrap',
         className
       )}
@@ -94,6 +94,16 @@ export function WorkspaceHeader({
         >
           <Menu className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
           <span className="hidden xl:inline">导航</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }))}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-sm text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
+          title="搜索与命令 (Ctrl/Cmd+K)"
+          aria-label="搜索与命令"
+        >
+          <Search className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
         </button>
 
         <button

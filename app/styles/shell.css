@@ -8,31 +8,20 @@
 /* ==================== B 外框：紧凑导航 + 独立工作面画布 ==================== */
 
 /*
- * 普通页面使用文档滚动，工作台自行分配可用高度与独立滚动。
+ * 普通页面使用文档滚动，工作台由外框分配可用高度与独立滚动。
  * 外壳不再包裹一张大卡片；--shell-sticky-top 为页面吸顶操作提供偏移。
  */
 .shell-root {
   --shell-inset: 0px;
-  --shell-sidebar: 224px;
-  --shell-sidebar-collapsed: 76px;
-  --shell-topbar: 48px;
-  --shell-topbar-mobile: 52px;
-  --shell-gutter: 24px;
-  --shell-gutter-lg: 32px;
-  --shell-sticky-top: calc(var(--shell-inset) + var(--shell-topbar));
-  --shell-workspace-height: calc(100dvh - var(--shell-topbar) - var(--shell-inset) * 2);
+  --shell-toolbar-height: var(--shell-topbar);
+  --shell-sticky-top: calc(var(--shell-inset) + var(--shell-toolbar-height));
+  --shell-workspace-height: calc(100dvh - var(--shell-toolbar-height) - var(--shell-inset) * 2);
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
   background-color: var(--bg-app);
-}
-
-@media (min-width: 1024px) {
-  .shell-root:not([data-embed='true']) {
-    --shell-inset: 0px;
-  }
 }
 
 /* ---------- Heti 赫蹏级中文长文排版与屏幕阅读流 ---------- */
@@ -407,6 +396,7 @@
  * 内容从工具栏下滚过时，外层盖住圆角外侧那一小块，圆角始终干净。
  */
 .shell-toolbar {
+  flex-shrink: 0;
   position: sticky;
   top: var(--shell-inset);
   z-index: var(--z-sticky);
@@ -686,22 +676,19 @@
 
 /* ---------- 双栏工作区：两栏各自独立滚动 ---------- */
 
-.split-panes {
-  align-items: start;
-}
+.split-panes { align-items: stretch; }
 
 @media (min-width: 1024px) {
-  .split-panes[data-from='lg']:not([data-short='true']) > * {
-    max-height: var(--split-available, calc(100dvh - 15rem));
+  .split-panes[data-from='lg'] > :not(.split-pane-handle):not(.fixed) {
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
 }
 
 @media (min-width: 1280px) {
-  .split-panes[data-from='lg']:not([data-short='true']) > *,
-  .split-panes[data-from='xl']:not([data-short='true']) > * {
-    max-height: var(--split-available, calc(100dvh - 15rem));
+  .split-panes[data-from='xl'] > :not(.split-pane-handle):not(.fixed) {
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -715,8 +702,7 @@
 
 /* The generator owns one scroll surface; its action area stays outside it. */
 @media (min-width: 1280px) {
-  .creative-split:not([data-short='true']) > .creative-configuration {
-    height: var(--split-available);
+  .creative-split > .creative-configuration {
     overflow: hidden;
   }
   .creative-configuration > div,
@@ -966,8 +952,7 @@ html[data-scrolling],
   }
 
   .shell-root {
-    --shell-sticky-top: var(--shell-topbar-mobile);
-    --shell-workspace-height: calc(100dvh - var(--shell-topbar-mobile));
+    --shell-toolbar-height: var(--shell-topbar-mobile);
   }
 }
 
@@ -997,9 +982,9 @@ html[data-scrolling],
   .desk-directory-arrow { opacity: .65; transform: none; }
 }
 
-/* 邻舍与工作室嵌入：精简外框，锁定视口高度，各列独立计算高度与滚动。 */
+/* 邻舍独立嵌入：精简外框，锁定视口高度。普通工作台保留桌面导航。 */
 .shell-root[data-embed='true'] {
-  --shell-workspace-height: 100dvh;
+  --shell-toolbar-height: 0px;
   grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
@@ -1024,7 +1009,68 @@ html[data-scrolling],
   overflow: hidden;
 }
 
+/* The shell owns viewport height. Children only divide the remaining space. */
+.workspace-fill {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shell-root[data-workspace-header='true'] { --shell-toolbar-height: 0px; }
+.shell-root[data-workspace]:not([data-workspace='creative']) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.shell-root[data-workspace] > .shell-main,
+.shell-root[data-workspace] > .shell-main > .shell-surface {
+  min-height: 0;
+}
+.shell-root[data-workspace]:not([data-workspace='creative']) > .shell-main,
+.shell-root[data-workspace]:not([data-workspace='creative']) > .shell-main > .shell-surface {
+  height: 100%;
+  overflow: hidden;
+}
+.shell-root[data-workspace] .shell-content {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+.shell-root[data-workspace]:not([data-workspace='creative']) .shell-content { overflow: hidden; }
+.shell-root[data-workspace] .shell-content > * { min-width: 0; min-height: 0; }
+.shell-root[data-workspace='editor'] .shell-content > :not(.fixed) { height: 100%; max-height: 100%; }
+.workspace-header { overflow: visible; }
+/* Wide generators share the same height chain; narrow mode stays a document. */
+@media (min-width: 1280px) {
+  .shell-root[data-workspace='creative'] { height: 100dvh; min-height: 0; overflow: hidden; }
+  .shell-root[data-workspace='creative'] > .shell-main,
+  .shell-root[data-workspace='creative'] > .shell-main > .shell-surface { height: 100%; overflow: hidden; }
+  .shell-root[data-workspace='creative'] .shell-content { overflow: hidden; }
+  .shell-root[data-workspace='creative'] .shell-content > .tpl-container {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: var(--workspace-panel-gap);
+    padding-block: 16px;
+  }
+  .shell-root[data-workspace='creative'] .shell-content > .tpl-container > * { flex-shrink: 0; margin-block: 0; }
+  .shell-root[data-workspace='creative'] .shell-content > .tpl-container > .creative-split { flex: 1 1 0%; min-height: 0; }
+  .creative-split > :not(.split-pane-handle):not(.fixed) { height: 100%; }
+}
+
 /* ==================== Zen 禅道专注写作模式 ==================== */
+/* CSS follows the mounted editor state; leaving zen restores the shell preference. */
+.shell-root:has(.zen-workspace) {
+  --shell-toolbar-height: 0px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.shell-root:has(.zen-workspace) > .shell-sidebar,
+.shell-root:has(.zen-workspace) > .shell-main > .shell-surface > .shell-toolbar { display: none; }
 .zen-workspace {
   width: 100%;
   max-width: 760px !important;
@@ -1040,7 +1086,6 @@ html[data-scrolling],
 
 
 /* Navigation and document surfaces share theme tokens; content supplies hierarchy. */
-.tpl-panel,
 .runtime-strip,
 .desk-directory-card {
   min-width: 0;
@@ -1048,12 +1093,6 @@ html[data-scrolling],
   border-radius: var(--radius-panel);
   background: var(--surface-sunken);
   box-shadow: none;
-}
-.tpl-panel {
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-  border-radius: 0;
-  background: transparent;
 }
 .desk-directory-card:hover { background: var(--surface-hover); }
 .desk-directory-icon { background: var(--surface-sunken); color: var(--fg-muted); }

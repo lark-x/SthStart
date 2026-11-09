@@ -382,6 +382,7 @@ export function WorkflowWorkspace({
         {/* 编辑区：四个页签。 */}
         <section className="min-w-0" aria-label="工作流编辑区">
           <PageTabs
+            variant="local"
             ariaLabel="工作流编辑页签"
             value={editorTab}
             onChange={setEditorTab}

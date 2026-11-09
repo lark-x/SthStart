@@ -7,6 +7,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ArtifactDescriptor, ArtifactFileStatus } from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
+import { DEFAULT_ARTIFACT_DIRECTORY } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 
@@ -41,27 +42,43 @@ function legacyArtifactStorageKey(localPath: string, artifactDirectory: string):
   return safeArtifactPath(artifactDirectory, key) ? key : null;
 }
 
+/**
+ * Resolve an artifact from its legacy absolute path or portable storage key.
+ * Shared by database reads and portable backups so both use the active root.
+ */
+export function resolveArtifactFilePath(
+  row: { local_path: string | null; storage_key: string | null },
+  artifactDirectory: string,
+): string | null {
+  if (row.local_path && existsSync(row.local_path)) return row.local_path;
+  const key = row.storage_key || (row.local_path ? legacyArtifactStorageKey(row.local_path, artifactDirectory) : null);
+  const candidate = key ? safeArtifactPath(artifactDirectory, key) : null;
+  return candidate && existsSync(candidate) ? candidate : null;
+}
+
 /** Resolve portable artifact keys and known Docker-era absolute paths inside the active storage root. */
 export function resolveArtifactStoragePath(database: ServiceDatabase, artifactId: string, artifactDirectory: string): string | null {
   const row = database.connection.prepare('SELECT local_path,storage_key,file_status FROM artifacts WHERE id=?').get(artifactId) as
     { local_path: string | null; storage_key: string | null; file_status: string } | undefined;
   if (!row) return null;
 
-  if (row.local_path && existsSync(row.local_path)) {
+  const localPathExists = Boolean(row.local_path && existsSync(row.local_path));
+  const resolvedPath = resolveArtifactFilePath(row, artifactDirectory);
+  if (!resolvedPath) return null;
+
+  if (localPathExists && row.local_path) {
     const key = legacyArtifactStorageKey(row.local_path, artifactDirectory);
     if (row.file_status !== 'ready' || key && key !== row.storage_key) {
       database.connection.prepare("UPDATE artifacts SET storage_key=COALESCE(?,storage_key),file_status='ready',updated_at=? WHERE id=?")
         .run(key?.replaceAll('\\', '/') ?? null, nowIso(), artifactId);
     }
-    return row.local_path;
+    return resolvedPath;
   }
 
   const key = row.storage_key || (row.local_path ? legacyArtifactStorageKey(row.local_path, artifactDirectory) : null);
-  const candidate = key ? safeArtifactPath(artifactDirectory, key) : null;
-  if (!candidate || !existsSync(candidate)) return null;
   database.connection.prepare("UPDATE artifacts SET local_path=?,storage_key=?,file_status='ready',updated_at=? WHERE id=?")
-    .run(candidate, key!.replaceAll('\\', '/'), nowIso(), artifactId);
-  return candidate;
+    .run(resolvedPath, key!.replaceAll('\\', '/'), nowIso(), artifactId);
+  return resolvedPath;
 }
 
 export async function computeFileSha256(filePath: string): Promise<string> {
@@ -838,6 +855,10 @@ export async function reconcileArtifacts(
   orphansRemoved: number;
   tempFilesCleaned: number;
 }> {
+  if (process.env.STHSTART_TEST_RUNNER === '1'
+    && resolve(config.artifactDirectory) === DEFAULT_ARTIFACT_DIRECTORY) {
+    throw new Error('Refusing to scan the production artifact directory from the test runner; use an isolated STHSTART_ARTIFACT_DIR.');
+  }
   await mkdir(config.artifactDirectory, { recursive: true });
   const knownPaths = new Set<string>();
   // 导入会话的暂存文件按设计不登记在 artifacts：它们在会话提交时才成为来源快照或资产。

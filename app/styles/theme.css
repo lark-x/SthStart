@@ -107,10 +107,7 @@
   --focus-ring: var(--accent);
   --focus-ring-offset: 2px;
 
-  /* ---------- 形状：控件 10px、卡片 16px、对话框 20px ---------- */
-  --radius-control: 10px;
-  --radius-panel: 16px;
-  --radius-dialog: 20px;
+  /* 共享工作区几何由 workspace-b.css 提供；这里保留通用形状别名。 */
   --radius-chip: 9999px;
   --radius-xs: 6px;
   --radius-sm: 8px;
@@ -156,18 +153,6 @@
   --hero-orbit-soft: color-mix(in srgb, var(--accent) 10%, transparent);
   --hero-dot: var(--accent);
 
-  /* ---------- 外框尺寸 ---------- */
-  --shell-sidebar: 248px;
-  --shell-sidebar-collapsed: 72px;
-  --shell-topbar: 56px;
-  --shell-topbar-mobile: 52px;
-  --shell-gutter: 28px;
-  --shell-gutter-lg: 40px;
-  --shell-gutter-sm: 16px;
-  --shell-reading: 760px;
-  --shell-content-max: 1440px;
-  --shell-settings-max: 1080px;
-  --shell-aside: 320px;
   --z-page: 0;
   --z-sticky: 30;
   --z-menu: 40;
@@ -463,13 +448,6 @@ html[data-theme="dark-obsidian"] {
   --overlay-backdrop: rgb(0 0 0 / 56%);
   --scrollbar-thumb: rgb(236 238 242 / 20%);
   --scrollbar-thumb-hover: rgb(236 238 242 / 38%);
-}
-
-/* 形状 token 注册为 rounded-control / rounded-panel / rounded-dialog 工具类；值与 :root 一致。 */
-@theme {
-  --radius-control: 10px;
-  --radius-panel: 16px;
-  --radius-dialog: 20px;
 }
 
 @theme inline {

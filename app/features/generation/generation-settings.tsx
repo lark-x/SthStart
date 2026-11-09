@@ -80,6 +80,7 @@ export function GenerationSettingsFeature() {
       />
       {error && <Alert variant="danger" title="部分生成配置未能读取" onDismiss={() => setError('')}>{error}</Alert>}
       <PageTabs
+        variant="page"
         ariaLabel="生成配置分类"
         value={section}
         onChange={setSection}

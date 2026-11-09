@@ -19,13 +19,15 @@ export interface PageTabsProps {
   onChange: (id: string) => void;
   ariaLabel: string;
   className?: string;
+  /** page：页面视图；local：工作台步骤或面板内切换。 */
+  variant?: 'page' | 'local';
 }
 
 /**
- * 页面级 tabs（§7.2）：tablist/tab 语义与方向键移动；
+ * 页面与局部 tabs：共享 tablist/tab 语义、方向键与输入法保护；
  * 真正导航到新页面时请使用链接语义，不要用 tabs 模拟页面跳转。
  */
-export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTabsProps) {
+export function PageTabs({ tabs, value, onChange, ariaLabel, className, variant = 'page' }: PageTabsProps) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const focusAndSelect = (index: number) => {
@@ -33,6 +35,7 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
     if (!tab || tab.disabled) return;
     onChange(tab.id);
     tabRefs.current[index]?.focus();
+    tabRefs.current[index]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
@@ -63,9 +66,11 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
     <div
       role="tablist"
       aria-label={ariaLabel}
+      aria-orientation="horizontal"
+      data-variant={variant}
       onKeyDown={handleKeyDown}
       className={cn(
-        'page-tabs inline-flex max-w-full flex-wrap items-center gap-1 rounded-control bg-surface-sunken p-1',
+        'page-tabs',
         className
       )}
     >
@@ -84,12 +89,13 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className }: PageTa
             tabIndex={!tab.disabled && (selected || (!tabs.some((item) => item.id === value && !item.disabled) && index === tabs.findIndex((item) => !item.disabled))) ? 0 : -1}
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
+            onFocus={(event) => event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })}
             className={cn(
-              'inline-flex h-9 sm:h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-control)-3px)] px-3 text-sm font-medium transition-colors duration-[var(--motion-fast)]',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-medium transition-colors duration-[var(--motion-fast)]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
               selected
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:bg-surface-hover/80 hover:text-ink',
+                ? 'text-ink font-semibold'
+                : 'text-muted hover:text-ink',
               tab.disabled && 'pointer-events-none opacity-50'
             )}
           >

@@ -31,6 +31,7 @@ interface ComicWorkstationProps {
   onBack(): void;
   onEdit?(): void;
   readingOnly?: boolean;
+  embedded?: boolean;
   registerFlush?(callback: (() => Promise<boolean>) | null): void;
 }
 
@@ -53,7 +54,7 @@ function newPanelFromBeat(beat: NonNullable<ReturnType<typeof getEffectiveStageS
 
 function busy(job: ComicJob | undefined) { return Boolean(job && ['queued', 'preparing', 'running'].includes(job.status)); }
 
-export function ComicWorkstation({ activity, content, actors, onBack, onEdit, readingOnly = false, registerFlush }: ComicWorkstationProps) {
+export function ComicWorkstation({ activity, content, actors, onBack, onEdit, readingOnly = false, embedded = false, registerFlush }: ComicWorkstationProps) {
   const revisionId = activity.currentContentRevisionId || '';
   const queryClient = useQueryClient();
   const draftState = useComicDraft(activity.id, revisionId);
@@ -424,11 +425,11 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-default px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={onBack} aria-label="返回原回放" className="px-2">
+          {!embedded && <Button size="sm" variant="ghost" onClick={onBack} aria-label="返回原回放" className="px-2">
             <ArrowLeft className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">原回放</span>
-          </Button>
-          <span className="truncate text-sm font-semibold text-ink">漫画编辑</span>
+          </Button>}
+          {!embedded && <span className="truncate text-sm font-semibold text-ink">漫画编辑</span>}
           <span className="shrink-0 text-xs text-muted hidden xs:inline">{draftState.status === 'saving' ? '保存中…' : draftState.status === 'saved' ? `已保存 · v${draftState.version ?? '—'}` : draftState.status === 'loading' ? '载入中…' : draftState.status === 'conflict' ? '版本冲突' : '保存失败'}</span>
           {draftState.error && <span role="alert" className="max-w-[min(70vw,520px)] truncate text-xs text-danger" title={draftState.error}>{draftState.error}</span>}
         </div>
@@ -463,15 +464,18 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
       {comic.contentRevisionId !== revisionId && <div role="status" className="shrink-0 border-b border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">这份漫画绑定较早的剧情版本。画格来源、角色和分镜生成都使用原版本；当前活动的新剧情不会自动改写漫画。</div>}
       {fontError && <div role="alert" className="shrink-0 border-b border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">漫画字体未能载入，导出已停用。请检查应用是否包含本地字体文件。</div>}
       {!fontReady && !fontError && <div aria-live="polite" className="shrink-0 border-b border-border-default px-3 py-1 text-xs text-muted">正在载入漫画字体…</div>}
-      {(storyboardError || latestStoryboardJob?.errorMessage) && <div role="alert" className="mx-3 mt-2 shrink-0 rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{storyboardError ?? latestStoryboardJob?.errorMessage}</div>}
-      {latestStoryboardJob && <section className="mx-3 mt-2 max-h-48 shrink-0 overflow-y-auto rounded-panel border border-border-default bg-surface-muted/40 p-3" aria-label="分镜生成任务">
+      {storyboardError && <div role="alert" className="mx-3 mt-2 shrink-0 rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{storyboardError}</div>}
+      {latestStoryboardJob && <details key={latestStoryboardJob.id} className="mx-3 mt-2 shrink-0 rounded-panel border border-border-default bg-surface-muted/40">
+        <summary className="cursor-pointer px-3 py-2 text-sm focus-visible:outline focus-visible:outline-accent">分镜草案任务 · {busy(latestStoryboardJob) ? '生成中' : latestStoryboardJob.status === 'succeeded' ? '结果可查看' : latestStoryboardJob.errorMessage ? '失败，查看原因' : latestStoryboardJob.status}</summary>
+        <section className="max-h-48 overflow-y-auto p-3" aria-label="分镜生成任务">
+        {latestStoryboardJob.errorMessage && <p role="alert" className="text-sm text-danger">{latestStoryboardJob.errorMessage}</p>}
         <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-ink">分镜草案任务</h3><p className="text-xs text-muted">{busy(latestStoryboardJob) ? '生成中…' : latestStoryboardJob.status === 'succeeded' ? `已生成 ${resultPanels.length} 格；尚未应用到漫画` : `状态：${latestStoryboardJob.status}`}</p></div>
           {latestStoryboardJob.callId && <a className="text-xs font-medium text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(latestStoryboardJob.callId)}`} target="_blank" rel="noreferrer">查看调用日志 ↗</a>}
         </div>
         {canApply && <><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{resultPanels.map((item, index) => <article key={item.id} className="min-w-0 rounded-control border border-border-default bg-surface p-2 text-xs"><p className="font-semibold text-ink">{index + 1}. {item.shotSize}</p><p className="mt-1 line-clamp-3 text-muted">{item.visualDescription}</p><p className="mt-1 line-clamp-2 text-muted">{item.bubbles.map((bubble) => bubble.text).join(' / ')}</p></article>)}</div>
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="primary" loading={applyStoryboard.isPending} onClick={() => void applyStoryboardResult('append')} disabled={draftState.status !== 'saved'}>追加到漫画</Button><Button size="sm" variant="outline" loading={applyStoryboard.isPending} onClick={() => void applyStoryboardResult('replace_scene')} disabled={draftState.status !== 'saved'}>替换该场次页面…</Button></div>
         </>}
-      </section>}
+      </section></details>}
       {comic.pages.length > 0 && page ? <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[190px_minmax(0,1fr)_320px] xl:grid-rows-1">
         <ComicPageList pages={comic.pages} panels={comic.panels} selectedPageId={page.id} newPageTemplate={newPageTemplate} onTemplateChange={setNewPageTemplate}
           canAdd={Boolean(defaultSourceBeat) && comic.pages.length < 20} onSelect={(id) => { setSelectedPageId(id); const next = comic.pages.find((item) => item.id === id); setSelectedPanelId(next?.panelIds[0] ?? null); setSelectedBubbleId(null); }}
