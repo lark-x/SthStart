@@ -140,17 +140,11 @@ export default function ActivitiesPage() {
     <div className="w-full bg-paper text-ink py-6">
       <PageContainer className="space-y-5">
         <PageHeader
+          compact
           title="制作项目"
-          description="管理配音与画面制作版本及互动演出工程。支持从创作项目正文派生制作，亦可直接开展独立制作；支持随时返回项目列表。"
+          description="管理配音、画面与互动演出制作版本。"
           actions={
             <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-              <Link
-                href="/apps/projects"
-                className="inline-flex h-9 items-center gap-1.5 rounded-control border border-border-default bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-surface-hover focus-visible:outline focus-visible:outline-accent"
-              >
-                <span>返回项目列表</span>
-              </Link>
-
               <Link
                 href="/apps/activities/new"
                 className="inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-accent-dark focus-visible:outline focus-visible:outline-accent"
@@ -158,17 +152,6 @@ export default function ActivitiesPage() {
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span>新建制作</span>
               </Link>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setImportModalOpen(true)}
-                className="gap-1.5 text-sm font-medium"
-              >
-                <FolderDown className="h-4 w-4 text-muted" aria-hidden="true" />
-                <span className="hidden sm:inline">导入制作</span>
-                <span className="sm:hidden">导入</span>
-              </Button>
 
               <details ref={moreMenuRef} className="relative">
                 <summary
@@ -182,6 +165,24 @@ export default function ActivitiesPage() {
                   aria-label="更多活动工具"
                   className="absolute right-0 top-full z-30 mt-1.5 flex w-44 flex-col gap-0.5 rounded-control border border-border-subtle bg-surface p-1 shadow-floating"
                 >
+                  <Link
+                    href="/apps/projects"
+                    role="menuitem"
+                    className="flex items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-sm text-ink transition-colors hover:bg-surface-hover"
+                    onClick={() => { if (moreMenuRef.current) moreMenuRef.current.open = false; }}
+                  >
+                    <ArrowRight className="size-3.5 rotate-180 text-muted" aria-hidden="true" />
+                    <span>返回项目列表</span>
+                  </Link>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
+                    onClick={() => { if (moreMenuRef.current) moreMenuRef.current.open = false; setImportModalOpen(true); }}
+                  >
+                    <FolderDown className="size-3.5 text-muted" aria-hidden="true" />
+                    <span>导入制作</span>
+                  </button>
                   <Link
                     href="/apps/inspiration"
                     role="menuitem"

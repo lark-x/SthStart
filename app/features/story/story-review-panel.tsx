@@ -207,7 +207,7 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
 
     {tab === 'archive' && <ReadOnlyArchive projectId={projectId} />}
   </>;
-  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-[400px] shrink-0 flex-col border-l border-border-subtle bg-surface">
+  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-[400px] shrink-0 flex-col overflow-hidden rounded-panel bg-surface shadow-xs">
     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-2"><h2 className="text-sm font-semibold">审阅与项目连接</h2><Button size="sm" variant="ghost" aria-label="关闭审阅面板" onClick={() => onOpenChange(false)}><X className="size-4" /></Button></div>
     <div className="min-h-0 flex-1 overflow-y-auto p-4">{content}</div>
   </aside> : null;

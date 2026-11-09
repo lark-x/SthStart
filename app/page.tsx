@@ -8,18 +8,13 @@ import { PageContainer } from './components/shared/page-layout';
 
 export default function Home() {
   return (
-    <PageContainer className="space-y-6 pt-4 pb-10 sm:space-y-8 sm:pt-6">
+    <PageContainer className="space-y-4">
       {/* 问候 + 全局唯一的显式首要操作 QuickCreate */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <HomeGreeting />
-        <div className="flex-none">
-          <QuickCreate />
-        </div>
-      </div>
+      <HomeGreeting actions={<QuickCreate />} />
 
       <HomeModules />
 
-      <div className="dash-grid">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="home-card">
           <RecentWork limit={7} />
         </div>

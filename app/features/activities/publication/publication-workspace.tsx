@@ -135,8 +135,14 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
   async function chooseImage(id:string){await action(async()=>{let result;try{result=await publicationApi.select(activityId,shot!.id,draft.version(),id);}catch(e){if(!(e instanceof ApiClientError)||e.code!=='publication_source_changed'||!window.confirm('镜头描述已经变化，仍使用这张旧描述图片吗？'))throw e;result=await publicationApi.select(activityId,shot!.id,draft.version(),id,true);}draft.accept(result);});}
   const closeOverlay=(open:boolean)=>{if(open||busy)return;if((overlay==='drawing'&&editShot&&JSON.stringify(editShot)!==JSON.stringify(shot))||(overlay==='project'&&editDoc&&JSON.stringify(editDoc)!==JSON.stringify(doc))){if(!window.confirm('放弃弹窗内尚未保存的修改？'))return;}setOverlay(null);setGrantToken('');};
   const savedStatus=<span className="text-xs text-muted">{draft.status}</span>;
-  if(incoming.isError)return <div className="p-6" role="alert">{(incoming.error as Error).message}<Button onClick={()=>void incoming.refetch()}>重新载入</Button></div>;
-  if(!doc)return <div className="p-6" role="status">正在载入制作文档…</div>;
+  if(incoming.isError)return <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper text-ink">
+    <WorkspaceHeader title="作品制作" backHref="/apps/activities" backLabel="制作项目" actions={<Button variant="outline" onClick={()=>void incoming.refetch()}>重新载入</Button>} />
+    <div className="flex flex-1 items-center justify-center p-6" role="alert"><p className="text-sm text-danger-fg">{(incoming.error as Error).message}</p></div>
+  </div>;
+  if(!doc)return <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper text-ink">
+    <WorkspaceHeader title="作品制作" backHref="/apps/activities" backLabel="制作项目" />
+    <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted" role="status">正在载入制作文档…</div>
+  </div>;
   const active=shot;
   const shotList = (
     <div className="space-y-2 p-3">
@@ -227,7 +233,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       </Button>
     </div>
   );
-  return <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink" data-testid="publication-workspace">
+  return <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink" data-testid="publication-workspace">
     <WorkspaceHeader title={doc.title} backHref={`/apps/projects/${doc.source.storyProjectId}`} backLabel="来源项目" status={savedStatus}
       centerSlotOnMobile
       centerSlot={<PageTabs variant="local" ariaLabel="作品制作步骤" value={tab} onChange={value => setTab(value as typeof tab)} tabs={[
@@ -235,10 +241,10 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       ]} />}
       actions={<><Button size="sm" variant="ghost" onClick={()=>setOverlay('bridge')}>AI 协作</Button><Button size="sm" variant="primary" disabled={busy} onClick={()=>void draft.flush()}>保存</Button></>}/>
     {(error||draft.error)&&<div role="alert" className="shrink-0 space-y-2 bg-danger/10 p-3 text-sm text-danger-fg"><p>{error||draft.error}</p>{draft.error&&<div className="flex flex-wrap gap-2"><Button size="sm" onClick={()=>void navigator.clipboard.writeText(JSON.stringify(doc,null,2))}>复制本地内容</Button><Button size="sm" onClick={()=>void action(async()=>{const server=await publicationApi.draft(activityId);if(window.confirm('使用服务器版本会放弃本地输入，请先复制备份。继续？'))draft.resolve(server,false);},false)}>查看并使用服务器版本</Button><Button size="sm" onClick={()=>void action(async()=>{const server=await publicationApi.draft(activityId);if(window.confirm('已核对服务器更新，仍以本地内容重新保存？'))draft.resolve(server,true);},false)}>手动恢复本地编辑</Button></div>}</div>}
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
-      <aside className="hidden w-60 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface md:block" aria-label="关键镜头列表">{shotList}</aside>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-4 md:px-5 md:pb-4">
+      <aside className="hidden w-60 shrink-0 overflow-y-auto bg-surface md:block md:rounded-panel md:shadow-xs" aria-label="关键镜头列表">{shotList}</aside>
       <div className="shrink-0 border-b border-border-subtle p-2 md:hidden"><Select aria-label="选择关键镜头" value={active?.id??''} onChange={e=>setSelected(e.target.value)}>{doc.shots.map((s,i)=><option key={s.id} value={s.id}>{i+1}. {s.visualDescription||'未填写'}</option>)}</Select><details><summary className="cursor-pointer py-2 text-sm">管理关键镜头</summary><div className="max-h-56 overflow-y-auto">{shotList}</div></details></div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden md:rounded-panel md:bg-surface md:shadow-xs">
       {tab==='plan'?<section className="mx-auto h-full max-w-5xl overflow-y-auto p-4 sm:p-6 space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border-subtle pb-4"><div><p className="text-xs font-medium text-accent">从剧情到发布</p><h2 className="mt-1 text-xl font-semibold text-ink">少量关键画面，完整讲一段故事</h2><p className="mt-1.5 text-xs text-muted">已冻结 {doc.source.entryRevisionIds.length} 个章节版本 · {doc.shots.length}/12 个镜头 · 不改变正式剧情</p></div><Button variant="outline" size="sm" onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑作品与角色</Button></div>
         <div className="rounded-panel border border-border-default bg-surface p-4 text-sm leading-relaxed text-ink/90">{doc.synopsis||'让 DSH／其他 Harness 读取冻结章节，提交 6–12 个关键镜头。每个画面可配多句对白；英文生图提示词由创作模型一次完成，制作服务不再改写。也可以手动添加镜头。'}</div>
@@ -305,7 +311,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       {speechEdit&&<div className="space-y-4"><label className={fieldClass}>从已配置的语音模型选择<Select value={speechModels.data?.items.find(m=>m.connectionId===speechEdit.connectionId&&m.model===speechEdit.model)?.modelProfileId??''} onChange={e=>{const m=speechModels.data?.items.find(m=>m.modelProfileId===e.target.value);if(m)setSpeechEdit({...speechEdit,name:m.name,connectionId:m.connectionId,baseUrl:m.baseUrl,model:m.model,defaultVoice:m.model.startsWith('stepaudio-')?'cixingnansheng':speechEdit.defaultVoice,voices:m.model.startsWith('stepaudio-')?['cixingnansheng']:speechEdit.voices});else{const {connectionId:_ignored,...manual}=speechEdit;setSpeechEdit(manual);}}}><option value="">单独配置配音服务</option>{speechModels.data?.items.map(m=><option key={m.modelProfileId} value={m.modelProfileId}>{m.name}{!m.hasCredential?'（缺密钥）':''}</option>)}</Select></label>{speechModels.isError&&<p role="alert" className="text-sm text-danger-fg">无法读取已配置模型，请重试或使用独立配置。</p>}{(['name','baseUrl','model','defaultVoice','secretEnvironment'] as const).filter(key=>!speechEdit.connectionId||key!=='secretEnvironment').map(key=><label key={key} className={fieldClass}>{{name:'配置名称',baseUrl:'兼容 API 根地址（例如 https://…/v1）',model:'语音模型 ID',defaultVoice:'默认声音 ID',secretEnvironment:'密钥环境变量名'}[key]}<Input readOnly={Boolean(speechEdit.connectionId)&&(key==='baseUrl'||key==='model')} value={speechEdit[key]} onChange={e=>setSpeechEdit({...speechEdit,[key]:e.target.value})}/></label>)}<label className={fieldClass}>声音清单（逗号分隔）<Input value={speechEdit.voices.join(', ')} onChange={e=>setSpeechEdit({...speechEdit,voices:e.target.value.split(',').map(v=>v.trim()).filter(Boolean)})}/></label><label className={fieldClass}>语速<Input type="number" min={0.5} max={2} step={0.1} value={speechEdit.speed} onChange={e=>setSpeechEdit({...speechEdit,speed:Number(e.target.value)})}/></label><p className="text-xs text-muted">{speechEdit.connectionId?'复用所选服务连接的加密凭据，无需再输入密钥；连接停用或地址改变会阻止配音。':`在服务运行环境配置上述密钥变量，或写入系统凭据 publication-speech:${speechEdit.id}。`}不会向 DSH 注入这个密钥。</p></div>}
       {(error||draft.error)&&<p role="alert" className="text-sm text-danger-fg">{error||draft.error}</p>}
     </ResponsiveEditOverlay>
-  </main>;
+  </div>;
 }
 
 function LoraFields({entries,onChange}:{entries:ActivityLora[];onChange:(entries:ActivityLora[])=>void}) {

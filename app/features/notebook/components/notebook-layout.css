@@ -1,0 +1,140 @@
+/* Notebook-only density: the resource shell continues to own panel geometry. */
+@media (max-height: 500px) {
+  /* The document scrolls over a 600px canvas here. A sticky toolbar inside
+   * its separately scrolling panel cannot reliably be scrolled into view. */
+  .notebook-editor-compact > .notebook-editor-header { position: relative; }
+}
+.notebook-workspace-shell .notebook-list-search-row > .notebook-new-note-action {
+  min-height: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding-inline: 12px;
+}
+
+.notebook-workspace-shell .notebook-list-search-row input { min-width: 0; }
+.notebook-editor-compact.notebook-editor-shell > .notebook-editor-header {
+  min-height: 48px;
+  padding: 4px 16px;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  background: var(--surface-raised);
+  backdrop-filter: none;
+}
+
+.notebook-editor-compact .notebook-editor-leading { flex-basis: 160px; }
+.notebook-editor-compact .notebook-save-status { min-width: 0; max-width: none; font-size: 12px; line-height: 1.5; white-space: normal; text-align: left; overflow: visible; }
+.notebook-editor-compact .notebook-save-status > span:first-child { flex-shrink: 0; }
+.notebook-editor-compact .notebook-editor-actions { flex-wrap: wrap; gap: 4px; }
+.notebook-editor-compact .notebook-editor-actions > button { padding-inline: 8px; }
+.notebook-editor-compact .notebook-more-actions > summary { width: 36px; height: 36px; }
+
+.notebook-editor-compact.notebook-editor-shell > .notebook-editor-frame {
+  width: 100%;
+  padding-block: 20px 32px;
+}
+
+.notebook-editor-compact .notebook-editor-frame > .notebook-doc-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.notebook-editor-compact .notebook-doc-metadata select,
+.notebook-editor-compact .notebook-doc-metadata input {
+  min-height: var(--control-h-sm);
+  border-radius: var(--radius-control);
+  background: transparent;
+  font-size: 14px;
+}
+
+.notebook-editor-compact .notebook-doc-metadata select:hover,
+.notebook-editor-compact .notebook-doc-metadata input:hover { background: var(--surface-sunken); }
+.notebook-editor-compact .notebook-doc-tags { flex-basis: 160px; }
+.notebook-editor-compact .notebook-editor-frame > .notebook-content-section { padding-top: 0; }
+
+.notebook-editor-compact .notebook-block { min-width: 0; padding-block: 12px; }
+.notebook-editor-compact .notebook-block-header {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 36px;
+  margin-bottom: 4px;
+}
+
+.notebook-editor-compact .notebook-block-controls {
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+
+.notebook-editor-compact .notebook-block-controls .notebook-icon-button,
+.notebook-workspace-shell .notebook-list-toggle {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.notebook-editor-compact .notebook-block > .notebook-textarea {
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.notebook-editor-compact .notebook-block > .notebook-textarea:focus { background: transparent; }
+@supports (field-sizing: content) {
+  .notebook-editor-compact .notebook-block > .notebook-textarea { field-sizing: content; height: auto; min-height: 120px; max-height: none; resize: none; }
+}
+.notebook-editor-compact .notebook-add-panel { padding-top: 8px; }
+.notebook-editor-compact .notebook-add-grid { gap: 4px; }
+.notebook-editor-compact .notebook-add-grid .notebook-add-button { height: auto; padding-inline: 8px; }
+
+.notebook-editor-compact :is(button, summary, a, input, select, textarea):focus-visible,
+.notebook-workspace-shell :is(.notebook-list-toggle, .notebook-new-note-action):focus-visible,
+.notebook-properties-drawer :is(button, summary, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.notebook-properties-drawer { min-width: 0; }
+.notebook-properties-drawer :is(input, select, textarea) { min-width: 0; }
+.notebook-properties-drawer :is(button, a, summary) { font-size: 14px; }
+.notebook-properties-drawer button { min-height: var(--control-h-sm); }
+.notebook-properties-drawer [data-autohide-scroll] { overscroll-behavior: contain; overflow-wrap: anywhere; }
+
+@media (hover: hover) and (pointer: fine) {
+  .notebook-editor-compact .notebook-block { padding-inline-end: 40px; min-height: 132px; }
+  .notebook-editor-compact .notebook-block-header {
+    position: absolute;
+    z-index: 1;
+    top: 8px;
+    right: 0;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+  .notebook-editor-compact .notebook-block-controls { flex-direction: column; opacity: 0; pointer-events: none; }
+  .notebook-editor-compact .notebook-block:hover .notebook-block-controls,
+  .notebook-editor-compact .notebook-block:focus-within .notebook-block-controls {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (pointer: coarse), (max-width: 639px) {
+  .notebook-workspace-shell .notebook-list-search-row > .notebook-new-note-action,
+  .notebook-workspace-shell .notebook-list-search-row input,
+  .notebook-editor-compact .notebook-doc-metadata :is(input, select),
+  .notebook-editor-compact .notebook-editor-actions > button,
+  .notebook-properties-drawer :is(button, input, select) { min-height: var(--control-h-touch); }
+  .notebook-editor-compact .notebook-more-actions > summary,
+  .notebook-editor-compact .notebook-block-controls .notebook-icon-button {
+    width: var(--control-h-touch);
+    height: var(--control-h-touch);
+    min-width: var(--control-h-touch);
+    min-height: var(--control-h-touch);
+  }
+  .notebook-editor-compact .notebook-doc-tags { flex-basis: 100%; }
+  .notebook-editor-compact .notebook-editor-actions { row-gap: 4px; }
+}
+
+@media (max-width: 639px) {
+  .notebook-editor-compact > .notebook-editor-header .notebook-editor-leading { flex-basis: 100%; }
+  .notebook-editor-compact > .notebook-editor-header .notebook-editor-actions { margin-left: auto; }
+}

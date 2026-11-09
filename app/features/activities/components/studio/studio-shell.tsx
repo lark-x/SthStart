@@ -34,6 +34,7 @@ import { PlaybackWorkstation } from '../playback-workstation';
 import { ExportPanel } from '../export-panel';
 import { PanelRightClose, PanelRightOpen, Sparkles, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { StudioMenu, StudioMenuItem } from './studio-menu';
 
 interface StudioShellProps {
@@ -321,19 +322,29 @@ export function StudioShell({ activityId }: StudioShellProps) {
   }, [playbackOpen, exportOpen]);
 
   if (activityError || draftError || (!activityLoading && !draftLoading && (!document || !activity))) {
-    return <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-paper p-6 text-sm">
-      <p role="alert" className="text-danger-fg">{activityError?.message || draftError?.message || '活动或草稿暂不可用。'}</p>
-      <Button variant="outline" onClick={() => { void refetchActivity(); void refetchDraft(); }}>重新加载</Button>
-      <Link href="/apps/activities" className="text-muted hover:underline">返回活动列表</Link>
+    return <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper text-ink">
+      <WorkspaceHeader
+        title="活动工作室"
+        backHref="/apps/activities"
+        backLabel="活动列表"
+        actions={<Button variant="outline" onClick={() => { void refetchActivity(); void refetchDraft(); }}>重新加载</Button>}
+      />
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-sm">
+        <p role="alert" className="text-danger-fg">{activityError?.message || draftError?.message || '活动或草稿暂不可用。'}</p>
+        <Link href="/apps/activities" className="text-muted hover:underline">返回活动列表</Link>
+      </div>
     </div>;
   }
 
   if (activityLoading || draftLoading || !document || !activity) {
     return (
-      <div className="flex h-full min-h-0 w-full items-center justify-center bg-paper text-muted text-sm" role="status">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          <span>正在进入活动工作室…</span>
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper text-ink">
+        <WorkspaceHeader title="活动工作室" backHref="/apps/activities" backLabel="活动列表" />
+        <div className="flex flex-1 items-center justify-center text-sm text-muted" role="status">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            <span>正在进入活动工作室…</span>
+          </div>
         </div>
       </div>
     );
@@ -579,7 +590,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
   };
 
   return (
-    <main className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-paper text-ink">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-paper text-ink">
       {/* 48px 极简统一顶栏 */}
       <StudioHeader
         activity={activity}
@@ -638,10 +649,10 @@ export function StudioShell({ activityId }: StudioShellProps) {
       )}
 
       {/* 核心工作台：三栏视口锁高布局 */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 gap-0 overflow-hidden md:gap-4 md:px-5 md:pb-4">
         {/* 左侧大纲导轨（仅分镜模式展示，避免漫画工坊出现双侧栏） */}
         {viewMode === 'storyboard' && (
-          <div className="hidden md:flex"><StudioOutlineRail
+          <div className="hidden min-h-0 md:flex md:overflow-hidden md:rounded-panel md:bg-surface md:shadow-xs"><StudioOutlineRail
             document={document}
             activeStageId={activeStage?.id ?? ''}
             activeSceneId={activeScene?.id ?? null}
@@ -672,8 +683,8 @@ export function StudioShell({ activityId }: StudioShellProps) {
         )}
 
         {/* 中央主创作流 */}
-        {viewMode === 'materials' ? <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4" data-autohide-scroll><MediaWorkstation activity={activity} document={document} actors={document.actors} currentMediaRevision={activityData?.currentMediaRevision} onUpdateDocument={draft.update} registerFlush={flush => { mediaFlush.current = flush; }} /></div> : viewMode === 'comic' ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
+        {viewMode === 'materials' ? <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:rounded-panel md:bg-surface md:shadow-xs" data-autohide-scroll><MediaWorkstation activity={activity} document={document} actors={document.actors} currentMediaRevision={activityData?.currentMediaRevision} onUpdateDocument={draft.update} registerFlush={flush => { mediaFlush.current = flush; }} /></div> : viewMode === 'comic' ? (
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden md:rounded-panel md:bg-surface md:shadow-xs">
             <ComicWorkstation
               embedded
               registerFlush={flush => { mediaFlush.current = flush; }}
@@ -686,7 +697,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
             />
           </div>
         ) : (
-          <div className={`${mobileDrawing ? 'hidden md:flex' : 'flex'} min-h-0 min-w-0 flex-1`}><StudioBeatStream
+          <div className={`${mobileDrawing ? 'hidden md:flex' : 'flex'} min-h-0 min-w-0 flex-1 md:overflow-hidden md:rounded-panel md:bg-surface md:shadow-xs`}><StudioBeatStream
             stage={activeStage!}
             scene={activeScene}
             actors={document.actors}
@@ -705,7 +716,7 @@ export function StudioShell({ activityId }: StudioShellProps) {
         {/* 右侧随动导演面板 */}
         {viewMode === 'storyboard' && activeStage && (
           <aside
-            className={`${mobileDrawing ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 w-full flex-col border-l border-border-default bg-surface transition-[width] duration-150 ${
+            className={`${mobileDrawing ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 w-full flex-col overflow-hidden bg-surface transition-[width] duration-150 md:rounded-panel md:shadow-xs ${
               rightInspectorCollapsed ? 'md:w-12' : 'md:w-80 lg:w-96'
             } md:shrink-0`}
           >
@@ -868,6 +879,6 @@ export function StudioShell({ activityId }: StudioShellProps) {
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }

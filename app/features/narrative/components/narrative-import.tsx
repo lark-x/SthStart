@@ -152,7 +152,7 @@ export function NarrativeImport({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <PageContainer className="space-y-6 py-6">
+      <PageContainer className="space-y-6 py-4">
       <div className="max-w-2xl">
         <h2 className="tpl-section-title">把来源变成可追溯的本地档案</h2>
         <p className="mt-1 text-sm leading-relaxed text-muted">

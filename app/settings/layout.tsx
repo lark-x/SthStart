@@ -10,6 +10,7 @@ import {
   Activity,
   CloudUpload,
 } from 'lucide-react';
+import { PageContainer } from '@/app/components/shared/page-layout';
 import styles from './settings-layout.module.css';
 
 interface SettingsTab {
@@ -61,16 +62,12 @@ export default function SettingsLayout({
 
   return (
     <div className="min-h-full">
-      <div className="mx-auto w-full max-w-[calc(var(--shell-settings-max)_+_13rem)] px-3 py-3 sm:px-6 lg:py-8">
-        <div className="settings-workspace-grid grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+      <PageContainer>
+        <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[12rem_minmax(0,1fr)]">
           <nav
             aria-label="设置中心二级导航"
-            className="settings-workspace-sidebar min-w-0 border-b border-border-subtle pb-2 lg:border-b-0 lg:pb-0 lg:sticky lg:top-[calc(var(--shell-sticky-top)_+_1.5rem)] lg:self-start"
+            className="tpl-panel min-w-0 p-2 lg:sticky lg:top-[calc(var(--shell-sticky-top)_+_1rem)] lg:self-start"
           >
-            <div className="mb-4 hidden border-b border-border-subtle pb-4 lg:block">
-              <p className="text-xs font-semibold tracking-[0.08em] text-muted">设置中心</p>
-              <p className="mt-1 text-sm leading-relaxed text-muted">模型连接、生成方案、运行诊断与数据安全</p>
-            </div>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
               {SETTINGS_TABS.map((tab) => {
                 const isActive =
@@ -81,15 +78,14 @@ export default function SettingsLayout({
                   <Link
                     key={tab.href}
                     href={tab.href}
-                    className="settings-navigation-link flex-none items-center rounded-control px-2.5 py-1.5 text-xs sm:text-sm lg:w-full lg:min-h-14 lg:items-start lg:rounded-none lg:px-3 lg:py-2.5"
+                    className="settings-navigation-link flex min-h-10 flex-none items-center gap-2 rounded-control px-3 py-2 text-sm lg:w-full"
+                    title={tab.description}
                     aria-current={isActive ? 'page' : undefined}
                   >
-                    <Icon className="h-3.5 w-3.5 flex-none lg:mt-0.5 lg:h-4 lg:w-4" aria-hidden="true" />
+                    <Icon className="h-4 w-4 flex-none" aria-hidden="true" />
                     <span className="min-w-0">
                       <span className="block whitespace-nowrap">{tab.label}</span>
-                      <span className="mt-0.5 hidden text-xs font-normal leading-snug text-muted lg:block">
-                        {tab.description}
-                      </span>
+
                     </span>
                   </Link>
                 );
@@ -97,11 +93,11 @@ export default function SettingsLayout({
             </div>
           </nav>
 
-          <div className={`${styles.panel} settings-workspace-content min-w-0`}>
+          <div className={`${styles.panel} min-w-0`}>
             {children}
           </div>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 }

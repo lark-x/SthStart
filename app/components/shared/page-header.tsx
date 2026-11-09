@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { PageHeaderIcon } from './page-header-icon';
+import { PageGlobalActions } from './page-global-actions';
 
 export interface PageHeaderProps extends Omit<React.ComponentPropsWithoutRef<'header'>, 'title'> {
   title: string;
@@ -15,12 +16,12 @@ export interface PageHeaderProps extends Omit<React.ComponentPropsWithoutRef<'he
   className?: string;
   /** compact：工具栏式标题区，减少工作台页面的首屏占用。 */
   compact?: boolean;
+  navigation?: React.ReactNode;
 }
 
 /**
- * 页面标题区：只负责标题、返回、当前对象状态与页面动作。
- *
- * 全局应用切换与主题开关已上移到 AppShell；页面内不再重复放置全局工具。
+ * 模块唯一顶栏：标题、子导航、当前对象状态与页面动作。
+ * 接管全局搜索和任务入口后，AppShell 隐藏重复工具栏；主题仍由侧栏管理。
  */
 export function PageHeader({
   title,
@@ -30,7 +31,8 @@ export function PageHeader({
   status,
   actions,
   className,
-  compact = false,
+  compact = true,
+  navigation,
   ...rest
 }: PageHeaderProps) {
   return (
@@ -48,15 +50,14 @@ export function PageHeader({
       <div className="tpl-header-main">
         <div className="tpl-heading">
           <PageHeaderIcon compact={compact} />
-          <div className="min-w-0">
+          <div className="tpl-heading-text min-w-0">
             <h1 className={cn('tpl-title', compact && 'text-xl')}>{title}</h1>
             {description && (
-              <p className={cn('tpl-description mt-0.5', compact && 'line-clamp-2')}>
-                {description}
-              </p>
+              <details className="tpl-description-disclosure"><summary aria-label={`${title}使用说明`} title="使用说明">说明</summary><p className="tpl-description">{description}</p></details>
             )}
           </div>
         </div>
+        {navigation && <div className="tpl-header-navigation">{navigation}</div>}
 
         {/* page-header-actions 保留为兼容类名：既有测试与样式仍按它定位动作区。 */}
         {(status || actions) && (
@@ -65,6 +66,7 @@ export function PageHeader({
             {actions}
           </div>
         )}
+        <PageGlobalActions />
       </div>
     </header>
   );

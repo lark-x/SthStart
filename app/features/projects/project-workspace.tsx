@@ -80,14 +80,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     (entry ? "?entry=" + encodeURIComponent(entry) : "");
   if (query.isLoading)
     return (
-      <PageContainer className="space-y-6 pb-10 pt-4">
+      <PageContainer className="space-y-4">
         <PageHeader backHref={returnHref} backLabel="创作项目列表" title="创作项目" description="正在读取项目资料…" />
         <p role="status">正在读取项目…</p>
       </PageContainer>
     );
   if (!query.data)
     return (
-      <PageContainer className="space-y-6 pb-10 pt-4">
+      <PageContainer className="space-y-4">
         <PageHeader backHref={returnHref} backLabel="创作项目列表" title="创作项目" />
         <p role="alert">
           {query.error instanceof Error ? query.error.message : "项目不存在"}
@@ -116,26 +116,48 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setDialog(null);
   };
   return (
-    <PageContainer className="space-y-6 pb-10 pt-4">
-      <PageHeader
+    <PageContainer className="space-y-4">
+      <PageHeader compact
         backHref={returnHref}
         backLabel="创作项目列表"
         title={project.title}
-        description={project.summary || "从大纲与正文开始，逐步加入角色、参考资料和制作版本。"}
-        actions={
-          <Link href={editor()} className={buttonVariants({ variant: "primary", size: "sm" })}>
-            <BookOpen size={16} />
-            继续写作
-          </Link>
+        navigation={
+          <PageTabs
+            variant="local"
+            ariaLabel="项目内容"
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { id: "writing", label: "正文与设定", count: chapters.length, panelId: "project-panel" },
+              {
+                id: "characters",
+                label: "角色",
+                count: characters.length,
+                panelId: "project-panel",
+              },
+              {
+                id: "references",
+                label: "参考资料",
+                count: references.length,
+                panelId: "project-panel",
+              },
+              {
+                id: "production",
+                label: "制作",
+                count: productions.length,
+                panelId: "project-panel",
+              },
+              {
+                id: "media",
+                label: "媒体",
+                count: media.length,
+                panelId: "project-panel",
+              },
+            ]}
+          />
         }
       />
-      <div className="flex flex-wrap gap-x-6 gap-y-2 border-y border-border-subtle py-4 text-sm text-muted">
-        <span>{chapters.length} 个章节</span>
-        <span>{characters.length} 个角色版本</span>
-        <span>{references.length} 条参考资料</span>
-        <span>{productions.length} 个制作版本</span>
-        <span>{media.length} 个媒体引用</span>
-      </div>
+      {project.summary && <p className="text-sm text-muted">{project.summary}</p>}
       {error && (
         <p
           role="alert"
@@ -149,39 +171,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           {notice}
         </p>
       )}
-      <PageTabs
-        variant="page"
-        ariaLabel="项目内容"
-        value={tab}
-        onChange={setTab}
-        tabs={[
-          { id: "writing", label: "正文与设定", panelId: "project-panel" },
-          {
-            id: "characters",
-            label: "角色",
-            count: characters.length,
-            panelId: "project-panel",
-          },
-          {
-            id: "references",
-            label: "参考资料",
-            count: references.length,
-            panelId: "project-panel",
-          },
-          {
-            id: "production",
-            label: "制作",
-            count: productions.length,
-            panelId: "project-panel",
-          },
-          {
-            id: "media",
-            label: "媒体",
-            count: media.length,
-            panelId: "project-panel",
-          },
-        ]}
-      />
+
       <section
         id="project-panel"
         role="tabpanel"
@@ -194,8 +184,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             media: "媒体",
           }[tab]
         }
-        className="space-y-6"
+        className="tpl-panel space-y-4 p-4"
       >
+      <div className="flex flex-wrap items-center justify-end gap-2" aria-label="页面操作">
+          <Link href={editor()} className={buttonVariants({ variant: "primary", size: "sm" })}>
+            <BookOpen size={16} />
+            继续写作
+          </Link>
+      </div>
         {tab === "writing" && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-4">

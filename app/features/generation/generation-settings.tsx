@@ -67,32 +67,35 @@ export function GenerationSettingsFeature() {
   }, [load]);
 
   return (
-    <PageContainer width="wide" className="space-y-3 sm:space-y-4 py-4 sm:py-6">
+    <PageContainer width="wide" className="space-y-4">
       <PageHeader
         compact
         title="生成配置"
-        description="管理连接、工作流、生成方案与提示词策略。生图页面中的修改仅用于本次任务；这里保存的设置用于后续任务。"
-        actions={(
+        navigation={
+          <PageTabs
+            variant="local"
+            ariaLabel="生成配置分类"
+            value={section}
+            onChange={setSection}
+            tabs={[
+              { id: 'quick', label: '常用设置', panelId: 'generation-panel-quick' },
+              { id: 'workflows', label: '工作流', panelId: 'generation-panel-workflows' },
+              { id: 'connections', label: '连接与节点', panelId: 'generation-panel-connections' },
+              { id: 'presets', label: '预设与用途', panelId: 'generation-panel-presets' },
+              { id: 'prompts', label: '提示词策略', panelId: 'generation-panel-prompts' },
+              { id: 'loras', label: 'LoRA / 细化', panelId: 'generation-panel-loras' },
+            ]}
+          />
+        }
+      />
+      <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
+      <div className="flex flex-wrap items-center justify-end gap-2" aria-label="页面操作">
           <Button size="sm" variant="ghost" onClick={() => { void load(); }}>
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新
           </Button>
-        )}
-      />
+      </div>
       {error && <Alert variant="danger" title="部分生成配置未能读取" onDismiss={() => setError('')}>{error}</Alert>}
-      <PageTabs
-        variant="page"
-        ariaLabel="生成配置分类"
-        value={section}
-        onChange={setSection}
-        tabs={[
-          { id: 'quick', label: '常用设置', panelId: 'generation-panel-quick' },
-          { id: 'workflows', label: '工作流', panelId: 'generation-panel-workflows' },
-          { id: 'connections', label: '连接与节点', panelId: 'generation-panel-connections' },
-          { id: 'presets', label: '预设与用途', panelId: 'generation-panel-presets' },
-          { id: 'prompts', label: '提示词策略', panelId: 'generation-panel-prompts' },
-          { id: 'loras', label: 'LoRA / 细化', panelId: 'generation-panel-loras' },
-        ]}
-      />
+
       {loading ? (
         <div className="tpl-panel p-12 text-center text-sm text-muted" role="status">正在读取生成配置…</div>
       ) : (
@@ -139,6 +142,7 @@ export function GenerationSettingsFeature() {
           </div>
         </>
       )}
+      </section>
     </PageContainer>
   );
 }

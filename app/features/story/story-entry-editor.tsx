@@ -11,7 +11,7 @@ import { Button } from '@/app/components/ui/button';
 import './story-editor.css';
 import { Dialog } from '@/app/components/ui/dialog';
 import { StoryMarkdown } from './story-markdown';
-import { storyEntryIdentity, useStoryEntryDraft } from './use-story-entry-draft';
+import { useStoryEntryDraft } from './use-story-entry-draft';
 import { isImeComposingEvent } from '@/app/lib/hooks/use-cjk-ime-guard';
 
 type ViewMode = 'source' | 'preview' | 'split' | 'script';
@@ -315,36 +315,17 @@ export function StoryEntryEditor({
       className={`story-entry-editor flex h-full min-h-0 min-w-0 flex-col ${zenMode ? 'zen-workspace' : ''}`}
     >
       {/* 顶部现代化工具栏 */}
-      <div className="story-editor-toolbar flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-2 py-1 sm:px-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="hidden text-xs font-medium text-muted sm:inline">{label} · v{entry.revision}</span>
-              <span className={`max-w-16 truncate text-xs sm:max-w-none ${draft.status === 'conflict' || draft.status === 'local-only' ? 'text-danger-fg' : 'text-muted'}`} role="status">
-                {statusLabel}
-              </span>
-            </div>
-            <p className="mt-0.5 hidden text-xs text-muted font-mono sm:block">
-              {charCount.toLocaleString('zh-CN')} 字 · 预计阅读 {readMinutes} 分钟
-            </p>
-          </div>
+      <div className="story-editor-toolbar flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3 py-1 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="hidden shrink-0 font-medium text-muted sm:inline">{label} · v{entry.revision}</span>
+          <span className={`max-w-16 truncate sm:max-w-none ${draft.status === 'conflict' || draft.status === 'local-only' ? 'text-danger-fg' : 'text-muted'}`} role="status">
+            {statusLabel}
+          </span>
+          <span className="hidden shrink-0 text-muted sm:inline">· {charCount.toLocaleString('zh-CN')} 字 · {readMinutes} 分钟</span>
         </div>
 
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           <div className="relative" ref={prefRef}>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowPreferences((v) => !v)}
-              title="调整纸感底色、字体与排版偏好"
-              className="hidden gap-1.5 sm:inline-flex"
-              aria-expanded={showPreferences}
-              aria-haspopup="dialog"
-            >
-              <SlidersHorizontal className="size-3.5" />
-              <span>排版偏好</span>
-            </Button>
-
             <Dialog open={showPreferences} onOpenChange={open => {
               setShowPreferences(open);
               if (!open) requestAnimationFrame(() => {
@@ -552,7 +533,7 @@ export function StoryEntryEditor({
       </div>
 
       {/* 编辑器核心内容滚动区（多列高度隔离，仅自身纵向滚动） */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-1" data-autohide-scroll>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4" data-autohide-scroll>
         {draft.recoveryAvailable && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-control border border-border-subtle bg-surface-sunken p-3 text-sm text-ink">
             <p className="min-w-0 flex-1">找到本机未同步的编辑文本。恢复后会先与当前服务器版本核对，不会静默覆盖。</p>
@@ -654,7 +635,7 @@ export function StoryEntryEditor({
         {/* 沉浸式稿纸核心主画布 */}
         <div
           data-reading-theme={theme}
-          className={`story-reading-paper relative mx-auto w-full motion-reduce:transition-none transition-colors rounded-panel p-4 sm:p-8 border ${
+          className={`story-reading-paper relative mx-auto w-full motion-reduce:transition-none transition-colors rounded-panel p-4 sm:p-6 border ${
             mode === 'split' ? 'max-w-7xl' : (
               canvasWidth === 'full' ? 'max-w-none' : (
                 canvasWidth === 'comfortable' ? 'max-w-3xl' : 'max-w-5xl'
@@ -912,17 +893,6 @@ export function StoryEntryEditor({
         <p className="max-h-64 whitespace-pre-wrap break-words text-sm text-muted">{clipboardDraft}</p>
       </Dialog>
 
-      {/* 底部极简状态指示器 */}
-      <footer className="hidden shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-2 text-xs text-muted sm:flex">
-        <div className="flex flex-wrap items-center gap-2">
-          <span>Ctrl/⌘+S 随时保存</span>
-          <span>·</span>
-          <span>当前字体：{currentFont.name}</span>
-          <span>·</span>
-          <span>主题：{currentTheme.name}</span>
-        </div>
-        <span className="hidden sm:inline font-mono">{storyEntryIdentity(entry).kind}</span>
-      </footer>
     </section>
   );
 }

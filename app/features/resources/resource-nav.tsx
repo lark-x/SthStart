@@ -12,6 +12,7 @@ import {
   PlugZap,
 } from 'lucide-react';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { withResourceReturn } from './return-context';
 
 export type ResourceView = 'notes' | 'inspiration' | 'collections' | 'pending' | 'sources';
 
@@ -43,13 +44,6 @@ export function ResourceNav({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const withResourceReturn = (href: string, resourceQuery: string) => {
-    const separator = href.indexOf('?');
-    const params = new URLSearchParams(separator >= 0 ? href.slice(separator + 1) : '');
-    params.set('from', 'resources');
-    params.set('returnTo', '/apps/resources' + (resourceQuery ? `?${resourceQuery}` : ''));
-    return `${separator >= 0 ? href.slice(0, separator) : href}?${params.toString()}`;
-  };
   const openWithResourceContext = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -67,10 +61,10 @@ export function ResourceNav({
 
   return (
     <div className={`space-y-3 ${className}`}>
-      <div className="resources-navigation flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="resources-navigation flex min-w-0 items-center justify-between gap-x-4 gap-y-2">
         <PageTabs
           className="resources-view-tabs"
-          variant="page"
+          variant="local"
           ariaLabel="资料库视图切换"
           value={activeView}
           tabs={RESOURCE_TABS.map((t) => ({ id: t.id, label: t.label }))}
@@ -79,7 +73,6 @@ export function ResourceNav({
 
         {showQuickLinks && (
           <div className="resources-quick-links flex shrink-0 items-center gap-1 text-sm text-muted" aria-label="相关记录通道">
-            <span className="hidden sm:inline text-fg-subtle">记录通道：</span>
             <Link
               href={withResourceReturn('/apps/story?type=reflection', searchParams?.toString() ?? '')}
               onClick={(event) => openWithResourceContext(event, '/apps/story?type=reflection')}

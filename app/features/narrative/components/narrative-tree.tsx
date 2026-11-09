@@ -66,7 +66,7 @@ export function NarrativeTree({
   }, [nodes]);
 
   return (
-    <aside className="narrative-tree flex max-h-[45dvh] w-full flex-col bg-surface-muted md:max-h-none md:h-full md:w-64 md:flex-none">
+    <aside className="narrative-tree flex max-h-[45dvh] w-full flex-col bg-surface md:h-full md:max-h-none md:w-64 md:flex-none md:min-h-0">
       <div className="narrative-tree-head shrink-0 space-y-1.5 p-3">
         <label
           htmlFor="narrative-work-select"

@@ -50,7 +50,7 @@ export function VideoGenerator({
   const lastFrameMaxBytes = creativeInputMaxBytes(binding, 'lastFrame');
 
   return (
-    <div className="space-y-4 rounded-panel border border-border-subtle bg-surface p-5">
+    <div className="space-y-4 p-5">
       <div className="border-b border-border-subtle pb-3">
         <h3 className="text-base font-semibold text-ink">视频创作配置</h3>
         <p className="text-xs text-muted mt-0.5">配置镜头提示词与画幅参数，提交至视频合成工作流。</p>

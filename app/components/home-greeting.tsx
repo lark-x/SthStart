@@ -1,6 +1,7 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
+import { PageHeader } from './shared/page-header';
 
 const subscribe = () => () => {};
 
@@ -19,17 +20,13 @@ function readGreeting() {
 }
 
 /** 首页问候：服务端渲染先给中性文案，水合后按本机时间替换，避免时区差导致的水合不一致。 */
-export function HomeGreeting() {
+export function HomeGreeting({ actions }: { actions?: ReactNode }) {
   const value = useSyncExternalStore(subscribe, readGreeting, () => '');
   const [greeting, date] = value ? value.split('|') : ['', ''];
 
   return (
-    <div className="min-w-0">
-      <p className="home-greeting-date" data-visual-dynamic="true">{date || ' '}</p>
-      <h1 className="home-greeting-title">
-        <span className="sr-only">工作台</span>
-        <span aria-hidden="true" data-visual-dynamic="true">{greeting ? `${greeting}，继续创作吧` : '工作台'}</span>
-      </h1>
-    </div>
+    <PageHeader compact title="工作台" actions={actions}
+      navigation={date ? <span className="text-sm text-muted" data-visual-dynamic="true">{greeting} · {date}</span> : undefined}
+    />
   );
 }

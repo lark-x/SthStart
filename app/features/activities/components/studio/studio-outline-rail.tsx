@@ -39,7 +39,7 @@ export function StudioOutlineRail({
 
   if (collapsed) {
     return (
-      <aside className="w-12 border-r border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
+      <aside className="z-10 flex h-full min-h-0 w-12 shrink-0 select-none flex-col bg-surface">
         {/* 44px 统一连续基线顶栏 */}
         <div className="h-11 border-b border-border-default bg-surface flex items-center justify-center shrink-0">
           <button
@@ -92,7 +92,7 @@ export function StudioOutlineRail({
   }
 
   return (
-    <aside className="w-56 lg:w-60 border-r border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
+    <aside className="z-10 flex h-full min-h-0 w-56 shrink-0 select-none flex-col bg-surface lg:w-60">
       {/* 44px 统一连续基线顶栏 */}
       <div className="h-11 px-3 border-b border-border-default flex items-center justify-between shrink-0 bg-surface select-none">
         <span className="flex items-center gap-1.5 text-sm font-medium text-ink">

@@ -518,7 +518,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   }
 
   return (
-    <PageContainer className="pb-16 pt-2">
+    <PageContainer className="space-y-4 pb-8">
       {/* 顶部页头 */}
       <PageHeader compact
         backHref="/apps/characters"
@@ -588,10 +588,10 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       </Alert>}
 
       {/* 双栏工作台：左栏立绘卡片与资产管理，右栏沉浸式档案创作 */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 items-start">
         {/* ================= 左栏：角色卡预览、上下文微操作、资产库、衍生形态 ================= */}
         <div
-          className="order-2 space-y-5 lg:order-1 lg:sticky"
+          className="order-2 space-y-4 lg:order-1 lg:sticky"
           style={{ top: 'calc(var(--shell-sticky-top) + 1rem)' }}
         >
           {/* 移动端紧凑可展开条目：在小屏上收纳预览，不挡主表单首屏 */}
@@ -938,9 +938,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         </div>
 
         {/* ================= 右栏：行内档案头 + 分段创作画布 ================= */}
-        <div className="order-1 w-full min-w-0 space-y-6 rounded-panel border border-border-subtle bg-surface p-4 sm:p-6 lg:order-2">
+        <div className="order-1 w-full min-w-0 space-y-4 tpl-panel p-4 lg:order-2">
           {/* 行内原生档案头 (无需点击弹窗直接编辑) */}
-          <div className="space-y-3 pb-5 border-b border-border-subtle">
+          <div className="space-y-3 pb-3 border-b border-border-subtle">
             <div className="flex items-center justify-between gap-3">
               <input
                 type="text"

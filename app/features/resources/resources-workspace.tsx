@@ -52,14 +52,14 @@ export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspace
     <div className="resources-workspace-shell workspace-fill bg-paper text-ink">
       {/* 资料库顶部领域说明与统一子导航 */}
       <div className="resources-workspace-header shrink-0 border-b border-border-subtle bg-surface/80 px-4 py-3 sm:px-6">
-        <div className="min-w-0 w-full space-y-2">
+        <div className="min-w-0 w-full">
           <PageHeader
             compact
             title="资料库"
             description="集中管理创作笔记、灵感素材与搜集任务，供创作项目引用。"
+            navigation={<ResourceNav activeView={currentView} onViewChange={handleViewChange} />}
           />
 
-          <ResourceNav activeView={currentView} onViewChange={handleViewChange} />
         </div>
       </div>
 

@@ -1,5 +1,7 @@
 'use client';
 
+import { openCommandPalette } from './command-palette-events';
+
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
@@ -230,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         type="button"
         className="shell-nav-link w-full text-left"
         onClick={() => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
+          openCommandPalette();
         }}
         title={`搜索与命令 (${commandKey})`}
         data-nav-label={`搜索与命令 (${commandKey})`}
@@ -390,7 +392,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   type="button"
                   className="shell-command-action shell-search-trigger"
                   onClick={() => {
-                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }));
+                    openCommandPalette();
                   }}
                   title={`搜索与命令 (${commandKey})`}
                   aria-label="搜索与命令快捷键"

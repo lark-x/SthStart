@@ -144,18 +144,22 @@ export function PublicServicesSettings() {
   ];
 
   return (
-    <PageContainer width="settings" className="py-3 sm:py-5 space-y-3 sm:space-y-4">
+    <PageContainer width="settings" className="space-y-4">
       <PageHeader
         compact
         title="模型与公共服务"
-        description="分层管理服务连接凭据、文本模型推理、云端与本地生图引擎，并为各应用配置业务用途绑定。"
-        actions={(
-          <Button size="sm" variant="ghost" onClick={() => void handleRefreshAll()}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">刷新</span>
-          </Button>
-        )}
+        actions={<Button size="sm" variant="ghost" aria-label="刷新全部服务配置" onClick={() => void handleRefreshAll()}><RefreshCw className="h-3.5 w-3.5" /><span>刷新</span></Button>}
+        navigation={
+          <PageTabs
+            variant="local"
+            ariaLabel="公共服务分类"
+            value={tab}
+            onChange={setTab}
+            tabs={tabsConfig}
+          />
+        }
       />
+      <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
 
       {queryError && (
         <Alert variant="danger" title="公共服务数据读取失败">
@@ -188,15 +192,6 @@ export function PublicServicesSettings() {
           </span>
         </div>
       </details>
-
-      {/* 5 个核心页签切换 */}
-      <PageTabs
-        variant="page"
-        ariaLabel="公共服务分类"
-        value={tab}
-        onChange={setTab}
-        tabs={tabsConfig}
-      />
 
       {/* 各页签面板 */}
       {dataLoading && !connections.length && !models.length ? (
@@ -237,6 +232,7 @@ export function PublicServicesSettings() {
           </div>
         </>
       )}
+      </section>
     </PageContainer>
   );
 }

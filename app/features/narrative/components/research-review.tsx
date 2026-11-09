@@ -282,12 +282,12 @@ export function ResearchReview({
       </div>
       {error && <Alert variant="danger" className="mx-3 my-2 shrink-0">{error}</Alert>}
       {/* 三栏核心区：结论列表(220-250px) ｜ 结论与总稿(主区受控自适应) ｜ 证据原文(340-420px) */}
-      <div className={cn('min-w-0 flex-1 flex flex-row gap-3', isStandaloneWorkspace && 'min-h-0 overflow-hidden p-3')}>
+      <div className={cn('min-w-0 flex-1 flex flex-row gap-4', isStandaloneWorkspace && 'min-h-0 overflow-hidden p-4')}>
         {/* 左栏：结论列表 */}
         {showClaimsInline && <div className="h-full min-h-0 w-[220px] shrink-0">{claimsPanel}</div>}
 
         {/* 中栏：结论正文与总稿编辑（主区受控，独立平滑滚动） */}
-        <main
+        <section
           className={cn(
             'flex-1 min-w-0 flex flex-col rounded-xl border border-border-default bg-surface overflow-hidden shadow-2xs',
             isStandaloneWorkspace && 'h-full min-h-0'
@@ -399,7 +399,7 @@ export function ResearchReview({
               </div>
             )}
           </div>
-        </main>
+        </section>
 
         {/* 右栏：证据原文与来源定位（可折叠、可调宽） */}
         {showEvidenceInline && (

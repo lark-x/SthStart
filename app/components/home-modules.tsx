@@ -19,7 +19,7 @@ export function HomeModules() {
   const counts = useWorkspaceCounts();
 
   return (
-    <nav aria-label="创作模块" className="home-modules">
+    <nav aria-label="创作模块" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       {MODULES.map(({ href, title, unit, description, icon: Icon, tone, count }) => {
         const value = counts[count];
         return (

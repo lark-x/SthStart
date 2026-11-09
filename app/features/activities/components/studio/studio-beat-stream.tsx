@@ -50,7 +50,7 @@ export function StudioBeatStream({
 }: StudioBeatStreamProps) {
   if (!scene) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-paper p-8">
+      <div className="flex flex-1 items-center justify-center bg-surface p-8">
         <div className="max-w-sm space-y-2 text-center">
           <Film className="mx-auto h-8 w-8 text-muted/50" />
           <h3 className="text-sm font-semibold text-ink">本幕暂无场次</h3>
@@ -71,7 +71,7 @@ export function StudioBeatStream({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-paper">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
       {/* 场次工具条：单一主动作 + 上下文菜单 */}
       <div className="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-border-subtle bg-surface px-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">

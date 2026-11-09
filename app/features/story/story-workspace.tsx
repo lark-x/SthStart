@@ -311,8 +311,19 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     openCreate('chapter');
   }, []);
 
-  if (project.isLoading) return <div className="p-8 text-muted">正在打开剧情项目…</div>;
-  if (!project.data) return <div className="space-y-3 p-8"><p role="alert" className="text-danger-fg">无法打开剧情项目：{project.error?.message}</p><Button variant="outline" onClick={() => void project.refetch()}>重新加载</Button><Link href="/apps/story" className="block text-sm text-muted">返回剧情项目</Link></div>;
+  if (project.isLoading) return <div className="story-workspace-root flex h-full min-h-0 flex-col bg-paper text-ink">
+    <WorkspaceHeader title="剧情与记录工作室" backHref="/apps/story" backLabel="剧情项目" />
+    <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted" role="status">正在打开剧情项目…</div>
+  </div>;
+  if (!project.data) return <div className="story-workspace-root flex h-full min-h-0 flex-col bg-paper text-ink">
+    <WorkspaceHeader title="剧情与记录工作室" backHref="/apps/story" backLabel="剧情项目" actions={<Button variant="outline" onClick={() => void project.refetch()}>重新加载</Button>} />
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div className="max-w-md space-y-3 text-center">
+        <p role="alert" className="text-sm text-danger-fg">无法打开剧情项目：{project.error?.message}</p>
+        <Link href="/apps/story" className="block text-sm text-muted hover:text-ink">返回剧情项目</Link>
+      </div>
+    </div>
+  </div>;
 
   const filtered = (row: EntryRow) => !search.trim() || `${'name' in row.item ? row.item.name : row.item.title}\n${'notes' in row.item ? row.item.notes : row.item.body}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
 
@@ -859,16 +870,16 @@ export function StoryWorkspace({ projectId }: { projectId: string }) {
     {notice && <div role="status" className="flex shrink-0 items-center justify-between gap-3 border-b border-border-default bg-surface-muted px-4 py-2 text-sm"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="关闭提示">×</button></div>}
 
     {/* 三栏式视口锁高工作台主体 */}
-    <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
+    <div className="relative flex min-h-0 min-w-0 flex-1 gap-0 overflow-hidden md:gap-4 md:px-5 md:pb-4">
       {/* 左栏：项目大纲、世界观与出场角色 */}
       <StoryOutlinePane hidden={zenMode || sidebarCollapsed}>
         {treePanel}
       </StoryOutlinePane>
 
       {/* 中栏：核心小说正文大画布（支持自适应宽屏排版） */}
-      <section aria-label="正式写作工作台" className="flex-1 min-h-0 min-w-0 h-full overflow-hidden flex flex-col">
+      <section aria-label="正式写作工作台" className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-none bg-surface shadow-none md:rounded-panel md:shadow-xs">
         {documents.isLoading || characters.isLoading ? <p role="status" className="p-6 text-sm text-muted">正在加载项目资料…</p> : documents.error || characters.error ? <div className="space-y-3 p-6"><p role="alert" className="text-sm text-danger-fg">项目资料加载失败，已有草稿不会清除。</p><Button variant="outline" onClick={() => { void documents.refetch(); void characters.refetch(); }}>重新加载资料</Button></div> : activeEntry ? (
-          <div className={`story-editor-frame h-full w-full min-h-0 ${zenMode ? 'zen-workspace' : ''}`}>
+          <div className={`story-editor-frame h-full min-h-0 w-full overflow-hidden ${zenMode ? 'zen-workspace' : ''}`}>
             <StoryEntryEditor
               key={`${activeKind}:${activeId}`}
               projectId={projectId}

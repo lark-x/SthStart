@@ -210,7 +210,7 @@ export function MediaLibraryView({ onChooseArtifact, className = '' }: MediaLibr
   };
 
   return (
-    <div className={`flex flex-col space-y-4 ${className}`}>
+    <div className={`tpl-panel min-w-0 space-y-4 p-4 ${className}`}>
       {/* 顶部工具栏与筛选 */}
       <MediaToolbar
         searchQuery={searchQuery}

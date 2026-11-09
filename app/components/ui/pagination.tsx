@@ -59,7 +59,7 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
   );
   return <nav aria-label="分页" aria-busy={loading} className={compact ? 'grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-1 gap-y-1 py-1 text-sm' : 'flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-border-subtle py-3 text-sm'}>
     <p role="status" className="text-muted">{loading ? '正在更新…' : state.total ? `共 ${state.total} 条，当前 ${state.start}–${state.end} 条` : '共 0 条'}</p>
-    <div className={compact ? 'col-span-2 row-start-2 flex min-w-0 items-center justify-between gap-0' : 'flex min-w-0 flex-wrap items-center gap-1'}>
+    {(!compact || state.pageCount > 1) && <div className={compact ? 'col-span-2 row-start-2 flex min-w-0 items-center justify-between gap-0' : 'flex min-w-0 flex-wrap items-center gap-1'}>
       <Button size="icon" variant="ghost" aria-label="首页" disabled={loading || state.page <= 1 || !state.total} onClick={() => change(1)}><ChevronsLeft size={16} /></Button>
       <Button size="icon" variant="ghost" aria-label="上一页" disabled={loading || state.page <= 1 || !state.total} onClick={() => change(state.page - 1)}><ChevronLeft size={16} /></Button>
       {compact ? <span className="px-2 tabular-nums">{state.total ? `${state.page} / ${state.pageCount}` : '0 条'}</span> : getPageNumbers(state.page, state.pageCount).map(token => typeof token === 'number'
@@ -69,7 +69,7 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
         : <span key={token} aria-hidden="true" className="px-1 text-muted">…</span>)}
       <Button size="icon" variant="ghost" aria-label="下一页" disabled={loading || state.page >= state.pageCount || !state.total} onClick={() => change(state.page + 1)}><ChevronRight size={16} /></Button>
       <Button size="icon" variant="ghost" aria-label="末页" disabled={loading || state.page >= state.pageCount || !state.total} onClick={() => change(state.pageCount)}><ChevronsRight size={16} /></Button>
-    </div>
+    </div>}
     {compact ? <>
       <Button variant="ghost" size="sm" className="col-start-2 row-start-1" aria-label="分页选项" aria-haspopup="dialog" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(true)}>选项</Button>
       {optionsOpen && createPortal(<Dialog open onOpenChange={setOptionsOpen} title="分页选项" size="sm" footer={<Button onClick={() => setOptionsOpen(false)}>完成</Button>}>{controls}</Dialog>, document.body)}

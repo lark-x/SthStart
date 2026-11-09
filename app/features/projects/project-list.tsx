@@ -137,17 +137,17 @@ export function ProjectList() {
   };
   const items = query.data?.items ?? [];
   return (
-    <PageContainer className="project-library space-y-6 pb-10 pt-4 sm:pt-6">
-      <PageHeader
+    <PageContainer className="project-directory space-y-4">
+      <PageHeader compact
         title="创作项目"
-        description="围绕一部作品组织正文、角色、参考资料与制作版本。"
         actions={
           <Button variant="primary" onClick={() => setOpen(true)}>
             <Plus size={16} />新建项目
           </Button>
         }
       />
-      <div className="project-library-tools flex flex-wrap items-center justify-between gap-4">
+      <section aria-label="项目列表" className="tpl-panel space-y-4 p-4">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle pb-3" aria-label="项目列表筛选">
         <ProjectSearch value={state.q} onSearch={q => update({ q })} />
         <Select aria-label="项目排序" value={state.sort} onChange={event => update({ sort: event.target.value as ProjectListState['sort'] })}>
           <option value="updated">最近更新</option><option value="created">最近创建</option><option value="title">名称顺序</option>
@@ -182,14 +182,14 @@ export function ProjectList() {
           </p>
         </div>
       )}
-      <div className="project-library-grid grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {items.map(
           ({ project, chapters, characters, references, productions }) => (
             <Link
               key={project.id}
               href={"/apps/projects/" + project.id + '?returnTo=' + encodeURIComponent(scrollHref)}
               onClick={rememberPosition}
-              className="project-library-card group flex min-h-48 flex-col rounded-xl border border-border-subtle bg-surface p-6 transition-colors hover:border-border-default focus-visible:outline-2 focus-visible:outline-accent"
+              className="group flex min-h-40 min-w-0 flex-col rounded-panel border border-border-subtle p-4 transition-colors hover:border-border-default focus-visible:outline-2 focus-visible:outline-accent"
             >
               <div className="flex items-start justify-between gap-4">
                 <h2 className="text-lg font-semibold text-ink">
@@ -203,7 +203,7 @@ export function ProjectList() {
               <p className="mt-3 line-clamp-2 text-sm text-muted">
                 {project.summary || "尚未填写项目简介"}
               </p>
-              <div className="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-6 text-xs text-muted">
+              <div className="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-4 text-xs text-muted">
                 <span>{chapters} 章节</span>
                 <span>{characters} 角色</span>
                 <span>{references} 参考资料</span>
@@ -217,6 +217,7 @@ export function ProjectList() {
       {query.data && <Pagination total={query.data.total} page={query.data.page} pageSize={query.data.pageSize}
         onPageChange={page => update({ page })} onPageSizeChange={pageSize => update({ pageSize })}
         pageSizeOptions={PROJECT_PAGE_SIZES} loading={query.isFetching || query.isPlaceholderData} />}
+      </section>
       <Dialog open={open} onOpenChange={setOpen} title="新建创作项目">
         <form
           className="space-y-4"

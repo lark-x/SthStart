@@ -219,7 +219,12 @@ export function AiLogsClient() {
                 </div>}
   </>);
   const callList = (
-        <section aria-label="调用列表" className="min-w-0 overflow-hidden border-y border-border-subtle">
+        <section aria-label="调用列表" className="tpl-panel min-w-0 overflow-hidden">
+      <form onSubmit={(event) => { event.preventDefault(); applyFilters(); }} className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border-subtle p-3">
+          <Input aria-label="关键词" placeholder="搜索提示词、事件或对象" value={draftFilters.q} onChange={(event) => setDraftFilters({ ...draftFilters, q: event.target.value })} />
+          <Button type="submit" variant="accent" aria-label="应用筛选"><Search className="h-4 w-4" /><span className="sr-only">应用筛选</span></Button>
+          <Button type="button" variant="ghost" className="shrink-0" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1 h-4 w-4" />更多筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
+      </form>
           <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
             <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-muted" /><h2 className="font-semibold text-ink">作业列表</h2><span className="text-xs text-muted">{items.length} 次调用 · {groupedItems.length} 组</span></div>
             <Button variant="ghost" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()} aria-label="刷新调用列表"><RefreshCw className="h-4 w-4" /></Button>
@@ -245,22 +250,21 @@ export function AiLogsClient() {
   );
 
   return (
-    <PageContainer className="max-w-[1600px]">
-      <PageHeader title="AI 调用记录" description="按业务事件查看实际发送的模型请求、执行阶段、响应与生成产物。" />
-      <div className="mb-4 border-y border-border-subtle py-3 text-sm leading-relaxed text-muted">
+    <PageContainer className="space-y-4">
+      <PageHeader compact title="AI 调用记录" />
+      <details className="tpl-panel p-4 text-sm leading-relaxed text-muted">
+        <summary className="cursor-pointer font-medium text-ink">记录范围与留存</summary>
+        <p className="mt-3">
         仅包含经 SthStart 服务转发、且已接入审计的调用。旧任务和旧镜头没有历史调用详情；独立启动、未经过本项目网关的邻舍进程也不会出现在这里。
-      </div>
-      <section aria-label="日志留存" className="mb-4 grid grid-cols-1 border-y border-border-subtle py-4 sm:grid-cols-3">
+        </p>
+      <section aria-label="日志留存" className="mt-3 grid grid-cols-1 gap-4 border-t border-border-subtle pt-3 sm:grid-cols-3">
         <div><div className="text-xs text-muted">数据库占用（含 WAL）</div><div className="mt-1 text-lg font-semibold text-ink">{storage.data ? formatBytes(storage.data.totalBytes) : storage.isError ? '暂不可读取' : '读取中…'}</div></div>
         <div><div className="text-xs text-muted">永久保留的调用 / 事件</div><div className="mt-1 text-lg font-semibold text-ink">{storage.data ? `${storage.data.recordCount.toLocaleString()} / ${storage.data.eventCount.toLocaleString()}` : '—'}</div></div>
         <p className="text-xs leading-relaxed text-muted sm:col-span-1">调用记录不会自动过期或截断。请把数据库纳入例行备份；可运行 <code className="rounded bg-surface-muted px-1 py-0.5 text-ink">npm run db:backup</code> 创建一致性快照。</p>
       </section>
+      </details>
 
-      <form onSubmit={(event) => { event.preventDefault(); applyFilters(); }} className="mb-4 flex min-w-0 items-center gap-2">
-          <Input aria-label="关键词" placeholder="搜索提示词、事件或对象" value={draftFilters.q} onChange={(event) => setDraftFilters({ ...draftFilters, q: event.target.value })} />
-          <Button type="submit" variant="accent" aria-label="应用筛选"><Search className="h-4 w-4" /><span className="sr-only">应用筛选</span></Button>
-          <Button type="button" variant="ghost" className="shrink-0" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1 h-4 w-4" />更多筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
-      </form>
+
       <ResponsiveEditOverlay
         open={filtersOpen}
         onOpenChange={setFiltersOpen}
@@ -294,7 +298,7 @@ export function AiLogsClient() {
           from="xl"
           className="xl:grid-cols-[400px_minmax(0,1fr)]"
           left={callList}
-          right={wide ? <section aria-label="AI 调用详情" className="min-w-0 border-y border-border-subtle py-4">
+          right={wide ? <section aria-label="AI 调用详情" className="tpl-panel min-w-0 p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-ink">AI 调用详情</h2>
               {selectedId && <Button size="sm" variant="ghost" onClick={closeDetail}>取消选择</Button>}

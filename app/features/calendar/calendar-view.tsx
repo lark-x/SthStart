@@ -25,7 +25,7 @@ export function CalendarView() {
   // The container may use UTC while the browser is already on the next local day.
   // Render the same loading state for SSR and hydration, then use the user's clock.
   const ready = useSyncExternalStore(subscribeCalendarClock, clientClockReady, serverClockReady);
-  if (!ready) return <PageContainer><PageHeader title="角色日历" /><p role="status" className="py-8 text-muted">正在载入日历…</p></PageContainer>;
+  if (!ready) return <PageContainer><PageHeader compact title="角色日历" /><p role="status" className="py-8 text-muted">正在载入日历…</p></PageContainer>;
   return <LocalCalendarView />;
 }
 
@@ -123,13 +123,43 @@ function LocalCalendarView() {
   };
 
   return (
-    <PageContainer className="space-y-4 py-6">
-        <PageHeader
+    <PageContainer className="space-y-4">
+        <PageHeader compact
           title="角色日历"
-          description="按月份查看角色生日与已排期的活动，从生日直接为一位或多位寿星创建活动。"
         />
 
-        <Toolbar className="border-b border-border-subtle">
+        <ResponsiveEditOverlay
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          title="日历筛选"
+          description="搜索与事件类型常驻在日历上方；作品和收藏条件可在这里调整。"
+          footer={<><Button variant="outline" onClick={() => { setWork(''); setFavorite(false); }}>重置</Button><Button variant="primary" onClick={() => setFiltersOpen(false)}>完成</Button></>}
+        >
+          <div className="space-y-4">
+            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="calendar-work-filter">作品
+              <select id="calendar-work-filter" disabled={facets.isLoading} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal disabled:opacity-60" value={work} onChange={(event) => setWork(event.target.value)}>
+                <option value="">全部作品</option>
+                {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+              </select>
+              {facets.isError && <span role="alert" className="block text-xs font-normal text-danger-fg">作品列表读取失败。{facets.error instanceof Error ? facets.error.message : '已有作品筛选不会被删除。'}</span>}
+            </label>
+            <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-muted/50 px-3 text-sm text-ink">
+              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-accent" />
+              仅显示收藏角色相关的事件
+            </label>
+          </div>
+        </ResponsiveEditOverlay>
+
+        {error && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger-fg"><p>{error instanceof Error ? error.message : String(error)}</p><Button size="sm" variant="outline" onClick={() => { void refetch(); }}>重试读取日历</Button></div>}
+
+        {/* 左月历与右当天详情各自滚动：右侧生日名单再长也不会把月历拉长（§4.4）。 */}
+        <SplitPanes
+          className="lg:grid-cols-[minmax(0,1fr)_360px]"
+          from="lg"
+          labels={{ left: '月历', right: '当天详情' }}
+          left={
+          <section className="tpl-panel overflow-hidden">
+        <Toolbar className="border-b border-border-subtle px-3" aria-label="月历筛选">
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" aria-label="上个月" onClick={() => shiftMonth(-1)}>
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -163,42 +193,12 @@ function LocalCalendarView() {
           <Button type="button" size="sm" variant="ghost" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{work || favorite ? ' · 已启用' : ''}</Button>
           {isLoading && <span className="text-sm text-muted">正在更新…</span>}
         </Toolbar>
-        {(work || favorite) && <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="当前筛选条件">
+        {(work || favorite) && <div className="px-3 py-2 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="当前筛选条件">
           {work && <span className="rounded-full bg-surface-muted px-2.5 py-1">作品：{work}</span>}
           {favorite && <span className="rounded-full bg-surface-muted px-2.5 py-1">仅收藏角色</span>}
           <button type="button" className="text-ink hover:underline" onClick={() => { setWork(''); setFavorite(false); }}>清除</button>
         </div>}
-        <ResponsiveEditOverlay
-          open={filtersOpen}
-          onOpenChange={setFiltersOpen}
-          title="日历筛选"
-          description="搜索与事件类型常驻在日历上方；作品和收藏条件可在这里调整。"
-          footer={<><Button variant="outline" onClick={() => { setWork(''); setFavorite(false); }}>重置</Button><Button variant="primary" onClick={() => setFiltersOpen(false)}>完成</Button></>}
-        >
-          <div className="space-y-4">
-            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="calendar-work-filter">作品
-              <select id="calendar-work-filter" disabled={facets.isLoading} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal disabled:opacity-60" value={work} onChange={(event) => setWork(event.target.value)}>
-                <option value="">全部作品</option>
-                {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
-              </select>
-              {facets.isError && <span role="alert" className="block text-xs font-normal text-danger-fg">作品列表读取失败。{facets.error instanceof Error ? facets.error.message : '已有作品筛选不会被删除。'}</span>}
-            </label>
-            <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-muted/50 px-3 text-sm text-ink">
-              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-accent" />
-              仅显示收藏角色相关的事件
-            </label>
-          </div>
-        </ResponsiveEditOverlay>
 
-        {error && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger-fg"><p>{error instanceof Error ? error.message : String(error)}</p><Button size="sm" variant="outline" onClick={() => { void refetch(); }}>重试读取日历</Button></div>}
-
-        {/* 左月历与右当天详情各自滚动：右侧生日名单再长也不会把月历拉长（§4.4）。 */}
-        <SplitPanes
-          className="lg:grid-cols-[minmax(0,1fr)_360px]"
-          from="lg"
-          labels={{ left: '月历', right: '当天详情' }}
-          left={
-          <section className="calendar-month-panel overflow-hidden rounded-xl border border-border-subtle bg-surface">
             <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5">
               <h2 className="text-sm font-semibold text-ink">{year} 年 {month} 月</h2>
               <span className="text-xs text-muted">{error ? '记录暂不可用' : `共 ${(data?.events || []).length} 项`}</span>
@@ -239,10 +239,9 @@ function LocalCalendarView() {
           </section>
           }
           right={
-          <section className="space-y-5 border-t border-border-subtle pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <section className="tpl-panel space-y-4 p-4">
             <div>
-              <p className="text-xs font-semibold tracking-[0.06em] text-muted">当天安排</p>
-              <h2 className="mt-1 flex items-center gap-2 text-xl font-semibold text-ink"><CalendarDays className="h-4 w-4 text-muted" />{selectedDate}</h2>
+              <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink"><CalendarDays className="h-4 w-4 text-muted" />当天安排 <span className="font-normal text-muted">{selectedDate}</span></h2>
             </div>
             {error ? <p className="text-sm text-muted">暂时无法确认当天安排，请重试读取日历。</p> : !isLoading && !dayEvents.length && <p className="text-sm text-muted">这一天没有生日或活动。</p>}
             {!!birthdays.length && (

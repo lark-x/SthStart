@@ -3,17 +3,17 @@
 .resources-workspace-shell {
   min-width: 0;
   min-height: 0;
-  padding: 8px 24px 0;
+  padding: 0 20px 16px;
   background: var(--bg-app);
 }
 .resources-workspace-header {
   flex-shrink: 0;
-  padding: 12px 0 20px;
+  padding: 0;
   border: 0;
   background: transparent;
 }
 .resources-workspace-header .tpl-header { margin-bottom: 0; padding-block: 0; }
-.resources-navigation { padding-top: 16px; }
+.resources-navigation { padding-top: 0; }
 .resources-workspace-content,
 .resources-notes-container,
 .resources-workspace-shell .notebook-workspace-shell {
@@ -22,7 +22,7 @@
   background: transparent;
 }
 .resources-workspace-shell .notebook-workspace-shell { height: 100%; }
-.resources-workspace-shell .notebook-master-toolbar { flex-shrink: 0; padding: 16px; background: transparent; }
+.resources-workspace-shell .notebook-master-toolbar { flex-shrink: 0; padding: 12px; background: transparent; }
 .resources-workspace-shell .notebook-master-list {
   min-height: 0;
   padding: 8px;
@@ -32,15 +32,15 @@
 .resources-workspace-shell .notebook-list-item {
   width: 100%;
   margin: 0;
-  padding: 16px 12px;
+  padding: 12px;
   border: 0;
   border-radius: var(--radius-control);
 }
 .resources-workspace-shell .notebook-list-item + .notebook-list-item { margin-top: 4px; }
-.resources-workspace-shell .notebook-list-item[aria-current='page'] { background: var(--surface-raised); box-shadow: var(--elev-xs); }
+.resources-workspace-shell .notebook-list-item[aria-current='page'] { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
 .resources-workspace-shell .notebook-list-pagination {
   flex-shrink: 0;
-  padding: 12px 8px;
+  padding: 8px;
   border-top: 1px solid var(--border-subtle);
   background: var(--surface);
   color: var(--fg-muted);
@@ -54,8 +54,8 @@
 .resources-workspace-shell .notebook-editor-header {
   flex-wrap: wrap;
   gap: 8px 16px;
-  min-height: 52px;
-  padding: 8px 24px;
+  min-height: 48px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-raised);
   backdrop-filter: none;
@@ -64,9 +64,9 @@
 /* The document IS the panel: no second sheet, frame or shadow around the text. */
 .resources-workspace-shell .notebook-editor-frame:not(.zen-workspace) {
   width: 100%;
-  max-width: 56rem;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 32px clamp(24px, 4vw, 64px) 48px;
+  padding: 24px 32px 32px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -74,13 +74,13 @@
 }
 .resources-workspace-shell .notebook-editor-message {
   width: 100%;
-  max-width: 56rem;
+  max-width: 760px;
   margin-inline: auto;
-  padding-inline: clamp(24px, 4vw, 64px);
+  padding-inline: 32px;
 }
-.resources-workspace-shell .notebook-doc-header { padding-bottom: 24px; }
+.resources-workspace-shell .notebook-doc-header { padding-bottom: 16px; }
 .resources-workspace-shell .notebook-doc-header > input { font-size: 28px; line-height: 1.5; }
-.resources-workspace-shell .notebook-content-section { padding-top: 16px; }
+.resources-workspace-shell .notebook-content-section { padding-top: 4px; }
 .resources-workspace-shell .notebook-content-heading { border-bottom: 0; }
 .resources-workspace-shell .notebook-textarea { font-size: 16px; line-height: 1.9; }
 @media (min-width: 1024px) {
@@ -118,11 +118,11 @@
   .resources-workspace-shell .notebook-textarea { field-sizing: content; height: auto; min-height: 120px; max-height: none; resize: none; }
 }
 @media (min-width: 1536px) {
-  .resources-workspace-shell { padding-inline: 32px; }
+  .resources-workspace-shell { padding-inline: 20px; }
 }
 @media (max-width: 1023px) {
   .resources-workspace-shell { padding: 0 16px 16px; }
-  .resources-workspace-header { padding-block: 16px; }
+  .resources-workspace-header { padding-block: 0; }
   .resources-workspace-shell .notebook-master-pane,
   .resources-workspace-shell .notebook-detail-pane { min-height: 0; height: 100%; border: 0; border-radius: var(--radius-panel); background: var(--surface); }
   .resources-workspace-shell .notebook-detail-pane { overflow-y: auto; }

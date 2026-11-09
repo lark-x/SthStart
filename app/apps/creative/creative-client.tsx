@@ -366,9 +366,23 @@ export function CreativeClient() {
       <PageHeader
         compact
         title="自由生成"
-        description="独立尝试画面与视频创意。生成结果可在媒体库中加入创作项目。"
+        description="画面与视频创意工作台。"
+        navigation={
+          <PageTabs
+            variant="local"
+            ariaLabel="生成模式"
+            value={mode}
+            onChange={(id) => handleModeChange(id as CreativeMode)}
+            className="max-w-full flex-nowrap overflow-x-auto"
+            tabs={[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => ({
+              id: value,
+              panelId: `creative-panel-${value}`,
+              label: <><Icon className="h-4 w-4" aria-hidden="true" />{label}</>,
+            }))}
+          />
+        }
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
             <details ref={serviceDetailsRef} className="relative text-sm">
               <summary className="flex cursor-pointer list-none items-center gap-2 py-2 text-muted">
                 <span className={`h-2 w-2 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} />
@@ -390,7 +404,7 @@ export function CreativeClient() {
             }}
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            刷新
+            <span className="hidden sm:inline">刷新</span>
           </Button>
           </div>
         }
@@ -437,25 +451,14 @@ export function CreativeClient() {
         </div>
       </div>
 
-      <PageTabs
-        ariaLabel="生成模式"
-        value={mode}
-        onChange={(id) => handleModeChange(id as CreativeMode)}
-        className="flex-nowrap overflow-x-auto"
-        tabs={[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => ({
-          id: value,
-          panelId: `creative-panel-${value}`,
-          label: <><Icon className="h-4 w-4" aria-hidden="true" />{label}</>,
-        }))}
-      />
       <SplitPanes
         resizable
         storageKey="sthstart_creative_split"
         defaultSplitRatio={0.4}
         minLeftWidth={360}
         minRightWidth={360}
-        leftClassName={`${!isVideoMode ? 'creative-configuration' : ''} ${mobilePane === 'configuration' ? '' : 'hidden xl:block'}`}
-        rightClassName={mobilePane === 'results' ? '' : 'hidden xl:block'}
+        leftClassName={`min-h-0 xl:h-full xl:overflow-y-auto ${!isVideoMode ? 'creative-configuration' : ''} ${mobilePane === 'configuration' ? '' : 'hidden xl:block'}`}
+        rightClassName={`min-h-0 xl:h-full xl:overflow-y-auto ${mobilePane === 'results' ? '' : 'hidden xl:block'}`}
         className="creative-split gap-6 xl:grid-cols-[minmax(360px,2fr)_minmax(0,3fr)]"
         from="xl"
         labels={{ left: '生成参数', right: '生成结果' }}

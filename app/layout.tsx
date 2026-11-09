@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import './styles/shell.css';
+import './styles/workspace-unified.css';
 import { QueryProvider } from './providers/query-provider';
 import { UIProvider } from './providers/ui-provider';
 import { AppShell } from './components/shared/app-shell';

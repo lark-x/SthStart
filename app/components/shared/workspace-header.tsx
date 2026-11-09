@@ -1,5 +1,7 @@
 'use client';
 
+import { openCommandPalette } from './command-palette-events';
+
 import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Menu, ListTodo, Search } from 'lucide-react';
@@ -63,8 +65,8 @@ export function WorkspaceHeader({
           <Link
             href={backHref}
             className="inline-flex h-10 w-10 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2 sm:px-2.5 rounded-control text-sm font-medium text-muted hover:text-ink hover:bg-surface-sunken transition-[background-color,color,transform] duration-150 active:scale-[0.98] shrink-0"
-            aria-label={`返回${backLabel}`}
-            title={`返回 ${backLabel}`}
+            aria-label={backLabel.startsWith('返回') ? backLabel : `返回${backLabel}`}
+            title={backLabel.startsWith('返回') ? backLabel : `返回 ${backLabel}`}
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">{backLabel}</span>
@@ -98,7 +100,7 @@ export function WorkspaceHeader({
 
         <button
           type="button"
-          onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, ctrlKey: true, bubbles: true }))}
+          onClick={() => openCommandPalette()}
           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-sm text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
           title="搜索与命令 (Ctrl/Cmd+K)"
           aria-label="搜索与命令"

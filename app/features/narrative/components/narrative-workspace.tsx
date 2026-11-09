@@ -229,7 +229,7 @@ export function NarrativeWorkspace() {
 
   const modeTabs = (
             <PageTabs
-              variant="page"
+              variant="local"
               ariaLabel="叙事工作模式"
               value={mode}
               onChange={(id) => setMode(id as 'read' | 'research' | 'import')}
@@ -270,7 +270,7 @@ export function NarrativeWorkspace() {
   const WorkspaceRoot = 'div';
 
   return (
-    <WorkspaceRoot className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-dvh overflow-hidden')}>
+    <WorkspaceRoot className={cn("flex min-h-0 min-w-0 w-full flex-col", mode === 'read' && 'h-full overflow-hidden')}>
       {/* 页头与工作模式：与外框统一的标题区，模式用 tab 语义而非自绘分段控件。 */}
       {mode === 'read' ? <WorkspaceHeader
         title="叙事档案"
@@ -279,38 +279,33 @@ export function NarrativeWorkspace() {
         centerSlotOnMobile
         centerSlot={modeTabs}
         actions={readingActions}
-      /> : <div className="narrative-workspace-header shrink-0 bg-surface">
-        <PageContainer className="pt-4">
+      /> : <div className="narrative-workspace-header shrink-0 bg-paper">
+        <PageContainer className="pt-3 pb-0">
           <PageHeader
             compact
             backHref={resourceReturnHref}
             backLabel={resourceReturnHref ? "返回资料库" : undefined}
             title="叙事档案"
             description="任务链阅读、多作品追溯与原文检索。"
+            navigation={modeTabs}
           />
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 pt-1">
-            {modeTabs}
-
-
-          </div>
         </PageContainer>
       </div>}
 
       {/* Main Workspace */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className={cn("flex min-h-0 flex-1 flex-col", mode === 'read' && 'md:flex-row md:gap-4 md:px-5 md:pb-4')}>
         {mode === 'read' ? (
           <>
             {/* 宽屏常驻左栏；窄屏默认隐藏，由页头「目录」按钮单独打开。 */}
-            <div className="hidden min-h-0 md:flex md:w-64 md:flex-none">
+            <div className="hidden min-h-0 md:flex md:w-64 md:flex-none md:overflow-hidden md:rounded-panel md:bg-surface md:shadow-xs">
               {treePanel}
             </div>
 
-            {sourceError ? <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
+            {sourceError ? <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 rounded-panel bg-surface p-6 text-center shadow-xs" role="alert">
               <h2 className="text-base font-semibold text-ink">档案暂时无法读取</h2>
               <p className="max-w-md text-sm text-muted">已有内容未被删除。请重试读取，不必重新导入。</p>
               <Button size="sm" onClick={() => { void refetchWorks(); if (activeWorkId) void refetchTree(); if (activeNodeId) void refetchReading(); }}>重试读取</Button>
-            </section> : worksLoading || treeLoading ? <div role="status" className="flex flex-1 items-center justify-center p-6 text-sm text-muted">正在读取档案…</div> : <NarrativeReader
+            </section> : worksLoading || treeLoading ? <div role="status" className="flex flex-1 items-center justify-center rounded-panel bg-surface p-6 text-sm text-muted shadow-xs">正在读取档案…</div> : <NarrativeReader
               reading={readingData ?? null}
               loading={readingLoading}
               onSaveUtteranceToNotebook={handleSaveToNotebook}
@@ -319,7 +314,7 @@ export function NarrativeWorkspace() {
               generatingConcept={Boolean(conceptTaskId) || submittingConcept}
             />}
 
-            {inspectorOpen && <div className="hidden min-h-0 md:flex"><NarrativeInspector
+            {inspectorOpen && <div className="hidden min-h-0 md:flex md:overflow-hidden md:rounded-panel md:shadow-xs"><NarrativeInspector
               query={searchQuery}
               onQueryChange={setSearchQuery}
               results={searchData?.items ?? []}

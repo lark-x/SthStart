@@ -119,19 +119,27 @@ export function StoryProjectList() {
     ? '剧情创作工程'
     : '剧情与记录工作室';
 
-  const headerDescription = activeTypeTab === 'reflection'
-    ? '记录与角色交互聊天、剧情体验后的随想复盘与灵感摘录，支持沉淀到资料库与企划引用。'
-    : activeTypeTab === 'fiction'
-    ? '结构化大纲、小说正文、世界观设定与剧本流编排，支持 AI 协作与章节制作。'
-    : '结构化大纲、小说正文与对话感想记录，统一串联至创作项目体系。';
-
   return (
     <div className="min-h-0 w-full bg-paper py-6 text-ink">
       <PageContainer className="space-y-5">
         {resourcesHref && <Link href={resourcesHref} className="inline-flex items-center gap-2 text-sm text-muted hover:text-ink">返回资料库</Link>}
         <PageHeader
+          compact
           title={headerTitle}
-          description={headerDescription}
+          description="整理剧情创作与对话感想项目。"
+          navigation={
+            <PageTabs
+              variant="local"
+              ariaLabel="项目类型筛选"
+              value={activeTypeTab}
+              tabs={[
+                { id: 'all', label: '全部项目' },
+                { id: 'fiction', label: '剧情创作' },
+                { id: 'reflection', label: '对话感想' },
+              ]}
+              onChange={handleTabChange}
+            />
+          }
           actions={
             <Button
               variant="primary"
@@ -144,21 +152,6 @@ export function StoryProjectList() {
             </Button>
           }
         />
-
-        {/* 视图类型筛选标签 */}
-        <div className="border-b border-border-subtle pb-1">
-          <PageTabs
-            variant="page"
-            ariaLabel="项目类型筛选"
-            value={activeTypeTab}
-            tabs={[
-              { id: 'all', label: '全部项目' },
-              { id: 'fiction', label: '剧情创作' },
-              { id: 'reflection', label: '对话感想' },
-            ]}
-            onChange={handleTabChange}
-          />
-        </div>
 
         {projects.error && (
           <p role="alert" className="text-sm text-danger-fg">

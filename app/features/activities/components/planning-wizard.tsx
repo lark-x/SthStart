@@ -234,7 +234,7 @@ function CustomCastEditor({
   );
 }
 
-export function PlanningWizard() {
+export function PlanningWizard({ onExitWizard }: { onExitWizard?: () => void }) {
   const router = useRouter();
   const params = useSearchParams();
   const client = useQueryClient();
@@ -1088,7 +1088,10 @@ export function PlanningWizard() {
           backLabel="返回活动列表"
           title="新建活动"
           description="先确定活动意图，再检索资料、确认人物与地点，最后对比方案并创建。"
-          actions={<Button size="sm" variant="outline" disabled={busy || creatingBlank || generating || researching} onClick={() => void createBlankActivity()}>{creatingBlank ? '正在创建…' : '从空白开始'}</Button>}
+          actions={<div className="flex flex-wrap items-center gap-2">
+            {onExitWizard && <Button size="sm" variant="ghost" onClick={onExitWizard}>快速制作工坊</Button>}
+            <Button size="sm" variant="outline" disabled={busy || creatingBlank || generating || researching} onClick={() => void createBlankActivity()}>{creatingBlank ? '正在创建…' : '从空白开始'}</Button>
+          </div>}
         />
 
         <nav aria-label="企划步骤" className="flex flex-wrap items-center gap-2">

@@ -37,12 +37,13 @@ export function MediaToolbar({
   isLoading,
 }: MediaToolbarProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-panel border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle pb-3">
       {/* 搜索框 */}
-      <div className="relative flex-1 min-w-[200px]">
+      <div className="relative min-w-0 w-full sm:min-w-48 sm:flex-1">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted pointer-events-none" />
         <input
           type="search"
+          aria-label="搜索媒体列表"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           onCompositionStart={onSearchCompositionStart}
@@ -59,7 +60,7 @@ export function MediaToolbar({
           value={selectedKind}
           onChange={(e) => onKindChange(e.target.value as MediaLibraryKind | 'all')}
           aria-label="按产物类型筛选"
-          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-border focus:outline-none cursor-pointer"
+          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-ink focus:border-border focus:outline-none cursor-pointer"
         >
           <option value="all">全部类型</option>
           <option value="image">图像 (Image)</option>
@@ -73,7 +74,7 @@ export function MediaToolbar({
           value={selectedApp}
           onChange={(e) => onAppChange(e.target.value)}
           aria-label="按来源应用筛选"
-          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-border focus:outline-none cursor-pointer"
+          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-ink focus:border-border focus:outline-none cursor-pointer"
         >
           <option value="all">全部来源</option>
           {appOptions.map((app) => (
@@ -88,7 +89,7 @@ export function MediaToolbar({
           value={selectedStatus}
           onChange={(e) => onStatusChange(e.target.value as MediaLibraryStatus | 'all')}
           aria-label="按可用状态筛选"
-          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-border focus:outline-none cursor-pointer"
+          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-sm text-ink focus:border-border focus:outline-none cursor-pointer"
         >
           <option value="all">全部状态</option>
           <option value="ready">可用</option>
@@ -103,7 +104,7 @@ export function MediaToolbar({
           onClick={onRefresh}
           loading={isLoading}
           aria-label="刷新媒体库"
-          className="px-2.5 py-1.5 h-auto text-xs"
+          className="px-2.5 py-1.5 h-auto text-sm"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">刷新</span>

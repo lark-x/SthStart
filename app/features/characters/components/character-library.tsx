@@ -114,12 +114,56 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
   return (
-    <div className="bg-paper py-6 text-ink">
-      <PageContainer className="space-y-5">
+    <div className="text-ink">
+      <PageContainer className="space-y-4">
         <PageHeader compact
           title="角色资料库"
-          description="按作品与标签找角色，为下一场活动挑选参与者。"
-          actions={
+          navigation={
+            <div className="flex max-w-full flex-nowrap overflow-x-auto items-center gap-1 bg-surface-sunken p-1 rounded-control w-fit border border-border-subtle/70" role="group" aria-label="角色资料视图">
+              <button
+                type="button"
+                aria-pressed={viewTab === 'characters'}
+                onClick={() => setViewTab('characters')}
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
+                  viewTab === 'characters'
+                    ? 'bg-surface text-ink font-semibold shadow-xs'
+                    : 'text-muted hover:text-ink font-normal'
+                }`}
+              >
+                <User className="h-3.5 w-3.5" />
+                <span>专属角色卡</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={viewTab === 'shared-assets'}
+                onClick={() => { setAssetsVisited(true); setViewTab('shared-assets'); }}
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
+                  viewTab === 'shared-assets'
+                    ? 'bg-surface text-ink font-semibold shadow-xs'
+                    : 'text-muted hover:text-ink font-normal'
+                }`}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span>多角色公共资产库</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={viewTab === 'linshe'}
+                onClick={() => setViewTab('linshe')}
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
+                  viewTab === 'linshe'
+                    ? 'bg-surface text-ink font-semibold shadow-xs'
+                    : 'text-muted hover:text-ink font-normal'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-muted" />
+                <span>邻舍角色</span>
+              </button>
+            </div>
+          }
+        />
+        <section aria-label="角色资料内容" className="tpl-panel space-y-4 p-4">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border-subtle pb-3" aria-label="当前资料视图操作">
             <div className="flex flex-wrap items-center gap-2">
               {viewTab === 'characters' && (
                 <>
@@ -211,51 +255,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                 </div>
               </details>
             </div>
-          }
-        />
-
-        {/* 视图切换：专属角色卡 vs 多角色公共资产库 vs 邻舍角色 */}
-        <div className="flex max-w-full flex-nowrap overflow-x-auto items-center gap-1 bg-surface-sunken p-1 rounded-control w-fit border border-border-subtle/70" role="group" aria-label="角色资料视图">
-          <button
-            type="button"
-            aria-pressed={viewTab === 'characters'}
-            onClick={() => setViewTab('characters')}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
-              viewTab === 'characters'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink font-normal'
-            }`}
-          >
-            <User className="h-3.5 w-3.5" />
-            <span>专属角色卡</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={viewTab === 'shared-assets'}
-            onClick={() => { setAssetsVisited(true); setViewTab('shared-assets'); }}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
-              viewTab === 'shared-assets'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink font-normal'
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>多角色公共资产库</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={viewTab === 'linshe'}
-            onClick={() => setViewTab('linshe')}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
-              viewTab === 'linshe'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink font-normal'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5 text-muted" />
-            <span>邻舍角色</span>
-          </button>
-        </div>
+          </div>
 
         {assetsVisited && (
           <div hidden={viewTab !== 'shared-assets'}>
@@ -815,6 +815,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             )}
           </div>
         </Dialog>
+        </section>
       </PageContainer>
     </div>
   );

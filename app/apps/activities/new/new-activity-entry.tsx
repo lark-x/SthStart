@@ -185,22 +185,13 @@ export function NewActivityEntry() {
   };
 
   if (entryMode === 'wizard') {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-6 py-2.5">
-          <span className="text-xs text-muted">当前为传统多阶段企划向导</span>
-          <Button size="sm" variant="ghost" onClick={() => setEntryMode('quick')} className="text-xs">
-            返回快速制作工坊
-          </Button>
-        </div>
-        <PlanningWizard />
-      </div>
-    );
+    return <PlanningWizard onExitWizard={() => setEntryMode('quick')} />;
   }
 
   return (
-    <PageContainer width="settings" className="space-y-6 py-6">
+    <PageContainer width="settings" className="space-y-5 py-4">
       <PageHeader
+        compact
         title="新建制作工坊"
         description="从创作项目章节冻结生成正式制作版本，或挑选已发布角色快速建立分镜漫剧工程。"
         actions={

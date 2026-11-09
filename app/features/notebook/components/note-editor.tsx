@@ -33,8 +33,7 @@ import { syncPendingNotebookData } from '../sync';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
-import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
-import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { Pagination } from '@/app/components/ui/pagination';
 import { Input } from '@/app/components/ui/input';
 import { TagsInput } from '@/app/components/shared/tags-input';
@@ -43,6 +42,7 @@ import { generateId } from '@/app/lib/uuid';
 import { LocalNoteImage } from './local-note-image';
 import { NoteKnowledgePanel } from './note-knowledge-panel';
 import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
+import './notebook-layout.css';
 
 const initialNote: CreativeNote = {
   title: '',
@@ -60,12 +60,14 @@ export function NoteEditor({
   standalone = true,
   onDeleted,
   onPersisted,
+  listActions,
 }: {
   noteId?: string;
   initialKind?: NoteKind;
   standalone?: boolean;
   onDeleted?: () => void;
   onPersisted?: (id: string) => void;
+  listActions?: React.ReactNode;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -96,9 +98,6 @@ export function NoteEditor({
   const resolvingRef = useRef(false);
   const [preservedCopyId, setPreservedCopyId] = useState<string | null>(null);
   const [zenMode, setZenMode] = useState(false);
-  const [metaEditorOpen, setMetaEditorOpen] = useState(false);
-  const [discardMetaOpen, setDiscardMetaOpen] = useState(false);
-  const [metaDraft, setMetaDraft] = useState<Pick<CreativeNote, 'title' | 'tags' | 'kind' | 'stage'> | null>(null);
 
   const { data: detailData, isLoading: detailLoading, error: detailError, refetch: refetchDetail } = useNoteDetail(noteId);
   const { record: localRecord, loaded: localNoteLoaded } = useLocalNotebookNote(effectiveNoteId);
@@ -319,31 +318,6 @@ export function NoteEditor({
     }
   };
 
-  const metaDraftChanged = Boolean(metaDraft && (
-    metaDraft.title !== note.title || metaDraft.kind !== note.kind || metaDraft.stage !== note.stage ||
-    JSON.stringify(metaDraft.tags) !== JSON.stringify(note.tags)
-  ));
-
-  const requestMetaEditorClose = (open: boolean) => {
-    if (open) {
-      setMetaEditorOpen(true);
-      return;
-    }
-    if (metaDraftChanged) {
-      setDiscardMetaOpen(true);
-      return;
-    }
-    setMetaEditorOpen(false);
-    setMetaDraft(null);
-  };
-
-  const saveMetaDraft = () => {
-    if (!metaDraft) return;
-    updateNoteState((prev) => ({ ...prev, ...metaDraft }));
-    setMetaEditorOpen(false);
-    setMetaDraft(null);
-  };
-
   const handleDelete = async () => {
     if (!effectiveNoteId || !window.confirm('确定删除此条笔记及其本地图片素材吗？')) return;
     try {
@@ -440,6 +414,7 @@ export function NoteEditor({
     return (
       <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
         {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
+        <div className="flex items-center gap-2 px-4 py-2">{listActions}</div>
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
           <p className="text-lg font-semibold text-ink">笔记打开失败</p>
           <p className="max-w-sm text-sm text-muted">
@@ -467,6 +442,7 @@ export function NoteEditor({
       <MainTag className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
         {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
         <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-surface/95 backdrop-blur-md border-b border-border-subtle">
+          {listActions}
           {standalone ? (
             <Link
               href="/apps/notebook"
@@ -492,11 +468,13 @@ export function NoteEditor({
   }
 
   return (
-    <MainTag inert={resolvingConflict} aria-busy={resolvingConflict} className="notebook-editor-page notebook-editor-shell w-full bg-surface text-ink">
+    <MainTag inert={resolvingConflict} aria-busy={resolvingConflict} className="notebook-editor-page notebook-editor-shell notebook-editor-compact w-full bg-surface text-ink">
       {standalone && <h1 className="sr-only">创作资料库编辑器</h1>}
       {/* Top sticky action bar */}
       <header className="notebook-editor-header sticky top-0 z-20 flex items-center justify-between gap-4 px-5 sm:px-8 py-2 bg-surface/95 backdrop-blur-md border-b border-border-subtle">
-        {standalone ? (
+        <div className="notebook-editor-leading flex min-w-0 flex-1 items-center gap-2">
+        {listActions}
+        {standalone && (
           <Link
             href="/apps/notebook"
             className="notebook-back-link inline-flex min-h-[34px] items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
@@ -504,8 +482,7 @@ export function NoteEditor({
             <ArrowLeft className="h-4 w-4" />
             <span>返回笔记列表</span>
           </Link>
-        ) : (
-          <div className="flex items-center gap-2">
+        )}
             <span className="notebook-save-status flex items-center gap-1.5 text-sm text-muted font-medium" aria-live="polite">
               <span className={`inline-block h-2 w-2 rounded-full ${
                 savingLocal
@@ -540,28 +517,7 @@ export function NoteEditor({
                   : '本地笔记'}
               </span>
             </span>
-          </div>
-        )}
-
-        {standalone && (
-          <span className="notebook-save-status text-sm text-muted" aria-live="polite">
-            {savingLocal
-              ? '正在保存到本机…'
-              : dirty
-              ? '等待本机保存…'
-              : localRecord?.status === 'syncing'
-              ? '正在同步…'
-              : localRecord?.status === 'pending'
-              ? online ? '本机已保存 · 等待同步' : '离线 · 待同步'
-              : localRecord?.status === 'error'
-              ? '本机已保存 · 同步失败'
-              : localRecord?.status === 'conflict'
-              ? '本机已保存 · 版本冲突'
-              : localRecord?.status === 'synced'
-              ? '已同步'
-              : '本地笔记'}
-          </span>
-        )}
+        </div>
 
         <div className="notebook-editor-actions flex items-center gap-2">
           <Button
@@ -570,34 +526,33 @@ export function NoteEditor({
             variant={zenMode ? 'secondary' : 'ghost'}
             className="h-8 px-2.5 text-sm"
             onClick={() => setZenMode((prev) => !prev)}
-            title={zenMode ? '退出专注模式' : '进入禅道专注模式'}
+            title={zenMode ? '退出专注模式' : '进入专注模式'}
             aria-pressed={zenMode}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>{zenMode ? '退出专注' : '专注写作'}</span>
+            <span>{zenMode ? '退出专注' : '专注'}</span>
           </Button>
 
-          <button
-            type="button"
-            onClick={() =>
-              updateNoteState((prev) => ({ ...prev, favorite: !prev.favorite }))
-            }
-            className={"notebook-icon-button rounded-md hover:bg-ink/6 transition-colors cursor-pointer " + (note.favorite ? "text-warning" : "text-muted")}
-            aria-label={note.favorite ? '取消收藏' : '收藏笔记'}
-          >
-            <Star className={"h-4 w-4 " + (note.favorite ? "fill-current" : "")} />
-          </button>
+          <NoteKnowledgePanel
+            note={{ ...note, id: note.id ?? (localRecord?.status === 'synced' ? effectiveNoteId : undefined) }}
+            knowledge={note.knowledge}
+            onChange={(knowledge) => updateNoteState((prev) => ({ ...prev, knowledge }))}
+          />
           <AdoptIntoProject source={{ kind: 'note', id: effectiveNoteId }} disabled={dirty || savingLocal || !online || localRecord?.status !== 'synced'} />
 
           <Button
             size="sm"
-            variant="primary"
+            variant="ghost"
             className="notebook-save-button min-h-[30px] px-3 font-semibold text-sm"
             onClick={() => void handleSave()}
           >
             <Save className="h-3.5 w-3.5" />
             <span>保存</span>
           </Button>
+          <RowActionsMenu label="更多笔记操作" className="notebook-more-actions" items={[
+            { label: note.favorite ? '取消收藏' : '收藏笔记', icon: <Star className={`h-4 w-4 ${note.favorite ? 'fill-current text-warning' : ''}`} aria-hidden="true" />, onSelect: () => updateNoteState(prev => ({ ...prev, favorite: !prev.favorite })) },
+            { label: '删除笔记', icon: <Trash2 className="h-4 w-4" aria-hidden="true" />, tone: 'danger', separatorBefore: true, onSelect: () => void handleDelete() },
+          ]} />
         </div>
       </header>
 
@@ -645,20 +600,11 @@ export function NoteEditor({
       {/* Editor Structured Document Canvas */}
       <div className={`notebook-editor-frame mx-auto px-5 sm:px-8 py-4 space-y-3.5 transition-all ${zenMode ? 'zen-workspace max-w-3xl' : 'max-w-3xl'}`}>
         {/* Document Header Canvas: Direct Inline Title & Attributes */}
-        <section className="notebook-doc-header space-y-3 pb-3 border-b border-border-subtle" aria-label="文档标题与元信息">
-          <input
-            type="text"
-            value={note.title}
-            onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
-            placeholder="无标题笔记"
-            className="w-full text-2xl sm:text-[28px] font-semibold tracking-tight bg-transparent border-0 outline-none text-ink placeholder:text-muted/40 py-1"
-          />
-
+        <section className="notebook-doc-header space-y-2 pb-3 border-b border-border-subtle" aria-label="文档标题与元信息">
           {!zenMode && (
-            <div className="flex flex-wrap items-center gap-3 text-xs">
+            <div className="notebook-doc-metadata flex flex-wrap items-center gap-2">
               {/* Kind Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-muted text-xs">类型:</span>
                 <select
                   aria-label="资料分类"
                   value={note.kind}
@@ -673,7 +619,6 @@ export function NoteEditor({
 
               {/* Stage Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-muted text-xs">阶段:</span>
                 <select
                   aria-label="阶段状态"
                   value={note.stage}
@@ -687,47 +632,37 @@ export function NoteEditor({
               </div>
 
               {/* Tags Input */}
-              <div className="flex-1 min-w-[200px]">
+              <div className="notebook-doc-tags min-w-0 flex-1">
                 <TagsInput
                   value={note.tags}
                   onChange={(newTags) => updateNoteState((prev) => ({ ...prev, tags: newTags }))}
-                  placeholder="添加标签，按回车确定..."
+                  placeholder="添加标签，用逗号分隔…"
                   aria-label="资料标签"
                   className="w-full rounded-control border-0 bg-surface-sunken px-2 py-1 text-base sm:text-sm text-ink outline-none placeholder:text-fg-subtle"
                 />
               </div>
             </div>
           )}
-        </section>
-
-        {/* 资料属性：默认收起，只在这里显式修改，不会因正文编辑被清空。 */}
-        {!zenMode && (
-          <NoteKnowledgePanel
-            note={note}
-            knowledge={note.knowledge}
-            onChange={(knowledge) => updateNoteState((prev) => ({ ...prev, knowledge }))}
+          <input
+            type="text"
+            value={note.title}
+            onChange={(e) => updateNoteState((prev) => ({ ...prev, title: e.target.value }))}
+            placeholder="无标题笔记"
+            aria-label="笔记标题"
+            className="w-full text-2xl sm:text-[28px] font-semibold tracking-tight bg-transparent border-0 outline-none text-ink placeholder:text-muted py-1"
           />
-        )}
+        </section>
 
         {/* Main Text Content Focus Area (定高、舒适书写主舞台) */}
         <section className="notebook-content-section space-y-2.5" aria-label="笔记正文">
-          <div className="notebook-content-heading flex items-center justify-between pb-1 border-b border-border-subtle">
-            <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
-              正文内容
-            </span>
-            <span className="notebook-block-count text-xs text-fg-subtle">
-              {note.content.length} 个内容块
-            </span>
-          </div>
-
-          <div className="notebook-blocks divide-y divide-border-subtle">
+          <div className="notebook-blocks">
             {note.content.map((block, index) => (
               <div
                 key={block.id}
-                className="notebook-block group relative py-3 first:pt-1 space-y-2"
+                className="notebook-block group relative py-3 first:pt-1"
               >
-                <div className="notebook-block-header flex items-center justify-between">
-                  <span className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
+                <div className="notebook-block-header">
+                  <span className="sr-only">
                     {block.type === 'text'
                       ? '段落文本'
                       : block.type === 'image'
@@ -739,7 +674,7 @@ export function NoteEditor({
                       : '叙事档案引用'}
                   </span>
 
-                  <div className="notebook-block-controls flex items-center gap-0.5 opacity-40 group-hover:opacity-100 max-lg:opacity-100 transition-opacity">
+                  <div className="notebook-block-controls flex items-center gap-1 transition-opacity">
                     <button
                       type="button"
                       disabled={index === 0}
@@ -776,10 +711,11 @@ export function NoteEditor({
                 {block.type === 'text' && (
                   <textarea
                     data-reading-surface
+                    aria-label={`第 ${index + 1} 段正文`}
                     value={block.text}
                     onChange={(e) => handleUpdateBlock(block.id, { text: e.target.value })}
                     placeholder="写下一段文字记录…"
-                    className="notebook-textarea w-full bg-transparent text-base leading-[1.85] text-ink placeholder:text-muted/40 outline-none p-0"
+                    className="notebook-textarea w-full bg-transparent text-base leading-[1.85] text-ink placeholder:text-muted outline-none p-0"
                   />
                 )}
 
@@ -852,7 +788,7 @@ export function NoteEditor({
                 )}
 
                 {block.type === 'archive-reference' && (
-                  <blockquote className="p-3.5 rounded-lg bg-info-bg/70 border-l-4 border-l-info border border-border-subtle text-sm space-y-2 mt-1">
+                  <blockquote className="p-4 rounded-control bg-info-bg/70 border border-border-subtle text-sm space-y-2 mt-1">
                     <p className="text-sm sm:text-sm text-ink leading-relaxed italic">
                       “{block.quote}”
                     </p>
@@ -871,48 +807,45 @@ export function NoteEditor({
         </section>
 
         {/* Layer 4: Compact Action Dock (添加内容工具坞 - 紧凑小药丸) */}
-        <section className="notebook-add-panel flex flex-wrap items-center gap-1.5 pt-1" aria-label="添加内容块">
-          <span className="notebook-section-kicker text-xs font-medium text-fg-subtle">
-            添加内容块
-          </span>
+        <section className="notebook-add-panel flex flex-wrap items-center gap-1.5 pt-1" aria-label="插入内容">
           <div className="notebook-add-grid flex flex-wrap gap-1.5">
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('text')}
             >
               <Plus className="h-3 w-3" />
-              <span>段落文本</span>
+              <span>段落</span>
             </Button>
 
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => fileInputRef.current?.click()}
             >
               <ImageIcon className="h-3 w-3" />
-              <span>图片素材</span>
+              <span>图片</span>
             </Button>
 
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('link')}
             >
               <LinkIcon className="h-3 w-3" />
-              <span>参考链接</span>
+              <span>链接</span>
             </Button>
 
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="ghost"
               className="notebook-add-button h-7 px-2.5 text-sm"
               onClick={() => handleAddBlock('character-reference')}
             >
@@ -922,58 +855,7 @@ export function NoteEditor({
           </div>
         </section>
 
-        {/* Layer 5: Danger Zone */}
-        {effectiveNoteId && (
-          <div className="notebook-delete-row pt-3 pb-8 text-center">
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="text-sm text-danger hover:underline cursor-pointer"
-            >
-              删除这条笔记
-            </button>
-          </div>
-        )}
       </div>
-
-      <ResponsiveEditOverlay
-        open={metaEditorOpen}
-        onOpenChange={requestMetaEditorClose}
-        title="编辑笔记资料"
-        description="标题、类型、阶段和标签会随笔记一起保存在本机，并按现有同步规则提交。"
-        footer={<><Button variant="outline" onClick={() => requestMetaEditorClose(false)}>取消</Button><Button variant="primary" onClick={saveMetaDraft}>应用修改</Button></>}
-      >
-        {metaDraft && <div className="space-y-5">
-          <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-title">标题
-            <input id="note-meta-title" autoFocus value={metaDraft.title} onChange={(event) => setMetaDraft({ ...metaDraft, title: event.target.value })} placeholder="输入笔记标题" className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus" />
-          </label>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-kind">类型
-              <select id="note-meta-kind" value={metaDraft.kind} onChange={(event) => setMetaDraft({ ...metaDraft, kind: event.target.value as NoteKind })} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
-                {Object.entries(kindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="note-meta-stage">阶段
-              <select id="note-meta-stage" value={metaDraft.stage} onChange={(event) => setMetaDraft({ ...metaDraft, stage: event.target.value as NoteStage })} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus">
-                {Object.entries(stageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="space-y-1.5 text-sm font-medium text-ink">
-            <span className="block">标签</span>
-            <TagsInput value={metaDraft.tags} onChange={(tags) => setMetaDraft({ ...metaDraft, tags })} placeholder="添加标签（用逗号分隔）" className="w-full bg-surface-raised text-sm text-ink" />
-          </div>
-        </div>}
-      </ResponsiveEditOverlay>
-      <ConfirmDialog
-        open={discardMetaOpen}
-        onOpenChange={setDiscardMetaOpen}
-        title="放弃未应用的修改？"
-        description="标题或资料字段有未应用的改动。放弃后会关闭编辑面板，不会更改笔记。"
-        confirmLabel="放弃修改"
-        danger
-        onConfirm={() => { setMetaEditorOpen(false); setMetaDraft(null); }}
-      />
 
       <input
         ref={fileInputRef}
@@ -1006,7 +888,7 @@ function CharacterReferenceBlock({
   const items = browser.data?.items ?? [];
 
   return (
-    <div className="p-3.5 rounded-lg bg-surface-muted/70 border-l-4 border-l-accent-dark border border-border-subtle space-y-2 mt-1">
+    <div className="p-4 rounded-control bg-surface-muted/70 border border-border-subtle space-y-2 mt-1">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold text-ink">角色资料</span>
         <div className="flex items-center gap-1.5">

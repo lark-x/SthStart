@@ -28,6 +28,7 @@ import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Pagination } from '@/app/components/ui/pagination';
+import './notebook-layout.css';
 
 const COLLAPSED_KEY = 'sthstart_notebook_sidebar_collapsed';
 let collapsedFallback = false;
@@ -288,47 +289,44 @@ export function NotebookWorkspace({
   // 桌面折叠交给 data-list-collapsed；手机忽略桌面偏好，保留列表/编辑器回退。
   const masterPaneClass = isEditingOnMobile ? 'hidden lg:flex' : 'flex w-full';
 
-  const headerActions = (
-            <>
+  const listToggle = (
               <button
                 type="button"
                 onClick={toggleCollapsed}
-                className="hidden lg:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-control border border-border-default bg-surface text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-ink cursor-pointer"
+                className="notebook-list-toggle hidden lg:inline-flex shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-hover hover:text-ink cursor-pointer"
                 title={(collapsed ? '展开笔记列表' : '收起笔记列表') + ' (Ctrl/Cmd+B，编辑区外)'}
                 aria-label={collapsed ? '展开笔记列表' : '收起笔记列表'}
                 aria-expanded={!collapsed}
                 aria-controls={listPaneId}
               >
                 {collapsed ? <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <PanelLeftClose className="h-3.5 w-3.5" aria-hidden="true" />}
-                <span>{collapsed ? '展开列表' : '收起列表'}</span>
               </button>
+  );
+  const newNoteAction = (
           <Link
-            href={browseHref("/apps/notebook/new", 'diary')}
+            href={browseHref('/apps/notebook/new', selectedFilter === 'all' ? 'diary' : selectedFilter)}
             onClick={(e) => {
-              if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-                e.preventDefault();
-                handleStartNew('diary');
-              }
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              handleStartNew(selectedFilter === 'all' ? 'diary' : selectedFilter);
             }}
             className="notebook-new-note-action inline-flex items-center gap-1.5 h-11 sm:h-9 px-3 rounded-control bg-accent text-fg-on-accent hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">新建资料</span>
-            <span className="sm:hidden">新建</span>
+            <span>新建</span>
           </Link>
-            </>
   );
+  const editorListActions = <>{listToggle}{collapsed && <span className="hidden lg:inline-flex">{newNoteAction}</span>}</>;
 
   const WorkspaceRoot = 'div';
 
   return (
     <WorkspaceRoot className={"notebook-workspace-shell notebook-list-page workspace-fill bg-paper text-ink " + (focused ? 'notebook-focused' : '')} data-list-collapsed={collapsed || undefined}>
       {/* Top Global Header Bar */}
-      {!embedded && (focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" actions={headerActions} /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
+      {!embedded && (focused ? <WorkspaceHeader title="创作资料库" backHref={browseHref("/apps/notebook")} backLabel="资料列表" /> : <header className="notebook-workspace-header notebook-list-header sticky top-0 z-30 px-4 sm:px-6 py-2 bg-paper/95 backdrop-blur-md border-b border-border-subtle">
         <PageHeader
           compact
           title="创作资料库"
-          actions={headerActions}
         />
       </header>)}
 
@@ -354,8 +352,6 @@ export function NotebookWorkspace({
         </div>
       )}
 
-      {embedded && view === 'notes' && <div className="notebook-embedded-actions shrink-0 flex items-center justify-end gap-2 pb-2">{headerActions}</div>}
-
       {/* 2-Column Master-Detail Workspace Body */}
       <div className={"notebook-workspace-body min-h-0 overflow-hidden " + (view === 'notes' ? 'flex flex-1' : 'hidden')}>
         {/* Left Column: Master List Pane (Collapsible Drawer) */}
@@ -368,7 +364,8 @@ export function NotebookWorkspace({
         >
           {/* List Search & Filter Toolbar */}
           <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-border-subtle bg-surface/70">
-            <div className="relative w-full">
+            <div className="notebook-list-search-row flex min-w-0 items-center gap-2">
+            <div className="relative min-w-0 flex-1">
               <Search
                 className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
                 aria-hidden="true"
@@ -379,8 +376,11 @@ export function NotebookWorkspace({
                 onCompositionEnd={() => setComposing(false)}
                 onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                 placeholder="搜索标题、正文或标签…"
+                aria-label="搜索资料"
                 className="pl-7.5 h-9 border-border-control text-base sm:text-sm placeholder:text-muted/50"
               />
+            </div>
+            {newNoteAction}
             </div>
 
             {/* Filter Category Pills */}
@@ -516,14 +516,7 @@ export function NotebookWorkspace({
               })
             ) : (
               <div className="p-6 text-center text-sm text-muted space-y-2">
-                <p>{isError ? '可用的本地资料将显示在这里' : query ? '未搜索到相关笔记' : '暂无此类记录'}</p>
-                <button
-                  type="button"
-                  onClick={() => handleStartNew(selectedFilter === 'all' ? 'diary' : selectedFilter)}
-                  className="text-accent-dark font-semibold hover:underline cursor-pointer"
-                >
-                  ＋ 新建资料
-                </button>
+                <p>{isError ? '可用的本地资料将显示在这里' : query ? '未搜索到相关笔记' : '暂无此类记录，可在搜索框旁新建。'}</p>
               </div>
             )}
           </div>
@@ -567,6 +560,7 @@ export function NotebookWorkspace({
               standalone={false}
               onDeleted={handleExitEditor}
               onPersisted={rememberPersistedNote}
+              listActions={editorListActions}
             />
           ) : activeId ? (
             <NoteEditor
@@ -575,13 +569,15 @@ export function NotebookWorkspace({
               standalone={false}
               onDeleted={handleExitEditor}
               onPersisted={rememberPersistedNote}
+              listActions={editorListActions}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center p-8">
+            <div className="relative flex-1 flex items-center justify-center p-8">
+              <div className="absolute left-4 top-2 flex items-center gap-2">{editorListActions}</div>
               <EmptyState
                 symbol="拾"
                 title="笔记工作台"
-                description="从左侧选择一篇资料开始回顾，或点击右上角「新建资料」随手写下一段灵感。"
+                description="从列表选择一篇资料，或在搜索框旁新建资料。"
                 actions={
                   <Button
                     size="sm"

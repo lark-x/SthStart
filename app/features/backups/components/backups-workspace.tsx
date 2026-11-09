@@ -89,18 +89,32 @@ export function BackupsWorkspace() {
   };
 
   return (
-    <PageContainer width="settings" className="space-y-3 sm:space-y-4 py-4 sm:py-6">
+    <PageContainer width="settings" className="space-y-4">
       <PageHeader
         compact
         title="云备份"
-        description="把内容加密后备份到一个或多个网盘，支持增量上传与按版本恢复。"
-        actions={(
+        navigation={
+          <PageTabs
+            variant="local"
+            tabs={[
+              { id: 'overview', label: '概览' },
+              { id: 'plans', label: '备份计划' },
+              { id: 'history', label: '备份历史' },
+              { id: 'security', label: '网盘与加密' },
+            ]}
+            value={tab}
+            onChange={(value) => setTab(value as Tab)}
+            ariaLabel="云备份分区"
+          />
+        }
+      />
+      <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
+      <div className="flex flex-wrap items-center justify-end gap-2" aria-label="备份操作">
           <Button onClick={handleStart} disabled={startRun.isPending || Boolean(activeRun)}>
             <CloudUpload className="mr-1.5 h-4 w-4" aria-hidden="true" />
             {activeRun ? '正在备份' : '立即备份'}
           </Button>
-        )}
-      />
+      </div>
 
       {overview.isLoading && <Skeleton className="h-24 w-full" />}
       {overview.error && (
@@ -193,18 +207,7 @@ export function BackupsWorkspace() {
             </Alert>
           )}
 
-          <PageTabs
-            variant="page"
-            tabs={[
-              { id: 'overview', label: '概览' },
-              { id: 'plans', label: '备份计划' },
-              { id: 'history', label: '备份历史' },
-              { id: 'security', label: '网盘与加密' },
-            ]}
-            value={tab}
-            onChange={(value) => setTab(value as Tab)}
-            ariaLabel="云备份分区"
-          />
+
 
           {tab === 'overview' && <OverviewPanel runs={data.runs} snapshots={data.snapshots} onRefresh={() => void overview.refetch()} />}
           {tab === 'plans' && <BackupPlansPanel plans={data.plans} targets={data.targets} />}
@@ -212,6 +215,7 @@ export function BackupsWorkspace() {
           {tab === 'security' && <BackupVaultPanel overview={data} />}
         </>
       )}
+      </section>
     </PageContainer>
   );
 }

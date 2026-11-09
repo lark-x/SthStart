@@ -1,0 +1,55 @@
+/* User supplied optimized B prototype: compact context, independent surfaces.
+ * This file owns composition only; every palette keeps its semantic colors. */
+.shell-root:has(.tpl-header) { --shell-toolbar-height: 0px; }
+.shell-root:has(.tpl-header) .shell-toolbar { display: none; }
+.shell-root .tpl-header { min-height: 56px; margin: 0; padding-block: 8px; gap: 4px; }
+.shell-root .tpl-header-main { flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.shell-root .tpl-header-main > .tpl-heading { flex: 0 1 auto; gap: 8px; }
+.shell-root .tpl-title { font-size: 20px; line-height: 1.4; }
+.shell-root .tpl-title-icon { display: none; }
+.tpl-heading-text { display: flex; align-items: center; gap: 12px; }
+.tpl-description-disclosure { position: relative; flex-shrink: 0; font-size: 12px; color: var(--fg-muted); }
+.tpl-description-disclosure summary { cursor: pointer; padding: 6px; border-radius: var(--radius-control); }
+.tpl-description-disclosure[open] .tpl-description { position: absolute; top: 100%; left: 0; z-index: 40; width: min(320px, 72vw); padding: 12px; background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-control); box-shadow: var(--elev-sm); }
+.tpl-header-navigation { flex: 1 1 420px; min-width: 0; }
+.shell-root .tpl-header .tpl-actions { margin-left: auto; max-width: none; gap: 8px; }
+.page-global-actions { display: flex; flex: none; align-items: center; gap: 4px; margin-left: auto; }
+.tpl-actions + .page-global-actions { margin-left: 0; padding-left: 8px; border-left: 1px solid var(--border-subtle); }
+.page-global-actions button { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-control); color: var(--fg-muted); cursor: pointer; }
+.page-global-actions button:hover { color: var(--fg-default); background: var(--surface-hover); }
+.page-global-actions svg { width: 16px; height: 16px; }
+.page-global-actions .page-global-nav { display: none; }
+.shell-root .resources-workspace-header { padding: 0; }
+.resources-workspace-header .tpl-header { min-height: 56px; padding-block: 8px; }
+.resources-workspace-header .tpl-header-main { flex-wrap: nowrap; }
+.resources-workspace-header .tpl-description-disclosure { display: none; }
+.resources-workspace-header .tpl-header-navigation { flex-basis: 0; }
+.resources-workspace-header .resources-navigation { padding-top: 0; }
+.resources-workspace-header .resources-quick-links { gap: 0; }
+.resources-workspace-header .resources-quick-links a { font-size: 12px; }
+.resources-workspace-header .resources-view-tabs { flex-shrink: 1; }
+.resources-workspace-header .resources-view-tabs > [role='tab'] { padding: 4px 10px; }
+.shell-root .tpl-container { padding-top: 0; }
+.shell-root .tpl-container > .tpl-header + * { margin-top: 8px; }
+.shell-root .workspace-header { min-height: var(--shell-topbar); background: var(--bg-app); border-bottom: 0; gap: 8px; }
+.shell-root .project-library { max-width: none; padding: 0 20px 20px; gap: 16px; }
+.shell-root .settings-workspace-content { padding: 20px; }
+.shell-root .notebook-master-list, .shell-root .notebook-detail-pane { scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+.shell-root .notebook-master-list::-webkit-scrollbar, .shell-root .notebook-detail-pane::-webkit-scrollbar { display: block; width: 5px; }
+@media (max-width: 1279px) {
+  .resources-workspace-header .resources-navigation { flex-wrap: wrap; }
+}
+@media (max-width: 1023px) {
+  .page-global-actions .page-global-nav { display: grid; }
+  .page-global-actions button { width: 44px; height: 44px; }
+  .shell-root .tpl-header-main { gap: 8px; }
+  .resources-workspace-header .tpl-header-main { flex-wrap: wrap; }
+  .resources-workspace-header .tpl-header-navigation { order: 3; flex-basis: 100%; }
+  .resources-workspace-header .resources-quick-links { display: flex; }
+  .resources-workspace-header .resources-navigation { flex-wrap: wrap; gap: 8px; }
+}
+@media (max-width: 639px) {
+  .shell-root .tpl-header .tpl-actions { order: 3; width: 100%; margin: 0; justify-content: flex-start; }
+  .tpl-actions + .page-global-actions { margin-left: auto; border-left: 0; padding: 0; }
+  .shell-root .project-library { padding-inline: 16px; }
+}

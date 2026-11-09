@@ -6,17 +6,17 @@
 }
 :root {
   --shell-sidebar: 224px;
-  --shell-sidebar-collapsed: 76px;
-  --shell-topbar: 48px;
-  --shell-topbar-mobile: 52px;
-  --shell-gutter: 24px;
-  --shell-gutter-lg: 32px;
+  --shell-sidebar-collapsed: 56px;
+  --shell-topbar: 56px;
+  --shell-topbar-mobile: 56px;
+  --shell-gutter: 20px;
+  --shell-gutter-lg: 20px;
   --shell-gutter-sm: 16px;
   --shell-reading: 760px;
-  --shell-content-max: 1440px;
-  --shell-settings-max: 1080px;
+  --shell-content-max: 1920px;
+  --shell-settings-max: 1440px;
   --shell-aside: 320px;
-  --workspace-list-width: 288px;
+  --workspace-list-width: 320px;
   --workspace-panel-gap: 16px;
 }
 
@@ -85,7 +85,7 @@
 .shell-root .tpl-title-icon { width: 32px; height: 32px; border-radius: var(--radius-control); background: transparent; color: var(--fg-muted); }
 .shell-root .tpl-title { line-height: 1.35; letter-spacing: -0.025em; }
 .shell-root .tpl-description { margin-top: 4px; }
-.shell-root .tpl-header { padding-block: 8px 16px; }
+.shell-root .tpl-header { padding-block: 8px; }
 .shell-root .split-panes { gap: var(--workspace-panel-gap); }
 .shell-root .split-panes > :not(.split-pane-handle):not(.fixed) { min-width: 0; min-height: 0; }
 
@@ -161,8 +161,8 @@
 .shell-content[data-section='settings'] .tpl-container { padding-top: 0; }
 
 @media (min-width: 1536px) {
-  :root { --workspace-panel-gap: 20px; --workspace-list-width: 304px; }
-  .project-library { padding-inline: 32px; }
+  :root { --workspace-list-width: 336px; }
+  .project-library { padding-inline: 20px; }
 }
 @media (max-width: 1023px) {
   .shell-toolbar-inner { background: var(--bg-app); }
