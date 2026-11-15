@@ -175,13 +175,14 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
               >
                 <span>确认并写入资料库</span>
               </Button>
-              <button
+              <Button
                 type="button"
+                size="sm"
+                variant="outline"
                 onClick={() => setIsReviewing(false)}
-                className="inline-flex h-11 sm:h-9 items-center px-3 rounded-md text-xs font-semibold text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors border border-border-default"
               >
                 退出审核
-              </button>
+              </Button>
             </div>
           }
           status={
@@ -286,9 +287,8 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                     key={item.id}
                     type="button"
                     onClick={() => { setSelectedProjectId(item.id); setCreating(false); }}
-                    className={`w-full rounded-control p-2.5 text-left transition-colors cursor-pointer ${
-                      selectedProjectId === item.id ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
-                    }`}
+                    aria-current={selectedProjectId === item.id ? 'true' : undefined}
+                    className="ui-choice w-full cursor-pointer rounded-control p-2.5 text-left transition-colors hover:bg-surface-hover"
                   >
                     <span className="block text-sm font-semibold leading-snug text-ink">{item.title}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-1">
@@ -421,7 +421,7 @@ export function ResearchWorkspace({ works }: { works: NarrativeWork[] }) {
                   {/* 已发布资料快捷入口 */}
                   {project.publishedNoteId && (
                     <div className="p-3 rounded-lg border border-border-default bg-surface flex items-center justify-between">
-                      <span className="text-xs text-muted">本专题已完成审核并写入创作资料库</span>
+                      <span className="text-xs text-muted">已审核并保存为笔记</span>
                       <a
                         href={`/apps/notebook/${project.publishedNoteId}`}
                         className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-semibold"

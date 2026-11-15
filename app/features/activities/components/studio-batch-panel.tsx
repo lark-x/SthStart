@@ -5,11 +5,13 @@ import {useQuery} from '@tanstack/react-query';
 import {Value} from '@sinclair/typebox/value';
 import {StudioBatchRequestSchema,StudioBatchRetrySchema,type StudioBatchRequest,type StudioBatchRetry,type StudioJob,type StudioTarget,type ContentDocument,type StudioItem} from '@sthstart/contracts';
 import {Button} from '@/app/components/ui/button';
+import {Checkbox} from '@/app/components/ui/checkbox';
 import {FormField} from '@/app/components/ui/form-field';
+import {Select} from '@/app/components/ui/select';
 import {activityKeys} from '@/app/lib/query-keys';
 import {fetchComicDraft} from '../comic/api';
-import {useStudioItems,isStudioJobActive} from '../studio-queries';
-import {useStudioJobMutations} from '../studio-mutations';
+import { useStudioItems, isStudioJobActive } from '@/app/features/activities/queries/studio';
+import { useStudioJobMutations } from '@/app/features/activities/mutations/studio';
 import {getEffectiveStageScenes} from '../scene-beat-utils';
 import {studioStatusLabels} from './studio-proposal-review';
 import {StudioTaskControls} from './studio-task-controls';
@@ -60,15 +62,15 @@ export function StudioBatchPanel({activityId,content,job,beforeAction,onSelectJo
   return <section aria-label="批量绘制" className="space-y-4">
     {!job?<><p className="text-sm text-muted">先预检，再明确确认。默认只入历史，每次仅绘制一种对象；预览先保存已变化的内容版本，不调用优化模型或提交图片。</p>
       <fieldset disabled={busy} className="space-y-4"><div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="绘制对象"><select aria-label="批次对象类型" className={selectClass} value={kind} onChange={e=>{setKind(e.target.value as StudioTarget['kind']);update([]);}}><option value="beat">活动镜头</option><option value="comic_panel">漫画画格</option><option value="media_slot">素材槽位</option></select></FormField>
-        <FormField label="每个目标图片数"><select aria-label="每目标图片数" className={selectClass} value={count} onChange={e=>update(targets,Number(e.target.value))}>{[1,2,3].map(n=><option key={n} value={n}>{n} 张</option>)}</select></FormField></div>
-        <FormField label="图片写回方式"><select aria-label="批次图片写回" className={selectClass} value={placement} onChange={e=>update(targets,count,e.target.value as typeof placement)}><option value="history_only">仅加入历史（默认）</option><option value="fill_empty">仅填入当前为空的画面</option></select></FormField>
+        <FormField label="绘制对象"><Select aria-label="批次对象类型" className={selectClass} value={kind} onChange={e=>{setKind(e.target.value as StudioTarget['kind']);update([]);}}><option value="beat">活动镜头</option><option value="comic_panel">漫画画格</option><option value="media_slot">素材槽位</option></Select></FormField>
+        <FormField label="每个目标图片数"><Select aria-label="每目标图片数" className={selectClass} value={count} onChange={e=>update(targets,Number(e.target.value))}>{[1,2,3].map(n=><option key={n} value={n}>{n} 张</option>)}</Select></FormField></div>
+        <FormField label="图片写回方式"><Select aria-label="批次图片写回" className={selectClass} value={placement} onChange={e=>update(targets,count,e.target.value as typeof placement)}><option value="history_only">仅加入历史（默认）</option><option value="fill_empty">仅填入当前为空的画面</option></Select></FormField>
         {placement==='fill_empty'&&<p className="text-sm text-warning-fg">这次明确授权选图；已有图不会被覆盖，描述变化或文件不可用也只留历史。</p>}
         <fieldset className="space-y-2"><legend className="text-sm font-medium">选择目标 · {targets.length}/12 · 共 {targets.length*count} 张</legend>
           {comics.isError&&kind==='comic_panel'&&<p role="alert">{comics.error.message}</p>}
           {!candidates.length&&<p className="text-sm text-muted">没有可选对象。请先保存镜头、漫画画格或素材槽位。</p>}
-          <div className="max-h-64 space-y-2 overflow-y-auto">{candidates.map(candidate=><label key={JSON.stringify(candidate.target)} className="flex items-start gap-2 rounded-lg bg-surface-subtle p-3 text-sm"><input type="checkbox" aria-label={`选择绘制 ${candidate.name}`} disabled={candidate.locked||(!targets.some(target=>same(target,candidate.target))&&(targets.length>=12||(targets.length+1)*count>24))}
-            checked={targets.some(target=>same(target,candidate.target))} onChange={e=>update(e.target.checked?[...targets,candidate.target]:targets.filter(target=>!same(target,candidate.target)))} /><span className="min-w-0 break-words">{candidate.name}{candidate.locked?'（已锁定）':''}</span></label>)}</div>
+          <div className="max-h-64 space-y-2 overflow-y-auto">{candidates.map(candidate=><div key={JSON.stringify(candidate.target)} className="rounded-lg bg-surface-subtle p-3 text-sm"><Checkbox label={`${candidate.name}${candidate.locked?'（已锁定）':''}`} aria-label={`选择绘制 ${candidate.name}`} disabled={candidate.locked||(!targets.some(target=>same(target,candidate.target))&&(targets.length>=12||(targets.length+1)*count>24))}
+            checked={targets.some(target=>same(target,candidate.target))} onChange={e=>update(e.target.checked?[...targets,candidate.target]:targets.filter(target=>!same(target,candidate.target)))} /></div>)}</div>
         </fieldset></fieldset><Button loading={busy} disabled={busy||!targets.length||targets.length*count>24} onClick={()=>void preview()}>预览批次</Button></>
       :<><h3 className="font-semibold">{studioStatusLabels[job.status]}</h3><p className="text-xs text-muted">任务 {job.id} · 刷新后仍能查看，关闭页面不停止任务。</p>
         {job.errorMessage&&<p role="alert" className="text-danger-fg">{job.errorMessage}</p>}
@@ -92,7 +94,7 @@ export function StudioBatchPanel({activityId,content,job,beforeAction,onSelectJo
             <a className="mt-1 inline-block text-xs text-accent" href={targetLink(activityId,item.target)}>定位对象与图片历史</a>
             {item.placementReason&&<p className="mt-1 text-xs">{item.placementReason}</p>}{item.errorMessage&&<p className="mt-1 text-xs text-danger-fg">{item.errorMessage}</p>}
             {Boolean(item.unavailableArtifactIds?.length)&&<p className="mt-1 text-xs text-warning-fg">{item.unavailableArtifactIds!.length} 个图片文件不可用，历史记录和引用仍保留。</p>}
-            {item.state==='failed'&&!job.readOnly&&['paused','partially_succeeded','failed','interrupted'].includes(job.status)&&<label className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={retryIds.includes(item.id)} disabled={busy} onChange={e=>{retryRequest.current=null;try{sessionStorage.removeItem(retryStorageKey);}catch{/* Optional local recovery. */}setRetryIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/>选择此失败项重试</label>}
+            {item.state==='failed'&&!job.readOnly&&['paused','partially_succeeded','failed','interrupted'].includes(job.status)&&<div className="mt-2 text-xs"><Checkbox label="选择此失败项重试" checked={retryIds.includes(item.id)} disabled={busy} onChange={e=>{retryRequest.current=null;try{sessionStorage.removeItem(retryStorageKey);}catch{/* Optional local recovery. */}setRetryIds(ids=>e.target.checked?[...ids,item.id]:ids.filter(id=>id!==item.id));}}/></div>}
           </article>)}{items.hasNextPage&&<Button variant="ghost" loading={items.isFetchingNextPage} onClick={()=>void items.fetchNextPage()}>更多条目</Button>}</div>
         {retryIds.length>0&&<div className="space-y-2"><p className="text-sm text-muted">仅为选中的失败项建立新尝试，使用当前设置、换种子并重新预检。成功项不重绘，上游未知时会拒绝重试。</p><Button loading={busy} onClick={()=>void retry()}>预览 {retryIds.length} 项失败重试</Button></div>}
         {isStudioJobActive(job)&&!job.readOnly&&<Button variant="outline" loading={operations.stop.isPending} onClick={()=>void stop()}>停止后续提交</Button>}

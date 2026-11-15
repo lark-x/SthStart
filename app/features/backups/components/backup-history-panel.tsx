@@ -8,6 +8,9 @@ import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
+import { Dialog } from '@/app/components/ui/dialog';
+import { Select } from '@/app/components/ui/select';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { useToast } from '@/app/providers/ui-provider';
 import { useRestorePreview } from '../queries';
 import {
@@ -16,7 +19,7 @@ import {
 } from '../mutations';
 import { fetchRemoteSnapshots } from '../api';
 import type { BackupTargetView } from '../api';
-import { describeError, formatBytes, formatTime } from './backups-workspace';
+import { describeError, formatBytes, formatTime } from '../model';
 
 export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSnapshot[]; targets: BackupTargetView[] }) {
   const toast = useToast();
@@ -82,7 +85,12 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
                     size="sm"
                     variant={snapshot.publishedTargetIds.includes(target.id) ? 'secondary' : 'ghost'}
                     disabled={!snapshot.publishedTargetIds.includes(target.id)}
-                    onClick={() => setRestoreTarget({ snapshot, targetId: target.id })}
+                    onClick={(event) => {
+                      // WebKit 的指针点击不会先聚焦按钮；显式聚焦后，Dialog 打开时
+                      // 才能采到真实触发器，关闭后焦点也会回到这里。
+                      event.currentTarget.focus({ preventScroll: true });
+                      setRestoreTarget({ snapshot, targetId: target.id });
+                    }}
                   >
                     <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                     从「{target.accountLabel || target.kind}」恢复
@@ -121,19 +129,23 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
         </div>
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="h-9 rounded-control border border-border-default bg-surface px-2 text-sm"
+            <Select
+              className="w-auto min-w-40"
+              aria-label="选择清理目标网盘"
               value={cleanupTargetId}
               onChange={(event) => setCleanupTargetId(event.target.value)}
             >
               <option value="">选择目标网盘</option>
               {targets.map((target) => <option key={target.id} value={target.id}>{target.accountLabel || target.kind}</option>)}
-            </select>
+            </Select>
             <Button
               size="sm"
               variant="secondary"
               disabled={!cleanupTargetId}
-              onClick={() => setCleanupConfirm(true)}
+              onClick={(event) => {
+                event.currentTarget.focus({ preventScroll: true });
+                setCleanupConfirm(true);
+              }}
             >
               查看并执行清理
             </Button>
@@ -169,14 +181,15 @@ export function BackupHistoryPanel({ snapshots, targets }: { snapshots: BackupSn
         </div>
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="h-9 rounded-control border border-border-default bg-surface px-2 text-sm"
+            <Select
+              className="w-auto min-w-40"
+              aria-label="选择找回版本的目标网盘"
               value={remoteTargetId}
               onChange={(event) => { setRemoteTargetId(event.target.value); setRemoteItems(null); }}
             >
               <option value="">选择目标网盘</option>
               {targets.map((target) => <option key={target.id} value={target.id}>{target.accountLabel || target.kind}</option>)}
-            </select>
+            </Select>
             <Button
               size="sm"
               variant="secondary"
@@ -279,12 +292,35 @@ function RestoreDialog({ snapshot, targetId, targetLabel, onClose }: {
   const data: BackupRestorePreview | undefined = preview.data?.preview;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-panel border border-border-default bg-surface p-4">
-        <h2 className="text-lg font-semibold">恢复预览</h2>
-        <p className="mt-1 text-sm text-muted">
-          {formatTime(snapshot.createdAt)} 的版本 · 来自「{targetLabel}」。下载与验证不会修改当前数据。
-        </p>
+    <Dialog
+      open
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      title="恢复预览"
+      description={`${formatTime(snapshot.createdAt)} 的版本 · 来自「${targetLabel}」。下载与验证不会修改当前数据。`}
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button
+            variant="primary"
+            loading={restoreMutation.isPending}
+            disabled={!data || (mode === 'workspace_replace' && !confirmWorkspace)}
+            onClick={async () => {
+              try {
+                const started = await restoreMutation.mutateAsync({ snapshotId: snapshot.id, targetId, mode, ...(mode === 'workspace_replace' ? { confirm: true } : {}) });
+                toast.success('已开始恢复', started.restore.id.slice(0, 8) + ' · 可以关闭页面，后端会继续执行。');
+                onClose();
+              } catch (error) {
+                toast.error('无法开始恢复', describeError(error));
+              }
+            }}
+          >
+            开始恢复
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm">
         {preview.isLoading && <p className="mt-3 text-sm text-muted">正在读取清单…</p>}
         {preview.error && <Alert variant="danger" className="mt-3" title="无法读取这个版本">{describeError(preview.error)}</Alert>}
         {data && (
@@ -316,32 +352,14 @@ function RestoreDialog({ snapshot, targetId, targetLabel, onClose }: {
             {mode === 'workspace_replace' && (
               <Alert variant="warning" title="会替换当前工作区">
                 会先生成恢复前备份，并在停止服务后由恢复助手完成替换。运行中的任务恢复后不会自动重跑，备份计划默认暂停。
-                <label className="mt-2 flex items-center gap-2">
-                  <input type="checkbox" checked={confirmWorkspace} onChange={(event) => setConfirmWorkspace(event.target.checked)} />
-                  我确认要用这个版本替换当前工作区
-                </label>
+                <div className="mt-2">
+                  <Checkbox label="我确认要用这个版本替换当前工作区" checked={confirmWorkspace} onChange={(event) => setConfirmWorkspace(event.target.checked)} />
+                </div>
               </Alert>
             )}
           </div>
         )}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button
-            disabled={!data || (mode === 'workspace_replace' && !confirmWorkspace) || restoreMutation.isPending}
-            onClick={async () => {
-              try {
-                const started = await restoreMutation.mutateAsync({ snapshotId: snapshot.id, targetId, mode, ...(mode === 'workspace_replace' ? { confirm: true } : {}) });
-                toast.success('已开始恢复', started.restore.id.slice(0, 8) + ' · 可以关闭页面，后端会继续执行。');
-                onClose();
-              } catch (error) {
-                toast.error('无法开始恢复', describeError(error));
-              }
-            }}
-          >
-            开始恢复
-          </Button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

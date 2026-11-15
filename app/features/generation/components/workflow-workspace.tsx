@@ -10,6 +10,7 @@ import { PageTabs } from '@/app/components/ui/page-tabs';
 import { SaveStatus } from '@/app/components/ui/save-status';
 import { Select } from '@/app/components/ui/select';
 import { EmptyState } from '@/app/components/ui/empty-state';
+import { AsyncState } from '@/app/components/ui/async-state';
 import {
   duplicateWorkflow,
   fetchWorkflowDraft,
@@ -365,15 +366,15 @@ export function WorkflowWorkspace({
           <ul className="space-y-1.5">
             {workflows.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  className="ui-choice h-auto w-full flex-col items-start p-2.5 text-left"
                   onClick={() => { void selectWorkflow(item.id); }}
                   aria-current={item.id === selectedId ? 'true' : undefined}
-                  className={`w-full rounded-control border p-2.5 text-left ${item.id === selectedId ? 'border-accent bg-accent-soft' : 'border-border-subtle bg-surface hover:bg-ink/4'}`}
                 >
                   <span className="block truncate text-sm font-semibold">{item.name}</span>
                   <span className="mt-0.5 block text-sm text-muted">v{item.latest_version} · {item.category ?? 'image'}</span>
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -408,7 +409,7 @@ export function WorkflowWorkspace({
                 onDuplicated={async (newId) => { await onDataChanged(); await selectWorkflow(newId); }}
               />
             )}
-            {!draft && <div className="tpl-panel p-12 text-center text-sm text-muted" role="status">正在读取草稿…</div>}
+            {!draft && <AsyncState status="loading" title="正在读取草稿…" rows={3} className="min-h-56" />}
           </div>
         </section>
 

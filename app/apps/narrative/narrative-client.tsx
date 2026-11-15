@@ -1,1 +1,1 @@
-export { NarrativeWorkspace as NarrativeClient } from '@/app/features/narrative/components/narrative-workspace';
+export { NarrativeWorkspace as NarrativeClient } from '@/app/workspaces/narrative/narrative-workspace';

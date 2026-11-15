@@ -1,11 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { LlmModelCapability, ModelInferenceTestResult, ModelProfile } from '@sthstart/contracts';
+import { SaveModelProfileSchema, type LlmModelCapability, type ModelInferenceTestResult, type ModelProfile, type ModelThinkingLevel, type SaveModelProfile } from '@sthstart/contracts';
+import { Value } from '@sinclair/typebox/value';
 import { authenticateAdmin } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import type { SecretStore } from './security.js';
 import { executeTextLlm } from './llm/common-llm.js';
+import { connectionSupportsModelType, listModelRoutes, normalizeCapabilities } from './model-routing.js';
+import { modelReferences, testEmbeddingModel } from './unified-models.js';
 
 export function hydrateModelProfile(row: Record<string, unknown>): ModelProfile {
   return {
@@ -13,6 +16,7 @@ export function hydrateModelProfile(row: Record<string, unknown>): ModelProfile 
     connectionId: String(row.connection_id),
     name: String(row.name),
     modelId: String(row.model_id),
+    modelType: (row.model_type ?? 'chat') as 'chat' | 'embedding' | 'image',
     capabilities: JSON.parse(String(row.capabilities_json ?? '["text"]')) as LlmModelCapability[],
     contextLength: row.context_length ? Number(row.context_length) : null,
     maxOutputTokens: row.max_output_tokens ? Number(row.max_output_tokens) : null,
@@ -20,6 +24,8 @@ export function hydrateModelProfile(row: Record<string, unknown>): ModelProfile 
     advancedJson: JSON.parse(String(row.advanced_json ?? '{}')) as Record<string, unknown>,
     testStatus: (row.test_status ?? 'untested') as 'untested' | 'passed' | 'failed',
     lastTestedAt: row.last_tested_at ? String(row.last_tested_at) : null,
+    thinkingLevel: (row.thinking_level ?? 'auto') as ModelThinkingLevel,
+    timeoutMs: row.timeout_ms ? Number(row.timeout_ms) : null,
     enabled: Boolean(row.enabled),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -61,18 +67,7 @@ export function registerModelRoutes(
 
   // 3. 创建或更新模型配置
   app.post<{
-    Body: {
-      id?: string;
-      connectionId?: string;
-      name?: string;
-      modelId?: string;
-      capabilities?: LlmModelCapability[];
-      contextLength?: number | null;
-      maxOutputTokens?: number | null;
-      defaultParams?: Record<string, unknown>;
-      advancedJson?: Record<string, unknown>;
-      enabled?: boolean;
-    };
+    Body: Partial<SaveModelProfile>;
   }>('/api/v1/admin/models', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
     const body = request.body ?? {};
@@ -92,9 +87,36 @@ export function registerModelRoutes(
 
     const existing = database.connection.prepare('SELECT * FROM model_profiles WHERE id = ?').get(id) as Record<string, unknown> | undefined;
 
-    const effectiveCapabilities = Array.isArray(body.capabilities) && body.capabilities.length > 0
+    // Legacy callers may omit capabilities; materialize their saved/default
+    // value before applying the same runtime contract used by the frontend.
+    const capabilitiesInput = body.capabilities === undefined
+      ? JSON.parse(String(existing?.capabilities_json ?? '["text"]')) as unknown
+      : body.capabilities;
+    const normalized = {
+      ...body, id, connectionId, name, modelId,
+      capabilities: Array.isArray(capabilitiesInput) ? capabilitiesInput.map(cap => cap === 'vision' ? 'multimodal' : cap) : capabilitiesInput,
+    };
+    if (!Value.Check(SaveModelProfileSchema, normalized)) {
+      return reply.code(400).send({ error: 'invalid_model_profile', message: '模型配置字段无效，请检查类型、能力和参数。',
+        fields: [...Value.Errors(SaveModelProfileSchema, normalized)].map(error => error.path) });
+    }
+
+    const modelType = String(body.modelType ?? existing?.model_type ?? (conn.kind === 'vector' ? 'embedding' : ['openai-compatible-image', 'comfyui', 'worker'].includes(String(conn.kind)) ? 'image' : 'chat'));
+    if (!['chat', 'embedding', 'image'].includes(String(modelType))) return reply.code(400).send({ error: 'invalid_model_type' });
+    if (!connectionSupportsModelType(String(conn.kind), modelType)) return reply.code(400).send({ error: 'model_connection_mismatch' });
+    const duplicate = database.connection.prepare('SELECT id FROM model_profiles WHERE connection_id=? AND model_id=? AND model_type=? AND id<>?').get(connectionId, modelId, String(modelType), id);
+    if (duplicate) return reply.code(409).send({ error: 'duplicate_model', message: '该供应商下已经添加了这个模型，请编辑已有配置。' });
+    const references = modelReferences(database, id);
+    if (existing && references.length && (body.enabled === false || String(existing.model_type) !== modelType || String(existing.connection_id) !== connectionId || String(existing.model_id) !== modelId)) {
+      return reply.code(409).send({ error: 'model_in_use', message: `请先更换使用该模型的配置：${references.join('、')}`, references });
+    }
+    const effectiveCapabilities = modelType !== 'chat' ? [] : Array.isArray(body.capabilities) && body.capabilities.length > 0
       ? body.capabilities.map((cap) => String(cap) === 'vision' ? 'multimodal' : cap)
       : (existing?.capabilities_json ? JSON.parse(String(existing.capabilities_json)) : ['text']);
+
+    if (existing && references.length && normalizeCapabilities(existing.capabilities_json).some(cap => !normalizeCapabilities(effectiveCapabilities).includes(cap))) {
+      return reply.code(409).send({ error: 'model_in_use', message: `请先更换使用该能力的配置：${references.join('、')}`, references });
+    }
 
     const effectiveContextLength = body.contextLength !== undefined
       ? (typeof body.contextLength === 'number' ? body.contextLength : null)
@@ -116,8 +138,19 @@ export function registerModelRoutes(
       ? Boolean(body.enabled)
       : (existing && existing.enabled !== undefined ? Boolean(existing.enabled) : true);
 
+    const effectiveThinkingLevel = body.thinkingLevel !== undefined
+      ? body.thinkingLevel
+      : ((existing?.thinking_level ?? 'auto') as ModelThinkingLevel);
+    const effectiveTimeoutMs = body.timeoutMs !== undefined
+      ? body.timeoutMs
+      : (existing?.timeout_ms ? Number(existing.timeout_ms) : null);
+
     if (body.enabled !== undefined && typeof body.enabled !== 'boolean') return reply.code(400).send({ error: 'invalid_enabled' });
-    if (body.capabilities !== undefined && (!Array.isArray(body.capabilities) || !body.capabilities.length || body.capabilities.some((c) => !['text', 'multimodal', 'vision'].includes(c)))) return reply.code(400).send({ error: 'invalid_capabilities' });
+    if (body.capabilities !== undefined && (!Array.isArray(body.capabilities) || (modelType === 'chat' && !body.capabilities.length) || body.capabilities.some((c) => !['text', 'multimodal', 'vision'].includes(c)))) return reply.code(400).send({ error: 'invalid_capabilities' });
+    if (!['auto', 'off', 'low', 'medium', 'high'].includes(effectiveThinkingLevel)) return reply.code(400).send({ error: 'invalid_thinking_level' });
+    if (effectiveTimeoutMs !== null && (!Number.isInteger(effectiveTimeoutMs) || effectiveTimeoutMs < 1000 || effectiveTimeoutMs > 600000)) {
+      return reply.code(400).send({ error: 'invalid_timeout', message: '超时时间应为 1000–600000 毫秒。' });
+    }
     for (const value of [body.defaultParams, body.advancedJson]) {
       if (value !== undefined && (!value || typeof value !== 'object' || Array.isArray(value))) return reply.code(400).send({ error: 'invalid_model_params' });
     }
@@ -129,17 +162,21 @@ export function registerModelRoutes(
       database.connection.prepare(`
         INSERT INTO model_profiles (
           id, connection_id, name, model_id, capabilities_json, context_length,
-          max_output_tokens, default_params_json, advanced_json, enabled, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          max_output_tokens, default_params_json, advanced_json, thinking_level, timeout_ms,
+          enabled, created_at, updated_at, model_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           connection_id = excluded.connection_id,
           name = excluded.name,
           model_id = excluded.model_id,
+          model_type = excluded.model_type,
           capabilities_json = excluded.capabilities_json,
           context_length = excluded.context_length,
           max_output_tokens = excluded.max_output_tokens,
           default_params_json = excluded.default_params_json,
           advanced_json = excluded.advanced_json,
+          thinking_level = excluded.thinking_level,
+          timeout_ms = excluded.timeout_ms,
           enabled = excluded.enabled,
           updated_at = excluded.updated_at
       `).run(
@@ -152,13 +189,16 @@ export function registerModelRoutes(
         effectiveMaxOutputTokens,
         JSON.stringify(effectiveDefaultParams),
         JSON.stringify(effectiveAdvancedJson),
+        effectiveThinkingLevel,
+        effectiveTimeoutMs,
         effectiveEnabled ? 1 : 0,
         now,
         now,
+        modelType,
       );
 
       // 双向同步至 provider_profiles 保持透明向下兼容
-      const legacyKind = conn.kind === 'openai-compatible-image' ? 'image' : conn.kind === 'vector' ? 'vector' : 'llm';
+      const legacyKind = modelType === 'image' ? 'image' : modelType === 'embedding' ? 'vector' : 'llm';
       database.connection.prepare(`
         INSERT INTO provider_profiles (id, name, kind, base_url, model, credential_account, enabled, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -184,12 +224,12 @@ export function registerModelRoutes(
         id,
         String(effectiveAdvancedJson.thinkingMode ?? 'omit'),
         String(conn.headers_json ?? '{}'),
-        JSON.stringify({ ...effectiveDefaultParams, ...effectiveAdvancedJson }),
+        JSON.stringify({ ...JSON.parse(String(conn.options_json ?? '{}')), ...effectiveDefaultParams, ...effectiveAdvancedJson }),
         JSON.stringify(effectiveCapabilities),
       );
     });
 
-    return reply.code(201).send({ id });
+    return reply.code(201).send(hydrateModelProfile(database.connection.prepare('SELECT * FROM model_profiles WHERE id=?').get(id) as Record<string, unknown>));
   });
 
   // 4. 删除模型配置
@@ -204,13 +244,28 @@ export function registerModelRoutes(
     const bindings = database.connection.prepare(
       "SELECT p.app_id, m.name, p.purpose_key FROM purpose_bindings p JOIN managed_apps m ON m.id = p.app_id WHERE p.target_type = 'model' AND p.target_id = ?",
     ).all(id) as Array<{ app_id: string; name: string; purpose_key: string }>;
+    const characterAssignments = database.connection.prepare(
+      `SELECT a.character_id, c.display_name AS name, a.role
+       FROM character_model_assignments a
+       LEFT JOIN character_profiles c ON c.id = a.character_id
+       WHERE a.profile_id = ?`,
+    ).all(id) as Array<{ character_id: string; name: string | null; role: string }>;
+    // JSON arrays must be matched by value, not substring: "m1" would
+    // otherwise appear to be used by a fallback such as "m10".
+    const routes = listModelRoutes(database)
+      .filter((route) => route.primaryModelId === id || route.fallbackModelIds.includes(id))
+      .map((route) => ({ scope: route.scope, app_id: route.appId ?? '', capability: route.capability }));
 
-    if (assignments.length > 0 || bindings.length > 0) {
+    const references = modelReferences(database, id);
+    if (references.length > 0 || assignments.length > 0 || bindings.length > 0 || characterAssignments.length > 0 || routes.length > 0) {
       return reply.code(409).send({
         error: 'model_in_use',
         message: '该模型正在被业务或应用使用，请先解绑后再删除喵。',
         assignments,
         bindings,
+        characterAssignments,
+        routes,
+        references,
       });
     }
 
@@ -236,13 +291,20 @@ export function registerModelRoutes(
       const body = request.body ?? {};
 
       const modelRow = database.connection.prepare(
-        `SELECT mp.*, sc.base_url, sc.credential_account, sc.headers_json, sc.options_json, sc.timeout_ms
+        `SELECT mp.*, sc.base_url, sc.credential_account, sc.headers_json, sc.options_json, sc.kind,
+                sc.enabled AS connection_enabled,
+                sc.timeout_ms AS connection_timeout_ms
          FROM model_profiles mp
          JOIN service_connections sc ON sc.id = mp.connection_id
          WHERE mp.id = ?`,
       ).get(id) as Record<string, unknown> | undefined;
 
       if (!modelRow) return reply.code(404).send({ error: 'model_not_found', message: '模型配置不存在喵。' });
+      if (!modelRow.enabled || !modelRow.connection_enabled || !connectionSupportsModelType(String(modelRow.kind), String(modelRow.model_type))) {
+        return reply.code(409).send({ error: 'model_unavailable', message: '请先启用模型及其供应商，并检查接入协议。' });
+      }
+      if (modelRow.model_type === 'image') return reply.code(400).send({ error: 'use_generation_test', message: '绘图模型请在生成方案中试运行。' });
+      if (modelRow.model_type === 'embedding') return testEmbeddingModel(database, secrets, modelRow, fetcher);
 
       const account = modelRow.credential_account ? String(modelRow.credential_account) : '';
       const connId = modelRow.connection_id ? String(modelRow.connection_id) : '';
@@ -261,6 +323,14 @@ export function registerModelRoutes(
       const connectionOptions = JSON.parse(String(modelRow.options_json || '{}')) as Record<string, unknown>;
       const isJsonTest = body.type === 'json';
       const isVisionTest = body.type === 'vision';
+      const modelTimeout = Number(modelRow.timeout_ms);
+      const connectionTimeout = Number(modelRow.connection_timeout_ms);
+      const effectiveTimeoutMs = Number.isFinite(modelTimeout) && modelTimeout > 0
+        ? modelTimeout
+        : Number.isFinite(connectionTimeout) && connectionTimeout > 0
+          ? connectionTimeout
+          : 60000;
+      const thinkingLevel = (modelRow.thinking_level ?? advanced.thinkingLevel ?? 'auto') as ModelThinkingLevel;
       const testPrompt = (typeof body.prompt === 'string' ? body.prompt.trim() : '') || (isVisionTest
         ? '请描述这张图片的内容，并回复“视觉测试成功”。'
         : isJsonTest
@@ -296,7 +366,8 @@ export function registerModelRoutes(
           headers,
           extraBody: { ...connectionOptions, ...defaultParams, ...advanced },
           thinkingMode: advanced.thinkingMode === 'enabled' || advanced.thinkingMode === 'disabled' ? advanced.thinkingMode : 'omit',
-          timeoutMs: Number(modelRow.timeout_ms ?? 60000),
+          thinkingLevel,
+          timeoutMs: effectiveTimeoutMs,
         },
         prompt: isVisionTest ? undefined : testPrompt,
         systemPrompt: isVisionTest ? undefined : (isJsonTest ? 'You are a JSON test server. Only return valid JSON.' : 'You are an AI model connectivity tester. Reply concisely in Chinese.'),
@@ -320,7 +391,7 @@ export function registerModelRoutes(
         try {
           const parsed: unknown = JSON.parse(output);
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('json_object_required');
-        } catch (jsonErr) {
+        } catch {
           throw new Error(`json_validation_failed: 模型未返回合法的 JSON 对象喵。输出片段: ${output.slice(0, 120)}`);
         }
       }

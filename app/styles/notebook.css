@@ -1,0 +1,158 @@
+/*
+ * SthStart 样式职责拆分 - 笔记工作区与编辑器基础布局 (Notebook core workspace & editor layout)
+ * 保持 baseline 原始级联顺序，由 app/globals.css 按序引入。
+  */
+
+
+/* ---------- 笔记工作区与编辑器 ---------- */
+.notebook-workspace-shell {
+  min-height: 0;
+}
+
+.notebook-workspace-header {
+  min-height: 48px;
+}
+
+.notebook-master-pane {
+  min-height: 0;
+  height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
+}
+
+.notebook-master-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notebook-master-list::-webkit-scrollbar {
+  display: none;
+}
+
+.notebook-detail-pane {
+  min-height: 0;
+  height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
+  background: var(--surface);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notebook-detail-pane::-webkit-scrollbar {
+  display: none;
+}
+
+/* The workspace keeps scrolling available while replacing browser scrollbars
+   with the card stream itself as the visual navigation cue. */
+.notebook-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.notebook-filter-options {
+  overflow: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notebook-filter-options::-webkit-scrollbar {
+  display: none;
+}
+
+/* Notebook editor (Seamless Structured Document Canvas) */
+.notebook-editor-shell {
+  background: var(--surface);
+  min-height: 100%;
+}
+
+.notebook-editor-header {
+  min-height: 44px;
+  background: var(--surface);
+}
+
+.notebook-save-status {
+  max-width: min(34vw, 240px);
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.notebook-icon-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.notebook-select {
+  border-radius: 4px;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+.notebook-select:focus {
+  border-color: var(--accent);
+}
+
+.notebook-title-input {
+  display: block;
+  min-height: 1.2em;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  touch-action: manipulation;
+  transition: border-bottom-color 0.15s ease;
+}
+
+.notebook-title-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.notebook-tags-input {
+  min-width: 0;
+  /* 计划 §11.3：常用标签/控件不低于 14px，这里的 12px 覆盖会压过工具类。 */
+  font-size: 14px;
+  touch-action: manipulation;
+}
+
+.notebook-textarea {
+  display: block;
+  width: 100%;
+  height: 380px;
+  min-height: 120px;
+  max-height: 600px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 16px;
+  line-height: 1.8;
+  resize: vertical;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  touch-action: manipulation;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.notebook-textarea::-webkit-scrollbar {
+  width: 4px;
+}
+
+.notebook-textarea::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.notebook-textarea:focus {
+  border-color: var(--border-control);
+  background: var(--surface);
+  outline: none;
+}

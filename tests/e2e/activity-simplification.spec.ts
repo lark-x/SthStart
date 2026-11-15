@@ -53,10 +53,10 @@ test('activity view switch stays in the header when there is room and moves into
    */
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`/apps/activities/${activity.id}`);
-  const views = page.getByRole('group', { name: '工作台视图' });
+  const views = page.getByRole('tablist', { name: '工作台视图' });
   await expect(views).toBeVisible();
   expect(await views.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(40);
-  expect(await views.evaluate((element) => element.closest('header')!.getBoundingClientRect().height)).toBeLessThanOrEqual(52);
+  expect(await views.evaluate((element) => element.closest('header')!.getBoundingClientRect().height)).toBeLessThanOrEqual(56);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 
   await page.setViewportSize({ width: 900, height: 900 });
@@ -70,8 +70,8 @@ test('activity view switch stays in the header when there is room and moves into
 
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(views).toBeVisible();
-  await expect(views.getByRole('button', { name: '素材制作' })).toHaveAttribute('aria-pressed', 'true');
-  expect(await views.evaluate((element) => element.closest('header')!.getBoundingClientRect().height)).toBeLessThanOrEqual(52);
+  await expect(views.getByRole('tab', { name: '素材制作' })).toHaveAttribute('aria-selected', 'true');
+  expect(await views.evaluate((element) => element.closest('header')!.getBoundingClientRect().height)).toBeLessThanOrEqual(56);
 });
 
 test('moving from editing to preview prepares the latest content once without a manual version step', async ({ page, request }) => {

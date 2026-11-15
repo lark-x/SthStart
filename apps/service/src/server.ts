@@ -61,6 +61,16 @@ import { registerWorkspaceRoutes } from './workspace.js';
 import { registerProjectRoutes } from './projects.js';
 import { registerMediaLibraryRoutes } from './media-library.js';
 import { startImageKnowledgeScheduler } from './generation/image-knowledge-index.js';
+import { StoryWorldStore } from './story-worlds/store.js';
+import { StoryWorldRuntime } from './story-worlds/runtime.js';
+import { StoryWorldImages } from './story-worlds/images.js';
+import { StoryWorldAdoptions } from './story-worlds/adoption.js';
+import { registerStoryWorldRoutes } from './story-worlds/routes.js';
+import { registerStoryWorldActorRoutes } from './story-worlds/actors-routes.js';
+import { registerStoryWorldRunRecoveryRoutes } from './story-worlds/run-recovery-routes.js';
+import { registerWorldSuggestionRoutes } from './story-worlds/suggestions-routes.js';
+import { registerWebSearchRoutes } from './web-search/routes.js';
+import { registerGenerationRecoveryRoutes } from './generation/recovery-routes.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -191,6 +201,11 @@ export async function createService(options: ServiceOptions = {}) {
     launchUrl: `${config.portalOrigins[0]}/apps/activities`, status: 'online', version: SERVICE_VERSION,
     sourceRevision: null, capabilities: ['activity-chat', 'moments', 'media-slots', 'playback', 'hyperframes-export'], checkedAt: new Date().toISOString(),
   });
+  const inspectStoryWorlds = (): AppDescriptor => ({
+    id: 'story-worlds', name: '故事世界', description: '在独立分支中推进人物生活，阅读共享事件与多视角故事。',
+    launchUrl: `${config.portalOrigins[0]}/apps/story-worlds`, status: 'online', version: SERVICE_VERSION,
+    sourceRevision: null, capabilities: ['world-branches', 'simulation', 'multi-perspective-reading', 'event-images'], checkedAt: new Date().toISOString(),
+  });
 
   await app.register(cors, {
     origin(origin, callback) {
@@ -276,7 +291,8 @@ export async function createService(options: ServiceOptions = {}) {
     ],
   }));
 
-  app.get<{ Reply: AppsResponse }>('/api/v1/apps', async () => ({ items: [await inspectApp(), inspectCreative(), inspectNotebook(), inspectNarrative(), inspectActivities()] }));
+  app.get<{ Reply: AppsResponse }>('/api/v1/apps', async () => ({ items: [await inspectApp(), inspectCreative(), inspectNotebook(), inspectNarrative(), inspectActivities(), inspectStoryWorlds()] }));
+  app.get<{ Reply: AppDescriptor }>('/api/v1/apps/story-worlds', async () => inspectStoryWorlds());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/linshe', async () => inspectApp());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/notebook', async () => inspectNotebook());
   app.get<{ Reply: AppDescriptor }>('/api/v1/apps/narrative', async () => inspectNarrative());
@@ -288,6 +304,32 @@ export async function createService(options: ServiceOptions = {}) {
   registerNotebookRoutes(app, config, database);
   registerWorkspaceRoutes(app, database);
   registerProjectRoutes(app, config, database, narrativeDatabase);
+  const worldStore = new StoryWorldStore(database);
+  const worldContext = { config, database, secrets, fetcher: options.fetcher, store: worldStore };
+  const worldImages = new StoryWorldImages(worldContext);
+  worldImages.recoverInterruptedSubmissions();
+  const worldAdoptions = new StoryWorldAdoptions(worldContext);
+  const worldRuntime = new StoryWorldRuntime({ ...worldContext,
+    afterStep: async ({ worldId, branchId, run, eventIds }) => { await worldImages.processRun(worldId, branchId, run, eventIds); },
+    onError: (error) => runtimeLogs.append({ appId: 'story-worlds', serviceId: 'simulation', stream: 'system', level: 'error', message: error instanceof Error ? error.message : String(error), force: true }),
+  });
+  registerStoryWorldRoutes(app, config, { store: worldStore, runtime: worldRuntime,
+    images: { plan: worldImages.plan.bind(worldImages), submit: worldImages.submit.bind(worldImages),
+      sync: async (worldId, branchId) => {
+        for (const image of worldImages.list(worldId, branchId).items) {
+          if (image.generationTaskId && ['queued', 'running', 'uncertain'].includes(image.status)) await worldImages.syncTask(worldId, branchId, image.id);
+        }
+      } },
+    adopt: worldAdoptions.adopt.bind(worldAdoptions),
+    bindProject: worldAdoptions.bindProject.bind(worldAdoptions),
+    getProjectBinding: worldAdoptions.getProjectBinding.bind(worldAdoptions),
+  });
+  registerStoryWorldActorRoutes(app, config, worldStore);
+  registerStoryWorldRunRecoveryRoutes(app, config, worldRuntime);
+  registerWorldSuggestionRoutes(app, { config, database, secrets, fetcher: options.fetcher });
+  registerWebSearchRoutes(app, { config, database, secrets, fetcher: options.fetcher });
+  registerGenerationRecoveryRoutes(app, config, database);
+  app.addHook('onReady', async () => { worldRuntime.startScheduler(); });
   registerMediaLibraryRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerSharedAssetRoutes(app, config, database);
@@ -356,6 +398,7 @@ export async function createService(options: ServiceOptions = {}) {
   });
 
   app.addHook('onClose', async () => {
+    await worldRuntime.stop();
     clearInterval(retentionTimer);
     genScheduler.stop();
     await stopImageKnowledge();

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Dialog } from '@/app/components/ui/dialog';
 import { useToast } from '@/app/providers/ui-provider';
 import { useCharacters } from '@/app/features/characters/queries';
@@ -261,10 +262,13 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
 
         {/* 导航栏：人设双向同步 vs 生图资产回流 */}
         <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg border border-border-default/60">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            aria-pressed={activeTab === 'sync'}
             onClick={() => setActiveTab('sync')}
-            className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`h-auto !min-h-0 sm:!min-h-0 flex-1 py-1.5 rounded-md text-xs font-medium transition-all gap-1.5 ${
               activeTab === 'sync'
                 ? 'bg-surface text-accent shadow-xs font-semibold'
                 : 'text-muted hover:text-ink'
@@ -272,11 +276,14 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
           >
             <Users className="h-3.5 w-3.5" />
             <span>人设双向同步对照</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            aria-pressed={activeTab === 'gallery'}
             onClick={() => setActiveTab('gallery')}
-            className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+            className={`h-auto !min-h-0 sm:!min-h-0 flex-1 py-1.5 rounded-md text-xs font-medium transition-all gap-1.5 ${
               activeTab === 'gallery'
                 ? 'bg-surface text-accent shadow-xs font-semibold'
                 : 'text-muted hover:text-ink'
@@ -284,7 +291,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
           >
             <ImageIcon className="h-3.5 w-3.5" />
             <span>生图产物互通相册</span>
-          </button>
+          </Button>
         </div>
 
         {/* 标签 1：人设双向同步对照 */}
@@ -453,37 +460,45 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
             {/* 转存去向 */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-ink">资产归宿类型</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="资产归宿类型">
+                <Button
                   type="button"
+                  variant="outline"
+                  aria-pressed={importTargetType === 'character_asset'}
                   onClick={() => setImportTargetType('character_asset')}
-                  className={`p-2.5 rounded-lg border text-xs font-medium transition-all text-left flex items-center gap-2 ${
+                  className={`h-auto !min-h-0 sm:!min-h-0 w-full justify-start whitespace-normal p-2.5 rounded-lg border text-xs font-medium transition-all text-left [&_.ui-mantine-button-inner]:w-full [&_.ui-mantine-button-label]:w-full [&_.ui-mantine-button-label]:whitespace-normal ${
                     importTargetType === 'character_asset'
                       ? 'border-accent bg-accent/10 text-accent font-semibold'
                       : 'border-border-default bg-surface text-ink hover:bg-surface-muted'
                   }`}
                 >
-                  <User className="h-4 w-4" />
-                  <div>
-                    <div>角色专属资产</div>
-                    <div className="text-[10px] text-muted font-normal">归属于单个角色的分类库</div>
-                  </div>
-                </button>
-                <button
+                  <span className="flex w-full min-w-0 items-center gap-2">
+                    <User className="h-4 w-4" aria-hidden="true" />
+                    <span>
+                      <span className="block">角色专属资产</span>
+                      <span className="block text-[10px] text-muted font-normal">归属于单个角色的分类库</span>
+                    </span>
+                  </span>
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
+                  aria-pressed={importTargetType === 'shared_asset'}
                   onClick={() => setImportTargetType('shared_asset')}
-                  className={`p-2.5 rounded-lg border text-xs font-medium transition-all text-left flex items-center gap-2 ${
+                  className={`h-auto !min-h-0 sm:!min-h-0 w-full justify-start whitespace-normal p-2.5 rounded-lg border text-xs font-medium transition-all text-left [&_.ui-mantine-button-inner]:w-full [&_.ui-mantine-button-label]:w-full [&_.ui-mantine-button-label]:whitespace-normal ${
                     importTargetType === 'shared_asset'
                       ? 'border-accent bg-accent/10 text-accent font-semibold'
                       : 'border-border-default bg-surface text-ink hover:bg-surface-muted'
                   }`}
                 >
-                  <Users className="h-4 w-4" />
-                  <div>
-                    <div>多角色公共资产</div>
-                    <div className="text-[10px] text-muted font-normal">多人合影/背景/海报</div>
-                  </div>
-                </button>
+                  <span className="flex w-full min-w-0 items-center gap-2">
+                    <Users className="h-4 w-4" aria-hidden="true" />
+                    <span>
+                      <span className="block">多角色公共资产</span>
+                      <span className="block text-[10px] text-muted font-normal">多人合影/背景/海报</span>
+                    </span>
+                  </span>
+                </Button>
               </div>
             </div>
 
@@ -492,33 +507,35 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
               <div className="space-y-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-ink">所属角色</label>
-                  <select
+                  <Select
+                    aria-label="所属角色"
                     value={importCharacterId}
                     onChange={(e) => setImportCharacterId(e.target.value)}
                     required
-                    className="w-full h-8 px-2.5 text-xs bg-surface border border-border-default rounded-md text-ink focus:outline-none focus:border-accent"
+                    className="w-full !h-8 !min-h-8 px-2.5 text-xs"
                   >
                     {allCharacters.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.displayName}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-ink">资产细分分类</label>
-                  <select
+                  <Select
+                    aria-label="资产细分分类"
                     value={importCharCategory}
                     onChange={(e) => setImportCharCategory(e.target.value as CharacterAssetCategory)}
-                    className="w-full h-8 px-2.5 text-xs bg-surface border border-border-default rounded-md text-ink focus:outline-none focus:border-accent"
+                    className="w-full !h-8 !min-h-8 px-2.5 text-xs"
                   >
                     {CHARACTER_ASSET_CATEGORIES.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {cat.label} ({cat.description})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
             )}
@@ -528,17 +545,18 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
               <div className="space-y-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-ink">公共资产分类</label>
-                  <select
+                  <Select
+                    aria-label="公共资产分类"
                     value={importSharedCategory}
                     onChange={(e) => setImportSharedCategory(e.target.value as SharedAssetCategory)}
-                    className="w-full h-8 px-2.5 text-xs bg-surface border border-border-default rounded-md text-ink focus:outline-none focus:border-accent"
+                    className="w-full !h-8 !min-h-8 px-2.5 text-xs"
                   >
                     {SHARED_ASSET_CATEGORIES.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {cat.label} ({cat.description})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div className="space-y-1">
@@ -547,9 +565,12 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                     {allCharacters.map((char) => {
                       const isSelected = importSharedCharIds.includes(char.id);
                       return (
-                        <button
+                        <Button
                           key={char.id}
                           type="button"
+                          size="sm"
+                          variant={isSelected ? 'accent' : 'outline'}
+                          aria-pressed={isSelected}
                           onClick={() => {
                             if (isSelected) {
                               setImportSharedCharIds(importSharedCharIds.filter((id) => id !== char.id));
@@ -557,15 +578,15 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                               setImportSharedCharIds([...importSharedCharIds, char.id]);
                             }
                           }}
-                          className={`px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 ${
+                          className={`h-auto !min-h-0 sm:!min-h-0 px-2 py-0.5 rounded text-xs font-normal transition-colors gap-1 ${
                             isSelected
-                              ? 'bg-accent text-white font-medium'
-                              : 'bg-surface text-ink border border-border-default/50'
+                              ? 'font-medium'
+                              : 'bg-surface text-ink border-border-default/50'
                           }`}
                         >
                           {isSelected && <Check className="h-3 w-3" />}
                           <span>{char.displayName}</span>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>

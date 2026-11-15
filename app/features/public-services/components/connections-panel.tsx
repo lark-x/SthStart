@@ -21,8 +21,12 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
 import { Spinner } from '@/app/components/ui/spinner';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
+import { FormField } from '@/app/components/ui/form-field';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   deleteConnection,
@@ -85,6 +89,7 @@ export function ConnectionsPanel({
   const [formData, setFormData] = useState<ConnectionFormState>(EMPTY_FORM);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ServiceConnection | null>(null);
 
   // 连通性测试抽屉
   const [testDrawerOpen, setTestDrawerOpen] = useState(false);
@@ -180,9 +185,6 @@ export function ConnectionsPanel({
   };
 
   const handleDeleteConnection = async (conn: ServiceConnection) => {
-    if (!window.confirm(`确认删除服务连接“${conn.name}”？已绑定的模型配置需先解绑或删除。`)) {
-      return;
-    }
     try {
       await deleteConnection(conn.id);
       toast.success('服务连接已删除。');
@@ -315,10 +317,6 @@ export function ConnectionsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
-            <RefreshCw className="h-4 w-4" />
-            刷新
-          </Button>
           <Button variant="primary" size="sm" onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             新建连接
@@ -334,14 +332,14 @@ export function ConnectionsPanel({
       ) : (
         <ul className="divide-y divide-border-subtle border-y border-border-subtle">
           {filtered.map((conn) => (
-            <li key={conn.id} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-              <div className="min-w-0 space-y-2">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+            <li key={conn.id} className="grid gap-3 py-3.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
                     <h3 className="truncate text-base font-semibold text-ink">{conn.name}</h3>
-                    <p className="mt-0.5 truncate font-mono text-xs text-muted">
-                      ID: {conn.id}
-                    </p>
+                    <span className="truncate font-mono text-xs text-muted">
+                      #{conn.id}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant={conn.enabled ? 'online' : 'unknown'}>
@@ -352,15 +350,13 @@ export function ConnectionsPanel({
                     </Badge>
                   </div>
                 </div>
-                <div className="truncate font-mono text-xs text-muted">
-                  {conn.baseUrl}
-                </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-                  <span className="flex items-center gap-1">
+                  <span className="min-w-0 truncate font-mono text-ink/80">{conn.baseUrl}</span>
+                  <span className="flex items-center gap-1 shrink-0">
                     <Key className="h-3 w-3" />
                     凭据：{conn.hasCredential ? CREDENTIAL_LABELS[conn.credentialSource] : '未配置'}
                   </span>
-                  <span>超时：{conn.timeoutMs / 1000}s</span>
+                  <span className="shrink-0 tabular-nums">超时：{conn.timeoutMs / 1000}s</span>
                 </div>
               </div>
               <div className="flex items-center gap-1 md:justify-end">
@@ -372,7 +368,7 @@ export function ConnectionsPanel({
                   items={[
                     { label: '发现模型', icon: <Compass className="h-3.5 w-3.5 text-muted" />, onSelect: () => handleOpenDiscoverDrawer(conn), hidden: !conn.kind.startsWith('openai-') },
                     { label: '编辑连接', icon: <Pencil className="h-3.5 w-3.5 text-muted" />, onSelect: () => handleOpenEdit(conn) },
-                    { label: '删除连接', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => void handleDeleteConnection(conn), tone: 'danger', separatorBefore: true },
+                    { label: '删除连接', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => setDeleteTarget(conn), tone: 'danger', separatorBefore: true },
                   ]}
                 />
               </div>
@@ -390,8 +386,7 @@ export function ConnectionsPanel({
       >
         <form onSubmit={handleSaveConnection} className="space-y-4">
           {formError && <Alert variant="danger" title="保存失败">{formError}</Alert>}
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">连接内部 ID</label>
+          <FormField label="连接内部 ID" required hint="创建后作为标识符，不可修改。">
             <Input
               value={formData.id}
               onChange={(e) => setFormData({ ...formData, id: e.target.value })}
@@ -399,20 +394,17 @@ export function ConnectionsPanel({
               disabled={Boolean(editingConn)}
               placeholder="e.g. openai-main"
             />
-            <p className="text-2xs text-muted mt-1">创建后作为标识符，不可修改。</p>
-          </div>
+          </FormField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">显示名称</label>
+            <FormField label="显示名称" required>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
                 placeholder="OpenAI 官方连接"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">连接类型</label>
+            </FormField>
+            <FormField label="连接类型">
               <Select
                 value={formData.kind}
                 onChange={(e) => setFormData({ ...formData, kind: e.target.value as ServiceConnectionKind })}
@@ -423,32 +415,30 @@ export function ConnectionsPanel({
                 <option value="worker">Windows Worker</option>
                 <option value="vector">向量数据库</option>
               </Select>
-            </div>
+            </FormField>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">服务基础地址 (Base URL)</label>
+          <FormField label="服务基础地址 (Base URL)" required>
             <Input
               value={formData.baseUrl}
               onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
               required
               placeholder="https://api.openai.com/v1"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">
-              API Key / 认证凭据 {editingConn && '（留空保持不变）'}
-            </label>
+          </FormField>
+          <FormField
+            label={`API Key / 认证凭据${editingConn ? '（留空保持不变）' : ''}`}
+            hint="凭据安全存入本地系统钥匙串或加密库，不以明文回显。"
+          >
             <Input
               type="password"
+              autoComplete="current-password"
               value={formData.secret}
               onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
               placeholder={editingConn ? '••••••••' : 'sk-...'}
             />
-            <p className="text-2xs text-muted mt-1">凭据安全存入本地系统钥匙串或加密库，不以明文回显。</p>
-          </div>
+          </FormField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">请求超时 (毫秒)</label>
+            <FormField label="请求超时 (毫秒)">
               <Input
                 type="number"
                 min={1000}
@@ -456,35 +446,29 @@ export function ConnectionsPanel({
                 value={formData.timeoutMs}
                 onChange={(e) => setFormData({ ...formData, timeoutMs: Number(e.target.value) })}
               />
-            </div>
-            <div className="flex items-center gap-2 pt-6">
-              <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={formData.enabled}
-                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  className="rounded text-accent focus:ring-accent"
-                />
-                启用该连接
-              </label>
+            </FormField>
+            <div className="flex items-center pt-6">
+              <Checkbox
+                label="启用该连接"
+                checked={formData.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+              />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">自定义请求头 (JSON 格式)</label>
-            <textarea
+          <FormField label="自定义请求头 (JSON 格式)">
+            <Textarea
               value={formData.headers}
               onChange={(e) => setFormData({ ...formData, headers: e.target.value })}
               rows={2}
-              className="w-full text-xs font-mono rounded-md border border-border-default bg-surface p-2 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="font-mono text-xs"
               placeholder="{}"
             />
-          </div>
+          </FormField>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" type="button" onClick={() => setFormOpen(false)}>
               取消
             </Button>
-            <Button variant="primary" type="submit" disabled={formSaving}>
-              {formSaving && <Spinner className="h-3.5 w-3.5 mr-1" />}
+            <Button variant="primary" type="submit" loading={formSaving}>
               {editingConn ? '保存修改' : '立即创建'}
             </Button>
           </div>
@@ -504,10 +488,11 @@ export function ConnectionsPanel({
             <Button
               variant="outline"
               size="sm"
-              disabled={testing || !testConn}
+              loading={testing}
+              disabled={!testConn}
               onClick={() => testConn && void runProbe(testConn.id)}
             >
-              {testing ? <Spinner className="h-3.5 w-3.5 mr-1" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+              {!testing && <RefreshCw className="h-3.5 w-3.5 mr-1" />}
               重新探测
             </Button>
           </div>
@@ -584,10 +569,11 @@ export function ConnectionsPanel({
             <Button
               variant="outline"
               size="sm"
-              disabled={discovering || !discoverConn}
+              loading={discovering}
+              disabled={!discoverConn}
               onClick={() => discoverConn && void runDiscover(discoverConn.id)}
             >
-              {discovering ? <Spinner className="h-3.5 w-3.5 mr-1" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+              {!discovering && <RefreshCw className="h-3.5 w-3.5 mr-1" />}
               重新发现
             </Button>
           </div>
@@ -602,20 +588,12 @@ export function ConnectionsPanel({
               <div className="flex items-center justify-between text-xs text-muted">
                 <span>共发现 {discovered.models.length} 个模型</span>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="text-accent hover:underline"
-                    onClick={() => setSelectedDiscovered(new Set(discovered.models))}
-                  >
+                  <Button type="button" size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs" onClick={() => setSelectedDiscovered(new Set(discovered.models))}>
                     全选
-                  </button>
-                  <button
-                    type="button"
-                    className="text-muted hover:underline"
-                    onClick={() => setSelectedDiscovered(new Set())}
-                  >
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs" onClick={() => setSelectedDiscovered(new Set())}>
                     全清
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -623,18 +601,14 @@ export function ConnectionsPanel({
                 {discovered.models.map((modelId) => {
                   const isChecked = selectedDiscovered.has(modelId);
                   return (
-                    <label
-                      key={modelId}
-                      className="flex items-center gap-2.5 p-2.5 text-xs hover:bg-surface-raised cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
+                    <div key={modelId} className="p-2.5 hover:bg-surface-raised">
+                      <Checkbox
+                        label={modelId}
+                        className="font-mono"
                         checked={isChecked}
                         onChange={() => toggleSelectModel(modelId)}
-                        className="rounded text-accent focus:ring-accent"
                       />
-                      <span className="font-mono text-ink truncate">{modelId}</span>
-                    </label>
+                    </div>
                   );
                 })}
               </div>
@@ -642,10 +616,10 @@ export function ConnectionsPanel({
               <Button
                 variant="primary"
                 className="w-full"
-                disabled={selectedDiscovered.size === 0 || importingModels}
+                loading={importingModels}
+                disabled={selectedDiscovered.size === 0}
                 onClick={handleImportSelectedModels}
               >
-                {importingModels && <Spinner className="h-3.5 w-3.5 mr-1" />}
                 一键添加为模型配置 ({selectedDiscovered.size})
               </Button>
             </div>
@@ -654,6 +628,19 @@ export function ConnectionsPanel({
           )}
         </div>
       </Drawer>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={deleteTarget ? `删除服务连接“${deleteTarget.name}”` : '删除服务连接'}
+        description="已绑定的模型配置需先解绑或删除。此操作不能撤销。"
+        confirmLabel="删除连接"
+        danger
+        onConfirm={async () => {
+          if (deleteTarget) await handleDeleteConnection(deleteTarget);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

@@ -32,11 +32,14 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
   // 1. 制作列表页：标题与入口已随改版改名为「制作项目 / 导入制作 / 新建制作」。
   await page.goto('/apps/activities');
   await expect(page.getByRole('heading', { name: '制作项目', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: '导入制作' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '新建制作' })).toBeVisible();
+  await page.getByLabel('更多活动工具', { exact: true }).first().click();
+  await expect(page.getByRole('menuitem', { name: '导入制作', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  const createLink = page.getByRole('link', { name: '新建制作', exact: true });
+  await expect(createLink).toBeVisible();
 
   // 2. 新建入口默认是「新建制作工坊」快速页；企划向导需要显式切换。
-  await page.getByRole('link', { name: '新建制作' }).click();
+  await createLink.click();
   await expect(page).toHaveURL(/\/apps\/activities\/new/);
   await expect(page.getByRole('heading', { name: '新建制作工坊' })).toBeVisible();
   await expect(page.getByRole('tablist', { name: '创建方式' })).toBeVisible();
@@ -71,8 +74,8 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
    * 与记录详情栏已随分镜工作台改版移除，分镜编辑由下面的场次与镜头覆盖。
    */
   await page.setViewportSize({ width: 1440, height: 900 });
-  const views = page.getByRole('group', { name: '工作台视图' });
-  await expect(views.getByRole('button', { name: '分镜漫剧' })).toHaveAttribute('aria-pressed', 'true');
+  const views = page.getByRole('tablist', { name: '工作台视图' });
+  await expect(views.getByRole('tab', { name: '分镜漫剧' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('剧情大纲', { exact: true })).toBeVisible();
 
   // 分镜视图：新建场次与镜头，镜头工坊随选中镜头展示绘制面板。
@@ -120,15 +123,15 @@ test('Activity Studio: full navigation, wizard creation and workstation tabs', a
   await expect(settings).toBeHidden();
 
   // 素材制作视图
-  await views.getByRole('button', { name: '素材制作' }).click();
+  await views.getByRole('tab', { name: '素材制作' }).click();
   await expect(page.getByRole('heading', { name: '图片与视频' })).toBeVisible();
   await expect(page.getByRole('button', { name: '新增镜头' })).toBeVisible();
 
   // 漫画工坊视图
-  await views.getByRole('button', { name: '漫画工坊' }).click();
-  await expect(views.getByRole('button', { name: '漫画工坊' })).toHaveAttribute('aria-pressed', 'true');
+  await views.getByRole('tab', { name: '漫画工坊' }).click();
+  await expect(views.getByRole('tab', { name: '漫画工坊' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: '图片与视频' })).toHaveCount(0);
-  await views.getByRole('button', { name: '分镜漫剧' }).click();
+  await views.getByRole('tab', { name: '分镜漫剧' }).click();
   await expect(page.getByText('剧情大纲', { exact: true })).toBeVisible();
 
   // 试演（原「回放」tab）：全屏浮层，Escape 关闭。
@@ -177,7 +180,7 @@ test('Activity Studio: prompt source opens its exact local field and publishes a
    * 现在从「素材制作」视图的镜头卡片「绘制图片」打开同一个素材绘制工作台。
    * 配方准备与提示词溯源只在「专业模式」显示，简单模式会自动完成。
    */
-  await page.getByRole('group', { name: '工作台视图' }).getByRole('button', { name: '素材制作' }).click();
+  await page.getByRole('tablist', { name: '工作台视图' }).getByRole('tab', { name: '素材制作' }).click();
   await page.getByRole('button', { name: '绘制图片' }).first().click();
   const workbench = page.getByRole('dialog', { name: '素材绘制' });
   await expect(workbench).toBeVisible();

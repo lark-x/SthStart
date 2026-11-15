@@ -13,11 +13,13 @@ export class KnowledgeScheduler {
   private timer: NodeJS.Timeout | null = null;
   private startupTimer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private stopped = false;
 
   constructor(private readonly options: KnowledgeCollectionOptions) {}
 
   start() {
     if (this.timer) return;
+    this.stopped = false;
     const store = new KnowledgeCollectionStore(this.options.database);
     // 进程重启：把未完成的执行记录标记为中断。
     store.interruptDanglingRuns();
@@ -28,18 +30,21 @@ export class KnowledgeScheduler {
   }
 
   stop() {
+    this.stopped = true;
     if (this.startupTimer) { clearTimeout(this.startupTimer); this.startupTimer = null; }
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
   }
 
   /** 到期的启用定义各启动一次；已在运行的定义跳过。 */
   async tick(now = new Date()): Promise<string[]> {
-    if (this.ticking) return [];
+    if (this.stopped || this.ticking) return [];
     this.ticking = true;
     const started: string[] = [];
     try {
+      if (this.stopped) return [];
       const store = new KnowledgeCollectionStore(this.options.database);
       for (const collection of store.listDue(now)) {
+        if (this.stopped) break;
         // 同一任务同一时刻只运行一次：手动与定时共用占用检查。
         if (store.findActiveRun(collection.id)) continue;
         if (!collection.sources.length) continue;
@@ -51,7 +56,9 @@ export class KnowledgeScheduler {
           trigger: 'scheduled',
           settingsSnapshot: collection as unknown as Record<string, unknown>,
         });
-        void runKnowledgeCollection(this.options, collection, run);
+        void runKnowledgeCollection(this.options, collection, run).catch(error => {
+          console.warn('资料搜集执行异常：', error instanceof Error ? error.message : String(error));
+        });
         started.push(run.id);
       }
       return started;

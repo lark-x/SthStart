@@ -124,15 +124,17 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
             {/* Header: Title, order, lock toggle, delete */}
             <div className={`flex items-center justify-between gap-3 ${expanded ? "pb-3 border-b border-border-subtle" : ""}`}>
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => toggleExpanded(stage.id)}
                   aria-expanded={expanded}
                   aria-label={`${expanded ? "收起" : "展开"}阶段 ${index + 1}`}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted hover:bg-surface-hover hover:text-ink"
+                  className="h-7 min-h-0 w-7 shrink-0 p-0 text-muted hover:text-ink"
                 >
                   <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
-                </button>
+                </Button>
                 <Badge variant="outline" className="text-sm font-mono shrink-0">
                   #{index + 1}
                 </Badge>

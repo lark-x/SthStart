@@ -153,15 +153,17 @@ ${activeEntryContent || '（暂无正文）'}
                 { label: '半', width: typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.5) : 640, title: '半屏对等创作 (50%)' },
                 { label: '宽', width: 680, title: 'AI 深度探讨 (680px)' },
               ].map((preset) => (
-                <button
+                <Button
                   key={preset.label}
                   type="button"
+                  size="sm"
+                  variant="ghost"
                   title={preset.title}
                   onClick={() => onSetWidth(preset.width)}
-                  className="rounded px-1.5 py-0.5 text-muted hover:bg-surface-hover hover:text-ink transition-colors"
+                  className="h-auto min-h-0 rounded px-1.5 py-0.5 text-xs text-muted hover:bg-surface-hover hover:text-ink sm:min-h-0"
                 >
                   {preset.label}
-                </button>
+                </Button>
               ))}
             </div>
           )}

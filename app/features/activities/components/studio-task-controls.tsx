@@ -3,9 +3,10 @@ import {useEffect,useRef,useState} from 'react';
 import {StudioJobResumeSchema,type StudioJob,type StudioJobResume} from '@sthstart/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {Button} from '@/app/components/ui/button';
+import {Checkbox} from '@/app/components/ui/checkbox';
 import {ResponsiveEditOverlay} from '@/app/components/ui/responsive-edit-overlay';
-import {useStudioJobMutations} from '../studio-mutations';
-import {useStudioItems} from '../studio-queries';
+import { useStudioJobMutations } from '@/app/features/activities/mutations/studio';
+import { useStudioItems } from '@/app/features/activities/queries/studio';
 import {StudioHealthPanel} from './studio-health-panel';
 import {StudioTextFallbackPanel} from './studio-text-fallback-panel';
 import {StudioImageFallbackPanel} from './studio-image-fallback-panel';
@@ -49,7 +50,7 @@ export function StudioTaskControls({activityId,job,beforeAction,onSelectJob}:{ac
     <ResponsiveEditOverlay open={open&&showResume} onOpenChange={changeOpen} title="恢复安全的待提交项" footer={<><Button variant="outline" disabled={operations.resume.isPending} onClick={()=>changeOpen(false)}>取消</Button><Button loading={operations.resume.isPending} disabled={operations.reconcile.isPending||job.kind==='render_batch'&&!selected.length} onClick={()=>void resume()}>确认恢复</Button></>}>
       <p className="text-sm">沿用已确认的来源、工作流、种子与提交标识。仍在运行、结果未知或来源已变化时会拒绝恢复；成功项不会重复生成。</p>
       {job.kind==='render_batch'&&<fieldset className="mt-3 space-y-2"><legend className="text-sm font-medium">本次继续 {selected.length} 项</legend>
-        {(items.data?.pages.flatMap(page=>page.items)??[]).filter(item=>['waiting','submitted'].includes(item.state)).map(item=><label key={item.id} className="flex items-start gap-2 rounded-lg bg-surface-subtle p-2 text-sm"><input type="checkbox" checked={selected.includes(item.id)} disabled={operations.resume.isPending} onChange={e=>{pending.current=null;try{sessionStorage.removeItem(key);}catch{/* Optional recovery. */}const next=e.target.checked?[...selected,item.id]:selected.filter(id=>id!==item.id);setSelected(next);remember({open:true,selected:next,error});}}/><span>{item.target.kind==='beat'?`镜头 ${item.target.beatId}`:item.target.kind==='comic_panel'?`画格 ${item.target.panelId}`:`素材 ${item.target.slotId}`} · 候选 {item.candidateIndex+1} · seed {item.seed}{item.state==='submitted'?'（仅已关联且尚未发送的任务可恢复）':''}</span></label>)}
+        {(items.data?.pages.flatMap(page=>page.items)??[]).filter(item=>['waiting','submitted'].includes(item.state)).map(item=><div key={item.id} className="rounded-lg bg-surface-subtle p-2"><Checkbox label={`${item.target.kind==='beat'?`镜头 ${item.target.beatId}`:item.target.kind==='comic_panel'?`画格 ${item.target.panelId}`:`素材 ${item.target.slotId}`} · 候选 ${item.candidateIndex+1} · seed ${item.seed}${item.state==='submitted'?'（仅已关联且尚未发送的任务可恢复）':''}`} checked={selected.includes(item.id)} disabled={operations.resume.isPending} onChange={e=>{pending.current=null;try{sessionStorage.removeItem(key);}catch{/* Optional recovery. */}const next=e.target.checked?[...selected,item.id]:selected.filter(id=>id!==item.id);setSelected(next);remember({open:true,selected:next,error});}}/></div>)}
         {items.hasNextPage&&<Button variant="ghost" loading={items.isFetchingNextPage} onClick={()=>void items.fetchNextPage()}>更多待提交项</Button>}{items.isError&&<p role="alert">{items.error.message}</p>}
       </fieldset>}{error&&<p role="alert" className="mt-3 text-sm text-danger-fg">{error}</p>}
     </ResponsiveEditOverlay>

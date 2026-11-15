@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityLoraOverride, BeatRenderPreview, ComicJob, ComicPanel, ComicRenderPreview, SceneBeatRenderSettings } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { Input } from '@/app/components/ui/input';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
 import Link from 'next/link';
-import { useActivityComicGenerationOptions } from '../queries';
-import { useCreateComicPanelRender, usePreviewComicPanelRender } from '../mutations';
+import { useActivityComicGenerationOptions } from '@/app/features/activities/queries/images';
+import { useCreateComicPanelRender, usePreviewComicPanelRender } from '@/app/features/activities/mutations/comic';
 import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
 import { ImagePromptOverride } from '@/app/features/generation/components/image-prompt-override';
 import { StructuredDirectorControls, VisualParameterFields } from '../components/visual-settings-controls';
@@ -25,7 +29,6 @@ interface ComicRenderDialogProps {
   onSubmitted(job: ComicJob): void;
 }
 
-const controlClass = 'w-full rounded-control border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
 const labelClass = 'block space-y-1 text-xs font-medium text-muted';
 type RenderOption = { key: string; purpose: string; workflowId: string; workflowVersion: number; presetId?: string; presetRevision?: number; label: string };
 
@@ -188,18 +191,18 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
       <ImagePromptOverride advanced={advanced} finalPositivePrompt={settings.finalPositivePrompt} promptOptimization={settings.promptOptimization}
         effectiveAI={promptPreview?.promptOptimization?.enabled ?? true} finalSupported={promptPreview?.promptAssembly === 'service-finalized-v1'} sourcePrompt={promptPreview?.positivePrompt ?? ''}
         disabled={busy} onChange={updateSettings} />
-      {!settings.presetId && !settings.workflowId && <label className={labelClass}>生成档位<select className={controlClass} value={settings.quality ?? ''} onChange={event => updateSettings({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>}
+      {!settings.presetId && !settings.workflowId && <label className={labelClass}>生成档位<Select className="text-sm" value={settings.quality ?? ''} onChange={event => updateSettings({ quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></Select></label>}
       <label className={labelClass}>生成方案
-        <select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}>
+        <Select className="text-sm" value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}>
           <option value="">跟随活动默认配置</option>{renderOptions.filter((option) => option.presetId || option.key === selectedOption?.key).map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-        </select>
+        </Select>
       </label>
       {optionsQuery.isLoading && <p className="text-xs text-muted">正在读取已发布的活动图片工作流…</p>}
-      <label className={labelClass}>补充画面要求<textarea className={`${controlClass} min-h-20 resize-y`} maxLength={20_000} value={settings.customPrompt ?? ''}
+      <label className={labelClass}>补充画面要求<Textarea className="min-h-20 resize-y text-sm" maxLength={20_000} value={settings.customPrompt ?? ''}
         onChange={(event) => updateSettings({ customPrompt: event.target.value })} placeholder="例如：柔和的电影感逆光，保持角色服装细节。" /></label>
       <StructuredDirectorControls value={settings.director} includeShotSize={false} onChange={director => updateSettings({ director })} disabled={busy} />
-      <label className={labelClass}>角色参考图<select className={controlClass} disabled={Boolean(preview && !preview.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={event => updateSettings({ referenceAssetKey: event.target.value || undefined })}>
-        <option value="">不使用参考图</option>{actorReferenceKeys.map(item => <option key={item.key} value={item.key}>{item.actorName}</option>)}</select>
+      <label className={labelClass}>角色参考图<Select className="text-sm" disabled={Boolean(preview && !preview.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={event => updateSettings({ referenceAssetKey: event.target.value || undefined })}>
+        <option value="">不使用参考图</option>{actorReferenceKeys.map(item => <option key={item.key} value={item.key}>{item.actorName}</option>)}</Select>
         {preview && !preview.referenceSupported && <span>此方案不支持参考图。</span>}
       </label>
       <Link href="/settings/generation" target="_blank" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link>
@@ -210,7 +213,7 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
           const enabled = override?.enabled ?? lora.enabled;
           const strength = override?.strength ?? lora.strength;
           return <div key={lora.model} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-xs">
-            <label className="flex min-w-0 items-center gap-2 text-ink"><input type="checkbox" checked={enabled} onChange={(event) => setLoraEnabled(lora.model, event.target.checked, lora.strength)} /><span className="truncate" title={lora.model}>{lora.model}</span></label>
+            <Checkbox className="min-w-0" label={lora.model} checked={enabled} onChange={(event) => setLoraEnabled(lora.model, event.target.checked, lora.strength)} />
             <span className={lora.available ? 'text-success' : 'text-danger'}>{lora.available ? '可用' : '缺失'}</span>
             <input className="col-span-2 w-full accent-accent" type="range" min={-2} max={2} step={0.05} value={strength} disabled={!enabled}
               aria-label={`${lora.model} 强度`} onChange={(event) => setLoraStrength(lora.model, Number(event.target.value), enabled)} />
@@ -220,11 +223,11 @@ export function ComicRenderDialog({ open, onOpenChange, activityId, draftVersion
       <details hidden={!advanced} className="rounded-panel border border-border-default p-3" onToggle={event => { if (event.currentTarget.open && !preview && !previewMutation.isPending) void runPreview(); }}>
         <summary className="cursor-pointer text-sm font-medium text-ink">采样、尺寸与负面词</summary>
         <div className="mt-3 space-y-3">
-          <label className={labelClass}>切换其他工作流<select className={controlClass} value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}><option value="">跟随活动默认配置</option>{renderOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
-          <label className={labelClass}>反向提示词<textarea className={`${controlClass} min-h-16 resize-y`} maxLength={20_000} value={settings.negativePrompt ?? ''}
+          <label className={labelClass}>切换其他工作流<Select className="text-sm" value={selectedOption?.key ?? ''} onChange={(event) => selectRenderOption(event.target.value)}><option value="">跟随活动默认配置</option>{renderOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</Select></label>
+          <label className={labelClass}>反向提示词<Textarea className="min-h-16 resize-y text-sm" maxLength={20_000} value={settings.negativePrompt ?? ''}
             onChange={(event) => updateSettings({ negativePrompt: event.target.value })} placeholder={settings.negativePrompt === undefined ? '继承活动与工作流负向词；输入后即为本画格覆盖' : '已覆盖；留空表示明确不使用负向词'} /></label>
           {settings.negativePrompt !== undefined && <Button size="sm" variant="ghost" onClick={() => updateSettings({ negativePrompt: undefined })}>恢复继承负向词</Button>}
-          {!fields.some(field => field.type === 'seed' || field.key === 'seed') && <label className={labelClass}>随机种子<input className={controlClass} type="number" min={0} max={2_147_483_647} step={1} value={seed}
+          {!fields.some(field => field.type === 'seed' || field.key === 'seed') && <label className={labelClass}>随机种子<Input className="text-sm" type="number" min={0} max={2_147_483_647} step={1} value={seed}
             onChange={(event) => { const next = Math.max(0, Math.min(2_147_483_647, Math.floor(Number(event.target.value) || 0))); setSeed(next); updateSettings({ parameters: { ...settings.parameters, seed: next } }); }} /></label>}
           <VisualParameterFields key={`${panel.id}:${settings.workflowId ?? 'inherit'}:${settings.workflowVersion ?? ''}:${settings.quality ?? ''}`} recoveryKey={`sthstart:visual-input:comic:${activityId}:${panel.id}:${settings.workflowId ?? 'inherit'}:${settings.workflowVersion ?? ''}:${settings.quality ?? ''}`} fields={fields} values={settings.parameters ?? {}} onChange={parameters => updateSettings({ parameters })} onValidityChange={setParametersValid} disabled={busy} />
         </div>

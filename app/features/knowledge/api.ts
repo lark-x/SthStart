@@ -83,6 +83,7 @@ export async function fetchPending(options: KnowledgePendingListQuery = {}): Pro
   const params = new URLSearchParams();
   if (options.state) params.set('state', options.state);
   if (options.collectionId) params.set('collectionId', options.collectionId);
+  if (options.q?.trim()) params.set('q', options.q.trim());
   params.set('limit', String(options.limit ?? 60));
   params.set('offset', String(options.offset ?? 0));
   return getJson('/api/admin/knowledge/pending?' + params.toString(), undefined, KnowledgePendingListResponseSchema);

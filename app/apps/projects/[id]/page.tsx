@@ -1,4 +1,4 @@
-import { ProjectWorkspace } from "@/app/features/projects/project-workspace";
+import { ProjectWorkspace } from "@/app/workspaces/projects/project-workspace";
 export const metadata = { title: "项目总览 — SthStart" };
 export default async function Page({
   params,

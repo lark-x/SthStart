@@ -7,6 +7,9 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { adminFetch } from '@/app/lib/admin-fetch';
 import { createTestRun, fetchTestRunDetail, fetchTestRuns } from '../api';
 import type { DraftPayload, GenerationTestRunDetail, GenerationTestRunSummary } from '../types';
@@ -187,9 +190,7 @@ export function TestRunPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ink">试运行 · {workflowName}</h2>
         {onClose && (
-          <button type="button" onClick={onClose} aria-label="关闭试运行" className="inline-flex h-8 w-8 items-center justify-center rounded-control border border-border-default text-muted lg:hidden">
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <IconButton icon={X} label="关闭试运行" size="sm" variant="outline" onClick={onClose} className="lg:hidden" />
         )}
       </div>
 
@@ -204,11 +205,11 @@ export function TestRunPanel({
                 {field.enumValues.map((value) => <option key={value} value={value}>{value}</option>)}
               </Select>
             ) : field.type === 'boolean' ? (
-              <input id={`test-${field.key}`} type="checkbox" checked={Boolean(values[field.key] ?? defaultValues[field.key] ?? false)} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.checked }))} />
+              <Checkbox id={`test-${field.key}`} checked={Boolean(values[field.key] ?? defaultValues[field.key] ?? false)} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.checked }))} />
             ) : field.type === 'integer' || field.type === 'number' ? (
               <Input id={`test-${field.key}`} type="number" value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value === '' ? undefined : Number(event.target.value) }))} />
             ) : field.type === 'long-text' ? (
-              <textarea id={`test-${field.key}`} className="min-h-20 w-full rounded-control border border-border-default bg-surface p-2 text-sm" value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
+              <Textarea id={`test-${field.key}`} className="min-h-20" value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
             ) : (
               <Input id={`test-${field.key}`} value={String(values[field.key] ?? defaultValues[field.key] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
             )}
@@ -281,13 +282,13 @@ export function TestRunPanel({
         <ul className="mt-1 space-y-1">
           {runs.map((run) => (
             <li key={run.id}>
-              <button type="button" onClick={() => { void openDetail(run.id); }} className="flex w-full items-center justify-between gap-2 rounded-control border border-border-subtle bg-surface px-2.5 py-2 text-left text-sm hover:bg-ink/4">
+              <Button type="button" variant="outline" onClick={() => { void openDetail(run.id); }} className="h-auto w-full justify-between px-2.5 py-2 text-left text-sm">
                 <span className="min-w-0 truncate">
                   <Badge variant={STATUS_VARIANTS[run.status] ?? 'default'}>{STATUS_LABELS[run.status] ?? run.status}</Badge>
                   <span className="ml-2 text-muted">v{run.workflowVersion}</span>
                 </span>
                 <span className="flex-shrink-0 text-fg-subtle">{run.artifactCount > 0 ? `${run.artifactCount} 个产物 · ` : ''}{new Date(run.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

@@ -1,22 +1,25 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, LoaderCircle, Save } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { CheckCircle2, Save } from 'lucide-react';
 import { DEFAULT_ACTIVITY_IMAGE_PROMPT_INSTRUCTIONS, type ActivityImagePromptPolicy, type ActivityImagePromptPolicyResponse, type SaveActivityImagePromptPolicyRequest } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
+import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
+import { Spinner } from '@/app/components/ui/spinner';
 import { fetchActivityImagePromptPolicy, saveActivityImagePromptPolicy } from '../api';
 import type { Workflow } from '../types';
 
-type PromptPolicyDraft = Pick<ActivityImagePromptPolicy, 'enabled' | 'instructions' | 'positiveSuffix' | 'negativePrompt' | 'outputFormat' | 'knowledgeMode'> & { revision: number };
+type PromptPolicyDraft = Pick<ActivityImagePromptPolicy, 'enabled' | 'instructions' | 'positiveSuffix' | 'negativePrompt' | 'outputFormat' | 'knowledgeMode' | 'artistString' | 'qualityPrompt' | 'adultKnowledgeEnabled'> & { revision: number };
 
 const NEIGHBOR_STYLE = '@ebora, masterpiece, best quality, score_9, score_8, highres, absurdres, anime screenshot, year 2025';
 const NEIGHBOR_NEGATIVE = 'score_1, score_2, score_3, bad anatomy, bad proportions, deformed anatomy, deformed face, deformed eyes, text, multiple fingers, watermark, artist name, censor, mosaic';
 const ANIMA_STANDARD_STYLE = 'masterpiece, best quality, score_7, safe';
 
 export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }: { workflows: Workflow[]; preferredWorkflow?: { id: string; version: number } }) {
+  const versionSelectId = useId();
   const versions = useMemo(() => workflows.flatMap((workflow) => workflow.versions
     .filter((version) => version.isPublished && (version.category ?? workflow.category) === 'image')
     .map((version) => ({ id: workflow.id, name: workflow.name, version: version.version }))), [workflows]);
@@ -93,12 +96,12 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
         {preferredWorkflow && selected && <p className="text-sm text-muted">当前模式：{selected.name} v{selected.version}</p>}
         <details className="max-w-2xl" open={!preferredWorkflow ? true : undefined}>
           <summary className="cursor-pointer text-sm font-medium text-muted hover:text-ink">{preferredWorkflow ? '配置其他工作流的画风' : '切换工作流版本'}</summary>
-          <label className="mt-2 block space-y-1.5">
-            <span className="text-sm font-medium text-ink">应用到工作流版本</span>
-            <select aria-label="提示词策略工作流版本" value={selection} onChange={(event) => setSelection(event.target.value)} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
+          <div className="mt-2 space-y-1.5">
+            <label htmlFor={versionSelectId} className="block text-sm font-medium text-ink">应用到工作流版本</label>
+            <Select id={versionSelectId} value={selection} onChange={(event) => setSelection(event.target.value)}>
               {versions.map((item) => <option key={`${item.id}::${item.version}`} value={`${item.id}::${item.version}`}>{item.name} · {item.id} · v{item.version}</option>)}
-            </select>
-          </label>
+            </Select>
+          </div>
         </details>
 
         {optimizer?.ready && <div className="flex items-start gap-2 rounded-control border border-success/30 bg-success/5 px-3 py-2.5 text-sm text-ink">
@@ -106,7 +109,7 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
           <div className="font-medium">复用活动文本模型：{optimizer.profileName} · {optimizer.model}</div>
         </div>}
 
-        {loading || !draft ? <div className="py-10 text-center text-sm text-muted" role="status">正在读取此工作流版本的策略…</div> : <div className="max-w-4xl space-y-4">
+        {loading || !draft ? <Spinner size="sm" label="正在读取此工作流版本的策略…" /> : <div className="max-w-4xl space-y-4">
           <div className="space-y-2"><span className="text-sm font-medium text-ink">提示词组织方式</span>
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant={draft.outputFormat === 'prose' ? 'accent' : 'outline'}
@@ -126,6 +129,11 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
           <Checkbox checked={draft.knowledgeMode === 'hybrid'} disabled={draft.outputFormat !== 'tags'}
             onChange={event => setDraft({ ...draft, knowledgeMode: event.target.checked ? 'hybrid' : 'none' })}
             label="语义与关键词混合检索" description="需要已配置的向量服务；索引未就绪或服务不可用时使用关键词，并记录降级原因。" />
+          <Checkbox checked={draft.adultKnowledgeEnabled} disabled={draft.outputFormat !== 'tags' || draft.knowledgeMode === 'none'}
+            onChange={(event) => setDraft({ ...draft, adultKnowledgeEnabled: event.target.checked })}
+            label="启用成人向词表" description={draft.outputFormat === 'tags' && draft.knowledgeMode !== 'none'
+              ? '在通用词表之外并入成人专用标签；默认关闭，只影响本工作流版本的提示词补全，不改动画面事实。'
+              : '需要先开启结构化混合与关键词或混合检索。'} />
           {styleManagedByActivity && <Alert variant="info" title="画风由活动画风管理">
             该工作流版本声明了服务端组装，画师与质量标签来自活动画风，策略里的画风字段已清空并停用；如需修改请到活动画风设置。
           </Alert>}
@@ -145,6 +153,18 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
               ? '已停用：重复追加会让同一串质量词出现两次，最终提交内容可在 AI 调用日志中核对。'
               : '可自行修改；这些词追加在画面描述之后，最终提交内容可在 AI 调用日志中核对。'}</span>
           </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">画师串</span>
+              <Textarea rows={2} value={draft.artistString} onChange={(event) => setDraft({ ...draft, artistString: event.target.value })}
+                placeholder="留空沿用工作流默认；例如 @ebora" />
+              <span className="block text-xs text-muted">Anima 要求画师标签带 @，否则效果很弱。留空时不注入。</span>
+            </label>
+            <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">质量提示词</span>
+              <Textarea rows={2} value={draft.qualityPrompt} onChange={(event) => setDraft({ ...draft, qualityPrompt: event.target.value })}
+                placeholder="留空沿用工作流默认；例如 masterpiece, best quality, score_9, score_8, highres, absurdres, year 2025" />
+              <span className="block text-xs text-muted">排在画师串之前、画面描述之前；留空时不注入。</span>
+            </label>
+          </div>
           <Checkbox checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
             label="自动整理画面描述" description="开启时先用活动文本模型整理人物与动作；关闭时直接使用原描述，但仍追加上方画风。" />
           {draft.enabled && optimizer && !optimizer.ready && <Alert variant="warning" title="自动整理暂不可用">{optimizer.message ?? '活动文本模型尚未就绪。请先配置文本模型，或关闭自动整理再绘制。'}</Alert>}
@@ -159,7 +179,7 @@ export function ActivityImagePromptPolicyPanel({ workflows, preferredWorkflow }:
           </details>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" onClick={() => void save()} disabled={saving || loading}>
-              {saving ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}{saving ? '正在保存…' : '保存策略版本'}
+              {!saving && <Save className="mr-1.5 h-4 w-4" aria-hidden="true" />}{saving ? '正在保存…' : '保存策略版本'}
             </Button>
             <span className="text-xs text-muted">当前版本：{draft.revision === 0 ? '尚未保存（默认规则）' : `r${draft.revision}`}</span>
             {saved && <span role="status" className="text-xs text-success">已保存为新版本</span>}
@@ -175,7 +195,9 @@ function toDraft(policy: ActivityImagePromptPolicy | null, styleManagedByActivit
   const positiveSuffix = styleManagedByActivity ? '' : policy?.positiveSuffix ?? '';
   return policy
     ? { revision: policy.revision, enabled: policy.enabled, instructions: policy.instructions, positiveSuffix,
-      negativePrompt: policy.negativePrompt, outputFormat: policy.outputFormat, knowledgeMode: policy.knowledgeMode }
+      negativePrompt: policy.negativePrompt, outputFormat: policy.outputFormat, knowledgeMode: policy.knowledgeMode,
+      artistString: policy.artistString, qualityPrompt: policy.qualityPrompt, adultKnowledgeEnabled: policy.adultKnowledgeEnabled }
     : { revision: 0, enabled: true, instructions: DEFAULT_ACTIVITY_IMAGE_PROMPT_INSTRUCTIONS, positiveSuffix: '',
-      negativePrompt: '', outputFormat: 'prose', knowledgeMode: 'none' };
+      negativePrompt: '', outputFormat: 'prose', knowledgeMode: 'none',
+      artistString: '', qualityPrompt: '', adultKnowledgeEnabled: false };
 }

@@ -22,8 +22,11 @@ import {
 } from 'lucide-react';
 import { CharacterAssetImage } from './character-image-fallback';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Dialog } from '@/app/components/ui/dialog';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   fetchCharacterAssets,
@@ -61,6 +64,7 @@ export function CharacterAssetTab({
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<CharacterAssetDetail | null>(null);
   const [editingAsset, setEditingAsset] = useState<CharacterAssetDetail | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CharacterAssetDetail | null>(null);
 
   // 上传表单状态
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -134,7 +138,6 @@ export function CharacterAssetTab({
 
   // 操作：删除资产
   const handleDelete = async (asset: CharacterAssetDetail) => {
-    if (!confirm(`确定要删除资产「${asset.title || '未命名'}」吗？`)) return;
     try {
       await deleteCharacterAsset(characterId, asset.id);
       toast.success('资产已删除');
@@ -266,33 +269,31 @@ export function CharacterAssetTab({
       </div>
 
       {/* 7 大分类筛选标签条 */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-        <button
+      <div role="group" aria-label="资产分类筛选" className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <Button
           type="button"
+          size="sm"
+          variant={selectedCategory === 'all' ? 'accent' : 'secondary'}
+          aria-pressed={selectedCategory === 'all'}
           onClick={() => setSelectedCategory('all')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${
-            selectedCategory === 'all'
-              ? 'bg-accent text-fg-on-accent shadow-2xs'
-              : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
-          }`}
+          className={`h-auto min-h-8 shrink-0 gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${selectedCategory === 'all' ? '' : 'bg-surface-muted text-muted shadow-none'}`}
         >
           <span>全部</span>
           <span className="opacity-75 text-xs">({categoryCounts.all || 0})</span>
-        </button>
+        </Button>
         {CHARACTER_ASSET_CATEGORIES.map((cat) => (
-          <button
+          <Button
             key={cat.id}
             type="button"
+            size="sm"
+            variant={selectedCategory === cat.id ? 'accent' : 'secondary'}
+            aria-pressed={selectedCategory === cat.id}
             onClick={() => setSelectedCategory(cat.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors shrink-0 ${
-              selectedCategory === cat.id
-                ? 'bg-accent text-fg-on-accent shadow-2xs'
-                : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
-            }`}
+            className={`h-auto min-h-8 shrink-0 gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${selectedCategory === cat.id ? '' : 'bg-surface-muted text-muted shadow-none'}`}
           >
             <span>{cat.label}</span>
             <span className="opacity-75 text-xs">({categoryCounts[cat.id] || 0})</span>
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -303,27 +304,32 @@ export function CharacterAssetTab({
             <Tag className="h-3 w-3" /> 标签:
           </span>
           {selectedTag && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="secondary"
               onClick={() => setSelectedTag(null)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent/15 text-accent text-xs font-medium"
+              className="h-auto min-h-6 gap-1 rounded-md bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent"
+              aria-label={`清除标签筛选：${selectedTag}`}
             >
-              <span>{selectedTag}</span>
-              <X className="h-3 w-3" />
-            </button>
+              <span aria-hidden="true">{selectedTag}</span>
+              <X className="h-3 w-3" aria-hidden="true" />
+            </Button>
           )}
           {allTags
             .filter((t) => t !== selectedTag)
             .slice(0, 15)
             .map((tag) => (
-              <button
+              <Button
                 key={tag}
                 type="button"
+                size="sm"
+                variant="outline"
                 onClick={() => setSelectedTag(tag)}
-                className="px-2 py-0.5 rounded-md bg-surface border border-border-default/60 text-muted hover:text-ink text-xs transition-colors"
+                className="h-auto min-h-6 rounded-md px-2 py-0.5 text-xs font-normal text-muted hover:text-ink"
               >
                 #{tag}
-              </button>
+              </Button>
             ))}
         </div>
       )}
@@ -357,25 +363,29 @@ export function CharacterAssetTab({
                 className="group relative flex flex-col bg-surface border border-border-default/70 rounded-xl overflow-hidden shadow-2xs hover:shadow-xs hover:border-accent/40 transition-all"
               >
                 {/* 缩略图区域 */}
-                <div
-                  className="relative aspect-square w-full bg-surface-muted/50 overflow-hidden cursor-pointer"
+                <Button
+                  type="button"
+                  variant="ghost"
+                  aria-label={`预览资产：${asset.title || '未命名资产'}`}
                   onClick={() => setPreviewAsset(asset)}
+                  className="relative block aspect-square h-auto min-h-0 w-full overflow-hidden rounded-none border-0 bg-surface-muted/50 p-0 text-left"
                 >
                   <CharacterAssetImage
                     src={asset.url}
                     alt={asset.title || '角色资产'}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-200"
                   />
                   {/* 角标状态徽标 */}
                   <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
                     {isAvatar && (
                       <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-500 text-white shadow-2xs flex items-center gap-0.5">
-                        <Check className="h-2.5 w-2.5" /> 当前头像
+                        <Check className="h-2.5 w-2.5" aria-hidden="true" /> 当前头像
                       </span>
                     )}
                     {isPortrait && (
                       <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-500 text-white shadow-2xs flex items-center gap-0.5">
-                        <Check className="h-2.5 w-2.5" /> 当前立绘
+                        <Check className="h-2.5 w-2.5" aria-hidden="true" /> 当前立绘
                       </span>
                     )}
                   </div>
@@ -389,9 +399,9 @@ export function CharacterAssetTab({
 
                   {/* 悬停放大镜 */}
                   <div className="pointer-events-none absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Eye className="h-5 w-5 text-white/90" />
+                    <Eye className="h-5 w-5 text-white/90" aria-hidden="true" />
                   </div>
-                </div>
+                </Button>
 
                 {/* 资产信息 */}
                 <div className="p-2.5 flex-1 flex flex-col justify-between">
@@ -418,48 +428,56 @@ export function CharacterAssetTab({
                   <div className="mt-2.5 pt-2 border-t border-border-default/40 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
                       {!isAvatar && (
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
+                          variant="ghost"
                           onClick={() => handleSetActive(asset, 'avatar')}
-                          className="px-1.5 py-0.5 rounded text-xs text-muted hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          className="h-auto min-h-6 rounded px-1.5 py-0.5 text-xs font-normal text-muted hover:text-amber-600"
                           title="设为当前生效头像"
                         >
                           设头像
-                        </button>
+                        </Button>
                       )}
                       {!isPortrait && (
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
+                          variant="ghost"
                           onClick={() => handleSetActive(asset, 'portrait')}
-                          className="px-1.5 py-0.5 rounded text-xs text-muted hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          className="h-auto min-h-6 rounded px-1.5 py-0.5 text-xs font-normal text-muted hover:text-indigo-600"
                           title="设为当前生效立绘"
                         >
                           设立绘
-                        </button>
+                        </Button>
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
-                        type="button"
+                      <IconButton
+                        icon={Edit2}
+                        label="编辑资产信息"
+                        size="sm"
+                        variant="ghost"
                         onClick={() => {
                           setEditingAsset(asset);
                           setEditTitle(asset.title || '');
                           setEditCategory(asset.category);
                           setEditTagsStr((asset.tags || []).join(', '));
                         }}
-                        className="p-1 rounded text-muted hover:text-ink hover:bg-surface-muted transition-colors"
+                        className="size-7 min-h-7 rounded text-muted"
+                        iconClassName="h-3 w-3"
                         title="编辑资产信息"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(asset)}
-                        className="p-1 rounded text-muted hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label="删除资产"
+                        size="sm"
+                        variant="danger-ghost"
+                        onClick={() => setPendingDelete(asset)}
+                        className="size-7 min-h-7 rounded text-muted hover:text-danger-fg"
+                        iconClassName="h-3 w-3"
                         title="删除资产"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      />
                     </div>
                   </div>
                 </div>
@@ -477,8 +495,9 @@ export function CharacterAssetTab({
       >
         <form onSubmit={handleUploadSubmit} className="space-y-4 text-xs pt-1">
           <div>
-            <label className="block font-semibold text-ink mb-1.5">选择图片文件</label>
+            <label htmlFor="character-asset-upload-file" className="block font-semibold text-ink mb-1.5">选择图片文件</label>
             <input
+              id="character-asset-upload-file"
               type="file"
               ref={fileInputRef}
               accept="image/png,image/jpeg,image/webp,image/gif"
@@ -495,8 +514,9 @@ export function CharacterAssetTab({
           </div>
 
           <div>
-            <label className="block font-semibold text-ink mb-1">资产名称 / 标题</label>
+            <label htmlFor="character-asset-upload-title" className="block font-semibold text-ink mb-1">资产名称 / 标题</label>
             <Input
+              id="character-asset-upload-title"
               value={uploadTitle}
               onChange={(e) => setUploadTitle(e.target.value)}
               placeholder="例如：夏日祭浴衣立绘、害羞表情差分"
@@ -505,23 +525,25 @@ export function CharacterAssetTab({
           </div>
 
           <div>
-            <label className="block font-semibold text-ink mb-1">资产分类</label>
-            <select
+            <label htmlFor="character-asset-upload-category" className="block font-semibold text-ink mb-1">资产分类</label>
+            <Select
+              id="character-asset-upload-category"
               value={uploadCategory}
               onChange={(e) => setUploadCategory(e.target.value as CharacterAssetCategory)}
-              className="w-full h-8 px-2.5 rounded-md border border-border-default bg-surface text-ink text-xs focus:ring-1 focus:ring-accent focus:outline-hidden"
+              className="h-8 min-h-8 text-xs"
             >
               {CHARACTER_ASSET_CATEGORIES.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.label} ({cat.description})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
-            <label className="block font-semibold text-ink mb-1">标签 (用逗号或空格分隔)</label>
+            <label htmlFor="character-asset-upload-tags" className="block font-semibold text-ink mb-1">标签 (用逗号或空格分隔)</label>
             <Input
+              id="character-asset-upload-tags"
               value={uploadTagsStr}
               onChange={(e) => setUploadTagsStr(e.target.value)}
               placeholder="例如：浴衣, 微笑, 2026夏日活动"
@@ -530,38 +552,25 @@ export function CharacterAssetTab({
           </div>
 
           <div>
-            <label className="block font-semibold text-ink mb-1">设为当前生效角色形象</label>
-            <div className="flex items-center gap-4 text-muted">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="activeType"
-                  value="none"
-                  checked={uploadSetAsActive === 'none'}
-                  onChange={() => setUploadSetAsActive('none')}
-                />
-                <span>仅存入资产库</span>
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="activeType"
-                  value="avatar"
-                  checked={uploadSetAsActive === 'avatar'}
-                  onChange={() => setUploadSetAsActive('avatar')}
-                />
-                <span>设为当前头像</span>
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="activeType"
-                  value="portrait"
-                  checked={uploadSetAsActive === 'portrait'}
-                  onChange={() => setUploadSetAsActive('portrait')}
-                />
-                <span>设为当前立绘</span>
-              </label>
+            <span id="character-asset-upload-active-label" className="mb-1 block font-semibold text-ink">设为当前生效角色形象</span>
+            {/* 单选语义保留原生 name/radio：Mantine Checkbox 是复选框，不替代互斥选择。 */}
+            <div role="radiogroup" aria-labelledby="character-asset-upload-active-label" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-muted">
+              {([
+                ['none', '仅存入资产库'],
+                ['avatar', '设为当前头像'],
+                ['portrait', '设为当前立绘'],
+              ] as const).map(([value, label]) => (
+                <label key={value} className="flex min-h-9 cursor-pointer items-center gap-1.5 text-xs">
+                  <input
+                    type="radio"
+                    name="activeType"
+                    value={value}
+                    checked={uploadSetAsActive === value}
+                    onChange={() => setUploadSetAsActive(value)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
             </div>
           </div>
 
@@ -596,8 +605,9 @@ export function CharacterAssetTab({
       >
         <form onSubmit={handleEditSubmit} className="space-y-4 text-xs pt-1">
           <div>
-            <label className="block font-semibold text-ink mb-1">资产名称 / 标题</label>
+            <label htmlFor="character-asset-edit-title" className="block font-semibold text-ink mb-1">资产名称 / 标题</label>
             <Input
+              id="character-asset-edit-title"
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               placeholder="请输入标题"
@@ -607,23 +617,25 @@ export function CharacterAssetTab({
           </div>
 
           <div>
-            <label className="block font-semibold text-ink mb-1">资产分类</label>
-            <select
+            <label htmlFor="character-asset-edit-category" className="block font-semibold text-ink mb-1">资产分类</label>
+            <Select
+              id="character-asset-edit-category"
               value={editCategory}
               onChange={(e) => setEditCategory(e.target.value as CharacterAssetCategory)}
-              className="w-full h-8 px-2.5 rounded-md border border-border-default bg-surface text-ink text-xs focus:ring-1 focus:ring-accent focus:outline-hidden"
+              className="h-8 min-h-8 text-xs"
             >
               {CHARACTER_ASSET_CATEGORIES.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.label} ({cat.description})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
-            <label className="block font-semibold text-ink mb-1">标签 (用逗号或空格分隔)</label>
+            <label htmlFor="character-asset-edit-tags" className="block font-semibold text-ink mb-1">标签 (用逗号或空格分隔)</label>
             <Input
+              id="character-asset-edit-tags"
               value={editTagsStr}
               onChange={(e) => setEditTagsStr(e.target.value)}
               placeholder="例如：战斗态, 破损服装"
@@ -683,6 +695,21 @@ export function CharacterAssetTab({
           </div>
         )}
       </Dialog>
+
+      {/* 删除确认：替代 window.confirm，保留对象名称与不可恢复后果说明 */}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="删除这张资产？"
+        description={`「${pendingDelete?.title || '未命名'}」将从 ${displayName} 的资产库中移除，此操作不可恢复。`}
+        confirmLabel="删除资产"
+        danger
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          await handleDelete(pendingDelete);
+          setPendingDelete(null);
+        }}
+      />
     </div>
   );
 }

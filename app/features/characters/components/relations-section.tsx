@@ -5,6 +5,7 @@ import { Trash2 } from 'lucide-react';
 import type { CharacterProfile } from '@sthstart/contracts';
 import type { CharacterDetail } from '../api';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -160,15 +161,15 @@ export function RelationsSection({
                     )}
                   </div>
                   {canEdit && (
-                    <button
-                      type="button"
+                    <IconButton
+                      icon={Trash2}
+                      label="删除关系"
+                      size="icon"
+                      variant="danger-ghost"
                       onClick={() => void onRemoveRelationship(rel.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
-                      title="删除关系"
-                      aria-label="删除关系"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                      className="sm:size-8 text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15"
+                      iconClassName="size-3.5"
+                    />
                   )}
                 </div>
               );

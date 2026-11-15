@@ -518,6 +518,92 @@ test('collections: 待整理可以显式选入企划并保留未确认状态与�
   await app.close(); database.close();
 });
 
+test('collections: 待整理搜索在全量匹配后分页且总数与条目一致', async () => {
+  const { app, database } = await bootstrap();
+  try {
+    const collections = new KnowledgeCollectionStore(database);
+    const knowledge = new KnowledgeStore(database);
+    const collection = collections.save({ name: '全量搜索验证', goal: '分页搜索' });
+    const run = collections.createRun({
+      collectionId: collection.id,
+      trigger: 'manual',
+      settingsSnapshot: {},
+    });
+    const createPending = (
+      index: number,
+      title: string,
+      excerpt: string,
+      state: 'kept' | 'pending' = 'kept',
+    ) => {
+      const source = knowledge.upsertSource({
+        kind: 'web',
+        title,
+        url: `https://fixture.test/pending/${index}`,
+        nature: 'unconfirmed',
+      });
+      const version = knowledge.recordSourceVersion(source, { title, excerpt });
+      const pending = collections.addPending({
+        runId: run.id,
+        collectionId: collection.id,
+        sourceVersionId: version.versionId,
+        characters: [],
+        changeType: 'new',
+      });
+      collections.setPendingState([pending.pendingId], state);
+      return pending.pendingId;
+    };
+
+    for (let index = 0; index < 45; index += 1) {
+      createPending(index, `雾港资料 ${index}`, `第 ${index} 条雾港记录`);
+    }
+    createPending(90, '灯塔资料', '不属于本批的记录');
+    createPending(91, '百分号资料', '含有 100% 的记录');
+
+    const first = await app.inject({
+      url: '/api/v1/admin/knowledge/pending?state=kept&q=%E9%9B%BE%E6%B8%AF&limit=20&offset=0',
+      headers: adminHeaders,
+    });
+    const second = await app.inject({
+      url: '/api/v1/admin/knowledge/pending?state=kept&q=%E9%9B%BE%E6%B8%AF&limit=20&offset=20',
+      headers: adminHeaders,
+    });
+    const third = await app.inject({
+      url: '/api/v1/admin/knowledge/pending?state=kept&q=%E9%9B%BE%E6%B8%AF&limit=20&offset=40',
+      headers: adminHeaders,
+    });
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.json().total, 45);
+    assert.equal(second.json().total, 45);
+    assert.equal(third.json().total, 45);
+    assert.equal(first.json().items.length, 20);
+    assert.equal(second.json().items.length, 20);
+    assert.equal(third.json().items.length, 5);
+    const ids = [
+      ...first.json().items,
+      ...second.json().items,
+      ...third.json().items,
+    ].map((item: { id: string }) => item.id);
+    assert.equal(new Set(ids).size, 45);
+
+    const percent = await app.inject({
+      url: '/api/v1/admin/knowledge/pending?state=kept&q=100%25',
+      headers: adminHeaders,
+    });
+    assert.equal(percent.json().total, 1);
+    assert.equal(percent.json().items[0].title, '百分号资料');
+
+    const noQuery = await app.inject({
+      url: '/api/v1/admin/knowledge/pending?state=kept&limit=20',
+      headers: adminHeaders,
+    });
+    assert.equal(noQuery.statusCode, 200);
+    assert.equal(noQuery.json().total, 47);
+  } finally {
+    await app.close();
+    database.close();
+  }
+});
+
 test('collections: 收藏同一话题两次只得到一份关联资料', async () => {
   const { app, database } = await bootstrap();
   const now = new Date().toISOString();

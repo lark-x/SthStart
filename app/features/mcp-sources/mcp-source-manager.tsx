@@ -8,6 +8,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
+import { FormField } from '@/app/components/ui/form-field';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Select } from '@/app/components/ui/select';
 import { Switch } from '@/app/components/ui/switch';
@@ -219,12 +220,12 @@ export function McpSourceManager() {
     <section aria-label="MCP 资料源" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">MCP 资料源 <span className="text-sm font-sans text-muted">{sources ? sources.length : '—'}</span></h2>
-          <p className="text-sm text-muted">配置 HTTP MCP 服务，供活动企划研究检索剧情原文、角色与地点资料。密钥进入系统安全凭据库，不回传明文。</p>
+          <h2 className="text-base font-semibold">资料连接 <span className="text-sm font-sans text-muted">{sources ? sources.length : '—'}</span></h2>
+          <p className="text-sm text-muted">让研究功能检索剧情原文、角色和地点资料。支持 MCP 服务。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => void load()}><RefreshCw className="h-3.5 w-3.5" />刷新</Button>
-          <Button size="sm" variant="primary" onClick={openNew}><Plus className="h-3.5 w-3.5" />新增资料源</Button>
+          <Button size="sm" variant="outline" onClick={openNew}><Plus className="h-3.5 w-3.5" />新增资料源</Button>
         </div>
       </div>
 
@@ -248,14 +249,12 @@ export function McpSourceManager() {
                   </div>
                   <p className="mt-1 truncate text-sm text-muted"><code className="font-mono">{source.url}</code></p>
                   {source.purpose && <p className="mt-0.5 text-sm text-muted">{source.purpose}</p>}
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
-                    <span>允许工具：{source.allowedTools.length ? source.allowedTools.join('、') : '尚未选择'}</span>
-                    <span>发现工具：{source.discoveredTools?.length ?? 0}</span>
-                    <span>凭据：{source.hasCredential ? '已配置' : '无'}</span>
+                  <div className="mt-2 text-xs text-muted">
                     {testResult && (
                       <span className={testResult.ok ? 'text-green-700' : 'text-amber-700'}>连接测试：{testResult.ok ? '成功' : '失败'} · {testResult.message.slice(0, 60)}</span>
                     )}
                   </div>
+                  <details className="mt-2 text-xs text-muted"><summary className="cursor-pointer">连接详情</summary><p className="mt-2 break-all">{source.url}</p><p className="mt-1">已允许 {source.allowedTools.length} 个工具 · {source.hasCredential ? '密钥已配置' : '无密钥'}</p><p className="mt-1 break-words">{source.allowedTools.join('、') || '尚未选择工具'}</p></details>
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
                   <Button size="sm" variant="ghost" disabled={testingId === source.id || source.status === 'disabled'} onClick={() => void handleTest(source.id)}>
@@ -281,57 +280,48 @@ export function McpSourceManager() {
         {error && <Alert variant="danger" title="保存失败">{error}</Alert>}
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5">
-              <span className="text-xs font-semibold">名称</span>
+            <FormField label="名称">
               <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="例如：虚空终端 / 角色百科" />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-xs font-semibold">HTTP 地址</span>
+            </FormField>
+            <FormField label="HTTP 地址">
               <Input value={draft.url} onChange={(event) => setDraft((current) => ({ ...current, url: event.target.value }))} placeholder="https://example.com/mcp" />
-            </label>
+            </FormField>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5">
-              <span className="text-xs font-semibold">认证方式</span>
+            <FormField label="认证方式">
               <Select value={draft.authMode} onChange={(event) => setDraft((current) => ({ ...current, authMode: event.target.value as McpSourceSave['authMode'] }))}>
                 <option value="none">无认证</option>
                 <option value="bearer">Bearer Token</option>
                 <option value="header">自定义认证请求头</option>
               </Select>
-            </label>
+            </FormField>
             {draft.authMode === 'bearer' && (
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold">Token（不回传明文）</span>
+              <FormField label="Token（不回传明文）">
                 <Input type="password" value={draft.secret} onChange={(event) => setDraft((current) => ({ ...current, secret: event.target.value }))} placeholder="留空表示沿用已保存密钥" />
-              </label>
+              </FormField>
             )}
             {draft.authMode === 'header' && (
-              <label className="space-y-1.5">
-                <span className="text-xs font-semibold">认证请求头名称</span>
+              <FormField label="认证请求头名称">
                 <Input value={draft.authHeaderName} onChange={(event) => setDraft((current) => ({ ...current, authHeaderName: event.target.value }))} placeholder="例如 X-API-Key" />
-              </label>
+              </FormField>
             )}
           </div>
           {draft.authMode === 'header' && (
-            <label className="space-y-1.5">
-              <span className="text-xs font-semibold">认证请求头值（不回传明文）</span>
+            <FormField label="认证请求头值（不回传明文）">
               <Input type="password" value={draft.secret} onChange={(event) => setDraft((current) => ({ ...current, secret: event.target.value }))} placeholder="留空表示沿用已保存密钥" />
-            </label>
+            </FormField>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5">
-              <span className="text-xs font-semibold">适用作品（顿号或逗号分隔）</span>
+            <FormField label="适用作品（顿号或逗号分隔）">
               <Input value={draft.applicableWorksText} onChange={(event) => setDraft((current) => ({ ...current, applicableWorksText: event.target.value }))} placeholder="例如：原神、崩坏：星穹铁道" />
-            </label>
-            <label className="flex items-center gap-2 pt-6">
-              <Switch checked={draft.universal} onChange={(event) => setDraft((current) => ({ ...current, universal: event.target.checked }))} />
-              <span className="text-sm text-muted">通用资料源（不限定作品）</span>
-            </label>
+            </FormField>
+            <div className="pt-6">
+              <Switch label="通用资料源（不限定作品）" checked={draft.universal} onChange={(event) => setDraft((current) => ({ ...current, universal: event.target.checked }))} />
+            </div>
           </div>
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold">用途说明</span>
+          <FormField label="用途说明">
             <Textarea value={draft.purpose} rows={2} onChange={(event) => setDraft((current) => ({ ...current, purpose: event.target.value }))} placeholder="例如：剧情原文检索、角色百科、地点资料" />
-          </label>
+          </FormField>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-semibold">允许调用的工具</span>
@@ -344,24 +334,26 @@ export function McpSourceManager() {
                 {draft.discoveredTools.map((tool) => {
                   const checked = draft.allowedTools.includes(tool.name);
                   return (
-                    <button
+                    <Button
                       key={tool.name}
                       type="button"
+                      size="sm"
+                      variant={checked ? 'accent' : 'outline'}
+                      aria-pressed={checked}
+                      className="rounded-full"
                       onClick={() => toggleTool(tool.name)}
-                      className={`rounded-full border px-2.5 py-1 text-xs ${checked ? 'border-accent bg-accent/10 text-accent' : 'border-border-default bg-surface text-muted'}`}
                     >
                       {tool.name}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
             )}
             {draft.discoveredTools.length === 0 && <p className="text-xs text-muted">保存前可先“测试连接并发现工具”，再勾选研究可用的工具。</p>}
           </div>
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold">超时（毫秒，默认 45000）</span>
+          <FormField label="超时（毫秒，默认 45000）">
             <Input type="number" value={draft.timeoutMs} onChange={(event) => setDraft((current) => ({ ...current, timeoutMs: Number(event.target.value) || 45_000 }))} />
-          </label>
+          </FormField>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={saving} onClick={() => setEditorOpen(false)}>取消</Button>

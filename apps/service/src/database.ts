@@ -1,6 +1,11 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { STORY_WORLD_MIGRATION_STATEMENTS } from './story-worlds/migration.js';
+import { WORLD_RUNTIME_MIGRATION_STATEMENTS, WORLD_RUNTIME_NOTIFICATION_MIGRATION_STATEMENTS } from './story-worlds/runtime-migration.js';
+import { WORLD_ROUTINE_MIGRATION_STATEMENTS } from './story-worlds/runtime-routine-migration.js';
+import { STORY_WORLD_IMAGES_MIGRATION_STATEMENTS } from './story-worlds/images-migration.js';
+import { storyWorldQueueStatements } from './generation/story-world-queue-migration.js';
 
 export interface DatabaseMigration {
   version: number;
@@ -2002,6 +2007,71 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       adopted_entry_id TEXT REFERENCES story_documents(id) ON DELETE SET NULL,
       UNIQUE(project_id,kind,source_id))`,
     'CREATE INDEX idx_project_links_source ON project_links(kind,source_id)',
+  ] },
+  { version: 55, name: 'story-worlds-and-public-image-queue', statements: [
+    ...STORY_WORLD_MIGRATION_STATEMENTS,
+    ...WORLD_RUNTIME_MIGRATION_STATEMENTS,
+    ...STORY_WORLD_IMAGES_MIGRATION_STATEMENTS,
+    ...storyWorldQueueStatements,
+  ] },
+  { version: 56, name: 'story-world-pending-step-notifications', statements: WORLD_RUNTIME_NOTIFICATION_MIGRATION_STATEMENTS },
+  { version: 57, name: 'story-world-routines-and-personal-memory-summaries', statements: WORLD_ROUTINE_MIGRATION_STATEMENTS },
+  { version: 58, name: 'image-prompt-style-defaults-and-adult-vocabulary', statements: [
+    // 画师串与质量词是“借来的知识”，必须可追溯、可 diff：空值表示沿用工作流节点默认，
+    // 与邻舍 config.comfyui.qualityPrompt/artist 的语义一致。
+    "ALTER TABLE activity_image_prompt_policy_versions ADD COLUMN artist_string TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE activity_image_prompt_policy_versions ADD COLUMN quality_prompt TEXT NOT NULL DEFAULT ''",
+    // 成人词表默认关闭；旧行一律为 0，不按场景自动开启。
+    'ALTER TABLE activity_image_prompt_policy_versions ADD COLUMN adult_knowledge_enabled INTEGER NOT NULL DEFAULT 0',
+  ] },
+  { version: 59, name: 'world-authoring-and-web-search', statements: [
+    `CREATE TABLE sw_creation_requests (
+      idempotency_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL,
+      world_id TEXT NOT NULL REFERENCES sw_worlds(id),
+      branch_id TEXT NOT NULL REFERENCES sw_branches(id), created_at TEXT NOT NULL)`,
+    `CREATE TABLE sw_authoring_settings (
+      id TEXT PRIMARY KEY, data_json TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  ] },
+  { version: 60, name: 'model-routing-and-thinking', statements: [
+    "ALTER TABLE model_profiles ADD COLUMN thinking_level TEXT NOT NULL DEFAULT 'auto' CHECK(thinking_level IN ('auto','off','low','medium','high'))",
+    'ALTER TABLE model_profiles ADD COLUMN timeout_ms INTEGER',
+    `CREATE TABLE model_routes (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL CHECK(scope IN ('public','app')),
+      app_id TEXT NOT NULL DEFAULT '',
+      capability TEXT NOT NULL CHECK(capability IN ('text','multimodal')),
+      primary_model_id TEXT NOT NULL REFERENCES model_profiles(id) ON DELETE RESTRICT,
+      fallback_model_ids_json TEXT NOT NULL DEFAULT '[]',
+      inherit_public_fallbacks INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(scope, app_id, capability)
+    )`,
+    'CREATE INDEX model_routes_scope_capability ON model_routes(scope, capability)',
+    `INSERT OR IGNORE INTO model_routes (
+      id, scope, app_id, capability, primary_model_id, fallback_model_ids_json,
+      inherit_public_fallbacks, created_at, updated_at
+    )
+    SELECT 'route:app:' || a.app_id || ':' || a.role,
+      'app', a.app_id,
+      CASE a.role WHEN 'multimodal' THEN 'multimodal' ELSE 'text' END,
+      a.profile_id, '[]', 0, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')
+    FROM app_llm_assignments a
+    JOIN managed_apps ma ON ma.id = a.app_id
+    JOIN model_profiles mp ON mp.id = a.profile_id
+    JOIN service_connections sc ON sc.id = mp.connection_id AND sc.kind = 'openai-compatible-text'`,
+  ] },
+  { version: 61, name: 'unified-model-types-and-managed-engines', statements: [
+    "ALTER TABLE model_profiles ADD COLUMN model_type TEXT NOT NULL DEFAULT 'chat' CHECK(model_type IN ('chat','embedding','image'))",
+    "UPDATE model_profiles SET model_type = CASE (SELECT kind FROM service_connections WHERE id=connection_id) WHEN 'vector' THEN 'embedding' WHEN 'openai-compatible-image' THEN 'image' WHEN 'comfyui' THEN 'image' WHEN 'worker' THEN 'image' ELSE 'chat' END",
+    'ALTER TABLE generation_engines ADD COLUMN connection_id TEXT REFERENCES service_connections(id) ON DELETE RESTRICT',
+  ] },
+  { version: 62, name: 'story-world-setups', statements: [
+    `CREATE TABLE sw_world_setups (
+      id TEXT PRIMARY KEY, creation_key TEXT UNIQUE NOT NULL, creation_title TEXT NOT NULL,
+      title TEXT NOT NULL, revision INTEGER NOT NULL, draft_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_branch_id TEXT,
+      completion_hash TEXT)`,
   ] },
 ];
 

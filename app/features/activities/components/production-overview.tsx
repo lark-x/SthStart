@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { getJson } from '@/app/lib/api-client';
 import type { ActivityReviewItem, ContentDocument, ActivityProductionOverview as OverviewType } from '@sthstart/contracts';
-import { useActivityProductionOverview } from '../queries';
+import { useActivityProductionOverview } from '@/app/features/activities/queries/activities';
 import { Button } from '@/app/components/ui/button';
 import { activityNextStep, imageSetupMessage } from '@/app/lib/activity-guidance';
 
@@ -65,7 +65,7 @@ export function ProductionOverview({ activityId, document, headVersion, onReview
           </div>
         </div>
       )}
-      {error && <p className="mt-2 text-sm text-muted">暂时无法读取生成进度，你仍可编辑内容。<button type="button" className="ml-2 text-accent underline" onClick={() => void refetch()}>重试</button></p>}
+      {error && <p className="mt-2 text-sm text-muted">暂时无法读取生成进度，你仍可编辑内容。<Button type="button" size="sm" variant="ghost" className="ml-2 h-auto min-h-0 px-1 py-0 text-sm font-normal text-accent underline hover:bg-transparent" onClick={() => void refetch()}>重试</Button></p>}
     </section>
   );
 }

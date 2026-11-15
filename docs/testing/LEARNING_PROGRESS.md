@@ -1,6 +1,6 @@
 # 测试学习进度
 
-更新时间：2026-11-07（Asia/Shanghai）
+更新时间：2026-11-10（Asia/Shanghai）
 
 ## 学习约定
 
@@ -33,15 +33,17 @@ Story 垂直实践的完整任务说明见 [STORY_VERTICAL_TESTING_GUIDE.md](STO
 
 ## 当前位置
 
+本轮入口：[先看懂 SthStart，再用它学测试](STHSTART_PROJECT_LEARNING_PLAN.md)。
+
 | 项目 | 当前情况 |
 | --- | --- |
-| 当前主题 | 软件测试基础：测试设计与分层、Web/前后端/数据库、自动化、AI/MCP/Skill；Python 为配套工具知识 |
-| 当前任务 | 按 [实训手册](STHSTART_TESTING_WORKBOOK.md) 写一条测试：作者改了正文后，接受旧建议不能覆盖作者保存的内容 |
-| 当前阶段 | 先前 API/权限/提案已有通过记录；2026-10-13 Story 测试已移入 tests/python/story/，当前提案 collect-only 收集 1 项，最新业务测试和全套本次未执行 |
+| 当前主题 | 先看懂项目和一次正文保存，再把同一条流程用来学测试 |
+| 当前任务 | 读懂已有章节冲突测试：第一次保存、旧版被拒绝、重新读回。随后按 [实训手册](STHSTART_TESTING_WORKBOOK.md) 写一条旧建议测试 |
+| 当前阶段 | 已有健康、权限、直接保存冲突及组合提案测试；历史运行结果保留，2026-11-10 仅核对源码，未执行用例 |
 | 已掌握主题 | 尚未认定；跳过概念问答不等同于已掌握，后续以代码与解释验证 |
 | 学习者最近提交 | 已新增 helpers/story_data.py、helpers/story_api.py 与 story_project fixture；提案代码已补 rejected 状态和 story_proposal_decided 错误码 |
 | 当前卡点 | 补 accepted 状态、失败后章节 revision/提案状态，拆分独立用例，完成基于 N 与 N+1 的 story_proposal_stale 场景 |
-| 下一步 | 打开现有提案测试，找到建章节和建建议的写法；先写到建议创建成功，再补作者保存和接受旧建议 |
+| 下一步 | 按新计划第 7 节，在已有 test_story_revision_conflict 中找出旧版本来源、两次保存和最后的读取；然后新增旧建议用例，先写到建议创建成功 |
 
 ### PY01：Python 接口测试环境与首个实战
 
@@ -323,3 +325,8 @@ node --import tsx/esm --test tests/learning/draft-save.practice.test.ts
 - 新增 [SthStart 实训手册](STHSTART_TESTING_WORKBOOK.md)。核对已有健康检查、直接保存冲突、管理员提案契约和存储状态规则，用它们安排第一批动手练习。
 - 后续沿同一业务路径练前端、浏览器、MCP 与 Skill；总教材与 Python 教材按问题回查。本次只核对代码与文档，未运行用例，未认定新增掌握情况。
 - 根据学习者反馈，手册改为从一个具体问题讲起，先给打开文件与动手步骤，接口字段放在需要时展开的提示里。
+
+## 2026-11-10 重新安排项目学习顺序
+
+- 已按页面、后端路由、存储和项目资料整理 [功能与数据链路、学习计划](STHSTART_PROJECT_LEARNING_PLAN.md)。从一章正文讲清本机草稿、正式正文、待审建议、资料采用和制作来源，后续再练浏览器、MCP 与 Skill。
+- 第一项任务是读已有代码，下一项是自己编写过期提案测试。保留历史结果与已有代码；没有新的执行或掌握证据。

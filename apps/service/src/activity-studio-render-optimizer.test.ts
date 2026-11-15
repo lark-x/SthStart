@@ -26,7 +26,7 @@ import { bindStudioOptimizerCall } from './activities/studio-render-context.js';
 
 const policy:ActivityImagePromptPolicy={workflowId:'visual-flow',workflowVersion:1,createdAt:'2026-10-03T00:00:00.000Z',
   revision:1,enabled:true,instructions:'Rewrite visual facts only.',positiveSuffix:'high quality',negativePrompt:'text, watermark',
-  outputFormat:'prose',knowledgeMode:'none'};
+  outputFormat:'prose',knowledgeMode:'none',artistString:'',qualityPrompt:'',adultKnowledgeEnabled:false};
 function fixture(t:test.TestContext){
   const database=new ServiceDatabase(),secrets=new SecretStore({}),config=readConfig({STHSTART_ARTIFACT_DIR:mkdtempSync(join(tmpdir(),'sthstart-scoped-optimizer-'))});
   t.after(()=>database.close());const now=nowIso();

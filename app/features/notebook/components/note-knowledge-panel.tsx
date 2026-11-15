@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { ChevronDown, ChevronRight, ExternalLink, Link2, Plus, Trash2 } from 'lucide-react';
+import { ExternalLink, Link2, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type {
   CreativeNote, KnowledgeSourceRef, NoteAuthorship, NoteCategory, NoteKnowledge, NoteNature, NoteUsage,
 } from '@sthstart/contracts';
-import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -40,6 +42,7 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
   onChange: (next: NoteKnowledge) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
   const [originals, setOriginals] = useState<Record<string, string>>({});
   const [worksText, setWorksText] = useState('');
   const [charactersText, setCharactersText] = useState('');
@@ -100,22 +103,23 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
   };
 
   return (
-    <section className="rounded-lg border border-border-subtle bg-surface-muted/60" aria-label="资料属性">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
+    <>
+      <Button
+        size="sm"
+        variant={open ? 'secondary' : 'ghost'}
+        onClick={() => setOpen(true)}
+        aria-label="资料属性"
         aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-ink"
+        aria-haspopup="dialog"
+        aria-controls={open ? panelId : undefined}
+        className="notebook-properties-trigger"
       >
-        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        资料属性
-        <Badge variant={current.usage === 'reference' ? 'online' : 'stopped'} className="text-xs">{usageLabels[current.usage]}</Badge>
-        <Badge variant="outline" className="text-xs">{natureLabels[current.nature]}</Badge>
-        {!!current.works.length && <span className="text-xs font-normal text-muted">{current.works.map((work) => work.name).join('、')}</span>}
-      </button>
+        <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+        属性
+      </Button>
 
-      {open && (
-        <div className="space-y-3 border-t border-border-subtle px-3 py-3 text-sm">
+      {open && createPortal(<Drawer id={panelId} open={open} onOpenChange={setOpen} title="资料属性" className="notebook-properties-drawer">
+        <div className="space-y-4 text-sm">
           {/* 研究发布的资料要能回到研究专题：资料与来源双向可追溯。 */}
           {current.origin?.kind === 'research' && (
             <p className="flex flex-wrap items-center gap-1 text-xs text-muted">
@@ -126,7 +130,7 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
               {current.origin.note && <span>· {current.origin.note}</span>}
             </p>
           )}
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-3">
             <label className="space-y-1">
               <span className="text-xs text-muted">内容性质</span>
               <Select aria-label="内容性质" value={current.nature} className="h-8 text-sm" onChange={(event) => patch({ nature: event.target.value as NoteNature })}>
@@ -162,14 +166,22 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             <span className="text-xs text-muted">作品</span>
             <div className="flex flex-wrap gap-1.5">
               {current.works.map((work) => (
-                <button key={work.key} type="button" className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark" onClick={() => patch({ works: current.works.filter((item) => item.key !== work.key) })}>
+                <Button
+                  key={work.key}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除作品 ${work.name}`}
+                  className="h-auto min-h-0 gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-normal text-accent-dark hover:bg-accent/20 hover:text-accent-dark sm:min-h-0"
+                  onClick={() => patch({ works: current.works.filter((item) => item.key !== work.key) })}
+                >
                   {work.name} ×
-                </button>
+                </Button>
               ))}
               {!current.works.length && <span className="text-xs text-muted">未填写</span>}
             </div>
             <div className="flex gap-2">
-              <Input aria-label="添加作品" value={worksText} placeholder="输入作品名，可用逗号分隔" className="h-8 text-sm" onChange={(event) => setWorksText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addWorks(); } }} />
+              <Input aria-label="添加作品" value={worksText} placeholder="输入作品名，可用逗号分隔" className="h-8 text-sm" onChange={(event) => setWorksText(event.target.value)} onKeyDown={(event) => { if (event.nativeEvent.isComposing || event.keyCode === 229) return; if (event.key === 'Enter') { event.preventDefault(); addWorks(); } }} />
               <Button size="sm" variant="outline" onClick={addWorks}><Plus className="h-3.5 w-3.5" />添加</Button>
             </div>
           </div>
@@ -178,14 +190,22 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             <span className="text-xs text-muted">角色</span>
             <div className="flex flex-wrap gap-1.5">
               {current.characters.map((character) => (
-                <button key={character.work + '|' + character.name} type="button" className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark" onClick={() => patch({ characters: current.characters.filter((item) => !(item.work === character.work && item.name === character.name)) })}>
+                <Button
+                  key={character.work + '|' + character.name}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除角色 ${character.name}`}
+                  className="h-auto min-h-0 gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-normal text-accent-dark hover:bg-accent/20 hover:text-accent-dark sm:min-h-0"
+                  onClick={() => patch({ characters: current.characters.filter((item) => !(item.work === character.work && item.name === character.name)) })}
+                >
                   {character.name}{character.work ? '（' + character.work + '）' : ''} ×
-                </button>
+                </Button>
               ))}
               {!current.characters.length && <span className="text-xs text-muted">未填写；同名角色不会跨作品自动合并</span>}
             </div>
             <div className="flex gap-2">
-              <Input aria-label="添加角色" value={charactersText} placeholder="输入角色名，可用逗号分隔" className="h-8 text-sm" onChange={(event) => setCharactersText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCharacters(); } }} />
+              <Input aria-label="添加角色" value={charactersText} placeholder="输入角色名，可用逗号分隔" className="h-8 text-sm" onChange={(event) => setCharactersText(event.target.value)} onKeyDown={(event) => { if (event.nativeEvent.isComposing || event.keyCode === 229) return; if (event.key === 'Enter') { event.preventDefault(); addCharacters(); } }} />
               <Button size="sm" variant="outline" onClick={addCharacters}><Plus className="h-3.5 w-3.5" />添加</Button>
             </div>
           </div>
@@ -194,14 +214,22 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             <span className="text-xs text-muted">地点</span>
             <div className="flex flex-wrap gap-1.5">
               {current.locations.map((location) => (
-                <button key={location.work + '|' + location.name} type="button" className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark" onClick={() => patch({ locations: current.locations.filter((item) => !(item.work === location.work && item.name === location.name)) })}>
+                <Button
+                  key={location.work + '|' + location.name}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除地点 ${location.name}`}
+                  className="h-auto min-h-0 gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-normal text-accent-dark hover:bg-accent/20 hover:text-accent-dark sm:min-h-0"
+                  onClick={() => patch({ locations: current.locations.filter((item) => !(item.work === location.work && item.name === location.name)) })}
+                >
                   {location.name} ×
-                </button>
+                </Button>
               ))}
               {!current.locations.length && <span className="text-xs text-muted">未填写</span>}
             </div>
             <div className="flex gap-2">
-              <Input aria-label="添加地点" value={locationsText} placeholder="输入地点名，可用逗号分隔" className="h-8 text-sm" onChange={(event) => setLocationsText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addLocations(); } }} />
+              <Input aria-label="添加地点" value={locationsText} placeholder="输入地点名，可用逗号分隔" className="h-8 text-sm" onChange={(event) => setLocationsText(event.target.value)} onKeyDown={(event) => { if (event.nativeEvent.isComposing || event.keyCode === 229) return; if (event.key === 'Enter') { event.preventDefault(); addLocations(); } }} />
               <Button size="sm" variant="outline" onClick={addLocations}><Plus className="h-3.5 w-3.5" />添加</Button>
             </div>
           </div>
@@ -233,9 +261,15 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
                         </a>
                       )}
                     </div>
-                    <button type="button" aria-label="移除来源" className="shrink-0 text-fg-subtle hover:text-danger-fg" onClick={() => patch({ sources: current.sources.filter((item) => item.id !== source.id) })}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <IconButton
+                      icon={Trash2}
+                      label="移除来源"
+                      variant="danger-ghost"
+                      size="sm"
+                      iconClassName="h-3.5 w-3.5"
+                      className="h-7 min-h-7 w-7 shrink-0 p-0 text-fg-subtle hover:text-danger-fg sm:min-h-7"
+                      onClick={() => patch({ sources: current.sources.filter((item) => item.id !== source.id) })}
+                    />
                   </div>
                 </li>
               ))}
@@ -274,7 +308,7 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             )}
           </div>
         </div>
-      )}
-    </section>
+      </Drawer>, document.body)}
+    </>
   );
 }

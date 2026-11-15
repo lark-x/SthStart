@@ -1,6 +1,7 @@
 import type { LlmBindingStatus, LlmModelRole } from '@sthstart/contracts';
 import type { ServiceDatabase } from './database.js';
 import type { SecretStore } from './security.js';
+import { connectionSupportsModelType, normalizeCapabilities, selectModelRoute } from './model-routing.js';
 
 /**
  * 应用模型绑定的统一状态判定：模型实际调用与配置状态查询共享同一套规则，
@@ -43,28 +44,64 @@ interface BindingRow {
   profile_name: string | null;
   profile_model: string | null;
   profile_enabled: number | null;
+  connection_enabled: number | null;
+  connection_id: string | null;
+  connection_kind: string | null;
+  model_type: string | null;
+  requires_connection: boolean;
   credential_account: string | null;
   capabilities_json: string | null;
+}
+
+function canonicalProfileRow(database: ServiceDatabase, profileId: string) {
+  return database.connection.prepare(`
+    SELECT mp.id AS profile_id, mp.name AS profile_name, mp.model_id AS profile_model,
+           mp.enabled AS profile_enabled, mp.capabilities_json, mp.model_type,
+           sc.id AS connection_id, sc.enabled AS connection_enabled, sc.kind AS connection_kind, sc.credential_account
+    FROM model_profiles mp
+    LEFT JOIN service_connections sc ON sc.id = mp.connection_id
+    WHERE mp.id = ?
+  `).get(profileId) as Omit<BindingRow, 'app_enabled' | 'app_name' | 'requires_connection'> | undefined;
+}
+
+function legacyProfileRow(database: ServiceDatabase, profileId: string) {
+  return database.connection.prepare(`
+    SELECT p.id AS profile_id, p.name AS profile_name, p.model AS profile_model,
+           p.enabled AS profile_enabled, o.capabilities_json,
+           NULL AS connection_id, NULL AS connection_enabled, NULL AS connection_kind, 'chat' AS model_type, p.credential_account
+    FROM provider_profiles p
+    LEFT JOIN provider_profile_options o ON o.profile_id = p.id
+    WHERE p.id = ? AND p.kind = 'llm'
+  `).get(profileId) as Omit<BindingRow, 'app_enabled' | 'app_name' | 'requires_connection'> | undefined;
 }
 
 function bindingRow(database: ServiceDatabase, appId: string, role: LlmModelRole): BindingRow | null {
   const app = database.connection.prepare('SELECT id,name,enabled FROM managed_apps WHERE id=?').get(appId) as { id: string; name: string; enabled: number } | undefined;
   if (!app) return null;
-  const row = database.connection.prepare(
-    `SELECT a.profile_id, p.name AS profile_name, p.model AS profile_model, p.enabled AS profile_enabled,
-            p.credential_account, o.capabilities_json
-     FROM app_llm_assignments a
-     LEFT JOIN provider_profiles p ON p.id = a.profile_id AND p.kind = 'llm'
-     LEFT JOIN provider_profile_options o ON o.profile_id = p.id
-     WHERE a.app_id = ? AND a.role = ?`,
-  ).get(appId, role) as Omit<BindingRow, 'app_enabled' | 'app_name'> | undefined;
+  const selection = selectModelRoute(database, appId, role);
+  const profileId = selection.primaryModelId;
+  let row: Omit<BindingRow, 'app_enabled' | 'app_name' | 'requires_connection'> | undefined;
+  let requiresConnection = false;
+  if (profileId && selection.source === 'legacy') {
+    row = canonicalProfileRow(database, profileId);
+    requiresConnection = Boolean(row);
+    row ??= legacyProfileRow(database, profileId);
+  } else if (profileId) {
+    row = canonicalProfileRow(database, profileId);
+    requiresConnection = Boolean(row);
+  }
   return {
     app_enabled: app.enabled,
     app_name: app.name,
-    profile_id: row?.profile_id ?? null,
+    profile_id: row?.profile_id ?? profileId,
     profile_name: row?.profile_name ?? null,
     profile_model: row?.profile_model ?? null,
     profile_enabled: row?.profile_enabled ?? null,
+    connection_enabled: row?.connection_enabled ?? null,
+    connection_id: row?.connection_id ?? null,
+    connection_kind: row?.connection_kind ?? null,
+    model_type: row?.model_type ?? null,
+    requires_connection: requiresConnection,
     credential_account: row?.credential_account ?? null,
     capabilities_json: row?.capabilities_json ?? null,
   };
@@ -76,8 +113,13 @@ function credentialEnvName(profileId: string) {
 
 async function credentialSource(secrets: SecretStore, row: BindingRow): Promise<LlmBindingStatus['credentialSource']> {
   if (!row.credential_account || !row.profile_id) return 'none';
-  const credential = await secrets.get(row.credential_account, credentialEnvName(row.profile_id));
-  return credential.source;
+  const primary = await secrets.get(row.credential_account, credentialEnvName(row.connection_id ?? row.profile_id));
+  if (primary.source !== 'none') return primary.source;
+  if (row.connection_id) {
+    const modelFallback = await secrets.get(row.credential_account, credentialEnvName(row.profile_id));
+    return modelFallback.source;
+  }
+  return primary.source;
 }
 
 /** 结构配置判定：应用启用 → 绑定存在 → profile 存在且为 LLM → profile 启用 → 能力包含角色 → 模型 ID 非空。 */
@@ -109,12 +151,25 @@ export async function resolveAppLlmBindingStatus(
   if (row.profile_enabled == null) {
     return { ...base, status: 'profile_missing', ready: false, credentialSource: await credentialSource(secrets, row), message: configurationMessage('profile_missing', appId, row.app_name, role) };
   }
+  if (row.requires_connection && (!row.connection_id || row.connection_enabled !== 1)) {
+    return {
+      ...base, status: 'profile_disabled', ready: false,
+      credentialSource: await credentialSource(secrets, row),
+      message: `${row.app_name} 绑定的${role === 'text' ? '文本' : '多模态'}模型所属连接已停用。`,
+    };
+  }
+  if (row.requires_connection && (row.model_type !== 'chat' || !connectionSupportsModelType(String(row.connection_kind), 'chat'))) {
+    return {
+      ...base, status: 'capability_mismatch', ready: false,
+      credentialSource: await credentialSource(secrets, row),
+      message: `${row.app_name} 绑定的${role === 'text' ? '文本' : '多模态'}模型连接类型不支持模型路由。`,
+    };
+  }
   if (!row.profile_enabled) {
     return { ...base, status: 'profile_disabled', ready: false, credentialSource: await credentialSource(secrets, row), message: configurationMessage('profile_disabled', appId, row.app_name, role) };
   }
-  let capabilities: string[] = [];
   // options 行缺失时与现有调用保持一致：LLM 模板默认具备文本能力。
-  try { capabilities = JSON.parse(row.capabilities_json ?? '["text"]'); } catch { capabilities = ['text']; }
+  const capabilities = normalizeCapabilities(row.capabilities_json ?? '["text"]');
   if (!capabilities.includes(role)) {
     return { ...base, status: 'capability_mismatch', ready: false, credentialSource: await credentialSource(secrets, row), message: configurationMessage('capability_mismatch', appId, row.app_name, role) };
   }
@@ -148,30 +203,34 @@ export async function resolveCharacterLlmBindingStatus(
   ).get(characterId, role) as { profile_id: string; profile_name: string | null; profile_model: string | null; profile_enabled: number | null; credential_account: string | null; capabilities_json: string | null } | undefined;
 
   if (specific) {
-    const appStatus = await resolveAppLlmBindingStatus(database, secrets, 'characters', role);
-    const credential = specific.credential_account
-      ? await secrets.get(specific.credential_account, credentialEnvName(specific.profile_id))
+    const canonical = canonicalProfileRow(database, specific.profile_id);
+    const account = canonical?.credential_account ?? specific.credential_account;
+    let credential = account
+      ? await secrets.get(account, credentialEnvName(canonical?.connection_id ?? specific.profile_id))
       : { source: 'none' as const };
+    if (account && credential.source === 'none' && canonical?.connection_id) {
+      credential = await secrets.get(account, credentialEnvName(specific.profile_id));
+    }
+    const profile = canonical ?? specific;
     const base = {
       appId: 'characters',
       role,
-      profile: { id: specific.profile_id, name: specific.profile_name ?? specific.profile_id, model: specific.profile_model },
+      profile: { id: specific.profile_id, name: profile.profile_name ?? specific.profile_id, model: profile.profile_model },
       credentialSource: credential.source,
       configurationPath: llmConfigurationPath('characters'),
       overridden: true,
     };
-    if (specific.profile_enabled == null) {
+    if (profile.profile_enabled == null) {
       return { ...base, status: 'profile_missing', ready: false, message: `该角色绑定的专属${role === 'text' ? '文本' : '多模态'}模型不存在，请重新选择。` };
     }
-    if (!specific.profile_enabled) {
+    if (!profile.profile_enabled || (canonical && canonical.connection_enabled !== 1)) {
       return { ...base, status: 'profile_disabled', ready: false, message: `该角色绑定的专属${role === 'text' ? '文本' : '多模态'}模型已停用。` };
     }
-    let capabilities: string[] = [];
-    try { capabilities = JSON.parse(specific.capabilities_json ?? '[]'); } catch { capabilities = []; }
-    if (!capabilities.includes(role)) {
+    const capabilities = normalizeCapabilities(profile.capabilities_json ?? '[]');
+    if (!capabilities.includes(role) || (canonical && (canonical.model_type !== 'chat' || !connectionSupportsModelType(String(canonical.connection_kind), 'chat')))) {
       return { ...base, status: 'capability_mismatch', ready: false, message: `该角色绑定的专属模型不支持${role === 'text' ? '文本' : '多模态'}调用。` };
     }
-    if (!specific.profile_model) {
+    if (!profile.profile_model) {
       return { ...base, status: 'model_missing', ready: false, message: `该角色绑定的专属模型缺少模型 ID。` };
     }
     return { ...base, status: 'ready', ready: true, message: LLM_STATUS_MESSAGES.ready };

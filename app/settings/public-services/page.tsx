@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: '模型与公共服务 — SthStart',
-  description: '管理公共模型模板、应用模型绑定与服务能力。',
+  description: '管理公共常用模型、应用例外、扩展服务与高级接入。',
 };
 
 export default function PublicServicesPage() {

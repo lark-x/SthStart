@@ -7,11 +7,14 @@ import { zipSync } from 'fflate';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Button } from '@/app/components/ui/button';
+import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
 import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { getEffectiveStageScenes } from '../scene-beat-utils';
 import { useComicDraft } from './use-comic-draft';
-import { useActivityContentRevision, useComicJob, useComicJobs } from '../queries';
-import { useApplyComicStoryboard, useCreateComicRevision, useCreateComicStoryboard } from '../mutations';
+import { useActivityContentRevision } from '@/app/features/activities/queries/activities';
+import { useComicJob, useComicJobs } from '@/app/features/activities/queries/comic';
+import { useApplyComicStoryboard, useCreateComicRevision, useCreateComicStoryboard } from '@/app/features/activities/mutations/comic';
 import { activityKeys } from '@/app/lib/query-keys';
 import { useQueryClient } from '@tanstack/react-query';
 import { ComicCanvasEditor } from './comic-canvas-editor';
@@ -36,7 +39,6 @@ interface ComicWorkstationProps {
 }
 
 const templatePanelCounts: Record<ComicPage['template'], number> = { single: 1, duo: 2, trio: 3, quad: 4 };
-const fieldClass = 'w-full rounded-control border border-border-default bg-surface px-2.5 py-2 text-sm text-ink';
 const emptyComicDocument: ComicDocument = {
   schemaVersion: 1, contentRevisionId: 'pending', style: 'ink-paper-v1', canvas: { width: 1920, height: 1080 }, pages: [], panels: [],
 };
@@ -496,7 +498,7 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
             onExportPng={() => { setExportError(null); setExportDialogOpen(true); }} canExport={fontReady && selectedPageHasImages && issues.length === 0} />
         </Drawer>
       </div> : <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto p-6 text-center"><div className="max-w-xl"><p className="font-semibold text-ink">漫画草稿还没有页面</p><p className="mt-1 text-sm text-muted">选择一个已保存的剧情场次，生成 4～8 格分镜草案；草案会先供你审阅，不会自动写进漫画。</p>
-        <div className="mt-4 flex flex-wrap justify-center gap-2"><select className={fieldClass} value={newPageTemplate} onChange={(event) => setNewPageTemplate(event.target.value as ComicPage['template'])} aria-label="新页面版式"><option value="single">单格页</option><option value="duo">双格页</option><option value="trio">三格页</option><option value="quad">四格页</option></select>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2"><div className="flex w-full max-w-xs items-center gap-2"><label htmlFor="comic-empty-page-template" className="text-xs font-medium text-muted">新页面版式</label><Select id="comic-empty-page-template" className="min-w-32 text-sm" value={newPageTemplate} onChange={(event) => setNewPageTemplate(event.target.value as ComicPage['template'])}><option value="single">单格页</option><option value="duo">双格页</option><option value="trio">三格页</option><option value="quad">四格页</option></Select></div>
           <Button variant="outline" onClick={() => addBlankPage()} disabled={!defaultSourceBeat}>手工新增页面</Button>
           <Button variant="primary" onClick={() => setStoryboardDialogOpen(true)} disabled={!revisionId || !draftState.version}>生成分镜草案</Button></div></div></div>}
       {panel && <ComicRenderDialog open={renderDialogOpen} onOpenChange={setRenderDialogOpen} activityId={activity.id} draftVersion={draftState.version}
@@ -524,12 +526,12 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
       </Dialog>
       <Dialog open={storyboardDialogOpen} onOpenChange={setStoryboardDialogOpen} title="生成分镜草案" description="输入来自已保存的剧情版本。生成结果先审阅，再选择追加或替换。" size="md" className="max-h-[90dvh]">
         <div className="space-y-3">
-          <label className="block space-y-1 text-xs font-medium text-muted">阶段<select className={fieldClass} value={storyboardStageId} onChange={(event) => { setStoryboardStageId(event.target.value); const stage = boundContent.stages.find((item) => item.id === event.target.value); setStoryboardSceneId(stage ? getEffectiveStageScenes(stage, boundContent.scenes)[0]?.id ?? '' : ''); }}>
-            {boundContent.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select></label>
-          <label className="block space-y-1 text-xs font-medium text-muted">场次<select className={fieldClass} value={storyboardSceneId} onChange={(event) => setStoryboardSceneId(event.target.value)}>
-            {selectedStageScenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.title || '未命名场次'}</option>)}</select></label>
-          <label className="block space-y-1 text-xs font-medium text-muted">画格数<select className={fieldClass} value={panelCount} onChange={(event) => setPanelCount(Number(event.target.value))}>{[4, 5, 6, 7, 8].map((count) => <option key={count} value={count}>{count} 格</option>)}</select></label>
-          <label className="block space-y-1 text-xs font-medium text-muted">分镜要求（可选）<textarea className={`${fieldClass} min-h-24 resize-y`} maxLength={4000} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="例如：先建立雪山营地全景，再用特写表现结晶发光，台词节奏轻松。" /></label>
+          <div className="space-y-1"><label htmlFor="comic-storyboard-stage" className="text-xs font-medium text-muted">阶段</label><Select id="comic-storyboard-stage" className="text-sm" value={storyboardStageId} onChange={(event) => { setStoryboardStageId(event.target.value); const stage = boundContent.stages.find((item) => item.id === event.target.value); setStoryboardSceneId(stage ? getEffectiveStageScenes(stage, boundContent.scenes)[0]?.id ?? '' : ''); }}>
+            {boundContent.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</Select></div>
+          <div className="space-y-1"><label htmlFor="comic-storyboard-scene" className="text-xs font-medium text-muted">场次</label><Select id="comic-storyboard-scene" className="text-sm" value={storyboardSceneId} onChange={(event) => setStoryboardSceneId(event.target.value)}>
+            {selectedStageScenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.title || '未命名场次'}</option>)}</Select></div>
+          <div className="space-y-1"><label htmlFor="comic-storyboard-panel-count" className="text-xs font-medium text-muted">画格数</label><Select id="comic-storyboard-panel-count" className="text-sm" value={panelCount} onChange={(event) => setPanelCount(Number(event.target.value))}>{[4, 5, 6, 7, 8].map((count) => <option key={count} value={count}>{count} 格</option>)}</Select></div>
+          <div className="space-y-1"><label htmlFor="comic-storyboard-instructions" className="text-xs font-medium text-muted">分镜要求（可选）</label><Textarea id="comic-storyboard-instructions" className="min-h-24 resize-y text-sm" maxLength={4000} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="例如：先建立雪山营地全景，再用特写表现结晶发光，台词节奏轻松。" /></div>
           <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setStoryboardDialogOpen(false)}>取消</Button><Button variant="primary" loading={createStoryboard.isPending} disabled={!storyboardSceneId || draftState.status !== 'saved'} onClick={() => void requestStoryboard()}>生成草案</Button></div>
         </div>
       </Dialog>

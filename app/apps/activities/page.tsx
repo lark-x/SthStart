@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Menu } from '@mantine/core';
 import {
   Plus,
   Search,
@@ -13,31 +14,46 @@ import {
   Trash2,
   Calendar,
   Compass,
-    CalendarDays,
+  CalendarDays,
   Lightbulb,
   MoreHorizontal,
   ArrowRight,
   Film,
+  X,
 } from 'lucide-react';
 import { useActivityPage } from '@/app/features/activities/use-activity-page';
 import { Pagination } from '@/app/components/ui/pagination';
 import { positiveInteger } from '@/app/lib/pagination';
-import {
-  useDeleteActivity,
-  useDuplicateActivity,
-  useUpdateActivity,
-} from '@/app/features/activities/mutations';
+import { useDeleteActivity, useDuplicateActivity, useUpdateActivity } from '@/app/features/activities/mutations/activities';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { Input } from '@/app/components/ui/input';
-import { Button } from '@/app/components/ui/button';
+import { Button, buttonVariants } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Alert } from '@/app/components/ui/alert';
 import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { EmptyState } from '@/app/components/ui/empty-state';
+import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Spinner } from '@/app/components/ui/spinner';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
+import { useOverlayPortalTarget } from '@/app/components/ui/overlay-policy';
 import { ActivityImportModal } from '@/app/features/activities/components/activity-import-modal';
 import type { Activity } from '@sthstart/contracts';
+
+const activityDateFormat = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
+
+/** 列表用相对时间表达「上次改动」，精确日期放在 title 与桌面端更新列里。 */
+function formatActivityUpdated(iso: string): { label: string; title: string } {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return { label: '时间未知', title: '更新时间未知' };
+  const exact = activityDateFormat.format(time);
+  const days = Math.floor((Date.now() - time) / 86_400_000);
+  if (days <= 0) return { label: '今天更新', title: exact };
+  if (days === 1) return { label: '昨天更新', title: exact };
+  if (days < 30) return { label: `${days} 天前更新`, title: exact };
+  return { label: `${exact} 更新`, title: exact };
+}
 
 export default function ActivitiesPage() {
   const router = useRouter();
@@ -66,7 +82,8 @@ export default function ActivitiesPage() {
   const setShowArchived = (archived: boolean) => updateList({archived, page: 1});
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const moreMenuRef = useRef<HTMLDetailsElement>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const portalHost = useOverlayPortalTarget();
 
 
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useActivityPage({q: search, archived: showArchived, page, pageSize});
@@ -83,33 +100,14 @@ export default function ActivitiesPage() {
     }
   }, [data, isPlaceholderData, page, params, router]);
 
-  useEffect(() => {
-    const dismiss = (event: PointerEvent | KeyboardEvent) => {
-      const element = moreMenuRef.current;
-      if (!element?.open) return;
-      if (event instanceof KeyboardEvent) {
-        if (event.isComposing || event.keyCode === 229 || event.key !== 'Escape') return;
-        element.open = false;
-        element.querySelector('summary')?.focus();
-      } else if (!element.contains(event.target as Node)) {
-        element.open = false;
-      }
-    };
-    window.addEventListener('pointerdown', dismiss);
-    window.addEventListener('keydown', dismiss);
-    return () => {
-      window.removeEventListener('pointerdown', dismiss);
-      window.removeEventListener('keydown', dismiss);
-    };
-  }, []);
-
-  const handleDelete = async (id: string, title: string) => {
-    if (!window.confirm(`确定要彻底删除制作项目《${title}》吗？此操作无法撤销。`)) return;
+  /** 失败时抛出，让确认框保持打开；错误同时留在页面内。 */
+  const handleDelete = async (id: string) => {
     setActionError(null);
     try {
       await deleteMutation.mutateAsync(id);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '删除制作项目失败');
+      throw err;
     }
   };
 
@@ -140,76 +138,84 @@ export default function ActivitiesPage() {
     <div className="w-full bg-paper text-ink py-6">
       <PageContainer className="space-y-5">
         <PageHeader
+          compact
           title="制作项目"
-          description="管理配音与画面制作版本及互动演出工程。支持从创作项目正文派生制作，亦可直接开展独立制作；支持随时返回项目列表。"
+          description="管理配音、画面与互动演出制作版本。"
           actions={
             <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
               <Link
-                href="/apps/projects"
-                className="inline-flex h-9 items-center gap-1.5 rounded-control border border-border-default bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-surface-hover focus-visible:outline focus-visible:outline-accent"
-              >
-                <span>返回项目列表</span>
-              </Link>
-
-              <Link
                 href="/apps/activities/new"
-                className="inline-flex h-9 items-center gap-1.5 rounded-control bg-primary px-3.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-accent-dark focus-visible:outline focus-visible:outline-accent"
+                className={buttonVariants({ variant: 'primary', size: 'sm' })}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span>新建制作</span>
               </Link>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setImportModalOpen(true)}
-                className="gap-1.5 text-sm font-medium"
+              <Menu
+                position="bottom-end"
+                withinPortal
+                portalProps={portalHost ? { target: portalHost } : undefined}
+                closeOnItemClick
+                returnFocus
+                transitionProps={{ duration: 100 }}
+                shadow="md"
+                radius="md"
               >
-                <FolderDown className="h-4 w-4 text-muted" aria-hidden="true" />
-                <span className="hidden sm:inline">导入制作</span>
-                <span className="sm:hidden">导入</span>
-              </Button>
-
-              <details ref={moreMenuRef} className="relative">
-                <summary
-                  aria-label="更多活动工具"
-                  className="flex h-9 cursor-pointer list-none items-center justify-center gap-1 rounded-control border border-border-default bg-surface px-2.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent"
-                >
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
-                </summary>
-                <div
-                  role="menu"
-                  aria-label="更多活动工具"
-                  className="absolute right-0 top-full z-30 mt-1.5 flex w-44 flex-col gap-0.5 rounded-control border border-border-subtle bg-surface p-1 shadow-floating"
-                >
-                  <Link
+                <Menu.Target>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label="更多活动工具"
+                    className="h-9 min-h-0 px-2.5 text-muted hover:text-ink"
+                  >
+                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown aria-label="更多活动工具" className="ui-row-menu w-44">
+                  <Menu.Item
+                    component={Link}
+                    href="/apps/projects"
+                    leftSection={<ArrowRight className="size-3.5 rotate-180 text-muted" aria-hidden="true" />}
+                  >
+                    返回项目列表
+                  </Menu.Item>
+                  <Menu.Item
+                    onClick={() => setImportModalOpen(true)}
+                    leftSection={<FolderDown className="size-3.5 text-muted" aria-hidden="true" />}
+                  >
+                    导入制作
+                  </Menu.Item>
+                  <Menu.Item
+                    component={Link}
                     href="/apps/inspiration"
-                    role="menuitem"
-                    className="flex items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-sm text-ink transition-colors hover:bg-surface-hover"
-                    onClick={() => { if (moreMenuRef.current) moreMenuRef.current.open = false; }}
+                    leftSection={<Lightbulb className="size-3.5 text-muted" aria-hidden="true" />}
                   >
-                    <Lightbulb className="size-3.5 text-muted" aria-hidden="true" />
-                    <span>从话题找灵感</span>
-                  </Link>
-                  <Link
+                    从话题找灵感
+                  </Menu.Item>
+                  <Menu.Item
+                    component={Link}
                     href="/apps/calendar"
-                    role="menuitem"
-                    className="flex items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-sm text-ink transition-colors hover:bg-surface-hover"
-                    onClick={() => { if (moreMenuRef.current) moreMenuRef.current.open = false; }}
+                    leftSection={<CalendarDays className="size-3.5 text-muted" aria-hidden="true" />}
                   >
-                    <CalendarDays className="size-3.5 text-muted" aria-hidden="true" />
-                    <span>角色日历</span>
-                  </Link>
-                </div>
-              </details>
+                    角色日历
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
             </div>
           }
         />
 
-        {error && (
+        {error && !data && (
           <Alert variant="danger" title="制作项目列表加载失败">
             {error instanceof Error ? error.message : String(error)}
             <Button size="sm" variant="ghost" className="ml-2" onClick={() => { void refetch(); }}>重试读取</Button>
+          </Alert>
+        )}
+
+        {error && data && (
+          <Alert variant="danger" title="列表更新失败，当前仍显示上次读取结果">
+            {error instanceof Error ? error.message : String(error)}
+            <Button size="sm" variant="ghost" className="ml-2" onClick={() => { void refetch(); }}>重新读取</Button>
           </Alert>
         )}
 
@@ -220,9 +226,9 @@ export default function ActivitiesPage() {
         )}
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-1">
+        <div className="flex flex-col justify-between gap-3 rounded-panel bg-surface p-3 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-md">
-            <Search className="h-4 w-4 absolute left-3.5 top-3 text-muted" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
               value={searchDraft}
               onCompositionStart={() => setComposing(true)}
@@ -231,43 +237,44 @@ export default function ActivitiesPage() {
               maxLength={500}
               aria-label="搜索制作项目"
               placeholder="搜索制作项目标题、主题或类型…"
-              className="pl-9 h-10 border-border-control text-base sm:text-sm"
+              className="h-9 border-border-control pl-9 pr-9 text-base sm:text-sm"
             />
+            {searchDraft && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="清空搜索"
+                className="absolute right-1 top-1/2 size-7 min-h-0 -translate-y-1/2 p-0 text-muted hover:text-ink"
+                onClick={() => { setSearchDraft(''); updateList({ q: '', page: 1 }); }}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </Button>
+            )}
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="flex items-center gap-1 bg-surface-sunken p-1 rounded-control border border-border-subtle/70" role="group" aria-label="制作项目状态筛选">
-              <button
-                type="button"
-                aria-pressed={!showArchived}
-                onClick={() => setShowArchived(false)}
-                className={`px-3 py-1.5 text-sm font-semibold rounded-[calc(var(--radius-control)-2px)] transition-colors cursor-pointer ${
-                  !showArchived ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink font-normal'
-                }`}
-              >
-                活跃活动
-              </button>
-              <button
-                type="button"
-                aria-pressed={showArchived}
-                onClick={() => setShowArchived(true)}
-                className={`px-3 py-1.5 text-sm font-semibold rounded-[calc(var(--radius-control)-2px)] transition-colors cursor-pointer ${
-                  showArchived ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink font-normal'
-                }`}
-              >
-                已归档
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 w-full sm:w-auto sm:justify-end">
+            <PageTabs
+              ariaLabel="制作项目状态筛选"
+              variant="local"
+              value={showArchived ? 'archived' : 'active'}
+              onChange={value => setShowArchived(value === 'archived')}
+              tabs={[
+                { id: 'active', label: '活跃活动' },
+                { id: 'archived', label: '已归档' },
+              ]}
+            />
 
-            <span className="text-xs text-muted font-medium flex-shrink-0 tabular-nums">
-              共 {data?.total ?? 0} 个制作项目
+            <span className="flex-shrink-0 text-xs font-medium text-muted tabular-nums" aria-live="polite">
+              {data ? `共 ${data.total} 个制作项目` : '正在读取数量…'}
             </span>
           </div>
         </div>
 
         {/* Activity Continuous Row List */}
-        {(isFetching || searchDraft !== search) && <p role="status">正在更新列表…</p>}
-        {error ? null : isLoading ? (
+        {(isFetching || searchDraft !== search) && (
+          <Spinner size="sm" label={searchDraft !== search ? '正在搜索…' : '正在更新列表…'} className="text-xs" />
+        )}
+        {error && !data ? null : isLoading ? (
           <div className="divide-y divide-border-subtle border-y border-border-subtle">
             {[1, 2, 3, 4].map((n) => (
               <div key={n} className="flex items-center gap-3 py-3.5 sm:py-4">
@@ -282,38 +289,75 @@ export default function ActivitiesPage() {
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon={Compass}
-            title={showArchived ? '暂无已归档制作项目' : '暂无制作项目'}
-            description="支持从创作项目章节直接创建制作版本，或选用角色与模板快速建立独立制作工程。"
+            icon={search ? Search : Compass}
+            title={
+              search
+                ? `没有匹配「${search}」的制作项目`
+                : showArchived
+                  ? '暂无已归档制作项目'
+                  : '暂无制作项目'
+            }
+            description={
+              search
+                ? '搜索范围包括标题、主题、类型与地点。换一个关键词，或清空搜索查看全部制作项目。'
+                : showArchived
+                  ? '归档后的制作项目会保留在这里，可随时恢复为活跃项目。'
+                  : '支持从创作项目章节直接创建制作版本，或选用角色与模板快速建立独立制作工程。'
+            }
             actions={
-              !showArchived && (
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <Link
-                    href="/apps/projects"
-                    className="inline-flex items-center gap-2 rounded-control border border-border-default bg-surface px-4 py-2 text-sm font-medium text-ink shadow-xs transition-colors hover:border-accent hover:text-accent"
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {search ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setSearchDraft(''); updateList({ q: '', page: 1 }); }}
                   >
-                    <span>返回创作项目</span>
-                  </Link>
+                    清空搜索
+                  </Button>
+                ) : (
+                  !showArchived && (
+                    <>
+                      <Link
+                        href="/apps/projects"
+                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                      >
+                        <span>返回创作项目</span>
+                      </Link>
+                      <Link
+                        href="/apps/activities/new"
+                        className={buttonVariants({ variant: 'primary', size: 'sm' })}
+                      >
+                        <Plus className="size-4" aria-hidden="true" />
+                        <span>新建制作工程</span>
+                      </Link>
+                    </>
+                  )
+                )}
+                {showArchived && !search && (
                   <Link
-                    href="/apps/activities/new"
-                    className="inline-flex items-center gap-1.5 rounded-control bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-accent-dark"
+                    href="/apps/activities"
+                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
                   >
-                    <Plus className="size-4" />
-                    <span>新建制作工程</span>
+                    <span>查看活跃制作项目</span>
                   </Link>
-                </div>
-              )
+                )}
+              </div>
             }
           />
         ) : (
           <ul className="divide-y divide-border-subtle border-y border-border-subtle">
-            {filtered.map((act) => (
+            {filtered.map((act) => {
+              const updated = formatActivityUpdated(act.updatedAt);
+              return (
               <li
                 key={act.id}
-                className="group flex min-w-0 items-start gap-2.5 py-3 transition-colors hover:bg-surface-hover sm:items-center sm:gap-4 sm:py-4"
+                className="group -mx-2 flex min-w-0 items-start gap-2.5 rounded-control px-2 py-3 transition-colors hover:bg-surface-hover sm:items-center sm:gap-4 sm:py-4"
               >
                 <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                  <span className="mt-0.5 hidden h-8 w-8 flex-none items-center justify-center rounded-control bg-surface-sunken text-muted transition-colors group-hover:text-ink sm:mt-0 sm:flex">
+                  <span
+                    data-tone={act.type === 'publication' ? 'violet' : 'blue'}
+                    className="mt-0.5 hidden h-8 w-8 flex-none items-center justify-center rounded-control bg-tone-soft text-tone-fg transition-transform group-hover:-translate-y-0.5 sm:mt-0 sm:flex"
+                  >
                     <Film className="size-4" aria-hidden="true" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -324,18 +368,15 @@ export default function ActivitiesPage() {
                       >
                         {act.title}
                       </Link>
-                      <span className="shrink-0 font-mono text-xs text-muted">
+                      <Badge variant="secondary" className="shrink-0 font-mono tabular-nums">
                         v{act.headVersion}
-                      </span>
-                      {act.type === 'publication' ? (
-                        <Badge variant="accent" className="shrink-0 text-xs">
-                          配音/画面制作
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="shrink-0 text-xs">
-                          互动演出{act.type ? ` · ${act.type}` : ''}
-                        </Badge>
-                      )}
+                      </Badge>
+                      <Badge
+                        variant={act.type === 'publication' ? 'accent' : 'outline'}
+                        className="shrink-0 text-xs"
+                      >
+                        {act.type === 'publication' ? '配音/画面制作' : act.type || '互动演出'}
+                      </Badge>
                       {act.archived && (
                         <Badge variant="stopped" className="shrink-0 text-xs">
                           已归档
@@ -343,14 +384,31 @@ export default function ActivitiesPage() {
                       )}
                     </div>
                     <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted">
-                      <time className="shrink-0 tabular-nums">{new Date(act.updatedAt).toLocaleDateString('zh-CN')}</time>
-                      {act.type === 'publication' ? <><span aria-hidden="true">·</span><span className="truncate">正式制作版本</span></> : act.type ? <><span aria-hidden="true">·</span><span className="truncate">{act.type}</span></> : null}
-                      {act.theme && <><span aria-hidden="true">·</span><span className="truncate">{act.theme}</span></>}
-                      {act.location && <><span aria-hidden="true">·</span><span className="hidden truncate sm:inline">{act.location}</span></>}
-                      {act.rules && <span className="hidden min-w-0 truncate text-fg-subtle md:inline">{act.rules}</span>}
+                      <time className="shrink-0" dateTime={act.updatedAt} title={updated.title}>
+                        {updated.label}
+                      </time>
+                      {/* 分隔点与它后面的内容同生同灭，窄屏隐藏内容时不留下孤立的「·」。 */}
+                      {act.theme && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="truncate">{act.theme}</span>
+                        </>
+                      )}
+                      {act.location && (
+                        <>
+                          <span aria-hidden="true" className="hidden sm:inline">·</span>
+                          <span className="hidden truncate sm:inline">{act.location}</span>
+                        </>
+                      )}
+                      {act.rules && (
+                        <>
+                          <span aria-hidden="true" className="hidden md:inline">·</span>
+                          <span className="hidden min-w-0 truncate md:inline">{act.rules}</span>
+                        </>
+                      )}
                     </div>
                     {act.location && (
-                      <div className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted sm:hidden">
+                      <div className="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted sm:hidden">
                         <Calendar className="size-3 shrink-0 text-muted" aria-hidden="true" />
                         <span className="truncate">{act.location}</span>
                       </div>
@@ -360,12 +418,9 @@ export default function ActivitiesPage() {
 
                 <div className="flex shrink-0 items-center justify-end gap-1 self-center sm:gap-2">
                   <div className="hidden items-center gap-2 md:flex">
-                    <span className="whitespace-nowrap text-xs text-muted tabular-nums">
-                      更新于 {new Date(act.updatedAt).toLocaleDateString('zh-CN')}
-                    </span>
                     <Link
                       href={`/apps/activities/${act.id}`}
-                      className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-accent group-hover:text-accent"
+                      className={buttonVariants({ variant: 'outline', size: 'sm' })}
                     >
                       <span>{act.type === 'publication' ? '进入制作台' : '进入工作室'}</span>
                       <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
@@ -374,11 +429,12 @@ export default function ActivitiesPage() {
                   <RowActionsMenu label={`管理制作项目 ${act.title}`} items={[
                     { label: '复制副本', icon: <Copy className="size-4" />, onSelect: () => { void handleDuplicate(act.id); } },
                     { label: act.archived ? '恢复制作项目' : '归档制作项目', icon: act.archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />, onSelect: () => { void handleToggleArchive(act); } },
-                    { label: '删除制作项目', icon: <Trash2 className="size-4" />, tone: 'danger', separatorBefore: true, onSelect: () => { void handleDelete(act.id, act.title); } },
+                    { label: '删除制作项目', icon: <Trash2 className="size-4" />, tone: 'danger', separatorBefore: true, onSelect: () => setPendingDelete({ id: act.id, title: act.title }) },
                   ]} />
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 
@@ -386,6 +442,23 @@ export default function ActivitiesPage() {
         <ActivityImportModal
           open={importModalOpen}
           onOpenChange={setImportModalOpen}
+        />
+        <ConfirmDialog
+          open={Boolean(pendingDelete)}
+          onOpenChange={open => { if (!open) setPendingDelete(null); }}
+          title="彻底删除制作项目？"
+          description={
+            pendingDelete
+              ? `《${pendingDelete.title}》的草稿、分镜、生成记录与制作版本都会一并删除，此操作无法撤销。若只是暂时不用，可以改为归档。`
+              : undefined
+          }
+          confirmLabel="彻底删除"
+          danger
+          onConfirm={async () => {
+            if (!pendingDelete) return;
+            await handleDelete(pendingDelete.id);
+            setPendingDelete(null);
+          }}
         />
       </PageContainer>
     </div>

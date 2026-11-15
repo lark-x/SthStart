@@ -45,7 +45,7 @@ test('activity merges edits during slow saving and saves the latest title once',
   expect(draft.document.activity.title).toBe('最终生日会标题');
 });
 
-test('activity keeps local input on a real version conflict and lets the user compare', async ({ page, request }) => {
+test('activity keeps local input on a real version conflict and lets the user retry', async ({ page, request }) => {
   const document = JSON.parse(readFileSync('packages/activity-playback/fixtures/content_sample_v1.json', 'utf8'));
   const { activity } = await (await request.post(service + '/api/v1/admin/activities', { headers, data: { document } })).json();
   await page.goto('/apps/activities/' + activity.id);
@@ -62,7 +62,7 @@ test('activity keeps local input on a real version conflict and lets the user co
    */
   const conflict = page.getByRole('alert').filter({ hasText: '服务器草稿已更新。你的输入仍保留在此页面。' });
   await expect(conflict).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('status').getByText('草稿冲突，请在设置中处理')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '版本冲突' })).toContainText('请在设置中处理');
   await expect(title).toHaveValue('保留我的输入');
   await expect(conflict.getByRole('button', { name: '载入服务器版本' })).toBeVisible();
   page.once('dialog', (dialog) => { void dialog.accept(); });

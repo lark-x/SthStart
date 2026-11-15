@@ -4,9 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { normalizeCreationProfile } from '@sthstart/contracts';
 import type { CreationProfileValues } from '@sthstart/contracts';
 import { getJson, postJson } from '@/app/lib/api-client';
-import { useActivityPresets, useImageConfigDraft } from '../queries';
-import { useCreateActivityPreset, useUpdateActivityPreset } from '../mutations';
+import { useActivityPresets } from '@/app/features/activities/queries/activities';
+import { useImageConfigDraft } from '@/app/features/activities/queries/images';
+import { useCreateActivityPreset, useUpdateActivityPreset } from '@/app/features/activities/mutations/activities';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
 const base = normalizeCreationProfile({});
 export function CreationProfilePicker({ value, onChange, allowDefault = true }: {
     value?: Record<string, unknown>;
@@ -24,7 +29,7 @@ export function CreationProfilePicker({ value, onChange, allowDefault = true }: 
         onChange({ presetId: preset.id, name: preset.name, version: preset.version, values: normalizeCreationProfile(preset.payload) }); }, [data, defaults, value, allowDefault, onChange]);
     const values = normalizeCreationProfile((value?.values || {}) as Record<string, unknown>);
     return <div className="space-y-2 rounded-lg border border-border-default p-3"><label className="text-sm font-semibold">创作配置</label>
-    <select aria-label="创作配置" className="w-full rounded-control border border-border-control bg-surface-raised p-2 text-sm" value={String(value?.presetId || '')} onChange={e => { const p = data?.items.find(p => p.id === e.target.value); onChange(p ? { presetId: p.id, name: p.name, version: p.version, values: normalizeCreationProfile(p.payload) } : {}); }}><option value="">使用普通设置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name} · v{p.version}</option>)}</select>
+    <Select aria-label="创作配置" className="w-full rounded-control border border-border-control bg-surface-raised p-2 text-sm" value={String(value?.presetId || '')} onChange={e => { const p = data?.items.find(p => p.id === e.target.value); onChange(p ? { presetId: p.id, name: p.name, version: p.version, values: normalizeCreationProfile(p.payload) } : {}); }}><option value="">使用普通设置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name} · v{p.version}</option>)}</Select>
     {value?.presetId ? <p className="text-xs text-muted">已冻结「{String(value.name)}」v{String(value.version)}：每镜头 {values.candidateCount} 张候选，{values.expandMedia ? '展开' : '不展开'}媒体。修改预设不会改变本场活动；可重新选择套用新版。</p> : <p className="text-xs text-muted">可在活动的模板与预设管理中保存常用文字、生图、回放和导出偏好。</p>}
   </div>;
 }
@@ -52,16 +57,16 @@ export function CreationProfileEditor({ initial }: {
     catch (e) {
         setNotice((e as Error).message);
     } };
-    const textField = (key: 'instruction' | 'globalStylePrompt' | 'globalNegativePrompt', label: string) => <label className="block text-sm">{label}<textarea className="mt-1 w-full rounded-control border border-border-control bg-surface-raised p-2" value={values[key]} onChange={e => setValues({ ...values, [key]: e.target.value })}/></label>;
+    const textField = (key: 'instruction' | 'globalStylePrompt' | 'globalNegativePrompt', label: string) => <label className="block text-sm">{label}<Textarea className="mt-1 w-full rounded-control border border-border-control bg-surface-raised p-2" value={values[key]} onChange={e => setValues({ ...values, [key]: e.target.value })}/></label>;
     return <section className="space-y-3 border-t border-border-default pt-4"><h3 className="font-semibold">创作配置</h3>
-    <select aria-label="编辑创作配置" className="w-full bg-surface p-2" value={selected} onChange={e => { setSelected(e.target.value); const p = data?.items.find(p => p.id === e.target.value); setName(p?.name || '我的创作配置'); setValues(normalizeCreationProfile(p?.payload || {})); }}><option value="">新建配置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-    <input aria-label="配置名称" className="w-full rounded-control border border-border-control bg-surface-raised p-2" value={name} onChange={e => setName(e.target.value)}/>
-    <label className="block text-sm">默认文字范围 <select value={values.textMode} onChange={e => setValues({ ...values, textMode: e.target.value as CreationProfileValues['textMode'] })}><option value="plan">阶段规划</option><option value="stage">当前阶段</option><option value="whole-text">整场活动</option></select></label>
+    <Select aria-label="编辑创作配置" className="w-full bg-surface p-2" value={selected} onChange={e => { setSelected(e.target.value); const p = data?.items.find(p => p.id === e.target.value); setName(p?.name || '我的创作配置'); setValues(normalizeCreationProfile(p?.payload || {})); }}><option value="">新建配置</option>{data?.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
+    <Input aria-label="配置名称" className="w-full rounded-control border border-border-control bg-surface-raised p-2" value={name} onChange={e => setName(e.target.value)}/>
+    <label className="block text-sm">默认文字范围 <Select value={values.textMode} onChange={e => setValues({ ...values, textMode: e.target.value as CreationProfileValues['textMode'] })}><option value="plan">阶段规划</option><option value="stage">当前阶段</option><option value="whole-text">整场活动</option></Select></label>
     {textField('instruction', '默认文字补充要求')}{textField('globalStylePrompt', '默认图像风格')}{textField('globalNegativePrompt', '默认负面提示词')}
-    <label className="block text-sm">每镜头候选数量 <select value={values.candidateCount} onChange={e => setValues({ ...values, candidateCount: Number(e.target.value) as 1 | 2 | 3 })}>{[1, 2, 3].map(n => <option key={n}>{n}</option>)}</select></label>
-    <label className="block text-sm">回放方式 <select value={values.playbackMode} onChange={e => setValues({ ...values, playbackMode: e.target.value as CreationProfileValues['playbackMode'] })}><option value="by_stage">按阶段</option><option value="story_order">故事顺序</option><option value="chat_only">仅聊天</option><option value="moments_only">仅朋友圈</option></select></label>
-    <label className="block text-sm"><input type="checkbox" checked={values.expandMedia} onChange={e => setValues({ ...values, expandMedia: e.target.checked })}/> 回放展开媒体</label>
-    <label className="block text-sm">默认导出 <select value={values.exportFormat} onChange={e => setValues({ ...values, exportFormat: e.target.value as CreationProfileValues['exportFormat'] })}><option value="hyperframes-project">完整包（包含渲染工程）</option><option value="project">项目包</option><option value="reader">离线阅读器</option></select></label>
+    <label className="block text-sm">每镜头候选数量 <Select value={values.candidateCount} onChange={e => setValues({ ...values, candidateCount: Number(e.target.value) as 1 | 2 | 3 })}>{[1, 2, 3].map(n => <option key={n}>{n}</option>)}</Select></label>
+    <label className="block text-sm">回放方式 <Select value={values.playbackMode} onChange={e => setValues({ ...values, playbackMode: e.target.value as CreationProfileValues['playbackMode'] })}><option value="by_stage">按阶段</option><option value="story_order">故事顺序</option><option value="chat_only">仅聊天</option><option value="moments_only">仅朋友圈</option></Select></label>
+    <Checkbox label="回放展开媒体" checked={values.expandMedia} onChange={e => setValues({ ...values, expandMedia: e.target.checked })} />
+    <label className="block text-sm">默认导出 <Select value={values.exportFormat} onChange={e => setValues({ ...values, exportFormat: e.target.value as CreationProfileValues['exportFormat'] })}><option value="hyperframes-project">完整包（包含渲染工程）</option><option value="project">项目包</option><option value="reader">离线阅读器</option></Select></label>
     <div className="flex flex-wrap gap-2"><Button disabled={create.isPending || update.isPending} onClick={() => void save(false)}>保存配置</Button><Button variant="outline" disabled={create.isPending || update.isPending} onClick={() => void save(true)}>保存并设为默认</Button><Button variant="ghost" onClick={async () => { try {
         await postJson('/api/admin/activity-creation-profile/default', { id: null });
         await qc.invalidateQueries({ queryKey: ['creation-profile-default'] });

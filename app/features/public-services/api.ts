@@ -4,6 +4,8 @@ import {
   AppLlmStatusResponseSchema,
   CreatedAppSchema,
   ModelDiscoveryResponseSchema,
+  ModelRouteListSchema,
+  ModelRouteSchema,
   PublicServiceOverviewSchema,
   SavedProfileResponseSchema,
 } from '@sthstart/contracts';
@@ -20,8 +22,10 @@ import type {
   ConnectionTestResult,
   DiscoveredModelList,
   ModelProfile,
+  ModelRoute,
   ModelInferenceTestResult,
   PurposeBinding,
+  SaveModelProfile,
 } from '@sthstart/contracts';
 
 export type LlmDraft = {
@@ -153,19 +157,25 @@ export async function fetchModelProfiles(): Promise<ModelProfile[]> {
   return res.items;
 }
 
-export async function saveModelProfile(payload: {
-  id?: string;
-  connectionId: string;
-  name: string;
-  modelId: string;
-  capabilities: LlmModelCapability[];
-  contextLength?: number | null;
-  maxOutputTokens?: number | null;
-  defaultParams?: Record<string, unknown>;
-  advancedJson?: Record<string, unknown>;
-  enabled?: boolean;
-}): Promise<ModelProfile> {
+export async function saveModelProfile(payload: SaveModelProfile): Promise<ModelProfile> {
   return postJson<ModelProfile>('models', payload);
+}
+
+export async function fetchModelRoutes(): Promise<ModelRoute[]> {
+  const res = await getJson<{ items: ModelRoute[] }>('model-routes', undefined, ModelRouteListSchema);
+  return res.items;
+}
+
+export async function saveModelRoute(payload: import('@sthstart/contracts').SaveModelRoute): Promise<ModelRoute> {
+  return putJson<ModelRoute>('model-routes', payload, undefined, ModelRouteSchema);
+}
+
+export async function deleteAppModelRoute(appId: string, capability: 'text' | 'multimodal'): Promise<{ ok: boolean; inherited: boolean }> {
+  return deleteJson(`model-routes/apps/${encodeURIComponent(appId)}/${capability}`);
+}
+
+export async function applyPublicModelRoute(capability: 'text' | 'multimodal'): Promise<{ ok: boolean; removed: number }> {
+  return postJson(`model-routes/apply-public`, { capability });
 }
 
 export async function deleteModelProfile(id: string): Promise<void> {
@@ -199,3 +209,7 @@ export async function deletePurposeBinding(appId: string, purpose: string): Prom
   await deleteJson(`purposes/${encodeURIComponent(appId)}/${encodeURIComponent(purpose)}`);
 }
 
+
+export function createImageModelWorkflow(id: string, operation: 'text-to-image' | 'image-to-image') {
+  return postJson<{workflowId: string; engineId: string}>(`models/${encodeURIComponent(id)}/image-workflow`, {operation});
+}

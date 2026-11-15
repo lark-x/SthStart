@@ -40,63 +40,74 @@ async function fixture() {
   const service = await createService({ config, database, narrativeDatabase, secrets: new SecretStore({}) });
   const preview = await service.app.inject({ method: 'POST', url: '/api/v1/admin/narrative/imports/preview', headers, payload: bundle });
   const commit = await service.app.inject({ method: 'POST', url: `/api/v1/admin/narrative/imports/${preview.json().id}/commit`, headers });
-  return { ...service, database, narrativeDatabase, workId: commit.json().workId as string };
+  const close = async () => {
+    await service.app.close();
+    database.close();
+    narrativeDatabase.close();
+  };
+  return { ...service, database, narrativeDatabase, workId: commit.json().workId as string, close };
 }
 
 test('local corpus provider exposes catalog, search, read and version', async () => {
-  const { database, narrativeDatabase, workId } = await fixture();
-  const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
+  const f = await fixture();
+  try {
+    const { narrativeDatabase, workId } = f;
+    const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
 
-  const status = await provider.status();
-  assert.equal(status.status, 'ready');
-  assert.equal(status.workCount, 1);
+    const status = await provider.status();
+    assert.equal(status.status, 'ready');
+    assert.equal(status.workCount, 1);
 
-  const catalog = await provider.catalog({ workId });
-  assert.equal(catalog.items.length, 2);
-  const quest = catalog.items.find((item) => item.title === '雨夜来信')!;
-  assert.equal(quest.utteranceCount, 3);
+    const catalog = await provider.catalog({ workId });
+    assert.equal(catalog.items.length, 2);
+    const quest = catalog.items.find((item) => item.title === '雨夜来信')!;
+    assert.equal(quest.utteranceCount, 3);
 
-  // 短中文词必须走 LIKE 回退，否则 trigram 分词命中不到。
-  const short = await provider.search({ workId, text: '赤王' });
-  assert.equal(short.strategy, 'like');
-  assert.ok(short.items.length >= 1);
+    // 短中文词必须走 LIKE 回退，否则 trigram 分词命中不到。
+    const short = await provider.search({ workId, text: '赤王' });
+    assert.equal(short.strategy, 'like');
+    assert.ok(short.items.length >= 1);
 
-  const long = await provider.search({ workId, text: '禁忌知识' });
-  assert.ok(long.items.length >= 1);
-  assert.equal(long.items[0].nodeId, quest.nodeId);
+    const long = await provider.search({ workId, text: '禁忌知识' });
+    assert.ok(long.items.length >= 1);
+    assert.equal(long.items[0].nodeId, quest.nodeId);
 
-  // 同一场景只保留一条，避免同段对白挤掉其它场景。
-  const sceneKeys = new Set(long.items.filter((item) => item.sceneId).map((item) => item.sceneId));
-  assert.equal(sceneKeys.size, long.items.filter((item) => item.sceneId).length);
+    // 同一场景只保留一条，避免同段对白挤掉其它场景。
+    const sceneKeys = new Set(long.items.filter((item) => item.sceneId).map((item) => item.sceneId));
+    assert.equal(sceneKeys.size, long.items.filter((item) => item.sceneId).length);
 
-  const hit = short.items[0];
-  const document = await provider.read({ targetType: hit.targetType, targetId: hit.targetId, contextSize: 1 });
-  assert.ok(document);
-  assert.equal(document!.targetId, hit.targetId);
-  assert.ok(document!.locator.includes('雨夜来信'));
-  assert.ok(document!.contentHash.length === 64);
+    const hit = short.items[0];
+    const document = await provider.read({ targetType: hit.targetType, targetId: hit.targetId, contextSize: 1 });
+    assert.ok(document);
+    assert.equal(document!.targetId, hit.targetId);
+    assert.ok(document!.locator.includes('雨夜来信'));
+    assert.ok(document!.contentHash.length === 64);
 
-  const version = await provider.version({ workId });
-  assert.equal(version.nodeCount, 2);
-  assert.equal(version.utteranceCount, 3);
-
-  await database.close(); narrativeDatabase.close();
+    const version = await provider.version({ workId });
+    assert.equal(version.nodeCount, 2);
+    assert.equal(version.utteranceCount, 3);
+  } finally {
+    await f.close();
+  }
 });
 
 test('corpus scope narrows search to the selected node and its children', async () => {
-  const { database, narrativeDatabase, workId } = await fixture();
-  const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
-  const catalog = await provider.catalog({ workId });
-  const chapter = catalog.items.find((item) => item.title === '序章')!;
+  const f = await fixture();
+  try {
+    const { narrativeDatabase, workId } = f;
+    const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
+    const catalog = await provider.catalog({ workId });
+    const chapter = catalog.items.find((item) => item.title === '序章')!;
 
-  // 选中父节点时子节点也要算在内，否则「选定章节」会搜不到内容。
-  const scoped = await provider.search({ workId, text: '禁忌知识', nodeIds: [chapter.nodeId] });
-  assert.ok(scoped.items.length >= 1);
+    // 选中父节点时子节点也要算在内，否则「选定章节」会搜不到内容。
+    const scoped = await provider.search({ workId, text: '禁忌知识', nodeIds: [chapter.nodeId] });
+    assert.ok(scoped.items.length >= 1);
 
-  const byKind = await provider.search({ workId, text: '禁忌知识', nodeKinds: ['chapter'] });
-  assert.equal(byKind.items.length, 0);
-
-  await database.close(); narrativeDatabase.close();
+    const byKind = await provider.search({ workId, text: '禁忌知识', nodeKinds: ['chapter'] });
+    assert.equal(byKind.items.length, 0);
+  } finally {
+    await f.close();
+  }
 });
 
 test('claim validation enforces per-type evidence minimums', () => {
@@ -186,135 +197,162 @@ test('AI parsers tolerate fenced JSON and reject malformed shapes', () => {
 });
 
 test('research routes reject research before the topic is confirmed', async () => {
-  const { app, database, narrativeDatabase, workId } = await fixture();
-  const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '赤王与禁忌知识', question: '两者有什么关系？' } });
-  assert.equal(created.statusCode, 201);
-  const projectId = created.json().id as string;
-  assert.equal(created.json().status, 'draft');
+  const f = await fixture();
+  try {
+    const { app, workId } = f;
+    const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '赤王与禁忌知识', question: '两者有什么关系？' } });
+    assert.equal(created.statusCode, 201);
+    const projectId = created.json().id as string;
+    assert.equal(created.json().status, 'draft');
 
-  const blocked = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/runs`, headers });
-  assert.equal(blocked.statusCode, 409);
-  assert.equal(blocked.json().error, 'project_not_confirmed');
+    const blocked = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/runs`, headers });
+    assert.equal(blocked.statusCode, 409);
+    assert.equal(blocked.json().error, 'project_not_confirmed');
 
-  const confirmed = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/confirm`, headers });
-  assert.equal(confirmed.statusCode, 200);
-  assert.equal(confirmed.json().status, 'confirmed');
-
-  await app.close(); database.close(); narrativeDatabase.close();
+    const confirmed = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/confirm`, headers });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(confirmed.json().status, 'confirmed');
+  } finally {
+    await f.close();
+  }
 });
 
 test('project updates reject a stale revision', async () => {
-  const { app, database, narrativeDatabase, workId } = await fixture();
-  const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '主题', question: 'q' } });
-  const projectId = created.json().id as string;
-  const first = await app.inject({ method: 'PATCH', url: `/api/v1/admin/narrative/research/projects/${projectId}`, headers, payload: { title: '主题 v2', revision: 1 } });
-  assert.equal(first.statusCode, 200);
-  // 用已经过期的 revision 再改一次必须被拒绝，避免旧结果覆盖新主题。
-  const stale = await app.inject({ method: 'PATCH', url: `/api/v1/admin/narrative/research/projects/${projectId}`, headers, payload: { title: '主题 v3', revision: 1 } });
-  assert.equal(stale.statusCode, 409);
-  assert.equal(stale.json().error, 'revision_conflict');
-  await app.close(); database.close(); narrativeDatabase.close();
+  const f = await fixture();
+  try {
+    const { app, workId } = f;
+    const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '主题', question: 'q' } });
+    const projectId = created.json().id as string;
+    const first = await app.inject({ method: 'PATCH', url: `/api/v1/admin/narrative/research/projects/${projectId}`, headers, payload: { title: '主题 v2', revision: 1 } });
+    assert.equal(first.statusCode, 200);
+    // 用已经过期的 revision 再改一次必须被拒绝，避免旧结果覆盖新主题。
+    const stale = await app.inject({ method: 'PATCH', url: `/api/v1/admin/narrative/research/projects/${projectId}`, headers, payload: { title: '主题 v3', revision: 1 } });
+    assert.equal(stale.statusCode, 409);
+    assert.equal(stale.json().error, 'revision_conflict');
+  } finally {
+    await f.close();
+  }
 });
 
 test('research run reports a clear blocker when no text model is configured', async () => {
-  const { app, database, narrativeDatabase, workId } = await fixture();
-  const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '主题', question: 'q' } });
-  const projectId = created.json().id as string;
-  await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/confirm`, headers });
-  const run = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/runs`, headers });
-  assert.equal(run.statusCode, 202);
-  const runId = run.json().id as string;
+  const f = await fixture();
+  try {
+    const { app, workId } = f;
+    const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '主题', question: 'q' } });
+    const projectId = created.json().id as string;
+    await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/confirm`, headers });
+    const run = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/runs`, headers });
+    assert.equal(run.statusCode, 202);
+    const runId = run.json().id as string;
 
-  // 后台运行是异步的，轮询到终态再断言。
-  let detail = run.json();
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    const polled = await app.inject({ method: 'GET', url: `/api/v1/admin/narrative/research/runs/${runId}`, headers });
-    detail = polled.json().run;
-    if (!['queued', 'running'].includes(detail.status)) break;
+    // 后台运行是异步的，轮询到终态再断言。
+    let detail = run.json();
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const polled = await app.inject({ method: 'GET', url: `/api/v1/admin/narrative/research/runs/${runId}`, headers });
+      detail = polled.json().run;
+      if (!['queued', 'running'].includes(detail.status)) break;
+    }
+    assert.equal(detail.status, 'incomplete');
+    assert.match(String(detail.incompleteReason), /文本模型/);
+  } finally {
+    await f.close();
   }
-  assert.equal(detail.status, 'incomplete');
-  assert.match(String(detail.incompleteReason), /文本模型/);
-  await app.close(); database.close(); narrativeDatabase.close();
 });
 
 test('a cancelled run stays cancelled when a late stage result arrives', async () => {
-  const { app, database, narrativeDatabase, workId } = await fixture();
-  const store = new ResearchStore(narrativeDatabase);
-  const project = store.createProject({ workId, title: '主题', question: 'q', scope: { workId }, origin: 'user-defined' });
-  const run = store.createRun({ projectId: project.id, inputSnapshot: {}, corpusVersion: {} });
-  store.updateRun(run.id, { status: 'running', stage: 'retrieval' });
+  const f = await fixture();
+  try {
+    const { app, database, narrativeDatabase, workId } = f;
+    const store = new ResearchStore(narrativeDatabase);
+    const project = store.createProject({ workId, title: '主题', question: 'q', scope: { workId }, origin: 'user-defined' });
+    const run = store.createRun({ projectId: project.id, inputSnapshot: {}, corpusVersion: {} });
+    store.updateRun(run.id, { status: 'running', stage: 'retrieval' });
 
-  const cancelled = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/runs/${run.id}/cancel`, headers });
-  assert.equal(cancelled.statusCode, 200);
-  assert.equal(cancelled.json().status, 'cancelled');
+    const cancelled = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/runs/${run.id}/cancel`, headers });
+    assert.equal(cancelled.statusCode, 200);
+    assert.equal(cancelled.json().status, 'cancelled');
 
-  /*
-   * 取消后仍然执行一次运行编排：迟到的阶段结果必须被守卫拦下，
-   * 不能把状态改回 running 或写成 needs-review。
-   */
-  const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
-  const after = await executeResearchRun(
-    { database, narrativeDatabase, secrets: new SecretStore({}), provider, store, fetcher: fetch },
-    run.id,
-  );
-  assert.equal(after!.status, 'cancelled');
+    /*
+     * 取消后仍然执行一次运行编排：迟到的阶段结果必须被守卫拦下，
+     * 不能把状态改回 running 或写成 needs-review。
+     */
+    const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
+    const after = await executeResearchRun(
+      { database, narrativeDatabase, secrets: new SecretStore({}), provider, store, fetcher: fetch },
+      run.id,
+    );
+    assert.equal(after!.status, 'cancelled');
 
-  // 重复取消一个已结束的运行应被拒绝，而不是静默成功。
-  const again = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/runs/${run.id}/cancel`, headers });
-  assert.equal(again.statusCode, 409);
-  assert.equal(again.json().error, 'run_not_active');
-  await app.close(); database.close(); narrativeDatabase.close();
+    // 重复取消一个已结束的运行应被拒绝，而不是静默成功。
+    const again = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/runs/${run.id}/cancel`, headers });
+    assert.equal(again.statusCode, 409);
+    assert.equal(again.json().error, 'run_not_active');
+  } finally {
+    await f.close();
+  }
 });
 
 test('publish preview blocks until a claim is accepted', async () => {
-  const { app, database, narrativeDatabase, workId } = await fixture();
-  const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '主题', question: 'q' } });
-  const projectId = created.json().id as string;
-  const preview = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/publish-preview`, headers });
-  assert.equal(preview.statusCode, 200);
-  assert.equal(preview.json().ready, false);
-  assert.match(preview.json().blocked.join('；'), /已接受的结论/);
-  await app.close(); database.close(); narrativeDatabase.close();
+  const f = await fixture();
+  try {
+    const { app, workId } = f;
+    const created = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/projects', headers, payload: { workId, title: '主题', question: 'q' } });
+    const projectId = created.json().id as string;
+    const preview = await app.inject({ method: 'POST', url: `/api/v1/admin/narrative/research/projects/${projectId}/publish-preview`, headers });
+    assert.equal(preview.statusCode, 200);
+    assert.equal(preview.json().ready, false);
+    assert.match(preview.json().blocked.join('；'), /已接受的结论/);
+  } finally {
+    await f.close();
+  }
 });
 
 test('evidence snapshots stay readable after the source row is deleted', async () => {
-  const { database, narrativeDatabase, workId } = await fixture();
-  const store = new ResearchStore(narrativeDatabase);
-  const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
-  const project = store.createProject({ workId, title: '主题', question: 'q', scope: { workId }, origin: 'user-defined' });
-  const search = await provider.search({ workId, text: '禁忌知识' });
-  const document = await provider.read({ targetType: search.items[0].targetType, targetId: search.items[0].targetId, contextSize: 2 });
-  const evidenceId = store.upsertEvidence({
-    projectId: project.id, runId: null, providerId: provider.id, workId,
-    targetType: document!.targetType, targetId: document!.targetId, nodeId: document!.nodeId, sceneId: document!.sceneId,
-    locator: document!.locator, quoteSnapshot: document!.text, contextBefore: document!.contextBefore,
-    contextAfter: document!.contextAfter, contentHash: document!.contentHash, sourceVersion: {},
-  });
-  // 删掉原台词后，冻结快照仍可读。
-  narrativeDatabase.connection.prepare('DELETE FROM narrative_utterances WHERE id=?').run(document!.targetId);
-  const still = store.getEvidence(evidenceId);
-  assert.ok(still);
-  assert.equal(still!.quoteSnapshot, document!.text);
-  await database.close(); narrativeDatabase.close();
+  const f = await fixture();
+  try {
+    const { narrativeDatabase, workId } = f;
+    const store = new ResearchStore(narrativeDatabase);
+    const provider = new LocalNarrativeCorpusProvider(narrativeDatabase);
+    const project = store.createProject({ workId, title: '主题', question: 'q', scope: { workId }, origin: 'user-defined' });
+    const search = await provider.search({ workId, text: '禁忌知识' });
+    const document = await provider.read({ targetType: search.items[0].targetType, targetId: search.items[0].targetId, contextSize: 2 });
+    const evidenceId = store.upsertEvidence({
+      projectId: project.id, runId: null, providerId: provider.id, workId,
+      targetType: document!.targetType, targetId: document!.targetId, nodeId: document!.nodeId, sceneId: document!.sceneId,
+      locator: document!.locator, quoteSnapshot: document!.text, contextBefore: document!.contextBefore,
+      contextAfter: document!.contextAfter, contentHash: document!.contentHash, sourceVersion: {},
+    });
+    // 删掉原台词后，冻结快照仍可读。
+    narrativeDatabase.connection.prepare('DELETE FROM narrative_utterances WHERE id=?').run(document!.targetId);
+    const still = store.getEvidence(evidenceId);
+    assert.ok(still);
+    assert.equal(still!.quoteSnapshot, document!.text);
+  } finally {
+    await f.close();
+  }
 });
 
 test('restart marks in-flight runs as interrupted without dropping evidence', async () => {
-  const { database, narrativeDatabase, workId } = await fixture();
-  const store = new ResearchStore(narrativeDatabase);
-  const project = store.createProject({ workId, title: '主题', question: 'q', scope: { workId }, origin: 'user-defined' });
-  const run = store.createRun({ projectId: project.id, inputSnapshot: {}, corpusVersion: {} });
-  store.updateRun(run.id, { status: 'running', stage: 'retrieval' });
-  store.upsertEvidence({
-    projectId: project.id, runId: run.id, providerId: 'local-narrative', workId,
-    targetType: 'node', targetId: 'node-x', nodeId: 'node-x', sceneId: null, locator: 'L', quoteSnapshot: 'Q',
-    contextBefore: '', contextAfter: '', contentHash: 'h', sourceVersion: {},
-  });
-  const marked = store.markInterruptedRuns();
-  assert.equal(marked, 1);
-  assert.equal(store.getRun(run.id)!.status, 'interrupted');
-  assert.equal(store.listEvidence({ runId: run.id }).length, 1);
-  await database.close(); narrativeDatabase.close();
+  const f = await fixture();
+  try {
+    const { narrativeDatabase, workId } = f;
+    const store = new ResearchStore(narrativeDatabase);
+    const project = store.createProject({ workId, title: '主题', question: 'q', scope: { workId }, origin: 'user-defined' });
+    const run = store.createRun({ projectId: project.id, inputSnapshot: {}, corpusVersion: {} });
+    store.updateRun(run.id, { status: 'running', stage: 'retrieval' });
+    store.upsertEvidence({
+      projectId: project.id, runId: run.id, providerId: 'local-narrative', workId,
+      targetType: 'node', targetId: 'node-x', nodeId: 'node-x', sceneId: null, locator: 'L', quoteSnapshot: 'Q',
+      contextBefore: '', contextAfter: '', contentHash: 'h', sourceVersion: {},
+    });
+    const marked = store.markInterruptedRuns();
+    assert.equal(marked, 1);
+    assert.equal(store.getRun(run.id)!.status, 'interrupted');
+    assert.equal(store.listEvidence({ runId: run.id }).length, 1);
+  } finally {
+    await f.close();
+  }
 });
 
 test('topic suggestion route reports an explicit blocker on an empty corpus', async () => {
@@ -322,60 +360,72 @@ test('topic suggestion route reports an explicit blocker on an empty corpus', as
   const narrativeDatabase = new NarrativeDatabase();
   const config = readConfig({ STHSTART_ADMIN_TOKEN: 'admin-test-token-that-is-long-12345678', STHSTART_IMAGE_SIGNING_SECRET: 'image-signing-test-secret-1234567890' });
   const { app } = await createService({ config, database, narrativeDatabase, secrets: new SecretStore({}) });
-  const provider = await app.inject({ method: 'GET', url: '/api/v1/admin/narrative/research/provider', headers });
-  assert.equal(provider.json().status, 'empty');
-  const suggestions = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/topic-suggestions', headers, payload: { workId: 'missing' } });
-  assert.equal(suggestions.statusCode, 404);
-  await app.close(); database.close(); narrativeDatabase.close();
+  try {
+    const provider = await app.inject({ method: 'GET', url: '/api/v1/admin/narrative/research/provider', headers });
+    assert.equal(provider.json().status, 'empty');
+    const suggestions = await app.inject({ method: 'POST', url: '/api/v1/admin/narrative/research/topic-suggestions', headers, payload: { workId: 'missing' } });
+    assert.equal(suggestions.statusCode, 404);
+  } finally {
+    await app.close();
+    database.close();
+    narrativeDatabase.close();
+  }
 });
 
 test('research runs appear in the unified task drawer and can be cancelled there', async () => {
-  const { app, database, narrativeDatabase, workId } = await fixture();
-  const store = new ResearchStore(narrativeDatabase);
-  const project = store.createProject({ workId, title: '抽屉里的专题', question: 'q', scope: { workId }, origin: 'user-defined' });
-  const run = store.createRun({ projectId: project.id, inputSnapshot: {}, corpusVersion: {} });
-  store.updateRun(run.id, { status: 'running', stage: 'retrieval', progressLabel: '检索本地原文' });
+  const f = await fixture();
+  try {
+    const { app, narrativeDatabase, workId } = f;
+    const store = new ResearchStore(narrativeDatabase);
+    const project = store.createProject({ workId, title: '抽屉里的专题', question: 'q', scope: { workId }, origin: 'user-defined' });
+    const run = store.createRun({ projectId: project.id, inputSnapshot: {}, corpusVersion: {} });
+    store.updateRun(run.id, { status: 'running', stage: 'retrieval', progressLabel: '检索本地原文' });
 
-  const tasks = await app.inject({ method: 'GET', url: '/api/v1/admin/tasks?domain=narrative_research', headers });
-  assert.equal(tasks.statusCode, 200);
-  const item = tasks.json().items.find((entry: { taskId: string }) => entry.taskId === run.id);
-  assert.ok(item, 'research run should be listed in the task drawer');
-  assert.equal(item.displayState, 'running');
-  assert.match(item.title, /剧情研究/);
-  assert.equal(item.capabilities.cancel, true);
-  assert.ok(String(item.targetUrl).includes('/apps/narrative'));
+    const tasks = await app.inject({ method: 'GET', url: '/api/v1/admin/tasks?domain=narrative_research', headers });
+    assert.equal(tasks.statusCode, 200);
+    const item = tasks.json().items.find((entry: { taskId: string }) => entry.taskId === run.id);
+    assert.ok(item, 'research run should be listed in the task drawer');
+    assert.equal(item.displayState, 'running');
+    assert.match(item.title, /剧情研究/);
+    assert.equal(item.capabilities.cancel, true);
+    assert.ok(String(item.targetUrl).includes('/apps/narrative'));
 
-  const cancelled = await app.inject({ method: 'POST', url: `/api/v1/admin/tasks/narrative_research/${run.id}/cancel`, headers });
-  assert.equal(cancelled.statusCode, 200);
-  assert.equal(store.getRun(run.id)!.status, 'cancelled');
+    const cancelled = await app.inject({ method: 'POST', url: `/api/v1/admin/tasks/narrative_research/${run.id}/cancel`, headers });
+    assert.equal(cancelled.statusCode, 200);
+    assert.equal(store.getRun(run.id)!.status, 'cancelled');
 
-  // 已结束的运行不能再取消，但可以重新排队。
-  const again = await app.inject({ method: 'POST', url: `/api/v1/admin/tasks/narrative_research/${run.id}/cancel`, headers });
-  assert.equal(again.statusCode, 400);
-  const retried = await app.inject({ method: 'POST', url: `/api/v1/admin/tasks/narrative_research/${run.id}/retry`, headers });
-  assert.equal(retried.statusCode, 200);
-  assert.equal(store.getRun(run.id)!.status, 'queued');
-
-  await app.close(); database.close(); narrativeDatabase.close();
+    // 已结束的运行不能再取消，但可以重新排队。
+    const again = await app.inject({ method: 'POST', url: `/api/v1/admin/tasks/narrative_research/${run.id}/cancel`, headers });
+    assert.equal(again.statusCode, 400);
+    const retried = await app.inject({ method: 'POST', url: `/api/v1/admin/tasks/narrative_research/${run.id}/retry`, headers });
+    assert.equal(retried.statusCode, 200);
+    assert.equal(store.getRun(run.id)!.status, 'queued');
+  } finally {
+    await f.close();
+  }
 });
 
 test('mcp-shaped provider satisfies the same contract as the local provider', async () => {
-  const { database, narrativeDatabase, workId } = await fixture();
-  /*
-   * 未来接入 MCP 时只新增一个实现，研究引擎与页面不变。
-   * 这里用一个最小替身确认接口面确实够用。
-   */
-  const stub = {
-    id: 'stub-mcp', name: 'Stub MCP', kind: 'mcp' as const,
-    status: async () => ({ id: 'stub-mcp', name: 'Stub MCP', kind: 'mcp' as const, status: 'ready' as const, message: '', workCount: 1 }),
-    version: async (scope: { workId: string }) => ({ providerId: 'stub-mcp', workId: scope.workId, workUpdatedAt: '', nodeCount: 1, utteranceCount: 1, contentHash: 'h' }),
-    catalog: async () => ({ items: [{ nodeId: 'n', parentId: null, kind: 'quest', title: 't', summary: '', sortOrder: 1, utteranceCount: 1 }], truncated: false }),
-    search: async () => ({ items: [{ targetType: 'node' as const, targetId: 'n', nodeId: 'n', sceneId: null, title: 't', excerpt: 'e', speaker: null, sourceLine: null, locator: 'l' }], truncated: false, strategy: 'fts' as const }),
-    read: async () => ({ targetType: 'node' as const, targetId: 'n', workId, nodeId: 'n', sceneId: null, nodeTitle: 't', sceneTitle: '', speaker: null, text: 'x', contextBefore: '', contextAfter: '', locator: 'l', contentHash: 'h', sourceVersion: { providerId: 'stub-mcp', workId, workUpdatedAt: '', nodeCount: 1, utteranceCount: 1, contentHash: 'h' } }),
-  };
-  const status = await stub.status();
-  assert.equal(status.kind, 'mcp');
-  const page = await stub.search();
-  assert.equal(page.items[0].targetType, 'node');
-  await database.close(); narrativeDatabase.close();
+  const f = await fixture();
+  try {
+    const { workId } = f;
+    /*
+     * 未来接入 MCP 时只新增一个实现，研究引擎与页面不变。
+     * 这里用一个最小替身确认接口面确实够用。
+     */
+    const stub = {
+      id: 'stub-mcp', name: 'Stub MCP', kind: 'mcp' as const,
+      status: async () => ({ id: 'stub-mcp', name: 'Stub MCP', kind: 'mcp' as const, status: 'ready' as const, message: '', workCount: 1 }),
+      version: async (scope: { workId: string }) => ({ providerId: 'stub-mcp', workId: scope.workId, workUpdatedAt: '', nodeCount: 1, utteranceCount: 1, contentHash: 'h' }),
+      catalog: async () => ({ items: [{ nodeId: 'n', parentId: null, kind: 'quest', title: 't', summary: '', sortOrder: 1, utteranceCount: 1 }], truncated: false }),
+      search: async () => ({ items: [{ targetType: 'node' as const, targetId: 'n', nodeId: 'n', sceneId: null, title: 't', excerpt: 'e', speaker: null, sourceLine: null, locator: 'l' }], truncated: false, strategy: 'fts' as const }),
+      read: async () => ({ targetType: 'node' as const, targetId: 'n', workId, nodeId: 'n', sceneId: null, nodeTitle: 't', sceneTitle: '', speaker: null, text: 'x', contextBefore: '', contextAfter: '', locator: 'l', contentHash: 'h', sourceVersion: { providerId: 'stub-mcp', workId, workUpdatedAt: '', nodeCount: 1, utteranceCount: 1, contentHash: 'h' } }),
+    };
+    const status = await stub.status();
+    assert.equal(status.kind, 'mcp');
+    const page = await stub.search();
+    assert.equal(page.items[0].targetType, 'node');
+  } finally {
+    await f.close();
+  }
 });

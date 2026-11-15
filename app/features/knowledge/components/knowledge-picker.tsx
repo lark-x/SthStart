@@ -12,6 +12,7 @@ import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Pagination } from '@/app/components/ui/pagination';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { useKnowledgeSearch } from '@/app/features/notebook/queries';
 import { authorshipLabels, natureLabels, usageLabels } from '@/app/features/notebook/schemas';
 
@@ -136,7 +137,7 @@ function PickerBody({ onAdd, onClose, initialKeyword, initialKinds }: {
           return (
             <li key={key} className={'space-y-1.5 rounded-lg border p-3 ' + (selected ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
               <div className="flex items-start gap-3">
-                <input type="checkbox" className="mt-1" aria-label={'选择 ' + item.title} checked={selected} disabled={loading} onChange={() => toggle(item)} />
+                <Checkbox className="mt-1" aria-label={'选择 ' + item.title} checked={selected} disabled={loading} onChange={() => toggle(item)} />
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {item.kind === 'note' ? <FileText className="h-3.5 w-3.5 text-accent" /> : <BookOpen className="h-3.5 w-3.5 text-info" />}

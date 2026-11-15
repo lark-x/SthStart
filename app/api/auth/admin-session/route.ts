@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { adminSessionCookieName, createSession, expiredSessionCookie, isLoopback, isSessionConfigured, isTrustedLan, readSession, safeFetchContext, sessionCookie, verifyCloudflareAccess } from '@/app/lib/admin-session';
+import { adminSessionCookieName, createSession, expiredSessionCookie, isLoopback, isSessionConfigured, isTrustedLan, readSession, safeFetchContext, sessionCookie, verifyCloudflareAccess } from '@/app/server/admin-session';
 
 export async function GET(request: NextRequest) {
   const session = await readSession(request);

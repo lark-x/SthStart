@@ -4,9 +4,9 @@ import React, { useEffect, useRef } from 'react';
 import { Bookmark, Sparkles } from 'lucide-react';
 import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
-import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { cn } from '@/app/lib/cn';
+import type { NarrativeAdoptAction } from '../adopt-action';
 
 /**
  * 叙事正文（§8.9）：正文是视觉中心，行宽受控、字号稳定。
@@ -19,6 +19,7 @@ export function NarrativeReader({
   onOpenImport,
   onGenerateConcept,
   generatingConcept,
+  adoptAction,
 }: {
   reading: NarrativeReading | null;
   loading?: boolean;
@@ -26,6 +27,7 @@ export function NarrativeReader({
   onOpenImport: () => void;
   onGenerateConcept: () => void;
   generatingConcept: boolean;
+  adoptAction?: NarrativeAdoptAction;
 }) {
   const articleRef = useRef<HTMLElement>(null);
   const nodeId = reading?.node.id;
@@ -41,8 +43,8 @@ export function NarrativeReader({
   if (!reading) {
     if (loading) {
       return (
-        <article ref={articleRef} className="min-w-0 flex-1 overflow-y-auto bg-surface">
-          <div className="mx-auto w-full max-w-[var(--shell-reading)] space-y-5 px-4 py-8 sm:px-8">
+        <article ref={articleRef} className="min-w-0 flex-1 overflow-y-auto bg-surface md:rounded-panel md:shadow-xs">
+          <div className="mx-auto w-full max-w-[var(--shell-reading)] space-y-5 px-4 py-6 sm:px-8">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-8 w-2/3" />
             <div className="space-y-3 pt-2">
@@ -55,7 +57,7 @@ export function NarrativeReader({
       );
     }
     return (
-      <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col items-center justify-center bg-surface p-8 text-center">
+      <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col items-center justify-center bg-surface p-8 text-center md:rounded-panel md:shadow-xs">
         <h2 className="tpl-section-title">档案仍是空的</h2>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
           从一份规范化的剧情 JSON，或通过虚空终端 MCP 数据源连接器，导入完整剧情任务链后即可在此阅读。
@@ -68,8 +70,8 @@ export function NarrativeReader({
   }
 
   return (
-    <article ref={articleRef} className="min-w-0 flex-1 overflow-y-auto bg-surface">
-      <div className="mx-auto w-full max-w-[var(--shell-reading)] px-4 py-8 sm:px-8">
+    <article ref={articleRef} className="min-w-0 flex-1 overflow-y-auto bg-surface md:rounded-panel md:shadow-xs">
+      <div className="mx-auto w-full max-w-[var(--shell-reading)] px-4 py-6 sm:px-8">
         <header className="narrative-reader-header space-y-3 pb-6">
           <div className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
             <span className="rounded-full bg-surface-sunken px-2.5 py-0.5 font-medium text-muted border border-border-subtle">
@@ -163,7 +165,7 @@ export function NarrativeReader({
                       )}
 
                       <div className="mt-1.5 flex flex-wrap items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-                      <AdoptIntoProject source={{kind: 'narrative', id: line.id}} />
+                      {adoptAction?.({ source: { kind: 'narrative', id: line.id } })}
                       <Button
                         type="button"
                         size="sm"

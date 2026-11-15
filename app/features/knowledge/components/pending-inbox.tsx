@@ -13,6 +13,8 @@ import { Drawer } from '@/app/components/ui/drawer';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { EmptyState } from '@/app/components/ui/empty-state';
+import { PageTabs } from '@/app/components/ui/page-tabs';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { formatTopicTime } from '@/app/features/topics/components/topic-card';
 import { fetchPending, fetchPendingDetail, setPendingState } from '../api';
 import { OrganizeDraftDialog } from './organize-draft-dialog';
@@ -107,30 +109,18 @@ export function PendingInbox() {
           <h2 className="text-base font-semibold text-ink">待整理</h2>
           <p className="text-sm text-muted">搜集结果先到这里确认。保留只让它可被检索；整理为资料才会生成可编辑正文，并保留来源。</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select aria-label="待整理状态" value={state} className="h-9 w-32 text-sm" onChange={(event) => { setState(event.target.value as typeof state); setSelected([]); setPage(1); }}>
-            {STATE_TABS.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-          </Select>
-        </div>
       </div>
 
       {error && <Alert variant="danger" title="操作未完成">{error}</Alert>}
       {notice && <Alert variant="info">{notice}</Alert>}
 
-      <nav className="flex flex-wrap gap-1.5" aria-label="待整理分组">
-        {STATE_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            aria-pressed={state === tab.id}
-            onClick={() => { setState(tab.id); setSelected([]); setPage(1); }}
-            className={'rounded-full px-3 py-1 text-sm transition-colors ' + (state === tab.id ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5')}
-          >
-            {tab.label}
-            {typeof counts[tab.id] === 'number' ? ' ' + counts[tab.id] : ''}
-          </button>
-        ))}
-      </nav>
+      <PageTabs
+        variant="local"
+        ariaLabel="待整理分组"
+        value={state}
+        tabs={STATE_TABS.map((tab) => ({ id: tab.id, label: tab.label, count: counts[tab.id] }))}
+        onChange={(next) => { setState(next as typeof state); setSelected([]); setPage(1); }}
+      />
 
       {selected.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-sm">
@@ -159,7 +149,7 @@ export function PendingInbox() {
         {items.map((item) => (
           <li key={item.id} className={'space-y-2 rounded-panel border p-3 ' + (selected.includes(item.id) ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
             <div className="flex items-start gap-3">
-              <input type="checkbox" className="mt-1" aria-label={'选择 ' + item.title} checked={selected.includes(item.id)} onChange={() => toggle(item.id)} />
+              <Checkbox aria-label={'选择 ' + item.title} checked={selected.includes(item.id)} onChange={() => toggle(item.id)} className="mt-1" />
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <strong className="text-sm font-semibold text-ink">{item.title}</strong>

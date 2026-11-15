@@ -44,11 +44,23 @@ test('model management discovers, clones independently, assigns, and protects ac
   assert.equal(secrets.values.get('profile:secondary-model'), 'source-secret');
   const assigned = await app.inject({ method: 'PUT', url: '/api/v1/admin/apps/writer-app/llm-assignments', headers: adminHeaders, payload: { textProfileId: 'secondary-model', multimodalProfileId: 'primary-model' } });
   assert.equal(assigned.statusCode, 200);
+  const textRoute = database.connection.prepare(
+    "SELECT primary_model_id FROM model_routes WHERE scope='app' AND app_id='writer-app' AND capability='text'",
+  ).get() as { primary_model_id: string } | undefined;
+  const visionRoute = database.connection.prepare(
+    "SELECT primary_model_id FROM model_routes WHERE scope='app' AND app_id='writer-app' AND capability='multimodal'",
+  ).get() as { primary_model_id: string } | undefined;
+  assert.equal(textRoute?.primary_model_id, 'secondary-model');
+  assert.equal(visionRoute?.primary_model_id, 'primary-model');
   const disabled = await app.inject({ method: 'POST', url: '/api/v1/admin/profiles', headers: adminHeaders, payload: { id: 'secondary-model', name: 'Secondary', kind: 'llm', baseUrl: 'https://llm.test/v1', model: 'model-b', capabilities: ['text'], enabled: false } });
   assert.equal(disabled.statusCode, 409); assert.equal(disabled.json().error, 'profile_in_use');
   const removedWhileUsed = await app.inject({ method: 'DELETE', url: '/api/v1/admin/profiles/secondary-model', headers: adminHeaders });
   assert.equal(removedWhileUsed.statusCode, 409);
   await app.inject({ method: 'PUT', url: '/api/v1/admin/apps/writer-app/llm-assignments', headers: adminHeaders, payload: { textProfileId: null, multimodalProfileId: 'primary-model' } });
+  const inheritedText = database.connection.prepare(
+    "SELECT 1 FROM model_routes WHERE scope='app' AND app_id='writer-app' AND capability='text'",
+  ).get();
+  assert.equal(inheritedText, undefined);
   const removed = await app.inject({ method: 'DELETE', url: '/api/v1/admin/profiles/secondary-model', headers: adminHeaders });
   assert.equal(removed.statusCode, 200); assert.equal(secrets.values.has('profile:secondary-model'), false);
   await app.close(); database.close();

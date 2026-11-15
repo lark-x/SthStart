@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { allowedOrigin, readSession, safeFetchContext } from '@/app/lib/admin-session';
+import { allowedOrigin, readSession, safeFetchContext } from '@/app/server/admin-session';
 
 const serviceUrl = (process.env.STHSTART_SERVICE_URL ?? process.env.NEXT_PUBLIC_STHSTART_SERVICE_URL ?? 'http://127.0.0.1:4100').replace(/\/$/, '');
 

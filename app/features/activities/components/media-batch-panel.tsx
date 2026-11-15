@@ -28,27 +28,20 @@ import type {
   ActivityMediaBatchItem,
   PrepareMediaBatchOutput,
 } from '@sthstart/contracts';
-import { fetchActivity, fetchImageConfigDraft, commitImageConfigRevision } from '../api';
+import { fetchActivity } from '@/app/features/activities/api/activities';
+import { fetchImageConfigDraft, commitImageConfigRevision } from '@/app/features/activities/api/images';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { Select } from '@/app/components/ui/select';
 import { Badge } from '@/app/components/ui/badge';
 import { Spinner } from '@/app/components/ui/spinner';
 import { Alert } from '@/app/components/ui/alert';
-import {
-  useMediaBatches,
-  useMediaBatch,
-  useImageConfigDraft,
-  useActivityAssets,
-  useActivityPresets,
-} from '../queries';
-import {
-  usePrepareMediaBatch,
-  useCreateMediaBatch,
-  useCancelMediaBatch,
-  useRetryFailedBatchItems,
-  useCreateActivityPreset,
-} from '../mutations';
+import { useMediaBatches, useMediaBatch, useImageConfigDraft, useActivityAssets } from '@/app/features/activities/queries/images';
+import { useActivityPresets } from '@/app/features/activities/queries/activities';
+import { usePrepareMediaBatch, useCreateMediaBatch, useCancelMediaBatch, useRetryFailedBatchItems } from '@/app/features/activities/mutations/images';
+import { useCreateActivityPreset } from '@/app/features/activities/mutations/activities';
 
 interface MediaBatchPanelProps {
   isOpen: boolean;
@@ -320,21 +313,25 @@ export function MediaBatchPanel({
         {/* Navigation Tabs */}
         <div className="flex items-center justify-between border-b border-border-default pb-2">
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setActiveTab('create')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`h-auto min-h-0 px-3 py-1.5 text-sm font-medium rounded-md ${
                 activeTab === 'create'
                   ? 'bg-accent/10 text-accent font-semibold'
                   : 'text-muted hover:text-ink hover:bg-surface-hover'
               }`}
             >
               新建批量生图
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setActiveTab('gallery')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+              className={`h-auto min-h-0 px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-1.5 ${
                 activeTab === 'gallery'
                   ? 'bg-accent/10 text-accent font-semibold'
                   : 'text-muted hover:text-ink hover:bg-surface-hover'
@@ -344,25 +341,27 @@ export function MediaBatchPanel({
               {summary && summary.displayState === 'running' && (
                 <Spinner className="h-3 w-3 text-accent" />
               )}
-            </button>
+            </Button>
           </div>
 
           {/* Batch Selector when in gallery */}
           {activeTab === 'gallery' && batches.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted">切换批次:</span>
-              <select
-                value={selectedBatchId || ''}
-                onChange={(e) => setSelectedBatchId(e.target.value)}
-                aria-label="选择生图批次"
-                className="text-xs py-1 px-2 border border-border-default rounded bg-surface text-ink font-mono"
-              >
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {new Date(b.createdAt).toLocaleTimeString()} ({b.summary.succeeded}/{b.summary.total}完成 - {b.summary.displayState})
-                  </option>
-                ))}
-              </select>
+              <div className="w-48 min-w-0 shrink-0">
+                <Select
+                  value={selectedBatchId || ''}
+                  onChange={(e) => setSelectedBatchId(e.target.value)}
+                  aria-label="选择生图批次"
+                  className="w-full text-xs py-1 px-2 border border-border-default rounded bg-surface text-ink font-mono"
+                >
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {new Date(b.createdAt).toLocaleTimeString()} ({b.summary.succeeded}/{b.summary.total}完成 - {b.summary.displayState})
+                    </option>
+                  ))}
+                </Select>
+              </div>
             </div>
           )}
         </div>
@@ -382,18 +381,20 @@ export function MediaBatchPanel({
                 <label className="text-xs font-semibold text-ink">每镜头候选张数</label>
                 <div className="flex items-center gap-2 pt-1">
                   {([1, 2, 3] as const).map((count) => (
-                    <button
+                    <Button
                       key={count}
                       type="button"
+                      size="sm"
+                      variant="ghost"
                       onClick={() => setCandidateCount(count)}
-                      className={`px-3 py-1 text-xs font-medium rounded border transition-colors ${
+                      className={`h-auto min-h-0 px-3 py-1 text-xs font-medium rounded border ${
                         candidateCount === count
                           ? 'border-accent bg-accent text-fg-on-accent'
                           : 'border-border-default bg-surface hover:bg-surface-hover text-ink'
                       }`}
                     >
                       {count} 张候选
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <p className="text-xs text-muted pt-1">
@@ -403,12 +404,12 @@ export function MediaBatchPanel({
 
               {preflightResult?.generationPresetOptions.length ? <div className="space-y-1">
                 <label htmlFor="media-generation-preset" className="text-xs font-semibold text-ink">图片模型与参数预设</label>
-                <select id="media-generation-preset" value={generationPresetId === '__default__' ? '' : generationPresetId}
+                <Select id="media-generation-preset" value={generationPresetId === '__default__' ? '' : generationPresetId}
                   onChange={(event) => setGenerationPresetId(event.target.value || '__default__')}
                   className="w-full text-xs py-1.5 px-2 border border-border-default rounded bg-surface text-ink">
                   <option value="">按活动用途默认</option>
                   {preflightResult.generationPresetOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · 默认' : ''}</option>)}
-                </select>
+                </Select>
                 <p className="text-xs text-muted">与候选数量和画风偏好分开，模型及采样参数会随批次固定。</p>
               </div> : <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold text-ink">图片模型与参数预设</span>
@@ -418,17 +419,19 @@ export function MediaBatchPanel({
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-ink">批次偏好</label>
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="ghost"
                     onClick={handleSaveProductionPreset}
-                    className="text-2xs text-accent hover:underline flex items-center gap-1"
+                    className="h-auto min-h-0 px-0 py-0 text-2xs text-accent hover:bg-transparent hover:underline flex items-center gap-1"
                   >
                     <Bookmark className="h-3 w-3" />
                     另存预设
-                  </button>
+                  </Button>
                 </div>
                 <div className="pt-1">
-                  <select
+                  <Select
                     value={selectedPresetId}
                     onChange={(e) => handleSelectPreset(e.target.value)}
                     aria-label="选择批次偏好"
@@ -440,7 +443,7 @@ export function MediaBatchPanel({
                         {p.name} (v{p.version})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <p className="text-xs text-muted pt-1">
                   复用候选数与风格偏好；模型和采样由生成方案决定。
@@ -458,33 +461,41 @@ export function MediaBatchPanel({
 
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted" />
-              <select aria-label="筛选阶段" value={stageFilter} onChange={event => setStageFilter(event.target.value)} className="text-xs rounded border border-border-default p-2">
-                <option value="">全部阶段</option>{document.stages.map(stage => <option key={stage.id} value={stage.id}>{stage.title}</option>)}
-              </select>
-              <select aria-label="筛选角色" value={actorFilter} onChange={event => setActorFilter(event.target.value)} className="text-xs rounded border border-border-default p-2">
-                <option value="">全部角色</option>{document.actors.map(actor => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
-              </select>
+              <div className="min-w-0 flex-1 sm:max-w-44">
+                <Select aria-label="筛选阶段" value={stageFilter} onChange={event => setStageFilter(event.target.value)} className="w-full text-xs rounded border border-border-default p-2">
+                  <option value="">全部阶段</option>{document.stages.map(stage => <option key={stage.id} value={stage.id}>{stage.title}</option>)}
+                </Select>
+              </div>
+              <div className="w-28 shrink-0">
+                <Select aria-label="筛选角色" value={actorFilter} onChange={event => setActorFilter(event.target.value)} className="w-full text-xs rounded border border-border-default p-2">
+                  <option value="">全部角色</option>{document.actors.map(actor => <option key={actor.id} value={actor.id}>{actor.displayName}</option>)}
+                </Select>
+              </div>
             </div>
             {/* Slots Selection Table */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink">选择参与批量生图的镜头</span>
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="ghost"
                     onClick={() => setSelectedSlotIds(imageSlots.filter(s => !bindingsMap[s.id] && !document.editingPolicy?.lockedMediaSlotIds.includes(s.id)).map(s => s.id))}
-                    className="text-xs text-accent hover:underline"
+                    className="h-auto min-h-0 px-0 py-0 text-xs text-accent hover:bg-transparent hover:underline"
                   >
                     选择当前筛选中未补齐的镜头
-                  </button>
+                  </Button>
                   <span className="text-xs text-border-strong">|</span>
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="ghost"
                     onClick={() => setSelectedSlotIds([])}
-                    className="text-xs text-muted hover:underline"
+                    className="h-auto min-h-0 px-0 py-0 text-xs text-muted hover:bg-transparent hover:underline"
                   >
                     清空
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -517,11 +528,11 @@ export function MediaBatchPanel({
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={isChecked}
                             onChange={() => {}} // Handled by parent div
-                            className="rounded text-accent focus:ring-accent h-3.5 w-3.5"
+                            aria-label={`选择镜头 ${slot.caption}`}
+                            className="h-3.5 w-3.5"
                           />
                           <Camera className="h-3.5 w-3.5 text-muted flex-shrink-0" />
                           <span className="font-medium text-ink truncate">{slot.caption}</span>
@@ -586,9 +597,9 @@ export function MediaBatchPanel({
         )}
 
         {/* TAB 2: GALLERY & CANDIDATE SELECTION */}
-        {batches.length > 0 && <select aria-label="选择生图批次" value={selectedBatchId || ''} onChange={e => { setSelectedBatchId(e.target.value); setActiveTab('gallery'); }} className="w-full rounded border p-2 text-sm">
+        {batches.length > 0 && <Select aria-label="选择生图批次" value={selectedBatchId || ''} onChange={e => { setSelectedBatchId(e.target.value); setActiveTab('gallery'); }} className="w-full rounded border p-2 text-sm">
           {batches.map(b => <option key={b.id} value={b.id}>{new Date(b.createdAt).toLocaleString()} · {b.summary.succeeded}/{b.summary.total}</option>)}
-        </select>}
+        </Select>}
         {activeTab === 'gallery' && (
           <div className="space-y-4">
             {!currentBatch ? (
@@ -777,16 +788,16 @@ export function MediaBatchPanel({
                                     )}
                                   </div>
 
-                                  {isLinked && !isAdopted && <label className="flex items-center gap-1 text-xs">
-                                    <input type="checkbox" aria-label={`选择${slot.caption}的候选${item.candidateIndex}`}
+                                  {isLinked && !isAdopted && <Checkbox
+                                    label="加入所选"
+                                    aria-label={`选择${slot.caption}的候选${item.candidateIndex}`}
                                       disabled={disabled || Boolean(adoptingKey) || document.editingPolicy?.lockedMediaSlotIds.includes(slot.id)}
                                       checked={selectedAssets[slot.id] === output.assetKey}
                                       onChange={event => setSelectedAssets(current => {
                                         const next = { ...current };
                                         if (event.target.checked) next[slot.id] = output.assetKey; else delete next[slot.id];
                                         return next;
-                                      })} />加入所选
-                                  </label>}
+                                      })} />}
                                   {isLinked && (
                                     <Button
                                       type="button"

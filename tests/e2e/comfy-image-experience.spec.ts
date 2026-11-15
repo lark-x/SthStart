@@ -192,7 +192,7 @@ test('a changed configuration requires review and restores its own defaults', as
     app: { id: 'creative-center', name: '创作中心' }, purposes: [{ ...options, configuration: updated,
       presets: options.presets.map(preset => preset.id === 'base' ? { ...preset, revision: 2, configuration: updated } : preset) }],
   } }));
-  await page.getByRole('button', { name: '刷新', exact: true }).first().click();
+  await page.getByRole('button', { name: '刷新生成页面', exact: true }).click();
   await expect(page.getByText('生成配置已更新', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '开始生成', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: '采用新配置，保留提示词', exact: true }).click();

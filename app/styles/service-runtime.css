@@ -1,0 +1,61 @@
+/*
+ * SthStart 样式职责拆分 - 运行服务状态指示条 (Runtime service strip)
+ * 保持 baseline 原始级联顺序，由 app/globals.css 按序引入。
+  */
+
+/* ---------- 服务状态条 ---------- */
+.runtime-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  font-size: 12px;
+}
+
+.runtime-strip-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.runtime-strip-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.runtime-strip-text strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.runtime-strip-text small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.runtime-strip-action {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.service-light {
+  display: block;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  box-shadow: 0 0 0 5px rgb(104 113 109 / 10%);
+}
+
+.service-light.state-running {
+  background: var(--success);
+  box-shadow: 0 0 0 5px rgb(78 155 107 / 14%);
+}

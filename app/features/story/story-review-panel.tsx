@@ -7,7 +7,11 @@ import { Check, Copy, ExternalLink, FileClock, KeyRound, Plus, X } from 'lucide-
 import type { StoryCharacter, StoryDocument, StoryEntry, StoryProposal, StoryProposalKind } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Drawer } from '@/app/components/ui/drawer';
+import { Alert } from '@/app/components/ui/alert';
+import { EmptyState } from '@/app/components/ui/empty-state';
+import { Badge } from '@/app/components/ui/badge';
 import { StoryMarkdown } from './story-markdown';
 import { storyApi } from './api';
 import {
@@ -61,9 +65,15 @@ function ReadOnlyArchive({ projectId }: { projectId: string }) {
   return <section className="space-y-3">
     <p className="rounded-control bg-surface-muted p-3 text-sm text-muted">这是 SthStart 旧版内置会话的只读归档；不能继续发送、压缩或补看当时的工具轨迹。</p>
     {sessions.isLoading && <p className="text-sm text-muted">正在读取归档…</p>}
-    <label className="block text-sm">旧会话<select className="mt-1 w-full rounded-control border border-border-control bg-surface px-3 py-2" value={selected?.id ?? ''} onChange={(event) => setSessionId(event.target.value)}>
+    <label className="block text-sm">旧会话</label>
+    <Select
+      aria-label="旧会话"
+      className="w-full"
+      value={selected?.id ?? ''}
+      onChange={(event) => setSessionId(event.target.value)}
+    >
       {(sessions.data?.items ?? []).map((session) => <option key={session.id} value={session.id}>{session.title} · {new Date(session.updatedAt).toLocaleString('zh-CN')}</option>)}
-    </select></label>
+    </Select>
     <div className="max-h-[60dvh] space-y-3 overflow-y-auto pr-1">
       {messages.data?.items.map((message) => <article key={message.id} className="rounded-panel border border-border-default p-3">
         <div className="mb-2 flex items-center justify-between text-xs text-muted"><b>{message.role === 'user' ? '用户' : 'AI'}</b><time>{new Date(message.createdAt).toLocaleString('zh-CN')}</time></div>
@@ -138,12 +148,12 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
 
   const content = <>
     <PageTabs variant="local" ariaLabel="审阅内容" className="mb-4" value={tab} onChange={value => onTabChange(value as PanelTab)} tabs={[{id: 'proposals', label: '提案'}, {id: 'revisions', label: '版本'}, {id: 'agent', label: '代理连接'}, {id: 'archive', label: '旧会话'}]} />
-    {notice && <div role="status" className="mb-3 flex items-start gap-2 rounded-control border border-border-default bg-surface-muted p-3 text-sm"><span className="min-w-0 flex-1">{notice}</span><button aria-label="关闭提示" onClick={() => setNotice('')}><X className="size-4" /></button></div>}
+    {notice && <Alert variant="info" className="mb-3" onDismiss={() => setNotice('')}>{notice}</Alert>}
 
     {tab === 'proposals' && <section className="space-y-3">
       <div className="flex items-center justify-between"><h3 className="font-semibold">待审阅提案</h3><span className="text-xs text-muted">{proposals.data?.items.filter((item) => item.status === 'pending').length ?? 0} 项待审</span></div>
       {proposals.isLoading && <p className="text-sm text-muted">正在读取提案…</p>}
-      {proposals.data?.items.length === 0 && <p className="rounded-panel border border-dashed border-border-default p-6 text-center text-sm text-muted">暂无提案。AI 智能体只能提交建议，接受后才会改动正式资料。</p>}
+      {proposals.data?.items.length === 0 && <EmptyState title="暂无提案" description="AI 智能体只能提交建议，接受后才会改动正式资料。" />}
       {proposals.data?.items.map((proposal) => {
         const targetRow = entries.find((entry) => entry.item.id === proposal.targetId);
         const target = targetRow ? targetRow.item : null;
@@ -189,7 +199,7 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
 
     {tab === 'agent' && <section className="space-y-4">
       <div className="rounded-panel border border-border-default bg-surface p-4">
-        <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">外部创作代理</h3><p className="mt-1 text-sm text-muted">支持通过 Antigravity、Claude 等 Agent 协作推进剧情草稿。</p></div><span className={`rounded-full px-2 py-1 text-xs ${bridge.data?.running ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-muted text-muted'}`}>{bridge.data?.running ? '运行中' : bridge.data?.paired ? '已配对 · 离线' : '未配对'}</span></div>
+        <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">外部创作代理</h3><p className="mt-1 text-sm text-muted">支持通过 Antigravity、Claude 等 Agent 协作推进剧情草稿。</p></div><Badge variant={bridge.data?.running ? 'online' : 'secondary'} dot>{bridge.data?.running ? '运行中' : bridge.data?.paired ? '已配对 · 离线' : '未配对'}</Badge></div>
         {isLocalHost ? <a className="mt-3 inline-flex items-center gap-2 rounded-control border border-border-default px-3 py-2 text-sm font-medium hover:bg-surface-hover" href="http://127.0.0.1:3081" target="_blank" rel="noreferrer noopener">打开本机代理工作台 <ExternalLink className="size-4" /></a>
           : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">创作代理运行在启动器所在主机。本页面来自远程地址，不能直接提供当前设备可用的链接。</p>}
         <p className="mt-3 text-xs text-muted">桥接：{bridge.data?.paired ? `已配对 · 最近使用 ${bridge.data.lastUsedAt ? new Date(bridge.data.lastUsedAt).toLocaleString('zh-CN') : '暂无'}` : '尚未配对'}{bridge.data?.lastHeartbeatAt ? ` · 心跳 ${new Date(bridge.data.lastHeartbeatAt).toLocaleTimeString('zh-CN')}` : ''}</p>
@@ -207,7 +217,7 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
 
     {tab === 'archive' && <ReadOnlyArchive projectId={projectId} />}
   </>;
-  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-[400px] shrink-0 flex-col border-l border-border-subtle bg-surface">
+  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-[400px] shrink-0 flex-col overflow-hidden rounded-panel bg-surface shadow-xs">
     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-2"><h2 className="text-sm font-semibold">审阅与项目连接</h2><Button size="sm" variant="ghost" aria-label="关闭审阅面板" onClick={() => onOpenChange(false)}><X className="size-4" /></Button></div>
     <div className="min-h-0 flex-1 overflow-y-auto p-4">{content}</div>
   </aside> : null;

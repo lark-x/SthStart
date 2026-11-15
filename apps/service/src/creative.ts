@@ -276,8 +276,10 @@ function safeStatusBinding(database: ServiceDatabase, purpose: string) {  const 
   }
 
   const workflowReady = Boolean(assignment.workflow_name && assignment.is_published);
-  const expectedEngineKind = purpose.startsWith('h3-') ? 'worker' : 'comfyui';
-  const engineReady = Boolean(assignment.engine_name && assignment.engine_enabled && assignment.engine_kind_actual === expectedEngineKind);
+  const supportedEngineKinds = purpose.startsWith('h3-') ? ['worker'] : ['comfyui', 'cloud'];
+  const engineReady = Boolean(assignment.engine_name && assignment.engine_enabled
+    && supportedEngineKinds.includes(String(assignment.engine_kind_actual))
+    && assignment.engine_kind_actual === assignment.engine_kind);
   const status = !workflowReady ? 'workflow_unavailable' : !assignment.engine_name || !assignment.engine_enabled ? 'engine_unavailable' : !engineReady ? 'unsupported_engine' : 'ready';
   const directInputCapabilities = safeInputCapabilities(assignment.input_capabilities_json);
   const legacyInputCapabilities = safeInputCapabilities(assignment.legacy_input_capabilities_json);

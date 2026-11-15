@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import test from 'node:test';
 import type { AppDescriptor } from '@sthstart/contracts';
 import { readConfig } from './config.js';
@@ -49,8 +50,9 @@ test('configuration rejects unsafe URL protocols', () => {
 });
 
 test('relative storage paths resolve from the project root', () => {
+  const projectRoot = resolve(import.meta.dirname, '../../../');
   const config = readConfig({ STHSTART_DATABASE_PATH: './data/test.db' });
-  assert.match(config.databasePath, /[\\/]SthStart[\\/]data[\\/]test\.db$/);
+  assert.equal(config.databasePath, resolve(projectRoot, 'data/test.db'));
 });
 
 test('validation errors carry the same request id in header and JSON envelope', async () => {

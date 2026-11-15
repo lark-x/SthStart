@@ -54,6 +54,7 @@ yarn-error.log*
 
 # 本地实验工程与阶段性开发记录：保留在磁盘上，可按需从 Git 历史取回。
 /experiments/
+/pelican-bicycle.html
 /docs/development/plans/
 /docs/development/logs/
 

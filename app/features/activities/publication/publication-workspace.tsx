@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicationDocument, PublicationShot, PublicationPreview, SpeechProfile, ActivityLora } from '@sthstart/contracts';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -135,8 +136,14 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
   async function chooseImage(id:string){await action(async()=>{let result;try{result=await publicationApi.select(activityId,shot!.id,draft.version(),id);}catch(e){if(!(e instanceof ApiClientError)||e.code!=='publication_source_changed'||!window.confirm('镜头描述已经变化，仍使用这张旧描述图片吗？'))throw e;result=await publicationApi.select(activityId,shot!.id,draft.version(),id,true);}draft.accept(result);});}
   const closeOverlay=(open:boolean)=>{if(open||busy)return;if((overlay==='drawing'&&editShot&&JSON.stringify(editShot)!==JSON.stringify(shot))||(overlay==='project'&&editDoc&&JSON.stringify(editDoc)!==JSON.stringify(doc))){if(!window.confirm('放弃弹窗内尚未保存的修改？'))return;}setOverlay(null);setGrantToken('');};
   const savedStatus=<span className="text-xs text-muted">{draft.status}</span>;
-  if(incoming.isError)return <div className="p-6" role="alert">{(incoming.error as Error).message}<Button onClick={()=>void incoming.refetch()}>重新载入</Button></div>;
-  if(!doc)return <div className="p-6" role="status">正在载入制作文档…</div>;
+  if(incoming.isError)return <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper text-ink">
+    <WorkspaceHeader title="作品制作" backHref="/apps/activities" backLabel="制作项目" actions={<Button variant="outline" onClick={()=>void incoming.refetch()}>重新载入</Button>} />
+    <div className="flex flex-1 items-center justify-center p-6" role="alert"><p className="text-sm text-danger-fg">{(incoming.error as Error).message}</p></div>
+  </div>;
+  if(!doc)return <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper text-ink">
+    <WorkspaceHeader title="作品制作" backHref="/apps/activities" backLabel="制作项目" />
+    <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted" role="status">正在载入制作文档…</div>
+  </div>;
   const active=shot;
   const shotList = (
     <div className="space-y-2 p-3">
@@ -149,11 +156,8 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
           return (
             <div
               key={s.id}
-              className={`space-y-2 rounded-control border p-2 transition-colors ${
-                isActive
-                  ? 'border-accent bg-accent/5 ring-1 ring-accent/20'
-                  : 'border-border-subtle bg-surface hover:border-border-default'
-              }`}
+              data-selected={isActive || undefined}
+              className="ui-choice space-y-2 rounded-control p-2 transition-colors hover:bg-surface-hover"
             >
               <button
                 type="button"
@@ -181,36 +185,39 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
               </button>
 
               <div role="group" aria-label={`镜头${i + 1}操作`} className="flex items-center justify-end gap-1 border-t border-border-subtle pt-1 text-xs">
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="ghost"
                   aria-label={`镜头${i + 1}上移`}
                   disabled={i === 0}
                   onClick={() => reorder(i, -1)}
-                  className="rounded p-1 text-muted hover:text-ink hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="h-auto !min-h-0 rounded !p-1 text-muted hover:!bg-surface-hover hover:!text-ink disabled:!opacity-30"
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   aria-label={`镜头${i + 1}下移`}
                   disabled={i === doc.shots.length - 1}
                   onClick={() => reorder(i, 1)}
-                  className="rounded p-1 text-muted hover:text-ink hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="h-auto !min-h-0 rounded !p-1 text-muted hover:!bg-surface-hover hover:!text-ink disabled:!opacity-30"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   aria-label={`删除镜头${i + 1}`}
                   onClick={() => {
                     if (window.confirm('删除此制作镜头？历史图片仍保留。')) {
                       draft.update({ ...doc, shots: doc.shots.filter((x) => x.id !== s.id) });
                     }
                   }}
-                  className="rounded p-1 text-muted hover:text-danger-fg hover:bg-danger/10"
+                  className="h-auto !min-h-0 rounded !p-1 text-muted hover:!bg-danger/10 hover:!text-danger-fg"
                 >
                   <X className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
             </div>
           );
@@ -227,7 +234,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       </Button>
     </div>
   );
-  return <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink" data-testid="publication-workspace">
+  return <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-paper text-ink" data-testid="publication-workspace">
     <WorkspaceHeader title={doc.title} backHref={`/apps/projects/${doc.source.storyProjectId}`} backLabel="来源项目" status={savedStatus}
       centerSlotOnMobile
       centerSlot={<PageTabs variant="local" ariaLabel="作品制作步骤" value={tab} onChange={value => setTab(value as typeof tab)} tabs={[
@@ -235,15 +242,15 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       ]} />}
       actions={<><Button size="sm" variant="ghost" onClick={()=>setOverlay('bridge')}>AI 协作</Button><Button size="sm" variant="primary" disabled={busy} onClick={()=>void draft.flush()}>保存</Button></>}/>
     {(error||draft.error)&&<div role="alert" className="shrink-0 space-y-2 bg-danger/10 p-3 text-sm text-danger-fg"><p>{error||draft.error}</p>{draft.error&&<div className="flex flex-wrap gap-2"><Button size="sm" onClick={()=>void navigator.clipboard.writeText(JSON.stringify(doc,null,2))}>复制本地内容</Button><Button size="sm" onClick={()=>void action(async()=>{const server=await publicationApi.draft(activityId);if(window.confirm('使用服务器版本会放弃本地输入，请先复制备份。继续？'))draft.resolve(server,false);},false)}>查看并使用服务器版本</Button><Button size="sm" onClick={()=>void action(async()=>{const server=await publicationApi.draft(activityId);if(window.confirm('已核对服务器更新，仍以本地内容重新保存？'))draft.resolve(server,true);},false)}>手动恢复本地编辑</Button></div>}</div>}
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
-      <aside className="hidden w-60 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface md:block" aria-label="关键镜头列表">{shotList}</aside>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-4 md:px-5 md:pb-4">
+      <aside className="hidden w-60 shrink-0 overflow-y-auto bg-surface md:block md:rounded-panel md:shadow-xs" aria-label="关键镜头列表">{shotList}</aside>
       <div className="shrink-0 border-b border-border-subtle p-2 md:hidden"><Select aria-label="选择关键镜头" value={active?.id??''} onChange={e=>setSelected(e.target.value)}>{doc.shots.map((s,i)=><option key={s.id} value={s.id}>{i+1}. {s.visualDescription||'未填写'}</option>)}</Select><details><summary className="cursor-pointer py-2 text-sm">管理关键镜头</summary><div className="max-h-56 overflow-y-auto">{shotList}</div></details></div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden md:rounded-panel md:bg-surface md:shadow-xs">
       {tab==='plan'?<section className="mx-auto h-full max-w-5xl overflow-y-auto p-4 sm:p-6 space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border-subtle pb-4"><div><p className="text-xs font-medium text-accent">从剧情到发布</p><h2 className="mt-1 text-xl font-semibold text-ink">少量关键画面，完整讲一段故事</h2><p className="mt-1.5 text-xs text-muted">已冻结 {doc.source.entryRevisionIds.length} 个章节版本 · {doc.shots.length}/12 个镜头 · 不改变正式剧情</p></div><Button variant="outline" size="sm" onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑作品与角色</Button></div>
         <div className="rounded-panel border border-border-default bg-surface p-4 text-sm leading-relaxed text-ink/90">{doc.synopsis||'让 DSH／其他 Harness 读取冻结章节，提交 6–12 个关键镜头。每个画面可配多句对白；英文生图提示词由创作模型一次完成，制作服务不再改写。也可以手动添加镜头。'}</div>
         <div><div className="space-y-4 rounded-panel border border-border-default bg-surface p-4">
-          <h3 className="font-semibold text-sm text-ink">制作输出设置</h3><label className="flex items-center gap-2 text-sm text-ink cursor-pointer"><input type="checkbox" checked={makeVideo} onChange={e=>setMakeVideo(e.target.checked)} className="rounded border-border-control text-accent focus:ring-accent"/><span>漫画图片＋配音视频</span></label><p className="text-xs leading-5 text-muted">关闭视频仍会导出漫画、封面和发布文案。默认无背景音乐，不自动发布平台。</p>
+          <h3 className="font-semibold text-sm text-ink">制作输出设置</h3><Checkbox label="漫画图片＋配音视频" checked={makeVideo} onChange={e=>setMakeVideo(e.target.checked)} /><p className="text-xs leading-5 text-muted">关闭视频仍会导出漫画、封面和发布文案。默认无背景音乐，不自动发布平台。</p>
           <div className={fieldClass}><label className="block text-xs font-medium text-muted">独立配音配置<Select value={speechId} onChange={e=>setSpeechId(e.target.value)} className="mt-1"><option value="">未配置／使用上传配音</option>{profiles.data?.items.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}</Select></label>{profiles.isError?<div className="space-y-2 mt-1"><p role="alert" className="text-xs text-danger-fg">无法读取已保存的配音配置，可重试或直接使用上传配音。</p><Button variant="ghost" size="sm" onClick={()=>void profiles.refetch()}>重试读取配音配置</Button></div>:!profiles.isLoading&&!profiles.data?.items.length?<p className="text-xs text-muted mt-1">还没有保存的配音配置，可直接上传配音，或配置新的配音服务。</p>:null}</div>
           <Button variant="ghost" size="sm" onClick={()=>{setSpeechEdit(profiles.data?.items.find(p=>p.id===speechId)??{id:crypto.randomUUID(),revision:1,name:'在线配音',baseUrl:'',model:'',voices:['alloy'],defaultVoice:'alloy',speed:1,secretEnvironment:'STHSTART_SPEECH_API_KEY'});setOverlay('speech');}}>配置配音服务</Button>
           <div className="border-t border-border-subtle pt-3 space-y-2"><Button variant="primary" className="w-full" disabled={busy||doc.shots.length<6} onClick={()=>void openApproval()}>核对方案与额度</Button><p className="text-xs text-muted text-center">确认前不会发出生图或配音付费请求。</p></div>
@@ -274,7 +281,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       footer={<><Button disabled={busy} onClick={()=>closeOverlay(false)}>取消</Button><Button variant="primary" disabled={busy} onClick={()=>void action(async()=>{if(editShot){changeShot(editShot);if(await draft.flush())setOverlay(null);}},false)}>保存镜头设置</Button></>}>
       {(error||draft.error)&&<p role="alert" className="text-sm text-danger-fg">{error||draft.error}</p>}
       {editShot&&<div className="space-y-5"><label className={fieldClass}>工作流／预设<Select value={editShot.renderSettings.presetId??''} onChange={e=>{const p=options.data?.presets.find(p=>p.id===e.target.value);setEditShot({...editShot,renderSettings:{...editShot.renderSettings,presetId:p?.id,presetRevision:p?.revision,workflowId:p?.workflowId,workflowVersion:p?.workflowVersion}});}}><option value="">优先邻舍对齐 · Base（未选预设时）</option>{options.data?.presets.map(p=><option key={p.id} value={p.id}>{p.name} · v{p.workflowVersion}</option>)}</Select><span className="block text-xs text-muted">未手选预设时，服务会优先对齐邻舍对齐 · Base；实际结果以「核对方案」和服务端最终配置为准。</span></label>
-        <fieldset className="space-y-2"><legend className="mb-2 text-sm">本镜头出现的角色</legend>{doc.actors.map(a=><label key={a.id} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={editShot.actorIds.includes(a.id)} onChange={e=>{const ids=e.target.checked?[...editShot.actorIds,a.id]:editShot.actorIds.filter(id=>id!==a.id);setEditShot({...editShot,actorIds:ids,structuredPrompt:{...editShot.structuredPrompt,actors:ids.map(id=>editShot.structuredPrompt.actors.find(p=>p.actorId===id)??{actorId:id,identity:[doc.actors.find(a=>a.id===id)!.name],appearance:[],clothing:[],action:[],expression:[]})}});}}/>{a.name} {a.universe&&`· ${a.universe}`}</label>)}</fieldset>
+        <fieldset className="space-y-2"><legend className="mb-2 text-sm">本镜头出现的角色</legend>{doc.actors.map(a=><span key={a.id} className="mr-4 inline-flex"><Checkbox label={`${a.name}${a.universe ? ` · ${a.universe}` : ''}`} checked={editShot.actorIds.includes(a.id)} onChange={e=>{const ids=e.target.checked?[...editShot.actorIds,a.id]:editShot.actorIds.filter(id=>id!==a.id);setEditShot({...editShot,actorIds:ids,structuredPrompt:{...editShot.structuredPrompt,actors:ids.map(id=>editShot.structuredPrompt.actors.find(p=>p.actorId===id)??{actorId:id,identity:[doc.actors.find(a=>a.id===id)!.name],appearance:[],clothing:[],action:[],expression:[]})}});}}/></span>)}</fieldset>
         <label className={fieldClass}>英文画面提示词<Textarea rows={5} value={editShot.structuredPrompt.naturalLanguage} onChange={e=>setEditShot({...editShot,structuredPrompt:{...editShot.structuredPrompt,naturalLanguage:e.target.value}})}/></label>
         <label className={fieldClass}>英文场景标签（逗号分隔）<Input value={editShot.structuredPrompt.scene.join(', ')} onChange={e=>setEditShot({...editShot,structuredPrompt:{...editShot.structuredPrompt,scene:e.target.value.split(',').map(t=>t.trim()).filter(Boolean)}})}/></label>
         <label className={fieldClass}>镜头呈现<Select value={editShot.presentation} onChange={e=>setEditShot({...editShot,presentation:e.target.value as PublicationShot['presentation']})}><option value="still">静态画面</option><option value="push_in">轻微推近</option></Select></label>
@@ -305,9 +312,9 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       {speechEdit&&<div className="space-y-4"><label className={fieldClass}>从已配置的语音模型选择<Select value={speechModels.data?.items.find(m=>m.connectionId===speechEdit.connectionId&&m.model===speechEdit.model)?.modelProfileId??''} onChange={e=>{const m=speechModels.data?.items.find(m=>m.modelProfileId===e.target.value);if(m)setSpeechEdit({...speechEdit,name:m.name,connectionId:m.connectionId,baseUrl:m.baseUrl,model:m.model,defaultVoice:m.model.startsWith('stepaudio-')?'cixingnansheng':speechEdit.defaultVoice,voices:m.model.startsWith('stepaudio-')?['cixingnansheng']:speechEdit.voices});else{const {connectionId:_ignored,...manual}=speechEdit;setSpeechEdit(manual);}}}><option value="">单独配置配音服务</option>{speechModels.data?.items.map(m=><option key={m.modelProfileId} value={m.modelProfileId}>{m.name}{!m.hasCredential?'（缺密钥）':''}</option>)}</Select></label>{speechModels.isError&&<p role="alert" className="text-sm text-danger-fg">无法读取已配置模型，请重试或使用独立配置。</p>}{(['name','baseUrl','model','defaultVoice','secretEnvironment'] as const).filter(key=>!speechEdit.connectionId||key!=='secretEnvironment').map(key=><label key={key} className={fieldClass}>{{name:'配置名称',baseUrl:'兼容 API 根地址（例如 https://…/v1）',model:'语音模型 ID',defaultVoice:'默认声音 ID',secretEnvironment:'密钥环境变量名'}[key]}<Input readOnly={Boolean(speechEdit.connectionId)&&(key==='baseUrl'||key==='model')} value={speechEdit[key]} onChange={e=>setSpeechEdit({...speechEdit,[key]:e.target.value})}/></label>)}<label className={fieldClass}>声音清单（逗号分隔）<Input value={speechEdit.voices.join(', ')} onChange={e=>setSpeechEdit({...speechEdit,voices:e.target.value.split(',').map(v=>v.trim()).filter(Boolean)})}/></label><label className={fieldClass}>语速<Input type="number" min={0.5} max={2} step={0.1} value={speechEdit.speed} onChange={e=>setSpeechEdit({...speechEdit,speed:Number(e.target.value)})}/></label><p className="text-xs text-muted">{speechEdit.connectionId?'复用所选服务连接的加密凭据，无需再输入密钥；连接停用或地址改变会阻止配音。':`在服务运行环境配置上述密钥变量，或写入系统凭据 publication-speech:${speechEdit.id}。`}不会向 DSH 注入这个密钥。</p></div>}
       {(error||draft.error)&&<p role="alert" className="text-sm text-danger-fg">{error||draft.error}</p>}
     </ResponsiveEditOverlay>
-  </main>;
+  </div>;
 }
 
 function LoraFields({entries,onChange}:{entries:ActivityLora[];onChange:(entries:ActivityLora[])=>void}) {
-  return <div className="space-y-3"><p className="text-sm font-medium">LoRA 文件与触发词</p>{entries.map((l,i)=><div key={i} className="grid gap-2 rounded-xl bg-surface-muted p-3 sm:grid-cols-2"><Input aria-label={`LoRA ${i+1} 文件名`} placeholder="models/loras 中的文件名" value={l.model} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,model:e.target.value}:x))}/><Input aria-label={`LoRA ${i+1} 强度`} type="number" min={-10} max={10} step={0.1} value={l.strength} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,strength:Number(e.target.value)}:x))}/><Input aria-label={`LoRA ${i+1} 触发词`} value={l.triggerWord} placeholder="英文触发词" onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,triggerWord:e.target.value}:x))}/><div className="flex items-center justify-between"><label className="text-xs"><input type="checkbox" checked={l.enabled} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,enabled:e.target.checked}:x))}/>启用</label><Button variant="ghost" size="sm" onClick={()=>onChange(entries.filter((_,j)=>j!==i))}>删除</Button></div></div>)}<Button size="sm" onClick={()=>onChange([...entries,{model:'',strength:1,triggerWord:'',enabled:true}])}>添加／覆盖 LoRA</Button><p className="text-xs text-muted">继承全局配置，同名后一级覆盖；文件或节点缺失会阻止提交。</p></div>;
+  return <div className="space-y-3"><p className="text-sm font-medium">LoRA 文件与触发词</p>{entries.map((l,i)=><div key={i} className="grid gap-2 rounded-xl bg-surface-muted p-3 sm:grid-cols-2"><Input aria-label={`LoRA ${i+1} 文件名`} placeholder="models/loras 中的文件名" value={l.model} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,model:e.target.value}:x))}/><Input aria-label={`LoRA ${i+1} 强度`} type="number" min={-10} max={10} step={0.1} value={l.strength} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,strength:Number(e.target.value)}:x))}/><Input aria-label={`LoRA ${i+1} 触发词`} value={l.triggerWord} placeholder="英文触发词" onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,triggerWord:e.target.value}:x))}/><div className="flex items-center justify-between"><Checkbox label="启用" checked={l.enabled} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,enabled:e.target.checked}:x))}/><Button variant="ghost" size="sm" onClick={()=>onChange(entries.filter((_,j)=>j!==i))}>删除</Button></div></div>)}<Button size="sm" onClick={()=>onChange([...entries,{model:'',strength:1,triggerWord:'',enabled:true}])}>添加／覆盖 LoRA</Button><p className="text-xs text-muted">继承全局配置，同名后一级覆盖；文件或节点缺失会阻止提交。</p></div>;
 }

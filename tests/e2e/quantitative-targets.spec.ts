@@ -107,10 +107,15 @@ test('1280×720 下生成配置入口与活动工作区主要操作可见', asyn
 
 test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动', async ({ page }) => {
   // 主题 ID 与 app/lib/theme-preference.ts 的 THEMES 一致：从云白（light-zinc）切到暖白（light-paper）。
-  await page.addInitScript(() => window.localStorage.setItem('sthstart_theme_id', 'light-zinc'));
+  await page.addInitScript(() => {
+    window.localStorage.setItem('sthstart_theme_id', 'light-zinc');
+    window.localStorage.setItem('sthstart_nav_collapsed', 'false');
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/apps/activities/new');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light-zinc');
+  await expect(page.getByRole('complementary', { name: '侧边导航' })
+    .getByRole('button', { name: '收起导航', exact: true })).toHaveAttribute('aria-pressed', 'false');
 
   /*
    * 新建页默认是快速制作入口（章节 / 角色 / 空白）；带标题与模板下拉的表单在
@@ -138,14 +143,11 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   await page.evaluate(() => window.scrollTo(0, 400));
   const before = await page.evaluate(() => window.scrollY);
 
-  // 切换主题：侧栏底部的「选择主题与外观」菜单里选暖白。
   const sidebar = page.getByRole('complementary', { name: '侧边导航' });
-  const chooseTheme = async (name: string, id: string) => {
-    await sidebar.getByRole('button', { name: /^选择主题与外观/ }).click();
-    await page.getByRole('menu', { name: '主题与外观' }).getByRole('menuitemradio', { name: new RegExp(`^${name}`) }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', id);
-  };
-  await chooseTheme('暖白', 'light-paper');
+  const mode = sidebar.getByRole('button', { name: /^切换至[日夜]间模式$/ });
+  const previousTheme = await page.locator('html').getAttribute('data-theme');
+  await mode.click();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', previousTheme!);
 
   // 收起侧栏。
   const collapse = sidebar.getByRole('button', { name: '收起导航' });
@@ -160,7 +162,8 @@ test('主题切换与侧栏收起不丢输入、不重置选择、不跳滚动',
   expect(Math.abs(after - before), `滚动位置从 ${before} 跳到 ${after}`).toBeLessThanOrEqual(8);
 
   // 复原，避免影响后续用例的显示偏好。
-  await chooseTheme('云白', 'light-zinc');
+  await mode.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', previousTheme!);
   await sidebar.getByRole('button', { name: '展开导航' }).click();
   await expect(collapse).toHaveAttribute('aria-pressed', 'false');
 });

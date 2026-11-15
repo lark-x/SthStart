@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
+import { Textarea } from '@/app/components/ui/textarea';
 import { Download, Copy } from 'lucide-react';
 import type { DraftPayload, Engine, Workflow } from '../types';
 import { duplicateWorkflow } from '../api';
@@ -85,7 +86,7 @@ export function AdvancedFieldsEditor({
 
       <div className="rounded-panel border border-border-subtle bg-surface p-3">
         <h3 className="text-sm font-semibold text-ink">ComfyUI API JSON</h3>
-        <textarea
+        <Textarea
           aria-label="ComfyUI API JSON"
           className="mt-2 h-72 w-full rounded-control border border-border-default bg-surface p-2 font-mono text-xs"
           value={definitionText}

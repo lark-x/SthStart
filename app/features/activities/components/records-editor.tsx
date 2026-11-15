@@ -45,6 +45,7 @@ import type {
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Badge } from '@/app/components/ui/badge';
 import { Select } from '@/app/components/ui/select';
 import { Drawer } from '@/app/components/ui/drawer';
@@ -377,19 +378,21 @@ export function RecordsEditor({
           {stages.map((stage, idx) => {
             const isSelected = selectedStageId === stage.id;
             return (
-              <button
+              <Button
                 key={stage.id}
                 type="button"
+                size="sm"
+                variant="ghost"
                 onClick={() => {
                   setSelectedStageId(stage.id);
                   onSelectStage?.(stage.id);
                 }}
-                className={`px-3 py-1.5 rounded-control text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                className={`h-auto min-h-0 px-3 py-1.5 rounded-control text-xs font-medium shrink-0 ${
                   isSelected ? 'bg-accent text-fg-on-accent shadow-xs' : 'bg-surface-muted text-ink hover:bg-surface-hover'
                 }`}
               >
                 #{idx + 1} {stage.title}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -489,47 +492,55 @@ export function RecordsEditor({
         {/* 独立入口仍可管理子视图；嵌入工作台时由外层统一提供 */}
         {!hideViewTabs && <div className="flex flex-wrap items-center justify-between border-t border-border-default px-4 py-2 bg-surface-muted/30 text-xs">
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="ghost"
               onClick={() => selectView('script')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+              className={`h-auto min-h-0 flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold hover:bg-transparent ${
                 activeTab === 'script' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <Layers className="h-3.5 w-3.5" />
               <span>剧本故事流</span>
               <span className="font-mono">({stageMessages.length + stagePosts.length})</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
+              variant="ghost"
               onClick={() => selectView('chat')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+              className={`h-auto min-h-0 flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold hover:bg-transparent ${
                 activeTab === 'chat' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <MessageSquare className="h-3.5 w-3.5" />
               <span>对话台词 ({stageMessages.length})</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
+              variant="ghost"
               onClick={() => selectView('moments')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+              className={`h-auto min-h-0 flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold hover:bg-transparent ${
                 activeTab === 'moments' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <Share2 className="h-3.5 w-3.5" />
               <span>朋友圈 ({stagePosts.length})</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
+              variant="ghost"
               onClick={() => selectView('facts')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold transition-colors cursor-pointer ${
+              className={`h-auto min-h-0 flex items-center gap-1.5 px-3 py-1 rounded-control font-semibold hover:bg-transparent ${
                 activeTab === 'facts' ? 'bg-accent text-fg-on-accent shadow-2xs' : 'text-muted hover:text-ink'
               }`}
             >
               <FileCheck className="h-3.5 w-3.5" />
               <span>剧情事实 ({stageFacts.length})</span>
-            </button>
+            </Button>
           </div>
 
         </div>}
@@ -652,18 +663,20 @@ export function RecordsEditor({
                           {msg.mediaSlotIds && msg.mediaSlotIds.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 pt-1">
                               {msg.mediaSlotIds.map((slotId) => (
-                                <button
+                                <Button
                                   key={slotId}
                                   type="button"
+                                  size="sm"
+                                  variant="ghost"
                                   onClick={() => onOpenWorkbench?.(slotId)}
-                                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+                                  className="h-auto min-h-0 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
                                   title="打开 AI 生图与分镜工作台"
                                 >
                                   <Camera className="h-3 w-3 text-amber-600" />
                                   <span>分镜插槽:</span>
                                   <span className="font-mono font-semibold">{slotId}</span>
                                   <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-                                </button>
+                                </Button>
                               ))}
                             </div>
                           )}
@@ -671,33 +684,32 @@ export function RecordsEditor({
 
                         {/* 行级快捷操作 */}
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity self-start pt-1">
-                          <button
-                            type="button"
+                          <IconButton
+                            icon={Edit3}
+                            label="编辑此句台词"
                             onClick={() => handleStartEditMsg(msg)}
-                            className="p-1 text-muted hover:text-ink rounded hover:bg-surface-hover"
-                            title="编辑此句台词"
-                          >
-                            <Edit3 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
+                            size="sm"
+                            className="h-6 min-h-6 w-6 p-0"
+                            iconClassName="h-3.5 w-3.5"
+                          />
+                          <IconButton
+                            icon={lockedRecordMap.has(msg.id) ? Lock : Unlock}
+                            label={lockedRecordMap.has(msg.id) ? '解锁此台词' : '锁定此台词（防止大模型重新生成时覆盖）'}
                             onClick={() => handleToggleRecordLock('message', msg.id)}
-                            className={`p-1 rounded hover:bg-surface-hover ${
-                              lockedRecordMap.has(msg.id) ? 'text-amber-600' : 'text-muted hover:text-ink'
-                            }`}
-                            title={lockedRecordMap.has(msg.id) ? '解锁此台词' : '锁定此台词（防止大模型重新生成时覆盖）'}
-                          >
-                            {lockedRecordMap.has(msg.id) ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                          </button>
-                          <button
-                            type="button"
+                            size="sm"
+                            className={`h-6 min-h-6 w-6 p-0 ${lockedRecordMap.has(msg.id) ? 'text-amber-600' : ''}`}
+                            iconClassName="h-3.5 w-3.5"
+                          />
+                          <IconButton
+                            icon={Trash2}
+                            label="删除此台词"
                             onClick={() => handleDeleteMessage(msg.id)}
                             disabled={lockedRecordMap.has(msg.id)}
-                            className="p-1 text-muted hover:text-danger-fg rounded hover:bg-surface-hover disabled:opacity-30"
-                            title="删除此台词"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                            variant="danger-ghost"
+                            size="sm"
+                            className="h-6 min-h-6 w-6 p-0"
+                            iconClassName="h-3.5 w-3.5"
+                          />
                         </div>
                       </div>
                     );
@@ -758,13 +770,14 @@ export function RecordsEditor({
             <aside className="sticky top-20 h-fit rounded-panel bg-surface border border-border-default p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-xs font-bold text-ink">记录详情</h3>
-                <button
-                  type="button"
+                <IconButton
+                  icon={X}
+                  label="关闭记录详情"
                   onClick={() => setSelectedMessageId(null)}
-                  className="text-muted hover:text-ink p-1"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                  size="sm"
+                  className="h-6 min-h-6 w-6 p-0"
+                  iconClassName="h-3.5 w-3.5"
+                />
               </div>
               <div className="space-y-2 text-xs">
                 <div>
@@ -820,23 +833,24 @@ export function RecordsEditor({
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <button
-                          type="button"
+                        <IconButton
+                          icon={lockedRecordMap.has(post.id) ? Lock : Unlock}
+                          label={lockedRecordMap.has(post.id) ? '解锁此动态' : '锁定此动态'}
                           onClick={() => handleToggleRecordLock('post', post.id)}
-                          className="p-1 text-muted hover:text-ink"
-                          title={lockedRecordMap.has(post.id) ? '已锁定' : '未锁定'}
-                        >
-                          {lockedRecordMap.has(post.id) ? <Lock className="h-3 w-3 text-amber-600" /> : <Unlock className="h-3 w-3" />}
-                        </button>
-                        <button
-                          type="button"
+                          size="sm"
+                          className={`h-6 min-h-6 w-6 p-0 ${lockedRecordMap.has(post.id) ? 'text-amber-600' : ''}`}
+                          iconClassName="h-3 w-3"
+                        />
+                        <IconButton
+                          icon={Trash2}
+                          label="删除动态"
                           onClick={() => handleDeletePost(post.id)}
                           disabled={lockedRecordMap.has(post.id)}
-                          className="p-1 text-muted hover:text-danger-fg disabled:opacity-30"
-                          title="删除动态"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                          variant="danger-ghost"
+                          size="sm"
+                          className="h-6 min-h-6 w-6 p-0"
+                          iconClassName="h-3 w-3"
+                        />
                       </div>
                     </div>
 
@@ -845,14 +859,16 @@ export function RecordsEditor({
                     {/* 点赞与评论 */}
                     <div className="pt-2 border-t border-border-subtle flex flex-wrap items-center justify-between gap-2 text-xs">
                       <div className="flex items-center gap-3">
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
+                          variant="ghost"
                           onClick={() => handleToggleLike(post.id, actors[0]?.id || '')}
-                          className="flex items-center gap-1 text-muted hover:text-accent cursor-pointer"
+                          className="h-auto min-h-0 flex items-center gap-1 px-0 py-0 text-muted hover:bg-transparent hover:text-accent"
                         >
                           <Heart className="h-3.5 w-3.5" />
                           <span>{postLikes.length} 赞</span>
-                        </button>
+                        </Button>
                         <span className="text-muted flex items-center gap-1">
                           <MessageSquare className="size-3.5" />
                           <span>{postComments.length} 条互动</span>
@@ -886,14 +902,15 @@ export function RecordsEditor({
                     </span>
                     <p className="text-ink font-medium leading-relaxed">{fact.text}</p>
                   </div>
-                  <button
-                    type="button"
+                  <IconButton
+                    icon={Trash2}
+                    label="删除事实"
                     onClick={() => handleDeleteFact(fact.id)}
-                    className="text-muted hover:text-danger-fg p-1 shrink-0"
-                    title="删除事实"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                    variant="danger-ghost"
+                    size="sm"
+                    className="h-6 min-h-6 w-6 shrink-0 p-0"
+                    iconClassName="h-3.5 w-3.5"
+                  />
                 </div>
               ))
             )}

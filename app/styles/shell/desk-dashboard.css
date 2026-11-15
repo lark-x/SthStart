@@ -1,0 +1,100 @@
+/*
+ * SthStart Shell 样式职责拆分 - 首页 Mission Control 栅格与头部胶囊操作
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* ==================== 页面模板 ==================== */
+
+/*
+ * 工作台主区栅格（首页 Mission Control：64% / 36%）。
+ */
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+
+.dash-grid > * {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.desk-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+@media (min-width: 768px) {
+  .desk-header {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.desk-header-title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: clamp(22px, 2vw, 26px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--fg-default);
+  line-height: 1.25;
+}
+
+.desk-header-subtitle {
+  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.desk-capsules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.desk-capsule-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--fg-default);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.desk-capsule-btn:hover { background: var(--surface-hover); }
+.desk-capsule-btn.primary { background: var(--fg-default); color: var(--fg-inverse); }
+.desk-capsule-btn.primary:hover { background: color-mix(in srgb, var(--fg-default) 85%, var(--surface)); }
+
+.desk-eyebrow,
+.tpl-kicker {
+  margin: 0 0 6px;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.tpl-kicker span { padding-inline: 4px; color: var(--fg-subtle); }

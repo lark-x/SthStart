@@ -1,0 +1,73 @@
+/*
+ * SthStart Shell 样式职责拆分 - 应用目录卡片、分类标签与搜索栏
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+.desk-directory { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+.desk-directory-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.desk-directory-heading .desk-eyebrow { margin-bottom: 5px; color: var(--accent-dark); }
+.desk-directory-count { padding: 5px 10px; border-radius: var(--radius-chip); background: var(--surface-sunken); color: var(--fg-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.desk-directory-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.desk-directory-filters { display: flex; min-width: 0; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.desk-directory-filters::-webkit-scrollbar { display: none; }
+/*
+ * 横向标签隐藏了滚动条，用两端渐隐提示还有更多分类。
+ * 渐变宽度由滚动位置驱动：停在起点时左端为 0，滚到尽头时右端为 0；
+ * 内容放得下时滚动时间线不激活，两端都不显示，不会误伤首尾标签。
+ */
+@property --desk-fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --desk-fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@supports (animation-timeline: scroll()) {
+  .desk-directory-filters {
+    --desk-fade-size: 20px;
+    mask-image:
+      linear-gradient(#000, #000),
+      linear-gradient(to right, #000, transparent),
+      linear-gradient(to right, transparent, #000);
+    mask-size: 100% 100%, var(--desk-fade-start) 100%, var(--desk-fade-end) 100%;
+    mask-position: 0 0, 0 0, 100% 0;
+    mask-repeat: no-repeat;
+    mask-composite: subtract;
+    -webkit-mask-composite: source-out;
+    animation: desk-fade-start linear both, desk-fade-end linear both;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 var(--desk-fade-size), calc(100% - var(--desk-fade-size)) 100%;
+  }
+}
+@keyframes desk-fade-start {
+  to {
+    --desk-fade-start: var(--desk-fade-size);
+  }
+}
+@keyframes desk-fade-end {
+  from {
+    --desk-fade-end: var(--desk-fade-size);
+  }
+}
+.desk-directory-filter { flex: none; min-height: 36px; padding: 0 13px; border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--fg-muted); font-size: 14px; font-weight: 600; cursor: pointer; transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease); }
+.desk-directory-filter:active { transform: scale(0.97); }
+.desk-directory-filter:hover { background: var(--surface-hover); color: var(--fg-default); }
+.desk-directory-filter[aria-pressed='true'] { background: var(--selection-bg); color: var(--selection-fg); }
+.desk-directory-search { display: flex; width: min(100%, 240px); min-height: 38px; flex: none; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--border-control); border-radius: var(--radius-chip); background: var(--surface); color: var(--fg-muted); }
+.desk-directory-search:focus-within { border-color: var(--focus-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 15%, transparent); }
+.desk-directory-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fg-default); font: inherit; font-size: 14px; }
+.desk-directory-search button { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border: 0; border-radius: 50%; background: var(--surface-sunken); color: var(--fg-muted); cursor: pointer; }
+.desk-directory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; padding: 0; margin: 0; list-style: none; }
+.desk-directory-card { display: flex; min-height: 68px; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; }
+.desk-directory-icon { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 10px; background: rgba(217, 119, 6, 0.12); color: var(--accent); transition: transform var(--motion-fast) var(--motion-ease); }
+.desk-directory-card:hover .desk-directory-icon { transform: scale(1.06); }
+.desk-directory-copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.desk-directory-title { overflow: hidden; color: var(--fg-default); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.desk-directory-description { display: -webkit-box; overflow: hidden; color: var(--fg-subtle); font-size: 12px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.desk-directory-arrow { flex: none; color: var(--fg-subtle); opacity: 0; transform: translate(-3px, 3px); transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease); }
+.desk-directory-card:hover .desk-directory-arrow, .desk-directory-card:focus-visible .desk-directory-arrow { opacity: 1; transform: translate(0, 0); }
+.desk-directory-empty { display: flex; min-height: 80px; align-items: center; justify-content: center; gap: 12px; color: var(--fg-muted); font-size: 14px; }
+.desk-directory-empty button { border: 0; background: transparent; color: var(--accent-dark); font-weight: 600; cursor: pointer; }

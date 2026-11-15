@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Alert } from '@/app/components/ui/alert';
 import { PageTabs } from '@/app/components/ui/page-tabs';
-import { useActivityJob } from '../../queries';
+import { useActivityJob } from '../../queries/activities';
 import { CandidateReviewPanel } from '../candidate-review-panel';
 
 const RUNNING = ['queued', 'preparing', 'submitting', 'accepted', 'running'];

@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { ResourcesWorkspace } from '@/app/features/resources/resources-workspace';
+import { ResourcesWorkspace } from '@/app/workspaces/resources/resources-workspace';
 import { Spinner } from '@/app/components/ui/spinner';
 
 export function ResourcesClient() {

@@ -1,0 +1,29 @@
+/*
+ * 世界独立配置页：单栏文档流 + 右侧 AI 辅助栏。
+ * 只补原生控件在本页需要的细节，布局与层级仍由 Tailwind 语义 token 承担。
+ */
+
+.wa-page details > summary {
+  cursor: pointer;
+}
+
+.wa-page details > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+.wa-page input[type='time'] {
+  font-variant-numeric: tabular-nums;
+}
+
+.wa-page ::selection {
+  background: var(--selection-bg);
+  color: var(--selection-fg);
+}
+
+@media (max-width: 1279px) {
+  .wa-page aside {
+    position: static;
+  }
+}

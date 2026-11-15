@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import {
   Check,
   Plus,
-  RefreshCw,
   Trash2,
 } from 'lucide-react';
 import type {
@@ -18,6 +17,7 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
+import { FormField } from '@/app/components/ui/form-field';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   deletePurposeBinding,
@@ -130,10 +130,6 @@ export function PurposesPanel({
           为各个业务应用指定默认的文本推理模型与视觉多模态模型；支持针对特定用途配置粒度覆盖。
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
-            <RefreshCw className="h-4 w-4" />
-            刷新
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -182,10 +178,10 @@ export function PurposesPanel({
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor={`assignment-text-${app.id}`} className="block text-xs font-semibold text-ink mb-1.5">
-                      默认文本推理模型 (Primary Text Model)
-                    </label>
+                  <FormField
+                    label="默认文本推理模型 (Primary Text Model)"
+                    htmlFor={`assignment-text-${app.id}`}
+                  >
                     <Select
                       id={`assignment-text-${app.id}`}
                       value={selection.textProfileId ?? ''}
@@ -198,11 +194,11 @@ export function PurposesPanel({
                         </option>
                       ))}
                     </Select>
-                  </div>
-                  <div>
-                    <label htmlFor={`assignment-vision-${app.id}`} className="block text-xs font-semibold text-ink mb-1.5">
-                      多模态与视觉模型 (Vision / Multimodal)
-                    </label>
+                  </FormField>
+                  <FormField
+                    label="多模态与视觉模型 (Vision / Multimodal)"
+                    htmlFor={`assignment-vision-${app.id}`}
+                  >
                     <Select
                       id={`assignment-vision-${app.id}`}
                       value={selection.multimodalProfileId ?? ''}
@@ -215,7 +211,7 @@ export function PurposesPanel({
                         </option>
                       ))}
                     </Select>
-                  </div>
+                  </FormField>
                 </div>
 
                 {/* 特定用途覆盖列表 */}
@@ -231,7 +227,7 @@ export function PurposesPanel({
                             className="flex items-center justify-between p-2.5 text-xs"
                           >
                             <div className="flex items-center gap-2">
-                              <Badge variant="outline">{p.purposeKey}</Badge>
+                              <Badge variant="outline">{p.appId === 'story-worlds' && p.purposeKey === 'authoring' ? '设定建议' : p.purposeKey}</Badge>
                               <span className="text-muted">&rarr;</span>
                               <span className="font-mono text-ink font-medium">
                                 {targetModel ? targetModel.name : p.targetId}
@@ -266,8 +262,7 @@ export function PurposesPanel({
         className="max-w-md"
       >
         <form onSubmit={handleCreatePurposeBinding} className="space-y-4">
-          <div>
-            <label htmlFor="purpose-binding-app" className="block text-xs font-semibold text-ink mb-1">目标应用</label>
+          <FormField label="目标应用" htmlFor="purpose-binding-app" required>
             <Select
               id="purpose-binding-app"
               value={bindingAppId}
@@ -280,19 +275,21 @@ export function PurposesPanel({
                 </option>
               ))}
             </Select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">用途标识 (purposeKey)</label>
+          </FormField>
+          <FormField label="用途标识 (purposeKey)" required hint={bindingAppId === 'story-worlds' ? '设定建议使用 authoring；不单独绑定时继承故事世界的文本模型。' : '业务模块在调用公共 AI 内核时指定的特定用途名称。'}>
             <Input
               value={bindingPurpose}
               onChange={(e) => setBindingPurpose(e.target.value)}
               placeholder="e.g. story:dsh / activities:chat / research:synthesize"
               required
             />
-            <p className="text-2xs text-muted mt-1">业务模块在调用公共 AI 内核时指定的特定用途名称。</p>
-          </div>
-          <div>
-            <label htmlFor="purpose-binding-target" className="block text-xs font-semibold text-ink mb-1">绑定模型</label>
+            {bindingAppId === 'story-worlds' && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setBindingPurpose('authoring')}>
+                使用“设定建议”用途
+              </Button>
+            )}
+          </FormField>
+          <FormField label="绑定模型" htmlFor="purpose-binding-target" required>
             <Select
               id="purpose-binding-target"
               value={bindingTargetId}
@@ -305,7 +302,7 @@ export function PurposesPanel({
                 </option>
               ))}
             </Select>
-          </div>
+          </FormField>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" type="button" onClick={() => setBindingOpen(false)}>
               取消

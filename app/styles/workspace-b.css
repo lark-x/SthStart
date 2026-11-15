@@ -1,4 +1,33 @@
-/* Single source for shared B geometry; palettes never select layouts. */
+/*
+ * ============================================================================
+ * SthStart 工作台公共几何与表面分层（Workspace B Geometry & Surfaces）
+ * ============================================================================
+ *
+ * 架构职责：
+ * 1. 单一几何事实来源（Single source of truth for B geometry）；调色板只负责颜色，不决定布局。
+ * 2. 向上为 AppShell 和各业务工作台提供标准圆角、外框尺寸、分栏间距基准。
+ * 3. 承接基础控件在工作台上下文下的 ARIA 与焦点状态收敛。
+ * 4. 为持续操作的多栏工作台（Creative、Notebook、Settings）分配可用视口和独立表面。
+ *
+ * 依赖层级：
+ * - 引入位置：app/globals.css（在 theme.css 之后，业务样式之前）
+ * - 优先级关系：低于业务 module.css，高于 Tailwind 基础通用类
+ *
+ * ----------------------------------------------------------------------------
+ * 分层结构（Layering Architecture）：
+ * - Layer 1: 几何设计 Token 与布局常量（Geometry Tokens & Layout Constants）
+ * - Layer 2: 通用交互原语规范（Common Primitives: Page Tabs & Tooltips）
+ * - Layer 3: 侧栏收起态与移动端抽屉几何（Sidebar Collapsed & Drawer Geometry）
+ * - Layer 4: 共享独立表面与多栏可拖拽手柄（Shared Surfaces & Split-Panes）
+ * - Layer 5: 业务工作台布局与分栏适配（Feature Workspaces: Creative / Notebook / Settings）
+ * - Layer 6: 响应式视口密度与断点微调（Responsive Breakpoints & Density）
+ * ----------------------------------------------------------------------------
+ */
+
+/* ============================================================================
+ * Layer 1: 几何设计 Token 与布局常量
+ * 职责：定义全局控制圆角、面板圆角、对话框圆角及外框/工作台关键度量。
+ * ============================================================================ */
 @theme static {
   --radius-control: 8px;
   --radius-panel: 12px;
@@ -6,20 +35,25 @@
 }
 :root {
   --shell-sidebar: 224px;
-  --shell-sidebar-collapsed: 76px;
-  --shell-topbar: 48px;
-  --shell-topbar-mobile: 52px;
-  --shell-gutter: 24px;
-  --shell-gutter-lg: 32px;
+  --shell-sidebar-collapsed: 56px;
+  --shell-topbar: 56px;
+  --shell-topbar-mobile: 56px;
+  --shell-gutter: 20px;
+  --shell-gutter-lg: 20px;
   --shell-gutter-sm: 16px;
   --shell-reading: 760px;
-  --shell-content-max: 1440px;
-  --shell-settings-max: 1080px;
+  --shell-content-max: 1920px;
+  --shell-settings-max: 1440px;
   --shell-aside: 320px;
-  --workspace-list-width: 288px;
+  --workspace-list-width: 320px;
   --workspace-panel-gap: 16px;
 }
 
+/* ============================================================================
+ * Layer 2: 通用交互原语规范
+ * 职责：页级标签与局部标签规范（data-variant="page" | "local"）、全局导航 Tooltip。
+ * 保留键盘导航与无障碍指示条（active::after）。
+ * ============================================================================ */
 /* Same keyboard/ARIA contract, two deliberate visual scopes. */
 .page-tabs[data-variant] {
   display: inline-flex;
@@ -32,9 +66,20 @@
   overflow-x: auto;
   overflow-y: hidden;
   scroll-padding-inline: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.page-tabs[data-variant]::-webkit-scrollbar {
+  display: none;
 }
 .page-tabs[data-variant='page'] { padding: 0; border-radius: 0; background: transparent; }
-.page-tabs[data-variant='local'] { padding: 4px; border-radius: var(--radius-control); background: var(--surface-sunken); }
+.page-tabs[data-variant='local'] {
+  padding: 4px;
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--fg-default) 7%, transparent),
+    0 0 0 1px var(--hairline);
+}
 .page-tabs[data-variant] > [role='tab'] {
   flex: 0 0 auto;
   min-height: 40px;
@@ -42,11 +87,50 @@
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
+  transition: background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
-.page-tabs[data-variant='page'] > [aria-selected='true'] { background: var(--surface-raised); box-shadow: var(--elev-xs); }
 .page-tabs[data-variant='local'] > [role='tab'] { min-height: 32px; padding: 4px 12px; }
-.page-tabs[data-variant='local'] > [aria-selected='true'] { background: var(--surface); box-shadow: var(--elev-xs); }
-.page-tabs[data-variant] > [role='tab']:hover:not(:disabled) { background: var(--surface-hover); }
+.page-tabs[data-variant='local'].w-full {
+  display: flex;
+  width: 100%;
+}
+.page-tabs[data-variant='local'].w-full > [role='tab'] {
+  flex: 1 1 0%;
+  min-width: 0;
+  justify-content: center;
+  padding-inline: 8px;
+}
+.page-tabs[data-variant] > [role='tab']:active:not(:disabled) { transform: scale(0.98); }
+.page-tabs[data-variant] > [role='tab']:hover:not(:disabled, [aria-selected='true']) { background: var(--surface-hover); }
+.page-tabs[data-variant] > [aria-selected='true'] { color: var(--selection-fg); font-weight: 600; }
+.page-tabs[data-variant='local'] > [aria-selected='true'] {
+  background: var(--surface-raised);
+  box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline);
+}
+.page-tabs[data-variant] > [role='tab'] { position: relative; }
+.page-tabs[data-variant='page'] > [aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: translateX(-50%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .page-tabs[data-variant='page'] > [aria-selected='true']::after {
+    animation: page-tab-indicator-in var(--motion-base) var(--motion-ease) both;
+  }
+}
+.page-tabs[data-variant] > [role='tab']:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
 @media (max-width: 767px) {
   .page-tabs[data-variant] > [role='tab'] { min-height: 40px; }
 }
@@ -65,27 +149,46 @@
   pointer-events: none;
 }
 
-.shell-sidebar[data-collapsed='true'] .shell-nav { flex: 1 1 auto; width: 100%; }
-.shell-sidebar[data-collapsed='true'] :is(.shell-nav-group, .shell-nav-list) { align-items: center; gap: 4px; }
-.shell-sidebar[data-collapsed='true'] .shell-sidebar-foot .shell-command-action { width: 44px; min-height: 44px; padding: 0; }
-.shell-drawer .shell-collapse-btn { display: none; }
+/* ============================================================================
+ * Layer 3: 侧栏收起态与移动端抽屉几何
+ * 职责：收起状态下居中图标按钮与底部操作宽度覆盖；移动抽屉导航满宽与间距。
+ * ============================================================================ */
+html[data-nav-collapsed='true'] .shell-sidebar .shell-nav { flex: 1 1 auto; width: 100%; }
+html[data-nav-collapsed='true'] .shell-sidebar :is(.shell-nav-group, .shell-nav-list) { align-items: center; gap: 4px; }
+html[data-nav-collapsed='true'] .shell-sidebar .shell-sidebar-foot .shell-command-action { width: 44px; min-height: 44px; padding: 0; }
+.shell-drawer .shell-sidebar-collapse-btn { display: none; }
 .shell-drawer .shell-nav { flex: 1 0 auto; overflow: visible; }
 .shell-drawer .shell-nav-link { min-height: 44px; }
 
+/* ============================================================================
+ * Layer 4: 共享独立表面与多栏可拖拽手柄
+ * 职责：为通用页面模板与卡片赋予独立表面、圆角与精密发丝线轮廓（hairline）；
+ *       多栏分栏留出标准面板间隙，拖拽手柄交互反馈（hover/focus/dragging）。
+ * ============================================================================ */
 /* Independent surfaces apply to every shared page template and workbench. */
 .tpl-panel,
+.home-card,
 .shell-root .home-card {
   min-width: 0;
   border: 0;
   border-radius: var(--radius-panel);
   background: var(--surface);
-  box-shadow: var(--elev-xs);
+  box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline);
+  transition: box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+:is(a.home-card, button.home-card, .home-card-interactive):hover {
+  box-shadow: var(--elev-sm), 0 0 0 1px var(--border-default);
 }
 .shell-root .tpl-panel .tpl-panel { border-radius: 0; background: transparent; box-shadow: none; }
-.shell-root .tpl-title-icon { width: 32px; height: 32px; border-radius: var(--radius-control); background: transparent; color: var(--fg-muted); }
-.shell-root .tpl-title { line-height: 1.35; letter-spacing: -0.025em; }
+
+/* 暗色主题的卡片补一条顶边发丝高光，区分画布、容器与浮起表面。 */
+html[data-theme='dark-espresso'] :is(.tpl-panel, .home-card),
+html[data-theme='dark-obsidian'] :is(.tpl-panel, .home-card) {
+  box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline), inset 0 1px 0 rgb(255 255 255 / 5%);
+}
 .shell-root .tpl-description { margin-top: 4px; }
-.shell-root .tpl-header { padding-block: 8px 16px; }
+.shell-root .tpl-header { padding-block: 8px; }
 .shell-root .split-panes { gap: var(--workspace-panel-gap); }
 .shell-root .split-panes > :not(.split-pane-handle):not(.fixed) { min-width: 0; min-height: 0; }
 
@@ -97,6 +200,13 @@
 .shell-root [data-pane-dragging='true'] > .split-pane-handle > div { opacity: 1; }
 .shell-root .split-pane-handle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -4px; }
 
+/* ============================================================================
+ * Layer 5: 业务工作台布局与分栏适配
+ * 职责：
+ * - Creative: 制作生成器配置面板与结果预览独立表面与内边距
+ * - Notebook: 笔记工作区桌面双栏宽度锁、折叠态隐藏、双表面色差（surface vs surface-raised）
+ * - Settings: 设置中心双栏网格、侧边分类栏与主表单浮起表面
+ * ============================================================================ */
 /* Generator configuration and results each have one working surface. */
 .shell-root .creative-split > :not(.split-pane-handle):not(.fixed) {
   border: 0;
@@ -123,26 +233,6 @@
 .notebook-workspace-shell .notebook-master-pane > :not(.notebook-master-list) { flex-shrink: 0; }
 .notebook-workspace-shell .notebook-master-list { min-height: 0; overscroll-behavior: contain; }
 
-/* Lists stay in normal document flow, with separate cards on the desk. */
-.project-library { max-width: 1440px; gap: 24px; padding: 16px 24px 24px; }
-.project-library-tools { gap: 16px; padding-block: 4px; border: 0; }
-.project-library-tools > input { flex: 1 1 240px; }
-.project-library-tools > select { width: auto; min-width: 144px; flex: 0 1 176px; }
-.project-library-grid { gap: 20px; }
-.project-library-card {
-  min-height: 224px;
-  padding: 24px;
-  border: 0;
-  border-radius: var(--radius-panel);
-  background: var(--surface-raised);
-  box-shadow: var(--elev-xs);
-  transition: background-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
-}
-.project-library-card:hover { background: var(--surface); box-shadow: var(--elev-sm); }
-.project-library-card h2 { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
-.project-library-card > p { margin-block: 12px 24px; line-height: 1.8; }
-.project-library-card > div:last-child { border: 0; gap: 8px 16px; padding-top: 16px; }
-
 /* Settings retain natural form scrolling; layout owns explicit surface roles. */
 .settings-workspace-grid { gap: var(--workspace-panel-gap); align-items: start; }
 .settings-workspace-sidebar {
@@ -155,14 +245,17 @@
   padding: 24px;
   border-radius: var(--radius-panel);
   background: var(--surface-raised);
-  box-shadow: var(--elev-xs);
+  box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline);
 }
 .shell-content[data-section='settings'] .settings-navigation-link { font-size: 14px; border-radius: var(--radius-control); }
 .shell-content[data-section='settings'] .tpl-container { padding-top: 0; }
 
+/* ============================================================================
+ * Layer 6: 响应式视口密度与断点微调
+ * 职责：大屏（>=1536px）放宽列表；中屏（<1024px）工具栏与快捷键触控优化；小屏（<640px）表单边距收拢。
+ * ============================================================================ */
 @media (min-width: 1536px) {
-  :root { --workspace-panel-gap: 20px; --workspace-list-width: 304px; }
-  .project-library { padding-inline: 32px; }
+  :root { --workspace-list-width: 336px; }
 }
 @media (max-width: 1023px) {
   .shell-toolbar-inner { background: var(--bg-app); }
@@ -170,9 +263,5 @@
   .settings-workspace-sidebar { padding: 8px; }
 }
 @media (max-width: 639px) {
-  .project-library { padding: 16px; }
-  .project-library-grid { gap: 16px; }
-  .project-library-tools > input { flex-basis: 100%; max-width: none; }
-  .project-library-card { min-height: 192px; padding: 20px; }
   .settings-workspace-content { padding: 16px; }
 }

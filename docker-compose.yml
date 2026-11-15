@@ -40,6 +40,7 @@ services:
       - STHSTART_AKASHA_MCP_URL=${STHSTART_AKASHA_MCP_URL:-https://agent.zlb.ink/api/mcp/}
       - STHSTART_AKASHA_MCP_KEY=${STHSTART_AKASHA_MCP_KEY:-}
       - STHSTART_MCP_TIMEOUT_MS=${STHSTART_MCP_TIMEOUT_MS:-45000}
+      - STHSTART_TAVILY_API_KEY=${STHSTART_TAVILY_API_KEY:-}
 
       # 容器内凭据存储：容器没有系统密钥环（D-Bus / Secret Service），管理端保存供应商
       # 密钥时会启用 cross-keychain 的加密文件后端，凭据加密后写入挂载的 ./data 目录。

@@ -3,6 +3,7 @@
 import { FileAudio, Pin, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ArtifactDescriptor } from '@sthstart/contracts';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { formatDate } from '../types';
 
 export function GalleryCard({
@@ -77,26 +78,23 @@ export function GalleryCard({
       </div>
 
       <div className="flex items-center justify-end gap-1 px-2 pb-2 pt-1">
-        <button
-          type="button"
+        <IconButton
+          icon={Pin}
+          label={artifact.pinned ? '取消固定' : isVideo ? '固定视频' : '固定图片'}
+          size="sm"
+          variant={artifact.pinned ? 'secondary' : 'ghost'}
+          iconClassName={artifact.pinned ? 'fill-current text-accent' : undefined}
           onClick={() => void onPin(artifact)}
-          className={`flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken/80 transition-colors ${
-            artifact.pinned ? 'text-accent' : ''
-          }`}
-          aria-label={artifact.pinned ? '取消固定' : isVideo ? '固定视频' : '固定图片'}
           title={artifact.pinned ? '取消固定' : '固定到媒体库顶部'}
-        >
-          <Pin className={`h-3.5 w-3.5 ${artifact.pinned ? 'fill-current text-accent' : ''}`} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
+        />
+        <IconButton
+          icon={Trash2}
+          label={isVideo ? '删除视频' : '删除图片'}
+          size="sm"
+          variant="danger-ghost"
           onClick={() => void onDelete(artifact)}
-          className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-danger/10 hover:text-danger active:bg-danger/15 transition-colors"
-          aria-label={isVideo ? '删除视频' : '删除图片'}
           title="删除素材"
-        >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
+        />
       </div>
     </article>
   );

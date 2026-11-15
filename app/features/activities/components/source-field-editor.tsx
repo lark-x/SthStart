@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import type { SourceRef } from '@sthstart/contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { fetchActivity, fetchDraft, fetchImageConfigDraft, saveDraft, commitDraft, commitImageConfigRevision } from '../api';
+import { fetchActivity, fetchDraft, saveDraft, commitDraft } from '@/app/features/activities/api/activities';
+import { fetchImageConfigDraft, commitImageConfigRevision } from '@/app/features/activities/api/images';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';

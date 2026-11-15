@@ -7,7 +7,7 @@ import {
 import {
   buildStructuredSystemPrompt, parseStructuredOptimization, STRUCTURED_ERROR_CODES,
 } from './activities/image-prompt-structured.js';
-import { PARITY_KNOWLEDGE_ITEMS } from './activities/image-prompt-knowledge-data.js';
+import { PARITY_KNOWLEDGE_ADULT_ITEMS, PARITY_KNOWLEDGE_ITEMS } from './activities/image-prompt-knowledge-data.js';
 
 test('the trimmed vocabulary records its source, version and content hash', () => {
   const info = knowledgeDatasetInfo();
@@ -16,8 +16,39 @@ test('the trimmed vocabulary records its source, version and content hash', () =
   assert.match(info.contentHash, /^[0-9a-f]{64}$/);
   assert.match(info.datasetVersion, /^linshe-parity-1\+[0-9a-f]{8}$/);
   assert.ok(info.itemCount > 0 && info.tagCount > 0);
+  assert.equal(info.adultItemCount, PARITY_KNOWLEDGE_ADULT_ITEMS.length);
+  assert.ok(info.adultItemCount > 0 && info.adultTagCount > 0);
+  assert.match(info.adultDatasetVersion, /^linshe-parity-adult-1\+[0-9a-f]{8}$/);
+  assert.match(info.adultContentHash, /^[0-9a-f]{64}$/);
   // 成人专用类别必须已被裁剪，且裁剪后不残留任何 adult_ 前缀条目。
   assert.equal(PARITY_KNOWLEDGE_ITEMS.some((item) => item.category.startsWith('adult_')), false);
+  assert.ok(PARITY_KNOWLEDGE_ADULT_ITEMS.every((item) => item.category.startsWith('adult_')));
+});
+
+test('adult vocabulary is absent by default and participates only after opt-in', () => {
+  const query = '银色微型比基尼 链条 金色链条情趣内衣';
+  const safe = retrieveImagePromptKnowledge(query, { mode: 'keyword', limit: 80 });
+  const optedIn = retrieveImagePromptKnowledge(query, { mode: 'keyword', limit: 80, includeAdult: true });
+  assert.equal(safe.items.some((item) => item.category.startsWith('adult_')), false);
+  assert.ok(optedIn.items.some((item) => item.category.startsWith('adult_')));
+  assert.match(optedIn.note, /成人专用词表/);
+});
+
+test('adult entries obey negation and category quotas like the safe set', () => {
+  const query = '银色微型比基尼 反转兔女郎 中国旗袍 魅魔套装 裸体围裙';
+  const items = retrieveImagePromptKnowledge(query, { mode: 'keyword', limit: 80, includeAdult: true }).items;
+  const clothing = items.filter((item) => item.category === 'adult_clothing_vocabulary');
+  assert.ok(clothing.length > 2, 'fixture must expose more adult clothing candidates than the quota');
+  const selection = selectExecutableTagsForScope(query, clothing, { scope: 'actor:a', limit: 20 });
+  const counts = new Map<string, number>();
+  for (const item of selection.selected) counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
+  assert.ok((counts.get('adult_clothing_vocabulary') ?? 0) <= 2);
+
+  const negatedItem = clothing[0];
+  const negatedTag = negatedItem.executableTags[0];
+  const negated = selectExecutableTagsForScope(`没有${negatedTag.label}`, [negatedItem], { scope: 'actor:a', limit: 20 });
+  assert.equal(negated.selected.some((item) => item.tag === negatedTag.tag), false);
+  assert.ok(negated.removedTags.some((item) => /否定/.test(item.reason)));
 });
 
 test('keyword retrieval marks itself keyword and refuses vector or hybrid', () => {

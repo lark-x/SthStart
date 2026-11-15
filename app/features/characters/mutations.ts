@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { characterKeys } from '@/app/lib/query-keys';
+import { characterKeys } from './query-keys';
 import {
   createCharacter,
   updateCharacter,

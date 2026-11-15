@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { extname } from 'node:path';
 import type { ServiceDatabase } from '../database.js';
 import { mimeToExt } from '../artifacts.js';
+import { hasArtifactAccess } from '../artifacts.js';
 import { uploadWorkerInput } from '../worker.js';
 import { generationError, sanitizeErrorMessage } from './errors.js';
 
@@ -133,7 +134,9 @@ export function validateInputArtifacts(
       'SELECT id, app_id, local_path, content_type, byte_size, file_status FROM artifacts WHERE id = ?',
     ).get(input.artifactId) as { id: string; app_id: string; local_path: string | null; content_type: string | null; byte_size: number; file_status: string } | undefined;
     if (!row) throw generationError('input_artifact_not_found', `输入媒体 ${input.artifactId} 不存在。`);
-    if (row.app_id !== appId) throw generationError('input_artifact_access_denied', '输入媒体不属于当前应用。');
+    if (!hasArtifactAccess(database, input.artifactId, appId, 'reference')) {
+      throw generationError('input_artifact_access_denied', '输入媒体未授权给当前应用。');
+    }
     if (row.file_status !== 'ready' || !row.local_path) throw generationError('input_artifact_unavailable', '输入媒体当前不可用。');
     validateCapability(input, row, inputCapabilities);
   }
@@ -181,9 +184,18 @@ export async function prepareInputArtifacts(
 
   for (const input of parsedRequest.inputArtifacts) {
     const artifact = database.connection.prepare(
-      'SELECT id, local_path, content_type, byte_size, original_name, sha256, file_status FROM artifacts WHERE id = ? AND app_id = ?',
-    ).get(input.artifactId, String(taskRow.app_id)) as { id: string; local_path: string | null; content_type: string | null; byte_size: number; original_name: string | null; sha256: string | null; file_status: string } | undefined;
-    if (!artifact || artifact.file_status !== 'ready' || !artifact.local_path) throw generationError('input_artifact_unavailable', '输入媒体当前不可用。');
+      'SELECT id, app_id, local_path, content_type, byte_size, original_name, sha256, file_status FROM artifacts WHERE id = ?',
+    ).get(input.artifactId) as {
+      id: string; app_id: string; local_path: string | null; content_type: string | null;
+      byte_size: number; original_name: string | null; sha256: string | null; file_status: string;
+    } | undefined;
+    if (!artifact) {
+      throw generationError('input_artifact_not_found', `输入媒体 ${input.artifactId} 不存在。`);
+    }
+    if (!hasArtifactAccess(database, input.artifactId, String(taskRow.app_id), 'reference')) {
+      throw generationError('input_artifact_access_denied', '输入媒体未授权给当前应用。');
+    }
+    if (artifact.file_status !== 'ready' || !artifact.local_path) throw generationError('input_artifact_unavailable', '输入媒体当前不可用。');
     const fileStats = await stat(artifact.local_path).catch(() => null);
     if (!fileStats?.isFile()) throw generationError('input_artifact_missing_file', '输入媒体文件已不存在。');
     const contentType = artifact.content_type?.split(';')[0].trim().toLowerCase() || 'image/png';

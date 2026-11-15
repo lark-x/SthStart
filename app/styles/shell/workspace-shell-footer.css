@@ -1,0 +1,19 @@
+/*
+ * SthStart Shell 样式职责拆分 - 工作台底部吸底操作条与减弱动效适配
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+@media (prefers-reduced-motion: reduce) {
+  .shell-sidebar, .shell-nav-link, .shell-nav-chevron, .shell-nav-icon-wrap, .shell-brand, .shell-command-action, .shell-collapse-btn, .desk-capsule-btn, .desk-directory-filter, .desk-directory-icon, .desk-directory-arrow { transition: none; }
+  .desk-capsule-btn:active, .desk-directory-filter:active, .shell-collapse-btn:active { transform: none; }
+}
+
+.tpl-workspace-shell { height: var(--shell-workspace-height, 100dvh); }
+.tpl-workspace-shell.fixed { height: 100dvh; }
+
+/* Compact page tools keep the task in the first mobile viewport. */
+@media (max-width: 639px) {
+  .tpl-header-compact .tpl-header-main { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .tpl-header-compact .tpl-header-main > :first-child { flex: 1 1 120px; }
+  .tpl-header-compact .tpl-description { display: none; }
+  .tpl-header-compact .tpl-actions { gap: 6px; }
+}

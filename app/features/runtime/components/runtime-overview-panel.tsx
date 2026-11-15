@@ -1,10 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Play, Square, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Play, Square, ExternalLink } from 'lucide-react';
 import type { RuntimeOverview } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
+import { Alert } from '@/app/components/ui/alert';
+import { Button as LinkButton } from '@mantine/core';
+import Link from 'next/link';
 
 export function RuntimeOverviewPanel({
   overview,
@@ -24,9 +27,13 @@ export function RuntimeOverviewPanel({
   const allRunning = services.length > 0 && services.every((s) => s.state === 'running');
   const anyRunning = runningServices.length > 0;
   const isLinsheRunning = services.find((s) => s.id === 'linshe')?.state === 'running';
+  const healthPercent = services.length > 0
+    ? Math.round((runningServices.length / services.length) * 100)
+    : 0;
+  const healthFill = allRunning ? 'bg-success' : anyRunning ? 'bg-warning' : 'bg-muted';
 
   return (
-    <div className="grid grid-cols-1 gap-6 border-y border-border-subtle py-6 md:grid-cols-[minmax(0,1fr)_14rem]">
+    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <section className="min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold tracking-[0.06em] text-muted">运行栈状态</span>
@@ -61,52 +68,69 @@ export function RuntimeOverviewPanel({
                 <span>全部停止</span>
               </Button>
 
-              <a
+              <LinkButton
+                component={Link}
                 href={launchUrl}
                 target={isLinsheRunning ? '_blank' : undefined}
                 rel="noreferrer"
-                className="ml-auto inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-ink"
+                variant="subtle"
+                size="sm"
+                className="ml-auto"
+                rightSection={<ExternalLink className="h-4 w-4" aria-hidden="true" />}
               >
                 <span>打开邻舍界面</span>
-                <ExternalLink className="h-4 w-4" aria-hidden="true" />
-              </a>
+              </LinkButton>
             </div>
 
             {overview && !overview.linsheHosted.ready && (
-              <div className="mt-4 flex items-start gap-2.5 border-l-2 border-warning-border bg-warning-bg/35 p-3 text-sm text-ink">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning-fg" />
-                <div>
-                  <span className="font-semibold">邻舍托管配置未完全就绪：</span>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                    {overview.linsheHosted.missing.map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                </div>
-              </div>
+              <Alert variant="warning" title="邻舍托管配置未完全就绪" className="mt-4">
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {overview.linsheHosted.missing.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </Alert>
             )}
         </section>
 
-        <aside className="flex flex-col justify-between border-t border-border-subtle pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-          <div>
+        <aside className="rounded-panel border border-border-subtle bg-surface-sunken/50 p-4">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-muted">服务健康度</span>
-            <div className="mt-2 text-5xl font-semibold tracking-tight text-ink">
-              {runningServices.length}
-              <span className="text-xl text-muted font-sans font-normal"> / {services.length}</span>
-            </div>
-            <p className="mt-1 text-sm text-muted">当前运行中服务</p>
+            <span className="text-xs font-semibold tabular-nums text-muted">{healthPercent}%</span>
+          </div>
+          <div className="mt-2 text-4xl font-semibold tracking-tight text-ink">
+            {runningServices.length}
+            <span className="text-lg text-muted font-sans font-normal"> / {services.length}</span>
+          </div>
+          <p className="mt-1 text-sm text-muted">当前运行中服务</p>
+
+          <div
+            role="progressbar"
+            aria-label="服务运行比例"
+            aria-valuemin={0}
+            aria-valuemax={services.length || 1}
+            aria-valuenow={runningServices.length}
+            aria-valuetext={`${runningServices.length} / ${services.length} 项服务运行中`}
+            className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink/8"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-[var(--motion-base)] ${healthFill}`}
+              style={{ width: `${healthPercent}%` }}
+            />
           </div>
 
-          <div className="mt-5 space-y-2 border-t border-border-subtle pt-4 text-sm text-muted">
-            <div className="flex justify-between">
-              <span>最近异常:</span>
-              <span className={`font-semibold ${overview?.recentErrors ? 'text-danger' : 'text-success'}`}>
+          <dl className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-control border border-border-subtle bg-surface/70 px-2.5 py-2">
+              <dt className="text-xs text-muted">最近异常</dt>
+              <dd className={`mt-0.5 text-base font-semibold tabular-nums ${overview?.recentErrors ? 'text-danger-fg' : 'text-ink'}`}>
                 {overview?.recentErrors ?? 0}
-              </span>
+              </dd>
             </div>
-            <div className="flex justify-between">
-              <span>丢弃日志:</span>
-              <span>{overview?.droppedLogs ?? 0}</span>
+            <div className="rounded-control border border-border-subtle bg-surface/70 px-2.5 py-2">
+              <dt className="text-xs text-muted">丢弃日志</dt>
+              <dd className="mt-0.5 text-base font-semibold tabular-nums text-ink">
+                {overview?.droppedLogs ?? 0}
+              </dd>
             </div>
-          </div>
+          </dl>
         </aside>
     </div>
   );

@@ -1,0 +1,172 @@
+/*
+ * SthStart 样式职责拆分 - 邻舍嵌入视图与外部外框 (Linshe embed shell)
+ * 保持 baseline 原始级联顺序，由 app/globals.css 按序引入。
+  */
+
+
+/* ---------- 邻舍嵌入视图 ---------- */
+.embed-shell {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #171d1b;
+}
+
+.embed-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px clamp(18px, 4vw, 40px);
+  border-bottom: 1px solid rgb(244 240 231 / 10%);
+  color: #f4f0e7;
+}
+
+.embed-toolbar-main,
+.embed-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.back-link {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgb(244 240 231 / 16%);
+  border-radius: 50%;
+  color: #f4f0e7;
+  font-size: 18px;
+}
+
+.embed-actions button,
+.embed-actions a,
+.secondary-action {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 1px solid rgb(244 240 231 / 18%);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: #f4f0e7;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.embed-actions .embed-disabled-link {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  padding: 0 15px;
+  border: 1px solid rgb(244 240 231 / 10%);
+  border-radius: 8px;
+  color: #7f8b86;
+  font-size: 12px;
+}
+
+.embed-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #b6bfbb;
+  font-size: 12px;
+}
+
+.embed-stage {
+  position: relative;
+  min-height: 0;
+}
+
+.linshe-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 78px);
+  min-height: calc(100dvh - 78px);
+  border: 0;
+  background: white;
+}
+
+/*
+ * 嵌入外框固定使用深色画布 #171d1b，不随四套门户主题切换。共享空态
+ * （EmptyState / Alert / Badge）读的是主题语义 token，在浅色主题下会把
+ * 深色文字画到这块深底上（实测 1.08–2.34:1）。这里只在空态子树内把
+ * 语义 token 桥接到外框自身的取值：组件内部实现变化也不会再漏出深色文字，
+ * iframe 子页面与外部服务不受影响，门户其他路由也不继承这组覆盖。
+ */
+.embed-empty {
+  --embed-canvas: #171d1b;
+  --embed-foreground: #f4f0e7;
+  --embed-foreground-muted: #b6bfbb;
+  --embed-surface-sunken: #252e2a;
+
+  --ink: var(--embed-foreground);
+  --muted: var(--embed-foreground-muted);
+  --fg-default: var(--embed-foreground);
+  --fg-muted: var(--embed-foreground-muted);
+  --fg-subtle: var(--embed-foreground-muted);
+  --surface: var(--embed-surface-sunken);
+  --surface-raised: var(--embed-surface-sunken);
+  --surface-sunken: var(--embed-surface-sunken);
+  --surface-hover: rgb(244 240 231 / 8%);
+  --border-subtle: rgb(244 240 231 / 14%);
+  --border-default: rgb(244 240 231 / 22%);
+  --hairline: rgb(244 240 231 / 10%);
+  --success-fg: #7fd4ab;
+  --warning-fg: #f4c463;
+  --warning-bg: rgb(244 196 99 / 14%);
+  --danger-fg: #f59a92;
+  --info-fg: #93bcf8;
+
+  --mantine-color-text: var(--embed-foreground);
+  --mantine-color-dimmed: var(--embed-foreground-muted);
+  --mantine-color-body: var(--embed-canvas);
+  /* Alert 的默认 light 变体读 primary 浅底与浅底前景，同样按外框取值。 */
+  --mantine-primary-color-light: rgb(244 240 231 / 8%);
+  --mantine-primary-color-light-color: var(--embed-foreground);
+
+  display: grid;
+  min-height: calc(100vh - 78px);
+  min-height: calc(100dvh - 78px);
+  place-items: center;
+  align-content: center;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--embed-foreground);
+}
+
+.empty-symbol {
+  display: grid;
+  width: 90px;
+  height: 90px;
+  place-items: center;
+  border-radius: 50%;
+  background: #252e2a;
+  color: #f4f0e7;
+  font-family: var(--font-serif);
+  font-size: 40px;
+  margin-bottom: 24px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+
+.system-app-badge {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 3px 7px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font: 600 12px/1.2 var(--font-sans);
+  vertical-align: middle;
+}

@@ -3,7 +3,35 @@ import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { ServiceDatabase, SERVICE_DATABASE_MIGRATIONS, migrateDatabase, nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
-import { retrieveHybridImageKnowledge, syncImageKnowledgeIndex } from './image-knowledge-index.js';
+import { retrieveHybridImageKnowledge, syncAdultImageKnowledgeIndex, syncImageKnowledgeIndex } from './image-knowledge-index.js';
+
+test('the adult corpus is never synced or queried unless a policy enables it', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const secrets = {} as SecretStore;
+  try {
+    const now = nowIso();
+    database.connection.prepare("INSERT INTO provider_profiles(id,name,kind,base_url,model,enabled,created_at,updated_at) VALUES ('vector','vector','vector','http://vector.test',NULL,1,?,?)").run(now, now);
+    const corpora: string[] = [];
+    const fetcher: typeof fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      corpora.push(String(body.corpus));
+      return String(_url).endsWith('/upsert-batch') ? Response.json({ count: body.items.length }) : Response.json({ results: [] });
+    };
+    await syncAdultImageKnowledgeIndex(database, secrets, fetcher);
+    assert.equal(corpora.length, 0, '关闭时不得发起任何成人语料请求');
+    const off = await retrieveHybridImageKnowledge(database, secrets, '银色微型比基尼', 'standalone', fetcher);
+    assert.equal(corpora.includes('image_prompt_knowledge_adult'), false);
+    assert.equal(off.items.some((item) => item.category.startsWith('adult_')), false);
+
+    database.connection.prepare(`INSERT INTO activity_image_prompt_policy_versions
+      (workflow_id,workflow_version,revision,enabled,instructions,positive_suffix,negative_prompt,created_at,output_format,knowledge_mode,adult_knowledge_enabled)
+      VALUES ('wf',1,1,1,'','','','date','tags','hybrid',1)`).run();
+    await syncAdultImageKnowledgeIndex(database, secrets, fetcher);
+    assert.ok(corpora.includes('image_prompt_knowledge_adult'));
+    assert.equal(corpora.filter((corpus) => corpus === 'image_prompt_knowledge_adult').length > 0, true);
+  } finally { database.close(); }
+});
+
 
 test('hybrid stays keyword before complete indexing, ignores stale vectors, falls back on failures', async () => {
   const database = new ServiceDatabase();
@@ -35,11 +63,15 @@ test('migration 52 preserves every old policy and permits hybrid without rewriti
   const connection = new DatabaseSync(':memory:');
   try {
     migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter(item => item.version <= 51), 'test');
-    connection.prepare("INSERT INTO activity_image_prompt_policy_versions VALUES ('wf',1,4,1,'rules','style','negative','date','tags','keyword')").run();
+    connection.prepare(`INSERT INTO activity_image_prompt_policy_versions
+      (workflow_id,workflow_version,revision,enabled,instructions,positive_suffix,negative_prompt,created_at,output_format,knowledge_mode)
+      VALUES ('wf',1,4,1,'rules','style','negative','date','tags','keyword')`).run();
     migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'test');
     const row = connection.prepare("SELECT * FROM activity_image_prompt_policy_versions WHERE revision=4").get();
     assert.equal(row?.knowledge_mode, 'keyword'); assert.equal(row?.instructions, 'rules');
-    connection.prepare("INSERT INTO activity_image_prompt_policy_versions VALUES ('wf',1,5,1,'rules','','','date','tags','hybrid')").run();
+    connection.prepare(`INSERT INTO activity_image_prompt_policy_versions
+      (workflow_id,workflow_version,revision,enabled,instructions,positive_suffix,negative_prompt,created_at,output_format,knowledge_mode)
+      VALUES ('wf',1,5,1,'rules','','','date','tags','hybrid')`).run();
     assert.equal(connection.prepare('PRAGMA integrity_check').get()?.integrity_check, 'ok');
     assert.equal(connection.prepare('PRAGMA foreign_key_check').all().length, 0);
   } finally { connection.close(); }

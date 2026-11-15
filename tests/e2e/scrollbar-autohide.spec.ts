@@ -24,10 +24,12 @@ test('scrollbars stay invisible until the reader scrolls, then hide again', asyn
   /*
    * 用确实超出一屏的页面：滚不动就收不到 scroll 事件。
    * 角色库改为卡片网格后，种子数据下首屏即可放下，不再适用；
-   * 控制中心概览不依赖库内数据，固定高出视口一屏以上。
+   * 控制中心概览不依赖库内数据；用较短的视口给实际滚动留出距离。
    */
+  await page.setViewportSize({ width: 1280, height: 640 });
   await page.goto('/settings/control-center');
   await expect(page.getByRole('heading', { level: 1, name: '控制中心' })).toBeVisible();
+  await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
   expect(
     await page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight),
     '页面必须能纵向滚动',

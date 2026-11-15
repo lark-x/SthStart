@@ -132,7 +132,7 @@ test('activity drawing keeps manual prompt overrides when returning to simple mo
   expect(created.ok()).toBeTruthy();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/apps/activities/${(await created.json()).activity.id}`);
-  await page.getByRole('button', { name: '素材制作', exact: true }).click();
+  await page.getByRole('tablist', { name: '工作台视图' }).getByRole('tab', { name: '素材制作', exact: true }).click();
   await page.getByRole('button', { name: '绘制图片', exact: true }).first().click();
   const drawer = page.getByRole('dialog', { name: '素材绘制' });
   await drawer.getByRole('button', { name: '专业模式', exact: true }).click();
@@ -234,7 +234,7 @@ test('scene and comic drawing use the same mode semantics without changing sourc
   };
   const saved = await request.put(`${service}/activities/${activity.id}/comic/draft`, { headers, data: { expectedDraftVersion: 1, document: comic } });
   expect(saved.ok(), await saved.text()).toBeTruthy();
-  await page.getByRole('button', { name: '漫画工坊', exact: true }).click();
+  await page.getByRole('tablist', { name: '工作台视图' }).getByRole('tab', { name: '漫画工坊', exact: true }).click();
   await page.getByRole('button', { name: '绘制新图', exact: true }).click();
   const comicDialog = page.getByRole('dialog', { name: '画格绘制', exact: true });
   await comicDialog.getByRole('button', { name: '专业模式', exact: true }).click();

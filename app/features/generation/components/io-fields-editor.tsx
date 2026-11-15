@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import type { DraftPayload } from '../types';
@@ -132,10 +133,9 @@ export function IoFieldsEditor({
                     <option value="mask">mask</option>
                   </Select>
                 </div>
-                <label className="flex items-center gap-2 pb-1.5 text-sm">
-                  <input type="checkbox" checked={slot.required === true} onChange={(event) => patchSlot(key, { required: event.target.checked })} />
-                  必填
-                </label>
+                <div className="pb-1.5">
+                  <Checkbox label={`必填 · ${key}`} checked={slot.required === true} onChange={(event) => patchSlot(key, { required: event.target.checked })} />
+                </div>
                 <div className="ml-auto flex items-end gap-2">
                   <div className="w-64">
                     <label htmlFor={`slot-binding-${key}`} className="mb-1 block text-sm font-medium text-ink">节点绑定</label>
@@ -180,11 +180,9 @@ export function IoFieldsEditor({
           {outputCandidates.map((nodeId) => {
             const node = draft.definition[nodeId] as { class_type?: string } | undefined;
             return (
-              <label key={nodeId} className="flex items-center gap-2 rounded-control border border-border-subtle bg-surface px-3 py-2 text-sm">
-                <input type="checkbox" checked={draft.outputDeclarations.includes(nodeId)} onChange={() => toggleOutput(nodeId)} />
-                <code>{nodeId}</code>
-                <span className="text-muted">{node?.class_type}</span>
-              </label>
+              <div key={nodeId} className="min-w-48 rounded-control border border-border-subtle bg-surface px-3 py-2 text-sm">
+                <Checkbox label={nodeId} description={node?.class_type} checked={draft.outputDeclarations.includes(nodeId)} onChange={() => toggleOutput(nodeId)} />
+              </div>
             );
           })}
         </div>

@@ -27,13 +27,13 @@ import type {
   MediaRevision,
   SlotBinding,
 } from '@sthstart/contracts';
-import {
-  useUploadActivityAsset,
-  useSaveMediaRevision,
-} from '../mutations';
-import { useActivityAssets } from '../queries';
+import { useUploadActivityAsset } from '@/app/features/activities/mutations/images';
+import { useSaveMediaRevision } from '@/app/features/activities/mutations/activities';
+import { useActivityAssets } from '@/app/features/activities/queries/images';
 import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Dialog } from '@/app/components/ui/dialog';
@@ -221,7 +221,7 @@ export function MediaWorkstation({
         accept="image/*,video/*"
       />
 
-      <label className="text-sm"><input type="checkbox" checked={reworkOnly} onChange={e=>setReworkOnly(e.target.checked)}/> 仅看待复核 / 待返工镜头（{reviewSlots.size}）</label>
+      <Checkbox label={`仅看待复核 / 待返工镜头（${reviewSlots.size}）`} checked={reworkOnly} onChange={e=>setReworkOnly(e.target.checked)}/>
       {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-panel bg-surface border border-border-default">
         <div>
@@ -331,27 +331,29 @@ export function MediaWorkstation({
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
+                    <IconButton
+                      icon={isSlotLocked ? Lock : Unlock}
+                      label={isSlotLocked ? '镜头已锁定（点击解锁）' : '锁定镜头（防止自动改写或批量替换）'}
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleToggleSlotLock(slot.id)}
                       disabled={disabled}
-                      className={`p-1 rounded transition-colors ${
+                      className={`h-7 min-h-7 w-7 ${
                         isSlotLocked ? 'text-amber-600 hover:text-amber-700' : 'text-fg-subtle hover:text-ink'
                       }`}
-                      title={isSlotLocked ? '镜头已锁定（点击解锁）' : '锁定镜头（防止自动改写或批量替换）'}
-                    >
-                      {isSlotLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                    </button>
+                      iconClassName="h-3.5 w-3.5"
+                    />
 
-                    <button
-                      type="button"
+                    <IconButton
+                      icon={Trash2}
+                      label={isSlotLocked ? '镜头已锁定，需解锁后才可删除' : '删除镜头'}
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleDeleteSlot(slot.id)}
                       disabled={disabled || isSlotLocked}
-                      className="text-fg-subtle hover:text-danger-fg transition-colors p-1 disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={isSlotLocked ? '镜头已锁定，需解锁后才可删除' : '删除镜头'}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                      className="h-7 min-h-7 w-7 text-fg-subtle hover:text-danger-fg"
+                      iconClassName="h-3.5 w-3.5"
+                    />
                   </div>
                 </div>
 

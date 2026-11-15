@@ -190,13 +190,14 @@ export function ControlCenter() {
   };
 
   return (
-    <PageContainer width="settings" className="space-y-4 py-6">
+    <PageContainer width="settings" className="space-y-4">
       <PageHeader
+        compact
+        className="control-center-header"
         title="控制中心"
-        description="统一管理邻舍主服务、ComfyUI、向量数据库与生图依赖，掌控实时日志与自启状态。"
         actions={
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => void refetch()}>
+            <Button size="sm" variant="ghost" loading={isLoading} onClick={() => void refetch()}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>刷新</span>
             </Button>
@@ -205,8 +206,33 @@ export function ControlCenter() {
             </Button>
           </div>
         }
+        navigation={
+          <PageTabs
+            variant="local"
+            ariaLabel="控制中心分区"
+            value={tab}
+            onChange={(id) => setTab(id as Tab)}
+            tabs={[
+              { id: 'overview', label: '运行总览', icon: Activity },
+              { id: 'runtime', label: '自启与服务', icon: Server },
+              { id: 'creative', label: '创作扩展', icon: Sliders },
+              { id: 'models', label: '模型接入', icon: Cpu },
+              { id: 'story-dsh', label: '创作代理', icon: BookOpen },
+              { id: 'logs', label: '实时日志', icon: Terminal },
+            ].map((item) => ({
+              id: item.id,
+              panelId: `control-panel-${item.id}`,
+              label: (
+                <>
+                  <item.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </>
+              ),
+            }))}
+          />
+        }
       />
-
+      <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
       {(errorMessage || queryError) && (
         <Alert
           variant="danger"
@@ -216,31 +242,6 @@ export function ControlCenter() {
           {errorMessage || (queryError instanceof Error ? queryError.message : String(queryError))}
         </Alert>
       )}
-
-      {/* 分区导航与其它设置页共用页级 tab（§8.12），移动端热区由 .page-tabs 统一保证。 */}
-      <PageTabs
-        variant="page"
-        ariaLabel="控制中心分区"
-        value={tab}
-        onChange={(id) => setTab(id as Tab)}
-        tabs={[
-          { id: 'overview', label: '运行总览', icon: Activity },
-          { id: 'runtime', label: '自启与服务', icon: Server },
-          { id: 'creative', label: '创作扩展', icon: Sliders },
-          { id: 'models', label: '模型接入', icon: Cpu },
-          { id: 'story-dsh', label: '创作代理', icon: BookOpen },
-          { id: 'logs', label: '实时日志', icon: Terminal },
-        ].map((item) => ({
-          id: item.id,
-          panelId: `control-panel-${item.id}`,
-          label: (
-            <>
-              <item.icon className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{item.label}</span>
-            </>
-          ),
-        }))}
-      />
 
       {isLoading && !overview && (
         <div className="space-y-4" aria-label="正在加载运行控制中心">
@@ -254,7 +255,7 @@ export function ControlCenter() {
 
       {/* Tab Panels */}
       {tab === 'overview' && (
-        <div id="control-panel-overview" role="tabpanel" className="space-y-6 animate-in fade-in" data-visual-dynamic="true">
+        <div id="control-panel-overview" role="tabpanel" className="space-y-4 animate-in fade-in" data-visual-dynamic="true">
           <RuntimeOverviewPanel
             overview={overview}
             launchUrl={launchUrl}
@@ -279,7 +280,7 @@ export function ControlCenter() {
       )}
 
       {tab === 'runtime' && (
-        <div id="control-panel-runtime" role="tabpanel" className="space-y-6 animate-in fade-in">
+        <div id="control-panel-runtime" role="tabpanel" className="space-y-4 animate-in fade-in">
           <RuntimeSettingsForm
             initialValues={overview?.settings}
             onSubmit={handleSaveSettings}
@@ -350,6 +351,7 @@ export function ControlCenter() {
         onCommit={handleCommitImport}
         loading={importMutation.isPending}
       />
+      </section>
     </PageContainer>
   );
 }

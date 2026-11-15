@@ -1,0 +1,23 @@
+/*
+ * SthStart 样式职责拆分 - 笔记桌面紧凑度微调与专注模式 (Notebook refinements & focused workspace)
+ * 保持 baseline 原始级联顺序，由 app/globals.css 按序引入。
+  */
+.notebook-icon-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
+.notebook-save-status { font-size: 12px; }
+@media (max-width: 767px) {
+  .studio-records { display: block; }
+  .studio-stages { position: static; flex-direction: row; flex-wrap: wrap; margin-bottom: 16px; }
+  .studio-stage-list { display: none; }
+  .studio-stage-mobile { display: block; flex: 1; min-width: 150px; }
+}
+
+.notebook-textarea:placeholder-shown { height: 120px; min-height: 120px; }
+
+/* 工作台高度由根容器分配，标题或页签换行不再把栏位撑出屏幕。 */
+@media (min-width: 1024px) {
+  .notebook-master-pane, .notebook-detail-pane { height: 100%; }
+}
+.notebook-focused .notebook-workspace-body { min-height: 0; overflow: hidden; }
+.notebook-focused .notebook-master-pane, .notebook-focused .notebook-detail-pane {
+  height: 100%; min-height: 0; overflow-y: auto;
+}

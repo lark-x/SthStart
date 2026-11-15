@@ -1,5 +1,6 @@
 import type { KnowledgeHit } from '@sthstart/contracts';
 import {
+  PARITY_KNOWLEDGE_ADULT_CONTENT_HASH, PARITY_KNOWLEDGE_ADULT_DATASET_VERSION, PARITY_KNOWLEDGE_ADULT_ITEMS,
   PARITY_KNOWLEDGE_CONTENT_HASH, PARITY_KNOWLEDGE_DATASET_VERSION, PARITY_KNOWLEDGE_ITEMS,
   PARITY_KNOWLEDGE_SOURCE_COMMIT, PARITY_KNOWLEDGE_SOURCE_SHA256,
   type ParityKnowledgeItem, type ParityKnowledgeTag,
@@ -60,6 +61,11 @@ export interface KnowledgeDatasetInfo {
   contentHash: string;
   itemCount: number;
   tagCount: number;
+  /** 成人专用词表的条数；默认关闭时不计入检索候选。 */
+  adultItemCount: number;
+  adultTagCount: number;
+  adultDatasetVersion: string;
+  adultContentHash: string;
 }
 
 export function knowledgeDatasetInfo(): KnowledgeDatasetInfo {
@@ -70,6 +76,10 @@ export function knowledgeDatasetInfo(): KnowledgeDatasetInfo {
     contentHash: PARITY_KNOWLEDGE_CONTENT_HASH,
     itemCount: PARITY_KNOWLEDGE_ITEMS.length,
     tagCount: PARITY_KNOWLEDGE_ITEMS.reduce((sum, item) => sum + item.executableTags.length, 0),
+    adultItemCount: PARITY_KNOWLEDGE_ADULT_ITEMS.length,
+    adultTagCount: PARITY_KNOWLEDGE_ADULT_ITEMS.reduce((sum, item) => sum + item.executableTags.length, 0),
+    adultDatasetVersion: PARITY_KNOWLEDGE_ADULT_DATASET_VERSION,
+    adultContentHash: PARITY_KNOWLEDGE_ADULT_CONTENT_HASH,
   };
 }
 
@@ -159,6 +169,8 @@ export interface KnowledgeRetrievalOptions {
   limit?: number;
   scene?: string | null;
   items?: readonly ParityKnowledgeItem[];
+  /** 是否并入成人专用词表；默认 false，只有策略显式开启时才为 true。 */
+  includeAdult?: boolean;
 }
 
 export interface KnowledgeRetrievalResult {
@@ -184,7 +196,8 @@ export function retrieveImagePromptKnowledge(
     });
   }
   const startedAt = Date.now();
-  const source = options.items ?? PARITY_KNOWLEDGE_ITEMS;
+  const source = options.items
+    ?? (options.includeAdult ? [...PARITY_KNOWLEDGE_ITEMS, ...PARITY_KNOWLEDGE_ADULT_ITEMS] : PARITY_KNOWLEDGE_ITEMS);
   const terms = tokenizeKnowledgeQuery(query);
   const scene = options.scene ?? null;
   const limit = Math.max(1, options.limit ?? 20);
@@ -214,8 +227,18 @@ export function retrieveImagePromptKnowledge(
     items: scored.slice(0, limit).map((entry) => entry.item),
     durationMs: Date.now() - startedAt,
     dataset: knowledgeDatasetInfo(),
-    note: '仅关键词召回；未使用向量库，也未与向量结果混合。',
+    note: options.includeAdult
+      ? '仅关键词召回；已按策略并入成人专用词表，未使用向量库，也未与向量结果混合。'
+      : '仅关键词召回；未使用向量库，也未与向量结果混合。',
   };
+}
+
+/**
+ * 按策略合并词表：成人集只在开关打开时并入，且始终排在安全集之后，
+ * 避免同分时成人条目挤掉通用条目。
+ */
+export function knowledgeItemsForPolicy(includeAdult: boolean): readonly ParityKnowledgeItem[] {
+  return includeAdult ? [...PARITY_KNOWLEDGE_ITEMS, ...PARITY_KNOWLEDGE_ADULT_ITEMS] : PARITY_KNOWLEDGE_ITEMS;
 }
 
 // ── 候选标签选择 ──

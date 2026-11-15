@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Input, type InputProps } from '@/app/components/ui/input';
 
 function parseTags(text: string): string[] {
   return Array.from(new Set(
@@ -22,7 +23,7 @@ export function TagsInput({
   onChange,
   className,
   ...rest
-}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
+}: Omit<InputProps, 'value' | 'onChange'> & {
   value: string[];
   onChange: (tags: string[]) => void;
 }) {
@@ -42,7 +43,7 @@ export function TagsInput({
   }
 
   return (
-    <input
+    <Input
       {...rest}
       className={className}
       value={text}

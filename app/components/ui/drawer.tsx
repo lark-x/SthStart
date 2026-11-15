@@ -1,101 +1,140 @@
 'use client';
 
-import React, { useId, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { CloseButton, Drawer as MantineDrawer } from '@mantine/core';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { useOverlayAccessibility } from './overlay';
+import { OverlayFlexScrollArea, OverlayLayer, useModalFocusContainment, useOverlayEscapeLayer, useOverlayTransitionDuration } from './overlay-policy';
+import { useWebKitReturnFocus } from './use-webkit-return-focus';
 
 export interface DrawerProps extends Omit<React.ComponentPropsWithRef<'div'>, 'title' | 'children'> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onExitTransitionEnd?: () => void;
   title: string;
   description?: string;
+  keepMounted?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
   position?: 'right' | 'bottom';
+  /**
+   * 打开抽屉的控件。指针打开时 WebKit 不聚焦按钮，传入它可保证关闭后焦点
+   * 回到真正的触发器；未传时退回指针激活追踪，再退回 activeElement。
+   */
+  invokerRef?: React.RefObject<HTMLElement | null>;
   className?: string;
 }
 
+/**
+ * Native Mantine Drawer adapter.
+ * Uses Drawer.Root + Drawer.Overlay + flex-column Drawer.Content with
+ * OverlayFlexScrollArea so Mantine's 100vh inner scroll never breaks bottom sheets
+ * or short-viewport footer visibility.
+ */
 export function Drawer({
   open,
   onOpenChange,
+  onExitTransitionEnd,
   title,
   description,
+  keepMounted,
   children,
   footer,
   position = 'right',
+  invokerRef,
   className,
+  style,
   ref,
   ...props
 }: DrawerProps) {
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  const descriptionId = useId();
+  const panelRef = useRef<HTMLElement | null>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
 
-  // 与 Dialog 共用焦点、滚动锁与关闭行为（§7.1/§7.3）；回调经 ref 稳定化，父级重渲染不重置弹层。
-  useOverlayAccessibility({
-    open,
-    onRequestClose: () => onOpenChange(false),
-    containerRef: drawerRef,
-  });
+  const requestClose = useCallback(() => onOpenChange(false), [onOpenChange]);
 
-  if (!open) return null;
+  useModalFocusContainment(open, host);
+  useWebKitReturnFocus(open, { invokerRef, containerRef: panelRef });
+  useOverlayEscapeLayer(open, requestClose, 'drawer');
+
+  const attachPanel = useCallback((node: HTMLElement | null) => {
+    panelRef.current = node;
+    setHost(node);
+    if (typeof ref === 'function') ref(node as HTMLDivElement | null);
+    else if (ref) ref.current = node as HTMLDivElement | null;
+  }, [ref]);
+
+  const transitionDuration = useOverlayTransitionDuration(180);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex"
-    >
-      <div
-        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
-        onClick={() => onOpenChange(false)}
-        aria-hidden="true"
-      />
-
-      <div
-        {...props}
-        ref={(node) => { drawerRef.current = node; if (typeof ref === 'function') ref(node); else if (ref) ref.current = node; }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
-        tabIndex={-1}
-        className={cn(
-          'relative z-50 flex flex-col bg-surface shadow-dialog transition-transform',
-          position === 'right' &&
-            'ml-auto h-full w-full max-w-md border-l border-border-subtle p-6 animate-in slide-in-from-right',
-          position === 'bottom' &&
-            'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-subtle p-6 safe-area-bottom animate-in slide-in-from-bottom',
-          className
-        )}
+    <OverlayLayer kind="drawer" host={host}>
+      <MantineDrawer.Root
+        opened={open}
+        keepMounted={keepMounted}
+        onClose={requestClose}
+        onExitTransitionEnd={onExitTransitionEnd}
+        position={position}
+        size={position === 'right' ? 'min(28rem, 100vw)' : '80dvh'}
+        withinPortal
+        trapFocus
+        lockScroll
+        closeOnEscape={false}
+        returnFocus={false}
+        closeOnClickOutside
+        padding={0}
+        scrollAreaComponent={OverlayFlexScrollArea}
+        transitionProps={{ duration: transitionDuration, timingFunction: 'var(--motion-ease)' }}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 mb-4">
-          <div className="min-w-0">
-            <h3 id={titleId} className="text-lg font-semibold text-ink">
-              {title}
-            </h3>
-            {description && (
-              <p id={descriptionId} className="text-sm text-muted leading-relaxed mt-1">{description}</p>
-            )}
+        <MantineDrawer.Overlay />
+        <MantineDrawer.Content
+          {...(props as Record<string, unknown>)}
+          ref={attachPanel}
+          data-position={position}
+          data-state={open ? 'open' : 'closed'}
+          styles={style ? { content: style } : undefined}
+          classNames={{
+            content: cn(
+              'relative flex flex-col overflow-visible bg-surface shadow-dialog',
+              position === 'right' &&
+                'ml-auto h-full w-full max-w-md border-l border-border-subtle p-6',
+              position === 'bottom' &&
+                'mt-auto h-[80dvh] w-full rounded-t-2xl border-t border-border-subtle p-6 safe-area-bottom',
+              className,
+            ),
+          }}
+        >
+          <div data-dialog-header className="flex shrink-0 items-start justify-between gap-4 mb-4">
+            <div className="min-w-0">
+              <MantineDrawer.Title className="text-lg font-semibold text-ink">
+                {title}
+              </MantineDrawer.Title>
+              {description && (
+                <MantineDrawer.Body className="!p-0 text-sm text-muted leading-relaxed mt-1">
+                  {description}
+                </MantineDrawer.Body>
+              )}
+            </div>
+            <CloseButton
+              data-drawer-close
+              data-autofocus
+              onClick={requestClose}
+              size={44}
+              aria-label="关闭抽屉"
+              icon={<X className="h-5 w-5" aria-hidden="true" />}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            />
           </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            aria-label="关闭抽屉"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
 
-        {/* 抽屉正文需显式声明滚动条自动隐藏。 */}
-        <div className="min-h-0 flex-1 overflow-y-auto py-2" data-autohide-scroll>{children}</div>
-
-        {footer && (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 pt-4 mt-auto border-t border-border-subtle">
-            {footer}
+          <div data-dialog-lining className="min-h-0 flex-1 overflow-x-clip overflow-y-auto overscroll-contain py-2" data-autohide-scroll>
+            {children}
           </div>
-        )}
-      </div>
-    </div>
+
+          {footer && (
+            <div data-dialog-footer className="flex shrink-0 flex-wrap items-center justify-end gap-3 pt-4 mt-auto border-t border-border-subtle">
+              {footer}
+            </div>
+          )}
+        </MantineDrawer.Content>
+      </MantineDrawer.Root>
+    </OverlayLayer>
   );
 }

@@ -16,6 +16,9 @@ import {
 } from 'lucide-react';
 import type { ActorSnapshot, SceneBeat, StageDefinition } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { Input } from '@/app/components/ui/input';
+import { Textarea } from '@/app/components/ui/textarea';
 
 interface StudioDirectorPanelProps {
   beat: SceneBeat | null;
@@ -55,6 +58,13 @@ const MOODS = [
   { value: 'melancholy', label: '忧郁' },
 ] as const;
 
+const DIRECTOR_GROUPS = [
+  { field: 'shotSize', label: '镜头景别', icon: Maximize2, cols: 'grid-cols-4', options: SHOT_SIZES },
+  { field: 'angle', label: '拍摄角度', icon: Camera, cols: 'grid-cols-3', options: ANGLES },
+  { field: 'lighting', label: '光影氛围', icon: Sun, cols: 'grid-cols-4', options: LIGHTINGS },
+  { field: 'mood', label: '情绪基调', icon: Smile, cols: 'grid-cols-4', options: MOODS },
+] as const;
+
 export function StudioDirectorPanel({
   beat,
   onUpdateBeat,
@@ -69,15 +79,14 @@ export function StudioDirectorPanel({
     return (
       <aside className="w-12 border-l border-border-default bg-surface flex flex-col shrink-0 select-none z-10 h-full min-h-0">
         <div className="h-11 border-b border-border-default bg-surface flex items-center justify-center shrink-0">
-          <button
-            type="button"
+          <IconButton
+            icon={PanelRightOpen}
+            label="展开镜头属性与导演面板"
+            variant="ghost"
             onClick={onToggleCollapse}
-            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
-            title="展开镜头属性与导演面板"
-            aria-label="展开镜头属性与导演面板"
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </button>
+            size="sm"
+            className="h-7 min-h-7 w-7 p-0"
+          />
         </div>
       </aside>
     );
@@ -109,15 +118,14 @@ export function StudioDirectorPanel({
           <Camera className="h-3.5 w-3.5 text-accent" />
           <span>镜头导演属性</span>
         </span>
-        <button
-          type="button"
+        <IconButton
+          icon={PanelRightClose}
+          label="收起右栏"
+          variant="ghost"
           onClick={onToggleCollapse}
-          className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
-          title="收起右栏"
-          aria-label="收起右栏"
-        >
-          <PanelRightClose className="h-4 w-4" />
-        </button>
+          size="sm"
+          className="h-7 min-h-7 w-7 p-0"
+        />
       </div>
 
       {/* 滚动内容区 */}
@@ -166,133 +174,62 @@ export function StudioDirectorPanel({
               <span>{isGenerating ? '正在绘制中...' : beat.mediaUrl ? '重新绘制当前镜头' : '生成此镜头画面'}</span>
             </Button>
 
-            {/* 导演标签组：景别 */}
-            <div className="space-y-1.5 pt-1">
-              <label className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
-                <Maximize2 className="h-3 w-3" />
-                <span>镜头景别</span>
-              </label>
-              <div className="grid grid-cols-4 gap-1">
-                {SHOT_SIZES.map((item) => {
-                  const active = directorSettings.shotSize === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => handleUpdateDirector('shotSize', item.value)}
-                      className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                        active
-                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
-                          : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 导演标签组：视角 */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
-                <Camera className="h-3 w-3" />
-                <span>拍摄角度</span>
-              </label>
-              <div className="grid grid-cols-3 gap-1">
-                {ANGLES.map((item) => {
-                  const active = directorSettings.angle === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => handleUpdateDirector('angle', item.value)}
-                      className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                        active
-                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
-                          : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 导演标签组：光影 */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
-                <Sun className="h-3 w-3" />
-                <span>光影氛围</span>
-              </label>
-              <div className="grid grid-cols-4 gap-1">
-                {LIGHTINGS.map((item) => {
-                  const active = directorSettings.lighting === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => handleUpdateDirector('lighting', item.value)}
-                      className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                        active
-                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
-                          : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 导演标签组：情绪 */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
-                <Smile className="h-3 w-3" />
-                <span>情绪基调</span>
-              </label>
-              <div className="grid grid-cols-4 gap-1">
-                {MOODS.map((item) => {
-                  const active = directorSettings.mood === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => handleUpdateDirector('mood', item.value)}
-                      className={`h-7 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                        active
-                          ? 'bg-accent text-fg-on-accent font-bold shadow-2xs'
-                          : 'bg-surface-muted text-muted hover:text-ink hover:bg-surface-muted/80'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {DIRECTOR_GROUPS.map((group) => {
+              const Icon = group.icon;
+              return (
+                <div key={group.field} className={`space-y-1.5 ${group.field === 'shotSize' ? 'pt-1' : ''}`}>
+                  <label className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
+                    <Icon className="h-3 w-3" />
+                    <span>{group.label}</span>
+                  </label>
+                  <div className={`grid ${group.cols} gap-1`}>
+                    {group.options.map((item) => {
+                      const active = (directorSettings as Record<string, unknown>)[group.field] === item.value;
+                      return (
+                        <Button
+                          key={item.value}
+                          type="button"
+                          size="sm"
+                          variant={active ? 'accent' : 'ghost'}
+                          aria-pressed={active}
+                          onClick={() => handleUpdateDirector(group.field, item.value)}
+                          className={`h-7 min-h-0 rounded-md px-1.5 text-xs ${
+                            active
+                              ? 'font-bold shadow-2xs'
+                              : 'bg-surface-muted font-medium text-muted hover:bg-surface-muted/80 hover:text-ink'
+                          }`}
+                        >
+                          {item.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
 
             {/* 高级提示词调优（折叠） */}
             <div className="pt-2 border-t border-border-default/60">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setAdvancedOpen(!advancedOpen)}
-                className="w-full flex items-center justify-between text-xs text-muted hover:text-ink font-semibold py-1 cursor-pointer"
+                aria-expanded={advancedOpen}
+                className="h-auto w-full min-h-0 justify-between px-0 py-1 text-xs font-semibold"
               >
                 <span className="flex items-center gap-1">
                   <Sliders className="h-3 w-3" />
                   <span>高级视觉微调（可选）</span>
                 </span>
                 <ChevronDown className={`h-3 w-3 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
-              </button>
+              </Button>
 
               {advancedOpen && (
                 <div className="mt-2 space-y-2.5 text-xs">
                   <div>
                     <label className="block text-[11px] text-muted mb-1">补充画面提示词</label>
-                    <textarea
+                    <Textarea
                       rows={2}
                       value={beat.renderSettings?.customPrompt || ''}
                       onChange={(e) => {
@@ -307,7 +244,7 @@ export function StudioDirectorPanel({
                   </div>
                   <div>
                     <label className="block text-[11px] text-muted mb-1">负面提示词覆写</label>
-                    <input
+                    <Input
                       value={beat.renderSettings?.negativePrompt || ''}
                       onChange={(e) => {
                         const current = beat.renderSettings || {};

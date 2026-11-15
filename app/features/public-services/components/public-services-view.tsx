@@ -1,45 +1,35 @@
 'use client';
 
-import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { RefreshCw } from 'lucide-react';
-import type {
-  ModelProfile,
-  PurposeBinding,
-  ServiceConnection,
-} from '@sthstart/contracts';
-import { usePublicOverview } from '../queries';
-import {
-  fetchConnections,
-  fetchModelProfiles,
-  fetchPurposeBindings,
-} from '../api';
-import { fetchGenerationEngines } from '@/app/features/generation/api';
-import type { Engine } from '@/app/features/generation/types';
-import { ConnectionsPanel } from './connections-panel';
-import { TextModelsPanel } from './text-models-panel';
-import { ImageModelsPanel } from './image-models-panel';
-import { PurposesPanel } from './purposes-panel';
-import { OtherServicesPanel } from './other-services-panel';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { ImageIcon, RefreshCw, ShieldCheck } from 'lucide-react';
+import type { ModelProfile, ServiceConnection } from '@sthstart/contracts';
+import { Alert } from '@/app/components/ui/alert';
+import { Button } from '@/app/components/ui/button';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageTabs } from '@/app/components/ui/page-tabs';
-import { Button } from '@/app/components/ui/button';
-import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { useToast } from '@/app/providers/ui-provider';
-
-const TAB_IDS = ['connections', 'text-models', 'image-models', 'purposes', 'other'] as const;
-type TabId = (typeof TAB_IDS)[number];
-const DEFAULT_TAB: TabId = 'connections';
-
-function isTabId(value: string | null): value is TabId {
-  return value !== null && (TAB_IDS as readonly string[]).includes(value);
-}
+import { usePublicOverview, useModelRoutes } from '../queries';
+import { fetchConnections, fetchModelProfiles } from '../api';
+import { AppExceptionsDrawer } from './app-exceptions-drawer';
+import { AppExceptionsSummary } from './app-exceptions-summary';
+import { CommonModelsCard } from './common-models-card';
+import { ModelLibrary } from './model-library';
+import { ExtensionsSettings } from './extensions-settings';
+import {
+  buildAppExceptionRows,
+  buildPublicServicesSearch,
+  parsePublicServicesLocation,
+} from './public-services-model-settings';
 
 const locationListeners = new Set<() => void>();
 function notifyLocationListeners() {
   for (const listener of locationListeners) listener();
 }
+
 function subscribeToLocation(callback: () => void) {
   locationListeners.add(callback);
   window.addEventListener('popstate', callback);
@@ -49,25 +39,20 @@ function subscribeToLocation(callback: () => void) {
   };
 }
 
-function readTabFromUrl(): TabId {
-  const params = new URLSearchParams(window.location.search);
-  const tabParam = params.get('tab');
-  if (isTabId(tabParam)) return tabParam;
+function readLocationKey() {
+  return `${window.location.search}\u0000${window.location.hash}`;
+}
 
-  // 兼容旧 URL 结构
-  const sectionParam = params.get('section');
-  if (sectionParam === 'routing' || window.location.hash === '#app-model-routing') return 'purposes';
-  if (sectionParam === 'models') return 'text-models';
-  if (sectionParam === 'access') return 'other';
-
-  return DEFAULT_TAB;
+function parseLocationKey(key: string) {
+  const [search, hash] = key.split('\u0000');
+  return parsePublicServicesLocation(search ?? '', hash ?? '');
 }
 
 const keyringBackendLabels: Record<string, string> = {
-  'native-windows': '系统凭据管理器 (Windows)',
-  'native-macos': '系统钥匙串 (macOS)',
-  'native-linux': '系统密钥环 (Linux)',
-  'secret-service': '系统密钥环 (Secret Service)',
+  'native-windows': 'Windows 凭据管理器',
+  'native-macos': 'macOS 钥匙串',
+  'native-linux': 'Linux 密钥环',
+  'secret-service': 'Secret Service',
   windows: 'Windows 凭据管理器',
   macos: 'macOS 钥匙串',
   file: '容器内加密文件存储',
@@ -78,165 +63,273 @@ function keyringLabel(backend: string | null | undefined) {
 }
 
 export function PublicServicesSettings() {
+  const router = useRouter();
   const toast = useToast();
-  const { data: overview, error: queryError, refetch: refetchOverview } = usePublicOverview();
+  const locationKey = useSyncExternalStore(
+    subscribeToLocation,
+    readLocationKey,
+    () => '',
+  );
+  const location = parseLocationKey(locationKey);
+  const { data: overview, error: overviewError, refetch: refetchOverview } = usePublicOverview();
+  const {
+    data: modelRoutes = [],
+    error: routesError,
+    refetch: refetchRoutes,
+  } = useModelRoutes();
 
-  const tab = useSyncExternalStore(subscribeToLocation, readTabFromUrl, () => DEFAULT_TAB);
-
-  const setTab = useCallback((nextTab: string) => {
-    if (!isTabId(nextTab)) return;
-    const params = new URLSearchParams(window.location.search);
-    if (nextTab === DEFAULT_TAB) params.delete('tab');
-    else params.set('tab', nextTab);
-    params.delete('section');
-    const query = params.toString();
-    window.history.pushState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-    notifyLocationListeners();
-  }, []);
-
-  // 本地数据状态
   const [connections, setConnections] = useState<ServiceConnection[]>([]);
   const [models, setModels] = useState<ModelProfile[]>([]);
-  const [engines, setEngines] = useState<Engine[]>([]);
-  const [purposeBindings, setPurposeBindings] = useState<PurposeBinding[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [dataInitialized, setDataInitialized] = useState(false);
+  const [dataError, setDataError] = useState('');
 
   const loadData = useCallback(async () => {
-    setErrorMsg('');
+    setDataError('');
     try {
-      const [connsData, modelsData, enginesData, purposesData] = await Promise.all([
+      const [nextConnections, nextModels] = await Promise.all([
         fetchConnections(),
         fetchModelProfiles(),
-        fetchGenerationEngines(),
-        fetchPurposeBindings(),
       ]);
-      setConnections(connsData);
-      setModels(modelsData);
-      setEngines(enginesData);
-      setPurposeBindings(purposesData);
-      return true;
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : String(err));
-      return false;
+      setConnections(nextConnections);
+      setModels(nextModels);
+      setDataInitialized(true);
+      return { ok: true, error: null as string | null };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      setDataError(reason);
+      return { ok: false, error: reason };
     } finally {
       setDataLoading(false);
     }
   }, []);
 
-  const handleRefreshAll = async () => {
-    setDataLoading(true);
-    const [, loaded] = await Promise.all([refetchOverview(), loadData()]);
-    if (loaded) toast.success('配置数据已同步刷新。');
-  };
-
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 页面挂载时读取外部管理 API。
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 页面挂载时读取管理 API 列表。
     void loadData();
   }, [loadData]);
 
-  const tabsConfig = [
-    { id: 'connections', label: '服务连接', count: connections.length, panelId: 'panel-connections' },
-    { id: 'text-models', label: '文本模型', count: models.length, panelId: 'panel-text-models' },
-    { id: 'image-models', label: '绘图模型与引擎', count: engines.length, panelId: 'panel-image-models' },
-    { id: 'purposes', label: '用途绑定', count: overview?.apps.length ?? 0, panelId: 'panel-purposes' },
-    { id: 'other', label: '其他服务', panelId: 'panel-other' },
-  ];
+  useEffect(() => {
+    if (location.redirectTo) router.replace(location.redirectTo);
+  }, [location.redirectTo, router]);
+
+  const runRefresh = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const [overviewResult, routesResult, dataResult] = await Promise.all([
+        refetchOverview(),
+        refetchRoutes(),
+        loadData(),
+      ]);
+      const failures = [
+        overviewResult.error
+          ? `概览：${overviewResult.error instanceof Error ? overviewResult.error.message : String(overviewResult.error)}`
+          : null,
+        routesResult.error
+          ? `路由：${routesResult.error instanceof Error ? routesResult.error.message : String(routesResult.error)}`
+          : null,
+        dataResult.ok ? null : `列表：${dataResult.error}`,
+      ].filter((item): item is string => Boolean(item));
+      return { ok: failures.length === 0, error: failures.join('；') || null };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      setDataLoading(false);
+    }
+  }, [loadData, refetchOverview, refetchRoutes]);
+
+  const refreshAll = useCallback(async () => {
+    const result = await runRefresh();
+    if (!result.ok) throw new Error(result.error ?? '配置已保存，但页面刷新失败。');
+  }, [runRefresh]);
+
+  const handleRefresh = async () => {
+    const result = await runRefresh();
+    if (result.ok) toast.success('模型与扩展服务数据已刷新。');
+    else toast.error('刷新未完成', result.error ?? undefined);
+  };
+
+  const applyLocation = useCallback(
+    (tab: 'models' | 'extensions', options: { openAppExceptions?: boolean; appId?: string | null } = {}) => {
+      const search = buildPublicServicesSearch(tab, options);
+      window.history.pushState(
+        null,
+        '',
+        `${window.location.pathname}${search ? `?${search}` : ''}`,
+      );
+      notifyLocationListeners();
+    },
+    [],
+  );
+
+  const setTab = useCallback(
+    (nextTab: string) => {
+      if (nextTab !== 'models' && nextTab !== 'extensions') return;
+      applyLocation(nextTab);
+    },
+    [applyLocation],
+  );
+
+  const openAppExceptions = useCallback(() => {
+    applyLocation('models', {
+      openAppExceptions: true,
+      appId: location.highlightAppId,
+    });
+  }, [applyLocation, location.highlightAppId]);
+
+  const closeAppExceptions = useCallback(() => {
+    applyLocation('models');
+  }, [applyLocation]);
+
+  const appRows = useMemo(
+    () => buildAppExceptionRows(overview?.apps ?? [], modelRoutes),
+    [modelRoutes, overview?.apps],
+  );
+  const routableModels = useMemo(() => models.map(model => ({
+    ...model,
+    enabled: model.enabled && connections.some(connection => connection.id === model.connectionId && connection.enabled),
+  })), [connections, models]);
+
+  const initialLoading = dataLoading && !dataInitialized;
 
   return (
-    <PageContainer width="settings" className="py-3 sm:py-5 space-y-3 sm:space-y-4">
+    <PageContainer width="settings" className="space-y-4">
       <PageHeader
         compact
         title="模型与公共服务"
-        description="分层管理服务连接凭据、文本模型推理、云端与本地生图引擎，并为各应用配置业务用途绑定。"
-        actions={(
-          <Button size="sm" variant="ghost" onClick={() => void handleRefreshAll()}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">刷新</span>
+        actions={
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={dataLoading}
+            aria-label="刷新模型与扩展服务配置"
+            onClick={() => void handleRefresh()}
+          >
+            {!dataLoading && <RefreshCw className="size-4" aria-hidden="true" />}
+            刷新
           </Button>
-        )}
+        }
+        navigation={
+          <PageTabs
+            variant="local"
+            ariaLabel="公共服务分类"
+            value={location.tab}
+            onChange={setTab}
+            tabs={[
+              {
+                id: 'models',
+                label: '模型',
+                panelId: 'panel-models',
+              },
+              {
+                id: 'extensions',
+                label: '扩展服务',
+                panelId: 'panel-extensions',
+              },
+            ]}
+          />
+        }
       />
 
-      {queryError && (
+      {overviewError && (
         <Alert variant="danger" title="公共服务数据读取失败">
-          {queryError instanceof Error ? queryError.message : String(queryError)}。已有配置安全无损。
+          {overviewError instanceof Error ? overviewError.message : String(overviewError)}
         </Alert>
       )}
-
-      {errorMsg && (
-        <Alert variant="warning" title="数据提示">
-          {errorMsg}
-        </Alert>
-      )}
-
-      {/* 低频服务概况收敛到 details，避免手机首屏反复挤占 */}
-      <details className="group border-y border-border-subtle py-2 text-xs text-muted">
-        <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>服务概览：<span className="font-semibold text-ink">{connections.length}</span> 连接 · <span className="font-semibold text-ink">{models.length}</span> 模型 · <span className="font-semibold text-ink">{engines.length}</span> 绘图引擎</span>
-            <span className="hidden sm:inline">· 安全存储：{!overview ? '检查中' : overview.keyring.available ? keyringLabel(overview.keyring.backend) : '未连接'}</span>
+      {routesError && (
+        <Alert variant="danger" title="模型路由读取失败">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>{routesError instanceof Error ? routesError.message : String(routesError)}</span>
+            <Button size="sm" variant="outline" onClick={() => void refetchRoutes()}>
+              重试
+            </Button>
           </div>
-          <span className="ml-2 text-xs text-fg-subtle group-open:rotate-180 transition-transform duration-150">▼</span>
-        </summary>
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-subtle/50 pt-2 text-xs">
-          <span><span className="font-semibold text-ink">{connections.length}</span> 个连接</span>
-          <span><span className="font-semibold text-ink">{models.length}</span> 个模型</span>
-          <span><span className="font-semibold text-ink">{engines.length}</span> 个绘图引擎</span>
-          <span><span className="font-semibold text-ink">{overview?.apps.length ?? 0}</span> 个应用</span>
-          <span>
-            安全存储：{!overview ? '检查中' : overview.keyring.available ? keyringLabel(overview.keyring.backend) : '未连接'}
-          </span>
+        </Alert>
+      )}
+      {dataError && (
+        <Alert variant="warning" title="连接或模型列表读取提示">
+          {dataError}
+        </Alert>
+      )}
+
+      {location.tab === 'models' ? (
+        <div id="panel-models" role="tabpanel" aria-label="模型设置">
+          {initialLoading ? (
+            <Skeleton className="h-64 w-full rounded-panel" />
+          ) : dataError && connections.length === 0 && models.length === 0 ? (
+            <Button variant="outline" onClick={() => void handleRefresh()}>重新加载供应商与模型</Button>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,0.75fr)]">
+                <ModelLibrary
+                  models={models}
+                  connections={connections}
+                  onRefresh={refreshAll}
+                />
+
+                <aside className="min-w-0 space-y-4">
+                  <AppExceptionsSummary
+                    rows={appRows}
+                    models={models}
+                    loading={!overview && !overviewError}
+                    onOpen={openAppExceptions}
+                  />
+
+                  <section className="tpl-panel space-y-3 p-4" aria-labelledby="model-links-title">
+                    <h2 id="model-links-title" className="text-base font-semibold text-ink">
+                      相关入口
+                    </h2>
+                    <Link
+                      href="/settings/generation"
+                      className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink hover:text-accent"
+                    >
+                      <ImageIcon className="h-4 w-4 text-muted" aria-hidden="true" />
+                      绘图方案与工作流
+                    </Link>
+                    <div className="flex items-start gap-2 border-t border-border-subtle pt-3 text-xs leading-relaxed text-muted">
+                      <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span>
+                        凭据存储：
+                        {overview
+                          ? overview.keyring.available
+                            ? `${keyringLabel(overview.keyring.backend)}`
+                            : '暂不可用，可到运行诊断检查'
+                          : '读取中'}
+                      </span>
+                    </div>
+                  </section>
+                </aside>
+              </div>
+
+              <CommonModelsCard
+                routes={modelRoutes}
+                models={routableModels}
+                onRefresh={refreshAll}
+              />
+            </div>
+          )}
         </div>
-      </details>
-
-      {/* 5 个核心页签切换 */}
-      <PageTabs
-        variant="page"
-        ariaLabel="公共服务分类"
-        value={tab}
-        onChange={setTab}
-        tabs={tabsConfig}
-      />
-
-      {/* 各页签面板 */}
-      {dataLoading && !connections.length && !models.length ? (
-        <Skeleton className="h-64 w-full rounded-xl" />
       ) : (
-        <>
-          <div id="panel-connections" role="tabpanel" hidden={tab !== 'connections'}>
-            <ConnectionsPanel connections={connections} onRefresh={async () => { await loadData(); }} />
-          </div>
-
-          <div id="panel-text-models" role="tabpanel" hidden={tab !== 'text-models'}>
-            <TextModelsPanel
-              models={models}
-              connections={connections}
-              onRefresh={async () => { await loadData(); }}
-            />
-          </div>
-
-          <div id="panel-image-models" role="tabpanel" hidden={tab !== 'image-models'}>
-            <ImageModelsPanel engines={engines} onRefresh={async () => { await loadData(); }} />
-          </div>
-
-          <div id="panel-purposes" role="tabpanel" hidden={tab !== 'purposes'}>
-            <PurposesPanel
-              overview={overview ?? null}
-              models={models}
-              engines={engines}
-              purposeBindings={purposeBindings}
-              onRefresh={async () => { await loadData(); }}
-            />
-          </div>
-
-          <div id="panel-other" role="tabpanel" hidden={tab !== 'other'}>
-            <OtherServicesPanel
-              overview={overview ?? null}
-              onRefresh={handleRefreshAll}
-            />
-          </div>
-        </>
+        <div id="panel-extensions" role="tabpanel" aria-label="扩展服务设置">
+          <ExtensionsSettings overview={overview ?? null} onRefresh={refreshAll} />
+        </div>
       )}
+
+      <AppExceptionsDrawer
+        key={`${location.openAppExceptions}:${location.highlightAppId ?? ''}`}
+        open={location.tab === 'models' && location.openAppExceptions}
+        onOpenChange={(next) => {
+          if (next) openAppExceptions();
+          else closeAppExceptions();
+        }}
+        rows={appRows}
+        models={routableModels}
+        highlightAppId={location.highlightAppId}
+        onRefresh={refreshAll}
+      />
     </PageContainer>
   );
 }

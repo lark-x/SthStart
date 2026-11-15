@@ -1,0 +1,28 @@
+/*
+ * SthStart Shell 样式职责拆分 - 各业务面板（笔记、日历、主题、剧情树、叙事树、制作任务卡）
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+
+.notebook-toolbar { border: 1px solid var(--border-subtle); }
+.notebook-lore-shelf { border: 1px solid var(--border-subtle); }
+
+.calendar-day { position: relative; }
+.calendar-day-detail { border: 1px solid var(--border-subtle); }
+.topic-summary-actions { padding-top: 2px; }
+@media (min-width: 1280px) { .topic-idea-panel { position: sticky; top: 20px; } }
+
+.story-empty-state { border: 1px solid var(--border-subtle); background: var(--surface); box-shadow: var(--shadow-panel); }
+.story-tree-aside { border-right: 1px solid var(--border-subtle); }
+.story-tree-header { background: var(--surface); }
+.story-tree-footer { background: var(--surface-sunken); }
+.story-editor-frame { border: 1px solid var(--border-subtle); box-shadow: var(--shadow-panel); }
+
+.narrative-workspace-header { position: relative; z-index: 1; }
+.narrative-tree { border-right: 1px solid var(--border-subtle); }
+.narrative-tree-head { background: var(--surface); }
+.narrative-tree-foot { background: var(--surface); }
+.narrative-reader-header { position: relative; }
+
+.creative-task-card { border: 1px solid var(--border-subtle); box-shadow: var(--shadow-panel); transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease); }
+.creative-task-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--border-default)); box-shadow: var(--shadow-panel-hover); }

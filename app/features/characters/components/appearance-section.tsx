@@ -7,6 +7,7 @@ import { previewAppearanceCandidateApplication, type CharacterAppearanceExtracti
 import { Textarea } from '@/app/components/ui/textarea';
 import { Select } from '@/app/components/ui/select';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 
 export function AppearanceSection({
   draft,
@@ -178,9 +179,12 @@ export function AppearanceSection({
                   ['/appearance/outfits', '观察到的服装', 'observedOutfit'],
                 ] as const
               ).map(([fieldPath, label, key]) => (
-                <label key={fieldPath} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
+                <div
+                  key={fieldPath}
+                  className="[&_.ui-mantine-checkbox-root]:items-center [&_.ui-mantine-checkbox-input]:mt-0 [&_.ui-mantine-checkbox-label]:text-xs [&_.ui-mantine-checkbox-label]:font-normal [&_.ui-mantine-checkbox-label]:text-muted"
+                >
+                  <Checkbox
+                    label={label}
                     checked={selectedCandidateFields.includes(fieldPath)}
                     disabled={!appearanceCandidate.extraction[key]}
                     onChange={(event) =>
@@ -191,8 +195,7 @@ export function AppearanceSection({
                       )
                     }
                   />
-                  <span>{label}</span>
-                </label>
+                </div>
               ))}
             </div>
             {candidatePreview && (

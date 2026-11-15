@@ -4,9 +4,11 @@ import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
 import { analyzeWorkflowInput, createWorkflowConfig, saveWorkflowDraft } from '../api';
 import type { AnalyzedInput, DraftPayload, Engine, WorkflowAnalyzeResponse } from '../types';
 
@@ -161,7 +163,7 @@ export function WorkflowImportDialog({
               </Button>
               <span className="text-sm text-muted">或直接粘贴 JSON 内容</span>
             </div>
-            <textarea
+            <Textarea
               aria-label="工作流 JSON 内容"
               className="h-48 w-full rounded-control border border-border-default bg-surface p-2 font-mono text-xs"
               value={rawText}
@@ -204,23 +206,20 @@ export function WorkflowImportDialog({
             )}
             {analysis.packageInfo ? <p className="text-sm text-muted">保留配置包中的原始字段、默认值与节点绑定，不重新套用自动识别结果。</p> : <div className="max-h-56 space-y-1 overflow-y-auto rounded-control border border-border-subtle p-2">
               {analysis.inputs.map((item) => (
-                <label key={item.key} className="flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
+                <div key={item.key} className="min-w-0 break-words">
+                  <Checkbox
                     checked={enabledKeys.has(item.key)}
                     onChange={() => toggleKey(item.key)}
+                    label={item.modelLabel ?? item.inputName}
+                    description={[
+                      `${item.nodeId}.inputs.${item.inputName}`,
+                      item.classType,
+                      inputBadge(item) === 'known' ? '已识别' : '需确认',
+                      item.modelCategory,
+                      item.note,
+                    ].filter(Boolean).join(' · ')}
                   />
-                  <span className="min-w-0">
-                    <span className="font-medium">{item.modelLabel ?? item.inputName}</span>
-                    <code className="ml-1 text-muted">{item.nodeId}.inputs.{item.inputName}</code>
-                    <span className="ml-1 text-fg-subtle">
-                      {item.classType} · {inputBadge(item) === 'known' ? '已识别' : '需确认'}
-                      {item.modelCategory ? ` · ${item.modelCategory}` : ''}
-                    </span>
-                    {item.note && <span className="block text-muted">{item.note}</span>}
-                  </span>
-                </label>
+                </div>
               ))}
             </div>}
             <div className="flex justify-end gap-2">

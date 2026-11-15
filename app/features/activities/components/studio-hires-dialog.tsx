@@ -5,11 +5,14 @@ import { LoaderCircle, Sparkles } from 'lucide-react';
 import type { HiresPreviewResponse, StudioJob, StudioTarget, StudioVersionContext } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
+import { FormField } from '@/app/components/ui/form-field';
+import { Input } from '@/app/components/ui/input';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
+import { Select } from '@/app/components/ui/select';
 import { HIRES_MAX_SIZE_DEFAULT, HIRES_DENOISE_DEFAULT, HIRES_DENOISE_MIN, HIRES_DENOISE_MAX } from '@sthstart/contracts';
 import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
 import { canSubmitHires, hiresBlockedReason, hiresIdempotencyKey } from '../lib/hires-request';
-import { createStudioHires, fetchStudioVersions, previewStudioHires } from '../studio-api';
+import { createStudioHires, fetchStudioVersions, previewStudioHires } from '@/app/features/activities/api/studio';
 
 /**
  * 放大细化弹窗（计划 §15.2）。
@@ -146,19 +149,16 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
             {sourceLabel && <p className="break-words text-xs text-muted">{sourceLabel}</p>}
           </div>
           <div className="min-w-0 w-full space-y-4 sm:flex-1">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-ink">最长边</span>
-              <select aria-label="细化最长边" className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink"
+            <FormField label="最长边" hint="实际输出按原图比例计算并向下取 8 的倍数；所选尺寸不大于原图最长边时会被拒绝。">
+              <Select aria-label="细化最长边"
                 value={maxSize} onChange={(event) => { setMaxSize(Number(event.target.value)); saveDraft({ maxSize: Number(event.target.value) }); setPreview(null); setPreviewError(''); }}>
                 {MAX_SIZE_OPTIONS.map((value) => <option key={value} value={value}>{value} 像素</option>)}
-              </select>
-              <span className="block text-xs text-muted">实际输出按原图比例计算并向下取 8 的倍数；所选尺寸不大于原图最长边时会被拒绝。</span>
-            </label>
+              </Select>
+            </FormField>
             <label hidden={!advanced} className="block space-y-1.5">
               <span className="text-sm font-medium text-ink">重绘幅度</span>
-              <input aria-label="细化重绘幅度" type="number" min={HIRES_DENOISE_MIN} max={HIRES_DENOISE_MAX} step={0.05} value={denoise}
-                onChange={(event) => { setDenoise(Number(event.target.value)); saveDraft({ denoise: Number(event.target.value) }); setPreview(null); setPreviewError(''); }}
-                className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink" />
+              <Input aria-label="细化重绘幅度" type="number" min={HIRES_DENOISE_MIN} max={HIRES_DENOISE_MAX} step={0.05} value={denoise}
+                onChange={(event) => { setDenoise(Number(event.target.value)); saveDraft({ denoise: Number(event.target.value) }); setPreview(null); setPreviewError(''); }} />
               <span className="block text-xs text-muted">建议 0.2；越高越偏离原图，范围 0.05–0.35。</span>
             </label>
             {preview && <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted">

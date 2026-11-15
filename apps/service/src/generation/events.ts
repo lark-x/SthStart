@@ -3,6 +3,7 @@ import type { GenerationEvent } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { syncGenerationAiCall } from '../ai-call-trace.js';
+import { releaseGenerationQueueSlot } from './public-image-queue.js';
 
 export const generationEventBus = new EventEmitter();
 export const activeGenerationExecutions = new Set<Promise<void>>();
@@ -31,6 +32,12 @@ export function recordGenerationEvent(
   input: { taskId: string; appId: string; eventType: string; payload: Record<string, unknown> },
 ): GenerationEvent {
   const now = nowIso();
+  if (['succeeded', 'failed', 'cancelled'].includes(input.eventType)) {
+    const row = database.connection.prepare('SELECT status,upstream_may_continue FROM generation_tasks WHERE id=?').get(input.taskId);
+    if (row && ['succeeded', 'failed', 'cancelled'].includes(String(row.status)) && !row.upstream_may_continue) {
+      releaseGenerationQueueSlot(database, input.taskId);
+    }
+  }
   const result = database.connection.prepare(
     'INSERT INTO generation_events(task_id, app_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)',
   ).run(input.taskId, input.appId, input.eventType, JSON.stringify(input.payload), now);

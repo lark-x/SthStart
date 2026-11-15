@@ -6,6 +6,17 @@ export function toDateKey(year: number, month: number, day: number) {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** 将日历使用的 YYYY-MM-DD 键格式化为界面可读日期，避免经过 UTC 换算。 */
+export function formatCalendarDate(value: string, options: { short?: boolean } = {}) {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return value;
+  const weekday = new Date(year, month - 1, day).getDay();
+  const date = `${month} 月 ${day} 日`;
+  return options.short ? date : `${date} ${WEEKDAY_LABELS[weekday]}`;
+}
+
 export function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }

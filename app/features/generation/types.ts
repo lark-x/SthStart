@@ -64,6 +64,14 @@ export type AnalyzedInput = WorkflowAnalyzeResponse['inputs'][number];
 export type ModelEntry = GenerationModelEntry;
 
 export type { CreativePurposeOptions, GenerationFieldContract as FieldContract } from '@sthstart/contracts';
+export type {
+  ImageContextChoices,
+  ImageContextChoiceItem,
+  ImageContextLoader,
+  ImageSourcesSlotProps,
+  ImageGenerationInitial,
+  ImageGenerationPanelProps,
+} from './components/image-generation-panel';
 
 export function versionKey(workflowId: string, version: number) {
   return `${workflowId}::${version}`;

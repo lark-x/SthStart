@@ -13,6 +13,7 @@ import {
 import type { CharacterOfficialAssetCandidate } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   usePreviewCharacterOfficialAssets,
@@ -129,25 +130,17 @@ export function CharacterMultiSourceDialog({
       size="lg"
       footer={
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
-          <div className="flex items-center gap-4 text-xs text-muted">
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={setActiveAvatar}
-                onChange={(e) => setSetActiveAvatar(e.target.checked)}
-                className="rounded border-border-default text-accent focus:ring-accent"
-              />
-              <span>首选头像设为主头像</span>
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={setActivePortrait}
-                onChange={(e) => setSetActivePortrait(e.target.checked)}
-                className="rounded border-border-default text-accent focus:ring-accent"
-              />
-              <span>首设立绘设为主立绘</span>
-            </label>
+          <div className="flex flex-wrap items-center gap-4 [&_.ui-mantine-checkbox-root]:items-center [&_.ui-mantine-checkbox-input]:mt-0 [&_.ui-mantine-checkbox-label]:text-xs [&_.ui-mantine-checkbox-label]:font-normal [&_.ui-mantine-checkbox-label]:text-muted">
+            <Checkbox
+              label="首选头像设为主头像"
+              checked={setActiveAvatar}
+              onChange={(e) => setSetActiveAvatar(e.target.checked)}
+            />
+            <Checkbox
+              label="首设立绘设为主立绘"
+              checked={setActivePortrait}
+              onChange={(e) => setSetActivePortrait(e.target.checked)}
+            />
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -199,22 +192,26 @@ export function CharacterMultiSourceDialog({
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-muted pb-1 border-b border-border-subtle">
               <span>共找到 {candidates.length} 个官方形象候选资源</span>
-              <div className="flex items-center gap-2">
-                <button
+              <div className="flex items-center gap-1">
+                <Button
                   type="button"
+                  size="sm"
+                  variant="ghost"
                   onClick={selectAll}
-                  className="text-accent hover:underline"
+                  className="h-auto !min-h-6 sm:!min-h-6 px-1.5 py-0.5 text-xs text-accent enabled:hover:bg-transparent hover:underline"
                 >
                   全选
-                </button>
+                </Button>
                 <span>·</span>
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="ghost"
                   onClick={deselectAll}
-                  className="text-muted hover:underline"
+                  className="h-auto !min-h-6 sm:!min-h-6 px-1.5 py-0.5 text-xs text-muted enabled:hover:bg-transparent hover:underline"
                 >
                   清空
-                </button>
+                </Button>
               </div>
             </div>
 

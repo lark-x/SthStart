@@ -1,0 +1,25 @@
+/*
+ * SthStart Shell 样式职责拆分 - Zen 禅道专注写作模式
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* ==================== Zen 禅道专注写作模式 ==================== */
+/* CSS follows the mounted editor state; leaving zen restores the shell preference. */
+.shell-root:has(.zen-workspace) {
+  --shell-toolbar-height: 0px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.shell-root:has(.zen-workspace) > .shell-sidebar,
+.shell-root:has(.zen-workspace) > .shell-main > .shell-surface > .shell-toolbar { display: none; }
+.zen-workspace {
+  width: 100%;
+  max-width: 760px !important;
+  margin-inline: auto !important;
+  transition: max-width var(--motion-base) var(--motion-ease), padding var(--motion-base) var(--motion-ease);
+}
+
+.zen-workspace textarea,
+.zen-workspace .notebook-textarea {
+  font-size: 16.5px !important;
+  line-height: 1.85 !important;
+}

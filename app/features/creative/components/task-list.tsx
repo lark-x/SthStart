@@ -3,6 +3,7 @@
 import { Clock3 } from 'lucide-react';
 import type { CreativeTaskResponse } from '@sthstart/contracts';
 import { EmptyState } from '@/app/components/ui/empty-state';
+import { AsyncState } from '@/app/components/ui/async-state';
 import { TaskCard } from './task-card';
 
 export function TaskList({
@@ -21,7 +22,7 @@ export function TaskList({
   return (
     <div className="space-y-4">
       {isLoading && !tasks.length ? (
-        <div className="flex justify-center py-10 text-xs text-muted">正在读取任务…</div>
+        <AsyncState status="loading" title="正在读取任务…" rows={2} className="min-h-56" />
       ) : tasks.length ? (
         <div className="rounded-panel border border-border-subtle bg-surface divide-y divide-border-subtle overflow-hidden">
           {tasks.map((task) => (

@@ -8,7 +8,7 @@ import type { ProviderProfile } from '@sthstart/contracts';
 import type { CharacterLlmStatusResponse } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Select } from '@/app/components/ui/select';
-import { characterKeys } from '@/app/lib/query-keys';
+import { characterKeys } from '../query-keys';
 import { usePublicOverview } from '@/app/features/public-services/queries';
 import { fetchCharacterLlmStatus, fetchCharacterModelAssignments, updateCharacterModelAssignments } from '../api';
 
@@ -76,7 +76,16 @@ export function CharacterModelRoutingPanel({ characterId }: { characterId?: stri
       {!characterId ? <p className="text-sm text-muted">保存角色后可配置。</p> : <>
         <div className="rounded border border-border-subtle bg-surface px-3 py-2 space-y-1">
           {statusError ? (
-            <button type="button" onClick={loadStatus} className="flex items-center gap-1 text-xs text-muted underline decoration-dotted"><RefreshCw className="h-3 w-3" />暂时无法确认当前模型配置，点击重试</button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={loadStatus}
+              className="h-auto min-h-[var(--control-h-touch)] sm:min-h-0 px-0 py-0 text-xs font-normal text-muted underline decoration-dotted enabled:hover:bg-transparent enabled:hover:text-ink [&_.ui-mantine-button-label]:gap-1"
+            >
+              <RefreshCw className="h-3 w-3" aria-hidden="true" />
+              <span>暂时无法确认当前模型配置，点击重试</span>
+            </Button>
           ) : status ? (
             <>
               <StatusRow label="文本" status={status.text} />

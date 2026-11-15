@@ -1,20 +1,28 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, ArrowRight } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
+import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, ArrowRight, Tags } from 'lucide-react';
+import { Menu } from '@mantine/core';
+import { Button, buttonVariants } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Dialog } from '@/app/components/ui/dialog';
 import { FloatingActionBar } from '@/app/components/ui/floating-action-bar';
+import { useOverlayPortalTarget } from '@/app/components/ui/overlay-policy';
+import { PageTabs } from '@/app/components/ui/page-tabs';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterBatchImport } from './character-batch-import';
-import { CharacterFilters, CharacterPagination, useCharacterBrowser } from './character-filters';
+import { CharacterFilters } from './character-filters';
+import { CharacterPagination } from './character-pagination';
+import { hasCharacterFilters } from '../model/filter-chips';
+import { useCharacterBrowser } from '../hooks/use-character-browser';
 import { CharacterOrganizationFields, emptyOrganizationFields, splitLabels } from './character-organization-editor';
 import { editCharacterOrganization, saveCharacterWork } from '../api';
 import { useBatchMatchOfficialAvatars } from '../mutations';
@@ -23,10 +31,11 @@ import { characterFilterUrl } from '../filter-url';
 import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
 import { SharedAssetVault } from './shared-asset-vault';
 import { LinsheCharacterVault } from './linshe-character-vault';
-import { characterKeys } from '@/app/lib/query-keys';
+import { characterKeys } from '../query-keys';
 
 export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterBrowseQuery | null } = {}) {
   const browser = useCharacterBrowser({}, true, { persist: true, initialFilter });
+  const hasFilters = hasCharacterFilters(browser.filter);
   const router = useRouter();
   const client = useQueryClient();
   const batchMatchMutation = useBatchMatchOfficialAvatars();
@@ -55,29 +64,9 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const [aliases, setAliases] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const moreMenuRef = useRef<HTMLDetailsElement>(null);
+  const menuPortalTarget = useOverlayPortalTarget();
   // 立绘放大预览（§8.2）：卡片缩略图不拉成封面，需要查看时单独放大。
   const [previewArtifact, setPreviewArtifact] = useState<{ name: string; url: string } | null>(null);
-
-  useEffect(() => {
-    const dismiss = (event: PointerEvent | KeyboardEvent) => {
-      const element = moreMenuRef.current;
-      if (!element?.open) return;
-      if (event instanceof KeyboardEvent) {
-        if (event.isComposing || event.keyCode === 229 || event.key !== 'Escape') return;
-        element.open = false;
-        element.querySelector('summary')?.focus();
-      } else if (!element.contains(event.target as Node)) {
-        element.open = false;
-      }
-    };
-    window.addEventListener('pointerdown', dismiss);
-    window.addEventListener('keydown', dismiss);
-    return () => {
-      window.removeEventListener('pointerdown', dismiss);
-      window.removeEventListener('keydown', dismiss);
-    };
-  }, []);
 
   const refresh = () => { void client.invalidateQueries({ queryKey: characterKeys.all }); };
   const handleBatchAvatar = async () => {
@@ -114,17 +103,29 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
   return (
-    <div className="bg-paper py-6 text-ink">
-      <PageContainer className="space-y-5">
+    <div className="text-ink">
+      <PageContainer className="space-y-4">
         <PageHeader compact
           title="角色资料库"
-          description="按作品与标签找角色，为下一场活动挑选参与者。"
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
+          navigation={
+            <PageTabs
+              variant="local" ariaLabel="角色资料视图" value={viewTab}
+              tabs={[
+                { id: 'characters', label: <><User className="size-3.5" aria-hidden="true" />专属角色卡</>, panelId: 'character-cards' },
+                { id: 'shared-assets', label: <><Users className="size-3.5" aria-hidden="true" />多角色公共资产库</>, panelId: 'character-shared-assets' },
+                { id: 'linshe', label: <><Sparkles className="size-3.5" aria-hidden="true" />邻舍角色</>, panelId: 'character-linshe' },
+              ]}
+              onChange={value => {
+                if (value === 'shared-assets') setAssetsVisited(true);
+                if (value === 'characters' || value === 'shared-assets' || value === 'linshe') setViewTab(value);
+              }}
+            />
+          }
+          actions={<div className="flex flex-wrap items-center gap-2">
               {viewTab === 'characters' && (
                 <>
                   <Link
-                    className="inline-flex h-9 items-center gap-1.5 rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent shadow-xs transition-colors hover:bg-accent-dark focus-visible:outline focus-visible:outline-accent"
+                    className={buttonVariants({ size: 'sm', variant: 'primary' })}
                     href="/apps/characters/new"
                   >
                     <Plus className="h-4 w-4" aria-hidden="true" />
@@ -156,118 +157,72 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                 </Button>
               )}
 
-              <details ref={moreMenuRef} className="relative">
-                <summary
-                  aria-label="更多角色操作"
-                  className="flex h-9 cursor-pointer list-none items-center justify-center gap-1 rounded-control border border-border-default bg-surface px-2.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent"
-                >
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
-                </summary>
-                <div
-                  role="menu"
-                  aria-label="更多角色操作"
-                  className="absolute right-0 top-full z-30 mt-1.5 flex w-44 flex-col gap-0.5 rounded-control border border-border-subtle bg-surface p-1 shadow-floating"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
+              <Menu
+                position="bottom-end"
+                withinPortal
+                portalProps={menuPortalTarget ? { target: menuPortalTarget } : undefined}
+                closeOnItemClick
+                returnFocus
+                transitionProps={{ duration: 140, transition: 'pop-top-right' }}
+                shadow="md"
+                radius="md"
+              >
+                <Menu.Target>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label="更多角色操作"
+                    className="h-9 min-h-0 px-2.5 text-muted hover:text-ink"
+                  >
+                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown aria-label="更多角色操作" className="ui-row-menu w-44">
+                  <Menu.Item
+                    leftSection={<Sparkles className="size-3.5 text-muted" aria-hidden="true" />}
                     onClick={() => {
-                      if (moreMenuRef.current) moreMenuRef.current.open = false;
                       setError('');
                       setBatchAvatarResult(null);
                       setBatchAvatarOpen(true);
                     }}
                   >
-                    <Sparkles className="size-3.5 text-muted" aria-hidden="true" />
-                    <span>批量获取头像</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover cursor-pointer"
+                    批量获取头像
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<Upload className="size-3.5 text-muted" aria-hidden="true" />}
                     onClick={() => {
-                      if (moreMenuRef.current) moreMenuRef.current.open = false;
                       setError('');
                       setBatchOpen(true);
                     }}
                   >
-                    <Upload className="size-3.5 text-muted" aria-hidden="true" />
-                    <span>批量导入角色</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-2 text-left text-sm text-ink transition-colors hover:bg-surface-hover"
+                    批量导入角色
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<Tags className="size-3.5 text-muted" aria-hidden="true" />}
                     onClick={() => {
-                      if (moreMenuRef.current) moreMenuRef.current.open = false;
                       setError('');
                       setWorksOpen(true);
                     }}
                   >
-                    <span className="size-3.5" aria-hidden="true" />
-                    <span>作品与别名</span>
-                  </button>
-                </div>
-              </details>
-            </div>
-          }
+                    作品与别名
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+          </div>}
         />
+        <section aria-label="角色资料内容" className="space-y-4">
 
-        {/* 视图切换：专属角色卡 vs 多角色公共资产库 vs 邻舍角色 */}
-        <div className="flex max-w-full flex-nowrap overflow-x-auto items-center gap-1 bg-surface-sunken p-1 rounded-control w-fit border border-border-subtle/70" role="group" aria-label="角色资料视图">
-          <button
-            type="button"
-            aria-pressed={viewTab === 'characters'}
-            onClick={() => setViewTab('characters')}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
-              viewTab === 'characters'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink font-normal'
-            }`}
-          >
-            <User className="h-3.5 w-3.5" />
-            <span>专属角色卡</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={viewTab === 'shared-assets'}
-            onClick={() => { setAssetsVisited(true); setViewTab('shared-assets'); }}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
-              viewTab === 'shared-assets'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink font-normal'
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>多角色公共资产库</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={viewTab === 'linshe'}
-            onClick={() => setViewTab('linshe')}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-sm transition-colors cursor-pointer ${
-              viewTab === 'linshe'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink font-normal'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5 text-muted" />
-            <span>邻舍角色</span>
-          </button>
-        </div>
-
-        {assetsVisited && (
-          <div hidden={viewTab !== 'shared-assets'}>
-            <SharedAssetVault
+          <div id="character-shared-assets" role="tabpanel" aria-label="多角色公共资产库" hidden={viewTab !== 'shared-assets'}>
+            {assetsVisited && <SharedAssetVault
               active={viewTab === 'shared-assets'}
               uploadDialogOpen={sharedAssetUploadOpen}
               onUploadDialogOpenChange={setSharedAssetUploadOpen}
-            />
+            />}
           </div>
-        )}
-        {viewTab === 'linshe' && <LinsheCharacterVault />}
-        <div hidden={viewTab !== 'characters'} className="space-y-4">
+        <div id="character-linshe" role="tabpanel" aria-label="邻舍角色" hidden={viewTab !== 'linshe'}>
+          {viewTab === 'linshe' && <LinsheCharacterVault />}
+        </div>
+        <div id="character-cards" role="tabpanel" aria-label="专属角色卡" hidden={viewTab !== 'characters'} className="space-y-4">
           {(error || browser.error) && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-fg">
               <span>{error || (browser.error instanceof Error ? browser.error.message : '角色列表加载失败')}</span>
@@ -312,10 +267,11 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               </summary>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {Object.entries(selected).map(([id, name]) => (
-                  <button
+                  <Button
                     key={id}
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-control border border-border-default bg-surface px-2 py-0.5 text-xs text-ink hover:border-accent/50"
+                    variant="outline"
+                    size="sm"
+                    className="!h-[22px] !min-h-[22px] gap-1 rounded-control !border-border-default !bg-surface !px-2 py-0 text-xs font-normal !text-ink hover:!border-accent/50"
                     onClick={() =>
                       setSelected((current) => {
                         const next = { ...current };
@@ -326,7 +282,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                   >
                     <span>{name}</span>
                     <span className="text-muted hover:text-danger-fg">×</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </details>
@@ -389,15 +345,15 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             </Button>
           </FloatingActionBar>
 
-          {/* 角色卡片自适应多列网格 */}
+          {/* 角色名片多列画廊网格 */}
           {browser.isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                <div key={n} className="flex items-center gap-3 p-3 rounded-panel border border-border-subtle bg-surface">
-                  <Skeleton className="h-20 w-20 rounded-control flex-none" />
+                <div key={n} className="flex items-center gap-3.5 rounded-panel border border-border-subtle bg-surface p-3.5">
+                  <Skeleton className="h-[76px] w-[76px] rounded-xl flex-none" />
                   <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-3 w-1/3" />
+                    <Skeleton className="h-3.5 w-5/6" />
                     <Skeleton className="h-4 w-2/3" />
                   </div>
                   <Skeleton className="h-8 w-8 rounded-control flex-none" />
@@ -407,43 +363,52 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           ) : browser.data?.total === 0 ? (
             <EmptyState
               icon={User}
-              title="没有匹配的角色"
-              description="可以清空筛选条件，或直接新建 / 导入新角色。"
-              actions={
-                <div className="flex flex-wrap items-center justify-center gap-2">
+              title={hasFilters ? '没有匹配的角色' : '角色库还没有角色'}
+              description={hasFilters ? '试试其他关键词，或清空筛选查看全部角色。' : '从上方新建角色，或通过「搜索 / 导入」添加已有角色。'}
+              actions={hasFilters && (
                   <Button variant="outline" size="sm" onClick={() => browser.reset()}>
                     清空筛选
                   </Button>
-                  <Link
-                    href="/apps/characters/new"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent shadow-xs transition-colors hover:bg-accent-dark"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>新建角色</span>
-                  </Link>
-                </div>
-              }
+              )}
             />
           ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
               {browser.data?.items.map((character) => {
                 const workName = (character.draft.work || '').trim().toLowerCase();
-                const displayTags = (character.tags || [])
+                const allTags = (character.tags || [])
                   .filter((tag) => {
                     const t = tag.trim().toLowerCase();
                     return t && t !== workName && t !== character.displayName.trim().toLowerCase();
-                  })
-                  .slice(0, 3);
+                  });
+                const displayTags = allTags.slice(0, 3);
+                const hiddenTagCount = allTags.length - displayTags.length;
+                const draftPersonaSnippet =
+                  'personaText' in character.draft && character.draft.personaText
+                    ? character.draft.personaText
+                    : 'identity' in character.draft && character.draft.identity
+                    ? character.draft.identity
+                    : '';
+                const rawSnippet =
+                  character.draft.summary?.trim() ||
+                  (draftPersonaSnippet
+                    ? draftPersonaSnippet
+                        .replace(/^#{1,6}\s*/gm, '')
+                        .replace(/\n+/g, ' ')
+                        .trim()
+                    : '');
+                const summaryLine = rawSnippet
+                  ? rawSnippet.slice(0, 48)
+                  : '暂无角色概述，点击进入档案补充设定';
 
                 return (
                   <li
                     key={character.id}
-                    className="group relative flex items-center gap-3 rounded-panel border border-border-subtle bg-surface p-3 transition-colors hover:border-border-control"
+                    data-character-card="true"
+                    className="group relative flex items-center gap-3.5 rounded-panel border border-transparent bg-surface p-3.5 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] transition-[transform,box-shadow,border-color] duration-[var(--motion-base)] ease-[var(--motion-ease)] hover:-translate-y-0.5 hover:border-border-default hover:shadow-[var(--elev-sm),0_0_0_1px_var(--hairline)] motion-reduce:transform-none"
                   >
                     {selectionMode && (
-                      <input
+                      <Checkbox
                         aria-label={`选择 ${character.displayName}`}
-                        type="checkbox"
                         checked={!!selected[character.id]}
                         onChange={(e) =>
                           setSelected((current) => {
@@ -453,55 +418,69 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                             return next;
                           })
                         }
-                        className="size-4 rounded accent-accent shrink-0 cursor-pointer"
+                        className="mt-0 shrink-0"
                       />
                     )}
 
                     <Link
                       href={`/apps/characters/${character.id}`}
-                      className="relative h-20 w-20 shrink-0 overflow-hidden rounded-control border border-border-subtle bg-surface-sunken flex items-center justify-center"
+                      className="relative flex h-[76px] w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken shadow-[inset_0_1px_0_rgb(255_255_255/35%)]"
                     >
                       <CharacterAvatar
                         src={character.avatarUrl}
                         name={character.displayName}
                         className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        fallbackClassName="text-2xl"
                       />
                     </Link>
 
                     <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
                       <Link
                         href={`/apps/characters/${character.id}`}
-                        className="min-w-0 flex-1 space-y-1 block"
+                        className="min-w-0 flex-1 space-y-1.5 block"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate text-sm sm:text-base font-semibold text-ink transition-colors group-hover:text-accent">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="truncate text-[16px] font-[620] tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
                             {character.displayName}
                           </span>
                           {character.organization?.favorite && (
                             <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" aria-label="已收藏" />
                           )}
+                          <span className="inline-flex max-w-[7.5rem] shrink-0 items-center truncate rounded-md bg-surface-sunken px-2 py-0.5 text-[11px] font-medium text-muted">
+                            {character.draft.work || '未设置作品'}
+                          </span>
                         </div>
-                        <p className="truncate text-xs text-muted">
-                          {character.draft.work || '未设置作品'}
+                        <p className="line-clamp-1 text-[13px] leading-relaxed text-muted">
+                          {summaryLine}
                         </p>
                         {displayTags.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden pt-0.5">
                             {displayTags.map((tag) => (
                               <span
                                 key={tag}
-                                className="inline-flex items-center rounded bg-surface-sunken px-1.5 py-0.5 text-xs text-muted border border-border-subtle/60"
+                                className="inline-flex max-w-[8.5rem] shrink-0 items-center truncate rounded-full border border-hairline bg-surface-sunken px-2 py-0.5 text-[11.5px] font-medium text-muted"
+                                title={tag}
                               >
                                 {tag}
                               </span>
                             ))}
+                            {hiddenTagCount > 0 && (
+                              <span
+                                className="inline-flex shrink-0 items-center rounded-full border border-hairline bg-surface-sunken/70 px-2 py-0.5 text-[11.5px] font-medium tabular-nums text-muted"
+                                title={allTags.slice(displayTags.length).join('、')}
+                              >
+                                +{hiddenTagCount}
+                              </span>
+                            )}
                           </div>
                         )}
                       </Link>
 
-                      <div className="flex flex-col items-center justify-between self-stretch shrink-0 gap-1 pl-1">
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-sunken hover:text-accent focus-visible:outline focus-visible:outline-accent cursor-pointer"
+                      <div className="flex shrink-0 flex-col items-center justify-between gap-1 self-stretch pl-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="!h-8 !min-h-8 !w-8 text-muted opacity-80 transition-opacity hover:!bg-surface-sunken hover:!text-accent group-hover:opacity-100 focus-visible:!outline-accent"
                           aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
                           aria-pressed={character.organization?.favorite || false}
                           onClick={(e) => {
@@ -513,11 +492,11 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                           <Star
                             className={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`}
                           />
-                        </button>
+                        </Button>
 
                         <Link
                           href={`/apps/characters/${character.id}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-control text-muted transition-colors group-hover:text-accent hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent"
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-[opacity,transform,background-color,color] duration-[var(--motion-fast)] hover:bg-surface-sunken hover:text-accent focus-visible:outline focus-visible:outline-accent group-hover:bg-surface-sunken/70 group-hover:text-accent [@media(hover:hover)]:-translate-x-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:translate-x-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:translate-x-0 [@media(hover:hover)]:focus-visible:opacity-100 motion-reduce:translate-x-0 motion-reduce:opacity-100"
                           aria-label={`查看 ${character.displayName}`}
                         >
                           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -602,24 +581,16 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             works={browser.facets?.works || []}
           />
           <div className="mt-3 space-y-2 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={replaceTags}
-                onChange={(e) => setReplaceTags(e.target.checked)}
-                className="size-3.5 rounded accent-accent"
-              />
-              <span>改为替换全部标签（留空则清除）</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={replaceGroups}
-                onChange={(e) => setReplaceGroups(e.target.checked)}
-                className="size-3.5 rounded accent-accent"
-              />
-              <span>改为替换全部分组（留空则清除）</span>
-            </label>
+            <Checkbox
+              label="改为替换全部标签（留空则清除）"
+              checked={replaceTags}
+              onChange={(e) => setReplaceTags(e.target.checked)}
+            />
+            <Checkbox
+              label="改为替换全部分组（留空则清除）"
+              checked={replaceGroups}
+              onChange={(e) => setReplaceGroups(e.target.checked)}
+            />
           </div>
           {error && <p role="alert" className="mt-3 text-sm text-danger-fg">{error}</p>}
         </Dialog>
@@ -640,8 +611,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           <div className="space-y-3">
             <label className="block text-sm font-medium text-ink">
               <span>选择已有作品</span>
-              <select
-                className="mt-1 h-10 w-full rounded-control border border-border-control bg-surface px-3 text-base sm:text-sm text-ink"
+              <Select
+                className="mt-1 h-10 min-h-10 text-base sm:text-sm"
                 value=""
                 onChange={(e) => {
                   const next = browser.facets?.works.find((w) => w.name === e.target.value);
@@ -657,7 +628,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     {w.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="block text-sm font-medium text-ink">
               <span>标准名称</span>
@@ -677,8 +648,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             </label>
             <label className="block text-sm font-medium text-ink">
               <span>作品类型</span>
-              <select
-                className="mt-1 h-10 w-full rounded-control border border-border-control bg-surface px-3 text-base sm:text-sm text-ink"
+              <Select
+                className="mt-1 h-10 min-h-10 text-base sm:text-sm"
                 value={work.mediaType}
                 onChange={(e) => setWork({ ...work, mediaType: e.target.value })}
               >
@@ -686,7 +657,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                 {['游戏', '动画', '漫画', '小说', '影视', '其他'].map((t) => (
                   <option key={t}>{t}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             {error && <p role="alert" className="text-sm text-danger-fg">{error}</p>}
           </div>
@@ -815,6 +786,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             )}
           </div>
         </Dialog>
+        </section>
       </PageContainer>
     </div>
   );

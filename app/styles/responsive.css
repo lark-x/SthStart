@@ -1,0 +1,176 @@
+/*
+ * SthStart 样式职责拆分 - 移动端与平板响应式断点适配 (Responsive mobile & tablet overrides)
+ * 保持 baseline 原始级联顺序，由 app/globals.css 按序引入。
+  */
+
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1023px) {
+  .notebook-master-pane {
+    height: auto;
+    min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
+  }
+
+  .notebook-detail-pane {
+    height: auto;
+    min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
+  }
+
+  /* 单栏布局下滚动发生在文档上：pane 与工作区容器若保留 overflow 捕获，
+     编辑器的 sticky 保存栏会相对一个永不滚动的 scrollport 计算，等于失效。 */
+  .notebook-workspace-body {
+    overflow: visible;
+  }
+
+  .notebook-detail-pane {
+    overflow: visible;
+  }
+
+  /* 编辑器保存栏是移动端的主操作，让它单独吸附在视口顶部；
+     工作台头部若同时吸附会以更高的 z-index 盖住保存栏。 */
+  .notebook-workspace-header {
+    position: static;
+  }
+
+  /* iOS Safari（含 iPad）在焦点控件字号 < 16px 时会缩放页面；单栏移动布局的
+     JS 断点是 1024px，因此 16px 兜底必须覆盖到 1023px，769–1023px 才不会留下空窗。 */
+  :where(
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+    textarea,
+    select
+  ) {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .runtime-strip {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .runtime-strip-info {
+    gap: 10px;
+  }
+
+  .runtime-strip-action {
+    align-self: flex-end;
+  }
+
+  .primary-action {
+    min-height: 30px;
+    padding: 0 10px;
+  }
+
+  .embed-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .embed-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .page-header-actions button,
+  .page-header-actions a {
+    min-height: 40px;
+  }
+
+  .character-editor-tabs,
+  .page-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .page-tabs.activity-workflow-tabs {
+    display: flex;
+  }
+
+  .character-editor-tabs button,
+  .page-tabs button {
+    width: auto !important;
+    flex: 0 0 auto !important;
+    min-height: 40px;
+    justify-content: center;
+    padding-inline: 7px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* Notebook list / workspace header on phone */
+  .notebook-list-page {
+    width: 100%;
+    max-width: none;
+  }
+
+  .notebook-list-header {
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .notebook-list-header .page-header-actions a {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .notebook-list-header .notebook-new-note-action {
+    color: var(--action-on-primary) !important;
+    background-color: var(--action-primary) !important;
+  }
+
+  .notebook-list-filters {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .notebook-list-filters input {
+    min-height: 36px;
+    font-size: 16px !important;
+  }
+
+  .notebook-filter-options {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: calc(100% + 4px);
+    margin-inline: -2px;
+    padding: 0 2px 2px;
+    overflow: visible;
+    scrollbar-width: none;
+  }
+
+  .notebook-filter-options::-webkit-scrollbar {
+    display: none;
+  }
+
+  .notebook-filter-options button {
+    width: 100%;
+    min-height: 42px;
+    padding: 6px 6px;
+  }
+
+  .notebook-textarea {
+    height: 240px;
+    min-height: 180px;
+    font-size: 16px !important;
+  }
+
+  /* iOS Safari zooms the page when a text control is smaller than 16px. */
+  :where(
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+    textarea,
+    select
+  ) {
+    font-size: 16px !important;
+  }
+}

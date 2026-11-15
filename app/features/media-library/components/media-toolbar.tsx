@@ -4,6 +4,8 @@ import React from 'react';
 import { Search, RefreshCw } from 'lucide-react';
 import type { MediaLibraryKind, MediaLibraryStatus } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 
 export interface MediaToolbarProps {
   searchQuery: string;
@@ -37,43 +39,44 @@ export function MediaToolbar({
   isLoading,
 }: MediaToolbarProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-panel border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-wrap items-center gap-3 rounded-panel bg-surface p-3 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)]">
       {/* 搜索框 */}
-      <div className="relative flex-1 min-w-[200px]">
+      <div className="relative min-w-0 w-full sm:min-w-56 sm:flex-1">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted pointer-events-none" />
-        <input
+        <Input
           type="search"
+          aria-label="搜索媒体列表"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           onCompositionStart={onSearchCompositionStart}
           onCompositionEnd={(e) => onSearchCompositionEnd?.(e.currentTarget.value)}
           placeholder="按文件名、ID 或格式搜索媒体…"
-          className="w-full rounded-control border border-border-subtle bg-surface-subtle py-1.5 pl-9 pr-3 text-sm text-ink placeholder:text-muted transition-colors focus:border-border focus:bg-surface focus:outline-none"
+          className="h-9 pl-9 text-sm"
         />
       </div>
 
       {/* 筛选控制器 */}
       <div className="flex flex-wrap items-center gap-2">
         {/* 类型筛选 */}
-        <select
+        <Select
           value={selectedKind}
           onChange={(e) => onKindChange(e.target.value as MediaLibraryKind | 'all')}
           aria-label="按产物类型筛选"
-          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-border focus:outline-none cursor-pointer"
+          className="h-9 w-auto text-sm"
         >
           <option value="all">全部类型</option>
           <option value="image">图像 (Image)</option>
           <option value="video">视频 (Video)</option>
           <option value="audio">音频 (Audio)</option>
           <option value="file">文件 (File)</option>
-        </select>
+        </Select>
 
         {/* 来源应用筛选 */}
-        <select
+        <Select
           value={selectedApp}
           onChange={(e) => onAppChange(e.target.value)}
           aria-label="按来源应用筛选"
-          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-border focus:outline-none cursor-pointer"
+          className="h-9 w-auto max-w-48 text-sm"
         >
           <option value="all">全部来源</option>
           {appOptions.map((app) => (
@@ -81,20 +84,20 @@ export function MediaToolbar({
               {app.name}
             </option>
           ))}
-        </select>
+        </Select>
 
         {/* 状态筛选 */}
-        <select
+        <Select
           value={selectedStatus}
           onChange={(e) => onStatusChange(e.target.value as MediaLibraryStatus | 'all')}
           aria-label="按可用状态筛选"
-          className="rounded-control border border-border-subtle bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-border focus:outline-none cursor-pointer"
+          className="h-9 w-auto text-sm"
         >
           <option value="all">全部状态</option>
           <option value="ready">可用</option>
           <option value="missing">文件缺失</option>
           <option value="quarantined">已隔离</option>
-        </select>
+        </Select>
 
         {/* 刷新按钮 */}
         <Button
@@ -103,7 +106,7 @@ export function MediaToolbar({
           onClick={onRefresh}
           loading={isLoading}
           aria-label="刷新媒体库"
-          className="px-2.5 py-1.5 h-auto text-xs"
+          className="px-2.5 py-1.5 h-auto text-sm"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">刷新</span>

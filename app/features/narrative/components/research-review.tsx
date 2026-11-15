@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { NarrativeResearchClaim, NarrativeResearchEvidence, NarrativeResearchDraft } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -134,10 +135,8 @@ export function ResearchReview({
                   key={claim.id}
                   type="button"
                   onClick={() => { setSelectedId(claim.id); setClaimsDrawerOpen(false); }}
-                  className={cn(
-                    'w-full rounded-control p-2.5 text-left transition-colors cursor-pointer',
-                    isSelected ? 'bg-surface-sunken' : 'hover:bg-surface-hover'
-                  )}
+                  aria-pressed={isSelected}
+                  className="ui-choice w-full cursor-pointer rounded-control p-2.5 text-left transition-colors hover:bg-surface-hover"
                 >
                   <div className="flex items-center justify-between gap-1.5">
                     <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs font-semibold', claimTone(claim.claimType))}>
@@ -176,23 +175,28 @@ export function ResearchReview({
                 证据原文快照 ({activeClaim?.evidence?.length ?? 0})
               </span>
               <div className="flex items-center gap-1">
-                <button
+                {showEvidenceInline && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setEvidenceWide(!evidenceWide)}
+                    aria-label={evidenceWide ? '还原证据宽度' : '展开更宽证据视口'}
+                    title={evidenceWide ? '还原宽度' : '展开更宽证据视口'}
+                  >
+                    {evidenceWide ? <Minimize2 className="size-3.5" aria-hidden="true" /> : <Maximize2 className="size-3.5" aria-hidden="true" />}
+                  </Button>
+                )}
+                <Button
                   type="button"
-                  onClick={() => setEvidenceWide(!evidenceWide)}
-                  hidden={!showEvidenceInline}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
-                  title={evidenceWide ? '还原宽度' : '展开更宽证据视口'}
-                >
-                  {evidenceWide ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-                </button>
-                <button
-                  type="button"
+                  size="icon"
+                  variant="ghost"
                   onClick={() => { setEvidenceOpen(false); setEvidenceDrawerOpen(false); }}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-muted/60 transition-colors"
+                  aria-label="收起证据面板"
                   title="收起证据面板"
                 >
-                  <PanelRightClose className="size-3.5" />
-                </button>
+                  <PanelRightClose className="size-3.5" aria-hidden="true" />
+                </Button>
               </div>
             </div>
 
@@ -282,12 +286,12 @@ export function ResearchReview({
       </div>
       {error && <Alert variant="danger" className="mx-3 my-2 shrink-0">{error}</Alert>}
       {/* 三栏核心区：结论列表(220-250px) ｜ 结论与总稿(主区受控自适应) ｜ 证据原文(340-420px) */}
-      <div className={cn('min-w-0 flex-1 flex flex-row gap-3', isStandaloneWorkspace && 'min-h-0 overflow-hidden p-3')}>
+      <div className={cn('min-w-0 flex-1 flex flex-row gap-4', isStandaloneWorkspace && 'min-h-0 overflow-hidden p-4')}>
         {/* 左栏：结论列表 */}
         {showClaimsInline && <div className="h-full min-h-0 w-[220px] shrink-0">{claimsPanel}</div>}
 
         {/* 中栏：结论正文与总稿编辑（主区受控，独立平滑滚动） */}
-        <main
+        <section
           className={cn(
             'flex-1 min-w-0 flex flex-col rounded-xl border border-border-default bg-surface overflow-hidden shadow-2xs',
             isStandaloneWorkspace && 'h-full min-h-0'
@@ -385,10 +389,11 @@ export function ResearchReview({
 
                 <label className="block space-y-1">
                   <span className="text-xs font-semibold text-muted">总稿标题</span>
-                  <input
-                    className="h-9 w-full rounded-control border border-border-default bg-surface px-3 text-sm font-medium"
+                  <Input
+                    aria-label="总稿标题"
                     value={draftTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
+                    className="font-medium"
                   />
                 </label>
 
@@ -399,7 +404,7 @@ export function ResearchReview({
               </div>
             )}
           </div>
-        </main>
+        </section>
 
         {/* 右栏：证据原文与来源定位（可折叠、可调宽） */}
         {showEvidenceInline && (

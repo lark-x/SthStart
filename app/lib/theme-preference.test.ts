@@ -3,10 +3,14 @@ import test from 'node:test';
 import {
   applyThemeId,
   applyThemeMode,
+  applyUiSkin,
   readThemeId,
   readThemeMode,
+  readUiSkinId,
   THEMES,
   THEME_BOOTSTRAP_SCRIPT,
+  UI_SKINS,
+  UI_SKIN_STORAGE_KEY,
 } from './theme-preference';
 
 test('theme preference defaults to warm and migrates legacy values', () => {
@@ -120,4 +124,34 @@ test('THEME_BOOTSTRAP_SCRIPT covers all 4 matrix entries and sets style.colorSch
   assert.match(THEME_BOOTSTRAP_SCRIPT, /dark-espresso/);
   assert.match(THEME_BOOTSTRAP_SCRIPT, /dark-obsidian/);
   assert.match(THEME_BOOTSTRAP_SCRIPT, /style\.colorScheme/);
+  assert.match(THEME_BOOTSTRAP_SCRIPT, /sthstart_ui_skin/);
+  assert.match(THEME_BOOTSTRAP_SCRIPT, /data-ui-skin/);
+});
+
+test('UI_SKINS, readUiSkinId and applyUiSkin support default, genshin and sticker skins', () => {
+  assert.deepEqual(UI_SKINS.map((s) => s.id), ['default', 'genshin', 'sticker']);
+
+  const storage = new Map<string, string>();
+  const get = (key: string) => storage.get(key) ?? null;
+
+  assert.equal(readUiSkinId(get), 'default');
+  storage.set(UI_SKIN_STORAGE_KEY, 'unknown');
+  assert.equal(readUiSkinId(get), 'default');
+  storage.set(UI_SKIN_STORAGE_KEY, 'genshin');
+  assert.equal(readUiSkinId(get), 'genshin');
+  storage.set(UI_SKIN_STORAGE_KEY, 'sticker');
+  assert.equal(readUiSkinId(get), 'sticker');
+
+  const attrs = new Map<string, string>();
+  const root = {
+    setAttribute: (key: string, value: string) => attrs.set(key, value),
+    removeAttribute: (key: string) => attrs.delete(key),
+  };
+
+  applyUiSkin(root, 'genshin');
+  assert.equal(attrs.get('data-ui-skin'), 'genshin');
+  applyUiSkin(root, 'sticker');
+  assert.equal(attrs.get('data-ui-skin'), 'sticker');
+  applyUiSkin(root, 'default');
+  assert.equal(attrs.has('data-ui-skin'), false);
 });

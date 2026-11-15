@@ -447,22 +447,71 @@ export class KnowledgeCollectionStore {
     return { pendingId: id, duplicated: false };
   }
 
-  countPending(options: { state?: string; collectionId?: string } = {}): number {
-    const clauses = [options.state ? 'state=?' : "state IN ('pending','kept')"];
-    const params: string[] = options.state ? [options.state] : [];
-    if (options.collectionId) { clauses.push('collection_id=?'); params.push(options.collectionId); }
-    return Number((this.connection.prepare('SELECT COUNT(*) total FROM knowledge_pending_items WHERE ' + clauses.join(' AND ')).get(...params) as { total: number }).total);
-  }
-
-  listPending(options: { state?: string; collectionId?: string; runId?: string; limit?: number; offset?: number } = {}): KnowledgePendingItem[] {
+  private pendingFilter(options: {
+    state?: string;
+    collectionId?: string;
+    runId?: string;
+    q?: string;
+  }): { clauses: string[]; params: unknown[] } {
     const clauses: string[] = [];
     const params: unknown[] = [];
-    // 按执行查询时不套用默认状态过滤：执行详情要能列出这次发现的所有结果，
-    // 包括已经被整理过的条目。
-    if (options.state) { clauses.push('p.state=?'); params.push(options.state); }
-    else if (!options.runId) clauses.push("p.state IN ('pending','kept')");
-    if (options.runId) { clauses.push('p.run_id=?'); params.push(options.runId); }
-    if (options.collectionId) { clauses.push('p.collection_id=?'); params.push(options.collectionId); }
+    if (options.state) {
+      clauses.push('p.state=?');
+      params.push(options.state);
+    } else if (!options.runId) {
+      clauses.push("p.state IN ('pending','kept')");
+    }
+    if (options.runId) {
+      clauses.push('p.run_id=?');
+      params.push(options.runId);
+    }
+    if (options.collectionId) {
+      clauses.push('p.collection_id=?');
+      params.push(options.collectionId);
+    }
+    const query = options.q?.trim();
+    if (query) {
+      const like = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+      clauses.push(`(
+        v.title LIKE ? ESCAPE '\\'
+        OR v.excerpt LIKE ? ESCAPE '\\'
+        OR v.organized_text LIKE ? ESCAPE '\\'
+        OR s.url LIKE ? ESCAPE '\\'
+        OR s.source_name LIKE ? ESCAPE '\\'
+        OR s.work LIKE ? ESCAPE '\\'
+        OR c.name LIKE ? ESCAPE '\\'
+        OR p.work LIKE ? ESCAPE '\\'
+        OR p.characters_json LIKE ? ESCAPE '\\'
+      )`);
+      params.push(like, like, like, like, like, like, like, like, like);
+    }
+    return { clauses, params };
+  }
+
+  countPending(options: {
+    state?: string;
+    collectionId?: string;
+    runId?: string;
+    q?: string;
+  } = {}): number {
+    const { clauses, params } = this.pendingFilter(options);
+    const sql = 'SELECT COUNT(*) total FROM knowledge_pending_items p'
+      + ' JOIN knowledge_source_versions v ON v.id=p.source_version_id'
+      + ' JOIN knowledge_sources s ON s.id=v.source_id'
+      + ' LEFT JOIN knowledge_collections c ON c.id=p.collection_id'
+      + (clauses.length ? ' WHERE ' + clauses.join(' AND ') : '');
+    return Number((this.connection.prepare(sql).get(...params as never[]) as { total: number }).total);
+  }
+
+  listPending(options: {
+    state?: string;
+    collectionId?: string;
+    runId?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): KnowledgePendingItem[] {
+    const { clauses, params } = this.pendingFilter(options);
     const limit = Math.min(Math.max(options.limit ?? 60, 1), 200);
     const sql = 'SELECT p.*, v.title, v.excerpt, v.published_at, v.retrieved_at, v.truncated, v.content_hash,'
       + ' s.kind source_kind, s.url, s.source_name, s.external_key, c.name collection_name'
@@ -470,7 +519,7 @@ export class KnowledgeCollectionStore {
       + ' JOIN knowledge_source_versions v ON v.id=p.source_version_id'
       + ' JOIN knowledge_sources s ON s.id=v.source_id'
       + ' LEFT JOIN knowledge_collections c ON c.id=p.collection_id'
-      + ' WHERE ' + clauses.join(' AND ')
+      + (clauses.length ? ' WHERE ' + clauses.join(' AND ') : '')
       + ' ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?';
     const rows = this.connection.prepare(sql).all(...params as never[], limit, Math.max(0, Math.floor(options.offset ?? 0))) as Record<string, unknown>[];
     return rows.map((row) => this.mapPending(row));

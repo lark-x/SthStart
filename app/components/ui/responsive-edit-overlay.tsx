@@ -43,7 +43,7 @@ export function ResponsiveEditOverlay({
         description={description}
         footer={footer}
         position="bottom"
-        className={`!h-auto max-h-[90dvh] px-4 pb-0 pt-5 sm:px-6 ${className ?? ''}`}
+        className={`!h-auto max-h-[min(90dvh,calc(100dvh-var(--safe-area-bottom,0px)))] px-4 pb-[max(16px,var(--safe-area-bottom,0px))] pt-5 sm:px-6 ${className ?? ''}`}
       >
         {children}
       </Drawer>

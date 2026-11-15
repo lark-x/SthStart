@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { TopicLibraryView } from '@/app/features/topics/components/topic-library-view';
+import { TopicLibraryView } from '@/app/workspaces/resources/topic-library-view';
 
 export const metadata: Metadata = {
   title: '灵感素材 — SthStart',

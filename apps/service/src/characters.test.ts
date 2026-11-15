@@ -202,7 +202,7 @@ test('character avatar generation uses the common task and applies a central art
   assert.equal(unassigned.json().error, 'generation_assignment_not_found');
 
   const now = nowIso(); const engineId = 'character-avatar-engine'; const workflowId = 'character-avatar-workflow'; const taskId = 'character-avatar-task'; const artifactId = 'character-avatar-artifact';
-  database.connection.prepare('INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)').run(engineId, 'Avatar Engine', 'comfyui', 'http://comfy.test', null, 1, 1, now, now);
+  database.connection.prepare('INSERT INTO generation_engines(id,name,kind,base_url,credential_account,enabled,concurrency_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(engineId, 'Avatar Engine', 'comfyui', 'http://comfy.test', null, 1, 1, now, now);
   database.connection.prepare('INSERT INTO generation_workflows (id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(workflowId, 'Avatar Workflow', '', 'comfyui', 'image', 1, now, now);
   database.connection.prepare('INSERT INTO generation_workflow_versions (workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,is_published,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(workflowId, 1, engineId, '{}', '{}', '[]', JSON.stringify({ '1': { class_type: 'SaveImage', inputs: {} } }), 1, now);
   database.connection.prepare('INSERT INTO app_generation_assignments(app_id,purpose,workflow_id,workflow_version,engine_id,updated_at) VALUES (?,?,?,?,?,?)').run('characters', 'character-avatar', workflowId, 1, engineId, now);

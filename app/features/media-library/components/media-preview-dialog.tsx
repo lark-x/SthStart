@@ -1,19 +1,20 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { X, ExternalLink, Download, AlertTriangle, HardDrive, CheckCircle2 } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, Download, AlertTriangle, HardDrive, CheckCircle2 } from 'lucide-react';
 import type { MediaLibraryItem } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { useOverlayAccessibility } from '@/app/components/ui/overlay';
+import { Dialog } from '@/app/components/ui/dialog';
 import { formatByteSize, formatDateTime } from '../types';
-import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
+import type { MediaAdoptAction } from '../adopt-action';
 
 export interface MediaPreviewDialogProps {
   item: MediaLibraryItem | null;
   isOpen: boolean;
   onClose: () => void;
   onChooseArtifact?: (item: MediaLibraryItem) => void;
+  adoptAction?: MediaAdoptAction;
 }
 
 export function MediaPreviewDialog({
@@ -21,17 +22,11 @@ export function MediaPreviewDialog({
   isOpen,
   onClose,
   onChooseArtifact,
+  adoptAction,
 }: MediaPreviewDialogProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
-  useOverlayAccessibility({
-    open: isOpen,
-    onRequestClose: onClose,
-    containerRef: dialogRef,
-  });
-
-  if (!isOpen || !item) return null;
+  if (!item) return null;
 
   const isMissing = item.fileStatus === 'missing';
   const isQuarantined = item.fileStatus === 'quarantined';
@@ -42,61 +37,33 @@ export function MediaPreviewDialog({
   const isAudio = item.mediaKind === 'audio';
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="media-preview-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title={item.originalName || `媒体素材 ${item.id.slice(0, 8)}`}
+      size="lg"
+      className="max-w-4xl"
     >
-      <div
-        ref={dialogRef}
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-panel border border-border-subtle bg-surface shadow-2xl focus:outline-none"
-        tabIndex={-1}
-      >
-        {/* 顶部标题与关闭 */}
-        <header className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3 bg-surface-subtle">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 id="media-preview-title" className="truncate text-base font-semibold text-ink">
-              {item.originalName || `媒体素材 ${item.id.slice(0, 8)}`}
-            </h2>
+      <div className="flex min-h-0 flex-col md:flex-row">
+        <div className="flex flex-1 flex-col">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2">
             {isMissing ? (
-              <Badge variant="warning" className="gap-1">
-                <AlertTriangle className="h-3 w-3" /> 磁盘文件缺失
-              </Badge>
+              <Badge variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" aria-hidden="true" /> 磁盘文件缺失</Badge>
             ) : isQuarantined ? (
-              <Badge variant="error" className="gap-1">
-                <AlertTriangle className="h-3 w-3" /> 已隔离
-              </Badge>
+              <Badge variant="error" className="gap-1"><AlertTriangle className="h-3 w-3" aria-hidden="true" /> 已隔离</Badge>
             ) : loadFailed ? (
               <Badge variant="warning">加载失败</Badge>
             ) : (
-              <Badge variant="online" className="gap-1">
-                <CheckCircle2 className="h-3 w-3" /> 可用
-              </Badge>
+              <Badge variant="online" className="gap-1"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> 可用</Badge>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="关闭预览"
-            className="rounded-control p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink focus-visible:outline focus-visible:outline-accent cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </header>
-
-        {/* 主体：左侧预览原图/音视频，右侧详细元数据与操作 */}
-        <div className="flex flex-1 flex-col md:flex-row min-h-0 overflow-y-auto">
           {/* 媒体展示区：非 ready (missing/quarantined) 严格禁止发起实体预览请求 */}
-          <div className="flex flex-1 items-center justify-center border-b md:border-b-0 md:border-r border-border-subtle bg-surface-sunken p-4 min-h-[260px] md:min-h-[400px]">
+          <div className="flex flex-1 items-center justify-center border-b border-border-subtle bg-surface-sunken p-4 min-h-[240px] md:min-h-[360px]">
             {isMissing ? (
               <div className="flex flex-col items-center gap-3 text-center text-muted p-6">
                 <AlertTriangle className="h-10 w-10 text-warning-fg" />
                 <p className="text-sm font-medium text-ink">源文件缺失或不可访问</p>
-                <p className="text-xs max-w-xs text-muted">
+                <p className="max-w-xs text-sm leading-relaxed text-muted">
                   这份素材的记录和引用仍在，但原文件不在当前存储目录。请从包含媒体文件的备份恢复；仅恢复数据库无法找回图片、音频或视频。
                 </p>
               </div>
@@ -104,14 +71,14 @@ export function MediaPreviewDialog({
               <div className="flex flex-col items-center gap-3 text-center text-muted p-6">
                 <AlertTriangle className="h-10 w-10 text-danger-fg" />
                 <p className="text-sm font-medium text-ink">产物已被安全隔离</p>
-                <p className="text-xs max-w-xs text-muted">
+                <p className="max-w-xs text-sm leading-relaxed text-muted">
                   该文件已被标记为隔离状态，实体内容已封禁，禁止媒体预览、下载或跨项目采用。
                 </p>
               </div>
             ) : loadFailed ? (
-              <div role="alert" className="flex flex-col items-center gap-3 p-6 text-center text-muted">
+              <div role="alert" className="flex flex-col items-center gap-3 p-6 text-center text-danger-fg">
                 <AlertTriangle className="h-10 w-10" />
-                <p>文件加载失败，可能已被移动，或连接暂时不可用。</p>
+                <p className="text-sm">文件加载失败，可能已被移动，或连接暂时不可用。</p>
                 <Button variant="outline" onClick={() => setFailedUrl(null)}>重试预览</Button>
               </div>
             ) : isImage ? (
@@ -141,9 +108,10 @@ export function MediaPreviewDialog({
               </div>
             )}
           </div>
+        </div>
 
-          {/* 右侧信息侧栏 */}
-          <div className="w-full md:w-80 shrink-0 p-5 space-y-5 bg-surface text-xs text-ink">
+        {/* 右侧信息侧栏 */}
+        <div className="w-full shrink-0 space-y-5 border-t border-border-subtle bg-surface p-5 text-xs text-ink md:w-80 md:border-l md:border-t-0">
             {/* 来源信息 */}
             <div className="space-y-1.5">
               <span className="text-[11px] font-medium text-muted uppercase tracking-wider">来源业务</span>
@@ -235,7 +203,7 @@ export function MediaPreviewDialog({
                 </Button>
               )}
 
-              <AdoptIntoProject source={{ kind: 'artifact', id: item.id }} disabled={isUnusable} />
+              {adoptAction?.({ source: { kind: 'artifact', id: item.id }, disabled: isUnusable })}
 
               <div className="flex gap-2">
                 <Button
@@ -274,9 +242,8 @@ export function MediaPreviewDialog({
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
       </div>
-    </div>
+      </div>
+    </Dialog>
   );
 }

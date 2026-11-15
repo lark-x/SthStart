@@ -143,18 +143,17 @@ export function StudioMobileView({
         {document.stages.map((stage, idx) => {
           const isSelected = stage.id === activeStage?.id;
           return (
-            <button
+            <Button
               key={stage.id}
               type="button"
+              size="sm"
+              variant={isSelected ? 'accent' : 'outline'}
+              aria-pressed={isSelected}
               onClick={() => setActiveStageId(stage.id)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                isSelected
-                  ? 'bg-accent text-fg-on-accent shadow-2xs'
-                  : 'bg-surface border border-border-default text-muted hover:text-ink'
-              }`}
+              className="h-auto min-h-0 shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold"
             >
               第 {idx + 1} 幕 · {stage.title.replace(/^第\s*[0-9一二三四五六七八九十]+\s*幕[·：:\s]*/, '') || stage.title}
-            </button>
+            </Button>
           );
         })}
       </nav>

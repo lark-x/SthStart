@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
+import { Alert } from '@/app/components/ui/alert';
+import { Badge } from '@/app/components/ui/badge';
 import { storyApi } from '../api';
 import { storyKeys } from '@/app/lib/query-keys';
 
@@ -140,11 +142,7 @@ export function StoryAgentConnectDialog({
       }
     >
       <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-        {notice && (
-          <div className="rounded-control bg-accent/10 border border-accent/20 px-3 py-2 text-xs text-accent">
-            {notice}
-          </div>
-        )}
+        {notice && <Alert variant="info" onDismiss={() => setNotice('')}>{notice}</Alert>}
 
         {/* 状态总览卡片 */}
         <div className="rounded-panel border border-border-default bg-surface-muted p-4 space-y-3">
@@ -153,15 +151,9 @@ export function StoryAgentConnectDialog({
               <ShieldCheck className="size-5 text-accent" />
               <h3 className="text-sm font-semibold">Story Bridge 运行状态</h3>
             </div>
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                bridge.data?.paired
-                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                  : 'bg-zinc-500/10 text-muted border border-border-default'
-              }`}
-            >
+            <Badge variant={bridge.data?.paired ? 'online' : 'secondary'} dot>
               {bridge.data?.paired ? '已配对就绪' : '待配置令牌'}
-            </span>
+            </Badge>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">

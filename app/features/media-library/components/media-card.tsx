@@ -11,16 +11,18 @@ import {
 } from 'lucide-react';
 import type { MediaLibraryItem } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
+import { Button } from '@/app/components/ui/button';
 import { formatByteSize, formatDateTime } from '../types';
-import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
+import type { MediaAdoptAction } from '../adopt-action';
 
 export interface MediaCardProps {
   item: MediaLibraryItem;
   onPreview: (item: MediaLibraryItem) => void;
   onChooseArtifact?: (item: MediaLibraryItem) => void;
+  adoptAction?: MediaAdoptAction;
 }
 
-export function MediaCard({ item, onPreview, onChooseArtifact }: MediaCardProps) {
+export function MediaCard({ item, onPreview, onChooseArtifact, adoptAction }: MediaCardProps) {
   const [loadError, setLoadError] = useState(false);
 
   const isMissing = item.fileStatus === 'missing';
@@ -142,30 +144,33 @@ export function MediaCard({ item, onPreview, onChooseArtifact }: MediaCardProps)
         </div>
 
         {/* 尺寸 / 格式 / 时间 */}
-        <div className="flex items-center justify-between text-[11px] text-muted border-t border-border-subtle/60 pt-2">
+        <div className="flex items-center justify-between text-xs text-muted border-t border-border-subtle/60 pt-2">
           <span>
             {item.width && item.height
               ? `${item.width} × ${item.height}`
               : item.contentType || '文件'}
           </span>
-          <span>{formatDateTime(item.createdAt).split(' ')[0]}</span>
+          <span className="tabular-nums">{formatDateTime(item.createdAt).split(' ')[0]}</span>
         </div>
 
         {/* 快捷操作区：非 ready (missing/quarantined) 严格禁用 */}
-        <div className="flex items-center justify-between gap-2 pt-1 border-t border-border-subtle/40">
-          <AdoptIntoProject source={{ kind: 'artifact', id: item.id }} disabled={isUnusable} />
+        {(adoptAction || onChooseArtifact) && (
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border-subtle/40">
+            {adoptAction?.({ source: { kind: 'artifact', id: item.id }, disabled: isUnusable })}
 
-          {onChooseArtifact && (
-            <button
-              type="button"
-              disabled={isUnusable}
-              onClick={() => onChooseArtifact(item)}
-              className="shrink-0 rounded-control border border-border-subtle bg-surface px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-subtle disabled:opacity-50 disabled:pointer-events-none"
-            >
-              选用
-            </button>
-          )}
-        </div>
+            {onChooseArtifact && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isUnusable}
+                onClick={() => onChooseArtifact(item)}
+                className="h-8 px-2.5 text-xs"
+              >
+                选用
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </article>
   );

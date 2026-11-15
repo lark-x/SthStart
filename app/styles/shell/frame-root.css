@@ -1,0 +1,30 @@
+/*
+
+ * SthStart Shell 样式职责拆分 - AppShell 根变量与视口基底容器 (.shell-root)
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+
+ *//*
+ * 应用外框（AppShell）与四类页面模板的样式。
+ *
+ * 独立于 globals.css：globals 逐步收缩为基础 reset 与共享基础规则，
+ * 外框与模板规则以 .shell-* / .tpl-* 明确根标识，避免与旧 .portal-* / .studio-* 规则交叉命中。
+ */
+
+/* ==================== B 外框：紧凑导航 + 独立工作面画布 ==================== */
+
+/*
+ * 普通页面使用文档滚动，工作台由外框分配可用高度与独立滚动。
+ * 外壳不再包裹一张大卡片；--shell-sticky-top 为页面吸顶操作提供偏移。
+ */
+.shell-root {
+  --shell-inset: 0px;
+  --shell-toolbar-height: var(--shell-topbar);
+  --shell-sticky-top: calc(var(--shell-inset) + var(--shell-toolbar-height));
+  --shell-workspace-height: calc(100dvh - var(--shell-toolbar-height) - var(--shell-inset) * 2);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--bg-app);
+}

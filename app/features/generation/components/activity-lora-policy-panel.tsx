@@ -1,16 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { LoaderCircle, Plus, Save, Trash2 } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { Plus, Save, Trash2 } from 'lucide-react';
 import type { ActivityLora, BeatRenderActivityLoraPolicyResponse } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { FormField } from '@/app/components/ui/form-field';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { Spinner } from '@/app/components/ui/spinner';
 import { fetchActivityLoraPolicy, saveActivityLoraPolicy } from '../api';
 import type { Workflow } from '../types';
 
 export function ActivityLoraPolicyPanel({ workflows }: { workflows: Workflow[] }) {
+  const versionSelectId = useId();
   const versions = useMemo(() => workflows.flatMap((workflow) => workflow.versions
     .filter((version) => version.isPublished && (version.category ?? workflow.category) === 'image' && version.editorConfig?.activityLoraInjection)
     .map((version) => ({ id: workflow.id, name: workflow.name, version: version.version }))), [workflows]);
@@ -62,27 +66,33 @@ export function ActivityLoraPolicyPanel({ workflows }: { workflows: Workflow[] }
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">这里配置活动统一画风。实际加载顺序为全局 → 角色 → 镜头；同名文件只加载一次，后一级覆盖强度和触发词。设置按已发布工作流版本保存。</p>
       </div>
       {!versions.length ? <Alert variant="warning" title="暂无支持 LoRA 的活动图片工作流">请先发布一个声明了动态 LoRA 插入点的图片工作流版本。</Alert> : <>
-        <label className="block max-w-2xl space-y-1.5">
-          <span className="text-sm font-medium text-ink">应用到工作流版本</span>
-          <Select aria-label="全局 LoRA 工作流版本" value={selection} onChange={(event) => setSelection(event.target.value)}>
+        <div className="block max-w-2xl space-y-1.5">
+          <label htmlFor={versionSelectId} className="block text-sm font-medium text-ink">应用到工作流版本</label>
+          <Select id={versionSelectId} value={selection} onChange={(event) => setSelection(event.target.value)}>
             {versions.map((item) => <option key={`${item.id}::${item.version}`} value={`${item.id}::${item.version}`}>{item.name} · v{item.version}</option>)}
           </Select>
-        </label>
+        </div>
         {response?.message && <Alert variant="warning" title="LoRA 运行环境尚未就绪">{response.message}{response.models.length === 0 ? ' 当前实例的 LoRA 文件清单为空；请把兼容文件放入 models/loras 并刷新。' : ''}</Alert>}
         {error && <Alert variant="danger" title="LoRA 配置操作失败">{error}</Alert>}
-        {loading || !response ? <div className="py-10 text-center text-sm text-muted" role="status">正在检查工作流节点和 LoRA 文件…</div> : <>
+        {loading || !response ? <Spinner size="sm" label="正在检查工作流节点和 LoRA 文件…" /> : <>
           <div className="space-y-3">
             {entries.map((entry, index) => <div key={`${entry.model}-${index}`} className="grid gap-3 rounded-control border border-border-subtle bg-surface-raised p-3 md:grid-cols-[minmax(0,1fr)_8rem_auto]">
               <div className="min-w-0 space-y-2">
-                <Select aria-label={`全局 LoRA 文件 ${index + 1}`} value={entry.model} onChange={(event) => update(index, { model: event.target.value })}>
-                  {!response.models.includes(entry.model) && <option value={entry.model}>{entry.model} · 当前实例不可用</option>}
-                  {response.models.map((model) => <option key={model} value={model}>{model}</option>)}
-                </Select>
-                <Input aria-label={`全局 LoRA 触发词 ${index + 1}`} value={entry.triggerWord} onChange={(event) => update(index, { triggerWord: event.target.value })} placeholder="触发词（可选）" />
+                <FormField label={`LoRA 文件 ${index + 1}`}>
+                  <Select value={entry.model} onChange={(event) => update(index, { model: event.target.value })}>
+                    {!response.models.includes(entry.model) && <option value={entry.model}>{entry.model} · 当前实例不可用</option>}
+                    {response.models.map((model) => <option key={model} value={model}>{model}</option>)}
+                  </Select>
+                </FormField>
+                <FormField label={`LoRA 触发词 ${index + 1}（可选）`}>
+                  <Input value={entry.triggerWord} onChange={(event) => update(index, { triggerWord: event.target.value })} placeholder="例如：角色或画风触发词" />
+                </FormField>
               </div>
-              <label className="space-y-1"><span className="text-xs text-muted">模型强度</span><Input aria-label={`全局 LoRA 强度 ${index + 1}`} type="number" min={-10} max={10} step={0.05} value={entry.strength} onChange={(event) => update(index, { strength: Number(event.target.value) })} /></label>
+              <FormField label={`模型强度 ${index + 1}`}>
+                <Input type="number" min={-10} max={10} step={0.05} value={entry.strength} onChange={(event) => update(index, { strength: Number(event.target.value) })} />
+              </FormField>
               <div className="flex items-center justify-between gap-3 md:flex-col md:items-end">
-                <label className="flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={entry.enabled} onChange={(event) => update(index, { enabled: event.target.checked })} />启用</label>
+                <Checkbox label="启用" checked={entry.enabled} onChange={(event) => update(index, { enabled: event.target.checked })} />
                 <Button type="button" size="sm" variant="ghost" aria-label={`移除全局 LoRA ${index + 1}`} onClick={() => setEntries((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 className="h-4 w-4" />移除</Button>
               </div>
             </div>)}
@@ -93,7 +103,7 @@ export function ActivityLoraPolicyPanel({ workflows }: { workflows: Workflow[] }
               <Plus className="h-4 w-4" />添加 LoRA
             </Button>
             <Button type="button" disabled={saving} onClick={() => void save()}>
-              {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{saving ? '保存中…' : '保存全局配置'}
+              {!saving && <Save className="h-4 w-4" aria-hidden="true" />}{saving ? '保存中…' : '保存全局配置'}
             </Button>
             {saved && <span role="status" className="text-sm text-success">已保存修订 r{response.policy.revision}</span>}
           </div>

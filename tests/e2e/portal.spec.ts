@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const e2eAdminToken = 'sthstart-e2e-secret-0123456789abcdef';
 const e2eServiceUrl = `http://127.0.0.1:${process.env.E2E_SERVICE_PORT ?? 4200}`;
@@ -65,11 +65,13 @@ test('portal home lists the four creative modules and opens them', async ({ page
     ['资料库', '/apps/resources'],
     ['媒体库', '/apps/media'],
   ] as const) {
-    await expect(modules.getByRole('link', { name: new RegExp(`^${name}`) })).toHaveAttribute('href', href);
+    await expect(
+      modules.getByRole('link', { name: new RegExp(`^(?:\\d[\\d,]*\\s+)?${name}`) }),
+    ).toHaveAttribute('href', href);
   }
   for (const card of await modules.getByRole('link').all()) await expect(card).toBeInViewport();
 
-  await modules.getByRole('link', { name: /^角色库/ }).click();
+  await modules.getByRole('link', { name: /^(?:\d[\d,]*\s+)?角色库/ }).click();
   await expect(page).toHaveURL(/\/apps\/characters(?:\?.*)?$/);
   await expect(page.getByRole('heading', { name: '角色资料库', level: 1 })).toBeVisible();
   const noHorizontalOverflow = await page.evaluate(() =>
@@ -83,9 +85,15 @@ test('creative center exposes a safe unconfigured image workspace', async ({ pag
   await expect(page.getByRole('heading', { name: '自由生成', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: '文本生图' })).toBeVisible();
   await expect(page.getByRole('tab', { name: '图生图' })).toBeVisible();
-  await page.locator('summary').filter({ hasText: /服务(已就绪|待配置)/ }).click();
-  await expect(page.getByRole('heading', { name: '公共生成状态' })).toBeVisible();
+  await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
+  const serviceStatus = page.getByRole('button', { name: /服务(已就绪|待配置)/ });
+  await serviceStatus.click();
+  const statusHeading = page.getByRole('heading', { name: '公共生成状态' });
+  await expect(statusHeading).toBeVisible();
   await expect(page.getByRole('link', { name: '进入生成配置' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(statusHeading).toBeHidden();
+  await expect(serviceStatus).toBeFocused();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await expect(page.getByText('媒体库还是空的')).toBeVisible();
 
@@ -163,94 +171,137 @@ test('local admin session opens the control center and switches tabs', async ({ 
   await expect(page.getByPlaceholder('搜索日志内容…')).toBeVisible();
 });
 
-test('public services creates a connection, imports discovered models, and assigns them to an app', async ({ page }) => {
+test.describe('model services routing', () => {
+test.use({ serviceWorkers: 'block' });
+test('public services manages suppliers and multiple model types, common routes, and app exceptions', async ({ page }) => {
   /*
-   * 这条用例串行走完“新建连接 → 发现并导入模型 → 编辑模型 → 建应用令牌 → 绑定 → 解绑”，
+   * 这条用例串行走完“添加模型向导 → 常用模型 → 应用令牌 → 应用例外”，
    * 与其余用例并发、且测试库里的连接与应用会逐次累积时，30 秒的默认上限容易被击穿。
-   * 这里只放宽时限，断言内容不变。
    */
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const suffix = Date.now().toString(36);
-  const connectionId = `conn-e2e-${suffix}`;
-  const connectionName = `测试连接 ${suffix}`;
-  const textModelId = `${connectionId}-text-model`;
-  const visionModelId = `${connectionId}-vision-model`;
-  const visionModelName = `测试视觉模型 ${suffix}`;
+  const connectionName = `测试模型接入 ${suffix}`;
+  const textModelLabel = `text-model-${suffix}`;
+  const visionModelLabel = `vision-model-${suffix}`;
+  const textModelOption = `${textModelLabel} — ${textModelLabel}`;
+  const visionModelOption = `${visionModelLabel} — ${visionModelLabel}`;
   const appId = `writer-${suffix}`;
+  const appName = `测试写作应用 ${suffix}`;
+
+  const expectNoLegacySamplingControls = async (target: Page | Locator = page) => {
+    await expect(target.getByLabel(/temperature|top[_\s-]?p/i)).toHaveCount(0);
+    await expect(
+      target.getByRole('spinbutton', { name: /temperature|top[_\s-]?p/i }),
+    ).toHaveCount(0);
+  };
+
   // 模型发现会请求远端 /models，这里拦截为固定结果，不访问外部服务。
   await page.route('**/api/admin/connections/discover-models', async (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ models: ['text-model', 'vision-model'], endpoint: 'https://provider.example/v1/models' }),
+      body: JSON.stringify({
+        models: [textModelLabel, visionModelLabel],
+        endpoint: 'https://provider.example/v1/models',
+      }),
     })
   );
   await page.goto('/settings/public-services');
   await expect(page.getByRole('heading', { name: '模型与公共服务', level: 1 })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '模型', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '扩展服务', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /用途绑定/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '新建连接', exact: true })).toBeHidden();
+  await expectNoLegacySamplingControls();
 
-  // 服务连接页签：新建一条 OpenAI 兼容文本连接（不填密钥，保存时不做远端探测）。
-  const connectionDialog = page.getByRole('dialog', { name: '新建服务连接' });
-  const newConnection = page.getByRole('button', { name: '新建连接' });
-  for (let attempt = 0; attempt < 12 && !(await connectionDialog.isVisible()); attempt += 1) {
-    await newConnection.click();
-    await page.waitForTimeout(150);
+  await page.getByRole('button', { name: '添加供应商', exact: true }).click();
+  const supplierEditor = page.getByRole('dialog', { name: '添加供应商', exact: true });
+  await supplierEditor.getByLabel('供应商名称').fill(connectionName);
+  await supplierEditor.getByLabel('API 地址').fill(`https://provider-${suffix}.example/v1`);
+  await supplierEditor.getByRole('button', { name: '保存供应商' }).click();
+  await expect(supplierEditor).toBeHidden();
+  const library = page.locator('section[aria-labelledby="model-library-title"]');
+  await expect(library.getByRole('heading', { name: connectionName, exact: true })).toBeVisible();
+  const addModel = library.getByRole('button', { name: `添加模型 · ${connectionName}`, exact: true });
+  const picker = page.getByRole('dialog', { name: `添加模型 · ${connectionName}`, exact: true });
+  for (const modelId of [textModelLabel, visionModelLabel]) {
+    await addModel.click();
+    await picker.getByRole('button', { name: '获取模型列表' }).click();
+    if (modelId === visionModelLabel) {
+      await expect(picker.getByRole('checkbox', { name: `${textModelLabel} · 已添加`, exact: true })).toBeDisabled();
+      await picker.getByRole('checkbox', { name: '所选模型同时支持看图' }).check();
+    }
+    await picker.getByRole('checkbox', { name: modelId, exact: true }).check();
+    await picker.getByRole('button', { name: '保存所选模型（1）', exact: true }).click();
+    await expect(picker).toBeHidden();
   }
-  await expect(connectionDialog).toBeVisible();
-  await connectionDialog.getByPlaceholder('e.g. openai-main').fill(connectionId);
-  await connectionDialog.getByPlaceholder('OpenAI 官方连接').fill(connectionName);
-  await connectionDialog.getByPlaceholder('https://api.openai.com/v1').fill('https://provider.example/v1');
-  await connectionDialog.getByRole('button', { name: '立即创建' }).click();
-  await expect(connectionDialog).toBeHidden();
-  /*
-   * 测试库里的连接会随每次运行累积，列表首屏不保证包含刚建的那条。
-   * 用本次运行的唯一后缀过滤，断言「保存后这条记录真的出现在列表里」。
-   */
-  await page.getByPlaceholder('搜索连接名称、地址或 ID...').fill(suffix);
-  await expect(page.getByRole('heading', { name: connectionName })).toBeVisible({ timeout: 15_000 });
+  for (const [modelType, modelId] of [['embedding', 'embed-model'], ['image', 'image-model']]) {
+    await addModel.click();
+    await picker.getByLabel('模型用途').selectOption(modelType);
+    await picker.getByLabel('手动添加模型 ID').fill(modelId);
+    await picker.getByRole('button', { name: '加入', exact: true }).click();
+    await picker.getByRole('button', { name: '保存所选模型（1）', exact: true }).click();
+    await expect(picker).toBeHidden();
+    await expect(library.getByText(modelId, { exact: true }).first()).toBeVisible();
+  }
+  await page.reload();
+  await expect(library.getByRole('heading', { name: connectionName, exact: true })).toBeVisible();
+  await expect(library.getByText(textModelLabel, { exact: true })).toBeVisible();
+  await expect(library.getByText(visionModelLabel, { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: `更多连接操作：${connectionName}` }).click();
-  await page.getByRole('menuitem', { name: '发现模型' }).click();
-  const discoverDrawer = page.getByRole('dialog', { name: '发现并导入远端模型' });
-  await expect(discoverDrawer.getByText('共发现 2 个模型')).toBeVisible();
-  await discoverDrawer.getByRole('button', { name: '一键添加为模型配置 (2)' }).click();
-  await expect(page.getByText('成功导入 2 个模型配置。')).toBeVisible();
+  // 常用模型：text-model 只支持文本，因此页面要求单独选择看图模型。
+  const common = page.locator('section[aria-labelledby="common-models-title"]');
+  await common.getByLabel('主模型', { exact: true }).selectOption({ label: textModelOption });
+  await expect(common.getByLabel('看图主模型', { exact: true })).toBeVisible();
+  await common.getByLabel('看图主模型', { exact: true }).selectOption({ label: visionModelOption });
+  await common.getByRole('button', { name: '保存常用模型' }).click();
+  await expect(page.getByText('文本与看图常用模型已保存。')).toBeVisible({ timeout: 15_000 });
+  await expectNoLegacySamplingControls();
 
-  // 文本模型页签：导入的两条模型都在；把其中一条改名并标记为多模态。
-  await page.getByRole('tab', { name: /^文本模型/ }).click();
-  await page.getByPlaceholder('搜索模型名称、ID 或实际模型名称...').fill(suffix);
-  await expect(page.getByRole('heading', { name: `${connectionName} - text-model` })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: `更多模型操作：${connectionName} - vision-model` }).click();
-  await page.getByRole('menuitem', { name: '编辑配置' }).click();
-  const modelDialog = page.getByRole('dialog', { name: '编辑模型配置' });
-  await modelDialog.getByPlaceholder('GPT-4o Mini 主力').fill(visionModelName);
-  await modelDialog.getByLabel('多模态视觉 (multimodal)').check();
-  await modelDialog.getByRole('button', { name: '保存修改' }).click();
-  await expect(modelDialog).toBeHidden();
-  await expect(page.getByRole('heading', { name: visionModelName })).toBeVisible({ timeout: 15_000 });
+  // 扩展服务页签：为新应用签发令牌。
+  await page.getByRole('tab', { name: '扩展服务', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: '扩展服务设置' })).toBeVisible();
+  await expectNoLegacySamplingControls();
+  const appIdInput = page.getByPlaceholder('应用 ID，例如 my-app');
+  await page.getByText('应用访问授权（高级）', { exact: true }).click();
+  await expect(appIdInput).toBeVisible({ timeout: 15_000 });
+  await appIdInput.fill(appId);
+  await page.getByPlaceholder('应用名称').fill(appName);
+  await page.getByRole('button', { name: '创建应用令牌' }).click();
+  await expect(page.getByText('应用令牌已生成。')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(appId, { exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.reload();
 
-  // 其他服务页签：为新应用签发令牌。
-  await page.getByRole('tab', { name: '其他服务' }).click();
-  const appForm = page.locator('form').filter({ has: page.getByPlaceholder('应用 ID，例如 my-app') });
-  await appForm.getByPlaceholder('应用 ID，例如 my-app').fill(appId);
-  await appForm.getByPlaceholder('应用名称').fill(`测试应用 ${suffix}`);
-  await appForm.getByRole('button', { name: '创建应用令牌' }).click();
-  await expect(page.getByText('应用令牌已生成。')).toBeVisible();
+  // 应用例外：只定位本次唯一 appId 的行，避免应用列表累积造成串行。
+  await page.getByRole('tab', { name: '模型', exact: true }).click();
+  const manageExceptions = page.getByRole('button', { name: '管理', exact: true });
+  await expect(manageExceptions).toBeEnabled({ timeout: 15_000 });
+  await manageExceptions.click();
+  const drawer = page.getByRole('dialog', { name: '应用模型例外' });
+  await expect(drawer).toBeVisible();
+  await expectNoLegacySamplingControls(drawer);
+  const appRow = drawer.locator(`#app-exception-${appId}`);
+  await expect(appRow).toBeVisible({ timeout: 15_000 });
+  const rowToggle = appRow.locator('button[aria-expanded]').first();
+  if ((await rowToggle.getAttribute('aria-expanded')) !== 'true') await rowToggle.click();
+  await expect(appRow.getByLabel('文本模型', { exact: true })).toBeVisible();
 
-  // 用途绑定页签：给新应用指定文本与多模态模型，再清空。
-  await page.getByRole('tab', { name: /^用途绑定/ }).click();
-  const assignment = page.locator('#panel-purposes section').filter({ has: page.getByRole('heading', { name: new RegExp(appId) }) });
-  const [textSelect, visionSelect] = [assignment.getByRole('combobox').nth(0), assignment.getByRole('combobox').nth(1)];
-  await textSelect.selectOption(textModelId);
-  await visionSelect.selectOption(visionModelId);
-  await assignment.getByRole('button', { name: '保存绑定' }).click();
-  await expect(page.getByText('应用模型绑定已保存。')).toBeVisible();
-  await expect(textSelect).toHaveValue(textModelId);
-  await expect(visionSelect).toHaveValue(visionModelId);
+  await appRow.getByLabel('文本模型', { exact: true }).selectOption({ label: textModelOption });
+  await appRow.getByRole('button', { name: '保存本应用' }).click();
+  await expect(appRow.getByText('文本 自定义', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expectNoLegacySamplingControls(drawer);
+  await page.reload();
+  await expect(drawer).toBeVisible();
+  await expect(appRow.getByText('文本 自定义', { exact: true })).toBeVisible();
+  if ((await rowToggle.getAttribute('aria-expanded')) !== 'true') await rowToggle.click();
 
-  await textSelect.selectOption('');
-  await visionSelect.selectOption('');
-  await assignment.getByRole('button', { name: '保存绑定' }).click();
-  await expect(page.getByText('应用模型绑定已保存。').first()).toBeVisible();
+  await appRow
+    .getByLabel('文本模型', { exact: true })
+    .selectOption({ label: '继承常用模型' });
+  await appRow.getByRole('button', { name: '保存本应用' }).click();
+  await expect(appRow.getByText('文本 继承', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('tab', { name: /用途绑定/ })).toHaveCount(0);
+});
 });
 
 test('character library opens, creates a character and edits fields', async ({ page }) => {
@@ -301,7 +352,7 @@ test('character library opens, creates a character and edits fields', async ({ p
   await expect(page.getByLabel('代表性装扮与配饰')).toHaveValue('深色风衣与围巾。');
 
   // 导出收在视觉预览卡的「更多」菜单里。
-  await page.getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByRole('button', { name: '更多操作', exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出酒馆卡 (JSON)' }).click();
   const download = await downloadPromise;
@@ -311,10 +362,16 @@ test('character library opens, creates a character and edits fields', async ({ p
 test('notebook block controls update the local draft', async ({ page }) => {
   await page.goto('/apps/notebook/new');
   await expect(page.locator('.notebook-block')).toHaveCount(1);
-  await page.getByRole('button', { name: '参考链接' }).click();
-  await page.getByRole('button', { name: '角色引用' }).click();
+  const insert = page.getByRole('button', { name: '插入内容', exact: true });
+  const popup = page.getByRole('dialog', { name: '插入内容', exact: true });
+  await insert.click();
+  await popup.getByRole('button', { name: '链接', exact: true }).click();
+  await insert.click();
+  await popup.getByRole('button', { name: '角色引用', exact: true }).click();
   await expect(page.locator('.notebook-block')).toHaveCount(3);
+  await page.locator('.notebook-block').nth(2).hover();
   await page.getByRole('button', { name: '上移第 3 个内容块' }).click();
+  await page.locator('.notebook-block').nth(2).hover();
   await page.getByRole('button', { name: '删除第 3 个内容块' }).click();
   await expect(page.locator('.notebook-block')).toHaveCount(2);
 });
@@ -328,16 +385,17 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   });
 
   await page.goto('/apps/notebook');
-  await expect(page.getByRole('heading', { name: '创作资料库', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作笔记', level: 1 })).toBeVisible();
 
   await page.goto('/apps/notebook/new');
   await page.getByPlaceholder('无标题笔记').fill(noteTitle);
-  await page.getByPlaceholder('添加标签，按回车确定...').fill('灵感, 测试');
+  await page.getByRole('textbox', { name: '资料标签', exact: true }).fill('灵感, 测试');
   await page.getByPlaceholder('写下一段文字记录…').fill('这是一段通过现代化编辑器记录的灵感正文。');
 
   const firstSync = page.waitForResponse((response) => response.request().method() === 'PUT'
     && /\/api\/admin\/notebook\/notes\/[^/]+$/.test(new URL(response.url()).pathname));
-  await page.getByRole('button', { name: '保存' }).click();
+  await page.getByRole('button', { name: '更多笔记操作', exact: true }).click();
+  await page.getByRole('menu', { name: '更多笔记操作', exact: true }).getByRole('menuitem', { name: '立即保存', exact: true }).click();
   await expect(page.getByText('已保存到本机').first()).toBeVisible();
   await firstSync;
   await expect(page).toHaveURL(/\/apps\/notebook\/[^/]+$/);
@@ -348,7 +406,8 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   await page.getByPlaceholder('无标题笔记').fill(editedTitle);
   const secondSync = page.waitForResponse((response) => response.request().method() === 'PUT'
     && /\/api\/admin\/notebook\/notes\/[^/]+$/.test(new URL(response.url()).pathname));
-  await page.getByRole('button', { name: '保存' }).click();
+  await page.getByRole('button', { name: '更多笔记操作', exact: true }).click();
+  await page.getByRole('menu', { name: '更多笔记操作', exact: true }).getByRole('menuitem', { name: '立即保存', exact: true }).click();
   await expect(page.getByText('已保存到本机').first()).toBeVisible();
   await secondSync;
   expect(noteWrites).toBe(2);
@@ -366,7 +425,7 @@ test('notebook creates a note with blocks and tags', async ({ page }) => {
   await page.context().setOffline(true);
   const offlineTitle = `${editedTitle}（离线）`;
   await page.getByPlaceholder('无标题笔记').fill(offlineTitle);
-  await expect(page.getByText('离线 · 待同步')).toBeVisible();
+  await expect(page.getByText('已保存到本机 · 离线', { exact: true })).toBeVisible();
   expect(noteWrites).toBe(2);
   const resumedSync = page.waitForResponse((response) => response.request().method() === 'PUT'
     && /\/api\/admin\/notebook\/notes\/[^/]+$/.test(new URL(response.url()).pathname));
@@ -393,7 +452,8 @@ test('notebook mobile roundtrip returns to the list and picks another note', asy
       await page.waitForTimeout(300);
       await expect(titleInput).toHaveValue(t, { timeout: 500 });
     }).toPass({ timeout: 15_000 });
-    await page.getByRole('button', { name: '保存' }).click();
+    await page.getByRole('button', { name: '更多笔记操作', exact: true }).click();
+    await page.getByRole('menu', { name: '更多笔记操作', exact: true }).getByRole('menuitem', { name: '立即保存', exact: true }).click();
     await expect(page.getByText('已保存到本机').first()).toBeVisible();
     await page.waitForTimeout(1200);
   }
@@ -406,7 +466,7 @@ test('notebook mobile roundtrip returns to the list and picks another note', asy
   await expect(page.getByPlaceholder('无标题笔记')).toHaveValue(titleA);
 
   // 返回列表后不得被 initialNoteId 自动拉回编辑器
-  await page.getByRole('link', { name: '返回资料列表' }).click();
+  await page.getByRole('link', { name: '返回笔记列表' }).click();
   await page.waitForTimeout(1200);
   await expect(page.locator('.notebook-master-pane')).toBeVisible();
   await expect(page.getByPlaceholder('无标题笔记')).toHaveCount(0);
@@ -421,9 +481,9 @@ test('notebook mobile layout stays compact and within the viewport', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/apps/notebook');
 
-  await expect(page.getByRole('heading', { name: '创作资料库', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作笔记', level: 1 })).toBeVisible();
   await expect(page.getByPlaceholder('搜索标题、正文或标签…')).toBeVisible();
-  await expect(page.locator('.notebook-list-header .page-header-actions a')).toHaveText(/新建/);
+  await expect(page.getByRole('link', { name: /新建/ })).toBeVisible();
 
   const listGeometry = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
@@ -439,8 +499,10 @@ test('notebook mobile layout stays compact and within the viewport', async ({ pa
   await page.goto('/apps/notebook/new');
   await expect(page.getByPlaceholder('无标题笔记')).toBeVisible();
   await expect(page.getByPlaceholder('写下一段文字记录…')).toBeVisible();
-  await expect(page.getByRole('button', { name: '保存' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '段落文本' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '更多笔记操作', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '插入内容', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '插入内容', exact: true }).getByRole('button', { name: '段落', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   const editorGeometry = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
@@ -569,12 +631,16 @@ test('mobile application navigation exposes every action without clipping', asyn
   await page.setViewportSize({ width: 390, height: 844 });
 
   await page.goto('/');
-  await page.getByRole('button', { name: '打开导航' }).click();
-  const drawerNav = page.getByRole('dialog', { name: '导航' }).getByRole('navigation', { name: '主导航' });
+  await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
+  const trigger = page.getByRole('button', { name: '打开全站导航', exact: true });
+  await trigger.click();
+  const drawer = page.getByRole('dialog', { name: '导航', exact: true });
+  const drawerNav = drawer.getByRole('navigation', { name: '主导航' });
   await expect(drawerNav.getByRole('link', { name: '邻舍' })).toBeInViewport();
   // 侧栏最后一项是系统设置：它在视口内就说明整列导航都没有被裁掉。
   await expect(drawerNav.getByRole('link', { name: '系统设置' })).toBeInViewport();
-  await page.getByRole('button', { name: '关闭导航' }).click();
+  await drawer.getByRole('button', { name: '关闭抽屉', exact: true }).click();
+  await expect(drawer).toBeHidden();
 
   for (const [route, selector] of [
     ['/apps/characters/new', '.character-editor-tabs button'],
@@ -611,6 +677,7 @@ test('character editor tabs stay inside a 390px viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/apps/characters/new');
   await expect(page.getByRole('tab', { name: '人设' })).toBeVisible();
+  await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
 
   // 头部操作行曾经是 shrink-0，无法收缩就把文档撑到 474px。
   const measure = async () => page.evaluate(() => ({
@@ -693,8 +760,8 @@ test('command palette opens via keyboard shortcut and shows items', async ({ pag
   }
   await expect(searchBox).toBeVisible();
   const commandDialog = page.getByRole('dialog', { name: '命令快捷菜单' });
-  await expect(commandDialog.getByRole('button', { name: /^邻舍.EXE/ })).toBeVisible();
-  await expect(commandDialog.getByRole('button', { name: /^角色资料库/ })).toBeVisible();
+  await expect(commandDialog.getByRole('option', { name: /^邻舍.EXE/ })).toBeVisible();
+  await expect(commandDialog.getByRole('option', { name: /^角色资料库/ })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('/');
   await expect(searchBox).toBeVisible();

@@ -1,0 +1,133 @@
+/*
+ * ============================================================================
+ * SthStart 统一工作台紧凑装配层（Workspace Unified Composition Layer）
+ * ============================================================================
+ *
+ * 架构职责：
+ * 1. 承接用户优化的 B 型高紧凑工作台原型（User-supplied optimized B prototype）。
+ * 2. 职责仅限于结构装配与紧凑排版（Composition only）；保留各业务模块语义颜色。
+ * 3. 当页面具备 .tpl-header 时将应用顶栏下沉/隐藏，使任务第一屏获得最大纵向视口。
+ * 4. 统一模板头部（标题、折叠说明、页内导航、操作组、全局动作）的单行紧凑对齐。
+ * 5. 资料库（Resources）专属头部密集度调整，微调多栏滚动条视觉重量。
+ *
+ * 依赖层级：
+ * - 引入位置：app/layout.tsx（在 shell.css 之后加载）
+ * - 优先级关系：以 .shell-root 复合选择器提升权重，安全覆盖 shell.css 默认稀疏间距
+ *
+ * ----------------------------------------------------------------------------
+ * 分层结构（Layering Architecture）：
+ * - Layer 1: 外框工具栏与页头一体化（Shell Toolbar Inlining & Suppression）
+ * - Layer 2: 紧凑模板头部与说明折叠（Compact Template Header & Disclosure）
+ * - Layer 3: 全局快捷动作条（Page Global Actions）
+ * - Layer 4: 资料库业务头部定制（Resources Domain Header Specialization）
+ * - Layer 5: 容器内边距与间距紧凑化（Container Padding & Section Gap Tighter）
+ * - Layer 6: 细滚动条精密收敛（Thin Scrollbars for High-Density Panes）
+ * - Layer 7: 响应式流式布局与换行适配（Responsive Fluid Layout: 1279 / 1023 / 639px）
+ * ----------------------------------------------------------------------------
+ */
+
+/* ============================================================================
+ * Layer 1: 外框工具栏与页头一体化
+ * 职责：当页面呈现 .tpl-header 时，收起外框独立顶栏，高度置 0。
+ * ============================================================================ */
+.shell-root:has(.tpl-header) { --shell-toolbar-height: 0px; }
+.shell-root:has(.tpl-header) .shell-toolbar { display: none; }
+
+/* ============================================================================
+ * Layer 2: 紧凑模板头部与说明折叠
+ * 职责：标题行单行对齐、文字说明抽屉折叠（disclosure）、导航弹性分配。
+ * ============================================================================ */
+.shell-root .tpl-header { min-height: 56px; margin: 0; padding-block: 8px; gap: 4px; }
+.shell-root .tpl-header-main { flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.shell-root .tpl-header-main > .tpl-heading { flex: 0 1 auto; gap: 8px; }
+.tpl-heading-text { display: flex; align-items: center; gap: 12px; }
+.tpl-description-disclosure { position: relative; flex-shrink: 0; font-size: 12px; color: var(--fg-muted); }
+.tpl-description-disclosure summary { cursor: pointer; padding: 6px; border-radius: var(--radius-control); }
+.tpl-description-disclosure[open] .tpl-description { position: absolute; top: 100%; left: 0; z-index: 40; width: min(320px, 72vw); padding: 12px; background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-control); box-shadow: var(--elev-sm); }
+.tpl-header-navigation { flex: 1 1 0; min-width: 0; }
+.tpl-header-tools { display: contents; }
+.shell-root .tpl-header .tpl-actions { margin-left: auto; max-width: none; gap: 8px; }
+
+/* ============================================================================
+ * Layer 3: 全局快捷动作条
+ * 职责：页头右侧全局工具按钮组（通知、快捷命令、侧栏唤醒）的统一外观。
+ * ============================================================================ */
+.page-global-actions { display: flex; flex: none; align-items: center; gap: 4px; margin-left: auto; }
+.tpl-actions + .page-global-actions { margin-left: 0; padding-left: 8px; border-left: 1px solid var(--border-subtle); }
+.page-global-actions button { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-control); color: var(--fg-muted); cursor: pointer; }
+.page-global-actions button:hover { color: var(--fg-default); background: var(--surface-hover); }
+.page-global-actions svg { width: 16px; height: 16px; }
+.page-global-actions .page-global-nav { display: none; }
+
+/* ============================================================================
+ * Layer 4: 资料库业务头部定制
+ * 职责：消除资料库工作区头部多余 padding 与边框，紧凑排列视图页签与快捷链接。
+ * ============================================================================ */
+.shell-root .resources-workspace-header { padding: 0; }
+.resources-workspace-header .tpl-header { min-height: 56px; padding-block: 8px; }
+.resources-workspace-header .tpl-header-main { flex-wrap: nowrap; }
+.resources-workspace-header .tpl-description-disclosure { display: none; }
+.resources-workspace-header .tpl-header-navigation { flex-basis: 0; }
+.resources-workspace-header .resources-navigation { padding-top: 0; }
+.resources-workspace-header .resources-quick-links { gap: 0; }
+.resources-workspace-header .resources-quick-links a { font-size: 12px; }
+.resources-workspace-header .resources-view-tabs { flex-shrink: 1; }
+.resources-workspace-header .resources-view-tabs > [role='tab'] { padding: 4px 10px; }
+
+/* ============================================================================
+ * Layer 5: 容器内边距与间距紧凑化
+ * 职责：移除模板容器冗余顶间距，设置中心内容区内边距紧凑化。
+ * ============================================================================ */
+.shell-root .tpl-container { padding-top: 0; }
+.shell-root .tpl-container > .tpl-header + * { margin-top: 8px; }
+.shell-root .workspace-header { min-height: var(--shell-topbar); background: var(--bg-app); border-bottom: 0; gap: 8px; }
+.shell-root .settings-workspace-content { padding: 20px; }
+
+/* ============================================================================
+ * Layer 6: 细滚动条精密收敛
+ * 职责：多栏工作台（笔记本列表与详情）在统一外框下呈现 5px 精密滚动条。
+ * ============================================================================ */
+.shell-root .notebook-master-list, .shell-root .notebook-detail-pane { scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+.shell-root .notebook-master-list::-webkit-scrollbar, .shell-root .notebook-detail-pane::-webkit-scrollbar { display: block; width: 5px; }
+
+/* ============================================================================
+ * Layer 7: 响应式流式布局与换行适配
+ * 职责：断点换行规则（1279px 资源导航换行、1023px 动作条弹出汉堡、639px 满宽换行）。
+ * ============================================================================ */
+@media (max-width: 1279px) {
+  .resources-workspace-header .resources-navigation { flex-wrap: wrap; }
+}
+@media (max-width: 1023px) {
+  .page-global-actions .page-global-nav { display: grid; }
+  .page-global-actions button { width: 44px; height: 44px; }
+  .shell-root .tpl-header-main { gap: 8px; }
+  .resources-workspace-header .tpl-header-main { flex-wrap: wrap; }
+  .resources-workspace-header .tpl-header-navigation { order: 3; flex-basis: 100%; }
+  .resources-workspace-header .resources-quick-links { display: flex; }
+  .resources-workspace-header .resources-navigation { flex-wrap: wrap; gap: 8px; }
+}
+@media (max-width: 639px) {
+  .resources-workspace-header .resources-view-tabs > [role='tab'] { padding-inline: 6px; }
+  .tpl-header { position: relative; }
+  .tpl-description-disclosure { position: static; }
+  .tpl-description-disclosure[open] .tpl-description {
+    display: block;
+    inset-inline: 0;
+    inline-size: auto;
+    max-inline-size: none;
+  }
+  .tpl-header-navigation { flex: 0 1 auto; }
+  .resources-workspace-header .tpl-header-navigation { flex-basis: 100%; }
+  /* Let the tool cluster wrap as a unit before breaking its own row. Page
+     actions still come before global tools in both visual and focus order. */
+  .tpl-header-tools {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-inline-size: 0;
+  }
+  .shell-root .tpl-header .tpl-actions { margin-inline-start: 0; justify-content: flex-start; }
+  .tpl-actions + .page-global-actions { margin-inline-start: auto; border-inline-start: 0; padding-inline-start: 0; }
+}

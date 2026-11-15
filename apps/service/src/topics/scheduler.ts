@@ -16,11 +16,13 @@ export class TopicScheduler {
   /** 启动后的首次检查；停服时必须一起清掉，否则会在数据库关闭后触发。 */
   private startupTimer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private stopped = false;
 
   constructor(private readonly options: TopicCollectionOptions) {}
 
   start() {
     if (this.timer) return;
+    this.stopped = false;
     const topics = new TopicStore(this.options.database);
     // 进程重启后把未结束任务标记为中断，并清理运行占用。
     const interrupted = topics.interruptDanglingRuns();
@@ -34,6 +36,7 @@ export class TopicScheduler {
   }
 
   stop() {
+    this.stopped = true;
     if (this.startupTimer) {
       clearTimeout(this.startupTimer);
       this.startupTimer = null;
@@ -46,16 +49,17 @@ export class TopicScheduler {
 
   /** 到点则启动一次定时搜集；已在运行的任务不会被并行启动。 */
   async tick(): Promise<TopicCollectionRun | null> {
-    if (this.ticking) return null;
+    if (this.stopped || this.ticking) return null;
     this.ticking = true;
     try {
+      if (this.stopped) return null;
       const topics = new TopicStore(this.options.database);
       topics.pruneRawCandidates(30);
       const settings = topics.getSettings();
-      if (!settings.enabled) return null;
+      if (!settings.enabled || this.stopped) return null;
       // 已有排队或运行中的任务时不再启动一份。
       const active = topics.findActiveRun();
-      if (active) return null;
+      if (active || this.stopped) return null;
       const now = Date.now();
       const due = settings.nextRunAt ? Date.parse(settings.nextRunAt) : NaN;
       const missed = Number.isFinite(due) && now >= due;
@@ -69,7 +73,9 @@ export class TopicScheduler {
         trigger: 'scheduled',
         settingsSnapshot: { ...settings, windowDays: COLLECTION_WINDOW_DAYS, missedCatchUp: missed } as unknown as Record<string, unknown>,
       });
-      void runTopicCollection(this.options, run, settings, {});
+      void runTopicCollection(this.options, run, settings, {}).catch(error => {
+        console.warn('话题搜集执行异常：', (error as Error).message);
+      });
       return run;
     } finally {
       this.ticking = false;

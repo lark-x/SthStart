@@ -51,6 +51,7 @@ export function SaveStatus({ state, detail, className }: SaveStatusProps) {
   return (
     <span
       className={cn('inline-flex items-center gap-1.5 text-[13px] font-medium leading-none', meta.className, className)}
+      role="status"
       aria-live="polite"
     >
       <StatusIcon state={state} />

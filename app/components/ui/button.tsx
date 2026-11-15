@@ -2,15 +2,17 @@
 
 import React, { forwardRef } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { Button as MantineButton } from '@mantine/core';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { mantineControlClasses } from './mantine-controls';
 
 /**
  * 按钮规范：统一圆角、焦点状态与触控高度；
  * 桌面默认 40px、紧凑 36px；移动端至少 44px，大按钮 48px。
  */
 export const buttonVariants = cva(
-  'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--motion-fast)] enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-focus-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-wait aria-disabled:opacity-60 cursor-pointer select-none',
+  'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-focus-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:saturate-75 aria-disabled:cursor-wait aria-disabled:opacity-65 cursor-pointer select-none',
   {
     variants: {
       variant: {
@@ -19,7 +21,7 @@ export const buttonVariants = cva(
         accent:
           'border border-transparent bg-accent text-fg-on-accent shadow-sm enabled:hover:bg-accent-dark enabled:hover:shadow-md font-semibold',
         secondary:
-          'border border-transparent bg-action-secondary text-ink enabled:hover:bg-action-secondary-hover',
+          'border border-transparent bg-surface-raised text-ink shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] enabled:hover:bg-surface enabled:hover:shadow-[var(--elev-sm),0_0_0_1px_var(--hairline)]',
         outline:
           'border border-border-default bg-surface text-ink shadow-xs enabled:hover:bg-surface-hover',
         ghost: 'border border-transparent bg-transparent text-muted enabled:hover:text-ink enabled:hover:bg-surface-hover',
@@ -49,39 +51,45 @@ export interface ButtonProps
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, disabled, children, type = 'button', onClick, onClickCapture, 'aria-disabled': ariaDisabled, ...props }, ref) => {
+  ({ className, variant, size, loading, disabled, children, type = 'button', onClick, onClickCapture, 'aria-disabled': ariaDisabled, 'aria-busy': ariaBusy, ...props }, ref) => {
     const unavailable = loading || ariaDisabled === true || ariaDisabled === 'true';
     return (
-      <button
-        ref={ref}
-        type={type}
-        disabled={disabled}
-        aria-disabled={unavailable || undefined}
-        aria-busy={loading || undefined}
-        onClickCapture={(event) => {
-          if (unavailable) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-          onClickCapture?.(event);
-        }}
-        onClick={(event) => {
-          if (unavailable) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-          onClick?.(event);
-        }}
-        className={cn(buttonVariants({ variant, size, className }))}
-        data-variant={variant ?? 'secondary'}
-        data-size={size ?? 'md'}
-        {...props}
-      >
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-current" aria-hidden="true" />}
-        {children}
-      </button>
+      <MantineButton
+          ref={ref}
+          type={type}
+          disabled={disabled}
+          aria-disabled={unavailable || undefined}
+          aria-busy={loading || ariaBusy || undefined}
+          onClickCapture={(event) => {
+            if (unavailable) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            onClickCapture?.(event);
+          }}
+          onClick={(event) => {
+            if (unavailable) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            onClick?.(event);
+          }}
+          className={cn(buttonVariants({ variant, size, className }))}
+          classNames={{
+            inner: mantineControlClasses.buttonInner,
+            label: mantineControlClasses.buttonLabel,
+          }}
+          leftSection={loading ? <Loader2 className="h-4 w-4 animate-spin text-current" aria-hidden="true" /> : undefined}
+          data-ui-variant={variant ?? 'secondary'}
+          data-ui-size={size ?? 'md'}
+          data-variant={variant ?? 'secondary'}
+          data-size={size ?? 'md'}
+          {...props}
+        >
+          {children}
+        </MantineButton>
     );
   }
 );

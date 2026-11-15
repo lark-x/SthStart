@@ -6,9 +6,11 @@ import type { LlmModelCapability } from '@sthstart/contracts';
 import { discoverModels, type LlmDraft } from '../api';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
+import { FormField } from '@/app/components/ui/form-field';
 import { useToast } from '@/app/providers/ui-provider';
 
 export function ProviderForm({
@@ -85,15 +87,19 @@ export function ProviderForm({
             </h3>
           </div>
           {(editingId || cloneSourceId) && (
-            <button type="button" className="text-button text-sm text-muted hover:text-ink" onClick={onReset}>
+            <Button type="button" variant="ghost" size="sm" onClick={onReset}>
               取消
-            </button>
+            </Button>
           )}
         </div>
 
         <div className="form-columns grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <label className="block text-sm font-semibold text-ink">
-            <span>配置 ID</span>
+          <FormField
+            label="配置 ID"
+            required
+            error={errors.id?.message}
+            hint="以小写字母开头，只能使用小写字母、数字和连字符。"
+          >
             <Input
               {...register('id', {
                 required: '请输入配置 ID',
@@ -103,135 +109,88 @@ export function ProviderForm({
               })}
               readOnly={Boolean(editingId)}
               placeholder="例如 deepseek-chat"
-              aria-invalid={Boolean(errors.id)}
-              aria-describedby={errors.id ? 'provider-id-error' : undefined}
-              error={errors.id?.message}
-              className="mt-1"
+              aria-invalid={Boolean(errors.id) || undefined}
             />
-            {errors.id?.message && <small id="provider-id-error" role="alert" className="text-sm text-danger">{errors.id.message}</small>}
-            <small className="text-sm text-muted block mt-0.5 font-normal">
-              以小写字母开头，只能使用小写字母、数字和连字符。
-            </small>
-          </label>
+          </FormField>
 
-          <label className="block text-sm font-semibold text-ink">
-            <span>显示名称</span>
+          <FormField label="显示名称" required error={errors.name?.message}>
             <Input
               {...register('name', { required: '请输入显示名称' })}
               placeholder="例如 DeepSeek 对话"
-              aria-invalid={Boolean(errors.name)}
-              aria-describedby={errors.name ? 'provider-name-error' : undefined}
-              error={errors.name?.message}
-              className="mt-1"
+              aria-invalid={Boolean(errors.name) || undefined}
             />
-            {errors.name?.message && <small id="provider-name-error" role="alert" className="text-sm text-danger">{errors.name.message}</small>}
-          </label>
+          </FormField>
 
-          <label className="block text-sm font-semibold text-ink">
-            <span>API Base URL</span>
+          <FormField label="API Base URL" required error={errors.baseUrl?.message}>
             <Input
               {...register('baseUrl', { required: '请输入 API Base URL', pattern: { value: /^https?:\/\//, message: '请输入有效的 HTTP(S) 地址' } })}
               type="url"
               placeholder="https://api.example.com/v1"
-              aria-invalid={Boolean(errors.baseUrl)}
-              aria-describedby={errors.baseUrl ? 'provider-base-url-error' : undefined}
-              error={errors.baseUrl?.message}
-              className="mt-1"
+              aria-invalid={Boolean(errors.baseUrl) || undefined}
             />
-            {errors.baseUrl?.message && <small id="provider-base-url-error" role="alert" className="text-sm text-danger">{errors.baseUrl.message}</small>}
-          </label>
+          </FormField>
 
           {!cloneSourceId && (
-            <label className="block text-sm font-semibold text-ink">
-              <span>API Key</span>
+            <FormField label="API Key" hint="留空表示保持现有 Key；新 Key 保存到系统凭据库。">
               <Input
                 {...register('secret')}
                 type="password"
                 placeholder={editingId ? '留空表示保持原 Key' : '保存到系统凭据库'}
                 autoComplete="new-password"
-                className="mt-1"
               />
-            </label>
+            </FormField>
           )}
 
-          <label className="span-two col-span-full block text-sm font-semibold text-ink model-picker-label">
-            <span>模型 ID</span>
-            <div className="model-picker-row flex gap-2 mt-1">
+          <div className="span-two col-span-full flex flex-col gap-2 sm:flex-row sm:items-start">
+            <FormField
+              label="模型 ID"
+              required
+              error={errors.model?.message}
+              hint="可从服务获取列表，也可手动输入。"
+              className="min-w-0 flex-1"
+            >
               <Input
                 {...register('model', { required: '请输入模型 ID' })}
                 list="public-llm-models"
                 placeholder="可获取列表，也可手动输入"
-                aria-invalid={Boolean(errors.model)}
-                aria-describedby={errors.model ? 'provider-model-error' : undefined}
-                error={errors.model?.message}
-                className="flex-1"
+                aria-invalid={Boolean(errors.model) || undefined}
               />
-              {errors.model?.message && (
-                <small id="provider-model-error" role="alert" className="text-sm text-danger">
-                  {errors.model.message}
-                </small>
-              )}
-              <button
-                type="button"
-                onClick={handleDiscover}
-                disabled={discovering}
-                className="min-h-[42px] px-4 rounded-control border border-border-default bg-surface hover:bg-ink/6 text-sm font-medium text-ink cursor-pointer transition-colors"
-              >
-                {discovering ? '正在获取…' : '获取模型'}
-              </button>
-            </div>
+            </FormField>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="sm:mt-7"
+              onClick={handleDiscover}
+              loading={discovering}
+            >
+              {discovering ? '正在获取…' : '获取模型'}
+            </Button>
             <datalist id="public-llm-models">
               {availableModels.map((m) => (
                 <option value={m} key={m} />
               ))}
             </datalist>
-          </label>
+          </div>
 
-          <label className="block text-sm font-semibold text-ink">
-            <span>思考参数</span>
-            <Select
-              {...register('thinkingMode')}
-              className="mt-1"
-            >
+          <FormField label="思考参数">
+            <Select {...register('thinkingMode')}>
               <option value="omit">不发送</option>
               <option value="disabled">关闭思考</option>
               <option value="enabled">开启思考</option>
             </Select>
-          </label>
+          </FormField>
 
           <div className="flex items-center pt-6">
-            <label className="inline-check flex items-center gap-2 cursor-pointer text-sm font-medium text-ink">
-              <input
-                {...register('enabled')}
-                type="checkbox"
-                className="h-4 w-4 rounded border-border-strong text-accent accent-accent"
-              />
-              <span>启用此配置</span>
-            </label>
+            <Checkbox label="启用此配置" {...register('enabled')} />
           </div>
         </div>
 
         <fieldset className="capability-picker p-3.5 rounded border border-border-subtle space-y-2">
           <legend className="text-sm font-semibold text-muted px-1">模型能力</legend>
           <div className="flex gap-6">
-            <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
-              <input
-                type="checkbox"
-                checked={capabilities.includes('text')}
-                onChange={() => toggleCapability('text')}
-                className="h-4 w-4 accent-accent"
-              />
-              <span>文本</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
-              <input
-                type="checkbox"
-                checked={capabilities.includes('multimodal')}
-                onChange={() => toggleCapability('multimodal')}
-                className="h-4 w-4 accent-accent"
-              />
-              <span>多模态（文本＋图片输入）</span>
-            </label>
+            <Checkbox label="文本" checked={capabilities.includes('text')} onChange={() => toggleCapability('text')} />
+            <Checkbox label="多模态（文本＋图片输入）" checked={capabilities.includes('multimodal')} onChange={() => toggleCapability('multimodal')} />
           </div>
         </fieldset>
 
@@ -241,22 +200,12 @@ export function ProviderForm({
               高级请求设置
             </summary>
             <div className="form-columns advanced-fields grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
-              <label className="block text-sm text-muted">
-                <span>自定义请求头 JSON</span>
-                <Textarea
-                  {...register('headers')}
-                  rows={3}
-                  className="mt-1 font-mono text-sm"
-                />
-              </label>
-              <label className="block text-sm text-muted">
-                <span>额外请求参数 JSON</span>
-                <Textarea
-                  {...register('extraBody')}
-                  rows={3}
-                  className="mt-1 font-mono text-sm"
-                />
-              </label>
+              <FormField label="自定义请求头 JSON">
+                <Textarea {...register('headers')} rows={3} className="font-mono text-sm" />
+              </FormField>
+              <FormField label="额外请求参数 JSON">
+                <Textarea {...register('extraBody')} rows={3} className="font-mono text-sm" />
+              </FormField>
             </div>
           </details>
         )}

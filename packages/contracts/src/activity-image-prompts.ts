@@ -39,6 +39,12 @@ export const ActivityImagePromptPolicySchema = Type.Object({
   outputFormat: ActivityImagePromptOutputFormatSchema,
   /** 旧记录没有该列，读取时补 none。 */
   knowledgeMode: ActivityImagePromptKnowledgeModeSchema,
+  /** 画师串；空字符串表示沿用工作流节点默认值。 */
+  artistString: Type.String(),
+  /** 质量提示词；空字符串表示沿用工作流节点默认值。 */
+  qualityPrompt: Type.String(),
+  /** 成人专用词表开关；默认 false，只有显式开启才参与检索。 */
+  adultKnowledgeEnabled: Type.Boolean(),
   createdAt: Type.String(),
 });
 export type ActivityImagePromptPolicy = Static<typeof ActivityImagePromptPolicySchema>;
@@ -70,6 +76,9 @@ export const SaveActivityImagePromptPolicyRequestSchema = Type.Object({
   // 旧请求可以省略：读取与保存都规范化为 prose / none。
   outputFormat: Type.Optional(ActivityImagePromptOutputFormatSchema),
   knowledgeMode: Type.Optional(ActivityImagePromptKnowledgeModeSchema),
+  artistString: Type.Optional(Type.String({ maxLength: 4000 })),
+  qualityPrompt: Type.Optional(Type.String({ maxLength: 4000 })),
+  adultKnowledgeEnabled: Type.Optional(Type.Boolean()),
 });
 export type SaveActivityImagePromptPolicyRequest = Static<typeof SaveActivityImagePromptPolicyRequestSchema>;
 

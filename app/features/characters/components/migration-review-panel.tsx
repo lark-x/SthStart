@@ -4,7 +4,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { fetchCharacterMigrationReview } from '../api';
-import { characterKeys } from '@/app/lib/query-keys';
+import { characterKeys } from '../query-keys';
 
 /** 复核项类别的中文说明：用户不需要知道内部 kind 名称。 */
 const CONFLICT_LABELS: Record<string, string> = {

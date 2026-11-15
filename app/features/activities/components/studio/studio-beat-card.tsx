@@ -10,6 +10,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { ActorSnapshot, SceneBeat } from '@sthstart/contracts';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
 import { isImeComposingEvent } from '@/app/lib/hooks/use-cjk-ime-guard';
 
 interface StudioBeatCardProps {
@@ -42,7 +46,7 @@ export function StudioBeatCard({
   const actorName = isNarrator ? '旁白' : actor?.displayName || beat.characterName || '角色';
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (isImeComposingEvent(e)) return;
+    if (e.nativeEvent?.isComposing || e.keyCode === 229 || isImeComposingEvent(e)) return;
     if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
       onInsertBelow();
@@ -54,17 +58,9 @@ export function StudioBeatCard({
       onClick={onSelect}
       aria-current={isSelected ? 'true' : undefined}
       aria-label={`分镜 ${index + 1} · ${actorName}`}
-      className={`group/beat relative cursor-pointer px-3 py-4 transition-colors sm:px-5 ${
-        isSelected ? 'bg-surface' : 'hover:bg-surface/60'
-      }`}
+      className="ui-choice group/beat relative cursor-pointer rounded-control px-3 py-4 transition-colors hover:bg-surface-hover sm:px-5"
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }}
     >
-      <span
-        aria-hidden="true"
-        className={`absolute inset-y-4 left-0 w-0.5 rounded-full transition-colors ${
-          isSelected ? 'bg-accent' : 'bg-transparent'
-        }`}
-      />
-
       <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 gap-y-2 lg:grid-cols-[2.75rem_minmax(0,1fr)_9rem] lg:gap-x-4">
         {/* 固定左列：镜号与角色 */}
         <div className="flex flex-col items-start gap-2">
@@ -91,58 +87,59 @@ export function StudioBeatCard({
         {/* 固定中列：角色 → 对白 → 动作 */}
         <div className="min-w-0 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <select
-              aria-label={`分镜 ${index + 1} 角色`}
-              value={beat.characterId || 'narrator'}
-              onChange={(e) => {
-                const charId = e.target.value;
-                const chosen = actors.find((a) => a.id === charId);
-                onUpdate({
-                  characterId: charId,
-                  characterName: chosen?.displayName || (charId === 'narrator' ? '旁白' : '角色'),
-                });
-              }}
-              onClick={(e) => e.stopPropagation()}
-              onFocus={onSelect}
-              className="h-9 min-w-0 max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-base font-semibold text-ink outline-none hover:text-accent focus-visible:outline focus-visible:outline-accent lg:h-8 lg:text-sm"
-            >
-              <option value="narrator">旁白 / 场景交代</option>
-              {actors.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.displayName}{a.activityRole ? ` · ${a.activityRole}` : ''}
-                </option>
-              ))}
-            </select>
+            <div className="min-w-0 flex-1">
+              <Select
+                aria-label={`分镜 ${index + 1} 角色`}
+                value={beat.characterId || 'narrator'}
+                onChange={(e) => {
+                  const charId = e.target.value;
+                  const chosen = actors.find((a) => a.id === charId);
+                  onUpdate({
+                    characterId: charId,
+                    characterName: chosen?.displayName || (charId === 'narrator' ? '旁白' : '角色'),
+                  });
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onFocus={onSelect}
+                className="w-auto max-w-full cursor-pointer truncate pr-7 text-base font-semibold text-ink"
+                style={{ border: 'none', background: 'transparent', paddingBlock: 0, paddingInlineStart: 0, boxShadow: 'none', height: '2rem' }}
+              >
+                <option value="narrator">旁白 / 场景交代</option>
+                {actors.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.displayName}{a.activityRole ? ` · ${a.activityRole}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
             <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:focus-within:opacity-100 lg:group-hover/beat:opacity-100">
-              <button
-                type="button"
+              <IconButton
+                icon={Plus}
+                label={`在分镜 ${index + 1} 下方插入镜头`}
+                size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
                   onInsertBelow();
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-control text-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline focus-visible:outline-accent lg:h-7 lg:w-7"
-                title="在下方插入镜头 (Shift+Enter)"
-                aria-label={`在分镜 ${index + 1} 下方插入镜头`}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
+                className="size-9 text-muted lg:size-7"
+                iconClassName="h-3.5 w-3.5"
+              />
+              <IconButton
+                icon={Trash2}
+                label={`删除分镜 ${index + 1}`}
+                size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete();
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-control text-muted transition-colors hover:bg-danger-bg hover:text-danger-fg focus-visible:outline focus-visible:outline-accent lg:h-7 lg:w-7"
-                title="删除此分镜"
-                aria-label={`删除分镜 ${index + 1}`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+                className="size-9 text-muted hover:bg-danger-bg hover:text-danger-fg lg:size-7"
+                iconClassName="h-3.5 w-3.5"
+              />
             </div>
           </div>
 
-          <textarea
+          <Textarea
             aria-label={`分镜 ${index + 1} 对白`}
             rows={2}
             value={beat.dialogue || ''}
@@ -151,10 +148,11 @@ export function StudioBeatCard({
             onClick={(e) => e.stopPropagation()}
             onFocus={onSelect}
             placeholder="输入角色台词或内心独白…"
-            className="min-h-14 w-full resize-none border-0 border-b border-transparent bg-transparent p-0 pb-1 text-base font-medium leading-7 text-ink outline-none transition-colors placeholder:font-normal placeholder:text-muted/60 hover:border-border-subtle focus:border-accent lg:text-[15px] lg:leading-6"
+            className="w-full text-base font-medium leading-7 text-ink placeholder:font-normal placeholder:text-muted/60 lg:text-[15px] lg:leading-6"
+            style={{ border: 'none', background: 'transparent', padding: 0, resize: 'none', minHeight: '3.5rem', overflow: 'hidden' }}
           />
 
-          <input
+          <Input
             aria-label={`分镜 ${index + 1} 动作`}
             value={beat.action || ''}
             onChange={(e) => onUpdate({ action: e.target.value })}
@@ -162,7 +160,8 @@ export function StudioBeatCard({
             onClick={(e) => e.stopPropagation()}
             onFocus={onSelect}
             placeholder="动作 / 神态 / 画面事件"
-            className="h-9 w-full border-0 bg-transparent p-0 text-base text-muted outline-none transition-colors placeholder:text-muted/60 hover:text-ink focus:text-ink lg:h-7 lg:text-sm"
+            className="w-full text-base text-muted placeholder:text-muted/60 lg:text-sm"
+            style={{ border: 'none', background: 'transparent', padding: 0, boxShadow: 'none' }}
           />
         </div>
 

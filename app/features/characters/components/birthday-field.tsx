@@ -2,6 +2,7 @@
 
 import type { CharacterBirthday } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 
 const MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const EMPTY: CharacterBirthday = { status: 'unset', calendar: 'unknown' };
@@ -40,44 +41,44 @@ export function BirthdayField({ value, onChange }: { value?: CharacterBirthday; 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="block text-sm font-semibold text-ink">
           <span>状态</span>
-          <select
+          <Select
             aria-label="生日状态"
-            className="mt-1.5 w-full rounded border border-ink/15 bg-surface px-2 py-2 text-sm"
+            className="mt-1.5"
             value={birthday.status}
             onChange={(event) => setStatus(event.target.value as CharacterBirthday['status'])}
           >
             {(['unset', 'known', 'needs_confirmation'] as const).map((status) => (
               <option key={status} value={status}>{STATUS_LABEL[status]}</option>
             ))}
-          </select>
+          </Select>
         </label>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm font-semibold text-ink">
             <span>月份</span>
-            <select
+            <Select
               aria-label="生日月份"
               disabled={birthday.status === 'unset'}
-              className="mt-1.5 w-full rounded border border-ink/15 bg-surface px-2 py-2 text-sm disabled:opacity-50"
+              className="mt-1.5"
               value={Number.isInteger(month) ? String(month) : ''}
               onChange={(event) => setMonthDay(Number(event.target.value), Number.isInteger(day) ? day : 1)}
             >
               <option value="">未选择</option>
               {Array.from({ length: 12 }, (_, index) => index + 1).map((item) => <option key={item} value={item}>{item} 月</option>)}
-            </select>
+            </Select>
           </label>
           <label className="block text-sm font-semibold text-ink">
             <span>日期</span>
-            <select
+            <Select
               aria-label="生日日期"
               disabled={birthday.status === 'unset'}
-              className="mt-1.5 w-full rounded border border-ink/15 bg-surface px-2 py-2 text-sm disabled:opacity-50"
+              className="mt-1.5"
               value={Number.isInteger(day) ? String(day) : ''}
               onChange={(event) => setMonthDay(Number.isInteger(month) ? month : 1, Number(event.target.value))}
             >
               <option value="">未选择</option>
               {Array.from({ length: days }, (_, index) => index + 1).map((item) => <option key={item} value={item}>{item} 日</option>)}
-            </select>
+            </Select>
           </label>
         </div>
       </div>

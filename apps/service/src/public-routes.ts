@@ -1,3 +1,4 @@
+import { embedWithModel } from './unified-models.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
 import { ManagedImageOptionsSchema, type ActivityLora } from '@sthstart/contracts';
@@ -352,7 +353,16 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
   for (const [route, upstreamPath, access] of vectorRoutes) {
     app.post(`/api/v1/vector/${route}`, async (request, reply) => {
       const identity = requireApp(database, 'vector', request, reply); if (!identity) return;
+      const selectedModel = requestedProfile(request);
+      const unified = selectedModel ? database.connection.prepare("SELECT mp.model_type, sc.kind FROM model_profiles mp JOIN service_connections sc ON sc.id=mp.connection_id WHERE mp.id=?").get(selectedModel) as {model_type: string; kind: string} | undefined : undefined;
+      if (unified && unified.model_type !== 'embedding') return reply.code(400).send({ error: 'model_type_mismatch', message: '请选择向量模型。' });
+      if (unified && unified.kind !== 'vector') {
+        if (route !== 'embed') return reply.code(400).send({ error: 'embedding_only', message: '该模型只计算向量；检索和索引请使用现有向量服务。' });
+        try { return await embedWithModel(database, secrets, selectedModel!, safeJson(request.body).text, fetcher); }
+        catch { return reply.code(503).send({ error: 'embedding_unavailable', message: '向量模型调用失败。' }); }
+      }
       const profile = await resolveProfile(database, secrets, 'vector', requestedProfile(request));
+      if (selectedModel && !profile) return reply.code(409).send({ error: 'vector_model_unavailable', message: '指定的向量模型不存在或已停用。' });
       const baseUrl = profile?.baseUrl ?? config.vectorDefaultUrl;
       const redactionSecrets = collectAiCallRedactionSecrets({ secret: profile?.secret, headers: profile?.headers, extraBody: profile?.extraBody });
       try {
@@ -365,7 +375,7 @@ export function registerPublicRoutes(app: FastifyInstance, config: ServiceConfig
           updateAiCallRecord(database, vectorCallId, { status: 'submitted', event: 'submitted', redactionSecrets });
         }
         let upstream: Response;
-        try { upstream = await proxyJson(fetcher, `${baseUrl}${upstreamPath}`, transformed.body, profile?.secret ?? null); }
+        try { upstream = await proxyJson(fetcher, `${baseUrl}${upstreamPath}`, transformed.body, profile?.secret ?? null, profile?.timeoutMs, profile?.headers); }
         catch (error) {
           if (vectorCallId) updateAiCallRecord(database, vectorCallId, { status: 'abandoned', event: 'upstream_error', errorCode: 'vector_unavailable', errorMessage: error instanceof Error ? error.message : String(error), redactionSecrets });
           throw error;
