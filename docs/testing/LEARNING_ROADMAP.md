@@ -1,6 +1,8 @@
 # SthStart 测试学习路线
 
-更新时间：2026-11-07
+更新时间：2026-11-10
+
+本轮从 [项目功能、数据怎么走和七步学习计划](STHSTART_PROJECT_LEARNING_PLAN.md) 开始。先读懂自己已有的章节保存测试，再写一条旧建议测试；下面的长线范围用于查阅。
 
 ## 学习目标与方式
 
@@ -12,7 +14,7 @@
 
 重构后入口与本轮迁移任务见 [前端重构测试更新](FRONTEND_REFACTOR_TEST_UPDATE.md)。新增 B0 主入口检查；Story API 和正式编辑器路径继续复用，Skill 观察按实际加载套件记录。
 
-当前先修课程以 [软件测试基础总教材](SOFTWARE_TESTING_FOUNDATIONS.md) 详细版（18 章，含推演、实验、练习与参考思路）为主，先学测试设计、分层与各模块基础；编写脚本时查阅 [Python 配套教材](TESTING_FOUNDATIONS.md)，之后继续以下实践阶段。
+[软件测试基础教材](SOFTWARE_TESTING_FOUNDATIONS.md) 和 [Python 配套教材](TESTING_FOUNDATIONS.md) 按问题回查，可以与实践交替学习。
 
 ## 长线阶段
 

@@ -14,6 +14,7 @@ type GenerationConsumer = {
  * 必须声明 llm，否则「应用路由」按 llm 过滤后不展示它们，用户无从绑定。
  */
 const CONSUMERS: readonly GenerationConsumer[] = [
+  { id: 'story-worlds', name: '故事世界', capabilities: ['llm', 'generation', 'artifact', 'persona'] },
   { id: 'characters', name: '角色库', capabilities: ['llm', 'generation', 'artifact', 'persona'] },
   { id: 'narrative', name: '叙事档案', capabilities: ['llm', 'generation', 'artifact'] },
   { id: 'activities', name: '活动工作室', capabilities: ['llm', 'generation', 'artifact', 'activities'] },

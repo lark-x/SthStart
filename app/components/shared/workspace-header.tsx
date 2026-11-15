@@ -1,12 +1,11 @@
 'use client';
 
-import { openCommandPalette } from './command-palette-events';
 
 import React from 'react';
+import { HeaderSlot } from './header-slots';
 import Link from 'next/link';
-import { ArrowLeft, Menu, ListTodo, Search } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { cn } from '@/app/lib/cn';
-import { useGlobalTasks } from '@/app/features/tasks/queries';
 
 export interface WorkspaceHeaderProps {
   title: string;
@@ -27,7 +26,7 @@ export interface WorkspaceHeaderProps {
 
 /**
  * 全站通用的工作区顶栏原语：
- * 导航与主操作保持单行；窄屏保存状态位于标题下方，不能因紧凑布局被隐藏。
+ * 导航与主操作优先保持单行；窄屏空间不足时可换行，避免挤掉标题和状态。
  */
 export function WorkspaceHeader({
   title,
@@ -40,27 +39,16 @@ export function WorkspaceHeader({
   actions,
   className,
 }: WorkspaceHeaderProps) {
-  const { data: globalTasksData } = useGlobalTasks({ state: 'active' });
-  const activeTasksCount = globalTasksData?.activeCount ?? 0;
-
-  const handleOpenNav = () => {
-    window.dispatchEvent(new CustomEvent('sthstart:open-nav-drawer'));
-  };
-
-  const handleOpenTasks = () => {
-    window.dispatchEvent(new CustomEvent('sthstart:open-task-drawer'));
-  };
-
   return (
     <header
       className={cn(
-        'workspace-header min-h-[var(--shell-topbar-mobile)] lg:min-h-[var(--shell-topbar)] px-2.5 sm:px-4 py-0 shrink-0 min-w-0 flex items-center gap-1.5 border-b border-border-subtle bg-surface select-none z-20',
+        'workspace-header min-h-[var(--shell-topbar-mobile)] lg:min-h-[var(--shell-topbar)] px-2.5 sm:px-4 py-0 max-sm:flex-wrap max-sm:py-1 shrink-0 min-w-0 flex items-center gap-1.5 border-b border-border-subtle bg-surface select-none z-20',
         centerSlot && centerSlotOnMobile && 'max-md:flex-wrap',
         className
       )}
     >
       {/* 左侧：返回、标题、状态 */}
-      <div className="flex flex-1 items-center gap-1.5 min-w-0">
+      <div className="flex flex-1 items-center gap-1.5 min-w-0 max-sm:basis-[max-content]">
         {backHref && (
           <Link
             href={backHref}
@@ -74,7 +62,7 @@ export function WorkspaceHeader({
         )}
 
         <div className="flex min-w-0 flex-1 flex-col justify-center md:flex-row md:items-center md:gap-3">
-        {titleSlot ? <div className="min-w-0 flex-1 [&_input]:max-md:h-7"><h1 className="sr-only">{title}</h1>{titleSlot}</div> : <h1 className="min-w-0 flex-1 truncate font-sans text-[15px] sm:text-base font-semibold tracking-tight text-ink" title={title}>
+        {titleSlot ? <div className="min-w-0 flex-1 [&_input]:max-md:h-7"><h1 className="sr-only">{title}</h1>{titleSlot}</div> : <h1 className="min-w-0 flex-1 wrap-anywhere sm:truncate font-sans text-[15px] sm:text-base font-semibold tracking-tight text-ink" title={title}>
           {title}
         </h1>}
 
@@ -86,45 +74,10 @@ export function WorkspaceHeader({
       {centerSlot && <div className="hidden md:flex items-center justify-center flex-1 min-w-0">{centerSlot}</div>}
 
       {/* 右侧：全局导航、全局任务、业务动作 */}
-      <div className="flex min-w-0 shrink-0 items-center justify-end gap-0.5 sm:gap-2">
-        <button
-          type="button"
-          onClick={handleOpenNav}
-          className="inline-flex h-10 w-10 sm:h-9 sm:w-auto items-center justify-center gap-1.5 px-2 sm:px-2.5 rounded-control text-sm font-medium text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
-          title="全站导航"
-          aria-label="打开全站导航"
-        >
-          <Menu className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
-          <span className="hidden xl:inline">导航</span>
-        </button>
+      <div className="flex min-w-0 shrink-0 items-center justify-end gap-0.5 max-sm:ms-auto max-sm:max-w-full max-sm:flex-wrap sm:gap-2">
+        <HeaderSlot name="workspaceTools" />
 
-        <button
-          type="button"
-          onClick={() => openCommandPalette()}
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-sm text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
-          title="搜索与命令 (Ctrl/Cmd+K)"
-          aria-label="搜索与命令"
-        >
-          <Search className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
-        </button>
-
-        <button
-          type="button"
-          onClick={handleOpenTasks}
-          className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-sm text-ink hover:bg-surface-sunken focus-visible:outline focus-visible:outline-accent transition-colors motion-reduce:transition-none"
-          title="全局任务抽屉"
-          aria-label="打开全局任务抽屉"
-        >
-          <ListTodo className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
-          {activeTasksCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-2 w-2">
-              <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
-            </span>
-          )}
-        </button>
-
-        {actions && <div className="flex min-w-0 shrink-0 items-center justify-end gap-1 sm:gap-2">{actions}</div>}
+        {actions && <div className="flex min-w-0 shrink-0 items-center justify-end gap-1 max-sm:max-w-full max-sm:flex-wrap sm:gap-2">{actions}</div>}
       </div>
       {centerSlot && centerSlotOnMobile && <div className="order-last basis-full flex min-w-0 overflow-x-auto pb-1 md:hidden">{centerSlot}</div>}
     </header>

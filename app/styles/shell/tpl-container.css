@@ -1,0 +1,25 @@
+/*
+ * SthStart Shell 样式职责拆分 - 通用页面模板容器与阅读/设置宽度预设
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+.tpl-container {
+  width: 100%;
+  max-width: var(--shell-content-max);
+  margin-inline: auto;
+  padding-inline: var(--shell-gutter-sm);
+}
+
+@media (min-width: 768px) {
+  .tpl-container { padding-inline: var(--shell-gutter); }
+}
+
+.tpl-reading {
+  max-width: var(--shell-reading);
+}
+
+.tpl-settings {
+  max-width: var(--shell-settings-max);
+}
+
+/* ---------- 双栏工作区：两栏各自独立滚动 ---------- */

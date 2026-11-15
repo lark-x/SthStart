@@ -7,6 +7,7 @@ import { Button } from '@/app/components/ui/button';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { AsyncState } from '@/app/components/ui/async-state';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   fetchGenerationAssignments,
@@ -87,17 +88,17 @@ export function GenerationSettingsFeature() {
             ]}
           />
         }
-      />
-      <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
-      <div className="flex flex-wrap items-center justify-end gap-2" aria-label="页面操作">
+        actions={
           <Button size="sm" variant="ghost" onClick={() => { void load(); }}>
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新
           </Button>
-      </div>
+        }
+      />
+      <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
       {error && <Alert variant="danger" title="部分生成配置未能读取" onDismiss={() => setError('')}>{error}</Alert>}
 
       {loading ? (
-        <div className="tpl-panel p-12 text-center text-sm text-muted" role="status">正在读取生成配置…</div>
+        <AsyncState status="loading" title="正在读取生成配置…" rows={3} className="min-h-56" />
       ) : (
         <>
           <div id="generation-panel-quick" role="tabpanel" hidden={section !== 'quick'}>

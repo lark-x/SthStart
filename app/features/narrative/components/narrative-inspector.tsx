@@ -5,6 +5,8 @@ import { Search } from 'lucide-react';
 import type { NarrativeSearchResult } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Alert } from '@/app/components/ui/alert';
+import { AsyncState } from '@/app/components/ui/async-state';
 
 /**
  * 原文检索详情栏（§8.9）：按需打开，宽屏为右栏、窄屏在主区之后单独展开。
@@ -73,12 +75,12 @@ export function NarrativeInspector({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {query.trim() ? error ? (
-          <div role="alert" className="space-y-3 rounded-control border border-danger/20 bg-danger/10 p-3 text-sm text-danger-fg">
-            <p>原文检索失败：{error}</p>
-            {onRetry && <Button size="sm" variant="outline" onClick={onRetry}>重试检索</Button>}
-          </div>
+          <Alert variant="danger" title="原文检索失败">
+            <p>{error}</p>
+            {onRetry && <Button size="sm" variant="outline" className="mt-2" onClick={onRetry}>重试检索</Button>}
+          </Alert>
         ) : loading ? (
-          <p role="status" className="py-6 text-center text-sm text-fg-subtle">正在检索原文…</p>
+          <AsyncState status="loading" rows={3} />
         ) : (
           <div>
             <p className="pb-2 text-xs text-fg-subtle">检索结果 · {results.length} 条</p>
@@ -100,7 +102,7 @@ export function NarrativeInspector({
             ))}
             </div>
             {results.length === 0 && (
-              <p className="py-6 text-center text-sm text-fg-subtle">未找到相关原文片段</p>
+              <AsyncState status="no-results" title="未找到相关原文片段" description="换一个关键词，或确认当前作品的原文已经导入。" />
             )}
           </div>
         ) : (

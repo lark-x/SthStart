@@ -35,20 +35,34 @@ export function resolveImageConfiguration(database: ServiceDatabase, selection: 
     };
   });
   const schema = workflow.inputSchema as InputSchemaMap;
+  const cloudImage = engine.kind === 'cloud';
+  // Cloud execution consumes named request inputs directly, never graph paths.
+  // Match its supported keys and require a declared editable string input so
+  // legacy UI field fallbacks cannot invent a usable mapping.
+  const cloudTextKey = (keys: string[]) => keys.find(key => Object.hasOwn(schema, key)
+    && (!schema[key].type || schema[key].type === 'string') && editor?.fields[key]?.section !== 'fixed') ?? null;
   const candidatePromptKey = Object.keys(schema).find(key => schema[key].semantic === 'prompt')
     ?? fields.find(field => field.key === 'prompt')?.key
     ?? fields.find(field => /positive|正向|正面/i.test(`${field.key} ${field.label}`))?.key ?? null;
-  const promptKey = candidatePromptKey && workflow.nodeBindings[candidatePromptKey] ? candidatePromptKey : null;
+  const promptKey = cloudImage ? cloudTextKey(['prompt', 'positivePrompt'])
+    : candidatePromptKey && workflow.nodeBindings[candidatePromptKey] ? candidatePromptKey : null;
   const candidateNegativeKey = Object.keys(schema).find(key => schema[key].semantic === 'negative_prompt')
     ?? fields.find(field => /negative|负面|反向/i.test(`${field.key} ${field.label}`))?.key ?? null;
-  const negativePromptKey = candidateNegativeKey && workflow.nodeBindings[candidateNegativeKey] ? candidateNegativeKey : null;
-  const promptMode = editor?.promptAssembly ?? 'workflow-internal';
+  const negativePromptKey = cloudImage ? cloudTextKey(['negativePrompt'])
+    : candidateNegativeKey && workflow.nodeBindings[candidateNegativeKey] ? candidateNegativeKey : null;
+  const promptMode = cloudImage ? 'service-finalized-v1' : editor?.promptAssembly ?? 'workflow-internal';
   const promptPolicy = resolveActivityImagePromptPolicy(database, workflow.id, workflow.version);
   const configurationHash = createHash('sha256').update(JSON.stringify({ workflow, engineId: engine.id,
     promptPolicy, preset: preset ? { id: preset.preset.id, revision: preset.preset.revision, values: preset.values } : null })).digest('hex');
   const inputCapabilities = (workflow.inputCapabilities ?? {}) as WorkflowInputCapabilities;
-  const referenceInputKey = Object.keys(inputCapabilities).find(key => workflow.nodeBindings[key]
-    && key === 'sourceImage') ?? Object.keys(inputCapabilities).find(key => workflow.nodeBindings[key]
+  // Cloud image edits consume the declared media input directly; graph node
+  // paths apply only to local workflows. Text-only recipes must not offer it.
+  const supportsReference = (key: string) => (cloudImage
+    ? workflow.definition.operation === 'image-to-image'
+    : Boolean(workflow.nodeBindings[key]))
+    && (!inputCapabilities[key].mediaTypes?.length || inputCapabilities[key].mediaTypes?.some(type => type.startsWith('image/')));
+  const referenceInputKey = Object.keys(inputCapabilities).find(key => supportsReference(key)
+    && key === 'sourceImage') ?? Object.keys(inputCapabilities).find(key => supportsReference(key)
       && ['init_image', 'identity', 'outfit', 'pose', 'style', 'composition'].includes(inputCapabilities[key].semantic ?? '')
       && (!inputCapabilities[key].mediaTypes?.length || inputCapabilities[key].mediaTypes?.some(type => type.startsWith('image/')))) ?? null;
   const configuration: ImageConfiguration = {

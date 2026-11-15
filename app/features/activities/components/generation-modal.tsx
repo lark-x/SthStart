@@ -1,7 +1,7 @@
 'use client';
 import { normalizeCreationProfile } from '@sthstart/contracts';
 
-import { retryActivityTextJob } from '../api';
+import { retryActivityTextJob } from '@/app/features/activities/api/activities';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -19,6 +19,7 @@ import type { Activity, ActivityCandidate, ActivityJob, ContentDocument, StageDe
 import type { ActivityGenerationMode } from '../hooks/use-activity-generation';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Select } from '@/app/components/ui/select';
 import { Badge } from '@/app/components/ui/badge';
@@ -280,10 +281,9 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
           <p className="mt-2 text-sm text-muted">默认按顺序写完整场活动，已锁定的阶段会保留。</p>
           <fieldset className="mt-2 space-y-2">
           <legend className="text-sm font-medium">本次生成的阶段</legend>
-          <div className="flex flex-wrap gap-3">{stages.map(stage => <label key={stage.id} className="text-sm flex items-center gap-1">
-            <input type="checkbox" disabled={stage.locked} checked={!stage.locked && stageIds.includes(stage.id)}
-              onChange={event => setStageIds(current => event.target.checked ? [...current, stage.id] : current.filter(id => id !== stage.id))} />
-            {stage.title}{stage.locked ? '（已锁定）' : ''}</label>)}</div>
+          <div className="flex flex-wrap gap-3">{stages.map(stage => <Checkbox key={stage.id} disabled={stage.locked}
+            label={stage.title + (stage.locked ? '（已锁定）' : '')} checked={!stage.locked && stageIds.includes(stage.id)}
+            onChange={event => setStageIds(current => event.target.checked ? [...current, stage.id] : current.filter(id => id !== stage.id))} />)}</div>
         </fieldset></details>}
         <label className="block space-y-1.5 text-sm font-medium">
           <span>这次写什么</span>
@@ -307,16 +307,20 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                   const Icon = item.icon;
                   const isSelected = mode === item.id;
                   return (
-                    <button
+                    <Button
                       key={item.id}
                       type="button"
+                      variant={isSelected ? 'secondary' : 'outline'}
+                      aria-pressed={isSelected}
                       onClick={() => setMode(item.id)}
-                      className={`h-full min-w-0 rounded-lg border p-2.5 text-left transition-all ${isSelected ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border-subtle bg-surface hover:border-accent/40'}`}
+                      className={`h-auto !min-h-0 sm:!min-h-0 w-full justify-start whitespace-normal rounded-lg border p-2.5 text-left font-normal [&_.ui-mantine-button-inner]:w-full [&_.ui-mantine-button-label]:w-full [&_.ui-mantine-button-label]:whitespace-normal ${isSelected ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-border-subtle bg-surface hover:border-accent/40'}`}
                     >
-                      <Icon className={`mb-1.5 h-4 w-4 ${isSelected ? 'text-accent' : 'text-muted'}`} />
-                      <div className="text-sm font-semibold text-ink">{item.label}</div>
-                      <div className="mt-0.5 text-xs leading-tight text-muted">{item.desc}</div>
-                    </button>
+                      <span className="flex w-full min-w-0 flex-col items-start gap-1">
+                        <Icon className={`h-4 w-4 ${isSelected ? 'text-accent' : 'text-muted'}`} aria-hidden="true" />
+                        <span className="text-sm font-semibold text-ink">{item.label}</span>
+                        <span className="text-xs leading-tight text-muted">{item.desc}</span>
+                      </span>
+                    </Button>
                   );
                 })}
               </div>
@@ -359,14 +363,10 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
             <legend className="text-sm font-medium text-ink">画面中的角色</legend>
             <div className="flex flex-wrap gap-3">
               {stageActors.map((actor) => (
-                <label key={actor.id} className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={shotActorIds.includes(actor.id)}
-                    onChange={(event) => setShotActorIds((current) => event.target.checked ? [...current, actor.id] : current.filter((id) => id !== actor.id))}
-                  />
-                  {actor.displayName}
-                </label>
+                <Checkbox key={actor.id} label={actor.displayName}
+                  checked={shotActorIds.includes(actor.id)}
+                  onChange={(event) => setShotActorIds((current) => event.target.checked ? [...current, actor.id] : current.filter((id) => id !== actor.id))}
+                />
               ))}
             </div>
             <p className="text-xs text-muted">未选择时默认使用该阶段全部参与角色。此入口只生成描述，不会自动出图。</p>
@@ -382,14 +382,10 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
             <legend className="text-sm font-medium text-ink">选择要重写的记录（{effectiveRecordIds.length}）</legend>
             <div className="max-h-40 space-y-1 overflow-auto rounded border border-border-subtle p-2">
               {selectableRecords.map((record) => (
-                <label key={record.id} className="flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={effectiveRecordIds.includes(record.id)}
-                    onChange={(event) => setSelectedRecordIds((current) => event.target.checked ? [...current, record.id] : current.filter((id) => id !== record.id))}
-                  />
-                  <span>{record.label}</span>
-                </label>
+                <Checkbox key={record.id} label={record.label}
+                  checked={effectiveRecordIds.includes(record.id)}
+                  onChange={(event) => setSelectedRecordIds((current) => event.target.checked ? [...current, record.id] : current.filter((id) => id !== record.id))}
+                />
               ))}
               {!selectableRecords.length && <p className="text-sm text-muted">该阶段还没有消息或动态，请先生成阶段内容。</p>}
             </div>
@@ -454,18 +450,21 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                   const stageTitle = stages.find((stage) => stage.id === scopeStageId)?.title;
                   const isSelected = candidate.id === activeCandidate.id;
                   return (
-                    <button
+                    <Button
                       key={candidate.id}
                       type="button"
+                      size="sm"
+                      variant={isSelected ? 'accent' : 'outline'}
+                      aria-pressed={isSelected}
                       onClick={() => setPickedCandidateId(candidate.id)}
-                      className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      className={`h-auto !min-h-0 sm:!min-h-0 shrink-0 rounded-md px-2.5 py-1 text-xs transition-colors ${
                         isSelected
-                          ? 'bg-accent text-fg-on-accent shadow-xs'
-                          : 'bg-surface-raised border border-border-subtle text-muted hover:text-ink'
+                          ? 'shadow-xs font-medium'
+                          : 'bg-surface-raised border-border-subtle text-muted hover:text-ink'
                       }`}
                     >
                       #{index + 1} {stageTitle || candidate.id.slice(0, 6)}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>

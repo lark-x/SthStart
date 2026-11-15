@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useId, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CloseButton, Modal } from '@mantine/core';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { useOverlayAccessibility } from './overlay';
+import { OverlayFlexScrollArea, OverlayLayer, useModalFocusContainment, useOverlayEscapeLayer, useOverlayTransitionDuration } from './overlay-policy';
+import { useWebKitReturnFocus } from './use-webkit-return-focus';
 
 export interface DialogProps extends Omit<React.ComponentPropsWithRef<'div'>, 'title' | 'children'> {
   open: boolean;
@@ -25,6 +27,11 @@ const sizeClassName: Record<NonNullable<DialogProps['size']>, string> = {
   lg: 'max-w-2xl',
 };
 
+/**
+ * Native Mantine Modal adapter.
+ * Preserves unified LIFO Escape stacking, WebKit pointer/unmount return-focus,
+ * custom initialFocusRef priority, and scoped portal host for nested popovers.
+ */
 export function Dialog({
   open,
   onOpenChange,
@@ -36,77 +43,123 @@ export function Dialog({
   initialFocusRef,
   className,
   ref,
+  style,
   ...props
 }: DialogProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  const descriptionId = useId();
+  const panelRef = useRef<HTMLElement | null>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
 
-  useOverlayAccessibility({
-    open,
-    onRequestClose: () => onOpenChange(false),
-    containerRef: dialogRef,
-    initialFocusRef,
-  });
+  const requestClose = useCallback(() => onOpenChange(false), [onOpenChange]);
 
-  if (!open) return null;
+  useModalFocusContainment(open, host);
+  useWebKitReturnFocus(open, { containerRef: panelRef });
+  useOverlayEscapeLayer(open, requestClose, 'dialog');
+
+  const attachPanel = useCallback((node: HTMLElement | null) => {
+    panelRef.current = node;
+    setHost(node);
+    if (typeof ref === 'function') ref(node as HTMLDivElement | null);
+    else if (ref) ref.current = node as HTMLDivElement | null;
+  }, [ref]);
+
+  useLayoutEffect(() => {
+    if (!open || !host) return;
+    const preferred = initialFocusRef?.current;
+    if (!preferred || !host.contains(preferred) || preferred.hasAttribute('data-autofocus')) return;
+    preferred.setAttribute('data-autofocus', 'true');
+    return () => {
+      preferred.removeAttribute('data-autofocus');
+    };
+  }, [open, host, initialFocusRef]);
+
+  useEffect(() => {
+    if (!open || !host) return;
+    const focusInitial = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const preferred = initialFocusRef?.current;
+      const auto = panel.querySelector<HTMLElement>('[data-autofocus]');
+      const firstField = Array.from(panel.querySelectorAll<HTMLElement>('input, select, textarea')).find(
+        (element) => element.getClientRects().length > 0,
+      );
+      const target = preferred ?? auto ?? firstField;
+      if (target && panel.contains(target) && document.activeElement !== target) {
+        target.focus({ preventScroll: true });
+      }
+    };
+    focusInitial();
+    const timer = window.setTimeout(focusInitial, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, host, initialFocusRef]);
+
+  const transitionDuration = useOverlayTransitionDuration(160);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-    >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-overlay-backdrop transition-opacity animate-in fade-in"
-        onClick={() => onOpenChange(false)}
-        aria-hidden="true"
-      />
-
-      {/* Content */}
-      <div
-        {...props}
-        ref={(node) => { dialogRef.current = node; if (typeof ref === 'function') ref(node); else if (ref) ref.current = node; }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
-        tabIndex={-1}
-        className={cn(
-          'relative z-50 flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-dialog border border-border-subtle bg-surface p-6 shadow-dialog focus:outline-none animate-in zoom-in-95',
-          sizeClassName[size],
-          className
-        )}
+    <OverlayLayer kind="dialog" host={host}>
+      <Modal.Root
+        opened={open}
+        onClose={requestClose}
+        centered
+        size="auto"
+        yOffset="1rem"
+        xOffset="1rem"
+        withinPortal
+        trapFocus
+        lockScroll
+        closeOnEscape={false}
+        returnFocus={false}
+        closeOnClickOutside
+        padding={0}
+        scrollAreaComponent={OverlayFlexScrollArea}
+        transitionProps={{ duration: transitionDuration, transition: 'pop', timingFunction: 'var(--motion-spring)' }}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 mb-4">
-          <div className="min-w-0">
-            <h2 id={titleId} className="text-lg font-semibold text-ink">
-              {title}
-            </h2>
-            {description && (
-              <p id={descriptionId} className="text-sm text-muted leading-relaxed mt-1">
-                {description}
-              </p>
-            )}
+        <Modal.Overlay />
+        <Modal.Content
+          {...(props as Record<string, unknown>)}
+          ref={attachPanel}
+          data-state={open ? 'open' : 'closed'}
+          styles={{
+            content: { '--modal-content-flex': '0 1 auto', ...style } as React.CSSProperties,
+          }}
+          classNames={{
+            content: cn(
+              'relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-dialog border border-border-subtle bg-surface p-6 shadow-dialog',
+              sizeClassName[size],
+              className,
+            ),
+          }}
+        >
+          <div data-dialog-header className="flex shrink-0 items-start justify-between gap-4 mb-4">
+            <div className="min-w-0">
+              <Modal.Title className="text-lg font-semibold text-ink">
+                {title}
+              </Modal.Title>
+              {description && (
+                <Modal.Body className="!p-0 text-sm text-muted leading-relaxed mt-1">
+                  {description}
+                </Modal.Body>
+              )}
+            </div>
+            <CloseButton
+              onClick={requestClose}
+              size={44}
+              aria-label="关闭对话框"
+              icon={<X className="h-5 w-5" aria-hidden="true" />}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            />
           </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted hover:text-ink hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            aria-label="关闭对话框"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
 
-        {/* 对话框渲染在 portal 里，不在外框作用域内，需要自己声明滚动条自动隐藏。 */}
-        <div className="my-4 min-h-0 overflow-y-auto pr-1" data-autohide-scroll>{children}</div>
-
-        {footer && (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 mt-6 pt-4 border-t border-border-subtle">
-            {footer}
+          <div data-dialog-lining className="my-4 min-h-0 overflow-x-clip overflow-y-auto overscroll-contain pr-1" data-autohide-scroll>
+            {children}
           </div>
-        )}
-      </div>
-    </div>
+
+          {footer && (
+            <div data-dialog-footer className="flex shrink-0 flex-wrap items-center justify-end gap-3 mt-6 pt-4 border-t border-border-subtle">
+              {footer}
+            </div>
+          )}
+        </Modal.Content>
+      </Modal.Root>
+    </OverlayLayer>
   );
 }

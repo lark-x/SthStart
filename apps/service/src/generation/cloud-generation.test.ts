@@ -66,6 +66,55 @@ test('cloud image adapter: text-to-image and image-to-image', async () => {
   assert.equal(i2iResult.images.length, 1);
 });
 
+test('cloud requests append only nonblank negative text to the protected prompt in JSON and multipart bodies', async (t) => {
+  for (const operation of ['text-to-image', 'image-to-image'] as const) {
+    for (const negativePrompt of [undefined, '', '  \n\t ', ' 文字、水印, extra fingers \n']) {
+      await t.test(operation + ': ' + JSON.stringify(negativePrompt), async () => {
+        const prompt = '  a harbor at dawn\n';
+        const negative = negativePrompt?.trim();
+        const expected = negative ? prompt + '\n\n画面中避免 / Exclude from the image:\n' + negative : prompt;
+        const customParams = { prompt: 'must not override', negative_prompt: 'must not become a standalone input',
+          negativePrompt: 'must not replace the option', model: 'wrong-model', n: 99, size: 'wrong-size',
+          response_format: 'url', quality: 'wrong-quality', background: 'transparent' };
+        const originalCustomParams = structuredClone(customParams);
+        let calls = 0;
+        const fetcher: typeof fetch = async (url, init) => {
+          if (operation === 'image-to-image') {
+            assert.ok(init?.body instanceof FormData);
+            assert.deepEqual(init.body.getAll('prompt'), [expected]);
+          }
+          calls++; const request = new Request(url, init);
+          assert.equal(request.url, 'https://image.invalid/v1/images/' + (operation === 'text-to-image' ? 'generations' : 'edits'));
+          assert.equal(request.method, 'POST'); assert.ok(init?.signal instanceof AbortSignal);
+          if (operation === 'text-to-image') {
+            assert.match(request.headers.get('content-type')!, /application\/json/);
+            assert.deepEqual(await request.json(), { model: 'gpt-image-1', prompt: expected, n: 1, size: '1024x1024',
+              response_format: 'b64_json', quality: 'high', background: 'transparent' });
+          } else {
+            assert.match(request.headers.get('content-type')!, /multipart\/form-data; boundary=/);
+            const form = await request.formData();
+            // Multipart serialization normalizes line endings on the wire.
+            assert.deepEqual(form.getAll('prompt'), [expected.split('\n').join('\r\n')]);
+            assert.equal(form.get('model'), 'gpt-image-1'); assert.equal(form.get('n'), '1');
+            assert.equal(form.get('size'), '1024x1024'); assert.equal(form.get('response_format'), 'b64_json');
+            assert.equal(form.get('quality'), 'high'); assert.equal(form.get('background'), 'transparent');
+            assert.equal(form.has('negative_prompt'), false); assert.equal(form.has('negativePrompt'), false);
+            assert.equal((form.get('image') as File).name, 'reference.png');
+            assert.deepEqual(Buffer.from(await (form.get('image') as File).arrayBuffer()), Buffer.from([1, 2, 3]));
+          }
+          return Response.json({ data: [{ b64_json: 'AQID' }] });
+        };
+        const result = await executeCloudGeneration({ engine: { id: 'cloud', baseUrl: 'https://image.invalid/v1', secret: null },
+          model: 'gpt-image-1', operation, prompt, negativePrompt, quality: 'high', customParams, timeoutMs: 1000,
+          ...(operation === 'image-to-image' ? { referenceImage: { buffer: Buffer.from([1, 2, 3]), contentType: 'image/png', filename: 'reference.png' } } : {}),
+          fetchFn: fetcher });
+        assert.equal(calls, 1); assert.equal(result.images.length, 1); assert.equal(result.model, 'gpt-image-1');
+        assert.deepEqual(customParams, originalCustomParams);
+      });
+    }
+  }
+});
+
 test('cloud engine execution integrates with generation task flow and persists artifacts', async () => {
   const db = new ServiceDatabase();
   const config = readConfig();
@@ -73,6 +122,9 @@ test('cloud engine execution integrates with generation task flow and persists a
   const mock1x1PngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
   const fetcher: typeof fetch = async (input, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.prompt, '测试云端生图任务\n\n画面中避免 / Exclude from the image:\n水印、模糊');
+    assert.equal(body.n, 1); assert.equal(Object.hasOwn(body, 'negative_prompt'), false);
     return Response.json({
       data: [{ b64_json: mock1x1PngBase64 }],
     });
@@ -116,6 +168,7 @@ test('cloud engine execution integrates with generation task flow and persists a
         isInternal: true,
         inputs: {
           prompt: '测试云端生图任务',
+          negativePrompt: '水印、模糊',
           size: '1024x1024',
         },
       },

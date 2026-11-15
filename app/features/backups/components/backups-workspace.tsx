@@ -4,7 +4,6 @@ import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CloudUpload, DatabaseBackup, HardDrive, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { BackupRun, BackupSnapshot } from '@sthstart/contracts';
-import { ApiClientError } from '@/app/lib/api-client';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageTabs } from '@/app/components/ui/page-tabs';
@@ -13,6 +12,8 @@ import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { Button as LinkButton } from '@mantine/core';
+import Link from 'next/link';
 import { useToast } from '@/app/providers/ui-provider';
 import { useBackupOverview } from '../queries';
 import {
@@ -21,47 +22,15 @@ import {
 import { BackupHistoryPanel } from './backup-history-panel';
 import { BackupPlansPanel } from './backup-plans-panel';
 import { BackupVaultPanel } from './backup-vault-panel';
+import {
+  describeError,
+  formatBytes,
+  formatTime,
+  RUN_STATE_LABEL,
+  TARGET_STATE_LABEL,
+} from '../model';
 
 type Tab = 'overview' | 'plans' | 'history' | 'security';
-
-const RUN_STATE_LABEL: Record<string, string> = {
-  succeeded: '已完成', partial: '部分完成', failed: '失败', cancelled: '已取消',
-  interrupted: '已中断', running: '进行中', queued: '等待中',
-};
-
-const TARGET_STATE_LABEL: Record<string, string> = {
-  succeeded: '已完成', failed: '需要处理', uploading: '上传中', verifying: '校验中',
-  pending: '等待中', skipped: '已跳过',
-};
-
-/** 把服务端错误码翻译成用户能照着做的提示，不暴露内部细节。 */
-export function describeError(error: unknown): string {
-  if (error instanceof ApiClientError) {
-    if (error.code === 'backup_maintenance') return '正在创建备份快照，请稍后重试；草稿会保留在本地。';
-    if (error.code === 'backup_busy') return '已有备份正在执行，请稍后再试。';
-    if (error.code === 'backup_locked') return '仓库已锁定，请先解锁。';
-    if (error.code === 'unauthorized') return '管理会话已失效，请刷新页面后重试。';
-    return error.message;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
-function formatBytes(value: number | null | undefined): string {
-  const bytes = Number(value ?? 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let index = 0;
-  let size = bytes;
-  while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
-  return size.toFixed(size >= 10 || index === 0 ? 0 : 1) + ' ' + units[index];
-}
-
-function formatTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('zh-CN', { hour12: false });
-}
 
 export function BackupsWorkspace() {
   const searchParams = useSearchParams();
@@ -107,14 +76,14 @@ export function BackupsWorkspace() {
             ariaLabel="云备份分区"
           />
         }
+        actions={
+          <Button variant="primary" size="sm" onClick={handleStart} disabled={startRun.isPending || Boolean(activeRun)}>
+            <CloudUpload className="h-4 w-4" aria-hidden="true" />
+            <span>{activeRun ? '正在备份' : '立即备份'}</span>
+          </Button>
+        }
       />
       <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
-      <div className="flex flex-wrap items-center justify-end gap-2" aria-label="备份操作">
-          <Button onClick={handleStart} disabled={startRun.isPending || Boolean(activeRun)}>
-            <CloudUpload className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            {activeRun ? '正在备份' : '立即备份'}
-          </Button>
-      </div>
 
       {overview.isLoading && <Skeleton className="h-24 w-full" />}
       {overview.error && (
@@ -278,12 +247,9 @@ function OverviewPanel({ runs, snapshots, onRefresh }: { runs: BackupRun[]; snap
                 </span>
               ))}
             </div>
-            <a
-              className="mt-2 inline-block text-xs text-ink hover:underline"
-              href={'/settings/control-center?tab=logs&taskId=backup&runId=' + run.id}
-            >
+            <LinkButton component={Link} variant="subtle" size="xs" className="mt-2 justify-start px-0" href={'/settings/control-center?tab=logs&taskId=backup&runId=' + run.id}>
               查看这次运行的日志
-            </a>
+            </LinkButton>
           </div>
         ))}
         <div className="flex items-center gap-3 text-xs text-muted">
@@ -295,4 +261,4 @@ function OverviewPanel({ runs, snapshots, onRefresh }: { runs: BackupRun[]; snap
   );
 }
 
-export { formatBytes, formatTime, RUN_STATE_LABEL, TARGET_STATE_LABEL };
+export { describeError, formatBytes, formatTime, RUN_STATE_LABEL, TARGET_STATE_LABEL };

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -9,7 +13,10 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
-    "types": ["node", "@cloudflare/workers-types"],
+    "types": [
+      "node",
+      "@cloudflare/workers-types"
+    ],
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
@@ -20,9 +27,15 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@sthstart/activity-playback": ["./packages/activity-playback/src/index.ts"],
-      "@sthstart/activity-playback/*": ["./packages/activity-playback/src/*"]
+      "@/*": [
+        "./*"
+      ],
+      "@sthstart/activity-playback": [
+        "./packages/activity-playback/src/index.ts"
+      ],
+      "@sthstart/activity-playback/*": [
+        "./packages/activity-playback/src/*"
+      ]
     }
   },
   "include": [
@@ -33,5 +46,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "data", "upstream", "dist"]
+  "exclude": [
+    "node_modules",
+    "data",
+    "upstream",
+    "dist",
+    "artifacts"
+  ]
 }

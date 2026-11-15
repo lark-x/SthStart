@@ -1,0 +1,201 @@
+/*
+ * SthStart 样式职责拆分 - 硬件加速微动效与骨架屏体系 (Hardware-accelerated motion & shimmer)
+ * 保持 baseline 原始级联顺序，由 app/globals.css 按序引入。
+  */
+
+/* ==================== 现代微动效体系（原生 CSS 硬件加速） ==================== */
+@keyframes anim-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes anim-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes anim-zoom-in-95 {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes anim-zoom-out-95 {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+}
+
+@keyframes anim-slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes anim-slide-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes anim-slide-in-bottom-2 {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes anim-slide-in-top-2 {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes anim-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes page-tab-indicator-in {
+  from { opacity: 0; transform: translateX(-50%) scaleX(0.4); }
+  to { opacity: 1; transform: translateX(-50%) scaleX(1); }
+}
+
+@keyframes tab-panel-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes status-breathe {
+  0%, 100% { opacity: 0.25; transform: scale(0.9); }
+  50% { opacity: 0.7; transform: scale(1.12); }
+}
+
+.animate-in {
+  animation-duration: var(--motion-base);
+  animation-timing-function: var(--motion-ease);
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: anim-fade-in;
+}
+
+.zoom-in-95 {
+  animation-name: anim-zoom-in-95;
+  animation-timing-function: var(--motion-spring);
+}
+
+.fade-in.zoom-in-95 {
+  animation-name: anim-zoom-in-95;
+  animation-timing-function: var(--motion-spring);
+}
+
+.slide-in-from-right {
+  animation-name: anim-slide-in-right;
+  animation-timing-function: var(--motion-ease);
+}
+
+.slide-in-from-bottom {
+  animation-name: anim-slide-in-bottom;
+  animation-timing-function: var(--motion-ease);
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: anim-slide-in-bottom-2;
+  animation-timing-function: var(--motion-spring);
+}
+
+.slide-in-from-top-2 {
+  animation-name: anim-slide-in-top-2;
+  animation-timing-function: var(--motion-spring);
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--fg-default) 6%, transparent) 0%,
+    color-mix(in srgb, var(--fg-default) 14%, transparent) 50%,
+    color-mix(in srgb, var(--fg-default) 6%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: anim-shimmer 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [role='tabpanel']:not([hidden]) {
+    animation: tab-panel-in 160ms var(--motion-ease) both;
+  }
+
+  .status-dot { position: relative; }
+  .status-dot[data-status='running']::after,
+  .status-dot[data-status='online']::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+    border-radius: 9999px;
+    animation: status-breathe 2.6s var(--motion-ease) infinite;
+  }
+
+  @supports (transition-behavior: allow-discrete) {
+    .anchored-popover[data-state="open"] {
+      transition: opacity var(--motion-base) var(--motion-spring),
+        transform var(--motion-base) var(--motion-spring),
+        display var(--motion-base) allow-discrete,
+        overlay var(--motion-base) allow-discrete;
+      @starting-style {
+        opacity: 0;
+        transform: scale(0.96);
+      }
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .skeleton-shimmer,
+  .ui-choice,
+  .status-dot::after,
+  .page-tabs[data-variant] > [role='tab'] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ==================== 滚动边缘渐隐（ScrollFadeContainer） ====================
+ * 位置变量由组件在 rAF 内直接写入，滚动帧不进入 React。
+ * 纵向 7 档幂律遮罩让边缘过渡更贴近感知曲线；横向只需单段羽化。
+ */
+[data-scroll-fade='vertical'] {
+  --scroll-fade-top: 0px;
+  --scroll-fade-bottom: 0px;
+  --scroll-fade-mask: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(0, 0, 0, 0.05) calc(var(--scroll-fade-top) * 0.15),
+    rgba(0, 0, 0, 0.15) calc(var(--scroll-fade-top) * 0.3),
+    rgba(0, 0, 0, 0.3) calc(var(--scroll-fade-top) * 0.45),
+    rgba(0, 0, 0, 0.5) calc(var(--scroll-fade-top) * 0.6),
+    rgba(0, 0, 0, 0.7) calc(var(--scroll-fade-top) * 0.75),
+    rgba(0, 0, 0, 0.85) calc(var(--scroll-fade-top) * 0.87),
+    #000 var(--scroll-fade-top),
+    #000 calc(100% - var(--scroll-fade-bottom)),
+    rgba(0, 0, 0, 0.85) calc(100% - var(--scroll-fade-bottom) * 0.87),
+    rgba(0, 0, 0, 0.7) calc(100% - var(--scroll-fade-bottom) * 0.75),
+    rgba(0, 0, 0, 0.5) calc(100% - var(--scroll-fade-bottom) * 0.6),
+    rgba(0, 0, 0, 0.3) calc(100% - var(--scroll-fade-bottom) * 0.45),
+    rgba(0, 0, 0, 0.15) calc(100% - var(--scroll-fade-bottom) * 0.3),
+    rgba(0, 0, 0, 0.05) calc(100% - var(--scroll-fade-bottom) * 0.15),
+    transparent
+  );
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-image: var(--scroll-fade-mask);
+}
+
+[data-scroll-fade='horizontal'] {
+  --scroll-fade-left: 0px;
+  --scroll-fade-right: 0px;
+  --scroll-fade-mask: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--scroll-fade-left),
+    #000 calc(100% - var(--scroll-fade-right)),
+    transparent
+  );
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-image: var(--scroll-fade-mask);
+}

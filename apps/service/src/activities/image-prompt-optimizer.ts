@@ -199,8 +199,12 @@ export async function optimizeActivityImagePrompt(
     // 避免同一串在“策略后缀 + 活动画风”两处重复出现。
     const policySuffix = workflowUsesServiceFinalizedAssembly(database, input.workflowId, input.workflowVersion)
       ? '' : input.policy.positiveSuffix.trim();
+    // 画师串与质量词是独立的两个来源，顺序对齐邻舍：质量词 → 画师串 → 画面描述。
+    // 空值表示沿用工作流节点默认，不注入任何文本。
+    const stylePrefix = [input.policy.qualityPrompt.trim(), input.policy.artistString.trim()]
+      .filter(Boolean).join(', ');
     if (!input.policy.enabled) {
-      const output = [input.sourcePrompt.trim(), policySuffix].filter(Boolean).join(', ');
+      const output = [stylePrefix, input.sourcePrompt.trim(), policySuffix].filter(Boolean).join(', ');
       optimizerCallId = makeCallRecord(database, { traceId, activityId: input.activityId, workflowId: input.workflowId,
         workflowVersion: input.workflowVersion, policy: input.policy, sourcePrompt: input.sourcePrompt, status: 'not_dispatched', studioContext: input.studioContext });
       database.connection.prepare(`UPDATE activity_prompt_optimization_runs SET optimized_prompt=?,status='skipped',optimizer_call_id=?,updated_at=? WHERE id=?`)
@@ -294,7 +298,8 @@ export async function optimizeActivityImagePrompt(
     if (structuredMode) {
       try {
         const hybrid = input.policy.knowledgeMode === 'hybrid'
-          ? await retrieveHybridImageKnowledge(database, secrets, input.sourcePrompt, 'standalone', fetcher) : undefined;
+          ? await retrieveHybridImageKnowledge(database, secrets, input.sourcePrompt, 'standalone', fetcher,
+            Boolean(input.policy.adultKnowledgeEnabled)) : undefined;
         structuredResult = parseStructuredOptimization({
           content,
           finishReason,
@@ -316,11 +321,12 @@ export async function optimizeActivityImagePrompt(
     }
 
     const optimizedDescription = structuredResult ? structuredResult.optimizedPrompt : cleanPrompt(content);
-    const optimizedPrompt = structuredResult
-      ? optimizedDescription
-      : [optimizedDescription, policySuffix].filter(Boolean).join(', ');
+    // 画师串与质量词在两种组织方式下都必须落到最终提交文本；结构化分支只负责
+    // 组装画面事实，不能因此吞掉策略里的画风前缀。
+    const optimizedPrompt = [stylePrefix, optimizedDescription, policySuffix].filter(Boolean).join(', ');
     updateAiCallRecord(database, optimizerCallId, { event: 'prompt_compiled', responseText: content,
-      detail: { policyRevision: input.policy.revision, positiveSuffixApplied: Boolean(policySuffix) },
+      detail: { policyRevision: input.policy.revision, positiveSuffixApplied: Boolean(policySuffix),
+        stylePrefixApplied: Boolean(stylePrefix) },
       redactionSecrets: collectAiCallRedactionSecrets({ secret: profile.secret, headers: profile.headers, extraBody: profile.extraBody }) });
     // 结构化快照与运行记录同事务写入，历史读取时不需要重新调用模型。
     const snapshot = structuredResult ? JSON.stringify({

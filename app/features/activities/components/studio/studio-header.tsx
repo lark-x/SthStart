@@ -5,6 +5,9 @@ import { Check, MoreHorizontal, PlaySquare } from 'lucide-react';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { isImeComposingEvent } from '@/app/lib/hooks/use-cjk-ime-guard';
 import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { PageTabs } from '@/app/components/ui/page-tabs';
+import { SaveStatus } from '@/app/components/ui/save-status';
 import type { Activity, ContentDocument } from '@sthstart/contracts';
 import { StudioMenu, StudioMenuItem } from './studio-menu';
 
@@ -54,7 +57,7 @@ export function StudioHeader({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isImeComposingEvent(e)) return;
+    if (e.nativeEvent?.isComposing || e.keyCode === 229 || isImeComposingEvent(e)) return;
     if (e.key === 'Enter') {
       e.currentTarget.blur();
     }
@@ -65,25 +68,33 @@ export function StudioHeader({
       title={title || '未命名活动'}
       backHref="/apps/activities"
       backLabel="活动列表"
-      titleSlot={<input
+      titleSlot={<Input
         aria-label="活动标题"
         value={titleDraft}
         onChange={event => setTitleDraft(event.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="未命名活动"
-        className="h-9 w-full min-w-0 max-w-64 border-0 border-b border-transparent bg-transparent px-1 text-base font-semibold text-ink outline-none hover:border-border-default focus:border-accent sm:text-sm"
+        className="h-9 min-h-0 w-full min-w-0 max-w-64 rounded-none border-0 border-b border-transparent bg-transparent px-1 text-base font-semibold text-ink shadow-none outline-none hover:border-border-default focus:border-accent sm:text-sm"
       />}
-      status={<span role="status" title={saveError || undefined} className={`text-xs ${saveStatus === 'error' || saveStatus === 'conflict' ? 'text-danger-fg' : 'text-muted'}`}>
-        {saveStatus === 'saving' ? '保存中…' : saveStatus === 'saved' ? '已保存' : saveStatus === 'unsaved' ? '有未保存修改' : saveStatus === 'conflict' ? '草稿冲突，请在设置中处理' : '保存失败，请重试保存'}
+      status={<span title={saveError || undefined}>
+        <SaveStatus
+          state={saveStatus}
+          detail={saveStatus === 'conflict' ? '请在设置中处理' : undefined}
+          className="text-xs"
+        />
       </span>}
-      centerSlot={<div className="hidden min-w-0 items-center gap-1 rounded-control bg-surface-sunken p-1 lg:flex" role="group" aria-label="工作台视图">
-        {(['storyboard', 'comic', 'materials'] as const).map(mode => <button
-          key={mode} type="button" aria-pressed={viewMode === mode}
-          onClick={() => onViewModeChange(mode)}
-          className={`whitespace-nowrap rounded px-3 py-1 text-sm focus-visible:outline focus-visible:outline-accent ${viewMode === mode ? 'bg-surface font-semibold text-ink' : 'text-muted hover:text-ink'}`}
-        >{mode === 'storyboard' ? '分镜漫剧' : mode === 'comic' ? '漫画工坊' : '素材制作'}</button>)}
-      </div>}
+      centerSlot={<div className="hidden lg:flex"><PageTabs
+        ariaLabel="工作台视图"
+        variant="local"
+        value={viewMode}
+        onChange={value => onViewModeChange(value as StudioHeaderProps['viewMode'])}
+        tabs={[
+          { id: 'storyboard', label: '分镜漫剧' },
+          { id: 'comic', label: '漫画工坊' },
+          { id: 'materials', label: '素材制作' },
+        ]}
+      /></div>}
       actions={<>
         <Button size="sm" variant="primary" onClick={onOpenPlayback}><PlaySquare className="size-4" aria-hidden="true" />试演</Button>
         <StudioMenu

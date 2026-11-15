@@ -1,5 +1,5 @@
 import type {NextRequest} from 'next/server';
-import {publicationBridgeAllowed} from '@/app/lib/publication-bridge-policy';
+import {publicationBridgeAllowed} from '@/app/server/publication-bridge-policy';
 const serviceUrl=(process.env.STHSTART_SERVICE_URL??process.env.NEXT_PUBLIC_STHSTART_SERVICE_URL??'http://127.0.0.1:4100').replace(/\/$/,'');
 async function proxy(request:NextRequest,context:{params:Promise<{path:string[]}>}) {
   const {path}=await context.params,headers={'cache-control':'no-store'};

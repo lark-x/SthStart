@@ -2,8 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { PageHeaderIcon } from './page-header-icon';
-import { PageGlobalActions } from './page-global-actions';
+import { HeaderSlot } from './header-slots';
 
 export interface PageHeaderProps extends Omit<React.ComponentPropsWithoutRef<'header'>, 'title'> {
   title: string;
@@ -49,9 +48,9 @@ export function PageHeader({
 
       <div className="tpl-header-main">
         <div className="tpl-heading">
-          <PageHeaderIcon compact={compact} />
+          <HeaderSlot name={compact ? "compactPageIcon" : "pageIcon"} />
           <div className="tpl-heading-text min-w-0">
-            <h1 className={cn('tpl-title', compact && 'text-xl')}>{title}</h1>
+            <h1 className="tpl-title">{title}</h1>
             {description && (
               <details className="tpl-description-disclosure"><summary aria-label={`${title}使用说明`} title="使用说明">说明</summary><p className="tpl-description">{description}</p></details>
             )}
@@ -59,14 +58,16 @@ export function PageHeader({
         </div>
         {navigation && <div className="tpl-header-navigation">{navigation}</div>}
 
-        {/* page-header-actions 保留为兼容类名：既有测试与样式仍按它定位动作区。 */}
-        {(status || actions) && (
-          <div className="tpl-actions page-header-actions">
-            {status}
-            {actions}
-          </div>
-        )}
-        <PageGlobalActions />
+        <div className="tpl-header-tools">
+          {/* page-header-actions 保留为兼容类名：既有测试与样式仍按它定位动作区。 */}
+          {(status || actions) && (
+            <div className="tpl-actions page-header-actions">
+              {status}
+              {actions}
+            </div>
+          )}
+          <HeaderSlot name="pageTools" />
+        </div>
       </div>
     </header>
   );

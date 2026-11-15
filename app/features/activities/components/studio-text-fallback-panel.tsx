@@ -6,8 +6,9 @@ import {StudioTextFallbackPreviewSchema,StudioTextFallbackRequestSchema,type Stu
 import {Button} from '@/app/components/ui/button';
 import {FormField} from '@/app/components/ui/form-field';
 import {ResponsiveEditOverlay} from '@/app/components/ui/responsive-edit-overlay';
-import {fetchStudioTextFallbackOptions,previewStudioTextFallback} from '../studio-api';
-import {useStudioJobMutations} from '../studio-mutations';
+import {Select} from '@/app/components/ui/select';
+import { fetchStudioTextFallbackOptions, previewStudioTextFallback } from '@/app/features/activities/api/studio';
+import { useStudioJobMutations } from '@/app/features/activities/mutations/studio';
 
 /** Local form recovery never dispatches. Every changed model needs a new server
  * preview; a lost confirmation response reuses its exact saved payload/key. */
@@ -46,7 +47,7 @@ export function StudioTextFallbackPanel({activityId,job,beforeAction,onSelectJob
   };
   if(job.kind==='render_batch'||job.readOnly)return null;
   const used=job.input.fallback as {fallbackOf?:string;model?:string}|undefined;
-  if(used)return <p role="status" className="text-xs text-muted">本任务为一次备用尝试 · {used.model??'历史未记录模型'}。再次失败会暂停，不继续自动切换。<button className="ml-2 text-accent" onClick={()=>onSelectJob(used.fallbackOf??null)}>查看原失败任务</button></p>;
+  if(used)return <p role="status" className="text-xs text-muted">本任务为一次备用尝试 · {used.model??'历史未记录模型'}。再次失败会暂停，不继续自动切换。<Button type="button" size="sm" variant="ghost" className="ml-2 h-auto min-h-0 px-1 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline" onClick={()=>onSelectJob(used.fallbackOf??null)}>查看原失败任务</Button></p>;
   if(!['failed','paused','interrupted','unknown'].includes(job.status)||job.stopRequested)return null;
   return <>
     <Button size="sm" variant="outline" onClick={()=>changeOpen(true)}>选择备用文本模型</Button>
@@ -61,11 +62,11 @@ export function StudioTextFallbackPanel({activityId,job,beforeAction,onSelectJob
         {options.isPending&&<p role="status">读取已有配置…</p>}
         {options.isError&&<><p role="alert" className="text-sm text-danger-fg">{options.error.message}</p><Button variant="outline" onClick={()=>void options.refetch()}>重新读取配置</Button></>}
         {options.data&&<p role="status" className="text-sm">{options.data.reason}</p>}
-        {(options.data?.allowed||pending.current)&&<FormField label="本次备用模型"><select aria-label="本次备用文本模型" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm"
+        {(options.data?.allowed||pending.current)&&<FormField label="本次备用模型"><Select aria-label="本次备用文本模型"
           value={profileId} disabled={busy||operations.textFallback.isPending||Boolean(pending.current)} onChange={event=>{generation.current++;setProfileId(event.target.value);setPreview(null);setError('');pending.current=null;remember({open:true,profileId:event.target.value,preview:null,error:''},null);}}>
           <option value="">选择已有的启用模型</option>{options.data?.profiles.map(profile=><option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}
           {pending.current&&!options.data?.profiles.some(profile=>profile.id===profileId)&&<option value={profileId}>{preview?.profileName??profileId} · 已保存的相同确认</option>}
-        </select></FormField>}
+        </Select></FormField>}
         {preview&&<section aria-label="备用调用确认" className="space-y-2 rounded-lg bg-surface-subtle p-3 text-sm">
           <h3 className="font-semibold">将使用 {preview.profileName} · {preview.model}</h3><p>{preview.scope}</p>
           <p>本次 1 次文本模型调用 · 0 次图片调用 · 备用上限 1 次</p>

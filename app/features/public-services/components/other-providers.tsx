@@ -5,6 +5,7 @@ import type { PublicServiceOverview } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { FormField } from '@/app/components/ui/form-field';
 
 export function OtherProviders({
   overview,
@@ -82,50 +83,55 @@ export function OtherProviders({
 
         <form onSubmit={handleSubmit} className="space-y-3 pt-3 border-t border-border-subtle">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Input
-              value={id}
-              onChange={(e) => setId(e.target.value)}
-              placeholder="配置 ID"
-              required
-            />
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="显示名称"
-              required
-            />
-            <label htmlFor="other-provider-kind" className="sr-only">能力类型</label>
-            <Select
-              id="other-provider-kind"
-              aria-label="能力类型"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as typeof kind)}
-            >
-              <option value="vector">向量</option>
-              <option value="image">图片 / ComfyUI</option>
-            </Select>
+            <FormField label="配置 ID" required>
+              <Input
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+                required
+              />
+            </FormField>
+            <FormField label="显示名称" required>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </FormField>
+            <FormField label="能力类型">
+              <Select
+                id="other-provider-kind"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as typeof kind)}
+              >
+                <option value="vector">向量</option>
+                <option value="image">图片 / ComfyUI</option>
+              </Select>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Input
-              type="url"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="上游 Base URL"
-              required
-            />
-            <Input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="模型（可留空）"
-            />
-            <Input
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="API Key（可选）"
-              autoComplete="new-password"
-            />
+            <FormField label="上游 Base URL" required>
+              <Input
+                type="url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                required
+              />
+            </FormField>
+            <FormField label="模型" hint="可留空。">
+              <Input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+              />
+            </FormField>
+            <FormField label="API Key" hint="可选。">
+              <Input
+                type="password"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                autoComplete="new-password"
+              />
+            </FormField>
           </div>
 
           <div className="flex justify-end">

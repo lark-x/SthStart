@@ -18,19 +18,15 @@ import {
 import type { Activity, ContentDocument, ActivityReusablePreset, ActivityPresetKind } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { Alert } from '@/app/components/ui/alert';
 import { Spinner } from '@/app/components/ui/spinner';
-import {
-  useActivityPresets,
-  useImageConfigDraft,
-} from '../queries';
-import {
-  useCreateActivityPreset,
-  useUpdateActivityPreset,
-  useDeleteActivityPreset,
-} from '../mutations';
+import { useActivityPresets } from '@/app/features/activities/queries/activities';
+import { useImageConfigDraft } from '@/app/features/activities/queries/images';
+import { useCreateActivityPreset, useUpdateActivityPreset, useDeleteActivityPreset } from '@/app/features/activities/mutations/activities';
 
 interface ActivityPresetsModalProps {
   isOpen: boolean;
@@ -164,28 +160,34 @@ export function ActivityPresetsModal({
         {/* Navigation Tabs */}
         <div className="flex items-center justify-between border-b border-border-default pb-2">
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={activeTab === 'save_template'}
               onClick={() => { setActiveTab('save_template'); setStatusMessage(null); }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`h-auto !min-h-0 sm:!min-h-0 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 activeTab === 'save_template'
                   ? 'bg-accent/10 text-accent font-semibold'
                   : 'text-muted hover:text-ink hover:bg-surface-hover'
               }`}
             >
               另存当前活动为模板
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={activeTab === 'manage'}
               onClick={() => { setActiveTab('manage'); setStatusMessage(null); }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`h-auto !min-h-0 sm:!min-h-0 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 activeTab === 'manage'
                   ? 'bg-accent/10 text-accent font-semibold'
                   : 'text-muted hover:text-ink hover:bg-surface-hover'
               }`}
             >
               我的预设库 ({presets.length})
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -210,8 +212,8 @@ export function ActivityPresetsModal({
             </div>
 
             <fieldset className="space-y-2 rounded-lg border border-border-default p-3"><legend className="text-sm font-semibold">模板职责</legend>
-              {roleOptions.map((role,index)=><div key={role.id} className="flex flex-wrap gap-2 items-center text-xs"><span>{document.actors[index]?.displayName} →</span><Input aria-label={`职责 ${index+1} 名称`} className="w-32" value={role.label} onChange={e=>setRoleOptions(roles=>roles.map((r,i)=>i===index?{...r,label:e.target.value}:r))}/><label><input type="checkbox" checked={role.required} onChange={e=>setRoleOptions(roles=>roles.map((r,i)=>i===index?{...r,required:e.target.checked}:r))}/> 必选</label><label><input type="checkbox" checked={role.multiple} onChange={e=>setRoleOptions(roles=>roles.map((r,i)=>i===index?{...r,multiple:e.target.checked}:r))}/> 可多人</label><code>{`{{role.${role.id}}}`}</code></div>)}
-              <label className="block text-sm"><input type="checkbox" checked={replaceNames} onChange={e=>setReplaceNames(e.target.checked)}/> 将阶段和规则中出现的角色名转换为职责占位符</label>
+              {roleOptions.map((role,index)=><div key={role.id} className="flex flex-wrap gap-2 items-center text-xs"><span>{document.actors[index]?.displayName} →</span><Input aria-label={`职责 ${index+1} 名称`} className="w-32" value={role.label} onChange={e=>setRoleOptions(roles=>roles.map((r,i)=>i===index?{...r,label:e.target.value}:r))}/><Checkbox label="必选" checked={role.required} onChange={e=>setRoleOptions(roles=>roles.map((r,i)=>i===index?{...r,required:e.target.checked}:r))}/><Checkbox label="可多人" checked={role.multiple} onChange={e=>setRoleOptions(roles=>roles.map((r,i)=>i===index?{...r,multiple:e.target.checked}:r))}/><code>{`{{role.${role.id}}}`}</code></div>)}
+              <Checkbox label="将阶段和规则中出现的角色名转换为职责占位符" checked={replaceNames} onChange={e=>setReplaceNames(e.target.checked)} />
               <p className="text-xs text-muted">只转换与当前显示名完全相同的文字，不猜测称谓。下次套用时，名称会随职责映射替换。</p>
               <div className="max-h-32 overflow-auto text-xs whitespace-pre-wrap">{document.stages.map(stage=>{const text=`${stage.title}：${stage.instruction}`;return <p key={stage.id}>{replaceNames?document.actors.reduce((v,a,i)=>a.displayName?v.split(a.displayName).join(`{{role.${roleOptions[i].id}}}`):v,text):text}</p>;})}</div>
             </fieldset>
@@ -278,18 +280,21 @@ export function ActivityPresetsModal({
                   { id: 'production_preset', label: '生产预设' },
                   { id: 'playback_preset', label: '回放预设' },
                 ].map((f) => (
-                  <button
+                  <Button
                     key={f.id}
                     type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-pressed={manageKindFilter === f.id}
                     onClick={() => setManageKindFilter(f.id)}
-                    className={`px-2 py-0.5 rounded border text-xs transition-colors ${
+                    className={`h-auto !min-h-0 sm:!min-h-0 px-2 py-0.5 rounded border text-xs font-normal transition-colors ${
                       manageKindFilter === f.id
                         ? 'border-accent bg-accent/10 text-accent font-semibold'
                         : 'border-border-default bg-surface hover:bg-surface-hover text-ink'
                     }`}
                   >
                     {f.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -353,22 +358,23 @@ export function ActivityPresetsModal({
 
                       {!isEditing && (
                         <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
+                          <IconButton
+                            icon={Edit2}
+                            label="重命名"
                             onClick={() => handleStartRename(preset)}
-                            className="p-1 rounded text-muted hover:text-ink hover:bg-surface-hover"
-                            title="重命名"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
+                            size="sm"
+                            className="!h-7 !min-h-7 sm:!min-h-7 w-7 p-0"
+                            iconClassName="h-3.5 w-3.5"
+                          />
+                          <IconButton
+                            icon={Trash2}
+                            label="删除"
+                            variant="danger-ghost"
                             onClick={() => handleDelete(preset.id, preset.name)}
-                            className="p-1 rounded text-muted hover:text-danger-fg hover:bg-surface-hover"
-                            title="删除"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                            size="sm"
+                            className="!h-7 !min-h-7 sm:!min-h-7 w-7 p-0"
+                            iconClassName="h-3.5 w-3.5"
+                          />
                         </div>
                       )}
                     </div>

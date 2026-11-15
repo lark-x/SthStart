@@ -12,7 +12,8 @@ import {
 
 const basePolicy = {
   workflowId: 'wf', workflowVersion: 1, revision: 0, enabled: true, instructions: '',
-  positiveSuffix: '', negativePrompt: '', createdAt: '2026-10-03T00:00:00.000Z',
+  positiveSuffix: '', negativePrompt: '', artistString: '', qualityPrompt: '', adultKnowledgeEnabled: false,
+  createdAt: '2026-10-03T00:00:00.000Z',
 };
 
 test('a legacy policy payload without the new modes is rejected by the strict policy schema', () => {
@@ -21,6 +22,9 @@ test('a legacy policy payload without the new modes is rejected by the strict po
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'keyword' }), true);
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'hybrid' }), true);
   assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'vector' }), false);
+  assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'keyword', artistString: undefined }), false);
+  assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'keyword', qualityPrompt: undefined }), false);
+  assert.equal(Value.Check(ActivityImagePromptPolicySchema, { ...basePolicy, outputFormat: 'tags', knowledgeMode: 'keyword', adultKnowledgeEnabled: undefined }), false);
 });
 
 test('save requests may omit the modes so old clients keep working', () => {
@@ -30,6 +34,7 @@ test('save requests may omit the modes so old clients keep working', () => {
   };
   assert.equal(Value.Check(SaveActivityImagePromptPolicyRequestSchema, legacyRequest), true);
   assert.equal(Value.Check(SaveActivityImagePromptPolicyRequestSchema, { ...legacyRequest, outputFormat: 'tags', knowledgeMode: 'keyword' }), true);
+  assert.equal(Value.Check(SaveActivityImagePromptPolicyRequestSchema, { ...legacyRequest, artistString: '@ebora', qualityPrompt: 'masterpiece', adultKnowledgeEnabled: true }), true);
   assert.equal(Value.Check(SaveActivityImagePromptPolicyRequestSchema, { ...legacyRequest, outputFormat: 'markdown' }), false);
 });
 

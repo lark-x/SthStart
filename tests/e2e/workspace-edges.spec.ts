@@ -36,6 +36,7 @@ test('resource return removes old navigation context across three real roundtrip
     const href = new URL((await link.getAttribute('href'))!, portal);
     expect(href.searchParams.get('returnTo')).toBe(expected);
     await link.click();
+    await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
     await expect(page.getByRole('link', { name: '返回资料库', exact: true })).toBeVisible();
     expect(new URL(page.url()).searchParams.get('returnTo')).toBe(expected);
     await page.getByRole('link', { name: '返回资料库', exact: true }).click();
@@ -124,10 +125,11 @@ for (const size of [{ width: 1440, height: 400 }, { width: 844, height: 390 }, {
           await detail.evaluate(el => { el.scrollTop = el.scrollHeight; });
           expect(await detail.evaluate(el => el.scrollHeight <= el.clientHeight || el.scrollTop > 0)).toBe(true);
         }
-        const save = page.locator('.notebook-save-button');
-        await save.scrollIntoViewIfNeeded();
-        await expect(save).toBeInViewport();
-        await save.click();
+        const more = page.getByRole('button', { name: '更多笔记操作', exact: true });
+        await more.scrollIntoViewIfNeeded();
+        await expect(more).toBeInViewport();
+        await more.click();
+        await page.getByRole('menu', { name: '更多笔记操作', exact: true }).getByRole('menuitem', { name: '立即保存', exact: true }).click();
         await page.setViewportSize({ width: 1440, height: 900 });
         await expect(editor).toHaveValue(draft);
         await expect(editor).toHaveAttribute('data-edge-instance', 'same-editor');

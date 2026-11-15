@@ -19,6 +19,9 @@ type PolicyRow = {
   negative_prompt: string;
   output_format?: string | null;
   knowledge_mode?: string | null;
+  artist_string?: string | null;
+  quality_prompt?: string | null;
+  adult_knowledge_enabled?: number | null;
   created_at: string;
 };
 
@@ -42,6 +45,9 @@ function toPolicy(row: PolicyRow): ActivityImagePromptPolicy {
     negativePrompt: String(row.negative_prompt ?? ''),
     outputFormat: normalizeOutputFormat(row.output_format),
     knowledgeMode: normalizeKnowledgeMode(row.knowledge_mode),
+    artistString: String(row.artist_string ?? ''),
+    qualityPrompt: String(row.quality_prompt ?? ''),
+    adultKnowledgeEnabled: Boolean(row.adult_knowledge_enabled),
     createdAt: String(row.created_at),
   };
 }
@@ -65,7 +71,7 @@ export function getActivityImagePromptPolicy(
 ): ActivityImagePromptPolicy | null {
   const row = database.connection.prepare(`
     SELECT workflow_id,workflow_version,revision,enabled,instructions,positive_suffix,negative_prompt,
-      output_format,knowledge_mode,created_at
+      output_format,knowledge_mode,artist_string,quality_prompt,adult_knowledge_enabled,created_at
     FROM activity_image_prompt_policy_versions
     WHERE workflow_id=? AND workflow_version=?
     ORDER BY revision DESC LIMIT 1
@@ -88,6 +94,9 @@ export function resolveActivityImagePromptPolicy(
     negativePrompt: '',
     outputFormat: 'prose',
     knowledgeMode: 'none',
+    artistString: '',
+    qualityPrompt: '',
+    adultKnowledgeEnabled: false,
     createdAt: '',
   };
 }
@@ -139,16 +148,20 @@ export function saveActivityImagePromptPolicy(
       negativePrompt: input.negativePrompt.trim(),
       outputFormat,
       knowledgeMode,
+      artistString: (input.artistString ?? '').trim(),
+      qualityPrompt: (input.qualityPrompt ?? '').trim(),
+      adultKnowledgeEnabled: Boolean(input.adultKnowledgeEnabled),
       createdAt: nowIso(),
     };
     database.connection.prepare(`
       INSERT INTO activity_image_prompt_policy_versions
         (workflow_id,workflow_version,revision,enabled,instructions,positive_suffix,negative_prompt,
-         output_format,knowledge_mode,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?)
+         output_format,knowledge_mode,artist_string,quality_prompt,adult_knowledge_enabled,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(policy.workflowId, policy.workflowVersion, policy.revision, policy.enabled ? 1 : 0,
       policy.instructions, policy.positiveSuffix, policy.negativePrompt,
-      policy.outputFormat, policy.knowledgeMode, policy.createdAt);
+      policy.outputFormat, policy.knowledgeMode, policy.artistString, policy.qualityPrompt,
+      policy.adultKnowledgeEnabled ? 1 : 0, policy.createdAt);
     return policy;
   });
 }

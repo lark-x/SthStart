@@ -48,6 +48,58 @@ function assign(database: ServiceDatabase, appId: string, role: 'text' | 'multim
     .run(appId, role, profileId, nowIso());
 }
 
+function ensureApp(database: ServiceDatabase, id: string) {
+  const now = nowIso();
+  database.connection.prepare(`
+    INSERT OR IGNORE INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at)
+    VALUES (?,?,?,?,1,?,?)
+  `).run(id, id, `hash-${id}`, JSON.stringify(['llm', 'vector', 'image', 'artifact', 'persona', 'logs']), now, now);
+}
+
+function seedCanonicalModel(
+  database: ServiceDatabase,
+  id: string,
+  options: {
+    capabilities?: string[];
+    modelEnabled?: boolean;
+    connectionEnabled?: boolean;
+    credentialAccount?: string | null;
+  } = {},
+) {
+  const now = nowIso();
+  const connectionId = `conn-${id}`;
+  database.connection.prepare(`
+    INSERT INTO service_connections
+      (id,name,kind,base_url,credential_account,timeout_ms,headers_json,options_json,enabled,created_at,updated_at)
+    VALUES (?,?,'openai-compatible-text',?,?,60000,'{}','{}',?,?,?)
+  `).run(connectionId, `${id} 连接`, `https://${id}.test/v1`, options.credentialAccount ?? null,
+    options.connectionEnabled === false ? 0 : 1, now, now);
+  database.connection.prepare(`
+    INSERT INTO model_profiles
+      (id,connection_id,name,model_id,capabilities_json,context_length,max_output_tokens,
+       default_params_json,advanced_json,thinking_level,timeout_ms,enabled,created_at,updated_at)
+    VALUES (?,?,?,?,?,NULL,NULL,'{}','{}','auto',NULL,?,?,?)
+  `).run(id, connectionId, `${id} 模型`, `${id}-upstream`, JSON.stringify(options.capabilities ?? ['text']),
+    options.modelEnabled === false ? 0 : 1, now, now);
+}
+
+function saveRoute(
+  database: ServiceDatabase,
+  scope: 'public' | 'app',
+  appId: string | null,
+  primaryModelId: string,
+  updatedAt = nowIso(),
+) {
+  const id = `route:${scope}:${appId ?? ''}:text`;
+  database.connection.prepare(`
+    INSERT INTO model_routes
+      (id,scope,app_id,capability,primary_model_id,fallback_model_ids_json,inherit_public_fallbacks,created_at,updated_at)
+    VALUES (?,?,?,'text',?,'[]',0,?,?)
+    ON CONFLICT(scope,app_id,capability) DO UPDATE SET
+      primary_model_id=excluded.primary_model_id,updated_at=excluded.updated_at
+  `).run(id, scope, appId ?? '', primaryModelId, updatedAt, updatedAt);
+}
+
 test('activities 与 characters 启动后具备 llm 能力，已有绑定不受影响', async () => {
   const database = new ServiceDatabase();
   try {
@@ -141,6 +193,74 @@ test('capabilities 的 llm 与 llmStatus.ready 一致并返回真实模板名称
     assert.equal(after.llmStatus?.ready, true);
     assert.equal(after.llmProfile?.id, 'prof-cap');
     assert.equal(after.llmProfile?.name, '模型 prof-cap');
+  } finally {
+    await app.close();
+    database.close();
+  }
+});
+
+test('llm-status resolves public and app routes without hiding legacy assignments', async () => {
+  const database = new ServiceDatabase();
+  const secrets = new MemorySecrets();
+  const { app } = await createService({ config: testConfig(), database, secrets });
+  try {
+    ensureApp(database, 'status-routing-app');
+    seedCanonicalModel(database, 'status-public', { credentialAccount: 'status-public-account' });
+    seedCanonicalModel(database, 'status-app');
+    seedCanonicalModel(database, 'status-disabled', { modelEnabled: false });
+    seedCanonicalModel(database, 'status-connection-disabled', { connectionEnabled: false });
+    seedCanonicalModel(database, 'status-mm', { capabilities: ['multimodal'] });
+    seedProfile(database, 'status-legacy');
+    secrets.values.set('status-public-account', '{{SECRET_status_public}}');
+    saveRoute(database, 'public', null, 'status-public', '2099-01-01T00:00:00.000Z');
+
+    const statusOf = async (appId = 'status-routing-app') => (await app.inject({
+      method: 'GET', url: `/api/v1/admin/apps/${appId}/llm-status`, headers: ADMIN,
+    })).json() as { text: { status: string; ready: boolean; profile: { id: string; name: string } | null; credentialSource: string; message: string | null } };
+
+    const publicStatus = await statusOf();
+    assert.equal(publicStatus.text.status, 'ready');
+    assert.equal(publicStatus.text.ready, true);
+    assert.equal(publicStatus.text.profile?.id, 'status-public');
+    assert.equal(publicStatus.text.credentialSource, 'keyring');
+    const activitiesCapabilities = (await app.inject({
+      method: 'GET', url: '/api/v1/admin/activities/capabilities', headers: ADMIN,
+    })).json() as { llm: boolean; llmProfile: { id: string } | null; llmStatus?: { status: string; ready: boolean } };
+    assert.equal(activitiesCapabilities.llm, true);
+    assert.equal(activitiesCapabilities.llmProfile?.id, 'status-public');
+    assert.equal(activitiesCapabilities.llmStatus?.status, 'ready');
+
+    assign(database, 'status-routing-app', 'text', 'status-legacy');
+    const legacyStatus = await statusOf();
+    assert.equal(legacyStatus.text.status, 'ready');
+    assert.equal(legacyStatus.text.profile?.id, 'status-legacy', 'legacy assignment must beat the public route');
+    assign(database, 'status-routing-app', 'text', null);
+
+    saveRoute(database, 'app', 'status-routing-app', 'status-app', '2099-01-01T00:00:00.000Z');
+    const appStatus = await statusOf();
+    assert.equal(appStatus.text.status, 'ready');
+    assert.equal(appStatus.text.profile?.id, 'status-app');
+
+    saveRoute(database, 'app', 'status-routing-app', 'status-disabled', '2099-01-02T00:00:00.000Z');
+    const disabledStatus = await statusOf();
+    assert.equal(disabledStatus.text.status, 'profile_disabled');
+    assert.equal(disabledStatus.text.ready, false);
+    assert.match(disabledStatus.text.message ?? '', /停用/);
+
+    saveRoute(database, 'app', 'status-routing-app', 'status-connection-disabled', '2099-01-03T00:00:00.000Z');
+    const connectionDisabled = await statusOf();
+    assert.equal(connectionDisabled.text.status, 'profile_disabled');
+    assert.match(connectionDisabled.text.message ?? '', /连接已停用/);
+
+    saveRoute(database, 'app', 'status-routing-app', 'status-mm', '2099-01-04T00:00:00.000Z');
+    const mismatch = await statusOf();
+    assert.equal(mismatch.text.status, 'capability_mismatch');
+    assert.equal(mismatch.text.ready, false);
+
+    database.connection.prepare("DELETE FROM model_routes WHERE scope='app' AND app_id='status-routing-app' AND capability='text'").run();
+    const inherited = await statusOf();
+    assert.equal(inherited.text.status, 'ready');
+    assert.equal(inherited.text.profile?.id, 'status-public');
   } finally {
     await app.close();
     database.close();

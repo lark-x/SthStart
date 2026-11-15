@@ -10,6 +10,9 @@ import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { SplitPanes } from '@/app/components/shared/split-panes';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { AnchoredPopover } from '@/app/components/ui/anchored-popover';
+import { AsyncState } from '@/app/components/ui/async-state';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   cancelCreativeTask,
@@ -32,7 +35,8 @@ import {
 } from '@/app/features/creative/types';
 import { useGenerationEvents } from '@/app/features/creative/events';
 import { CreativeStatusCard } from '@/app/features/creative/components/status-card';
-import { ImageGenerationPanel, type ImageGenerationInitial } from '@/app/features/generation/components/image-generation-panel';
+import { ConnectedImageGenerationPanel as ImageGenerationPanel } from '@/app/workspaces/generation/connected-image-generation-panel';
+import type { ImageGenerationInitial } from '@/app/features/generation/components/image-generation-panel';
 import { ArtifactPicker } from '@/app/features/creative/components/artifact-picker';
 import { VideoGenerator } from '@/app/features/creative/components/video-generator';
 import { ImageResultPreview } from '@/app/features/creative/components/image-result-preview';
@@ -71,21 +75,8 @@ export function CreativeClient() {
   const [actionLock] = useState(createActionLock);
   const [taskActionCount, setTaskActionCount] = useState(0);
   const [pageError, setPageError] = useState('');
-  const serviceDetailsRef = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    const dismiss = (event: PointerEvent | KeyboardEvent) => {
-      const details = serviceDetailsRef.current;
-      if (!details?.open) return;
-      if (event instanceof KeyboardEvent) {
-        if (event.key !== 'Escape' || event.isComposing) return;
-        details.open = false;
-        details.querySelector('summary')?.focus();
-      } else if (!details.contains(event.target as Node)) details.open = false;
-    };
-    document.addEventListener('pointerdown', dismiss);
-    document.addEventListener('keydown', dismiss);
-    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', dismiss); };
-  }, []);
+  const [serviceOpen, setServiceOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ArtifactDescriptor | null>(null);
 
   // ── 预设选择（规划 §10.1）：工作流选择 → 预设选择；表单随选择变化。 ──
   const imageOptions = mode === 'text-to-image' || mode === 'image-to-image'
@@ -337,8 +328,11 @@ export function CreativeClient() {
     }
   };
 
-  const handleDelete = async (artifact: ArtifactDescriptor) => {
-    if (!window.confirm(`确定删除“${artifact.originalName ?? '这个作品'}”吗？`)) return;
+  const handleDelete = async (artifact: ArtifactDescriptor) => { setDeleteTarget(artifact); };
+
+  const confirmDelete = async () => {
+    const artifact = deleteTarget;
+    if (!artifact) return;
     try {
       await deleteCreativeArtifact(artifact.id);
       // 无限查询的已加载分页不会因失效而立刻重取，先乐观移除避免
@@ -356,6 +350,7 @@ export function CreativeClient() {
       void queryClient.invalidateQueries({ queryKey: creativeKeys.artifacts() });
       void queryClient.invalidateQueries({ queryKey: creativeKeys.tasks() });
       toast.success('作品已删除');
+      setDeleteTarget(null);
     } catch (error) {
       toast.error('删除失败', error instanceof Error ? error.message : String(error));
     }
@@ -383,19 +378,26 @@ export function CreativeClient() {
         }
         actions={
           <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
-            <details ref={serviceDetailsRef} className="relative text-sm">
-              <summary className="flex cursor-pointer list-none items-center gap-2 py-2 text-muted">
-                <span className={`h-2 w-2 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} />
-                服务{ready ? '已就绪' : '待配置'}
-              </summary>
-              <div className="absolute right-0 top-full z-40 mt-2 w-80 max-w-[80vw] rounded-panel border border-border-subtle bg-surface p-4 shadow-floating">
-                <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
-                {!ready && <a href="/settings/generation" className="mt-3 inline-block text-sm text-accent underline">前往生成设置</a>}
-              </div>
-            </details>
+            <AnchoredPopover
+              title="生成服务"
+              open={serviceOpen}
+              onOpenChange={setServiceOpen}
+              side="bottom"
+              className="w-80 max-w-[85vw]"
+              trigger={
+                <Button size="sm" variant="ghost" aria-expanded={serviceOpen} aria-haspopup="dialog">
+                  <span className={`h-2 w-2 rounded-full ${ready ? 'bg-success' : 'bg-warning'}`} aria-hidden="true" />
+                  服务{ready ? '已就绪' : '待配置'}
+                </Button>
+              }
+            >
+              <CreativeStatusCard status={statusQuery.data} onRefresh={() => void statusQuery.refetch()} />
+              {!ready && <a href="/settings/generation" className="mt-3 inline-block text-sm text-accent underline">前往生成设置</a>}
+            </AnchoredPopover>
           <Button
             size="sm"
             variant="outline"
+            aria-label="刷新生成页面"
             onClick={() => {
               void statusQuery.refetch();
               void optionsQuery.refetch();
@@ -424,30 +426,24 @@ export function CreativeClient() {
       <div className="xl:hidden">
         {/* 移动端两栏切换 */}
         <div className="flex items-center gap-1 xl:hidden bg-surface-sunken p-0.5 rounded-control border border-border-subtle" role="group" aria-label="生图工作区分栏">
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ui-choice flex-1"
             aria-pressed={mobilePane === 'configuration'}
             onClick={() => setMobilePane('configuration')}
-            className={`px-2.5 py-1 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-colors ${
-              mobilePane === 'configuration'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink'
-            }`}
           >
             参数配置
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ui-choice flex-1"
             aria-pressed={mobilePane === 'results'}
             onClick={() => setMobilePane('results')}
-            className={`px-2.5 py-1 rounded-[calc(var(--radius-control)-2px)] text-xs font-medium transition-colors ${
-              mobilePane === 'results'
-                ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink'
-            }`}
           >
             作品 / 任务
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -572,8 +568,8 @@ export function CreativeClient() {
               { id: 'tasks', label: '生成任务', count: sortedTasks.length, panelId: 'creative-results-tasks' },
             ]} />
             <div id={`creative-results-${resultView}`} role="tabpanel" aria-label={resultView === 'media' ? '媒体库' : '生成任务'}>
-            {resultView === 'media' && artifactsQuery.isError && <div role="alert" className="space-y-2 text-sm text-danger-fg"><p>媒体读取失败，已有结果会保留。</p><Button variant="outline" disabled={artifactsQuery.isFetching} onClick={() => { if (artifactsQuery.isFetchNextPageError) void artifactsQuery.fetchNextPage(); else void artifactsQuery.refetch(); }}>重新读取媒体</Button></div>}
-            {resultView === 'tasks' && tasksQuery.isError && <div role="alert" className="space-y-2 text-sm text-danger-fg"><p>任务读取失败，无法确认当前任务状态。</p><Button variant="outline" disabled={tasksQuery.isFetching} onClick={() => void tasksQuery.refetch()}>重新读取任务</Button></div>}
+            {resultView === 'media' && artifactsQuery.isError && <AsyncState status="error" title="媒体读取失败" description="已有结果会保留。" onRetry={() => { if (artifactsQuery.isFetchNextPageError) void artifactsQuery.fetchNextPage(); else void artifactsQuery.refetch(); }} retryLabel="重新读取媒体" />}
+            {resultView === 'tasks' && tasksQuery.isError && <AsyncState status="error" title="任务读取失败" description="无法确认当前任务状态。" onRetry={() => void tasksQuery.refetch()} retryLabel="重新读取任务" />}
             {resultView === 'media' ? (artifactsQuery.isError && !artifactsQuery.data ? null :
               <MediaGallery
                 artifacts={artifacts}
@@ -605,6 +601,16 @@ export function CreativeClient() {
             </div>
           </div>
         }
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="删除创作素材"
+        description={deleteTarget ? `确定删除“${deleteTarget.originalName ?? '这个作品'}”吗？删除后任务中的引用也会失效。` : undefined}
+        confirmLabel="删除"
+        danger
+        onConfirm={confirmDelete}
       />
     </PageContainer>
   );

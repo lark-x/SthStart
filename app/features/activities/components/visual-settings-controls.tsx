@@ -1,19 +1,25 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { BeatRenderPreview, DirectorSettings } from '@sthstart/contracts';
+import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { DIRECTOR_OPTIONS, toggleDirectorSetting, validVisualNumericValue } from '../structured-director';
 
 export function StructuredDirectorControls({ value = {}, onChange, disabled, includeShotSize = true }: {
   value?: DirectorSettings; onChange(value: DirectorSettings): void; disabled?: boolean; includeShotSize?: boolean;
 }) {
   const labels = { shotSize: '景别', angle: '角度', lighting: '光影', mood: '氛围' };
-  return <div aria-label="结构化导演设置" className="space-y-2 rounded-control bg-surface-muted p-3">
-    {(Object.keys(DIRECTOR_OPTIONS) as Array<keyof DirectorSettings>).filter(key => includeShotSize || key !== 'shotSize').map(key => <fieldset key={key} className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <legend className="float-left mr-2 text-xs font-semibold text-muted">{labels[key]}</legend>
-      {DIRECTOR_OPTIONS[key].map(option => <button key={option.value} type="button" disabled={disabled} aria-pressed={value[key] === option.value}
-        onClick={() => onChange(toggleDirectorSetting(value, key, option.value))}
-        className={`rounded-full px-2.5 py-1 text-xs transition-colors ${value[key] === option.value ? 'bg-accent text-fg-on-accent' : 'bg-surface text-ink hover:bg-surface-hover'} disabled:opacity-50`}>{option.label}</button>)}
+  return <div aria-label="结构化导演设置" className="space-y-2.5 rounded-panel border border-hairline bg-surface-sunken/70 p-3">
+    {(Object.keys(DIRECTOR_OPTIONS) as Array<keyof DirectorSettings>).filter(key => includeShotSize || key !== 'shotSize').map(key => <fieldset key={key} className="flex min-w-0 items-start gap-2.5">
+      <legend className="sr-only">{labels[key]}</legend>
+      <span aria-hidden="true" className="w-8 shrink-0 pt-1 text-xs font-semibold text-muted">{labels[key]}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        {DIRECTOR_OPTIONS[key].map(option => <Button key={option.value} type="button" size="sm" variant={value[key] === option.value ? 'accent' : 'ghost'} disabled={disabled} aria-pressed={value[key] === option.value}
+          onClick={() => onChange(toggleDirectorSetting(value, key, option.value))}
+          className={`h-auto min-h-7 rounded-full px-2.5 py-1 text-xs font-medium ${value[key] === option.value ? '' : 'border border-border-default bg-surface text-ink hover:bg-surface-hover'}`}>{option.label}</Button>)}
+      </div>
     </fieldset>)}
     <p className="text-xs text-muted">未选择的项跟随描述；这些设置不会改写你填写的补充提示词。</p>
   </div>;
@@ -52,10 +58,11 @@ export function VisualParameterFields({ fields, values, onChange, onValidityChan
     const numeric = ['integer','number','seed'].includes(field.type);
     const locked = field.type === 'model' && !field.modelEditable;
     const choices = field.allowedModels ?? field.enumValues;
-    return <label key={field.key} className="min-w-0 space-y-1"><span className="block text-xs font-medium text-muted">{field.label}{field.required ? ' · 必填' : ''}{locked ? ' · 预设锁定' : ''}</span>
+    return <div key={field.key} className="min-w-0 space-y-1">
+      {field.type === 'boolean' && !locked ? <Checkbox label={`${field.label}${field.required ? ' · 必填' : ''}`} disabled={disabled} checked={Boolean(value)} onChange={event => update(field.key, event.target.checked)} /> : <>
+      <span className="block text-xs font-medium text-muted">{field.label}{field.required ? ' · 必填' : ''}{locked ? ' · 预设锁定' : ''}</span>
       {locked ? <p className="rounded bg-surface-muted px-3 py-2 text-sm text-ink break-words">{String(value) || '由预设指定'}</p>
-        : field.type === 'boolean' ? <input type="checkbox" aria-label={field.label} disabled={disabled} checked={Boolean(value)} onChange={event => update(field.key, event.target.checked)} />
-          : choices?.length ? <select aria-label={field.label} disabled={disabled} value={String(value)} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" onChange={event => update(field.key, event.target.value)}>{choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}{!choices.includes(String(value)) && <option value={String(value)}>{String(value) || '当前默认值'}</option>}</select>
+        : choices?.length ? <Select aria-label={field.label} disabled={disabled} value={String(value)} onChange={event => update(field.key, event.target.value)}>{choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}{!choices.includes(String(value)) && <option value={String(value)}>{String(value) || '当前默认值'}</option>}</Select>
             : <Input aria-label={field.label} aria-invalid={field.key in invalidDrafts} disabled={disabled} type={numeric ? 'number' : 'text'} min={field.minimum} max={field.maximum} step={field.step ?? (field.type === 'integer' || field.type === 'seed' ? 1 : undefined)}
               value={invalidDrafts[field.key] ?? String(value)} onChange={event => {
                 const raw = event.target.value;
@@ -65,7 +72,8 @@ export function VisualParameterFields({ fields, values, onChange, onValidityChan
                 if (next === null) { setInvalidDrafts(previous => ({ ...previous, [field.key]: raw })); return; }
                 clearInvalid(field.key); update(field.key, next);
               }} />}
+      </>}
       {field.key in invalidDrafts && <span role="alert" className="block text-xs text-danger-fg">请填写范围{field.minimum ?? '不限'}～{field.maximum ?? '不限'}、步长 {field.step ?? 1} 的有效数值。</span>}
-    </label>;
+    </div>;
   })}</div>;
 }

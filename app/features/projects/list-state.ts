@@ -27,3 +27,35 @@ export function projectReturnHref(value: string | null) {
   if (!value || !value.startsWith('/apps/projects?')) return '/apps/projects';
   return projectListHref(readProjectListState(new URLSearchParams(value.slice(value.indexOf('?') + 1))));
 }
+
+function isSafeInternalHref(value: string) {
+  return value.startsWith('/') && !value.startsWith('//') && !/[\\\u0000-\u0020]/.test(value);
+}
+
+export interface ProjectBackTarget {
+  href: string;
+  label: string;
+}
+
+/** Project overview can be reached from the project directory or the Story directory. */
+export function projectBackTarget(value: string | null): ProjectBackTarget {
+  if (value && isSafeInternalHref(value) && /^\/apps\/story(?:[?#]|$)/.test(value)) {
+    return { href: value, label: '返回剧情项目' };
+  }
+  return { href: projectReturnHref(value), label: '返回创作项目列表' };
+}
+
+/** The project overview keeps the list return target so both back links survive the editor round trip. */
+export function projectOverviewHref(projectId: string, listReturn: string | null) {
+  const base = '/apps/projects/' + encodeURIComponent(projectId);
+  const target = projectBackTarget(listReturn);
+  return target.href === '/apps/projects' ? base : base + '?returnTo=' + encodeURIComponent(target.href);
+}
+
+/** Continue into the Story editor while preserving the project and list return targets. */
+export function projectEditorHref(projectId: string, listReturn: string | null, entryId?: string) {
+  const params = new URLSearchParams();
+  params.set('returnTo', projectOverviewHref(projectId, listReturn));
+  if (entryId) params.set('entry', entryId);
+  return '/apps/story/' + encodeURIComponent(projectId) + '?' + params.toString();
+}

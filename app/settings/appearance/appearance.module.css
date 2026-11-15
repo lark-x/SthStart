@@ -1,0 +1,40 @@
+.sample {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--bg-app);
+  color: var(--fg-default);
+  font-size: var(--text-body);
+}
+.nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px 8px;
+  background: var(--nav-surface);
+  color: var(--nav-foreground);
+}
+.nav span { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 4px; }
+.active { background: var(--surface-selected); border-radius: var(--radius-control); }
+.paper { padding: 12px; }
+.card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--card-lip, var(--elev-xs));
+}
+.body { color: var(--fg-muted); }
+.action {
+  justify-self: start;
+  padding: 4px 8px;
+  color: var(--action-on-primary);
+  background: var(--action-primary);
+  border: 1px solid var(--btn-primary-border, transparent);
+  border-radius: var(--radius-control);
+  box-shadow: var(--btn-primary-shadow, var(--shadow-button-primary));
+}

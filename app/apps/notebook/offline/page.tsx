@@ -1,5 +1,5 @@
-import { OfflineNotebook } from '@/app/features/notebook/components/offline-notebook';
+import { OfflineNotebookEntry } from '@/app/workspaces/resources/notebook-entry';
 
 export default function OfflineNotebookPage() {
-  return <OfflineNotebook />;
+  return <OfflineNotebookEntry />;
 }

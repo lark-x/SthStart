@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Camera, Sparkles } from 'lucide-react';
+import { Button } from '@/app/components/ui/button';
 
 export interface DirectorChipItem {
   id: string;
@@ -138,20 +139,23 @@ export function DirectorChips({
           {FRAMING_CHIPS.map((chip) => {
             const active = isChipActive(prompt, chip);
             return (
-              <button
+              <Button
                 key={chip.id}
                 type="button"
+                size="sm"
+                variant={active ? 'accent' : 'outline'}
+                aria-pressed={active}
                 disabled={disabled}
                 onClick={() => onChange(toggleChipInPrompt(prompt, chip))}
                 title={`点击切换标签: ${chip.tag}`}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all cursor-pointer ${
+                className={`h-auto min-h-0 rounded-full px-2 py-0.5 text-xs ${
                   active
-                    ? 'bg-accent text-fg-on-accent font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
-                    : 'bg-surface text-ink/80 hover:text-ink hover:bg-surface-muted border border-border-default/80'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    ? 'border-accent font-semibold shadow-2xs ring-1 ring-accent/20'
+                    : 'border-border-default/80 bg-surface font-medium text-ink/80 hover:bg-surface-muted hover:text-ink'
+                }`}
               >
                 <span>{chip.label}</span>
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -167,20 +171,23 @@ export function DirectorChips({
           {LIGHTING_CHIPS.map((chip) => {
             const active = isChipActive(prompt, chip);
             return (
-              <button
+              <Button
                 key={chip.id}
                 type="button"
+                size="sm"
+                variant={active ? 'accent' : 'outline'}
+                aria-pressed={active}
                 disabled={disabled}
                 onClick={() => onChange(toggleChipInPrompt(prompt, chip))}
                 title={`点击切换标签: ${chip.tag}`}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-all cursor-pointer ${
+                className={`h-auto min-h-0 rounded-full px-2 py-0.5 text-xs ${
                   active
-                    ? 'bg-accent text-fg-on-accent font-semibold shadow-2xs border border-accent ring-1 ring-accent/20'
-                    : 'bg-surface text-ink/80 hover:text-ink hover:bg-surface-muted border border-border-default/80'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    ? 'border-accent font-semibold shadow-2xs ring-1 ring-accent/20'
+                    : 'border-border-default/80 bg-surface font-medium text-ink/80 hover:bg-surface-muted hover:text-ink'
+                }`}
               >
                 <span>{chip.label}</span>
-              </button>
+              </Button>
             );
           })}
         </div>

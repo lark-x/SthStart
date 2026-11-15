@@ -1,0 +1,304 @@
+/*
+ * Mantine 桥接层（A1）
+ *
+ * 层叠顺序在 app/globals.css 顶部声明：mantine 最低，项目既有层与无层规则
+ * 保持原有优先级。这样 Mantine 的 body 背景/字体基线不会覆盖暖纸画布，
+ * Tailwind utilities 与 app/styles 的业务规则也无需提高特异性。
+ *
+ * 这里只保留兜底画布与焦点色，避免出现第二套强调色。
+ */
+
+html,
+body {
+  background-color: var(--bg-app);
+}
+
+body {
+  color: var(--fg-default);
+  font-family: var(--font-sans);
+}
+
+/*
+ * Mantine 的基础变量：官方 `default-css-variables.layer.css` 会输出全部色板与
+ * 尺寸（约 27 KB），而当前已接入的组件只引用下面这一小组。这里直接以项目 token
+ * 声明同一批变量，provider 关闭 `withCssVariables`，因此首屏不再生成重复的
+ * 默认变量块。新增组件若引用新变量，在此补充；`data-mantine-color-scheme`
+ * 由 applyThemeId / 首屏脚本维护。
+ */
+:root,
+:host {
+  --mantine-scale: 1;
+  --mantine-cursor-type: pointer;
+  /* baseline.layer.css 在 body 上引用；项目已统一 antialiased，暗色下不做灰度平滑。 */
+  --mantine-webkit-font-smoothing: antialiased;
+  --mantine-moz-font-smoothing: auto;
+  --mantine-color-white: #ffffff;
+  --mantine-color-black: #000000;
+  /* baseline.layer.css 用它设置 color-scheme；必须与 data-mantine-color-scheme 同步。 */
+  --mantine-color-scheme: light;
+  color-scheme: var(--mantine-color-scheme);
+  --mantine-color-body: var(--bg-app);
+  --mantine-color-text: var(--fg-default);
+  --mantine-color-bright: var(--fg-default);
+  --mantine-color-dimmed: var(--fg-muted);
+  --mantine-color-placeholder: var(--control-placeholder);
+  --mantine-color-error: var(--danger);
+  --mantine-color-success: var(--success);
+  --mantine-color-default: var(--surface-raised);
+  --mantine-color-default-hover: var(--surface-hover);
+  --mantine-color-default-color: var(--fg-default);
+  --mantine-color-default-border: var(--border-default);
+  --mantine-color-disabled: var(--surface-sunken);
+  --mantine-color-disabled-color: var(--fg-subtle);
+  --mantine-color-disabled-border: var(--border-subtle);
+
+  --mantine-primary-color-filled: var(--accent);
+  --mantine-primary-color-filled-hover: var(--accent-dark);
+  --mantine-primary-color-light: var(--accent-soft);
+  --mantine-primary-color-light-hover: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  --mantine-primary-color-light-color: var(--accent-dark);
+  --mantine-primary-color-contrast: var(--fg-on-accent);
+
+  --mantine-font-family: var(--font-sans);
+  --mantine-font-family-headings: var(--font-sans);
+  --mantine-font-family-monospace: var(--font-mono);
+  --mantine-line-height: 1.55;
+  --mantine-line-height-sm: 1.5;
+  --mantine-font-size-xs: var(--text-meta);
+  --mantine-font-size-sm: var(--text-body);
+  --mantine-font-size-md: var(--text-body);
+  --mantine-font-size-lg: var(--text-section);
+  --mantine-font-size-xl: var(--text-page);
+  --mantine-font-weight-regular: 400;
+  --mantine-font-weight-medium: 600;
+  --mantine-font-weight-bold: 600;
+
+  --mantine-radius-default: var(--radius-control);
+  --mantine-radius-xs: var(--radius-xs);
+  --mantine-radius-sm: var(--radius-sm);
+  --mantine-radius-md: var(--radius-md);
+  --mantine-radius-lg: var(--radius-lg);
+  --mantine-radius-xl: var(--radius-xl);
+  --mantine-spacing-xs: var(--space-2);
+  --mantine-spacing-sm: var(--space-3);
+  --mantine-spacing-md: var(--space-4);
+  --mantine-spacing-lg: var(--space-5);
+  --mantine-spacing-xl: var(--space-6);
+  --mantine-shadow-xs: var(--elev-xs);
+  --mantine-shadow-sm: var(--elev-sm);
+  --mantine-shadow-md: var(--elev-md);
+  --mantine-shadow-lg: var(--elev-lg);
+  --mantine-shadow-xl: var(--elev-xl);
+  --mantine-z-index-modal: 200;
+  --mantine-z-index-popover: 300;
+  --mantine-z-index-overlay: 400;
+}
+
+/* 中性色阶：组件里的 `color="gray"` 与未映射的默认表面仍落在项目中性色上。 */
+html[data-mantine-color-scheme='light'] {
+  --mantine-color-scheme: light;
+  --mantine-color-gray-0: var(--surface-raised);
+  --mantine-color-gray-1: var(--surface-sunken);
+  --mantine-color-gray-2: var(--border-subtle);
+  --mantine-color-gray-3: var(--border-default);
+  --mantine-color-gray-4: var(--border-control);
+  --mantine-color-gray-5: var(--fg-subtle);
+  --mantine-color-gray-6: var(--fg-muted);
+  --mantine-color-gray-7: var(--fg-muted);
+  --mantine-color-gray-8: var(--fg-default);
+  --mantine-color-gray-9: var(--fg-default);
+}
+
+html[data-mantine-color-scheme='dark'] {
+  --mantine-color-scheme: dark;
+  --mantine-color-gray-0: var(--surface-raised);
+  --mantine-color-gray-1: var(--surface-sunken);
+  --mantine-color-gray-2: var(--border-subtle);
+  --mantine-color-gray-3: var(--border-default);
+  --mantine-color-gray-4: var(--border-control);
+  --mantine-color-gray-5: var(--fg-subtle);
+  --mantine-color-gray-6: var(--fg-muted);
+  --mantine-color-gray-7: var(--fg-muted);
+  --mantine-color-gray-8: var(--fg-default);
+  --mantine-color-gray-9: var(--fg-default);
+
+  /* 暗色下 Mantine 的 dark-N 用于浮层表面与分隔，按项目层级映射。 */
+  --mantine-color-dark-0: var(--fg-default);
+  --mantine-color-dark-1: var(--fg-subtle);
+  --mantine-color-dark-2: var(--fg-muted);
+  --mantine-color-dark-3: var(--border-strong);
+  --mantine-color-dark-4: var(--border-default);
+  --mantine-color-dark-5: var(--surface-hover);
+  --mantine-color-dark-6: var(--surface-raised);
+  --mantine-color-dark-7: var(--surface);
+  --mantine-color-dark-8: var(--bg-app);
+  --mantine-color-dark-9: var(--surface-sunken);
+}
+
+/* 状态色：与 theme.css 的状态 token 同源，供 Alert/Badge 的 light/filled 变体。 */
+:root,
+:host {
+  --mantine-color-red-filled: var(--danger-solid);
+  --mantine-color-red-filled-hover: color-mix(in srgb, var(--danger-solid) 86%, var(--fg-default));
+  --mantine-color-red-light: var(--danger-bg);
+  --mantine-color-red-light-hover: color-mix(in srgb, var(--danger) 16%, var(--surface));
+  --mantine-color-red-light-color: var(--danger-fg);
+  --mantine-color-red-outline: var(--danger-fg);
+  --mantine-color-red-outline-hover: var(--danger-bg);
+
+  --mantine-color-green-filled: var(--success-solid);
+  --mantine-color-green-filled-hover: color-mix(in srgb, var(--success-solid) 86%, var(--fg-default));
+  --mantine-color-green-light: var(--success-bg);
+  --mantine-color-green-light-hover: color-mix(in srgb, var(--success) 16%, var(--surface));
+  --mantine-color-green-light-color: var(--success-fg);
+  --mantine-color-green-outline: var(--success-fg);
+  --mantine-color-green-outline-hover: var(--success-bg);
+
+  --mantine-color-yellow-filled: var(--warning-solid);
+  --mantine-color-yellow-filled-hover: color-mix(in srgb, var(--warning-solid) 86%, var(--fg-default));
+  --mantine-color-yellow-light: var(--warning-bg);
+  --mantine-color-yellow-light-hover: color-mix(in srgb, var(--warning) 18%, var(--surface));
+  --mantine-color-yellow-light-color: var(--warning-fg);
+  --mantine-color-yellow-outline: var(--warning-fg);
+  --mantine-color-yellow-outline-hover: var(--warning-bg);
+
+  --mantine-color-blue-filled: var(--info-solid);
+  --mantine-color-blue-filled-hover: color-mix(in srgb, var(--info-solid) 86%, var(--fg-default));
+  --mantine-color-blue-light: var(--info-bg);
+  --mantine-color-blue-light-hover: color-mix(in srgb, var(--info) 16%, var(--surface));
+  --mantine-color-blue-light-color: var(--info-fg);
+  --mantine-color-blue-outline: var(--info-fg);
+  --mantine-color-blue-outline-hover: var(--info-bg);
+}
+
+/* Mantine 的 focus-visible 轮廓使用 primary 变量，这里确保与项目焦点环一致。 */
+[data-mantine-color-scheme] .mantine-focus-auto:focus-visible,
+[data-mantine-color-scheme] .mantine-focus-always:focus {
+  outline-color: var(--focus-ring);
+}
+
+/*
+ * 浮层表面：Mantine 的 Popover / Menu / Modal 直接写 `--mantine-color-white`
+ * 或 dark 色阶作为背景。该变量同时被勾选图标等前景使用，不能全局改写；
+ * 这里用官方静态类（`mantine-<Component>-<slot>`）只覆盖表面层。
+ */
+/* 只接管 Mantine 自己绘制表面的实例：`unstyled` 组件（如 A2/A3 的对话框
+ * 外壳）不附带模块类名，其表面由业务样式决定，不能在这里重复绘制。
+ * 模块类形如 `m_1b3c8819`，静态类 `mantine-Popover-dropdown` 不含 `m_`。 */
+.mantine-Popover-dropdown[class*='m_'],
+.mantine-Menu-dropdown[class*='m_'],
+.mantine-HoverCard-dropdown[class*='m_'] {
+  background-color: var(--surface-raised);
+  color: var(--fg-default);
+  border-color: var(--border-subtle);
+}
+
+.mantine-Popover-arrow,
+.mantine-Menu-arrow,
+.mantine-HoverCard-arrow {
+  background-color: var(--surface-raised);
+  border-color: var(--border-subtle);
+}
+
+.mantine-Modal-content,
+.mantine-Drawer-content {
+  background-color: var(--surface-raised);
+  color: var(--fg-default);
+}
+
+.mantine-Modal-header,
+.mantine-Drawer-header {
+  background-color: var(--surface-raised);
+}
+
+.mantine-Modal-overlay,
+.mantine-Drawer-overlay {
+  background: var(--overlay-backdrop);
+}
+
+.mantine-Notification-root {
+  background-color: var(--surface-raised);
+  color: var(--fg-default);
+  border-color: var(--border-default);
+  box-shadow: var(--elev-lg);
+}
+
+.mantine-Notification-root[data-toast-variant='success'] {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border-default));
+}
+
+.mantine-Notification-root[data-toast-variant='danger'] {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border-default));
+}
+
+.mantine-Notification-root[data-toast-variant='warning'] {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border-default));
+}
+
+.mantine-Notification-root[data-toast-variant='info'] {
+  border-color: color-mix(in srgb, var(--info) 55%, var(--border-default));
+}
+
+.mantine-Notification-root[data-toast-variant='default'] .mantine-Notification-icon {
+  background-color: var(--surface-sunken);
+  color: var(--fg-muted);
+}
+
+.mantine-Notification-root[data-toast-variant='success'] .mantine-Notification-icon {
+  background-color: var(--success-solid);
+  color: var(--success-on-solid);
+}
+
+.mantine-Notification-root[data-toast-variant='danger'] .mantine-Notification-icon {
+  background-color: var(--danger-solid);
+  color: var(--danger-on-solid);
+}
+
+.mantine-Notification-root[data-toast-variant='warning'] .mantine-Notification-icon {
+  background-color: var(--warning-solid);
+  color: var(--warning-on-solid);
+}
+
+.mantine-Notification-root[data-toast-variant='info'] .mantine-Notification-icon {
+  background-color: var(--info-solid);
+  color: var(--info-on-solid);
+}
+
+.mantine-Notification-title {
+  color: var(--fg-default);
+}
+
+.mantine-Notification-description {
+  color: var(--fg-muted);
+}
+
+.mantine-Notification-closeButton {
+  color: var(--fg-muted);
+}
+
+.mantine-Notification-closeButton:hover {
+  background-color: var(--surface-hover);
+  color: var(--fg-default);
+}
+
+.mantine-Combobox-dropdown {
+  background-color: var(--surface-raised);
+  color: var(--fg-default);
+  border-color: var(--border-subtle);
+}
+
+.mantine-Combobox-search {
+  background-color: transparent;
+  color: var(--fg-default);
+  border-color: var(--border-subtle);
+}
+
+.mantine-Tooltip-tooltip {
+  background-color: var(--surface-dark);
+  color: var(--fg-inverse);
+}
+
+.mantine-Menu-item:where([data-hovered]) {
+  background-color: var(--surface-hover);
+  color: var(--fg-default);
+}

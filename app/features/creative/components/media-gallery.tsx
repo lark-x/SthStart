@@ -4,6 +4,7 @@ import { ImagePlus } from 'lucide-react';
 import type { ArtifactDescriptor } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { EmptyState } from '@/app/components/ui/empty-state';
+import { AsyncState } from '@/app/components/ui/async-state';
 import { GalleryCard } from './gallery-card';
 
 export function MediaGallery({
@@ -28,7 +29,7 @@ export function MediaGallery({
   return (
     <div className="space-y-4">
       {isLoading && !artifacts.length ? (
-        <div className="flex justify-center py-10 text-xs text-muted">正在读取媒体库…</div>
+        <AsyncState status="loading" title="正在读取媒体库…" rows={2} className="min-h-56" />
       ) : artifacts.length ? (
         <>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-4">

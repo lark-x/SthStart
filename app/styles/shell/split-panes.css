@@ -1,0 +1,28 @@
+/*
+ * SthStart Shell 样式职责拆分 - 双栏独立滚动工作区与分栏拖拽手柄
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+.split-panes { align-items: stretch; }
+
+@media (min-width: 1024px) {
+  .split-panes[data-from='lg'] > :not(.split-pane-handle):not(.fixed) {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (min-width: 1280px) {
+  .split-panes[data-from='xl'] > :not(.split-pane-handle):not(.fixed) {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+.split-panes > .split-pane-handle {
+  overflow: visible !important;
+  max-height: none !important;
+  overscroll-behavior: auto !important;
+}

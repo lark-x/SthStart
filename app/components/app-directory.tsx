@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { ArrowRight, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { NAV_APPS, NAV_SECTIONS, navDisplayLabel, type NavSection } from './shared/navigation';
+import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { NAV_APPS, NAV_SECTIONS, navDisplayLabel, type NavSection } from '@/app/shell/navigation';
 
 type DirectoryFilter = '常用' | NavSection | '全部';
 
 const FILTERS: DirectoryFilter[] = ['常用', ...NAV_SECTIONS, '全部'];
-const COMMON_APP_IDS = new Set(['projects', 'resources', 'characters', 'media', 'creative', 'calendar']);
+const COMMON_APP_IDS = new Set(['story-worlds', 'projects', 'resources', 'characters', 'media', 'creative', 'calendar']);
 
 /** 门户应用入口：优先展示高频创作工具，其余模块可按分类或名称快速查找。 */
 export function AppDirectory() {
@@ -41,28 +43,40 @@ export function AppDirectory() {
       <div className="desk-directory-controls">
         <div className="desk-directory-filters" role="group" aria-label="按类别筛选应用">
           {FILTERS.map((item) => (
-            <button
+            <Button
               key={item}
               type="button"
+              size="sm"
+              variant="ghost"
               aria-pressed={filter === item}
               className="desk-directory-filter"
               onClick={() => setFilter(item)}
             >
               {item}
-            </button>
+            </Button>
           ))}
         </div>
-        <label className="desk-directory-search">
+        <label className="desk-directory-search [&_.ui-mantine-input-wrapper]:min-w-0 [&_.ui-mantine-input-wrapper]:flex-1">
           <Search size={16} aria-hidden="true" />
           <span className="sr-only">搜索应用</span>
-          <input
+          <Input
             aria-label="搜索应用"
             placeholder="搜索工具…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            className="!h-auto !min-h-0 !border-0 !bg-transparent !p-0 !shadow-none"
           />
           {query && (
-            <button type="button" aria-label="清空搜索" onClick={() => setQuery('')}>×</button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="清空搜索"
+              onClick={() => setQuery('')}
+              className="!h-6 !w-6 !min-h-6 !min-w-6 rounded-full p-0 text-sm leading-none"
+            >
+              ×
+            </Button>
           )}
         </label>
       </div>
@@ -103,7 +117,9 @@ export function AppDirectory() {
       ) : (
         <div className="desk-directory-empty">
           <p>没有找到匹配的应用。</p>
-          <button type="button" onClick={() => { setFilter('全部'); setQuery(''); }}>查看全部应用</button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setFilter('全部'); setQuery(''); }}>
+            查看全部应用
+          </Button>
         </div>
       )}
     </section>

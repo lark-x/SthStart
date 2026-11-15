@@ -7,6 +7,7 @@ import { notebookKeys } from '@/app/lib/query-keys';
 import { deleteNote, upsertNote, uploadNoteAsset } from './api';
 import {
   completeLocalNoteSync,
+  deferLocalNoteSync,
   failLocalNoteSync,
   getLocalAsset,
   getLocalNote,
@@ -24,6 +25,28 @@ let activeSync: Promise<void> | null = null;
 // 但这轮期间新保存的笔记（含强制/定向同步请求）必须补跑一轮，
 // 否则要等下一个 15s 周期甚至更久（当轮卡在大图片上传时）。
 let pendingRerun: { force?: boolean; noteId?: string } | null = null;
+
+function isOnline() {
+  return typeof navigator === 'undefined' || navigator.onLine;
+}
+
+class OfflineSyncDeferred extends Error {
+  constructor() {
+    super('offline_sync_deferred');
+    this.name = 'OfflineSyncDeferred';
+  }
+}
+
+/** fetch rejects with TypeError when the browser loses connectivity mid-request. */
+function isNetworkFailure(error: unknown) {
+  return error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message);
+}
+
+interface SyncAttemptFailure {
+  /** Version that this attempt tried to write; newer local edits must survive. */
+  localVersion: number;
+  error: unknown;
+}
 
 function updateNoteCaches(queryClient: QueryClient | undefined, note: CreativeNote) {
   if (!queryClient || !note.id) return;
@@ -56,6 +79,7 @@ async function uploadLocalAssets(noteId: string) {
     if (!asset) throw new Error('local_image_missing');
     let uploadedUrl = asset.uploadedUrl;
     if (!uploadedUrl) {
+      if (!isOnline()) throw new OfflineSyncDeferred();
       const uploaded = await uploadNoteAsset(noteId, asset.blob, asset.filename);
       uploadedUrl = uploaded.url;
       await markLocalAssetUploaded(assetId, uploadedUrl);
@@ -66,52 +90,73 @@ async function uploadLocalAssets(noteId: string) {
   }
 }
 
-async function syncRecord(noteId: string, queryClient?: QueryClient) {
+async function syncRecord(noteId: string, queryClient?: QueryClient): Promise<SyncAttemptFailure | null> {
   let record = await getLocalNote(noteId);
-  if (!record || record.status === 'conflict') return;
+  if (!record || record.status === 'conflict') return null;
 
   if (record.status === 'deleted') {
-    if (!await setLocalNoteSyncing(noteId, record.localVersion)) return;
+    const version = record.localVersion;
+    if (!await setLocalNoteSyncing(noteId, version)) return null;
     try {
+      if (!isOnline()) throw new OfflineSyncDeferred();
       await deleteNote(noteId);
     } catch (error) {
-      if (!(error instanceof ApiClientError && error.status === 404)) throw error;
+      if (!(error instanceof ApiClientError && error.status === 404)) return { localVersion: version, error };
     }
     await removeLocalNote(noteId);
     removeNoteCaches(queryClient, noteId);
-    return;
+    return null;
   }
 
-  await uploadLocalAssets(noteId);
+  const uploadVersion = record.localVersion;
+  try {
+    await uploadLocalAssets(noteId);
+  } catch (error) {
+    return { localVersion: uploadVersion, error };
+  }
   record = await getLocalNote(noteId);
-  if (!record || record.status === 'deleted' || record.status === 'conflict') return;
+  if (!record || record.status === 'deleted' || record.status === 'conflict') return null;
   const version = record.localVersion;
-  if (!await setLocalNoteSyncing(noteId, version)) return;
+  if (!await setLocalNoteSyncing(noteId, version)) return null;
   // Existing notes edit knowledge through its dedicated endpoint. A stale
   // offline content snapshot must not write back an older knowledge object.
   const payload = record.note.revision ? { ...record.note, knowledge: undefined } : record.note;
-  const serverNote = await upsertNote(noteId, payload);
-  await completeLocalNoteSync(noteId, version, serverNote);
-  updateNoteCaches(queryClient, serverNote);
+  try {
+    if (!isOnline()) throw new OfflineSyncDeferred();
+    const serverNote = await upsertNote(noteId, payload);
+    // 记录这次写入实际使用的基线，只有它能成为后续草稿的确认 revision。
+    await completeLocalNoteSync(noteId, version, serverNote, record.note.revision);
+    updateNoteCaches(queryClient, serverNote);
+    return null;
+  } catch (error) {
+    return { localVersion: version, error };
+  }
 }
 
 async function runSync(queryClient?: QueryClient, options?: { force?: boolean; noteId?: string }) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  if (!isOnline()) return;
   const records = await pendingLocalNotes(Boolean(options?.force), options?.noteId);
   for (const record of records) {
-    try {
-      await syncRecord(record.noteId, queryClient);
-    } catch (error) {
-      const latest = await getLocalNote(record.noteId);
-      if (latest) await failLocalNoteSync(
+    if (!isOnline()) break;
+    const failure = await syncRecord(record.noteId, queryClient);
+    if (!failure) continue;
+    const { localVersion, error } = failure;
+    // A server conflict is authoritative even if connectivity dropped after
+    // the response arrived; it must not be downgraded to a retryable offline.
+    if (error instanceof ApiClientError && (error.status === 409 || error.status === 428)) {
+      await failLocalNoteSync(record.noteId, localVersion, error.message, true);
+    } else if (error instanceof OfflineSyncDeferred || isNetworkFailure(error) || !isOnline()) {
+      await deferLocalNoteSync(record.noteId, localVersion);
+    } else {
+      await failLocalNoteSync(
         record.noteId,
-        latest.localVersion,
+        localVersion,
         error instanceof Error ? error.message : String(error),
-        error instanceof ApiClientError && (error.status === 409 || error.status === 428),
+        false,
       );
     }
   }
-  await pruneLocalAssets();
+  if (isOnline()) await pruneLocalAssets();
 }
 
 export function syncPendingNotebookData(queryClient?: QueryClient, options?: { force?: boolean; noteId?: string }) {

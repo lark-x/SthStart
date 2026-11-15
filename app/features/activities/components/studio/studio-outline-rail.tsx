@@ -9,6 +9,8 @@ import {
   Film,
 } from 'lucide-react';
 import type { ContentDocument } from '@sthstart/contracts';
+import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { ScrollFadeContainer } from '@/app/components/ui/scroll-fade-container';
 import { getEffectiveStageScenes, countStageBeats } from '../../scene-beat-utils';
 
@@ -42,15 +44,14 @@ export function StudioOutlineRail({
       <aside className="z-10 flex h-full min-h-0 w-12 shrink-0 select-none flex-col bg-surface">
         {/* 44px 统一连续基线顶栏 */}
         <div className="h-11 border-b border-border-default bg-surface flex items-center justify-center shrink-0">
-          <button
-            type="button"
+          <IconButton
+            icon={PanelLeftOpen}
+            label="展开剧情大纲"
+            variant="ghost"
             onClick={onToggleCollapse}
-            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
-            title="展开剧情大纲"
-            aria-label="展开剧情大纲"
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </button>
+            size="sm"
+            className="h-7 min-h-7 w-7 p-0"
+          />
         </div>
 
         <ScrollFadeContainer orientation="vertical" fadeSize={12} className="flex-1 min-h-0 w-full py-2">
@@ -58,11 +59,14 @@ export function StudioOutlineRail({
             {stages.map((stage, idx) => {
               const isSelected = stage.id === activeStageId;
               return (
-                <button
+                <Button
                   key={stage.id}
                   type="button"
+                  variant={isSelected ? 'accent' : 'ghost'}
                   onClick={() => onSelectStage(stage.id)}
-                  className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-mono font-bold transition-all cursor-pointer ${
+                  aria-label={`第 ${idx + 1} 幕 · ${stage.title}`}
+                  aria-pressed={isSelected}
+                  className={`h-8 min-h-8 w-8 rounded-lg p-0 text-xs font-mono font-bold transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-accent text-fg-on-accent shadow-2xs'
                       : 'text-muted hover:text-ink hover:bg-surface-muted'
@@ -70,22 +74,21 @@ export function StudioOutlineRail({
                   title={`第 ${idx + 1} 幕 · ${stage.title}`}
                 >
                   {idx + 1}
-                </button>
+                </Button>
               );
             })}
           </div>
         </ScrollFadeContainer>
 
         <div className="p-2 border-t border-border-default/60 flex items-center justify-center shrink-0">
-          <button
-            type="button"
+          <IconButton
+            icon={Plus}
+            label="添加新的一幕"
+            variant="ghost"
             onClick={onAddStage}
-            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-accent hover:bg-surface-muted transition-colors cursor-pointer"
-            title="添加新的一幕"
-            aria-label="添加新的一幕"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+            size="sm"
+            className="h-8 min-h-8 w-8 p-0 hover:text-accent"
+          />
         </div>
       </aside>
     );
@@ -100,24 +103,25 @@ export function StudioOutlineRail({
           <span>剧情大纲</span>
         </span>
         <div className="flex items-center gap-1">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onAddStage}
-            className="flex h-7 cursor-pointer items-center gap-1 rounded-control px-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
+            className="flex h-7 min-h-7 cursor-pointer items-center gap-1 rounded-control px-2 text-sm"
             title="新增一幕"
           >
             <Plus className="h-3 w-3" />
             <span>加幕</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <IconButton
+            icon={PanelLeftClose}
+            label="收起侧栏"
+            variant="ghost"
             onClick={onToggleCollapse}
-            className="h-7 w-7 rounded-control flex items-center justify-center text-muted hover:text-ink hover:bg-surface-hover transition-colors cursor-pointer"
-            title="收起侧栏"
-            aria-label="收起侧栏"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
+            size="sm"
+            className="h-7 min-h-7 w-7 p-0"
+          />
         </div>
       </div>
 
@@ -137,10 +141,13 @@ export function StudioOutlineRail({
               }`}
             >
               {/* 幕标题条 */}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => onSelectStage(stage.id)}
-                className="group flex w-full cursor-pointer items-center justify-between px-2 py-2.5 text-left focus-visible:outline focus-visible:outline-accent"
+                aria-pressed={isStageActive}
+                className="group flex h-auto w-full min-h-0 cursor-pointer items-center justify-between rounded-none px-2 py-2.5 text-left focus-visible:outline focus-visible:outline-accent"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
@@ -158,7 +165,7 @@ export function StudioOutlineRail({
                     {mediaCount}/{totalBeats}图
                   </span>
                 </div>
-              </button>
+              </Button>
 
               {/* 展开的场次列表（当本幕被激活时展示） */}
               {isStageActive && (
@@ -169,14 +176,17 @@ export function StudioOutlineRail({
                     const cleanSceneTitle = scene.title.replace(/^(第\s*[一二三四五六七八九十0-9]+\s*场[：:\s]*)/, '') || scene.title;
 
                     return (
-                      <button
+                      <Button
                         key={scene.id}
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           onSelectScene(stage.id, scene.id);
                         }}
-                        className={`flex w-full cursor-pointer items-center justify-between rounded-control px-2 py-1.5 text-left text-sm transition-colors ${
+                        aria-pressed={isSceneActive}
+                        className={`flex h-auto w-full min-h-0 cursor-pointer items-center justify-between rounded-control px-2 py-1.5 text-left text-sm transition-colors ${
                           isSceneActive
                             ? 'bg-surface font-medium text-ink'
                             : 'text-muted hover:bg-surface-hover hover:text-ink'
@@ -191,22 +201,24 @@ export function StudioOutlineRail({
                         <span className="text-[10px] font-mono opacity-80">
                           {beatCount}镜
                         </span>
-                      </button>
+                      </Button>
                     );
                   })}
 
                   {/* 加场按钮 */}
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
                       onAddScene(stage.id);
                     }}
-                    className="mt-1 flex w-full cursor-pointer items-center justify-center gap-1 rounded-control px-2 py-1.5 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-ink"
+                    className="mt-1 flex h-auto w-full min-h-0 cursor-pointer items-center justify-center gap-1 rounded-control px-2 py-1.5 text-sm transition-colors"
                   >
                     <Plus className="h-3 w-3" />
                     <span>加场</span>
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>

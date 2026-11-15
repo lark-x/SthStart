@@ -3,6 +3,8 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { Value } from '@sinclair/typebox/value';
+import { CreativeStatusResponseSchema, CreativeGenerationOptionsResponseSchema } from '@sthstart/contracts';
 import { activeGenerationExecutions } from './generation.js';
 import { ServiceDatabase, nowIso } from './database.js';
 import { readConfig } from './config.js';
@@ -11,6 +13,66 @@ import { SecretStore } from './security.js';
 
 const adminToken = 'admin-creative-test-token-1234567890';
 const adminHeaders = { 'x-sthstart-admin-token': adminToken };
+
+test('Creative image status and options agree for cloud bindings and status rejects mismatched engine kinds', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const config = readConfig({ STHSTART_ADMIN_TOKEN: adminToken });
+  let upstreamCalls = 0;
+  const { app } = await createService({ config, database, secrets: new SecretStore({}), fetcher: async () => {
+    upstreamCalls++; throw new Error('No upstream call expected for local configuration checks');
+  } });
+  try {
+    const now = nowIso();
+    for (const kind of ['cloud', 'comfyui', 'worker']) {
+      database.connection.prepare('INSERT INTO generation_engines(id,name,kind,base_url,enabled,concurrency_limit,created_at,updated_at) VALUES (?,?,?,?,1,1,?,?)')
+        .run('status-' + kind, 'Status ' + kind, kind, 'https://image.invalid/v1', now, now);
+    }
+    database.connection.prepare("INSERT INTO generation_workflows(id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES ('status-flow','Cloud image','','cloud','image',5,?,?)").run(now, now);
+    database.connection.prepare("INSERT INTO generation_workflow_versions(workflow_id,version,engine_id,input_schema_json,node_bindings_json,output_declarations_json,definition_json,input_capabilities_json,is_published,created_at) VALUES ('status-flow',5,'status-cloud',?,'{}','[\"image\"]',?,'{}',1,?)")
+      .run(JSON.stringify({ prompt: { type: 'string', semantic: 'prompt', required: true } }), JSON.stringify({ type: 'cloud_recipe', modelId: 'gpt-image-1', operation: 'text-to-image' }), now);
+    for (const purpose of ['text-to-image', 'image-to-image', 'h3-t2v', 'h3-i2v', 'h3-fl2va']) {
+      database.connection.prepare("INSERT INTO app_generation_assignments(app_id,purpose,workflow_id,workflow_version,engine_id,updated_at) VALUES ('creative-center',?,'status-flow',5,'status-cloud',?)").run(purpose, now);
+    }
+    const status = async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/v1/admin/creative/status', headers: adminHeaders });
+      assert.equal(response.statusCode, 200); const body = response.json();
+      assert.equal(Value.Check(CreativeStatusResponseSchema, body), true); return body;
+    };
+    const optionsResponse = await app.inject({ method: 'GET', url: '/api/v1/admin/creative/options', headers: adminHeaders });
+    assert.equal(optionsResponse.statusCode, 200); const options = optionsResponse.json();
+    assert.equal(Value.Check(CreativeGenerationOptionsResponseSchema, options), true);
+    const ready = await status();
+    for (const [purpose, mode] of [['text-to-image', 'textToImage'], ['image-to-image', 'imageToImage']]) {
+      const choice = options.purposes.find((item: { purpose: string }) => item.purpose === purpose);
+      assert.equal(choice.ready, true); assert.equal(choice.status, 'ready');
+      assert.equal(ready.modes[mode].ready, true); assert.equal(ready.modes[mode].status, 'ready');
+      assert.equal(ready.modes[mode].workflow.id, choice.workflow.id); assert.equal(ready.modes[mode].workflow.version, 5);
+      assert.deepEqual(ready.modes[mode].engine, choice.engine); assert.equal(choice.engine.kind, 'cloud');
+      assert.equal(choice.configuration.promptKey, 'prompt'); assert.deepEqual(choice.configuration.inputCapabilities, {});
+    }
+    for (const mode of ['h3T2v', 'h3I2v', 'h3Fl2va']) {
+      assert.equal(ready.modes[mode].ready, false); assert.equal(ready.modes[mode].status, 'unsupported_engine');
+    }
+    for (const [workflowKind, engineKind] of [['cloud', 'comfyui'], ['comfyui', 'cloud'], ['worker', 'cloud'], ['worker', 'worker']]) {
+      database.connection.prepare("UPDATE generation_workflows SET engine_kind=? WHERE id='status-flow'").run(workflowKind);
+      database.connection.prepare("UPDATE app_generation_assignments SET engine_id=? WHERE app_id='creative-center' AND purpose IN ('text-to-image','image-to-image')").run('status-' + engineKind);
+      const mismatch = await status();
+      for (const mode of ['textToImage', 'imageToImage']) {
+        assert.equal(mismatch.modes[mode].ready, false, workflowKind + '/' + engineKind);
+        assert.equal(mismatch.modes[mode].status, 'unsupported_engine', workflowKind + '/' + engineKind);
+      }
+    }
+    database.connection.prepare("UPDATE generation_workflows SET engine_kind='comfyui' WHERE id='status-flow'").run();
+    database.connection.prepare("UPDATE app_generation_assignments SET engine_id='status-comfyui' WHERE app_id='creative-center' AND purpose IN ('text-to-image','image-to-image')").run();
+    assert.equal((await status()).modes.textToImage.ready, true);
+    database.connection.prepare("UPDATE generation_engines SET enabled=0 WHERE id='status-comfyui'").run();
+    assert.equal((await status()).modes.textToImage.status, 'engine_unavailable');
+    database.connection.prepare("UPDATE generation_engines SET enabled=1 WHERE id='status-comfyui'").run();
+    database.connection.prepare("UPDATE generation_workflow_versions SET is_published=0 WHERE workflow_id='status-flow'").run();
+    assert.equal((await status()).modes.textToImage.status, 'workflow_unavailable');
+    assert.equal(upstreamCalls, 0);
+  } finally { await app.close(); database.close(); }
+});
 
 test('Creative center exposes safe setup state and completes text/image generation through the common core', async () => {
   const database = new ServiceDatabase();

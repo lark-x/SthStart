@@ -6,14 +6,8 @@ import {
   BookmarkPlus,
 } from 'lucide-react';
 import type { Activity } from '@sthstart/contracts';
-import {
-  useActivityCheckpoints,
-  useActivityContentRevisions,
-} from '../queries';
-import {
-  useCreateCheckpoint,
-  useRestoreCheckpoint,
-} from '../mutations';
+import { useActivityCheckpoints, useActivityContentRevisions } from '@/app/features/activities/queries/activities';
+import { useCreateCheckpoint, useRestoreCheckpoint } from '@/app/features/activities/mutations/activities';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';

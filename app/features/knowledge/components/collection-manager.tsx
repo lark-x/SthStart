@@ -16,6 +16,8 @@ import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { Textarea } from '@/app/components/ui/textarea';
 import { EmptyState } from '@/app/components/ui/empty-state';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { buttonVariants } from '@/app/components/ui/button';
 import { formatTopicTime } from '@/app/features/topics/components/topic-card';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
 import { browseCharacters } from '@/app/features/characters/api';
@@ -207,7 +209,7 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
           <p className="text-sm font-semibold text-ink">从叙事档案批量导入</p>
           <p className="text-xs text-muted">导入规范化 JSON 后，原文会进入本地检索；可以挑选片段整理成资料。重复导入同一份数据不会重复建资料。</p>
         </div>
-        <Link href="/apps/narrative" className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-border-default bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-hover">打开叙事档案</Link>
+        <Link href="/apps/narrative" className={buttonVariants({ variant: 'outline', size: 'sm' })}>打开叙事档案</Link>
       </section>
 
       {collectionsQuery.isError && <Alert variant="warning" title="任务加载失败">{collectionsQuery.error instanceof Error ? collectionsQuery.error.message : '请稍后重试'}<Button size="sm" onClick={() => void collectionsQuery.refetch()}>重试</Button></Alert>}
@@ -260,10 +262,10 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
                 </div>
               </div>
 
-              <button type="button" className="flex items-center gap-1 text-xs text-muted hover:text-ink" onClick={() => setExpandedId(expanded ? null : collection.id)}>
+              <Button type="button" size="sm" variant="ghost" className="w-fit gap-1 px-1 text-xs text-muted" aria-expanded={expanded} onClick={() => setExpandedId(expanded ? null : collection.id)}>
                 {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                 执行记录（{collectionRuns.length}）
-              </button>
+              </Button>
               {expanded && (
                 <ul className="space-y-1.5 border-t border-border-subtle pt-2">
                   {!collectionRuns.length && <li className="text-xs text-muted">还没有执行记录。</li>}
@@ -275,14 +277,14 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
                         {' · 新增 ' + run.newCount + '/变化 ' + run.changedCount + '/重复 ' + run.duplicateCount}
                       </span>
                       <span className="flex flex-wrap gap-2">
-                        <button type="button" className="text-accent hover:underline" onClick={() => setRunDetailId(run.id)}>查看结果</button>
+                        <Button type="button" size="sm" variant="ghost" className="px-1 text-xs text-accent" onClick={() => setRunDetailId(run.id)}>查看结果</Button>
                         {(run.status === 'queued' || run.status === 'running') && (
-                          <button type="button" className="text-amber-700 hover:underline" onClick={() => void cancelRun(run.id)}>取消</button>
+                          <Button type="button" size="sm" variant="ghost" className="px-1 text-xs text-warning-fg" onClick={() => void cancelRun(run.id)}>取消</Button>
                         )}
                         {(run.status === 'failed' || run.status === 'partial' || run.status === 'interrupted') && (
-                          <button type="button" className="inline-flex items-center gap-1 text-accent hover:underline" onClick={() => void execute(collection, run.id)}>
+                          <Button type="button" size="sm" variant="ghost" className="gap-1 px-1 text-xs text-accent" onClick={() => void execute(collection, run.id)}>
                             <RotateCcw className="h-3 w-3" />重试整理
-                          </button>
+                          </Button>
                         )}
                       </span>
                     </li>
@@ -390,9 +392,9 @@ function CollectionForm({ draft, onChange, sources, workOptions }: {
             {workOptions.map((work) => {
               const selected = draft.works.includes(work);
               return (
-                <button key={work} type="button" aria-pressed={selected} className={'rounded-full border px-2 py-0.5 text-xs ' + (selected ? 'border-accent bg-accent/10 text-accent-dark' : 'border-border-default text-muted')} onClick={() => patch({ works: selected ? draft.works.filter((item) => item !== work) : [...draft.works, work] })}>
+                <Button key={work} type="button" size="sm" variant="ghost" aria-pressed={selected} className={'ui-choice h-auto rounded-full border px-2 py-0.5 text-xs ' + (selected ? 'border-accent bg-accent/10 text-accent-dark' : 'border-border-default text-muted')} onClick={() => patch({ works: selected ? draft.works.filter((item) => item !== work) : [...draft.works, work] })}>
                   {work}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -414,23 +416,17 @@ function CollectionForm({ draft, onChange, sources, workOptions }: {
             const tools = toolsFor(source.id);
             return (
               <li key={source.id} className="space-y-2 rounded-lg border border-border-subtle p-2">
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    aria-label={'使用资料源 ' + source.name}
-                    checked={Boolean(binding)}
-                    onChange={(event) => patch({
-                      sourceBindings: event.target.checked
-                        ? [...draft.sourceBindings, { sourceId: source.id, searchTool: tools[0]?.name ?? '' }]
-                        : draft.sourceBindings.filter((item) => item.sourceId !== source.id),
-                    })}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-ink">{source.name}</span>
-                    <span className="block truncate text-xs text-muted">{source.purpose || source.url}</span>
-                  </span>
-                </label>
+                <Checkbox
+                  label={source.name}
+                  description={source.purpose || source.url}
+                  aria-label={'使用资料源 ' + source.name}
+                  checked={Boolean(binding)}
+                  onChange={(event) => patch({
+                    sourceBindings: event.target.checked
+                      ? [...draft.sourceBindings, { sourceId: source.id, searchTool: tools[0]?.name ?? '' }]
+                      : draft.sourceBindings.filter((item) => item.sourceId !== source.id),
+                  })}
+                />
                 {binding && (
                   <div className="grid gap-2 pl-6 sm:grid-cols-2">
                     <label className="space-y-1">

@@ -191,8 +191,21 @@ export function ControlCenter() {
 
   return (
     <PageContainer width="settings" className="space-y-4">
-      <PageHeader compact
+      <PageHeader
+        compact
+        className="control-center-header"
         title="控制中心"
+        actions={
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" loading={isLoading} onClick={() => void refetch()}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>刷新</span>
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void handleCheckImport()}>
+              <span>导入旧配置</span>
+            </Button>
+          </div>
+        }
         navigation={
           <PageTabs
             variant="local"
@@ -215,23 +228,11 @@ export function ControlCenter() {
                   <span>{item.label}</span>
                 </>
               ),
-        }))}
-      />
+            }))}
+          />
         }
       />
       <section className="tpl-panel space-y-4 p-4" aria-label="当前设置内容">
-      <div className="flex flex-wrap items-center justify-end gap-2" aria-label="页面操作">
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => void refetch()}>
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>刷新</span>
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => void handleCheckImport()}>
-              <span>导入旧配置</span>
-            </Button>
-          </div>
-      </div>
-
       {(errorMessage || queryError) && (
         <Alert
           variant="danger"

@@ -11,9 +11,10 @@ import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
 import { Button } from '@/app/components/ui/button';
 import { FormField } from '@/app/components/ui/form-field';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
-import { useImageConfigDraft } from '../queries';
-import { commitActivityArtDirection, createActivityArtStyle, fetchActivityArtStyles } from '../studio-api';
+import { useImageConfigDraft } from '@/app/features/activities/queries/images';
+import { commitActivityArtDirection, createActivityArtStyle, fetchActivityArtStyles } from '@/app/features/activities/api/studio';
 
 function presetRef(preset: GenerationPreset): GenerationPresetRef {
   return { purpose: preset.purpose, presetId: preset.id, presetRevision: preset.revision, workflowId: preset.workflowId, workflowVersion: preset.workflowVersion };
@@ -116,7 +117,7 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
           ...(temporary.globalNegativePrompt !== undefined ? ['已配置活动负面词'] : []),
           ...(direction.renderProfiles.draft || direction.renderProfiles.final ? ['已绑定档位方案'] : []),
         ]} />
-        <FormField label="画风卡"><select aria-label="活动画风卡" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm" value={direction.selectedStyle?.id ?? ''} onChange={event => {
+        <FormField label="画风卡"><Select aria-label="活动画风卡" value={direction.selectedStyle?.id ?? ''} onChange={event => {
           const style = styles.data?.items.find(item => item.id === event.target.value);
           if (!style || !isActivityArtStylePayload(style.payload)) { updateDirection({ selectedStyle: null }); return; }
           const payload = style.payload;
@@ -125,14 +126,14 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
               quality: payload.defaultQuality, canvas: payload.defaultCanvas, renderProfiles: payload.renderProfiles, parameterOverrides: {} } });
         }}><option value="">自定义活动画风</option>{styles.data?.items.map(style => <option key={style.id} value={style.id}>{style.name} · v{style.version}</option>)}
           {direction.selectedStyle && !styles.data?.items.some(item => item.id === direction.selectedStyle!.id) && <option value={direction.selectedStyle.id}>{direction.selectedStyle.name} · 已保存快照</option>}
-        </select></FormField>
+        </Select></FormField>
         {styles.isError && <p role="alert" className="text-xs text-danger-fg">画风卡加载失败，可继续编辑自定义配置：{styles.error.message}</p>}
-        <div className="grid gap-4 sm:grid-cols-2"><FormField label="绘制品质"><select aria-label="活动绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={direction.quality} onChange={event => updateDirection({ quality: event.target.value as 'draft' | 'final' })}><option value="draft">草图</option><option value="final">成稿</option></select></FormField>
-          <FormField label="画幅"><select aria-label="活动画幅" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={`${direction.canvas.width}x${direction.canvas.height}`} onChange={event => {
+        <div className="grid gap-4 sm:grid-cols-2"><FormField label="绘制品质"><Select aria-label="活动绘制品质" value={direction.quality} onChange={event => updateDirection({ quality: event.target.value as 'draft' | 'final' })}><option value="draft">草图</option><option value="final">成稿</option></Select></FormField>
+          <FormField label="画幅"><Select aria-label="活动画幅" value={`${direction.canvas.width}x${direction.canvas.height}`} onChange={event => {
             const [width,height] = event.target.value.split('x').map(Number); updateDirection({ canvas: { width, height } });
           }}>{[...CANVAS_OPTIONS, { value: `${direction.canvas.width}x${direction.canvas.height}`, label: `${direction.canvas.width} × ${direction.canvas.height}（当前）` }]
             .filter((option,index,array) => array.findIndex(item => item.value === option.value) === index)
-            .map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+            .map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select>
             <span className="mt-1 block text-xs text-muted">尺寸与草稿／成稿档位互相独立；1920×1080 不会自动成为默认。</span></FormField></div>
         <div className="rounded-control bg-surface-muted p-3">
           <p className="text-sm font-medium text-ink">当前模型摘要</p>
@@ -151,12 +152,12 @@ export function ArtDirectionDialog({ activity, open, onOpenChange, beforeApply, 
         {advanced && <FormField label="补充画风词" hint="会在画面描述优化之后追加；工作流内部质量词无需重复填写。"><Textarea rows={3} value={temporary.globalStylePrompt ?? ''} onChange={event => setTemporary({ ...temporary, globalStylePrompt: event.target.value })} /></FormField>}
         <details hidden={!advanced} open={advanced} className="rounded-control bg-surface-muted p-4"><summary className="cursor-pointer text-sm font-semibold">档位方案与负面词</summary><div className="mt-4 space-y-4">
           <p className="text-xs text-muted">两档分别绑定已发布预设，不能仅换 Base/Turbo 模型而共用采样参数。为空时跟随公共生成绑定；未保存前不会改动现有配置。</p>
-          {(['draft','final'] as const).map(quality => <FormField key={quality} label={`${quality === 'draft' ? '草图' : '成稿'}预设`}><select aria-label={`${quality}预设`} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={direction.renderProfiles[quality]?.presetId ?? ''} onChange={event => {
+          {(['draft','final'] as const).map(quality => <FormField key={quality} label={`${quality === 'draft' ? '草图' : '成稿'}预设`}><Select aria-label={`${quality}预设`} value={direction.renderProfiles[quality]?.presetId ?? ''} onChange={event => {
             const selected = enabledPresets.find(item => item.id === event.target.value);
             updateDirection({ renderProfiles: { ...direction.renderProfiles, [quality]: selected ? presetRef(selected) : null } });
           }}><option value="">跟随公共生成绑定</option>{enabledPresets.map(preset => <option key={preset.id} value={preset.id}>{preset.name} · r{preset.revision}</option>)}
             {direction.renderProfiles[quality] && !enabledPresets.some(item => item.id === direction.renderProfiles[quality]!.presetId) && <option value={direction.renderProfiles[quality]!.presetId}>已绑定预设（需检查可用性）</option>}
-          </select></FormField>)}
+          </Select></FormField>)}
           {presets.isError && <p role="alert" className="text-xs text-danger-fg">生成预设读取失败：{presets.error.message}</p>}
           <FormField label="活动反向词" hint="空文本表示明确不使用活动负向词；不会被自动补回。"><Textarea rows={3} value={temporary.globalNegativePrompt ?? ''} onChange={event => setTemporary({ ...temporary, globalNegativePrompt: event.target.value })} /></FormField>
           <a href="/settings/generation" target="_blank" rel="noopener noreferrer" className="text-xs text-accent">管理已发布工作流、模型和全局 LoRA</a>

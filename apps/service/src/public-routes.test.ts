@@ -197,7 +197,7 @@ test('completed legacy image outputs keep central artifacts referenced until the
 });
 
 test('image gateway handles submission errors, missing task ID, and upstream timeouts with safe messages', async () => {
-  const database = new ServiceDatabase(); const token = seedApp(database, 'error-app'); const now = nowIso();
+  let database = new ServiceDatabase(); let token = seedApp(database, 'error-app'); const now = nowIso();
   database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-err', 'Image', 'image', 'http://image-err.test', null, null, now, now);
 
   // 1. Upstream returns 400 node error
@@ -220,7 +220,20 @@ test('image gateway handles submission errors, missing task ID, and upstream tim
   assert.match(res.json().message, /未返回|未知|任务 ID/);
   await app.close();
 
-  // 3. Upstream network failure / timeout
+  // A new request must stay queued while the previous submission is uncertain.
+  let unexpectedSubmission = false;
+  fetcher = async () => { unexpectedSubmission = true; throw new Error('must remain queued'); };
+  ({ app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher }));
+  res = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'held-behind-uncertain' }, payload: { workflow: { 1: {} } } });
+  assert.equal(res.statusCode, 202);
+  assert.equal(unexpectedSubmission, false);
+  await app.close();
+  database.close();
+
+  // 3. Independent upstream network failure / timeout, with a fresh queue.
+  database = new ServiceDatabase();
+  token = seedApp(database, 'error-app-network');
+  database.connection.prepare('INSERT INTO provider_profiles VALUES (?,?,?,?,?,?,1,?,?)').run('img-err-network', 'Image', 'image', 'http://image-err.test', null, null, now, now);
   fetcher = async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:8188 with Bearer sk-secret-token-1234567890'); };
   ({ app } = await createService({ config: testConfig(), database, secrets: new SecretStore({}), fetcher }));
   res = await app.inject({ method: 'POST', url: '/api/v1/images/tasks', headers: { authorization: `Bearer ${token}`, 'idempotency-key': 'err-request-3' }, payload: { workflow: { 1: {} } } });

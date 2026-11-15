@@ -1,3 +1,4 @@
+import { registerManagedImageModels } from './managed-image-models.js';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -12,6 +13,7 @@ import { defaultWorkerSettings, workerHealth } from './worker.js';
 import { cachedConnectionStatus } from './generation/comfy-discovery.js';
 import { publishWorkflowVersion, importWorkflow } from './generation/workflow-publish.js';
 import { registerGenerationConfigRoutes } from './generation-config-routes.js';
+import { registerModelRouteRoutes, syncAppRouteWithAssignment } from './model-routes.js';
 import { registerConnectionRoutes, hydrateConnection } from './connections-routes.js';
 import { registerModelRoutes, hydrateModelProfile } from './models-routes.js';
 import { getH3Status, readH3Settings } from './h3.js';
@@ -217,7 +219,9 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
   });
 
   // 配置工作台新路由（发现/分析/草稿/导出/试运行/预设）挂载在同一管理鉴权之下。
+  registerManagedImageModels(app, database);
   registerGenerationConfigRoutes(app, config, database, secrets, fetcher);
+  registerModelRouteRoutes(app, database);
   registerConnectionRoutes(app, config, database, secrets, fetcher);
   registerModelRoutes(app, config, database, secrets, fetcher);
 
@@ -359,17 +363,18 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
       `).run(connId, `${name.trim()} 连接`, connKind, normalizedUrl, account, 60000, JSON.stringify(filteredHeaders), JSON.stringify(extraBody), enabled ? 1 : 0, now, now);
 
       database.connection.prepare(`
-        INSERT INTO model_profiles (id, connection_id, name, model_id, capabilities_json, context_length, max_output_tokens, default_params_json, advanced_json, enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO model_profiles (id, connection_id, name, model_id, capabilities_json, context_length, max_output_tokens, default_params_json, advanced_json, enabled, created_at, updated_at, model_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           connection_id = excluded.connection_id,
           name = excluded.name,
           model_id = excluded.model_id,
+          model_type = excluded.model_type,
           capabilities_json = excluded.capabilities_json,
           advanced_json = excluded.advanced_json,
           enabled = excluded.enabled,
           updated_at = excluded.updated_at
-      `).run(id, connId, name.trim(), model?.trim() || id, JSON.stringify(capabilities), null, null, '{}', JSON.stringify({ thinkingMode, ...extraBody }), enabled ? 1 : 0, now, now);
+      `).run(id, connId, name.trim(), model?.trim() || id, JSON.stringify(capabilities), null, null, '{}', JSON.stringify({ thinkingMode, ...extraBody }), enabled ? 1 : 0, now, now, kind === 'llm' ? 'chat' : kind === 'vector' ? 'embedding' : 'image');
     });
     return reply.code(201).send({ id, secretStored: secretWarning === null, warning: secretWarning });
   });
@@ -487,6 +492,13 @@ export function registerManagementRoutes(app: FastifyInstance, config: ServiceCo
         if (!profileId) database.connection.prepare('DELETE FROM app_llm_assignments WHERE app_id=? AND role=?').run(request.params.appId, role);
         else database.connection.prepare(`INSERT INTO app_llm_assignments(app_id,role,profile_id,updated_at) VALUES (?,?,?,?)
           ON CONFLICT(app_id,role) DO UPDATE SET profile_id=excluded.profile_id,updated_at=excluded.updated_at`).run(request.params.appId, role, profileId, now);
+        syncAppRouteWithAssignment(
+          database,
+          request.params.appId,
+          role,
+          profileId ?? null,
+          now,
+        );
       }
     });
     return { appId: request.params.appId, textProfileId: request.body?.textProfileId ?? null, multimodalProfileId: request.body?.multimodalProfileId ?? null, updatedAt: now };

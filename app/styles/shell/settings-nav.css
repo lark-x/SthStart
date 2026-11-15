@@ -1,0 +1,9 @@
+/*
+ * SthStart Shell 样式职责拆分 - 设置中心分类横向子导航
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+.settings-navigation { position: sticky; top: var(--shell-sticky-top); z-index: var(--z-sticky); border-bottom: 1px solid var(--border-subtle); background: var(--paper); }
+.settings-navigation-items { display: flex; gap: 8px; overflow-x: auto; padding-block: 8px; }
+.settings-navigation-link { display: inline-flex; flex: none; align-items: center; gap: 8px; min-height: 36px; padding: 8px 12px; border-radius: var(--radius-control); color: var(--fg-muted); font-size: 14px; font-weight: 500; }
+.settings-navigation-link:hover { background: var(--surface-hover); color: var(--fg-default); }
+.settings-navigation-link[aria-current='page'] { background: var(--selection-bg); color: var(--selection-fg); font-weight: 600; }

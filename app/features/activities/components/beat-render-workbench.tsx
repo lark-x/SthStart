@@ -10,11 +10,12 @@ import type {
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Button } from '@/app/components/ui/button';
+import { Select } from '@/app/components/ui/select';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useToast } from '@/app/providers/ui-provider';
 import { ApiClientError } from '@/app/lib/api-client';
-import { fetchDraft } from '../api';
-import { fetchBeatRenderCandidates, previewBeatRender, rerenderBeatRenderCandidate, selectBeatRenderImage, submitBeatRender } from '../beat-renders-api';
+import { fetchDraft } from '@/app/features/activities/api/activities';
+import { fetchBeatRenderCandidates, previewBeatRender, rerenderBeatRenderCandidate, selectBeatRenderImage, submitBeatRender } from '@/app/features/activities/api/beat-renders';
 import { ImageModeSwitch, useImageAdvancedMode } from '@/app/features/generation/components/image-mode-switch';
 import { ImagePromptOverride } from '@/app/features/generation/components/image-prompt-override';
 import { StructuredDirectorControls, VisualParameterFields } from './visual-settings-controls';
@@ -247,26 +248,26 @@ export function BeatRenderWorkbench({
       <ImagePromptOverride advanced={showAdvanced} finalPositivePrompt={settings.finalPositivePrompt} promptOptimization={settings.promptOptimization}
         effectiveAI={plan?.promptOptimization.enabled ?? true} finalSupported={plan?.promptAssembly === 'service-finalized-v1'} sourcePrompt={plan?.positivePrompt ?? ''}
         disabled={Boolean(working)} onChange={patch => persistSettings({ ...settings, ...patch })} />
-      {!settings.presetId && !settings.workflowId && <label className="block space-y-1.5"><span className="text-sm font-medium">生成档位</span><select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></select></label>}
+      {!settings.presetId && !settings.workflowId && <label className="block space-y-1.5"><span className="text-sm font-medium">生成档位</span><Select aria-label="镜头绘制品质" className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm" value={settings.quality ?? ''} onChange={event => changeWorkflowSettings({ ...settings, quality: event.target.value ? event.target.value as 'draft' | 'final' : undefined })}><option value="">继承活动品质</option><option value="draft">草图</option><option value="final">成稿</option></Select></label>}
       <details hidden={!showAdvanced} className="rounded-control border border-border-subtle p-3"><summary className="cursor-pointer text-sm text-muted">切换其他工作流</summary>
       <label className="mt-3 block space-y-1.5"><span className="text-sm font-medium text-ink">工作流</span>
-        {plan?.workflowOptions.length ? <select aria-label="镜头工作流" value={`${settings.purpose ?? plan.purpose}|${settings.workflowId ?? plan.workflowId}|${settings.workflowVersion ?? plan.workflowVersion}`} onChange={(event) => {
+        {plan?.workflowOptions.length ? <Select aria-label="镜头工作流" value={`${settings.purpose ?? plan.purpose}|${settings.workflowId ?? plan.workflowId}|${settings.workflowVersion ?? plan.workflowVersion}`} onChange={(event) => {
           const item = plan.workflowOptions.find((option) => `${option.purpose}|${option.workflowId}|${option.workflowVersion}` === event.target.value);
           if (item) changeWorkflowSettings({ ...settings, purpose: item.purpose, workflowId: item.workflowId, workflowVersion: item.workflowVersion,
             presetId: item.presetId ?? undefined, presetRevision: undefined, parameters: undefined });
         }} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
           {plan.workflowOptions.map((item) => <option key={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`} value={`${item.purpose}|${item.workflowId}|${item.workflowVersion}`}>{workflowOptionLabel(item)}</option>)}
-        </select> : <p className="rounded border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-muted">{settingsLabel}</p>}
+        </Select> : <p className="rounded border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-muted">{settingsLabel}</p>}
         {selectedWorkflowOption && <span className="block text-xs text-muted">{defaultCanvasHint(selectedWorkflowOption, selectedWorkflowOption.workflowId)}</span>}
       </label></details>
       {plan?.presetOptions.length ? <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">生成方案</span>
-        <select aria-label="镜头绘制预设" value={settings.presetId ?? ''} onChange={(event) => {
+        <Select aria-label="镜头绘制预设" value={settings.presetId ?? ''} onChange={(event) => {
           const preset = plan.presetOptions.find((item) => item.id === event.target.value);
           changeWorkflowSettings({ ...settings, purpose: preset ? plan.purpose : undefined, workflowId: preset?.workflowId, workflowVersion: preset?.workflowVersion,
             presetId: preset?.id, presetRevision: preset?.revision, parameters: undefined });
         }} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
           <option value="">跟随活动默认配置</option>{plan.presetOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · 默认' : ''}</option>)}
-        </select>
+        </Select>
       </label> : null}
       <div className="flex flex-wrap items-center gap-3"><Button type="button" size="sm" variant="ghost" disabled={Boolean(working)} onClick={() => changeWorkflowSettings(restoreVisualDefaults(settings))}>恢复活动默认</Button><Link href="/settings/generation" target="_blank" rel="noopener noreferrer" className="inline-flex text-xs text-accent hover:underline">管理默认配置 / 测试连接</Link></div>
       <div className="space-y-1.5">
@@ -284,8 +285,8 @@ export function BeatRenderWorkbench({
           placeholder="补充构图、光影或画风要求；镜头动作会自动带入"
         />
       </div>
-      <label className="block space-y-1"><span className="text-xs font-medium text-muted">角色参考图</span><select aria-label="镜头参考图" disabled={Boolean(plan && !plan.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={event => persistSettings({ ...settings, referenceAssetKey: event.target.value || undefined })} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm">
-        <option value="">不使用参考图</option>{(actor?.appearanceReferenceAssetKeys ?? []).map(key => <option key={key} value={key}>{key}</option>)}</select>
+      <label className="block space-y-1"><span className="text-xs font-medium text-muted">角色参考图</span><Select aria-label="镜头参考图" disabled={Boolean(plan && !plan.referenceSupported)} value={settings.referenceAssetKey ?? ''} onChange={event => persistSettings({ ...settings, referenceAssetKey: event.target.value || undefined })} className="h-10 w-full rounded border border-border-control bg-surface px-3 text-sm">
+        <option value="">不使用参考图</option>{(actor?.appearanceReferenceAssetKeys ?? []).map(key => <option key={key} value={key}>{key}</option>)}</Select>
         {plan && !plan.referenceSupported && <span className="block text-xs text-muted">此方案不支持参考图，可切换兼容方案。</span>}
       </label>
       <details hidden={!showAdvanced} className="space-y-2 rounded-control border border-border-subtle p-3" aria-label="镜头 LoRA 配置">
@@ -309,14 +310,14 @@ export function BeatRenderWorkbench({
           </div>;
         })}
         {(settings.loraOverrides ?? []).filter((override) => !plan?.loras.some((item) => item.model === override.model)).map((override, index) => <div key={`${override.model}-${index}`} className="grid gap-2 border-t border-border-subtle pt-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]">
-          <select aria-label={`镜头 LoRA 文件 ${index + 1}`} value={override.model} onChange={(event) => {
+          <Select aria-label={`镜头 LoRA 文件 ${index + 1}`} value={override.model} onChange={(event) => {
             const model = event.target.value;
             const next = [...(settings.loraOverrides ?? [])]; next[index] = { ...override, model };
             persistSettings({ ...settings, loraOverrides: next });
           }} className="h-9 min-w-0 rounded border border-border-control bg-surface-raised px-2 text-xs text-ink">
             {plan?.loraModels.map((name) => <option key={name} value={name}>{name}</option>)}
             <option value={override.model}>{override.model}</option>
-          </select>
+          </Select>
           <Input aria-label="镜头 LoRA 强度" type="number" min={-10} max={10} step={0.05} value={override.strength ?? 1} onChange={(event) => {
             const next = [...(settings.loraOverrides ?? [])]; next[index] = { ...override, strength: Number(event.target.value) };
             persistSettings({ ...settings, loraOverrides: next });
@@ -425,16 +426,16 @@ export function BeatRenderWorkbench({
                     {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-fg-on-accent">细化</span>}
                   </button>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                    <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
-                      onClick={() => void selectImage(candidate, image.artifactId)}>使用</button>
-                    <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy}
-                      onClick={() => void rerender(candidate)}>按原配置重绘</button>
-                    <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
-                      onClick={() => { setSourcePreviewKey(''); setHiresSource({ candidate, image }); }}>放大细化</button>
+                    <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-1 py-0.5 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
+                      onClick={() => void selectImage(candidate, image.artifactId)}>使用</Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-1 py-0.5 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={actionBusy}
+                      onClick={() => void rerender(candidate)}>按原配置重绘</Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-1 py-0.5 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={actionBusy || !image.available}
+                      onClick={() => { setSourcePreviewKey(''); setHiresSource({ candidate, image }); }}>放大细化</Button>
                     {candidate.callId && <Link href={`/settings/ai-logs?callId=${encodeURIComponent(candidate.callId)}`} target="_blank" className="inline-flex items-center gap-0.5 text-accent hover:underline">日志<ExternalLink className="h-3 w-3" /></Link>}
-                    {isHires && <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!parent}
+                    {isHires && <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-1 py-0.5 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={!parent}
                       title={parent ? '显示本次细化所用的来源图' : '来源图在更早的分页里，请先加载更早图片'}
-                      onClick={() => setSourcePreviewKey((current) => current === itemKey ? '' : itemKey)}>来源图</button>}
+                      onClick={() => setSourcePreviewKey((current) => current === itemKey ? '' : itemKey)}>来源图</Button>}
                   </div>
                   {isHires && sourcePreviewKey === itemKey && parent && <div className="overflow-hidden rounded border border-border-default">
                     <img src={parent.image.mediaUrl} alt="细化来源图" className="h-auto w-full object-contain" />

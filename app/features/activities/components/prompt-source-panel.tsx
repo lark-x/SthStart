@@ -14,7 +14,8 @@ import {
 import type { PromptBlock, SourceRef } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { resolveImageSource } from '../api';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { resolveImageSource } from '@/app/features/activities/api/images';
 
 interface PromptSourcePanelProps {
   activityId: string;
@@ -133,21 +134,18 @@ export function PromptSourcePanel({
 
                 <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
                   {onToggleLock && (
-                    <button
-                      type="button"
-                      className="text-slate-400 hover:text-slate-200 p-1 rounded"
-                      title={b.locked ? '已锁定，AI改写不可变更' : '未锁定'}
+                    <IconButton
+                      icon={b.locked ? Lock : Unlock}
+                      label={b.locked ? '已锁定，AI改写不可变更' : '未锁定'}
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 min-h-7 w-7 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                      iconClassName={b.locked ? 'h-3.5 w-3.5 text-amber-400' : 'h-3.5 w-3.5 opacity-50'}
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleLock(b.id);
                       }}
-                    >
-                      {b.locked ? (
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      ) : (
-                        <Unlock className="w-3.5 h-3.5 opacity-50" />
-                      )}
-                    </button>
+                    />
                   )}
                   {isExpanded ? (
                     <ChevronUp className="w-3.5 h-3.5 text-slate-400" />

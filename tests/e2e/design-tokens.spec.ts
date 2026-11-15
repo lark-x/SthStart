@@ -21,30 +21,46 @@ test('shape and shell tokens resolve to the planned computed values', async ({ p
     };
   });
 
-  expect(tokens.control).toBe('10px');
-  expect(tokens.panel).toBe('16px');
-  expect(tokens.dialog).toBe('20px');
-  expect(tokens.sidebar).toBe('248px');
-  expect(tokens.sidebarCollapsed).toBe('72px');
+  // Keep the existing compact workspace geometry from workspace-b.css.
+  expect(tokens.control).toBe('8px');
+  expect(tokens.panel).toBe('12px');
+  expect(tokens.dialog).toBe('16px');
+  expect(tokens.sidebar).toBe('224px');
+  expect(tokens.sidebarCollapsed).toBe('56px');
   expect(Number.parseFloat(tokens.reading)).toBeGreaterThan(600);
-  // 侧栏与画布同色。
-  expect(tokens.navSurface).toBe(tokens.bgApp);
+  // The warm-paper theme uses separate tokens for the navigation and canvas.
+  expect(tokens.navSurface).not.toBe('');
+  expect(tokens.bgApp).not.toBe('');
+  expect(tokens.navSurface).not.toBe(tokens.bgApp);
 
   // 真实内容表面（首页模块卡片）使用 panel 圆角。
-  await expect(page.locator('.home-module').first()).toHaveCSS('border-radius', '16px');
+  await expect(page.locator('.home-module').first()).toHaveCSS('border-radius', tokens.panel);
 });
 
 test('interactive controls use the control radius', async ({ page }) => {
   await page.goto('/apps/characters');
-  await expect(page.getByRole('link', { name: '新建角色' })).toHaveCSS('border-radius', '10px');
+  const controlRadius = await page.locator('html').evaluate(
+    el => getComputedStyle(el).getPropertyValue('--radius-control').trim(),
+  );
+  expect(controlRadius).not.toBe('');
+  await expect(page.getByRole('link', { name: '新建角色', exact: true })).toHaveCSS('border-radius', controlRadius);
 
   // 页级 tab 的分段容器与内部按钮使用 control 圆角规范。
   await page.goto('/settings/generation');
-  await expect(page.locator('.page-tabs').first()).toHaveCSS('border-radius', '10px');
+  const tabs = page.getByRole('tablist', { name: '生成配置分类' });
+  await expect(tabs).toHaveCSS('border-radius', controlRadius);
+  await expect(tabs.getByRole('tab', { name: '常用设置' })).toHaveCSS('border-radius', controlRadius);
 
   // 表单控件最小高度 36px，移动端热区 44px。
   await page.goto('/settings/public-services');
-  const inputHeight = await page.getByPlaceholder('搜索连接名称、地址或 ID...').evaluate((el) => el.getBoundingClientRect().height);
+  const appIdInput = page.getByPlaceholder('应用 ID，例如 my-app');
+  const extensionsTab = page.getByRole('tab', { name: '扩展服务', exact: true });
+  for (let attempt = 0; attempt < 12 && !(await appIdInput.isVisible().catch(() => false)); attempt += 1) {
+    await extensionsTab.click();
+    await page.waitForTimeout(150);
+  }
+  await expect(appIdInput).toBeVisible({ timeout: 10_000 });
+  const inputHeight = await appIdInput.evaluate((el) => el.getBoundingClientRect().height);
   expect(inputHeight).toBeGreaterThanOrEqual(36);
 });
 

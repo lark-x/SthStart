@@ -4,18 +4,48 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, Cake, Film, ChevronLeft, ChevronRight, ExternalLink, SlidersHorizontal } from 'lucide-react';
+import {
+  CalendarDays,
+  Cake,
+  Film,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Plus,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer, Toolbar } from '@/app/components/shared/page-layout';
 import { SplitPanes } from '@/app/components/shared/split-panes';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { EmptyState } from '@/app/components/ui/empty-state';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useCalendarEvents, useCalendarFacets } from './queries';
 import type { CalendarEvent, CalendarFilter } from './api';
-import { daysInMonth, leadingBlanks, shiftCalendarMonth, toDateKey } from './calendar-state';
+import {
+  daysInMonth,
+  formatCalendarDate,
+  leadingBlanks,
+  shiftCalendarMonth,
+  toDateKey,
+} from './calendar-state';
+import './calendar.css';
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+const KINDS = [
+  ['all', '全部'],
+  ['birthday', '仅生日'],
+  ['activity', '仅活动'],
+] as const;
+
+function EventGlyph({ kind, className = 'size-3' }: { kind: CalendarEvent['kind']; className?: string }) {
+  return kind === 'birthday'
+    ? <Cake className={`${className} shrink-0`} aria-hidden="true" />
+    : <Film className={`${className} shrink-0`} aria-hidden="true" />;
+}
 
 const subscribeCalendarClock = () => () => {};
 const clientClockReady = () => true;
@@ -25,7 +55,14 @@ export function CalendarView() {
   // The container may use UTC while the browser is already on the next local day.
   // Render the same loading state for SSR and hydration, then use the user's clock.
   const ready = useSyncExternalStore(subscribeCalendarClock, clientClockReady, serverClockReady);
-  if (!ready) return <PageContainer><PageHeader compact title="角色日历" /><p role="status" className="py-8 text-muted">正在载入日历…</p></PageContainer>;
+  if (!ready) {
+    return (
+      <PageContainer className="space-y-4">
+        <PageHeader compact title="角色日历" />
+        <p role="status" className="py-8 text-muted">正在载入日历…</p>
+      </PageContainer>
+    );
+  }
   return <LocalCalendarView />;
 }
 
@@ -65,13 +102,18 @@ function LocalCalendarView() {
     return toDateKey(end.getFullYear(), end.getMonth() + 1, end.getDate());
   }, [year, month]);
 
-  const filter: CalendarFilter = {
+  const filter: CalendarFilter = useMemo(() => ({
     ...(query.trim() ? { q: query.trim() } : {}),
     ...(work ? { works: [work] } : {}),
     ...(favorite ? { favorite: true } : {}),
     ...(kind === 'all' ? {} : { kinds: [kind] }),
-  };
-  const { data, isLoading, error, refetch } = useCalendarEvents(gridStart, gridEnd, filter);
+  }), [favorite, kind, query, work]);
+  const { data, isLoading, isFetching, error, refetch } = useCalendarEvents(gridStart, gridEnd, filter);
+  /* 月份统计覆盖整月，而不是只覆盖补齐前后的可见格。范围请求会与网格查询一起缓存，
+   * 因此不必为摘要另做一次无谓的往返。 */
+  const monthStart = toDateKey(year, month, 1);
+  const monthEnd = toDateKey(year, month, daysInMonth(year, month));
+  const monthQuery = useCalendarEvents(monthStart, monthEnd, filter);
   const facets = useCalendarFacets();
 
   const byDate = useMemo(() => {
@@ -104,6 +146,24 @@ function LocalCalendarView() {
   const todayKey = toDateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
   const dayEvents = byDate.get(selectedDate) || [];
   const birthdays = dayEvents.filter((event) => event.kind === 'birthday');
+  const activities = dayEvents.filter((event) => event.kind === 'activity');
+  const monthEvents = useMemo(() => monthQuery.data?.events ?? [], [monthQuery.data]);
+  const monthBirthdayCount = monthEvents.filter((event) => event.kind === 'birthday').length;
+  const monthActivityCount = monthEvents.filter((event) => event.kind === 'activity').length;
+  const upcomingInMonth = useMemo(() => {
+    const seen = new Set<string>();
+    return monthEvents
+      .filter((event) => event.date > selectedDate)
+      .filter((event) => {
+        const key = `${event.date}:${event.kind}:${event.title}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 6);
+  }, [monthEvents, selectedDate]);
+  const activeFilterCount = Number(Boolean(work)) + Number(favorite);
+  const weeks = Math.max(1, Math.ceil(cells.length / 7));
   const shiftMonth = (delta: number) => {
     const next = shiftCalendarMonth(year, month, delta, selectedDate);
     setYear(next.year);
@@ -117,96 +177,142 @@ function LocalCalendarView() {
     setSelectedDate(todayKey);
     setPicked([]);
   };
-  const openPickerFor = (characterIds: string[]) => {
-    const params = new URLSearchParams({ template: 'birthday', date: selectedDate, characters: characterIds.join(',') });
+  const openPickerFor = (characterIds: string[], date = selectedDate) => {
+    const params = new URLSearchParams({ template: 'birthday', date, characters: characterIds.join(',') });
     router.push(`/apps/activities/new?${params.toString()}`);
+  };
+  const openBlankFor = (date = selectedDate) => {
+    const params = new URLSearchParams({ template: 'blank', date });
+    router.push(`/apps/activities/new?${params.toString()}`);
+  };
+  const selectDay = (date: string) => {
+    setSelectedDate(date);
+    setPicked([]);
   };
 
   return (
     <PageContainer className="space-y-4">
-        <PageHeader compact
-          title="角色日历"
-        />
+      <PageHeader compact title="角色日历" />
 
-        <ResponsiveEditOverlay
-          open={filtersOpen}
-          onOpenChange={setFiltersOpen}
-          title="日历筛选"
-          description="搜索与事件类型常驻在日历上方；作品和收藏条件可在这里调整。"
-          footer={<><Button variant="outline" onClick={() => { setWork(''); setFavorite(false); }}>重置</Button><Button variant="primary" onClick={() => setFiltersOpen(false)}>完成</Button></>}
-        >
-          <div className="space-y-4">
-            <label className="block space-y-1.5 text-sm font-medium text-ink" htmlFor="calendar-work-filter">作品
-              <select id="calendar-work-filter" disabled={facets.isLoading} className="h-11 w-full rounded-control border border-border-control bg-surface-raised px-3 text-base font-normal disabled:opacity-60" value={work} onChange={(event) => setWork(event.target.value)}>
-                <option value="">全部作品</option>
-                {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
-              </select>
-              {facets.isError && <span role="alert" className="block text-xs font-normal text-danger-fg">作品列表读取失败。{facets.error instanceof Error ? facets.error.message : '已有作品筛选不会被删除。'}</span>}
-            </label>
-            <label className="flex min-h-11 items-center gap-3 rounded-xl bg-surface-muted/50 px-3 text-sm text-ink">
-              <input type="checkbox" checked={favorite} onChange={(event) => setFavorite(event.target.checked)} className="h-4 w-4 accent-accent" />
-              仅显示收藏角色相关的事件
-            </label>
+      <ResponsiveEditOverlay
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        title="日历筛选"
+        description="搜索与事件类型常驻在日历上方；作品和收藏条件可在这里调整。"
+        footer={<><Button variant="outline" onClick={() => { setWork(''); setFavorite(false); }}>重置</Button><Button variant="primary" onClick={() => setFiltersOpen(false)}>完成</Button></>}
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <span className="block text-sm font-medium text-ink">作品</span>
+            <Select
+              aria-label="作品"
+              disabled={facets.isLoading}
+              value={work}
+              onChange={(event) => setWork(event.target.value)}
+            >
+              <option value="">全部作品</option>
+              {(facets.data?.facets.works || []).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+            </Select>
+            {facets.isError && <span role="alert" className="block text-xs font-normal text-danger-fg">作品列表读取失败。{facets.error instanceof Error ? facets.error.message : '已有作品筛选不会被删除。'}</span>}
           </div>
-        </ResponsiveEditOverlay>
-
-        {error && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger-fg"><p>{error instanceof Error ? error.message : String(error)}</p><Button size="sm" variant="outline" onClick={() => { void refetch(); }}>重试读取日历</Button></div>}
-
-        {/* 左月历与右当天详情各自滚动：右侧生日名单再长也不会把月历拉长（§4.4）。 */}
-        <SplitPanes
-          className="lg:grid-cols-[minmax(0,1fr)_360px]"
-          from="lg"
-          labels={{ left: '月历', right: '当天详情' }}
-          left={
-          <section className="tpl-panel overflow-hidden">
-        <Toolbar className="border-b border-border-subtle px-3" aria-label="月历筛选">
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" aria-label="上个月" onClick={() => shiftMonth(-1)}>
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            </Button>
-            <span className="min-w-28 text-center text-sm font-semibold text-ink" aria-live="polite">
-              {year} 年 {month} 月
-            </span>
-            <Button size="sm" variant="ghost" aria-label="下个月" onClick={() => shiftMonth(1)}>
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={goToday}>今天</Button>
-          </div>
-          <Input
-            aria-label="搜索角色或活动"
-            placeholder="搜索角色姓名或活动标题…"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            onCompositionStart={() => { composingSearchRef.current = true; }}
-            onCompositionEnd={(event) => {
-              composingSearchRef.current = false;
-              setSearchInput(event.currentTarget.value);
-              setQuery(event.currentTarget.value);
-            }}
-            className="w-full sm:ml-auto sm:w-64"
+          <Checkbox
+            label="仅显示收藏角色相关的事件"
+            checked={favorite}
+            onChange={(event) => setFavorite(event.target.checked)}
           />
-          <div className="flex items-center gap-4 text-sm">
-            {([['all', '全部'], ['birthday', '仅生日'], ['activity', '仅活动']] as const).map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setKind(value)} aria-pressed={kind === value} className={`border-b-2 py-1.5 text-sm transition-colors cursor-pointer ${kind === value ? 'border-accent font-semibold text-ink' : 'border-transparent text-muted hover:text-ink'}`}>{label}</button>
-            ))}
-          </div>
-          <Button type="button" size="sm" variant="ghost" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{work || favorite ? ' · 已启用' : ''}</Button>
-          {isLoading && <span className="text-sm text-muted">正在更新…</span>}
-        </Toolbar>
-        {(work || favorite) && <div className="px-3 py-2 flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="当前筛选条件">
-          {work && <span className="rounded-full bg-surface-muted px-2.5 py-1">作品：{work}</span>}
-          {favorite && <span className="rounded-full bg-surface-muted px-2.5 py-1">仅收藏角色</span>}
-          <button type="button" className="text-ink hover:underline" onClick={() => { setWork(''); setFavorite(false); }}>清除</button>
-        </div>}
+        </div>
+      </ResponsiveEditOverlay>
 
-            <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5">
-              <h2 className="text-sm font-semibold text-ink">{year} 年 {month} 月</h2>
-              <span className="text-xs text-muted">{error ? '记录暂不可用' : `共 ${(data?.events || []).length} 项`}</span>
+      {error && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger-fg"><p>{error instanceof Error ? error.message : String(error)}</p><Button size="sm" variant="outline" onClick={() => { void refetch(); }}>重试读取日历</Button></div>}
+
+      {/* 左月历与右当天详情各自滚动：右侧名单再长也不会把月历拉长（§4.4）。 */}
+      <SplitPanes
+        className="lg:grid-cols-[minmax(0,1fr)_360px]"
+        from="lg"
+        labels={{ left: '月历', right: '当天详情' }}
+        left={
+          <section className="calendar-panel tpl-panel">
+            <Toolbar className="calendar-toolbar border-b border-border-subtle" aria-label="月历筛选">
+              <div className="calendar-month-nav">
+                <Button size="sm" variant="ghost" aria-label="上个月" onClick={() => shiftMonth(-1)}>
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <h2 className="calendar-month-label" aria-live="polite">{year} 年 {month} 月</h2>
+                <Button size="sm" variant="ghost" aria-label="下个月" onClick={() => shiftMonth(1)}>
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={goToday}>今天</Button>
+              </div>
+
+              <Input
+                aria-label="搜索角色或活动"
+                placeholder="搜索角色姓名或活动标题…"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onCompositionStart={() => { composingSearchRef.current = true; }}
+                onCompositionEnd={(event) => {
+                  composingSearchRef.current = false;
+                  setSearchInput(event.currentTarget.value);
+                  setQuery(event.currentTarget.value);
+                }}
+                className="calendar-search"
+              />
+
+              <div className="calendar-kind-switch" role="group" aria-label="事件类型">
+                {KINDS.map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={kind === value ? 'secondary' : 'ghost'}
+                    aria-pressed={kind === value}
+                    onClick={() => setKind(value)}
+                    className="ui-choice"
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen(true)}
+                className="calendar-filter-trigger"
+              >
+                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}
+              </Button>
+            </Toolbar>
+
+            {(work || favorite) && (
+              <div className="calendar-active-filters" aria-label="当前筛选条件">
+                {work && <span>作品：{work}</span>}
+                {favorite && <span>仅收藏角色</span>}
+                <Button type="button" size="sm" variant="ghost" onClick={() => { setWork(''); setFavorite(false); }}>清除</Button>
+              </div>
+            )}
+
+            <div className="calendar-summary">
+              <div className="calendar-legend" aria-label="图例">
+                <span><i data-kind="birthday" aria-hidden="true" />生日 {monthBirthdayCount}</span>
+                <span><i data-kind="activity" aria-hidden="true" />活动 {monthActivityCount}</span>
+              </div>
+              <span className="calendar-summary-count" role="status">
+                {isFetching || monthQuery.isFetching ? '正在更新…' : `本月 ${monthEvents.length} 项`}
+              </span>
             </div>
-            <div className="grid grid-cols-7 border-b border-border-subtle bg-surface-sunken/60 text-center text-xs font-semibold text-muted">
-              {WEEKDAYS.map((label) => <div key={label} className="py-2">{label}</div>)}
+
+            <div className="calendar-weekdays" aria-hidden="true">
+              {WEEKDAYS.map((label) => <span key={label}>{label}</span>)}
             </div>
-            <div className="grid grid-cols-7 gap-px bg-border-subtle">
+
+            <div
+              className="calendar-grid"
+              style={{ '--calendar-weeks': weeks } as React.CSSProperties}
+            >
               {cells.map((cell) => {
                 const events = byDate.get(cell.key) || [];
                 const inMonth = cell.day !== undefined;
@@ -216,42 +322,68 @@ function LocalCalendarView() {
                   <button
                     key={cell.key}
                     type="button"
+                    className={`calendar-day ui-choice ${inMonth ? 'is-in-month' : 'is-outside'}`}
                     disabled={!inMonth}
-                    onClick={() => { setSelectedDate(cell.key); setPicked([]); }}
+                    onClick={() => selectDay(cell.key)}
                     aria-label={inMonth ? `${cell.key}，${events.length} 项事件` : undefined}
                     aria-pressed={isSelected}
-                    className={`min-h-20 p-1.5 text-left align-top text-sm transition-colors ${isSelected ? 'bg-accent/5 ring-1 ring-inset ring-accent/30' : inMonth ? 'bg-surface hover:bg-surface-hover' : 'bg-surface-sunken/35 opacity-45'}`}
+                    data-today={isToday || undefined}
                   >
-                    <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${isToday ? 'text-accent-dark' : 'text-ink'}`}>{cell.day}</span>
-                    <span className="mt-1 flex flex-col gap-1">
+                    <span className="calendar-day-date">{cell.day}</span>
+                    <span className="calendar-day-events">
                       {events.slice(0, 3).map((event) => (
-                        <span key={event.id} className="flex min-w-0 items-center gap-1 truncate py-0.5 text-xs text-ink">
-                          {event.kind === 'birthday' ? <Cake className="size-3 shrink-0 text-muted" /> : <Film className="size-3 shrink-0 text-muted" />}
-                          <span className="truncate">{event.title}</span>
+                        <span key={event.id} data-kind={event.kind} className="calendar-day-event">
+                          <EventGlyph kind={event.kind} />
+                          <span>{event.title}</span>
                         </span>
                       ))}
-                      {events.length > 3 && <span className="px-1 text-muted">还有 {events.length - 3} 项</span>}
+                      {events.length > 3 && <span className="calendar-day-overflow">还有 {events.length - 3} 项</span>}
+                    </span>
+                    <span className="calendar-day-dots" aria-hidden="true">
+                      {events.slice(0, 4).map((event) => <i key={event.id} data-kind={event.kind} />)}
+                      {events.length > 4 && <b>+{events.length - 4}</b>}
                     </span>
                   </button>
                 );
               })}
             </div>
           </section>
-          }
-          right={
-          <section className="tpl-panel space-y-4 p-4">
-            <div>
-              <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink"><CalendarDays className="h-4 w-4 text-muted" />当天安排 <span className="font-normal text-muted">{selectedDate}</span></h2>
-            </div>
-            {error ? <p className="text-sm text-muted">暂时无法确认当天安排，请重试读取日历。</p> : !isLoading && !dayEvents.length && <p className="text-sm text-muted">这一天没有生日或活动。</p>}
+        }
+        right={
+          <section className="calendar-day-panel tpl-panel" aria-label="当天详情">
+            <header className="calendar-day-head">
+              <div>
+                <p className="calendar-day-kicker"><CalendarDays className="h-4 w-4" aria-hidden="true" />当天安排</p>
+                <h2>{formatCalendarDate(selectedDate)}</h2>
+                <p className="calendar-day-raw">{selectedDate}</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => openBlankFor()}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                新建活动
+              </Button>
+            </header>
+
+            {error ? (
+              <p className="calendar-day-empty">暂时无法确认当天安排，请重试读取日历。</p>
+            ) : !isLoading && !dayEvents.length ? (
+              <EmptyState
+                icon={CalendarDays}
+                title="这一天没有生日或活动。"
+                description="可以从右上角新建空白活动，或从其他日期带入寿星。"
+                className="calendar-day-empty"
+              />
+            ) : null}
+
             {!!birthdays.length && (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-ink">寿星 <span className="font-normal text-muted">{birthdays.length} 位</span></p>
-                <ul className="divide-y divide-border-subtle border-y border-border-subtle">
+              <div className="calendar-day-group">
+                <div className="calendar-group-title">
+                  <span>寿星名单</span>
+                  <span className="calendar-group-count">寿星 {birthdays.length} 位</span>
+                </div>
+                <ul className="calendar-birthday-list">
                   {birthdays.map((event) => (
-                    <li key={event.id} className="flex items-center gap-2.5 py-3 text-sm">
-                      <input
-                        type="checkbox"
+                    <li key={event.id}>
+                      <Checkbox
                         aria-label={`选择${event.characterName || event.title}`}
                         checked={picked.includes(String(event.characterId))}
                         onChange={(event_) => {
@@ -260,38 +392,72 @@ function LocalCalendarView() {
                         }}
                       />
                       {event.avatarUrl
-                        ? <Image src={event.avatarUrl} alt="" width={24} height={24} unoptimized className="h-6 w-6 rounded-md object-cover" />
-                        : <Cake className="h-4 w-4 text-muted" />}
-                      <span className="min-w-0 flex-1 truncate">{event.characterName}{event.work ? <span className="text-muted"> · {event.work}</span> : null}</span>
+                        ? <Image src={event.avatarUrl} alt="" width={28} height={28} unoptimized className="calendar-avatar" />
+                        : <span className="calendar-avatar calendar-avatar-fallback"><Cake className="h-4 w-4" aria-hidden="true" /></span>}
+                      <span className="calendar-birthday-name">
+                        {event.characterName}
+                        {event.work ? <span className="calendar-work"> · {event.work}</span> : null}
+                      </span>
                       <Button size="sm" variant="ghost" onClick={() => openPickerFor([String(event.characterId)])}>创建活动</Button>
                     </li>
                   ))}
                 </ul>
-                <Button size="sm" variant="primary" disabled={!picked.length} onClick={() => openPickerFor(picked)}>
-                  为选中的 {picked.length} 位寿星合办生日活动
+                <Button size="sm" variant="primary" className="w-full" disabled={!picked.length} onClick={() => openPickerFor(picked)}>
+                  {picked.length ? `为选中的 ${picked.length} 位寿星合办生日活动` : '选择寿星后合办生日活动'}
                 </Button>
               </div>
             )}
-            {dayEvents.some((event) => event.kind === 'activity') && (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-ink">已排期活动</p>
-                <ul className="divide-y divide-border-subtle border-y border-border-subtle">
-                  {dayEvents.filter((event) => event.kind === 'activity').map((event) => (
-                    <li key={event.id} className="py-3 text-sm">
-                      <span className="flex items-center gap-2 font-medium text-ink"><Film className="h-4 w-4 text-muted" />{event.title}</span>
-                      <div className="mt-1.5 flex items-center justify-between text-xs text-muted">
+
+            {!!activities.length && (
+              <div className="calendar-day-group">
+                <div className="calendar-group-title">
+                  <span>已排期活动</span>
+                  <span className="calendar-group-count">{activities.length} 项</span>
+                </div>
+                <ul className="calendar-activity-list">
+                  {activities.map((event) => (
+                    <li key={event.id}>
+                      <span className="calendar-activity-icon"><Film className="h-4 w-4" aria-hidden="true" /></span>
+                      <div className="calendar-activity-copy">
+                        <p>{event.title}</p>
                         <span>参与角色 {event.participantCount ?? 0} 位</span>
-                        <Link className="inline-flex items-center gap-1 text-ink hover:text-accent" href={`/apps/activities/${event.activityId}`}>打开活动<ExternalLink className="h-3 w-3" /></Link>
                       </div>
+                      <Link className="calendar-activity-link" href={`/apps/activities/${event.activityId}`}>
+                        打开活动<ExternalLink className="h-3 w-3" aria-hidden="true" />
+                      </Link>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            <p className="text-xs text-muted">未排期的活动不会出现在日历上；2 月 29 日的生日只在闰年显示。</p>
+
+            {!!upcomingInMonth.length && (
+              <div className="calendar-upcoming">
+                <div className="calendar-group-title">
+                  <span>本月后续</span>
+                  <span className="calendar-group-count">{formatCalendarDate(selectedDate, { short: true })} 起</span>
+                </div>
+                <ul>
+                  {upcomingInMonth.map((event) => (
+                    <li key={`${event.id}:upcoming`}>
+                      <button type="button" onClick={() => selectDay(event.date)}>
+                        <span className="calendar-upcoming-date">{event.date.slice(8, 10)}<small>日</small></span>
+                        <span className="calendar-upcoming-copy">
+                          <span>{event.title}</span>
+                          <small>{event.kind === 'birthday' ? '生日' : `活动${event.participantCount ? ` · ${event.participantCount} 位参与` : ''}`}</small>
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="calendar-footnote">未排期的活动不会出现在日历上；2 月 29 日的生日只在闰年显示。</p>
           </section>
-          }
-        />
+        }
+      />
     </PageContainer>
   );
 }

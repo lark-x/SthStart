@@ -4,8 +4,10 @@ import {useMutation,useQueryClient} from '@tanstack/react-query';
 import {Value} from '@sinclair/typebox/value';
 import {StudioTargetSchema,StudioHealthResultSchema,type StudioTarget,type StudioJob,type StudioHealthResult} from '@sthstart/contracts';
 import {Button} from '@/app/components/ui/button';
+import {FormField} from '@/app/components/ui/form-field';
 import {ResponsiveEditOverlay} from '@/app/components/ui/responsive-edit-overlay';
-import {inspectStudioHealth} from '../studio-api';
+import {Select} from '@/app/components/ui/select';
+import { inspectStudioHealth } from '@/app/features/activities/api/studio';
 
 const labels={text:'提示词优化模型',connection:'生成实例连接',workflow:'工作流与输入输出',files:'模型与参考文件',queue:'生成队列'} as const;
 const statuses={ok:'可用',error:'需处理',unknown:'未确认',not_required:'无需配置'} as const;
@@ -33,9 +35,9 @@ export function StudioHealthPanel({activityId,job}:{activityId:string;job:Studio
     <ResponsiveEditOverlay open={open} onOpenChange={changeOpen} title="生成环境检查" footer={<><Button variant="outline" onClick={()=>changeOpen(false)}>关闭</Button><Button loading={operation.isPending} onClick={()=>void check()}>重新检查</Button></>}>
       <div className="space-y-4 min-w-0">
         <p className="text-sm text-muted">只检查已保存的目标设置，不调用文本模型、不绘制，也不会重新提交原任务。真正绘制前仍会再次校验。</p>
-        <label className="block space-y-1 text-sm"><span>检查目标</span><select className="w-full min-w-0 rounded-lg border border-line bg-surface p-2" value={key} disabled={operation.isPending} onChange={e=>{setChosen(e.target.value);setResult(null);setError('');remember({open:true,chosen:e.target.value});}}>
+        <FormField label="检查目标"><Select value={key} disabled={operation.isPending} onChange={e=>{setChosen(e.target.value);setResult(null);setError('');remember({open:true,chosen:e.target.value});}}>
           {targets.map(([id,{target,name}],index)=><option key={id} value={id}>{index+1}. {name??(target.kind==='beat'?`镜头 ${target.beatId}`:target.kind==='comic_panel'?`画格 ${target.panelId}`:`素材 ${target.slotId}`)}</option>)}
-        </select></label>
+        </Select></FormField>
         {error&&<p role="alert" className="text-sm text-danger-fg">{error}</p>}
         {!visible&&!error&&<p role="status" className="text-sm text-muted">点击“重新检查”，依次核对模型绑定、连接、工作流、文件与队列。</p>}
         {visible&&<>

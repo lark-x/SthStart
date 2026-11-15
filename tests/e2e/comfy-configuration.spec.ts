@@ -1,8 +1,27 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 
 const e2eAdminToken = 'sthstart-e2e-secret-0123456789abcdef';
 const e2eServiceUrl = `http://127.0.0.1:${process.env.E2E_SERVICE_PORT ?? 4200}`;
 const adminHeaders = { 'x-sthstart-admin-token': e2eAdminToken };
+let rejectingEngine: Server;
+let rejectingEngineUrl: string;
+test.beforeAll(async () => {
+  // 确定拒绝，不接受任务。保留端口 9 会被 fetch 本身拦截为无状态网络异常，
+  // 不能作为“上游已确认失败”的证据，否则公共队列必须保持待核对占用。
+  rejectingEngine = createServer((req, res) => {
+    req.resume();
+    res.writeHead(req.url === '/prompt' ? 422 : 503, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'fixture_rejected', message: '测试引擎明确拒绝，本次请求未入队。' }));
+  });
+  await new Promise<void>((resolve) => rejectingEngine.listen(0, '127.0.0.1', resolve));
+  rejectingEngineUrl = `http://127.0.0.1:${(rejectingEngine.address() as AddressInfo).port}`;
+});
+test.afterAll(async () => {
+  rejectingEngine?.closeAllConnections();
+  if (rejectingEngine?.listening) await new Promise<void>((resolve, reject) => rejectingEngine.close((error) => error ? reject(error) : resolve()));
+});
 
 /** 与配置工作台测试样本一致的 ComfyUI API JSON（checkpoint + 双提示词 + KSampler + SaveImage）。 */
 const sampleDefinition = {
@@ -24,10 +43,10 @@ interface SeededWorkspace {
 
 async function seedWorkspace(request: APIRequestContext, options?: { setDefault?: boolean }): Promise<SeededWorkspace> {
   const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-  // 连接指向保留端口（unreachable）：连接失败必须如实显示，不伪造成功。
+  // 本地测试引擎明确拒绝请求：失败如实显示，未创建真实生图任务。
   const engine = await request.post(`${e2eServiceUrl}/api/v1/admin/generation/engines`, {
     headers: adminHeaders,
-    data: { id: `e2e-engine-${suffix}`, name: `E2E 直连 ${suffix}`, kind: 'comfyui', baseUrl: 'http://127.0.0.1:9', concurrencyLimit: 1 },
+    data: { id: `e2e-engine-${suffix}`, name: `E2E 直连 ${suffix}`, kind: 'comfyui', baseUrl: rejectingEngineUrl, concurrencyLimit: 1 },
   });
   const engineId = (await engine.json()).id as string;
 
@@ -274,9 +293,8 @@ test('test request uses fresh version defaults rather than resending stale model
   await workspace.locator('#param-default-steps').fill('36');
   await workspace.locator('#param-section-steps').selectOption('fixed');
   await workspace.locator('#param-default-checkpoint').fill('changed/model.safetensors');
-  // 设置中心内容区限宽，试运行不常驻右栏，经抽屉打开；抽屉里用的是同一份未保存草稿。
-  await workspace.getByRole('button', { name: '试运行' }).click();
-  const panel = page.getByRole('dialog').getByTestId('test-run-panel');
+  // 宽屏工作区直接展示试运行栏；与窄屏抽屉使用同一份未保存草稿。
+  const panel = workspace.getByRole('complementary', { name: '试运行区' }).getByTestId('test-run-panel');
   await expect(panel).toBeVisible();
   await expect(panel.locator('#test-seed')).toHaveCount(1);
   await panel.getByLabel('提示词', { exact: true }).fill('fresh defaults');

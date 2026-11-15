@@ -12,7 +12,10 @@ import { aiCallBusinessHref } from '@/app/features/ai-calls/business-href';
 import { businessEventLabel, businessEventTitle, traceGroupTitle } from '@/app/features/ai-calls/business-event-label';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Drawer } from '@/app/components/ui/drawer';
+import { Alert } from '@/app/components/ui/alert';
+import { Badge } from '@/app/components/ui/badge';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
@@ -32,6 +35,14 @@ const statusLabels: Record<string, string> = {
   requested: '已记录', not_dispatched: '未发送', submitted: '已提交', accepted: '已接收', running: '运行中',
   succeeded: '成功', failed: '失败', abandoned: '中断',
 };
+
+function statusBadgeVariant(status: string): 'online' | 'busy' | 'error' | 'warning' | 'secondary' {
+  if (status === 'succeeded') return 'online';
+  if (status === 'running' || status === 'submitted' || status === 'accepted') return 'busy';
+  if (status === 'failed') return 'error';
+  if (status === 'abandoned' || status === 'not_dispatched') return 'warning';
+  return 'secondary';
+}
 
 function time(value: string | null) {
   if (!value) return '—';
@@ -88,6 +99,7 @@ function ArtifactPreview({ artifact }: { artifact: AiCallDetail['artifactDetails
     <div className="mt-1 break-all text-muted">{artifact.available ? '产物可用' : '产物已不可用'}{artifact.sha256 ? ` · SHA-256 ${artifact.sha256}` : ''}</div>
     {artifact.available && artifact.previewUrl && !failed
       ? <a href={artifact.previewUrl} target="_blank" rel="noreferrer" className="mt-3 block overflow-hidden rounded-control bg-surface-muted" aria-label={`打开产物预览 ${artifact.id}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- 动态产物预览 URL 依赖原生 img 与 onError 回退 */}
         <img src={artifact.previewUrl} alt={`生成产物 ${artifact.id}`} onError={() => setFailed(true)} className="max-h-72 w-full object-contain" />
       </a>
       : artifact.available && failed
@@ -105,14 +117,23 @@ function DetailGroup({ title, hint, children }: { title: string; hint: string; c
 }
 
 function CallButton({ item, selectedId, selectCall }: { item: AiCallSummary; selectedId: string; selectCall: (id: string) => void }) {
-  return <button type="button" onClick={() => selectCall(item.id)} aria-current={selectedId === item.id ? 'true' : undefined} className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 xl:grid-cols-1 px-3 py-3 text-left hover:bg-surface-muted/50 ${selectedId === item.id ? 'bg-accent/5' : ''}`}>
-    <span className="min-w-0">
-      <span className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold text-ink">{businessEventTitle(item.businessEvent)}</span><span className="shrink-0 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">{statusLabels[item.status] ?? item.status}</span></span>
-      <span className="mt-1 block truncate text-xs text-muted">{item.applicationId} · {item.callType} · {item.models.join(', ') || item.provider || '模型待确认'}</span>
-      <span className="mt-1 hidden truncate font-mono text-xs text-muted sm:block">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
+  const selected = selectedId === item.id;
+  return <Button
+    type="button"
+    variant="ghost"
+    onClick={() => selectCall(item.id)}
+    aria-current={selected ? 'true' : undefined}
+    className={`h-auto min-h-0 w-full min-w-0 gap-0 whitespace-normal rounded-none border-0 px-3 py-3 text-left font-normal [line-height:inherit] text-ink enabled:active:scale-100 enabled:hover:bg-surface-muted/50 enabled:hover:text-ink sm:min-h-0 [&_.ui-mantine-button-inner]:h-auto [&_.ui-mantine-button-inner]:w-full [&_.ui-mantine-button-label]:h-auto [&_.ui-mantine-button-label]:w-full [&_.ui-mantine-button-label]:overflow-visible [&_.ui-mantine-button-label]:whitespace-normal [&_.ui-mantine-button-label]:[text-box-trim:none] ${selected ? 'bg-[var(--selection-bg)]' : ''}`}
+  >
+    <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 xl:grid-cols-1">
+      <span className="min-w-0">
+        <span className="flex min-w-0 items-center justify-between gap-2"><span className="truncate font-semibold text-ink">{businessEventTitle(item.businessEvent)}</span><Badge variant={statusBadgeVariant(item.status)} className="shrink-0">{statusLabels[item.status] ?? item.status}</Badge></span>
+        <span className="mt-1 block truncate text-xs text-muted">{item.applicationId} · {item.callType} · {item.models.join(', ') || item.provider || '模型待确认'}</span>
+        <span className="mt-1 hidden truncate font-mono text-xs text-muted sm:block">{item.workflowId ? `${item.workflowId} v${item.workflowVersion ?? '?'}` : item.objectId ?? item.id}</span>
+      </span>
+      <span className="flex items-center justify-between gap-2 text-left sm:text-right xl:text-left text-xs text-muted"><span>{time(item.requestedAt)}<br />{item.durationMs == null ? '耗时处理中' : `${item.durationMs} ms`}</span><ChevronRight className="h-4 w-4 shrink-0" /></span>
     </span>
-    <span className="flex items-center justify-between gap-2 text-left sm:text-right xl:text-left text-xs text-muted"><span>{time(item.requestedAt)}<br />{item.durationMs == null ? '耗时处理中' : `${item.durationMs} ms`}</span><ChevronRight className="h-4 w-4 shrink-0" /></span>
-  </button>;
+  </Button>;
 }
 
 export function AiLogsClient() {
@@ -163,9 +184,9 @@ export function AiLogsClient() {
 
   const detailContent = (<>
           {activeBusinessHref && <div className="mb-3 flex justify-end"><Link href={activeBusinessHref} className="inline-flex items-center gap-1 text-sm text-ink hover:text-accent">返回业务页面<ExternalLink className="h-3.5 w-3.5" /></Link></div>}
-          {!selectedId ? <div className="p-8 text-sm text-muted">选择一条调用，查看脱敏后的请求、响应和作业时间线。</div>
+          {!selectedId ? <div className="flex min-h-[280px] items-center justify-center p-8 text-center text-sm text-muted">选择一条调用，查看脱敏后的请求、响应和作业时间线。</div>
             : detail.isPending ? <div className="p-6 text-sm text-muted">正在读取调用详情…</div>
-              : detail.isError ? <div role="alert" className="p-6 text-sm text-danger-fg">读取详情失败：{detail.error.message}<Button variant="outline" disabled={detail.isFetching} onClick={() => void detail.refetch()}>重试详情</Button></div>
+              : detail.isError ? <div className="p-6"><Alert variant="danger" title="读取详情失败"><p>{detail.error.message}</p><Button variant="outline" className="mt-3" disabled={detail.isFetching} onClick={() => void detail.refetch()}>重试详情</Button></Alert></div>
                 : detail.data && <div className="min-w-0 space-y-4 pb-6">
                   {/* 计划 §15.3：来源 → 优化 → 规则 → 最终输入 → 实际图 → 产物，长 JSON 折叠但信息不删。 */}
                   <DetailGroup title="来源" hint="这次调用由哪个业务对象、哪次作业发起。">
@@ -176,7 +197,7 @@ export function AiLogsClient() {
                       <div><div className="text-xs text-muted">请求 / 结束</div><div className="font-medium text-ink">{time(detail.data.requestedAt)}<br />{time(detail.data.endedAt)}</div></div>
                     </div>
                     <div className="break-all rounded-control bg-surface-muted px-3 py-2 text-xs text-muted">追踪 ID：<span className="font-mono text-ink">{detail.data.traceId}</span></div>
-                    {(detail.data.error || detail.data.errorCode) && <div role="alert" className="rounded border border-danger-fg/20 bg-danger-fg/5 p-3 text-sm text-danger-fg">{detail.data.errorCode && <span className="font-semibold">{detail.data.errorCode}: </span>}{detail.data.error}</div>}
+                    {(detail.data.error || detail.data.errorCode) && <Alert variant="danger" title="调用错误">{detail.data.errorCode && <span className="font-semibold">{detail.data.errorCode}: </span>}{detail.data.error}</Alert>}
                   </DetailGroup>
 
                   <DetailGroup title="优化" hint="文本模型的原始响应与用量，不做截断。">
@@ -185,7 +206,7 @@ export function AiLogsClient() {
                   </DetailGroup>
 
                   <DetailGroup title="规则" hint="实际生效的参数与各执行阶段，含规则／知识诊断。">
-                    <div><h3 className="mb-2 text-sm font-semibold text-ink">作业时间线（{detail.data.traceCalls.length} 次调用）</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.traceCalls.map((call, index) => <li key={call.id} className="relative text-sm"><span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${call.status === 'failed' ? 'bg-danger-fg' : 'bg-border-strong'}`} /><button type="button" onClick={() => selectCall(call.id)} className="font-medium text-ink hover:text-accent" aria-current={call.id === selectedId ? 'true' : undefined}>{index + 1}. {businessEventLabel(call.businessEvent)} · {statusLabels[call.status] ?? call.status}</button><div className="text-xs text-muted">{time(call.requestedAt)}{call.durationMs != null ? ` · ${call.durationMs} ms` : ''}{call.models.length ? ` · ${call.models.join(', ')}` : ''}</div>{call.error && <div className="text-xs text-danger-fg">{call.errorCode ? `${call.errorCode}: ` : ''}{call.error}</div>}</li>)}</ol></div>
+                    <div><h3 className="mb-2 text-sm font-semibold text-ink">作业时间线（{detail.data.traceCalls.length} 次调用）</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.traceCalls.map((call, index) => <li key={call.id} className="relative text-sm"><span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${call.status === 'failed' ? 'bg-danger-fg' : 'bg-border-strong'}`} /><Button type="button" variant="ghost" onClick={() => selectCall(call.id)} className="h-auto min-h-0 whitespace-normal border-0 px-0 py-0 text-left text-sm font-medium [line-height:inherit] text-ink enabled:active:scale-100 enabled:hover:bg-transparent enabled:hover:text-accent sm:min-h-0 [&_.ui-mantine-button-inner]:h-auto [&_.ui-mantine-button-label]:h-auto [&_.ui-mantine-button-label]:overflow-visible [&_.ui-mantine-button-label]:whitespace-normal [&_.ui-mantine-button-label]:[text-box-trim:none]" aria-current={call.id === selectedId ? 'true' : undefined}>{index + 1}. {businessEventLabel(call.businessEvent)} · {statusLabels[call.status] ?? call.status}</Button><div className="text-xs text-muted">{time(call.requestedAt)}{call.durationMs != null ? ` · ${call.durationMs} ms` : ''}{call.models.length ? ` · ${call.models.join(', ')}` : ''}</div>{call.error && <div className="text-xs text-danger-fg">{call.errorCode ? `${call.errorCode}: ` : ''}{call.error}</div>}</li>)}</ol></div>
                     <div><h3 className="mb-2 text-sm font-semibold text-ink">单次调用事件</h3><ol className="space-y-2 border-l border-border-default pl-4">{detail.data.events.map((event) => <li key={event.id} className="relative text-sm"><span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-border-strong" /><div className="font-medium text-ink">{event.phase}</div><div className="text-xs text-muted">{time(event.createdAt)}</div>{Object.keys(event.detail).length > 0 && <div className="mt-1"><JsonBlock value={event.detail} /></div>}</li>)}</ol></div>
                     <details><summary className="cursor-pointer text-sm font-semibold text-ink">有效参数</summary><div className="mt-2"><JsonBlock value={detail.data.parameters} /></div></details>
                   </DetailGroup>
@@ -230,7 +251,7 @@ export function AiLogsClient() {
             <Button variant="ghost" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()} aria-label="刷新调用列表"><RefreshCw className="h-4 w-4" /></Button>
           </div>
           {query.isPending && items.length === 0 ? <div className="p-6 text-sm text-muted">正在读取调用记录…</div>
-            : query.isError && items.length === 0 ? <div role="alert" className="p-6 text-sm text-danger-fg">读取调用记录失败：{query.error.message}<Button variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>重试列表</Button></div>
+            : query.isError && items.length === 0 ? <div className="p-6"><Alert variant="danger" title="读取调用记录失败"><p>{query.error.message}</p><Button variant="outline" className="mt-3" disabled={query.isFetching} onClick={() => void query.refetch()}>重试列表</Button></Alert></div>
               : items.length === 0 ? <div className="p-8 text-center text-sm text-muted">没有符合筛选条件的调用记录。</div>
                 : <div className="divide-y divide-border-subtle">
                   {groupedItems.map(({ traceId, calls }) => calls.length === 1
@@ -242,7 +263,7 @@ export function AiLogsClient() {
                       <ol className="divide-y divide-border-subtle border-t border-border-subtle bg-surface-muted/30">{calls.map((item, index) => <li key={item.id} className="relative pl-3"><span className="absolute left-5 top-6 text-xs text-muted">{index + 1}</span><div className="pl-5"><CallButton item={item} selectedId={selectedId} selectCall={selectCall} /></div></li>)}</ol>
                     </details>)}
                 </div>}
-          {query.isError && items.length > 0 && <div role="alert" className="p-3 text-sm text-danger-fg">{query.isFetchNextPageError ? '后续记录加载失败，已读取的记录仍保留。' : '刷新失败，当前显示上次读取的记录。'} {query.error.message}<Button variant="outline" disabled={query.isFetching} onClick={() => { if (query.isFetchNextPageError) loadMore(); else void query.refetch(); }}>重试</Button></div>}
+          {query.isError && items.length > 0 && <div className="p-3"><Alert variant="danger" title={query.isFetchNextPageError ? '后续记录加载失败' : '刷新失败'}>{query.isFetchNextPageError ? '已读取的记录仍保留。' : '当前显示上次读取的记录。'} {query.error.message}<Button variant="outline" size="sm" className="ml-2" disabled={query.isFetching} onClick={() => { if (query.isFetchNextPageError) loadMore(); else void query.refetch(); }}>重试</Button></Alert></div>}
           {query.hasNextPage && <div className="border-t border-border-subtle p-3 text-center"><Button variant="outline" size="sm" disabled={query.isFetching} onClick={loadMore}>{query.isFetchingNextPage ? '正在加载…' : '加载更多'}<ChevronDown className="ml-1 h-4 w-4" /></Button></div>}
           {query.isSuccess && !query.hasNextPage && items.length > 0 && <p role="status" className="p-3 text-center text-sm text-muted">已显示全部符合筛选的记录。</p>}
         </section>
@@ -275,9 +296,9 @@ export function AiLogsClient() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input aria-label="来源应用" placeholder="来源应用，如 activities" value={draftFilters.applicationId} onChange={(event) => setDraftFilters({ ...draftFilters, applicationId: event.target.value })} />
           <Input aria-label="业务事件" placeholder="业务事件" value={draftFilters.businessEvent} onChange={(event) => setDraftFilters({ ...draftFilters, businessEvent: event.target.value })} />
-          <select aria-label="调用状态" value={draftFilters.status} onChange={(event) => setDraftFilters({ ...draftFilters, status: event.target.value })} className="h-10 rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
+          <Select aria-label="调用状态" value={draftFilters.status} onChange={(event) => setDraftFilters({ ...draftFilters, status: event.target.value })}>
             <option value="">所有状态</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          </Select>
           <Input aria-label="模型" placeholder="模型名称" value={draftFilters.model} onChange={(event) => setDraftFilters({ ...draftFilters, model: event.target.value })} />
           <Input aria-label="工作流" placeholder="工作流 ID" value={draftFilters.workflowId} onChange={(event) => setDraftFilters({ ...draftFilters, workflowId: event.target.value })} />
           <Input aria-label="追踪 ID" placeholder="追踪 ID" value={draftFilters.traceId} onChange={(event) => setDraftFilters({ ...draftFilters, traceId: event.target.value })} />

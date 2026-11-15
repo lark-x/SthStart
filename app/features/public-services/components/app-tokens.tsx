@@ -75,6 +75,7 @@ export function AppTokens({
             value={appId}
             onChange={(e) => setAppId(e.target.value)}
             placeholder="应用 ID，例如 my-app"
+            aria-label="应用 ID"
             required
             className="flex-1"
           />
@@ -82,6 +83,7 @@ export function AppTokens({
             value={appName}
             onChange={(e) => setAppName(e.target.value)}
             placeholder="应用名称"
+            aria-label="应用名称"
             required
             className="flex-1"
           />

@@ -15,6 +15,7 @@ import type {
   StageDefinition,
 } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
 import { ScrollFadeContainer } from '@/app/components/ui/scroll-fade-container';
 import { isImeComposingEvent } from '@/app/lib/hooks/use-cjk-ime-guard';
 import { StudioBeatCard } from './studio-beat-card';
@@ -26,6 +27,7 @@ interface StudioBeatStreamProps {
   actors: ActorSnapshot[];
   selectedBeatId: string | null;
   onSelectBeat: (beatId: string) => void;
+  onAddScene: () => void;
   onUpdateBeat: (beatId: string, patch: Partial<SceneBeat>) => void;
   onAddBeat: (insertIndex?: number) => void;
   onDeleteBeat: (beatId: string) => void;
@@ -40,6 +42,7 @@ export function StudioBeatStream({
   actors,
   selectedBeatId,
   onSelectBeat,
+  onAddScene,
   onUpdateBeat,
   onAddBeat,
   onDeleteBeat,
@@ -52,11 +55,14 @@ export function StudioBeatStream({
     return (
       <div className="flex flex-1 items-center justify-center bg-surface p-8">
         <div className="max-w-sm space-y-2 text-center">
-          <Film className="mx-auto h-8 w-8 text-muted/50" />
+          <Film className="mx-auto h-8 w-8 text-muted/50" aria-hidden="true" />
           <h3 className="text-sm font-semibold text-ink">本幕暂无场次</h3>
           <p className="text-sm leading-6 text-muted">
-            在左侧大纲中选择或新建场次，即可开始编排分镜。
+            新增一个场次后，就可以编排分镜。
           </p>
+          <Button size="sm" variant="primary" onClick={onAddScene}>
+            <Plus className="h-4 w-4" aria-hidden="true" /> 新增场次
+          </Button>
         </div>
       </div>
     );
@@ -66,7 +72,7 @@ export function StudioBeatStream({
   const cleanTitle = scene.title.replace(/^(第\s*[一二三四五六七八九十0-9]+\s*场[：:\s]*)/, '') || scene.title;
 
   const handleTitleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isImeComposingEvent(event)) return;
+    if (event.nativeEvent?.isComposing || event.keyCode === 229 || isImeComposingEvent(event)) return;
     if (event.key === 'Enter') event.currentTarget.blur();
   };
 
@@ -75,13 +81,13 @@ export function StudioBeatStream({
       {/* 场次工具条：单一主动作 + 上下文菜单 */}
       <div className="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-border-subtle bg-surface px-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <input
+          <Input
             aria-label="场次标题"
             value={cleanTitle}
             onChange={(e) => onUpdateScene({ title: e.target.value })}
             onKeyDown={handleTitleKeyDown}
             placeholder="场次标题"
-            className="h-8 w-full min-w-0 max-w-56 truncate border-0 border-b border-transparent bg-transparent px-0 text-base font-semibold text-ink outline-none transition-colors placeholder:font-normal placeholder:text-muted/60 hover:border-border-subtle focus:border-accent md:text-sm"
+            className="h-8 min-h-0 w-full min-w-0 max-w-56 truncate rounded-none border-0 border-b border-transparent bg-transparent px-0 text-base font-semibold text-ink shadow-none outline-none transition-colors placeholder:font-normal placeholder:text-muted/60 hover:border-border-subtle focus:border-accent md:text-sm"
             title="点击修改场次标题"
           />
 
@@ -146,14 +152,16 @@ export function StudioBeatStream({
           )}
 
           {beats.length > 0 && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => onAddBeat()}
-              className="flex w-full items-center justify-center gap-1.5 py-3 text-sm text-muted transition-colors hover:text-ink"
+              className="w-full justify-center gap-1.5 py-3 text-sm font-normal text-muted hover:bg-transparent hover:text-ink"
             >
               <Plus className="h-3.5 w-3.5" />
               在末尾添加镜头
-            </button>
+            </Button>
           )}
         </div>
       </ScrollFadeContainer>

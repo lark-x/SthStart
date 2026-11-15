@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useTriggerTextGeneration } from '../mutations';
-import { useActivityJob } from '../queries';
+import { useTriggerTextGeneration } from '@/app/features/activities/mutations/activities';
+import { useActivityJob } from '@/app/features/activities/queries/activities';
 
 export type ActivityGenerationMode =
   | 'plan' | 'stage' | 'whole-text' | 'rewrite-records'

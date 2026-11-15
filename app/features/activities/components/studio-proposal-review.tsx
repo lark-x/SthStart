@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import type { ContentDocument, StudioJob, StudioStoryboardRequest, StudioStoryboardApply } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
-import { fetchStudioVersions } from '../studio-api';
-import { isStudioJobActive } from '../studio-queries';
-import { useStudioJobMutations } from '../studio-mutations';
+import { fetchStudioVersions } from '@/app/features/activities/api/studio';
+import { isStudioJobActive } from '@/app/features/activities/queries/studio';
+import { useStudioJobMutations } from '@/app/features/activities/mutations/studio';
 import {StudioTaskControls} from './studio-task-controls';
 
 export const studioStatusLabels: Record<StudioJob['status'], string> = {
@@ -74,9 +75,9 @@ export function StudioProposalReview({ activityId, job, content, beforeApply, on
     </div>}
     {job.status === 'awaiting_review' && !job.readOnly && <div className="space-y-3">
       <p className="text-sm text-muted">默认追加，已有场次、裁切、图片与台词不变。替换只针对创建任务时指定的场次；内容变化会阻止应用。</p>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={renderAfterApply} disabled={busy} onChange={e=>setRenderAfterApply(e.target.checked)}/>应用后连续绘制本次新增的 {result?.output?.beats.length ?? result?.comic?.panels.length ?? 0} 个目标</label>
+      <Checkbox label={`应用后连续绘制本次新增的 ${result?.output?.beats.length ?? result?.comic?.panels.length ?? 0} 个目标`} checked={renderAfterApply} disabled={busy} onChange={e=>setRenderAfterApply(e.target.checked)}/>
       {renderAfterApply&&<div className="space-y-2"><p className="text-xs text-muted">每目标 1 张，先执行工作流与文件预检；缺项不会提交图片。只处理本提案新建的目标，不包含其他历史内容。启用优化时每目标另有 1 次文本模型调用。</p>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={placement==='fill_empty'} disabled={busy} onChange={e=>setPlacement(e.target.checked?'fill_empty':'history_only')}/>明确授权：仅填入空画面（默认只入历史）</label></div>}
+        <Checkbox label="明确授权：仅填入空画面（默认只入历史）" checked={placement==='fill_empty'} disabled={busy} onChange={e=>setPlacement(e.target.checked?'fill_empty':'history_only')}/></div>}
       <div className="flex flex-wrap gap-2"><Button loading={busy} disabled={busy} onClick={() => void apply('append')}>{renderAfterApply?'追加并连续绘制':'追加到活动'}</Button>
         <Button variant="outline" disabled={busy || !request?.input.sceneId} onClick={() => setReplaceOpen(true)}>替换来源场次</Button></div>
     </div>}

@@ -20,7 +20,9 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Spinner } from '@/app/components/ui/spinner';
+import { FormField } from '@/app/components/ui/form-field';
 import { useToast } from '@/app/providers/ui-provider';
 import { saveGenerationEngine, testGenerationEngine } from '@/app/features/generation/api';
 import type { Engine } from '@/app/features/generation/types';
@@ -192,10 +194,6 @@ export function ImageModelsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
-            <RefreshCw className="h-4 w-4" />
-            刷新
-          </Button>
           <Button variant="primary" size="sm" onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             新建绘图引擎
@@ -278,8 +276,7 @@ export function ImageModelsPanel({
       >
         <form onSubmit={handleSaveEngine} className="space-y-4">
           {formError && <Alert variant="danger" title="保存失败">{formError}</Alert>}
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">引擎内部 ID</label>
+          <FormField label="引擎内部 ID" required>
             <Input
               value={formData.id}
               onChange={(e) => setFormData({ ...formData, id: e.target.value })}
@@ -287,19 +284,17 @@ export function ImageModelsPanel({
               disabled={Boolean(editingEngine)}
               placeholder="e.g. comfyui-local / cloud-openai"
             />
-          </div>
+          </FormField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">显示名称</label>
+            <FormField label="显示名称" required>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
                 placeholder="本地 ComfyUI 或 OpenAI 绘图"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">引擎类型</label>
+            </FormField>
+            <FormField label="引擎类型">
               <Select
                 value={formData.kind}
                 onChange={(e) => setFormData({ ...formData, kind: e.target.value as 'comfyui' | 'cloud' | 'worker' })}
@@ -309,48 +304,40 @@ export function ImageModelsPanel({
                 <option value="cloud">云端兼容接口（OpenAI / DALL-E）</option>
                 <option value="worker">Windows Worker（高级）</option>
               </Select>
-            </div>
+            </FormField>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">服务地址 (Base URL)</label>
+          <FormField label="服务地址 (Base URL)" required>
             <Input
               value={formData.baseUrl}
               onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
               required
               placeholder={formData.kind === 'cloud' ? 'https://api.openai.com/v1' : 'http://127.0.0.1:8188'}
             />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">
-              认证凭据 / Token {editingEngine && '（留空保持不变）'}
-            </label>
+          </FormField>
+          <FormField label={`认证凭据 / Token${editingEngine ? '（留空保持不变）' : ''}`}>
             <Input
               type="password"
+              autoComplete="current-password"
               value={formData.secret}
               onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
               placeholder={editingEngine ? '••••••••' : '通常云端接口需填 API Key，本地 ComfyUI 留空'}
             />
-          </div>
+          </FormField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">并发限制</label>
+            <FormField label="并发限制">
               <Input
                 type="number"
                 min={1}
                 value={formData.concurrencyLimit}
                 onChange={(e) => setFormData({ ...formData, concurrencyLimit: Number(e.target.value) })}
               />
-            </div>
+            </FormField>
             <div className="flex items-center gap-2 pt-6">
-              <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={formData.enabled}
-                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  className="rounded text-accent focus:ring-accent"
-                />
-                启用该引擎
-              </label>
+              <Checkbox
+                label="启用该引擎"
+                checked={formData.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+              />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">

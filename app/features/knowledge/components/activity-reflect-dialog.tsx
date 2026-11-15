@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -85,19 +86,13 @@ export function ActivityReflectDialog({ open, onOpenChange, activityId, activity
             {!stages.length && <li className="text-xs text-muted">这场活动还没有阶段内容可以整理。</li>}
             {stages.map((stage) => (
               <li key={stage.id}>
-                <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    aria-label={'选择片段 ' + stage.title}
-                    checked={Boolean(picked[stage.id])}
-                    onChange={(event) => setPicked((current) => ({ ...current, [stage.id]: event.target.checked }))}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm text-ink">{stage.title}</span>
-                    <span className="line-clamp-2 block text-xs text-muted">{stage.instruction}</span>
-                  </span>
-                </label>
+                <Checkbox
+                  className="mt-1"
+                  label={stage.title}
+                  description={stage.instruction}
+                  checked={Boolean(picked[stage.id])}
+                  onChange={(event) => setPicked((current) => ({ ...current, [stage.id]: event.target.checked }))}
+                />
               </li>
             ))}
           </ul>

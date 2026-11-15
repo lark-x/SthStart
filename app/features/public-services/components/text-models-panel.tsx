@@ -7,7 +7,6 @@ import {
   Pencil,
   Play,
   Plus,
-  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -26,6 +25,10 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
+import { Textarea } from '@/app/components/ui/textarea';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { ConfirmDialog } from '@/app/components/ui/confirm-dialog';
+import { FormField } from '@/app/components/ui/form-field';
 import { Spinner } from '@/app/components/ui/spinner';
 import { RowActionsMenu } from '@/app/components/ui/row-actions-menu';
 import { useToast } from '@/app/providers/ui-provider';
@@ -87,6 +90,7 @@ export function TextModelsPanel({
   const [formData, setFormData] = useState<ModelFormState>(EMPTY_MODEL_FORM);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ModelProfile | null>(null);
 
   // 推理测试抽屉
   const [testDrawerOpen, setTestDrawerOpen] = useState(false);
@@ -180,9 +184,6 @@ export function TextModelsPanel({
   };
 
   const handleDeleteModel = async (m: ModelProfile) => {
-    if (!window.confirm(`确认删除模型配置“${m.name}”？`)) {
-      return;
-    }
     try {
       await deleteModelProfile(m.id);
       toast.success('模型配置已删除。');
@@ -268,10 +269,6 @@ export function TextModelsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void onRefresh()}>
-            <RefreshCw className="h-4 w-4" />
-            刷新
-          </Button>
           <Button variant="primary" size="sm" onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             新建模型配置
@@ -332,7 +329,7 @@ export function TextModelsPanel({
                     label={`更多模型操作：${m.name}`}
                     items={[
                       { label: '编辑配置', icon: <Pencil className="h-3.5 w-3.5 text-muted" />, onSelect: () => handleOpenEdit(m) },
-                      { label: '删除配置', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => void handleDeleteModel(m), tone: 'danger', separatorBefore: true },
+                      { label: '删除配置', icon: <Trash2 className="h-3.5 w-3.5" />, onSelect: () => setDeleteTarget(m), tone: 'danger', separatorBefore: true },
                     ]}
                   />
                 </div>
@@ -351,8 +348,7 @@ export function TextModelsPanel({
       >
         <form onSubmit={handleSaveModel} className="space-y-4">
           {formError && <Alert variant="danger" title="保存失败">{formError}</Alert>}
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">模型配置内部 ID</label>
+          <FormField label="模型配置内部 ID" required>
             <Input
               value={formData.id}
               onChange={(e) => setFormData({ ...formData, id: e.target.value })}
@@ -360,9 +356,8 @@ export function TextModelsPanel({
               disabled={Boolean(editingModel)}
               placeholder="e.g. gpt-4o-mini-text"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink mb-1">所属服务连接</label>
+          </FormField>
+          <FormField label="所属服务连接" required>
             <Select
               value={formData.connectionId}
               onChange={(e) => setFormData({ ...formData, connectionId: e.target.value })}
@@ -375,87 +370,73 @@ export function TextModelsPanel({
                 </option>
               ))}
             </Select>
-          </div>
+          </FormField>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">显示名称</label>
+            <FormField label="显示名称" required>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
                 placeholder="GPT-4o Mini 主力"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">实际模型标识 (modelId)</label>
+            </FormField>
+            <FormField label="实际模型标识 (modelId)" required>
               <Input
                 value={formData.modelId}
                 onChange={(e) => setFormData({ ...formData, modelId: e.target.value })}
                 required
                 placeholder="gpt-4o-mini"
               />
-            </div>
+            </FormField>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-ink mb-1.5">能力标签</label>
+            <div className="text-xs font-semibold text-ink mb-1.5">能力标签</div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {ALL_CAPABILITIES.map((cap) => (
-                <label
-                  key={cap.id}
-                  className="flex items-center gap-2 p-2 rounded border border-border-subtle bg-surface-raised cursor-pointer text-xs"
-                >
-                  <input
-                    type="checkbox"
+                <div key={cap.id} className="rounded border border-border-subtle bg-surface-raised p-2">
+                  <Checkbox
+                    label={cap.label}
                     checked={formData.capabilities.includes(cap.id)}
                     onChange={() => handleToggleCapability(cap.id)}
-                    className="rounded text-accent focus:ring-accent"
                   />
-                  <span>{cap.label}</span>
-                </label>
+                </div>
               ))}
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">上下文窗口长度</label>
+            <FormField label="上下文窗口长度">
               <Input
                 type="number"
                 value={formData.contextLength}
                 onChange={(e) => setFormData({ ...formData, contextLength: e.target.value === '' ? '' : Number(e.target.value) })}
                 placeholder="128000"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">最大输出 Token</label>
+            </FormField>
+            <FormField label="最大输出 Token">
               <Input
                 type="number"
                 value={formData.maxOutputTokens}
                 onChange={(e) => setFormData({ ...formData, maxOutputTokens: e.target.value === '' ? '' : Number(e.target.value) })}
                 placeholder="4096"
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
-              <input
-                type="checkbox"
-                checked={formData.enabled}
-                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                className="rounded text-accent focus:ring-accent"
-              />
-              启用该模型配置
-            </label>
+            <Checkbox
+              label="启用该模型配置"
+              checked={formData.enabled}
+              onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" type="button" onClick={() => setFormOpen(false)}>
               取消
             </Button>
-            <Button variant="primary" type="submit" disabled={formSaving}>
-              {formSaving && <Spinner className="h-3.5 w-3.5 mr-1" />}
+            <Button variant="primary" type="submit" loading={formSaving}>
               {editingModel ? '保存修改' : '立即创建'}
             </Button>
           </div>
@@ -474,39 +455,33 @@ export function TextModelsPanel({
           <div className="space-y-1.5">
             <div className="text-xs font-semibold text-ink">能力测试模式：</div>
             <div className="grid grid-cols-3 gap-2">
-              <button
+              <Button
                 type="button"
+                size="sm"
+                variant={testType === 'text' ? 'outline' : 'ghost'}
+                aria-pressed={testType === 'text'}
                 onClick={() => handleSelectTestType('text')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                  testType === 'text'
-                    ? 'border-accent bg-accent/10 text-accent font-semibold'
-                    : 'border-border-default hover:bg-surface-raised text-muted'
-                }`}
               >
                 通用文本连通性
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
+                variant={testType === 'json' ? 'outline' : 'ghost'}
+                aria-pressed={testType === 'json'}
                 onClick={() => handleSelectTestType('json')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                  testType === 'json'
-                    ? 'border-accent bg-accent/10 text-accent font-semibold'
-                    : 'border-border-default hover:bg-surface-raised text-muted'
-                }`}
               >
                 JSON 结构校验
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
+                variant={testType === 'vision' ? 'outline' : 'ghost'}
+                aria-pressed={testType === 'vision'}
                 onClick={() => handleSelectTestType('vision')}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                  testType === 'vision'
-                    ? 'border-accent bg-accent/10 text-accent font-semibold'
-                    : 'border-border-default hover:bg-surface-raised text-muted'
-                }`}
               >
                 多模态视觉测试
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -515,37 +490,40 @@ export function TextModelsPanel({
               <span>快捷测试预设：</span>
               <div className="flex items-center gap-1.5">
                 {PRESET_PROMPTS.map((p) => (
-                  <button
+                  <Button
                     key={p.label}
                     type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-auto px-1.5 py-0.5 text-xs"
                     onClick={() => {
                       setPrompt(p.prompt);
                       if (p.label === 'JSON 结构化') setTestType('json');
                       else setTestType('text');
                     }}
-                    className="px-2 py-0.5 rounded border border-border-subtle hover:bg-surface-raised text-accent"
                   >
                     {p.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
-            <textarea
+            <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
               placeholder="输入测试提示词..."
-              className="w-full text-xs rounded-md border border-border-default bg-surface p-2.5 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="text-xs"
             />
           </div>
 
           <Button
             variant="primary"
             className="w-full"
-            disabled={testing || !prompt.trim() || !testingModel}
+            loading={testing}
+            disabled={!prompt.trim() || !testingModel}
             onClick={runInferenceTest}
           >
-            {testing ? <Spinner className="h-3.5 w-3.5 mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+            {!testing && <Play className="h-3.5 w-3.5 mr-1.5" />}
             {testing ? '正在执行推理测试...' : '开始测试推理'}
           </Button>
 
@@ -603,16 +581,18 @@ export function TextModelsPanel({
                 <div className="space-y-1.5">
                   <div className="text-xs font-semibold text-ink flex items-center justify-between">
                     <span>模型生成内容：</span>
-                    <button
+                    <Button
                       type="button"
-                      className="text-muted hover:text-ink"
+                      size="icon"
+                      variant="ghost"
+                      aria-label="复制模型输出"
                       onClick={() => {
                         void navigator.clipboard.writeText(testResult.output || '');
                         toast.success('已复制到剪贴板。');
                       }}
                     >
                       <Copy className="h-3.5 w-3.5" />
-                    </button>
+                    </Button>
                   </div>
                   <div className="p-3 rounded-lg border border-border-subtle bg-surface-raised text-xs leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap font-sans text-ink">
                     {testResult.output}
@@ -629,6 +609,19 @@ export function TextModelsPanel({
           )}
         </div>
       </Drawer>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={deleteTarget ? `删除模型配置“${deleteTarget.name}”` : '删除模型配置'}
+        description="依赖这个模型的用途绑定和应用选择会失效。此操作不能撤销。"
+        confirmLabel="删除配置"
+        danger
+        onConfirm={async () => {
+          if (deleteTarget) await handleDeleteModel(deleteTarget);
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

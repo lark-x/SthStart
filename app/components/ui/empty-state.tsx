@@ -22,19 +22,18 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        // 空态自然收缩：带有精致纸片边框与微妙内衬层次
-        'flex min-h-[220px] flex-col items-center justify-center rounded-panel border border-border-subtle bg-surface p-8 text-center shadow-panel',
+        'flex min-h-40 flex-col items-center justify-center px-5 py-8 text-center',
         className
       )}
       {...props}
     >
       {Icon ? (
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-accent/15 bg-accent-soft text-accent shadow-xs">
-          <Icon className="h-5 w-5" aria-hidden="true" />
+        <div className="mb-3 grid size-9 place-items-center rounded-control bg-surface-sunken text-muted">
+          <Icon className="size-[18px]" aria-hidden="true" />
         </div>
       ) : symbol ? (
         <span
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-ink text-paper text-xl mb-4"
+          className="mb-3 grid size-9 place-items-center rounded-control bg-surface-sunken text-muted"
           aria-hidden="true"
         >
           {symbol}
@@ -46,7 +45,7 @@ export function EmptyState({
           {description}
         </p>
       )}
-      {actions && <div className="mt-5 flex flex-wrap gap-2.5 justify-center">{actions}</div>}
+      {actions && <div className="mt-4 flex flex-wrap gap-2 justify-center">{actions}</div>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicationDocument, PublicationShot, PublicationPreview, SpeechProfile, ActivityLora } from '@sthstart/contracts';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -155,11 +156,8 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
           return (
             <div
               key={s.id}
-              className={`space-y-2 rounded-control border p-2 transition-colors ${
-                isActive
-                  ? 'border-accent bg-accent/5 ring-1 ring-accent/20'
-                  : 'border-border-subtle bg-surface hover:border-border-default'
-              }`}
+              data-selected={isActive || undefined}
+              className="ui-choice space-y-2 rounded-control p-2 transition-colors hover:bg-surface-hover"
             >
               <button
                 type="button"
@@ -187,36 +185,39 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
               </button>
 
               <div role="group" aria-label={`镜头${i + 1}操作`} className="flex items-center justify-end gap-1 border-t border-border-subtle pt-1 text-xs">
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="ghost"
                   aria-label={`镜头${i + 1}上移`}
                   disabled={i === 0}
                   onClick={() => reorder(i, -1)}
-                  className="rounded p-1 text-muted hover:text-ink hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="h-auto !min-h-0 rounded !p-1 text-muted hover:!bg-surface-hover hover:!text-ink disabled:!opacity-30"
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   aria-label={`镜头${i + 1}下移`}
                   disabled={i === doc.shots.length - 1}
                   onClick={() => reorder(i, 1)}
-                  className="rounded p-1 text-muted hover:text-ink hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="h-auto !min-h-0 rounded !p-1 text-muted hover:!bg-surface-hover hover:!text-ink disabled:!opacity-30"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   aria-label={`删除镜头${i + 1}`}
                   onClick={() => {
                     if (window.confirm('删除此制作镜头？历史图片仍保留。')) {
                       draft.update({ ...doc, shots: doc.shots.filter((x) => x.id !== s.id) });
                     }
                   }}
-                  className="rounded p-1 text-muted hover:text-danger-fg hover:bg-danger/10"
+                  className="h-auto !min-h-0 rounded !p-1 text-muted hover:!bg-danger/10 hover:!text-danger-fg"
                 >
                   <X className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
             </div>
           );
@@ -249,7 +250,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border-subtle pb-4"><div><p className="text-xs font-medium text-accent">从剧情到发布</p><h2 className="mt-1 text-xl font-semibold text-ink">少量关键画面，完整讲一段故事</h2><p className="mt-1.5 text-xs text-muted">已冻结 {doc.source.entryRevisionIds.length} 个章节版本 · {doc.shots.length}/12 个镜头 · 不改变正式剧情</p></div><Button variant="outline" size="sm" onClick={()=>{setEditDoc(structuredClone(doc));setOverlay('project');}}>编辑作品与角色</Button></div>
         <div className="rounded-panel border border-border-default bg-surface p-4 text-sm leading-relaxed text-ink/90">{doc.synopsis||'让 DSH／其他 Harness 读取冻结章节，提交 6–12 个关键镜头。每个画面可配多句对白；英文生图提示词由创作模型一次完成，制作服务不再改写。也可以手动添加镜头。'}</div>
         <div><div className="space-y-4 rounded-panel border border-border-default bg-surface p-4">
-          <h3 className="font-semibold text-sm text-ink">制作输出设置</h3><label className="flex items-center gap-2 text-sm text-ink cursor-pointer"><input type="checkbox" checked={makeVideo} onChange={e=>setMakeVideo(e.target.checked)} className="rounded border-border-control text-accent focus:ring-accent"/><span>漫画图片＋配音视频</span></label><p className="text-xs leading-5 text-muted">关闭视频仍会导出漫画、封面和发布文案。默认无背景音乐，不自动发布平台。</p>
+          <h3 className="font-semibold text-sm text-ink">制作输出设置</h3><Checkbox label="漫画图片＋配音视频" checked={makeVideo} onChange={e=>setMakeVideo(e.target.checked)} /><p className="text-xs leading-5 text-muted">关闭视频仍会导出漫画、封面和发布文案。默认无背景音乐，不自动发布平台。</p>
           <div className={fieldClass}><label className="block text-xs font-medium text-muted">独立配音配置<Select value={speechId} onChange={e=>setSpeechId(e.target.value)} className="mt-1"><option value="">未配置／使用上传配音</option>{profiles.data?.items.map(p=><option key={p.id} value={p.id}>{p.name} · {p.model}</option>)}</Select></label>{profiles.isError?<div className="space-y-2 mt-1"><p role="alert" className="text-xs text-danger-fg">无法读取已保存的配音配置，可重试或直接使用上传配音。</p><Button variant="ghost" size="sm" onClick={()=>void profiles.refetch()}>重试读取配音配置</Button></div>:!profiles.isLoading&&!profiles.data?.items.length?<p className="text-xs text-muted mt-1">还没有保存的配音配置，可直接上传配音，或配置新的配音服务。</p>:null}</div>
           <Button variant="ghost" size="sm" onClick={()=>{setSpeechEdit(profiles.data?.items.find(p=>p.id===speechId)??{id:crypto.randomUUID(),revision:1,name:'在线配音',baseUrl:'',model:'',voices:['alloy'],defaultVoice:'alloy',speed:1,secretEnvironment:'STHSTART_SPEECH_API_KEY'});setOverlay('speech');}}>配置配音服务</Button>
           <div className="border-t border-border-subtle pt-3 space-y-2"><Button variant="primary" className="w-full" disabled={busy||doc.shots.length<6} onClick={()=>void openApproval()}>核对方案与额度</Button><p className="text-xs text-muted text-center">确认前不会发出生图或配音付费请求。</p></div>
@@ -280,7 +281,7 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
       footer={<><Button disabled={busy} onClick={()=>closeOverlay(false)}>取消</Button><Button variant="primary" disabled={busy} onClick={()=>void action(async()=>{if(editShot){changeShot(editShot);if(await draft.flush())setOverlay(null);}},false)}>保存镜头设置</Button></>}>
       {(error||draft.error)&&<p role="alert" className="text-sm text-danger-fg">{error||draft.error}</p>}
       {editShot&&<div className="space-y-5"><label className={fieldClass}>工作流／预设<Select value={editShot.renderSettings.presetId??''} onChange={e=>{const p=options.data?.presets.find(p=>p.id===e.target.value);setEditShot({...editShot,renderSettings:{...editShot.renderSettings,presetId:p?.id,presetRevision:p?.revision,workflowId:p?.workflowId,workflowVersion:p?.workflowVersion}});}}><option value="">优先邻舍对齐 · Base（未选预设时）</option>{options.data?.presets.map(p=><option key={p.id} value={p.id}>{p.name} · v{p.workflowVersion}</option>)}</Select><span className="block text-xs text-muted">未手选预设时，服务会优先对齐邻舍对齐 · Base；实际结果以「核对方案」和服务端最终配置为准。</span></label>
-        <fieldset className="space-y-2"><legend className="mb-2 text-sm">本镜头出现的角色</legend>{doc.actors.map(a=><label key={a.id} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={editShot.actorIds.includes(a.id)} onChange={e=>{const ids=e.target.checked?[...editShot.actorIds,a.id]:editShot.actorIds.filter(id=>id!==a.id);setEditShot({...editShot,actorIds:ids,structuredPrompt:{...editShot.structuredPrompt,actors:ids.map(id=>editShot.structuredPrompt.actors.find(p=>p.actorId===id)??{actorId:id,identity:[doc.actors.find(a=>a.id===id)!.name],appearance:[],clothing:[],action:[],expression:[]})}});}}/>{a.name} {a.universe&&`· ${a.universe}`}</label>)}</fieldset>
+        <fieldset className="space-y-2"><legend className="mb-2 text-sm">本镜头出现的角色</legend>{doc.actors.map(a=><span key={a.id} className="mr-4 inline-flex"><Checkbox label={`${a.name}${a.universe ? ` · ${a.universe}` : ''}`} checked={editShot.actorIds.includes(a.id)} onChange={e=>{const ids=e.target.checked?[...editShot.actorIds,a.id]:editShot.actorIds.filter(id=>id!==a.id);setEditShot({...editShot,actorIds:ids,structuredPrompt:{...editShot.structuredPrompt,actors:ids.map(id=>editShot.structuredPrompt.actors.find(p=>p.actorId===id)??{actorId:id,identity:[doc.actors.find(a=>a.id===id)!.name],appearance:[],clothing:[],action:[],expression:[]})}});}}/></span>)}</fieldset>
         <label className={fieldClass}>英文画面提示词<Textarea rows={5} value={editShot.structuredPrompt.naturalLanguage} onChange={e=>setEditShot({...editShot,structuredPrompt:{...editShot.structuredPrompt,naturalLanguage:e.target.value}})}/></label>
         <label className={fieldClass}>英文场景标签（逗号分隔）<Input value={editShot.structuredPrompt.scene.join(', ')} onChange={e=>setEditShot({...editShot,structuredPrompt:{...editShot.structuredPrompt,scene:e.target.value.split(',').map(t=>t.trim()).filter(Boolean)}})}/></label>
         <label className={fieldClass}>镜头呈现<Select value={editShot.presentation} onChange={e=>setEditShot({...editShot,presentation:e.target.value as PublicationShot['presentation']})}><option value="still">静态画面</option><option value="push_in">轻微推近</option></Select></label>
@@ -315,5 +316,5 @@ export function PublicationWorkspace({activityId}:{activityId:string}) {
 }
 
 function LoraFields({entries,onChange}:{entries:ActivityLora[];onChange:(entries:ActivityLora[])=>void}) {
-  return <div className="space-y-3"><p className="text-sm font-medium">LoRA 文件与触发词</p>{entries.map((l,i)=><div key={i} className="grid gap-2 rounded-xl bg-surface-muted p-3 sm:grid-cols-2"><Input aria-label={`LoRA ${i+1} 文件名`} placeholder="models/loras 中的文件名" value={l.model} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,model:e.target.value}:x))}/><Input aria-label={`LoRA ${i+1} 强度`} type="number" min={-10} max={10} step={0.1} value={l.strength} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,strength:Number(e.target.value)}:x))}/><Input aria-label={`LoRA ${i+1} 触发词`} value={l.triggerWord} placeholder="英文触发词" onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,triggerWord:e.target.value}:x))}/><div className="flex items-center justify-between"><label className="text-xs"><input type="checkbox" checked={l.enabled} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,enabled:e.target.checked}:x))}/>启用</label><Button variant="ghost" size="sm" onClick={()=>onChange(entries.filter((_,j)=>j!==i))}>删除</Button></div></div>)}<Button size="sm" onClick={()=>onChange([...entries,{model:'',strength:1,triggerWord:'',enabled:true}])}>添加／覆盖 LoRA</Button><p className="text-xs text-muted">继承全局配置，同名后一级覆盖；文件或节点缺失会阻止提交。</p></div>;
+  return <div className="space-y-3"><p className="text-sm font-medium">LoRA 文件与触发词</p>{entries.map((l,i)=><div key={i} className="grid gap-2 rounded-xl bg-surface-muted p-3 sm:grid-cols-2"><Input aria-label={`LoRA ${i+1} 文件名`} placeholder="models/loras 中的文件名" value={l.model} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,model:e.target.value}:x))}/><Input aria-label={`LoRA ${i+1} 强度`} type="number" min={-10} max={10} step={0.1} value={l.strength} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,strength:Number(e.target.value)}:x))}/><Input aria-label={`LoRA ${i+1} 触发词`} value={l.triggerWord} placeholder="英文触发词" onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,triggerWord:e.target.value}:x))}/><div className="flex items-center justify-between"><Checkbox label="启用" checked={l.enabled} onChange={e=>onChange(entries.map((x,j)=>j===i?{...x,enabled:e.target.checked}:x))}/><Button variant="ghost" size="sm" onClick={()=>onChange(entries.filter((_,j)=>j!==i))}>删除</Button></div></div>)}<Button size="sm" onClick={()=>onChange([...entries,{model:'',strength:1,triggerWord:'',enabled:true}])}>添加／覆盖 LoRA</Button><p className="text-xs text-muted">继承全局配置，同名后一级覆盖；文件或节点缺失会阻止提交。</p></div>;
 }

@@ -1,15 +1,29 @@
 'use client';
 
-import { useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Dialog } from './dialog';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
-import { getPagination, getPageNumbers, positiveInteger } from '../../lib/pagination';
+import { useId, useState, type CSSProperties } from 'react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, CornerDownLeft } from 'lucide-react';
+import { Pagination as MantinePagination } from '@mantine/core';
+import { getPagination, positiveInteger } from '../../lib/pagination';
+import { AnchoredPopover } from './anchored-popover';
 import { Button } from './button';
 import { Input } from './input';
-import { Select } from './select';
 
-/** Stable shared API. onPageSizeChange owns resetting the caller's page to 1. */
+type EdgeIconProps = { className?: string; style?: CSSProperties };
+
+function PreviousIcon({ className, style }: EdgeIconProps) {
+  return <ChevronLeft className={className} style={{ ...style, width: 16, height: 16 }} aria-hidden="true" />;
+}
+
+function NextIcon({ className, style }: EdgeIconProps) {
+  return <ChevronRight className={className} style={{ ...style, width: 16, height: 16 }} aria-hidden="true" />;
+}
+
+/** Mantine's PaginationItems owns the ellipsis wrapper; keep the project's text glyph. */
+function EllipsisIcon() {
+  return <span className="pagination-ellipsis" aria-hidden="true">…</span>;
+}
+
+/** Capacity changes reset the page through the existing caller callback. */
 export interface PaginationProps {
   total: number;
   page: number;
@@ -24,55 +38,128 @@ export interface PaginationProps {
 export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChange,
   pageSizeOptions = [20, 50, 100], loading = false, compact = false }: PaginationProps) {
   const state = getPagination(total, page, pageSize);
+  const [open, setOpen] = useState<'size' | 'jump' | null>(null);
   const [jump, setJump] = useState('');
-  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [invalid, setInvalid] = useState(false);
+  const hintId = useId();
+  const multiPage = state.pageCount > 1;
   const options = [...new Set([...pageSizeOptions, state.pageSize])]
     .filter(value => Number.isSafeInteger(value) && value > 0).sort((a, b) => a - b);
-  const change = (next: number) => {
-    if (loading || !state.total) return;
-    const valid = Math.min(Math.max(1, next), state.pageCount);
-    if (valid !== state.page) onPageChange(valid);
-  };
-  const controls = (
-    <div className="flex flex-wrap items-center gap-3">
-      {onPageSizeChange && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm">
-        每页
-        <Select aria-label="每页条数" className="w-auto" value={state.pageSize} disabled={loading}
-          onChange={event => onPageSizeChange(Number(event.target.value))}>
-          {options.map(size => <option key={size} value={size}>{size} 条</option>)}
-        </Select>
-      </label>}
-      <div className="flex items-center gap-2 text-sm">
-        <Input aria-label="跳转页码" className="w-20" inputMode="numeric" value={jump}
-          placeholder={String(state.page)} disabled={loading || !state.total}
-          onChange={event => setJump(event.target.value)}
+  const summary = state.total === 0 ? '共 0 条' : multiPage
+    ? `共 ${state.total} 条，当前 ${state.start}–${state.end} 条`
+    : `共 ${state.total} 条`;
+
+  function change(next: number) {
+    if (loading) return;
+    setOpen(null);
+    if (next !== state.page) onPageChange(next);
+  }
+
+  function submitJump() {
+    if (loading) return;
+    const target = positiveInteger(jump.trim(), 0);
+    if (!target || target > state.pageCount) { setInvalid(true); return; }
+    change(target);
+  }
+
+  const nextControl = (
+    <MantinePagination.Next className="pagination-next" aria-label="下一页" title="下一页" icon={NextIcon} />
+  );
+
+  const jumpTrigger = (
+    <Button size="sm" variant="ghost" className="pagination-trigger pagination-jump-trigger"
+      data-state={open === 'jump' ? 'open' : 'closed'}
+      aria-label={`跳到指定页，当前第 ${state.page} 页，共 ${state.pageCount} 页`} disabled={loading}>
+      <span className="pagination-jump-label">跳页</span>
+      <span className="pagination-page-counter">{state.page} / {state.pageCount}</span>
+      <ChevronDown size={14} aria-hidden="true" />
+    </Button>
+  );
+
+  const jumpPopover = (
+    <AnchoredPopover
+      title="跳到指定页" open={open === 'jump'} onOpenChange={next => {
+        if (next) { setJump(''); setInvalid(false); }
+        setOpen(next ? 'jump' : null);
+      }}
+      className="pagination-jump-panel" align={compact ? 'center' : 'end'}
+      trigger={jumpTrigger}
+    >
+      <div className="pagination-jump-field">
+        <Input aria-label="跳转页码" aria-describedby={hintId} data-popover-focus="true"
+          inputMode="numeric" value={jump} placeholder={String(state.page)} error={invalid} disabled={loading}
+          onChange={event => { setJump(event.target.value); setInvalid(false); }}
           onKeyDown={event => {
             if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.keyCode === 229) return;
             event.preventDefault();
-            const target = positiveInteger(jump, 0);
-            if (target) { change(target); setJump(''); }
+            submitJump();
           }} />
-        <Button size="sm" variant="outline" disabled={loading || !state.total || !positiveInteger(jump, 0)}
-          onClick={() => { change(positiveInteger(jump, state.page)); setJump(''); }}>跳转</Button>
+        <Button variant="primary" size="sm" disabled={loading || !jump.trim()} onClick={submitJump}>
+          跳转 <CornerDownLeft size={14} aria-hidden="true" />
+        </Button>
       </div>
-    </div>
+      <p id={hintId} className="pagination-jump-hint" data-invalid={invalid || undefined} aria-live="polite">
+        {invalid ? `请输入 1–${state.pageCount} 之间的整数页码` : `第 ${state.page} 页 · 共 ${state.pageCount} 页`}
+      </p>
+      <div className="pagination-boundaries">
+        <Button size="sm" variant="ghost" disabled={loading || state.page === 1} onClick={() => change(1)}>首页</Button>
+        <Button size="sm" variant="ghost" disabled={loading || state.page === state.pageCount} onClick={() => change(state.pageCount)}>末页</Button>
+      </div>
+    </AnchoredPopover>
   );
-  return <nav aria-label="分页" aria-busy={loading} className={compact ? 'grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-1 gap-y-1 py-1 text-sm' : 'flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-border-subtle py-3 text-sm'}>
-    <p role="status" className="text-muted">{loading ? '正在更新…' : state.total ? `共 ${state.total} 条，当前 ${state.start}–${state.end} 条` : '共 0 条'}</p>
-    {(!compact || state.pageCount > 1) && <div className={compact ? 'col-span-2 row-start-2 flex min-w-0 items-center justify-between gap-0' : 'flex min-w-0 flex-wrap items-center gap-1'}>
-      <Button size="icon" variant="ghost" aria-label="首页" disabled={loading || state.page <= 1 || !state.total} onClick={() => change(1)}><ChevronsLeft size={16} /></Button>
-      <Button size="icon" variant="ghost" aria-label="上一页" disabled={loading || state.page <= 1 || !state.total} onClick={() => change(state.page - 1)}><ChevronLeft size={16} /></Button>
-      {compact ? <span className="px-2 tabular-nums">{state.total ? `${state.page} / ${state.pageCount}` : '0 条'}</span> : getPageNumbers(state.page, state.pageCount).map(token => typeof token === 'number'
-        ? <Button key={token} size="icon" variant={token === state.page ? 'secondary' : 'ghost'}
-          aria-label={`第 ${token} 页`} aria-current={token === state.page ? 'page' : undefined}
-          disabled={loading || !state.total} onClick={() => change(token)}>{token}</Button>
-        : <span key={token} aria-hidden="true" className="px-1 text-muted">…</span>)}
-      <Button size="icon" variant="ghost" aria-label="下一页" disabled={loading || state.page >= state.pageCount || !state.total} onClick={() => change(state.page + 1)}><ChevronRight size={16} /></Button>
-      <Button size="icon" variant="ghost" aria-label="末页" disabled={loading || state.page >= state.pageCount || !state.total} onClick={() => change(state.pageCount)}><ChevronsRight size={16} /></Button>
-    </div>}
-    {compact ? <>
-      <Button variant="ghost" size="sm" className="col-start-2 row-start-1" aria-label="分页选项" aria-haspopup="dialog" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(true)}>选项</Button>
-      {optionsOpen && createPortal(<Dialog open onOpenChange={setOptionsOpen} title="分页选项" size="sm" footer={<Button onClick={() => setOptionsOpen(false)}>完成</Button>}>{controls}</Dialog>, document.body)}
-    </> : controls}
-  </nav>;
+
+  return (
+    <nav aria-label="分页" aria-busy={loading} className="pagination" data-compact={compact || undefined}>
+      <div className="pagination-layout">
+        <p role="status" className="pagination-summary">{loading ? '正在更新…' : summary}</p>
+        {onPageSizeChange && options.length > 1 && (
+          <AnchoredPopover
+            title="每页条数" open={open === 'size'} onOpenChange={next => setOpen(next ? 'size' : null)}
+            className="pagination-size-menu"
+            trigger={<Button size="sm" variant="ghost" className="pagination-trigger"
+              data-state={open === 'size' ? 'open' : 'closed'}
+              aria-label={`每页条数，当前 ${state.pageSize} 条`} disabled={loading}>
+              每页 {state.pageSize} 条 <ChevronDown size={14} aria-hidden="true" />
+            </Button>}
+          >
+            <div className="pagination-size-options">
+              {options.map(size => (
+                <Button key={size} size="sm" variant="ghost" disabled={loading}
+                  aria-pressed={size === state.pageSize}
+                  data-popover-focus={size === state.pageSize || undefined}
+                  onClick={() => {
+                    setOpen(null);
+                    if (size !== state.pageSize) onPageSizeChange(size);
+                  }}>
+                  {size} 条
+                  {size === state.pageSize && <Check size={16} aria-hidden="true" />}
+                </Button>
+              ))}
+            </div>
+          </AnchoredPopover>
+        )}
+        {multiPage && (
+          <MantinePagination.Root
+            className="pagination-moves"
+            total={state.pageCount}
+            value={state.page}
+            onChange={change}
+            disabled={loading}
+            siblings={1}
+            boundaries={1}
+            classNames={{ control: 'pagination-control', dots: 'pagination-dots' }}
+            getItemProps={page => ({ className: 'pagination-number', 'aria-label': `第 ${page} 页` })}
+          >
+            <MantinePagination.Previous className="pagination-previous" aria-label="上一页" title="上一页" icon={PreviousIcon} />
+            {!compact && (
+              <div className="pagination-numbers">
+                <MantinePagination.Items dotsIcon={EllipsisIcon} />
+              </div>
+            )}
+            {compact ? <>{jumpPopover}{nextControl}</> : <>{nextControl}{jumpPopover}</>}
+          </MantinePagination.Root>
+        )}
+      </div>
+    </nav>
+  );
 }

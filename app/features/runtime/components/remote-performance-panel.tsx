@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Gauge, RefreshCw } from 'lucide-react';
 import { adminFetch } from '@/app/lib/admin-fetch';
 import { Button } from '@/app/components/ui/button';
+import { Alert } from '@/app/components/ui/alert';
 
 type TimingResult = {
   sessionMs: number;
@@ -66,7 +67,7 @@ export function RemotePerformancePanel() {
         </Button>
       </div>
       <div className="mt-4">
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <Alert variant="danger" title="诊断请求失败">{error}。请确认本机服务与管理员会话可用后重试。</Alert>}
         {result && (
           <div className="grid grid-cols-1 border-y border-border-subtle text-sm sm:grid-cols-3">
             <div className="py-3 sm:pr-4">

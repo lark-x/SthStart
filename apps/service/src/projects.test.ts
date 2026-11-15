@@ -569,8 +569,8 @@ test('12. 从 53 迁移到 54 真实资产保留与外键检查：媒体行、�
       VALUES ('doc-m53', 'proj-m53', 'chapter', '第一章', '故事从五十三版本开始。', 0, 1, ?, ?)
     `).run(now, now);
 
-    // 执行迁移至 54（包含 creative-project-links）
-    migrateDatabase(conn, SERVICE_DATABASE_MIGRATIONS, 'test');
+    // 本用例专门验证 53 → 54；后续版本由独立升级用例覆盖。
+    migrateDatabase(conn, SERVICE_DATABASE_MIGRATIONS.filter((migration) => migration.version <= 54), 'test');
 
     const applied54 = conn.prepare('SELECT MAX(version) as v FROM schema_migrations').get() as { v: number };
     assert.equal(applied54.v, 54);

@@ -86,7 +86,8 @@ export async function prepareImageGeneration(database: ServiceDatabase, secrets:
       let redactionSecrets: string[] = [];
       try {
         const hybrid = knowledgeMode === 'hybrid'
-          ? await retrieveHybridImageKnowledge(database, secrets, sourcePrompt, input.purpose === 'character-avatar' ? 'avatar' : 'standalone', fetcher) : undefined;
+          ? await retrieveHybridImageKnowledge(database, secrets, sourcePrompt, input.purpose === 'character-avatar' ? 'avatar' : 'standalone', fetcher,
+            Boolean(resolved.promptPolicy.adultKnowledgeEnabled)) : undefined;
         if (hybrid) {
           diagnostics.knowledgeMode = hybrid.actualMode;
           if (hybrid.degraded) diagnostics.warnings.push(`语义检索降级为关键词：${hybrid.degraded}`);
@@ -122,7 +123,8 @@ export async function prepareImageGeneration(database: ServiceDatabase, secrets:
           }
         } else if (input.ai && !manual) diagnostics.warnings.push('当前策略已关闭 AI 改写，使用来源描述。');
         if (knowledgeMode !== 'none' && !(useAi && context.actors.length)) {
-          const retrieval = hybrid ?? retrieveImagePromptKnowledge(sourcePrompt, { scene: input.purpose === 'character-avatar' ? 'avatar' : 'standalone' });
+          const retrieval = hybrid ?? retrieveImagePromptKnowledge(sourcePrompt, { scene: input.purpose === 'character-avatar' ? 'avatar' : 'standalone',
+            includeAdult: Boolean(resolved.promptPolicy.adultKnowledgeEnabled) });
           const selected = selectExecutableTagsForScope(positivePrompt, retrieval.items, { scope: 'description' });
           const conflicts = resolveScopedConflicts(selected.selected);
           positivePrompt = [positivePrompt, ...conflicts.selected.map(item => item.tag)].join(', ');
@@ -141,7 +143,14 @@ export async function prepareImageGeneration(database: ServiceDatabase, secrets:
     }
   }
   // Manual-final bypasses all textual assembly; AI and knowledge are independent options.
-  if (!manual && resolved.promptPolicy.positiveSuffix.trim()) positivePrompt = [positivePrompt, resolved.promptPolicy.positiveSuffix.trim()].join(', ');
+  if (!manual) {
+    // 顺序对齐邻舍：质量词 → 画师串 → 画面描述 → 策略画风后缀。
+    // 空字符串表示沿用工作流节点默认，不注入任何文本。
+    const stylePrefix = [resolved.promptPolicy.qualityPrompt.trim(), resolved.promptPolicy.artistString.trim()]
+      .filter(Boolean).join(', ');
+    if (stylePrefix) positivePrompt = [stylePrefix, positivePrompt].join(', ');
+    if (resolved.promptPolicy.positiveSuffix.trim()) positivePrompt = [positivePrompt, resolved.promptPolicy.positiveSuffix.trim()].join(', ');
+  }
   if (!manual) positivePrompt = prependLoraTriggerWords(positivePrompt, context.loras);
   const policyNegative = configuration.negativePromptKey && input.parameters[configuration.negativePromptKey] === undefined
     && resolved.promptPolicy.negativePrompt ? { [configuration.negativePromptKey]: resolved.promptPolicy.negativePrompt } : {};

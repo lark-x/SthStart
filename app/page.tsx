@@ -1,9 +1,9 @@
-import { RecentWork } from './components/recent-work';
-import { UpcomingSchedule } from './components/upcoming-schedule';
-import { RuntimeStrip } from './components/runtime-strip';
-import { QuickCreate } from './components/quick-create';
-import { HomeGreeting } from './components/home-greeting';
-import { HomeModules } from './components/home-modules';
+import { RecentWork } from '@/app/workspaces/home/recent-work';
+import { UpcomingSchedule } from '@/app/workspaces/home/upcoming-schedule';
+import { RuntimeStrip } from '@/app/workspaces/home/runtime-strip';
+import { QuickCreate } from '@/app/workspaces/home/quick-create';
+import { HomeGreeting } from '@/app/workspaces/home/home-greeting';
+import { HomeModules } from '@/app/workspaces/home/home-modules';
 import { PageContainer } from './components/shared/page-layout';
 
 export default function Home() {

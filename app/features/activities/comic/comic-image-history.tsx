@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import type { ComicHistoryImage, ComicPanel } from '@sthstart/contracts';
-import { useComicDraftRecord, useComicPanelHistory } from '../queries';
-import { useCreateComicPanelRender, usePreviewComicPanelRender, useSelectComicPanelImage } from '../mutations';
+import { Button } from '@/app/components/ui/button';
+import { useComicDraftRecord, useComicPanelHistory } from '@/app/features/activities/queries/comic';
+import { useCreateComicPanelRender, usePreviewComicPanelRender, useSelectComicPanelImage } from '@/app/features/activities/mutations/comic';
 import { StudioHiresDialog } from '../components/studio-hires-dialog';
 
 interface ComicImageHistoryProps {
@@ -79,8 +80,8 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
     <div className="flex items-center justify-between gap-2 px-3 pt-2"><div className="flex items-center gap-2"><h3 className="text-xs font-semibold text-ink">画格历史图片</h3><span className="text-xs text-muted">{images.length} 张</span></div>
       {query.isFetching && !query.isFetchingNextPage && <span className="text-xs text-muted">更新中…</span>}
     </div>
-    {query.hasNextPage && <button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}
-      className="mx-3 mb-2 self-start text-xs font-medium text-accent disabled:opacity-50">{query.isFetchingNextPage ? '正在载入…' : '加载更早的图片'}</button>}
+    {query.hasNextPage && <Button type="button" size="sm" variant="ghost" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}
+      className="mx-3 mb-2 h-auto min-h-0 self-start px-0 py-0 text-xs font-medium text-accent hover:bg-transparent hover:underline disabled:opacity-50">{query.isFetchingNextPage ? '正在载入…' : '加载更早的图片'}</Button>}
     <div className="min-h-0 overflow-x-auto px-3 py-2" data-autohide-scroll>
       {images.length ? <div className="flex w-max gap-2">{images.map((item) => {
         const itemKey = `${item.origin}:${item.artifactId}`;
@@ -98,16 +99,16 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
             <span className="block truncate px-1.5 py-1 text-xs text-muted">{new Date(item.createdAt).toLocaleString()}</span>
           </button>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-            <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!item.available || selectImage.isPending}
-              onClick={() => void choose(item)}>使用</button>
-            <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!item.available || previewRender.isPending || createRender.isPending}
-              onClick={() => void rerender(item)}>按原配置重绘</button>
-            <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!item.available}
-              onClick={() => { setSourcePreviewKey(''); setHiresImage(item); }}>放大细化</button>
+            <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-0.5 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={!item.available || selectImage.isPending}
+              onClick={() => void choose(item)}>使用</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-0.5 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={!item.available || previewRender.isPending || createRender.isPending}
+              onClick={() => void rerender(item)}>按原配置重绘</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-0.5 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={!item.available}
+              onClick={() => { setSourcePreviewKey(''); setHiresImage(item); }}>放大细化</Button>
             {item.callId && <a className="text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(item.callId)}`} target="_blank" rel="noreferrer">日志</a>}
-            {isHires && <button type="button" className="text-accent hover:underline disabled:text-muted" disabled={!parent}
+            {isHires && <Button type="button" size="sm" variant="ghost" className="h-auto min-h-0 px-0.5 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline disabled:text-muted" disabled={!parent}
               title={parent ? '显示本次细化所用的来源图' : '来源图在更早的分页里，请先加载更早的图片'}
-              onClick={() => setSourcePreviewKey((current) => current === itemKey ? '' : itemKey)}>来源图</button>}
+              onClick={() => setSourcePreviewKey((current) => current === itemKey ? '' : itemKey)}>来源图</Button>}
           </div>
           {isHires && sourcePreviewKey === itemKey && parent?.previewUrl && <div className="overflow-hidden rounded border border-border-default">
             <img src={parent.previewUrl} alt="细化来源图" className="aspect-[4/3] w-full object-cover" />

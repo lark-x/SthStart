@@ -2,6 +2,8 @@
 
 本规范适用于参与 SthStart 开发的开发者和 Agent。开发日志的目标是保留可接手的上下文，而不是复制 Git diff。
 
+前端开发同时遵循 [前端架构规范](../FRONTEND_ARCHITECTURE.md)。前端架构整理的正式计划位于 [FRONTEND_ARCHITECTURE_PLAN.md](FRONTEND_ARCHITECTURE_PLAN.md)，其阶段记录使用 `reviews/YYYY-MM-DD-short-topic.md`，沿用本规范的记录内容和模板要求。仓库默认忽略 `plans/` 与 `logs/` 的新文件；需要随代码长期维护的架构标准与验收证据不只保存在被忽略的位置。下文通用日志流程对该类记录采用上述路径。
+
 ## 何时更新
 
 - 跨模块功能、架构调整、数据库迁移或用户可见能力：新增一份阶段日志。

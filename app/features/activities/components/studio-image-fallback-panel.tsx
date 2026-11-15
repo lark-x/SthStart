@@ -6,8 +6,9 @@ import {StudioImageFallbackPreviewSchema,StudioImageFallbackRequestSchema,type S
 import {Button} from '@/app/components/ui/button';
 import {FormField} from '@/app/components/ui/form-field';
 import {ResponsiveEditOverlay} from '@/app/components/ui/responsive-edit-overlay';
-import {fetchStudioImageFallbackOptions,previewStudioImageFallback} from '../studio-api';
-import {useStudioJobMutations} from '../studio-mutations';
+import {Select} from '@/app/components/ui/select';
+import { fetchStudioImageFallbackOptions, previewStudioImageFallback } from '@/app/features/activities/api/studio';
+import { useStudioJobMutations } from '@/app/features/activities/mutations/studio';
 
 /** Image fallback replaces only the frozen preset for the failed items of one
  * batch. Every preset change needs a new server preview, and a lost confirmation
@@ -48,7 +49,7 @@ export function StudioImageFallbackPanel({activityId,job,beforeAction,onSelectJo
   };
   if(job.kind!=='render_batch'||job.readOnly)return null;
   const used=job.input.fallback as {kind?:string;fallbackOf?:string;presetId?:string}|undefined;
-  if(used)return <p role="status" className="text-xs text-muted">本批次为一次图片备用尝试 · 预设 {used.presetId??'历史未记录'}。再次失败会暂停，不继续自动切换。<button className="ml-2 text-accent" onClick={()=>onSelectJob(used.fallbackOf??null)}>查看原失败任务</button></p>;
+  if(used)return <p role="status" className="text-xs text-muted">本批次为一次图片备用尝试 · 预设 {used.presetId??'历史未记录'}。再次失败会暂停，不继续自动切换。<Button type="button" size="sm" variant="ghost" className="ml-2 h-auto min-h-0 px-1 py-0 text-xs font-normal text-accent hover:bg-transparent hover:underline" onClick={()=>onSelectJob(used.fallbackOf??null)}>查看原失败任务</Button></p>;
   if(!['paused','failed','partially_succeeded','interrupted'].includes(job.status)||job.stopRequested)return null;
   return <>
     <Button size="sm" variant="outline" onClick={()=>changeOpen(true)}>选择备用图片预设</Button>
@@ -63,11 +64,11 @@ export function StudioImageFallbackPanel({activityId,job,beforeAction,onSelectJo
         {options.isPending&&<p role="status">读取已有预设…</p>}
         {options.isError&&<><p role="alert" className="text-sm text-danger-fg">{options.error.message}</p><Button variant="outline" onClick={()=>void options.refetch()}>重新读取预设</Button></>}
         {options.data&&<p role="status" className="text-sm">{options.data.reason}</p>}
-        {(options.data?.allowed||pending.current)&&<FormField label="本次图片预设"><select aria-label="本次备用图片预设" className="h-10 w-full rounded-control border border-border-control bg-surface px-3 text-sm"
+        {(options.data?.allowed||pending.current)&&<FormField label="本次图片预设"><Select aria-label="本次备用图片预设"
           value={presetId} disabled={busy||operations.imageFallback.isPending||Boolean(pending.current)} onChange={event=>{generation.current++;setPresetId(event.target.value);setPreview(null);setError('');pending.current=null;remember({open:true,presetId:event.target.value,preview:null,error:''},null);}}>
           <option value="">选择启用的图片预设</option>{options.data?.presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name} · {preset.model??'未记录模型'}</option>)}
           {pending.current&&!options.data?.presets.some(preset=>preset.id===presetId)&&<option value={presetId}>{preview?.presetName??presetId} · 已保存的相同确认</option>}
-        </select></FormField>}
+        </Select></FormField>}
         {preview&&<section aria-label="备用绘制确认" className="space-y-2 rounded-lg bg-surface-subtle p-3 text-sm">
           <h3 className="font-semibold">将使用 {preview.presetName} · {preview.model??'未记录模型'}</h3><p>{preview.scope}</p>
           <p>本次 {preview.imageTaskCount} 次图片调用 · {preview.modelRequestCount} 次文本优化 · 备用上限 1 次</p>

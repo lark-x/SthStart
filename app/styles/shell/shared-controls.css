@@ -1,0 +1,44 @@
+/*
+ * SthStart Shell 样式职责拆分 - 通用交互行与表单控件状态规范
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* Interactive rows inherit the app surface and gain contrast from state, not stacked rules. */
+:is(button, a)[class*='hover:bg-surface-hover']:hover {
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+textarea,
+select {
+  accent-color: var(--accent);
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):focus,
+textarea:focus,
+select:focus {
+  outline-color: var(--accent);
+}
+
+@media (min-width: 640px) {
+  .tpl-container {
+    padding-inline: var(--shell-gutter);
+  }
+
+  .tpl-header-main {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .tpl-actions {
+    flex-wrap: wrap;
+    flex: 0 1 auto;
+  }
+}
+
+@media (min-width: 1536px) {
+  .tpl-container {
+    padding-inline: var(--shell-gutter-lg);
+  }
+}

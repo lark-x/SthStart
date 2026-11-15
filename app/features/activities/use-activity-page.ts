@@ -2,7 +2,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import type { ActivityPageQuery } from '@sthstart/contracts';
 import { activityKeys } from '@/app/lib/query-keys';
-import { fetchActivityPage } from './api';
+import { fetchActivityPage } from '@/app/features/activities/api/activities';
 
 export function useActivityPage(filters: ActivityPageQuery, enabled = true) {
   return useQuery({

@@ -1,0 +1,652 @@
+{
+  "source": "Docker sthstart /tmp/sthstart-worlds-sol-final-20261111/service.db; only fictional story input and received adjudications; no service configuration, credentials or model profile bindings",
+  "definition": {
+    "title": "真实模型验收·归航清晨",
+    "summary": "普通海港的一天。三位朋友清晨在码头开始各自工作，再自然相遇。请以中文叙事。",
+    "timeLabel": "归航日",
+    "locations": [
+      {
+        "id": "port",
+        "name": "海港码头",
+        "description": "石阶旁有一张修理木桌，桌上放着一盏未点燃的黄铜灯；海面平静。"
+      }
+    ],
+    "actors": [
+      {
+        "id": "actor-0",
+        "name": "林舟",
+        "role": "main",
+        "characterId": null,
+        "characterVersion": null,
+        "background": "修理灯具的青年，愿意帮助邻居。",
+        "personality": "安静仔细",
+        "speechStyle": "自然简洁，不说教。",
+        "appearance": "黑短发，深蓝亚麻外套，米白衬衫。",
+        "goals": [
+          "检查木桌上的黄铜灯，向朋友说明修理结果"
+        ],
+        "locationId": "port",
+        "referenceArtifactIds": []
+      },
+      {
+        "id": "actor-1",
+        "name": "苏禾",
+        "role": "main",
+        "characterId": null,
+        "characterVersion": null,
+        "background": "住在港口的送信人，熟悉朋友林舟和遥音。",
+        "personality": "爽朗体贴",
+        "speechStyle": "自然简洁，不说教。",
+        "appearance": "栗色齐肩发，墨绿外套，棕色邮包。",
+        "goals": [
+          "送完信后看看朋友林舟是否需要帮忙"
+        ],
+        "locationId": "port",
+        "referenceArtifactIds": []
+      }
+    ],
+    "sources": [
+      {
+        "id": "world-guide",
+        "title": "作者设定",
+        "nature": "author",
+        "content": "普通海边小镇，没有魔法。三位朋友各有自己的日常工作。",
+        "sourceUrl": "",
+        "sourceVersion": "1",
+        "capturedAt": "2026-11-11T08:14:56.256Z"
+      }
+    ],
+    "lockedFacts": [
+      "此世界没有魔法。"
+    ],
+    "models": {
+      "action": null,
+      "adjudication": null,
+      "narration": null
+    },
+    "visualStyle": "温暖纸感叙事插画，自然晨光，清楚的人物动作，固定人物服装。"
+  },
+  "branch": {
+    "mode": "alternate",
+    "direction": "先呈现各自日常，再在码头自然相遇；共享事件只记一次。",
+    "currentTick": 0
+  },
+  "states": [
+    {
+      "actorId": "actor-0",
+      "locationId": "port",
+      "goals": [
+        "检查木桌上的黄铜灯，向朋友说明修理结果"
+      ],
+      "emotion": "",
+      "relationships": [],
+      "updatedTick": 0
+    },
+    {
+      "actorId": "actor-1",
+      "locationId": "port",
+      "goals": [
+        "送完信后看看朋友林舟是否需要帮忙"
+      ],
+      "emotion": "",
+      "relationships": [],
+      "updatedTick": 0
+    }
+  ],
+  "toTick": 60,
+  "intents": [
+    {
+      "actorId": "actor-0",
+      "action": "接下来这段时间，我打算先在海港码头稍作休息，整理衣袖，留意周围是否适合进行细致的修理检查。我想向附近的苏禾打个招呼，询问她是否方便聊聊；若她不方便，就不打扰。检查木桌上的黄铜灯仍是我的打算，但目前并未确认桌子和灯的位置，我会先尝试了解它们在哪里，不预先认定已经找到、检查或修好。若之后具备检查条件，我再尝试查看，并只说明实际确认的情况。",
+      "targetLocationId": "port",
+      "prerequisiteFactIds": [],
+      "interactWithActorIds": [
+        "actor-1"
+      ]
+    },
+    {
+      "actorId": "actor-1",
+      "action": "接下来这段时间，我打算先在海港码头处理送信的日常工作，查看邮包里是否有待送的信，若有就核对收件信息，再判断能否在这里递送，不把送达当作已经完成。忙完后想稍作休息，整理邮包和外套，再找附近的林舟打个招呼，问问他是否需要帮忙。他若忙或不需要，我就不打扰，继续安排自己的日常。",
+      "targetLocationId": "port",
+      "prerequisiteFactIds": [],
+      "interactWithActorIds": [
+        "actor-0"
+      ]
+    }
+  ],
+  "responses": [
+    {
+      "events": [
+        {
+          "id": "evt-port-lin-inspection-001",
+          "tick": 0,
+          "duration": 15,
+          "title": "木桌旁的检查",
+          "summary": "林舟在码头稍作休息，整理衣袖后，看见石阶旁的修理木桌和桌上的黄铜灯。他在桌边查看灯具，只确认了灯罩表面有积灰，灯仍未点燃；本次检查没有进行维修或试燃。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-0"
+          ],
+          "facts": [
+            {
+              "id": "fact-lin-table-found-001",
+              "content": "林舟整理衣袖后，在海港码头石阶旁看见修理木桌，黄铜灯放在桌上。",
+              "knownBy": [
+                "actor-0"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-lin-lamp-observed-002",
+              "content": "黄铜灯的灯罩表面有积灰，检查结束时灯仍未点燃；林舟本次没有进行维修或试燃。",
+              "knownBy": [
+                "actor-0"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-0",
+              "locationId": "port",
+              "goals": [
+                "向朋友说明已确认的检查情况",
+                "之后再处理灯罩积灰，尚不判断灯能否正常使用"
+              ],
+              "emotion": "平静而仔细，不急于下结论",
+              "relationships": [],
+              "updatedTick": 15
+            }
+          ]
+        },
+        {
+          "id": "evt-port-su-mail-002",
+          "tick": 0,
+          "duration": 12,
+          "title": "核对邮包",
+          "summary": "苏禾在码头打开邮包核对待送信件。包里还有信，但收件信息没有指向码头现场的收件人。她没有在这里交付信件，收好邮包并整理外套，暂缓离开，准备先问候林舟。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-1"
+          ],
+          "facts": [
+            {
+              "id": "fact-su-mail-check-003",
+              "content": "苏禾核对了邮包里的待送信件，收件信息没有指向码头现场的收件人；她本次没有交付信件。",
+              "knownBy": [
+                "actor-1"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-su-mail-rest-004",
+              "content": "苏禾核对信件后收好邮包，整理外套，留在海港码头。",
+              "knownBy": [
+                "actor-1"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-1",
+              "locationId": "port",
+              "goals": [
+                "先问候林舟，询问是否需要帮忙",
+                "之后继续安排尚未完成的送信工作"
+              ],
+              "emotion": "从容，仍惦记着未送完的信",
+              "relationships": [],
+              "updatedTick": 12
+            }
+          ]
+        },
+        {
+          "id": "evt-port-yao-rope-003",
+          "tick": 0,
+          "duration": 15,
+          "title": "遥音整理绳索",
+          "summary": "遥音在码头整理手边的工作绳，将绳子盘好。她完成这一小段日常工作后，仍留在码头。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-2"
+          ],
+          "facts": [
+            {
+              "id": "fact-yao-rope-work-005",
+              "content": "遥音在海港码头将手边的工作绳盘好，随后仍留在码头。",
+              "knownBy": [
+                "actor-2"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-2",
+              "locationId": "port",
+              "goals": [
+                "照看码头绳具",
+                "工作间隙与朋友问候"
+              ],
+              "emotion": "安稳放松",
+              "relationships": [],
+              "updatedTick": 15
+            }
+          ]
+        },
+        {
+          "id": "evt-port-friends-meeting-004",
+          "tick": 16,
+          "duration": 6,
+          "title": "各自忙过后的问候",
+          "summary": "同在码头的三人互相问候。苏禾表示可以聊几句，并问林舟是否需要帮忙。林舟说明灯罩有积灰，灯尚未点燃，也没有维修或试燃；他暂时谢绝帮忙，准备之后先处理积灰，不判断灯是否已经能用。苏禾接受了他的答复。遥音也在场听到了检查情况。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-0",
+            "actor-1",
+            "actor-2"
+          ],
+          "facts": [
+            {
+              "id": "fact-meeting-greetings-006",
+              "content": "林舟、苏禾和遥音在海港码头互相问候；苏禾表示可以聊几句，并询问林舟是否需要帮忙。",
+              "knownBy": [
+                "actor-0",
+                "actor-1",
+                "actor-2"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-meeting-lamp-report-007",
+              "content": "黄铜灯的灯罩表面有积灰，检查结束时灯仍未点燃；林舟本次没有进行维修或试燃。",
+              "knownBy": [
+                "actor-0",
+                "actor-1",
+                "actor-2"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-meeting-help-declined-008",
+              "content": "林舟暂时谢绝苏禾的帮忙，表示准备之后先处理灯罩积灰，目前不判断灯能否正常使用；苏禾接受了他的答复。",
+              "knownBy": [
+                "actor-0",
+                "actor-1",
+                "actor-2"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [
+            "evt-port-lin-inspection-001",
+            "evt-port-su-mail-002",
+            "evt-port-yao-rope-003"
+          ],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-0",
+              "locationId": "port",
+              "goals": [
+                "之后处理灯罩积灰",
+                "进一步检查后再判断灯能否正常使用"
+              ],
+              "emotion": "受到关心而温和，仍保持谨慎",
+              "relationships": [
+                {
+                  "actorId": "actor-1",
+                  "description": "苏禾主动询问是否需要帮忙，并尊重了暂时不需要帮忙的答复。",
+                  "sourceEventId": "evt-port-friends-meeting-004"
+                }
+              ],
+              "updatedTick": 22
+            },
+            {
+              "actorId": "actor-1",
+              "locationId": "port",
+              "goals": [
+                "继续安排尚未完成的送信工作",
+                "不打扰林舟后续检查"
+              ],
+              "emotion": "爽朗而体贴",
+              "relationships": [
+                {
+                  "actorId": "actor-0",
+                  "description": "已听取林舟实际确认的检查情况，接受他暂时谢绝帮忙。",
+                  "sourceEventId": "evt-port-friends-meeting-004"
+                }
+              ],
+              "updatedTick": 22
+            },
+            {
+              "actorId": "actor-2",
+              "locationId": "port",
+              "goals": [
+                "继续照看码头绳具"
+              ],
+              "emotion": "与朋友短聊后的轻松",
+              "relationships": [
+                {
+                  "actorId": "actor-0",
+                  "description": "在场听到了林舟说明黄铜灯的检查情况。",
+                  "sourceEventId": "evt-port-friends-meeting-004"
+                }
+              ],
+              "updatedTick": 22
+            }
+          ]
+        }
+      ],
+      "supportingActors": [
+        {
+          "id": "actor-2",
+          "name": "遥音",
+          "role": "supporting",
+          "characterId": null,
+          "characterVersion": null,
+          "background": "本分支创作的码头绳具帮工，与林舟、苏禾是朋友；其工作与外观细节为本分支新增设定。",
+          "personality": "耐心务实，有自己的工作节奏。",
+          "speechStyle": "自然简洁。",
+          "appearance": "灰色工作外衣，袖口收紧。",
+          "goals": [
+            "照看码头绳具",
+            "在工作间隙与朋友往来"
+          ],
+          "locationId": "port",
+          "referenceArtifactIds": []
+        }
+      ],
+      "transfers": [
+        {
+          "actorId": "actor-1",
+          "fromActorId": "actor-0",
+          "sourceEventId": "evt-port-lin-inspection-001",
+          "factId": "fact-lin-lamp-observed-002",
+          "meetingEventId": "evt-port-friends-meeting-004"
+        },
+        {
+          "actorId": "actor-2",
+          "fromActorId": "actor-0",
+          "sourceEventId": "evt-port-lin-inspection-001",
+          "factId": "fact-lin-lamp-observed-002",
+          "meetingEventId": "evt-port-friends-meeting-004"
+        }
+      ],
+      "consumedInterventionIds": [],
+      "violatedLockedFacts": []
+    },
+    {
+      "events": [
+        {
+          "id": "evt-harbor-001",
+          "tick": 0,
+          "duration": 10,
+          "title": "林舟查看黄铜灯",
+          "summary": "林舟在码头稍作休息，整理衣袖，看见石阶旁修理木桌上的黄铜灯。他查看了灯罩，确认表面有积灰；这次没有维修或试燃，灯仍未点燃。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-0"
+          ],
+          "facts": [
+            {
+              "id": "fact-harbor-001",
+              "content": "林舟在海港码头整理衣袖后，看见石阶旁的修理木桌和桌上的黄铜灯。",
+              "knownBy": [
+                "actor-0"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-harbor-002",
+              "content": "黄铜灯的灯罩表面有积灰；林舟此次查看没有进行维修或试燃，查看结束时灯仍未点燃。",
+              "knownBy": [
+                "actor-0"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-0",
+              "locationId": "port",
+              "goals": [
+                "询问苏禾是否方便聊天",
+                "向朋友说明实际确认的检查情况"
+              ],
+              "emotion": "平静仔细，不急于判断灯能否使用",
+              "relationships": [],
+              "updatedTick": 10
+            }
+          ]
+        },
+        {
+          "id": "evt-harbor-002",
+          "tick": 10,
+          "duration": 10,
+          "title": "苏禾整理邮包",
+          "summary": "苏禾在码头检查邮包，发现包里没有待送信件。她收好邮包，整理外套，留在码头，准备问候林舟。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-1"
+          ],
+          "facts": [
+            {
+              "id": "fact-harbor-003",
+              "content": "苏禾在海港码头检查邮包，包里没有待送信件；她此次没有递送信件。",
+              "knownBy": [
+                "actor-1"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-harbor-004",
+              "content": "苏禾检查邮包后收好邮包，整理外套，仍留在海港码头。",
+              "knownBy": [
+                "actor-1"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-1",
+              "locationId": "port",
+              "goals": [
+                "问候林舟，询问是否需要帮忙"
+              ],
+              "emotion": "从容，愿意与朋友聊几句",
+              "relationships": [],
+              "updatedTick": 20
+            }
+          ]
+        },
+        {
+          "id": "evt-harbor-003",
+          "tick": 20,
+          "duration": 10,
+          "title": "遥音的绳具工作",
+          "summary": "遥音在海港码头把手边的工作绳盘好，完成这一小段日常工作，仍留在码头。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-2"
+          ],
+          "facts": [
+            {
+              "id": "fact-harbor-005",
+              "content": "遥音在海港码头将手边的工作绳盘好，随后仍留在码头。",
+              "knownBy": [
+                "actor-2"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-2",
+              "locationId": "port",
+              "goals": [
+                "照看码头绳具",
+                "工作间隙问候朋友"
+              ],
+              "emotion": "安稳放松",
+              "relationships": [],
+              "updatedTick": 30
+            }
+          ]
+        },
+        {
+          "id": "evt-harbor-004",
+          "tick": 31,
+          "duration": 9,
+          "title": "码头上的短聊",
+          "summary": "林舟、苏禾和遥音在码头互相问候。林舟询问苏禾是否方便聊天，苏禾表示方便，并问他是否需要帮忙。林舟向两人说明了此次查看黄铜灯的实际情况，暂时谢绝帮忙，表示之后再继续检查。苏禾接受他的答复，遥音也在场听到了说明。",
+          "locationId": "port",
+          "participantIds": [
+            "actor-0",
+            "actor-1",
+            "actor-2"
+          ],
+          "facts": [
+            {
+              "id": "fact-harbor-006",
+              "content": "林舟、苏禾和遥音在海港码头互相问候；林舟询问苏禾是否方便聊天，苏禾表示方便，并询问林舟是否需要帮忙。",
+              "knownBy": [
+                "actor-0",
+                "actor-1",
+                "actor-2"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-harbor-007",
+              "content": "黄铜灯的灯罩表面有积灰；林舟此次查看没有进行维修或试燃，查看结束时灯仍未点燃。",
+              "knownBy": [
+                "actor-0",
+                "actor-1",
+                "actor-2"
+              ],
+              "nature": "ai"
+            },
+            {
+              "id": "fact-harbor-008",
+              "content": "林舟暂时谢绝苏禾的帮忙，表示之后再继续检查黄铜灯；苏禾接受了他的答复，遥音在场听见。",
+              "knownBy": [
+                "actor-0",
+                "actor-1",
+                "actor-2"
+              ],
+              "nature": "ai"
+            }
+          ],
+          "causeEventIds": [
+            "evt-harbor-001",
+            "evt-harbor-002",
+            "evt-harbor-003"
+          ],
+          "storyLineIds": [],
+          "stateChanges": [
+            {
+              "actorId": "actor-0",
+              "locationId": "port",
+              "goals": [
+                "之后继续检查黄铜灯，尚不判断能否正常使用"
+              ],
+              "emotion": "受到朋友关心，温和而谨慎",
+              "relationships": [
+                {
+                  "actorId": "actor-1",
+                  "description": "苏禾主动提出帮忙，并尊重了暂时不需要帮忙的答复。",
+                  "sourceEventId": "evt-harbor-004"
+                }
+              ],
+              "updatedTick": 40
+            },
+            {
+              "actorId": "actor-1",
+              "locationId": "port",
+              "goals": [
+                "继续安排自己的日常，不打扰林舟后续检查"
+              ],
+              "emotion": "轻松体贴",
+              "relationships": [
+                {
+                  "actorId": "actor-0",
+                  "description": "听取了林舟确认的检查情况，接受他暂时谢绝帮忙。",
+                  "sourceEventId": "evt-harbor-004"
+                }
+              ],
+              "updatedTick": 40
+            },
+            {
+              "actorId": "actor-2",
+              "locationId": "port",
+              "goals": [
+                "继续照看码头绳具"
+              ],
+              "emotion": "与朋友短聊后的轻松",
+              "relationships": [
+                {
+                  "actorId": "actor-0",
+                  "description": "在场听到了林舟说明黄铜灯的检查情况。",
+                  "sourceEventId": "evt-harbor-004"
+                }
+              ],
+              "updatedTick": 40
+            }
+          ]
+        }
+      ],
+      "supportingActors": [
+        {
+          "id": "actor-2",
+          "name": "遥音",
+          "role": "supporting",
+          "characterId": null,
+          "characterVersion": null,
+          "background": "与林舟、苏禾相识的朋友。本 alternate 分支创作设定：在码头帮忙照看绳具；职业与外观为新增创作。",
+          "personality": "耐心务实，有自己的工作节奏。",
+          "speechStyle": "自然简洁。",
+          "appearance": "灰色工作外衣，袖口收紧。",
+          "goals": [
+            "照看码头绳具",
+            "工作间隙与朋友往来"
+          ],
+          "locationId": "port",
+          "referenceArtifactIds": []
+        }
+      ],
+      "transfers": [
+        {
+          "actorId": "actor-1",
+          "fromActorId": "actor-0",
+          "sourceEventId": "evt-harbor-001",
+          "factId": "fact-harbor-002",
+          "meetingEventId": "evt-harbor-004"
+        },
+        {
+          "actorId": "actor-2",
+          "fromActorId": "actor-0",
+          "sourceEventId": "evt-harbor-001",
+          "factId": "fact-harbor-002",
+          "meetingEventId": "evt-harbor-004"
+        }
+      ],
+      "consumedInterventionIds": [],
+      "violatedLockedFacts": []
+    }
+  ]
+}

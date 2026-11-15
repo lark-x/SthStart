@@ -10,7 +10,9 @@ import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { ActivityCreationProfile } from '../creation-profile-picker';
 
-export type StudioSettingsTab = 'basics' | 'actors' | 'stages';
+import type { StudioSettingsTab } from '../../studio/model/studio-view';
+
+export type { StudioSettingsTab };
 
 interface StudioSettingsDrawerProps {
   open: boolean;

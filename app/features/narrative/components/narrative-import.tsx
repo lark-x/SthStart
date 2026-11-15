@@ -232,7 +232,10 @@ export function NarrativeImport({
             aria-label="虚空终端检索关键词"
             value={mcpQuery}
             onChange={(e) => setMcpQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearchRemote()}
+            onKeyDown={(e) => {
+              if (e.nativeEvent?.isComposing || e.keyCode === 229) return;
+              if (e.key === 'Enter') handleSearchRemote();
+            }}
             placeholder="输入角色、任务、地点或剧情台词关键词…"
             className="flex-1 bg-surface text-sm"
           />

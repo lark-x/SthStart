@@ -13,10 +13,13 @@ import { Pagination } from '@/app/components/ui/pagination';
 import { Alert } from '@/app/components/ui/alert';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Skeleton } from '@/app/components/ui/skeleton';
-import { Button } from '@/app/components/ui/button';
+import { Button, buttonVariants } from '@/app/components/ui/button';
+import { Select } from '@/app/components/ui/select';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { SectionHeader } from '@/app/components/shared/section-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
+import { localNoteBadge } from '../model/local-note-status';
+import './notebook-layout.css';
 
 const filterOptions: Array<{ value: 'all' | NoteKind; label: string }> = [
   { value: 'all', label: '全部' },
@@ -93,6 +96,10 @@ export function NotebookList() {
     page, pageSize,
   });
   const localRecords = useLocalNotebookNotes(data?.items);
+  const localStatusById = useMemo(
+    () => new Map(localRecords.map((record) => [record.noteId, record.status])),
+    [localRecords],
+  );
   const notes = useMemo(() => {
     const merged = new Map((data?.items ?? []).filter((note) => note.id).map((note) => [note.id!, note]));
     for (const record of localRecords) {
@@ -133,15 +140,15 @@ export function NotebookList() {
     <PageContainer className="notebook-list-page space-y-5 py-6 pb-10 text-ink">
       <PageHeader
         className="notebook-list-header"
-        title="创作资料库"
+        title="创作笔记"
         description="记录日常、灵感与设定；标记为「可参考」的资料会进入企划检索范围。"
         actions={
           <Link
             href="/apps/notebook/new"
-            className="notebook-new-note-action inline-flex items-center gap-1.5 h-8 px-3 rounded-control bg-accent text-fg-on-accent hover:bg-accent-dark font-semibold text-sm transition-colors cursor-pointer shrink-0"
+            className={`${buttonVariants({ variant: 'accent', size: 'sm' })} notebook-new-note-action`}
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>新建资料</span>
+            <span>新建笔记</span>
           </Link>
         }
       />
@@ -176,19 +183,21 @@ export function NotebookList() {
           {filterOptions.map((opt) => {
             const isActive = selectedFilter === opt.value;
             return (
-              <button
+              <Button
                 key={opt.value}
                 type="button"
+                size="sm"
+                variant="ghost"
                 aria-pressed={isActive}
                 onClick={() => setSelectedFilter(opt.value)}
-                className={'px-2.5 py-1 rounded-control text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ' + (
+                className={'ui-choice notebook-filter-chip px-2.5 py-1 text-sm font-medium whitespace-nowrap ' + (
                   isActive
                     ? 'bg-surface-sunken text-ink'
-                    : 'text-muted hover:text-ink hover:bg-surface-hover'
+                    : 'text-muted'
                 )}
               >
                 {opt.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -218,32 +227,32 @@ export function NotebookList() {
             {!!facets?.works.length && (
               <label className="flex min-w-0 flex-col gap-1.5 text-sm">
                 <span className="text-xs text-muted">作品</span>
-                <select aria-label="按作品筛选" value={workFilter} onChange={(event) => setWorkFilter(event.target.value)} className="h-10 rounded-control border-0 bg-surface-input px-3 text-base sm:text-sm text-ink outline-none">
+                <Select aria-label="按作品筛选" value={workFilter} onChange={(event) => setWorkFilter(event.target.value)} className="h-10 text-base sm:text-sm">
                   <option value="">全部作品</option>
                   {facets.works.map((work) => <option key={work} value={work}>{work}</option>)}
-                </select>
+                </Select>
               </label>
             )}
               <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted">参考状态</span>
-                <select aria-label="按参考状态筛选" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value as '' | NoteUsage)} className="h-10 rounded-control border-0 bg-surface-input px-3 text-base sm:text-sm text-ink outline-none">
+                <Select aria-label="按参考状态筛选" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value as '' | NoteUsage)} className="h-10 text-base sm:text-sm">
                 <option value="">不限</option>
                 {Object.entries(usageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </Select>
             </label>
               <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted">内容性质</span>
-                <select aria-label="按内容性质筛选" value={natureFilter} onChange={(event) => setNatureFilter(event.target.value as '' | NoteNature)} className="h-10 rounded-control border-0 bg-surface-input px-3 text-base sm:text-sm text-ink outline-none">
+                <Select aria-label="按内容性质筛选" value={natureFilter} onChange={(event) => setNatureFilter(event.target.value as '' | NoteNature)} className="h-10 text-base sm:text-sm">
                 <option value="">不限</option>
                 {Object.entries(natureLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </Select>
             </label>
               <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted">资料类型</span>
-                <select aria-label="按资料类型筛选" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '' | NoteCategory)} className="h-10 rounded-control border-0 bg-surface-input px-3 text-base sm:text-sm text-ink outline-none">
+                <Select aria-label="按资料类型筛选" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '' | NoteCategory)} className="h-10 text-base sm:text-sm">
                 <option value="">不限</option>
                 {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </Select>
             </label>
         </div>
       </ResponsiveEditOverlay>
@@ -269,7 +278,9 @@ export function NotebookList() {
             />
 
             <ul className="notebook-note-list divide-y divide-border-subtle" role="list">
-              {visibleNotes.map((note) => (
+              {visibleNotes.map((note) => {
+                const badge = localNoteBadge(note.id ? localStatusById.get(note.id) : undefined, Boolean(data));
+                return (
                 <li key={note.id}>
                   <Link
                     href={'/apps/notebook/' + note.id}
@@ -278,19 +289,25 @@ export function NotebookList() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2.5">
                         <h4 className="truncate text-sm font-medium text-ink">{note.title || '未命名笔记'}</h4>
-                        <span className="flex-none text-xs text-fg-subtle">{kindLabels[note.kind]}</span>
+                        <span className="notebook-list-meta flex-none text-xs">{kindLabels[note.kind]}</span>
                       </div>
                       <p className="mt-0.5 truncate text-sm text-muted">{note.summary || '还没有正文摘要，点开继续记录。'}</p>
                     </div>
-                    <div className="flex flex-none items-center gap-3 text-xs text-fg-subtle">
-                      <span>{stageLabels[note.stage]}</span>
-                      {note.knowledge?.usage === 'reference' && <span>{usageLabels[note.knowledge.usage]}</span>}
-                      <time className="tabular-nums">{formatDate(note.updatedAt)}</time>
+                    <div className="flex flex-none flex-wrap items-center justify-end gap-2 text-xs">
+                      <span className="notebook-list-meta">{stageLabels[note.stage]}</span>
+                      {note.knowledge?.usage === 'reference' && <span className="notebook-list-meta">{usageLabels[note.knowledge.usage]}</span>}
+                      <time className="notebook-list-meta tabular-nums">{formatDate(note.updatedAt)}</time>
+                      {badge && (
+                        <span className="notebook-local-badge" data-local-status={badge.status} title="本机记录；未同步的草稿会在联网后自动同步">
+                          {badge.label}
+                        </span>
+                      )}
                       {note.favorite && <Star className="h-3.5 w-3.5 fill-warning text-warning" aria-hidden="true" />}
                     </div>
                   </Link>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
 
@@ -298,13 +315,15 @@ export function NotebookList() {
             <div className="notebook-lore-shelf">
               <div className="flex items-baseline justify-between border-b border-border-subtle pb-2">
                 <h4 className="text-sm font-semibold text-ink">角色人设</h4>
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="ghost"
                   onClick={() => setSelectedFilter('character')}
-                  className="text-xs font-medium text-muted hover:text-ink cursor-pointer"
+                  className="px-1 text-xs font-medium text-muted"
                 >
                   查看全部
-                </button>
+                </Button>
               </div>
               <ul className="divide-y divide-border-subtle" role="list">
                 {characterNotes.map((item) => (
@@ -334,13 +353,15 @@ export function NotebookList() {
             <div className="notebook-lore-shelf">
               <div className="flex items-baseline justify-between border-b border-border-subtle pb-2">
                 <h4 className="text-sm font-semibold text-ink">世界故事</h4>
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="ghost"
                   onClick={() => setSelectedFilter('world')}
-                  className="text-xs font-medium text-muted hover:text-ink cursor-pointer"
+                  className="px-1 text-xs font-medium text-muted"
                 >
                   查看全部
-                </button>
+                </Button>
               </div>
               <ul className="divide-y divide-border-subtle" role="list">
                 {worldNotes.map((item) => (
@@ -383,7 +404,7 @@ export function NotebookList() {
             <div className="flex gap-2">
               <Link
                 href="/apps/notebook/new"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-control bg-accent text-fg-on-accent font-semibold text-sm hover:bg-accent-dark transition-colors"
+                className={buttonVariants({ variant: 'accent', size: 'md' })}
               >
                 <Plus className="h-4 w-4" />
                 <span>写下第一篇笔记</span>

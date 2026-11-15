@@ -162,6 +162,8 @@ type ControlSample = {
   ring: number | null;
   hasIndicator: boolean;
   focused: boolean;
+  indicatorContrast: number | null;
+  indicatorVisible: boolean;
 };
 
 const ROUTES = [
@@ -231,7 +233,13 @@ const COLLECT_CONTROLS = `(() => {
     const style = getComputedStyle(el);
     if (style.visibility === 'hidden' || style.display === 'none') continue;
     if (Number(style.opacity) < 0.99) continue;
-    const bg = backgroundUnder(el);
+    /*
+     * 复选框的边框贴着控件外侧，勾选后内部填充与边框同色。
+     * 边框必须和相邻表面比较，不能拿它和自己的填充比出 1:1。
+     * 勾选图标则单独与内部填充比较。
+     */
+    const isChoice = el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio');
+    const bg = backgroundUnder(isChoice ? el.parentElement : el);
     if (!bg) continue;
     const borderWidth = parseFloat(style.borderTopWidth) || 0;
     /* 全透明边框是刻意的无边框写作区（如笔记正文块），与 0 宽边框同样跳过，聚焦态另有用例覆盖。 */
@@ -243,6 +251,14 @@ const COLLECT_CONTROLS = `(() => {
       .concat(shadowColors)
       .filter((c) => c && c.a > 0.05);
     const ratioOf = (c) => round2(contrast(c.a >= 1 ? c : over(c, bg), bg));
+    const fill = parseColor(style.backgroundColor);
+    const indicator = isChoice ? el.parentElement?.querySelector('svg') ?? null : null;
+    const indicatorStyle = indicator ? getComputedStyle(indicator) : null;
+    const indicatorColor = indicatorStyle ? parseColor(indicatorStyle.color) : null;
+    const indicatorOpacity = indicatorStyle ? Number(indicatorStyle.opacity) : 0;
+    const indicatorContrast = fill && indicatorColor
+      ? round2(contrast(indicatorColor.a >= 1 ? indicatorColor : over(indicatorColor, fill), fill))
+      : null;
     out.push({
       selector: pathOf(el),
       tag: el.tagName.toLowerCase() + (el.type ? '[' + el.type + ']' : ''),
@@ -253,6 +269,8 @@ const COLLECT_CONTROLS = `(() => {
       ring: candidates.length ? round2(Math.max.apply(null, candidates.map(ratioOf))) : null,
       hasIndicator: outlineVisible || shadowColors.length > 0,
       focused: el === document.activeElement,
+      indicatorContrast,
+      indicatorVisible: indicatorOpacity > 0.99,
     });
   }
   return out;
@@ -282,6 +300,13 @@ function reportControls(failures: Array<ControlSample & { route: string }>) {
   return failures
     .slice(0, 30)
     .map((c) => `${c.route}  ${c.border}:1  ${c.tag}  border ${c.borderColor} on ${c.background}  — ${c.selector}`)
+    .join('\n');
+}
+
+function reportIndicators(failures: Array<ControlSample & { route: string }>) {
+  return failures
+    .slice(0, 30)
+    .map((c) => `${c.route}  ${c.indicatorContrast}:1  ${c.tag}  icon on ${c.background}  — ${c.selector}`)
     .join('\n');
 }
 
@@ -331,21 +356,35 @@ async function waitForPageData(page: Page) {
 
 test('form control borders reach 3:1 in the resting state', async ({ page }) => {
   const failures: Array<ControlSample & { route: string }> = [];
+  const indicatorFailures: Array<ControlSample & { route: string }> = [];
   let checked = 0;
-  for (const route of ROUTES) {
+  const formRoute = '/apps/characters/new';
+  const checkedByRoute: Record<string, number> = {};
+  for (const route of [...ROUTES, formRoute]) {
     const response = await page.goto(route);
     if (response && response.status() >= 400) continue;
     await waitForPageData(page);
+    if (route === formRoute) {
+      await expect(page.getByRole('heading', { name: '新建角色档案', exact: true })).toBeVisible();
+      await expect(page.getByRole('textbox', { name: '角色名称', exact: true })).toBeVisible();
+    }
     await page.waitForTimeout(250);
     for (const control of await collectControls(page)) {
       if (control.borderWidth <= 0) continue;
       if (control.border === null) continue;
       checked += 1;
+      checkedByRoute[route] = (checkedByRoute[route] ?? 0) + 1;
       if (control.border < 3) failures.push({ ...control, route });
+      if (control.tag === 'input[checkbox]' && control.indicatorVisible
+        && (control.indicatorContrast === null || control.indicatorContrast < 3)) {
+        indicatorFailures.push({ ...control, route });
+      }
     }
   }
-  expect(checked, '取样控件数量').toBeGreaterThan(10);
+  expect(checkedByRoute[formRoute] ?? 0, '新建角色表单中采到的控件').toBeGreaterThan(0);
+  expect(checked, '取样控件数量：' + JSON.stringify(checkedByRoute)).toBeGreaterThan(10);
   expect(failures.length, `控件边界低于 3:1：\n${reportControls(failures)}`).toBe(0);
+  expect(indicatorFailures.length, `复选框勾选图标低于 3:1：\n${reportIndicators(indicatorFailures)}`).toBe(0);
 });
 
 test('focused controls show a visible indicator with 3:1 contrast', async ({ page }) => {
@@ -380,4 +419,132 @@ test('focused controls show a visible indicator with 3:1 contrast', async ({ pag
     }
   }
   expect(failures.length, `焦点指示不足：\n${failures.join('\n')}`).toBe(0);
+});
+
+test('checkbox keeps a 3:1 resting edge with stable keyboard focus and checked states', async ({ page, context, baseURL }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const read = (target: import('@playwright/test').Locator) => target.evaluate((el) => {
+    const parse = (value: string) => {
+      const match = /rgba?\(([^)]+)\)/.exec(value || '');
+      if (!match) return null;
+      const parts = match[1].split(/[,\/]/).map((part) => parseFloat(part.trim())).filter((number) => !Number.isNaN(number));
+      if (parts.length < 3) return null;
+      return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+    };
+    const channel = (value: number) => {
+      const x = value / 255;
+      return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    };
+    const luminance = (color: { r: number; g: number; b: number }) => 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+    const ratio = (a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }) =>
+      (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
+    const backgroundUnder = (node: Element | null) => {
+      for (let current = node; current; current = current.parentElement) {
+        const color = parse(getComputedStyle(current).backgroundColor);
+        if (color && color.a >= 0.999) return color;
+      }
+      return { r: 255, g: 255, b: 255, a: 1 };
+    };
+    const style = getComputedStyle(el);
+    const background = parse(style.backgroundColor) ?? { r: 255, g: 255, b: 255, a: 1 };
+    const surrounding = backgroundUnder(el.parentElement);
+    const border = parse(style.borderTopColor);
+    const outline = parse(style.outlineColor);
+    const icon = el.parentElement?.querySelector('svg') ?? null;
+    const iconStyle = icon ? getComputedStyle(icon) : null;
+    const iconColor = iconStyle ? parse(iconStyle.color) : null;
+    const input = el as HTMLInputElement;
+    const label = input.labels?.[0] ?? null;
+    const rect = input.getBoundingClientRect();
+    return {
+      id: input.id,
+      width: rect.width,
+      height: rect.height,
+      borderWidth: parseFloat(style.borderTopWidth) || 0,
+      borderContrast: border ? ratio(border, surrounding) : 0,
+      fillContrast: ratio(background, surrounding),
+      outlineStyle: style.outlineStyle,
+      outlineWidth: parseFloat(style.outlineWidth) || 0,
+      ringContrast: outline ? ratio(outline, surrounding) : 0,
+      checked: input.checked,
+      labelText: label?.textContent?.trim() ?? '',
+      labelFor: label?.htmlFor ?? '',
+      iconOpacity: iconStyle ? Number(iconStyle.opacity) : null,
+      iconContrast: iconColor ? ratio(iconColor, background) : 0,
+    };
+  });
+
+  const openRoleFilter = async () => {
+    await page.goto('/apps/characters');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', expectedTheme);
+    await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
+    const trigger = page.getByRole('button', { name: '筛选与排序', exact: true });
+    await expect(trigger).toBeVisible();
+    const panel = page.getByRole('dialog', { name: '角色筛选', exact: true });
+    for (let attempt = 0; attempt < 12 && !(await panel.isVisible()); attempt += 1) {
+      await trigger.click();
+      await page.waitForTimeout(150);
+    }
+    await expect(panel).toBeVisible();
+    return panel;
+  };
+
+  let expectedTheme = 'light-paper';
+  const assertCheckbox = async (target: import('@playwright/test').Locator, label: string) => {
+    await expect(target).toBeVisible();
+    const initial = await read(target);
+    expect(initial.width, label + ': input width').toBeGreaterThanOrEqual(15.5);
+    expect(initial.width, label + ': input width').toBeLessThanOrEqual(16.5);
+    expect(initial.height, label + ': input height').toBeGreaterThanOrEqual(15.5);
+    expect(initial.height, label + ': input height').toBeLessThanOrEqual(16.5);
+    expect(initial.borderWidth, label + ': resting border').toBeGreaterThanOrEqual(1);
+    expect(initial.borderContrast, label + ': resting border contrast').toBeGreaterThanOrEqual(3);
+    expect(initial.labelText, label + ': accessible label').toBe(label);
+    expect(initial.labelFor, label + ': label association').toBe(initial.id);
+
+    // 键盘进入焦点，确保量到的是 :focus-visible 而不是脚本聚焦的瞬时样式。
+    await target.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(target).toBeFocused();
+    const focused = await read(target);
+    expect(focused.outlineStyle, label + ': focus outline').not.toBe('none');
+    expect(focused.outlineWidth, label + ': focus outline width').toBeGreaterThanOrEqual(2);
+    expect(focused.ringContrast, label + ': focus ring contrast').toBeGreaterThanOrEqual(3);
+
+    if (!(await target.isChecked())) await page.keyboard.press('Space');
+    await expect(target).toBeChecked();
+    // Mantine transitions border/background for 100ms; measure the settled state.
+    await page.waitForTimeout(180);
+    const checked = await read(target);
+    expect(checked.fillContrast, label + ': checked fill contrast').toBeGreaterThanOrEqual(3);
+    expect(checked.iconOpacity, label + ': checked icon visibility').toBeGreaterThan(0.99);
+    expect(checked.iconContrast, label + ': checked icon contrast').toBeGreaterThanOrEqual(3);
+
+    if (!initial.checked) await page.keyboard.press('Space');
+    await expect(target).toBeChecked({ checked: initial.checked });
+  };
+
+  for (const theme of ['light-paper', 'dark-espresso']) {
+    expectedTheme = theme;
+    await page.addInitScript((id) => window.localStorage.setItem('sthstart_theme_id', id), theme);
+    const panel = await openRoleFilter();
+    await assertCheckbox(panel.getByRole('checkbox', { name: '仅收藏', exact: true }), '仅收藏');
+  }
+
+  expectedTheme = 'light-paper';
+  await page.addInitScript(() => window.localStorage.setItem('sthstart_theme_id', 'light-paper'));
+  const origin = new URL(baseURL ?? page.url()).origin;
+  expect((await context.request.post(origin + '/api/auth/admin-session', { headers: { origin } })).ok()).toBe(true);
+  await page.goto('/settings/control-center');
+  await expect(page.getByRole('heading', { name: '邻舍运行栈', exact: true })).toBeVisible();
+  const runtimeHeading = page.getByText('运行参数与自启配置', { exact: true });
+  for (let attempt = 0; attempt < 12 && !(await runtimeHeading.isVisible()); attempt += 1) {
+    await page.getByRole('tab', { name: '自启与服务', exact: true }).click();
+    await page.waitForTimeout(150);
+  }
+  await expect(runtimeHeading).toBeVisible();
+  await assertCheckbox(page.getByRole('checkbox', { name: 'MaiBot 网页控制台', exact: true }), 'MaiBot 网页控制台');
 });

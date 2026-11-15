@@ -4,9 +4,9 @@ import React, { useEffect, useRef } from 'react';
 import { Bookmark, Sparkles } from 'lucide-react';
 import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
-import { AdoptIntoProject } from '@/app/features/projects/adopt-into-project';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { cn } from '@/app/lib/cn';
+import type { NarrativeAdoptAction } from '../adopt-action';
 
 /**
  * 叙事正文（§8.9）：正文是视觉中心，行宽受控、字号稳定。
@@ -19,6 +19,7 @@ export function NarrativeReader({
   onOpenImport,
   onGenerateConcept,
   generatingConcept,
+  adoptAction,
 }: {
   reading: NarrativeReading | null;
   loading?: boolean;
@@ -26,6 +27,7 @@ export function NarrativeReader({
   onOpenImport: () => void;
   onGenerateConcept: () => void;
   generatingConcept: boolean;
+  adoptAction?: NarrativeAdoptAction;
 }) {
   const articleRef = useRef<HTMLElement>(null);
   const nodeId = reading?.node.id;
@@ -163,7 +165,7 @@ export function NarrativeReader({
                       )}
 
                       <div className="mt-1.5 flex flex-wrap items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-                      <AdoptIntoProject source={{kind: 'narrative', id: line.id}} />
+                      {adoptAction?.({ source: { kind: 'narrative', id: line.id } })}
                       <Button
                         type="button"
                         size="sm"

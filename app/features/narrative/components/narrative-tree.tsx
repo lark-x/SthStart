@@ -68,14 +68,9 @@ export function NarrativeTree({
   return (
     <aside className="narrative-tree flex max-h-[45dvh] w-full flex-col bg-surface md:h-full md:max-h-none md:w-64 md:flex-none md:min-h-0">
       <div className="narrative-tree-head shrink-0 space-y-1.5 p-3">
-        <label
-          htmlFor="narrative-work-select"
-          className="block text-xs font-semibold text-fg-subtle"
-        >
-          当前作品
-        </label>
+        <span className="block text-xs font-semibold text-fg-subtle">当前作品</span>
         <Select
-          id="narrative-work-select"
+          aria-label="当前作品"
           value={selectedWorkId}
           onChange={(e) => onSelectWork(e.target.value)}
           className="h-9 bg-surface text-base sm:text-sm"
@@ -104,8 +99,7 @@ export function NarrativeTree({
               style={{ paddingLeft: `${12 + depth * 14}px` }}
               aria-current={isActive ? 'true' : undefined}
               className={cn(
-                'flex w-full flex-col items-start gap-0.5 py-1.5 pr-3 text-left transition-colors',
-                isActive ? 'bg-surface-sunken' : 'hover:bg-surface-hover',
+                'ui-choice flex w-full flex-col items-start gap-0.5 rounded-control py-1.5 pr-3 text-left transition-colors hover:bg-surface-hover',
               )}
             >
               <span className={cn('w-full truncate text-sm', isActive ? 'font-medium text-ink' : 'text-muted')}>

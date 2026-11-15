@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getPageNumbers, getPagination, positiveInteger } from './pagination';
 import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderWithUi } from './render-with-ui-test';
 import { Pagination } from '../components/ui/pagination';
 
 test('pagination ranges cover empty, one, exact page, overflow and multiple pages', () => {
@@ -33,22 +33,22 @@ test('large page counts remain bounded and keep first, current and last pages', 
 });
 
 test('shared pagination exposes accessible controls, empty state, loading and compact options', () => {
-  const render = (overrides = {}) => renderToStaticMarkup(createElement(Pagination, {
+  const render = (overrides = {}) => renderWithUi(createElement(Pagination, {
     total: 81, page: 2, pageSize: 20, onPageChange() {}, onPageSizeChange() {}, ...overrides,
   }));
   const normal = render();
   assert.match(normal, /当前 21–40 条/);
-  for (const label of ['首页', '末页', '上一页', '下一页', '跳转页码', '每页条数']) assert.ok(normal.includes(label));
+  for (const label of ['上一页', '下一页', '跳到指定页', '每页条数']) assert.ok(normal.includes(label));
   assert.match(normal, /aria-current="page"/);
   const empty = render({ total: 0, page: 99 });
   assert.match(empty, /共 0 条/);
-  assert.ok(!empty.includes('1 / 0'));
+  assert.doesNotMatch(empty, /上一页|下一页|跳到指定页/);
   const loading = render({ loading: true });
   assert.match(loading, /正在更新/);
   assert.match(loading, /aria-busy="true"/);
   assert.ok(!/<button(?![^>]*disabled)[^>]*>/.test(loading));
   const compact = render({ compact: true });
   assert.match(compact, /aria-haspopup="dialog"/);
-  assert.match(compact, /分页选项/);
+  assert.match(compact, /当前第 2 页，共 5 页/);
   assert.ok(!compact.includes('aria-label="第 2 页"'));
 });

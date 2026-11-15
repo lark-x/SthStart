@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Heart,
@@ -19,6 +19,8 @@ import {
   Camera,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { Input } from '@/app/components/ui/input';
 import { useToast } from '@/app/providers/ui-provider';
 import { adminFetch } from '@/app/lib/admin-fetch';
 
@@ -50,7 +52,11 @@ export function LinsheCharacterVault() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [filterState, setFilterState] = useState<'all' | 'awake' | 'sleeping'>('all');
+  /** 输入框里的草稿文本；中文输入法组字期间先停在这里。 */
+  const [searchDraft, setSearchDraft] = useState('');
+  /** 真正参与筛选的文本，组字结束后才提交，避免拼音字母过滤掉全部卡片。 */
   const [searchQuery, setSearchQuery] = useState('');
+  const composingRef = useRef(false);
   const [shakingCardId, setShakingCardId] = useState<number | string | null>(null);
 
   // 1. 获取邻舍角色与运行态
@@ -205,55 +211,51 @@ export function LinsheCharacterVault() {
         </div>
       </div>
 
-      {/* 过滤药丸与搜索栏 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 p-1 bg-surface-muted rounded-xl border border-border-default/60">
-          <button
-            type="button"
-            onClick={() => setFilterState('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              filterState === 'all'
-                ? 'bg-surface text-accent shadow-xs font-semibold'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            全部角色 ({rawCharacters.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterState('awake')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              filterState === 'awake'
-                ? 'bg-surface text-accent shadow-xs font-semibold'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            醒着 ({rawCharacters.filter((c) => !c.is_sleeping || c.is_temp_woken).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterState('sleeping')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              filterState === 'sleeping'
-                ? 'bg-surface text-accent shadow-xs font-semibold'
-                : 'text-muted hover:text-ink'
-            }`}
-          >
-            梦乡中 ({rawCharacters.filter((c) => c.is_sleeping && !c.is_temp_woken).length})
-          </button>
+      {/* 过滤药丸与搜索栏：三个状态互斥，用 aria-pressed 表达当前选中项 */}
+      <search aria-label="邻舍角色筛选与搜索" className="flex flex-wrap items-center justify-between gap-3">
+        <div role="group" aria-label="按作息状态筛选" className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border-default/60 bg-surface-muted p-1">
+          {([
+            ['all', '全部角色', rawCharacters.length],
+            ['awake', '醒着', rawCharacters.filter((c) => !c.is_sleeping || c.is_temp_woken).length],
+            ['sleeping', '梦乡中', rawCharacters.filter((c) => c.is_sleeping && !c.is_temp_woken).length],
+          ] as const).map(([state, label, count]) => (
+            <Button
+              key={state}
+              type="button"
+              size="sm"
+              variant={filterState === state ? 'secondary' : 'ghost'}
+              aria-pressed={filterState === state}
+              onClick={() => setFilterState(state)}
+              className={`h-auto px-3 py-1.5 text-xs ${filterState === state ? 'text-accent' : ''}`}
+            >
+              <span>{label}</span>
+              <span className="tabular-nums" aria-hidden="true">({count})</span>
+            </Button>
+          ))}
         </div>
 
-        <div className="relative min-w-[220px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+        <div className="relative min-w-0 w-full sm:w-auto sm:min-w-[220px]">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" aria-hidden="true" />
+          <Input
+            type="search"
+            aria-label="搜索邻舍角色名字、地点或行为"
+            value={searchDraft}
+            onChange={(event) => {
+              const next = event.target.value;
+              setSearchDraft(next);
+              if (!composingRef.current) setSearchQuery(next);
+            }}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              setSearchDraft(event.currentTarget.value);
+              setSearchQuery(event.currentTarget.value);
+            }}
             placeholder="搜索邻舍角色名字/地点/行为..."
-            className="h-8 pl-8 pr-3 text-xs bg-surface border border-border-default rounded-lg text-ink placeholder:text-muted/60 focus:outline-none focus:border-accent w-full"
+            className="h-8 min-h-8 pl-8 pr-3 text-xs"
           />
         </div>
-      </div>
+      </search>
 
       {/* 角色卡片列表 */}
       {isLoading ? (
@@ -305,41 +307,38 @@ export function LinsheCharacterVault() {
                 {/* 主卡片体 (Card Inner) */}
                 <div className="relative flex flex-col gap-3 p-4 rounded-[18px] bg-surface border border-border-default shadow-xs hover:border-accent/40 hover:shadow-md transition-all">
                   {/* 左上角置顶红心按钮 */}
-                  <button
+                  <IconButton
                     type="button"
+                    icon={Heart}
+                    label={char.pinned ? '取消置顶' : '置顶角色'}
+                    aria-pressed={char.pinned}
                     onClick={(e) => {
                       e.stopPropagation();
                       pinMutation.mutate({ id: char.id, pinned: !char.pinned });
                     }}
-                    title={char.pinned ? '取消置顶' : '置顶角色'}
-                    className={`absolute top-2.5 left-2.5 z-10 h-6 w-6 rounded-full flex items-center justify-center transition-all ${
+                    className={`!absolute left-2.5 top-2.5 z-10 !size-6 !min-h-6 rounded-full transition-all focus-visible:opacity-100 ${
                       char.pinned
-                        ? 'opacity-100 text-rose-500 bg-rose-50'
-                        : 'opacity-0 group-hover:opacity-60 hover:!opacity-100 text-muted hover:bg-surface-muted hover:text-rose-500'
+                        ? 'opacity-100 text-rose-500 bg-rose-50 hover:!bg-rose-50'
+                        : 'text-muted hover:!bg-surface-muted hover:!text-rose-500 sm:pointer-fine:opacity-0 sm:pointer-fine:group-hover:opacity-60 sm:pointer-fine:hover:!opacity-100'
                     }`}
-                  >
-                    <Heart
-                      className={`h-3.5 w-3.5 transition-transform active:scale-125 ${
-                        char.pinned ? 'fill-current' : ''
-                      }`}
-                    />
-                  </button>
+                    iconClassName={`h-3.5 w-3.5 transition-transform active:scale-125 ${char.pinned ? 'fill-current' : ''}`}
+                  />
 
                   {/* 右上角叫醒电话按钮（睡眠时显示） */}
                   {isSleeping && (
-                    <button
+                    <IconButton
                       type="button"
+                      icon={PhoneCall}
+                      label={`电话叫醒${char.display_name}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleWake(char);
                       }}
-                      title="电话叫醒"
-                      className={`absolute top-2.5 right-2.5 z-10 h-7 w-7 rounded-full bg-accent/10 hover:bg-accent/20 text-accent flex items-center justify-center transition-all ${
-                        isShaking ? 'animate-bounce' : 'opacity-0 group-hover:opacity-100'
+                      className={`!absolute right-2.5 top-2.5 z-10 !size-7 !min-h-7 rounded-full bg-accent/10 hover:!bg-accent/20 text-accent transition-all focus-visible:opacity-100 ${
+                        isShaking ? 'animate-bounce' : 'sm:pointer-fine:opacity-0 sm:pointer-fine:group-hover:opacity-100'
                       }`}
-                    >
-                      <PhoneCall className="h-3.5 w-3.5" />
-                    </button>
+                      iconClassName="h-3.5 w-3.5"
+                    />
                   )}
 
                   {/* 顶部：头像 + 名字 + 状态徽章 */}
@@ -436,16 +435,21 @@ export function LinsheCharacterVault() {
                 </div>
 
                 {/* 底部滑出的日记本入口 (Card Diary Bar) */}
-                <div
-                  className="mt-1 h-7 rounded-b-xl bg-surface-muted/80 hover:bg-accent/10 border border-border-default/60 border-t-0 flex items-center justify-center gap-1.5 text-xs text-accent font-medium cursor-pointer transition-all opacity-0 group-hover:opacity-100"
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  /* 手机与触摸设备始终可见并保持 44px 触控高度；仅在可悬停的宽屏收起为紧凑行，
+                     悬停或键盘聚焦时再滑出。基础层不放 opacity-0，避免触摸端出现看不见的命中区。 */
+                  className="mt-1 h-auto w-full gap-1.5 rounded-b-xl rounded-t-none border border-t-0 border-border-default/60 bg-surface-muted/80 py-2 text-xs font-medium text-accent transition-all !min-h-[var(--control-h-touch)] hover:!bg-accent/10 focus-visible:opacity-100 sm:pointer-fine:h-7 sm:pointer-fine:!min-h-7 sm:pointer-fine:py-0 sm:pointer-fine:opacity-0 sm:pointer-fine:group-hover:opacity-100 sm:pointer-fine:focus-visible:opacity-100"
                   onClick={() => {
                     toast.info(`即将跳转到邻舍查看【${char.display_name}】的日记本`);
                     window.open(`http://127.0.0.1:5173`, '_blank');
                   }}
                 >
-                  <BookOpen className="h-3.5 w-3.5" />
+                  <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>翻开日记本</span>
-                </div>
+                </Button>
               </div>
             );
           })}

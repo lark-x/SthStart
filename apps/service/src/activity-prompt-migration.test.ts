@@ -62,6 +62,9 @@ test('migration 49 adds structured prompt columns without rewriting old policy a
     assert.equal(policy.positive_suffix, '@ebora, masterpiece');
     assert.equal(policy.output_format, 'prose');
     assert.equal(policy.knowledge_mode, 'none');
+    assert.equal(policy.artist_string, '');
+    assert.equal(policy.quality_prompt, '');
+    assert.equal(policy.adult_knowledge_enabled, 0);
 
     const run = connection.prepare(`SELECT * FROM activity_prompt_optimization_runs WHERE id='run-legacy'`).get() as Record<string, unknown>;
     assert.equal(run.source_prompt, '一个中文来源');

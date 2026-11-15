@@ -9,6 +9,7 @@ import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
 import { Select } from '@/app/components/ui/select';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { FormField } from '@/app/components/ui/form-field';
 import { useAppLlmStatus } from '../queries';
 
 type AssignmentFormValues = {
@@ -28,9 +29,9 @@ function RoleStatusLine({ appId, role, label }: { appId: string; role: 'text' | 
   if (isLoading) return <Skeleton className="h-4 w-40" />;
   if (isError || !data) {
     return (
-      <button type="button" onClick={() => void refetch()} className="flex items-center gap-1 text-xs text-muted underline decoration-dotted">
+      <Button type="button" size="sm" variant="ghost" className="h-auto justify-start px-0 py-0 text-xs font-normal" onClick={() => void refetch()}>
         暂时无法确认{label}模型配置，点击重试
-      </button>
+      </Button>
     );
   }
   const status = data[role];
@@ -111,9 +112,8 @@ function AssignmentForm({
       </div>
 
       <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block text-sm font-semibold text-muted">
-          <span>文本模型</span>
-          <Select {...register('textProfileId')} className="mt-1 text-sm">
+        <FormField label="文本模型">
+          <Select {...register('textProfileId')}>
             <option value="">尚未选择文本模型</option>
             {textOptions.map((profile) => (
               <option value={profile.id} key={profile.id}>
@@ -121,11 +121,10 @@ function AssignmentForm({
               </option>
             ))}
           </Select>
-        </label>
+        </FormField>
 
-        <label className="block text-sm font-semibold text-muted">
-          <span>多模态模型 (图文)</span>
-          <Select {...register('multimodalProfileId')} className="mt-1 text-sm">
+        <FormField label="多模态模型 (图文)">
+          <Select {...register('multimodalProfileId')}>
             <option value="">尚未选择多模态模型</option>
             {multimodalOptions.map((profile) => (
               <option value={profile.id} key={profile.id}>
@@ -133,7 +132,7 @@ function AssignmentForm({
               </option>
             ))}
           </Select>
-        </label>
+        </FormField>
       </div>
 
       <Button

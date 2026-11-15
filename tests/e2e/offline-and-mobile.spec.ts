@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { connect, createServer, type AddressInfo, type Socket } from 'node:net';
 
 /**
  * 计划 §7.2 / §8.8：`/apps/notebook/offline` 必须在无网络时仍可打开并编辑，
@@ -13,15 +14,15 @@ test('offline notebook shell renders each view with the backend unreachable', as
 
   // 离线入口默认是列表视图，此时统一外框也必须能渲染。
   await page.goto('/apps/notebook/offline');
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作笔记', level: 1 })).toBeVisible();
   await expect(page.locator('main')).toBeVisible();
   await expect(page.getByRole('link', { name: '资料库', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: '新建资料' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '新建笔记' })).toBeVisible();
 
   // 新建视图由离线外壳在客户端接管（/offline 下的路由不落到服务端），
   // 断网时仍可写标题与正文（本地草稿队列接管）。
   // 标题不再经由「编辑资料」弹层修改，而是文档头部的行内标题输入框。
-  await page.getByRole('link', { name: '新建资料' }).click();
+  await page.getByRole('link', { name: '新建笔记' }).click();
   const title = page.getByRole('region', { name: '文档标题与元信息' }).getByPlaceholder('无标题笔记');
   await expect(title).toBeVisible();
   await title.fill('断网时写下的标题');
@@ -32,15 +33,57 @@ test('offline notebook shell renders each view with the backend unreachable', as
   await expect(body).toHaveValue('断网时写下的正文');
 });
 
-test('notebook routes register a service worker for offline shell', async ({ page }) => {
-  await page.goto('/apps/notebook/offline');
-  const scope = await page.evaluate(async () => {
-    if (!('serviceWorker' in navigator)) return 'unsupported';
-    const registration = await navigator.serviceWorker.getRegistration();
-    return registration ? registration.scope : 'none';
+test('notebook routes register a service worker for offline shell', async ({ page, baseURL }) => {
+  // Playwright 的 Windows WebKit setOffline 会直接拦截顶层导航，连独立样例的
+  // Service Worker 都无法接管。关闭本用例专属的 TCP 转发则让真实请求失败，
+  // Chromium 和 WebKit 都必须从自己刚建立的缓存返回文档。
+  const origin = new URL(baseURL!);
+  let reachable = true;
+  let rejected = 0;
+  const sockets = new Set<Socket>();
+  const track = (socket: Socket) => {
+    sockets.add(socket);
+    socket.on('error', () => socket.destroy());
+    socket.once('close', () => sockets.delete(socket));
+  };
+  const gateway = createServer((client) => {
+    if (!reachable) {
+      rejected += 1;
+      client.destroy();
+      return;
+    }
+    const upstream = connect(Number(origin.port), origin.hostname);
+    track(client);
+    track(upstream);
+    client.once('close', () => upstream.destroy());
+    upstream.once('close', () => client.destroy());
+    client.pipe(upstream).pipe(client);
   });
-  console.log('SW_SCOPE ' + scope);
-  expect(scope).not.toBe('unsupported');
+  await new Promise<void>((resolve, reject) => {
+    gateway.once('error', reject);
+    gateway.listen(0, '127.0.0.1', resolve);
+  });
+  const port = (gateway.address() as AddressInfo).port;
+  const offlineUrl = `http://127.0.0.1:${port}/apps/notebook/offline`;
+  try {
+    await page.goto(offlineUrl);
+    await expect.poll(() => page.evaluate(async () => {
+      const controlled = navigator.serviceWorker.controller?.scriptURL;
+      const cached = await caches.match('/apps/notebook/offline');
+      return { worker: controlled ? new URL(controlled).pathname : null, cached: cached?.status ?? null };
+    }), { timeout: 15_000 }).toEqual({ worker: '/notebook-sw.js', cached: 200 });
+
+    reachable = false;
+    for (const socket of sockets) socket.destroy();
+    const response = await page.goto(offlineUrl, { waitUntil: 'domcontentloaded' });
+    expect(rejected).toBeGreaterThan(0);
+    expect(response?.status()).toBe(200);
+    expect(response?.fromServiceWorker()).toBe(true);
+    await expect(page.getByRole('link', { name: '新建笔记' })).toBeVisible();
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => gateway.close(() => resolve()));
+  }
 });
 
 test('phone viewport keeps the note editor usable with a soft keyboard', async ({ page }) => {

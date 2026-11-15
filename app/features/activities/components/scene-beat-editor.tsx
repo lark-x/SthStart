@@ -30,7 +30,9 @@ import type {
 import { useCharacters } from '@/app/features/characters/queries';
 import { useToast } from '@/app/providers/ui-provider';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Drawer } from '@/app/components/ui/drawer';
@@ -460,14 +462,14 @@ export function SceneBeatEditor({
   const beatEditorForm = currentScene && currentBeat ? (
     <div className="space-y-4">
       <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">出场角色</span>
-        <select value={currentBeat.characterId} onChange={(event) => {
+        <Select value={currentBeat.characterId} onChange={(event) => {
           const characterId = event.target.value;
           const selectedActor = actorMap.get(characterId);
           handleUpdateBeat(currentScene, currentBeat.id, { characterId, characterName: selectedActor?.displayName ?? '旁白' });
         }} disabled={disabled} className="h-10 w-full rounded-control border border-border-control bg-surface-raised px-3 text-sm text-ink">
           <option value="narrator">旁白 / 场景交代</option>
           {actors.map((item) => <option key={item.id} value={item.id}>{item.displayName}{item.activityRole ? `（${item.activityRole}）` : ''}</option>)}
-        </select>
+        </Select>
       </label>
       <label className="block space-y-1.5"><span className="text-sm font-medium text-ink">动作 / 发生事件</span>
         <Textarea rows={5} value={currentBeat.action} onChange={(event) => handleUpdateBeat(currentScene, currentBeat.id, { action: event.target.value })}
@@ -494,13 +496,15 @@ export function SceneBeatEditor({
             {scenes.map((s, sIdx) => {
               const isActive = s.id === currentScene?.id;
               return (
-                <button
+                <Button
                   key={s.id}
                   type="button"
+                  variant={isActive ? 'outline' : 'ghost'}
                   onClick={() => {
                     void focusTarget(s, s.beats[0]?.id);
                   }}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  aria-pressed={isActive}
+                  className={`h-auto px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     isActive
                       ? 'bg-surface font-bold text-ink shadow-2xs border border-border-default'
                       : 'text-muted hover:text-ink hover:bg-surface-muted/60 border border-transparent'
@@ -511,20 +515,22 @@ export function SceneBeatEditor({
                   </span>
                   <span className="truncate max-w-[130px] sm:max-w-[180px]">{cleanSceneTitle(s.title)}</span>
                   <span className="text-xs text-muted font-mono">({s.beats.length}镜)</span>
-                </button>
+                </Button>
               );
             })}
 
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleAddScene}
               disabled={disabled}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted hover:text-ink hover:bg-surface-muted border border-dashed border-border-default flex items-center gap-1 cursor-pointer shrink-0 transition-colors"
+              className="h-auto px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted hover:text-ink hover:bg-surface-muted border border-dashed border-border-default flex items-center gap-1 cursor-pointer shrink-0 transition-colors"
               title="新建场次"
             >
               <Plus className="h-3 w-3" />
               <span>加场</span>
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -607,10 +613,12 @@ export function SceneBeatEditor({
               )}
 
               {/* 检查器展开/折叠快捷开关 */}
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
-                className="h-7 px-2 text-xs text-muted hover:text-ink flex items-center gap-1 rounded-md border border-border-default hover:bg-surface-muted/60 transition-colors cursor-pointer"
+                className="h-7 min-h-7 px-2 text-xs text-muted hover:text-ink flex items-center gap-1 rounded-md border border-border-default hover:bg-surface-muted/60 transition-colors cursor-pointer"
                 title={isInspectorCollapsed ? '展开右侧镜头工坊' : '收起镜头工坊以全宽阅读'}
               >
                 {isInspectorCollapsed ? (
@@ -624,20 +632,19 @@ export function SceneBeatEditor({
                     <span className="hidden sm:inline">收起工坊</span>
                   </>
                 )}
-              </button>
+              </Button>
 
               {scenes.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
+                <IconButton
+                  icon={Trash2}
+                  label="删除该场次"
+                  variant="danger-ghost"
                   onClick={() => handleDeleteScene(currentScene.id)}
                   disabled={disabled}
-                  className="h-7 w-7 p-0 text-muted hover:text-red-600 cursor-pointer"
-                  title="删除该场次"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                  size="sm"
+                  className="h-7 min-h-7 w-7 p-0 cursor-pointer"
+                  iconClassName="h-3.5 w-3.5"
+                />
               )}
             </div>
           </div>
@@ -833,42 +840,45 @@ export function SceneBeatEditor({
 
                         {/* 悬停快捷排序与删除 */}
                         <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            type="button"
+                          <IconButton
+                            icon={ChevronUp}
+                            label="上移"
+                            variant="ghost"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMoveBeat(currentScene, beatIdx, 'up');
                             }}
                             disabled={beatIdx === 0 || disabled}
-                            className="p-1 rounded hover:bg-surface-hover text-muted hover:text-ink disabled:opacity-20 cursor-pointer"
-                            title="上移"
-                          >
-                            <ChevronUp className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
+                            size="sm"
+                            className="h-6 min-h-6 w-6 p-0 disabled:opacity-20"
+                            iconClassName="h-3 w-3"
+                          />
+                          <IconButton
+                            icon={ChevronDown}
+                            label="下移"
+                            variant="ghost"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMoveBeat(currentScene, beatIdx, 'down');
                             }}
                             disabled={beatIdx === currentScene.beats.length - 1 || disabled}
-                            className="p-1 rounded hover:bg-surface-hover text-muted hover:text-ink disabled:opacity-20 cursor-pointer"
-                            title="下移"
-                          >
-                            <ChevronDown className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
+                            size="sm"
+                            className="h-6 min-h-6 w-6 p-0 disabled:opacity-20"
+                            iconClassName="h-3 w-3"
+                          />
+                          <IconButton
+                            icon={Trash2}
+                            label="删除分镜"
+                            variant="danger-ghost"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteBeat(currentScene, beat.id);
                             }}
                             disabled={disabled}
-                            className="p-1 rounded hover:bg-red-50 text-muted hover:text-red-600 cursor-pointer"
-                            title="删除分镜"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                            size="sm"
+                            className="h-6 min-h-6 w-6 p-0"
+                            iconClassName="h-3 w-3"
+                          />
                         </div>
                       </div>
                     </div>
@@ -877,15 +887,16 @@ export function SceneBeatEditor({
               )}
 
               {/* 列表底部快捷插入按钮 */}
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => handleAddBeat(currentScene)}
                 disabled={disabled}
-                className="w-full py-2 rounded-xl border border-dashed border-border-default hover:border-accent hover:bg-surface-muted/30 text-muted hover:text-accent text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="h-auto w-full py-2 rounded-xl border border-dashed border-border-default hover:border-accent hover:bg-surface-muted/30 text-muted hover:text-accent text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>追加下一镜</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -901,15 +912,15 @@ export function SceneBeatEditor({
                   </span>
                   <span className="text-xs text-muted font-mono truncate max-w-[120px]">{actors.find(actor => actor.id === currentBeat.characterId)?.displayName || currentBeat.characterName || '旁白'}</span>
                 </div>
-                <button
-                  type="button"
+                <IconButton
+                  icon={PanelRightClose}
+                  label={isNarrowViewport ? '返回分镜列表' : '收起工坊'}
+                  variant="ghost"
                   onClick={() => setIsInspectorCollapsed(true)}
-                  className="text-xs text-muted hover:text-ink p-1 rounded hover:bg-surface cursor-pointer"
-                  aria-label={isNarrowViewport ? '返回分镜列表' : '收起工坊'}
-                  title={isNarrowViewport ? '返回分镜列表' : '收起工坊'}
-                >
-                  <PanelRightClose className="h-3.5 w-3.5" />
-                </button>
+                  size="sm"
+                  className="h-7 min-h-7 w-7 p-0"
+                  iconClassName="h-3.5 w-3.5"
+                />
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs">
                 {activityId ? <BeatRenderWorkbench

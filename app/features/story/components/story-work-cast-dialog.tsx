@@ -5,11 +5,15 @@ import { Search, UserPlus, Check, Sparkles, Filter } from 'lucide-react';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Alert } from '@/app/components/ui/alert';
+import { AsyncState } from '@/app/components/ui/async-state';
+import { EmptyState } from '@/app/components/ui/empty-state';
 import { fetchCharacterDetail } from '@/app/features/characters/api';
 import type { CharacterProfile } from '@sthstart/contracts';
 import { toCharacterRuntime } from '@sthstart/contracts';
 import { storyApi } from '../api';
-import { CharacterPagination, useCharacterBrowser } from '@/app/features/characters/components/character-filters';
+import { useCharacterBrowser } from '@/app/features/characters/public';
+import { CharacterPagination } from '@/app/features/characters/public-ui';
 
 interface StoryWorkCastDialogProps {
   open: boolean;
@@ -111,7 +115,7 @@ export function StoryWorkCastDialog({
       }
     >
       <div className="space-y-4">
-        {error && <p role="alert" className="text-sm text-danger-fg">{error}</p>}
+        {error && <Alert variant="danger" title="无法引入角色" onDismiss={() => setError('')}>{error}</Alert>}
         {/* 顶部搜索与作品过滤栏 */}
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1">
@@ -127,47 +131,40 @@ export function StoryWorkCastDialog({
 
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
             <Filter className="size-3.5 shrink-0 text-muted" />
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant={selectedWork === 'ALL' ? 'secondary' : 'ghost'}
+              aria-pressed={selectedWork === 'ALL'}
+              className="h-auto min-h-8 rounded-full px-2.5 py-1 text-xs"
               onClick={() => {setSelectedWork('ALL'); charactersQuery.change({works: [], page: 1});}}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                selectedWork === 'ALL'
-                  ? 'bg-accent text-accent-fg'
-                  : 'bg-surface-muted text-muted hover:text-ink'
-              }`}
             >
               全部作品
-            </button>
+            </Button>
             {works.map((w) => (
-              <button
+              <Button
                 key={w}
                 type="button"
+                size="sm"
+                variant={selectedWork === w ? 'secondary' : 'ghost'}
+                aria-pressed={selectedWork === w}
                 onClick={() => {setSelectedWork(w); charactersQuery.change({works: [w], page: 1});}}
-                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                  selectedWork === w
-                    ? 'bg-accent text-accent-fg'
-                    : 'bg-surface-muted text-muted hover:text-ink'
-                }`}
+                className="h-auto min-h-8 shrink-0 rounded-full px-2.5 py-1 text-xs"
               >
                 {w}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
 
         {/* 角色卡列表 */}
-        {charactersQuery.isError && <div role="alert">角色读取失败。<Button disabled={charactersQuery.isFetching} onClick={() => void charactersQuery.refetch()}>重新读取角色</Button></div>}
+        {charactersQuery.isError && <AsyncState status="error" title="角色读取失败" description={charactersQuery.error.message} onRetry={() => void charactersQuery.refetch()} />}
         {(charactersQuery.isFetching || charactersQuery.isSearchPending) && <p role="status">正在更新角色列表…</p>}
         <div className="max-h-[50vh] min-h-[16rem] overflow-y-auto rounded-control border border-border-default bg-surface-muted/30 p-2" data-autohide-scroll>
           {charactersQuery.isLoading ? (
-            <div className="flex h-40 items-center justify-center text-sm text-muted">
-              正在加载角色库…
-            </div>
+            <AsyncState status="loading" title="正在加载角色库" rows={2} />
           ) : charactersQuery.isError ? null : filteredCharacters.length === 0 ? (
-            <div className="flex h-40 flex-col items-center justify-center text-center text-sm text-muted">
-              <Sparkles className="size-6 text-muted/60" />
-              <p className="mt-2">未找到匹配的角色</p>
-            </div>
+            <EmptyState icon={Sparkles} title="未找到匹配的角色" description="换一个关键词或作品筛选后再试。" />
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {filteredCharacters.map((char) => {

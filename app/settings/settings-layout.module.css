@@ -5,3 +5,27 @@
   --shell-gutter: 0px;
   min-width: 0;
 }
+
+/*
+ * 控制中心页签较多，窄桌面下与标题、刷新操作同排会裁掉最后一个分区。
+ * 在中等宽度让页签独占一行，保留完整可见与键盘可达。
+ */
+@media (min-width: 640px) and (max-width: 1439px) {
+  :global(.control-center-header .tpl-header-navigation) {
+    order: 4;
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 1023px) {
+  :global(.control-center-header) :global(.page-tabs[data-variant='local']) {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 639px) {
+  :global(.control-center-header .tpl-header-navigation) {
+    flex-basis: 100%;
+  }
+}

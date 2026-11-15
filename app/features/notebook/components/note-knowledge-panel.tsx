@@ -8,6 +8,7 @@ import type {
   CreativeNote, KnowledgeSourceRef, NoteAuthorship, NoteCategory, NoteKnowledge, NoteNature, NoteUsage,
 } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Drawer } from '@/app/components/ui/drawer';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -165,9 +166,17 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             <span className="text-xs text-muted">作品</span>
             <div className="flex flex-wrap gap-1.5">
               {current.works.map((work) => (
-                <button key={work.key} type="button" className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark" onClick={() => patch({ works: current.works.filter((item) => item.key !== work.key) })}>
+                <Button
+                  key={work.key}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除作品 ${work.name}`}
+                  className="h-auto min-h-0 gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-normal text-accent-dark hover:bg-accent/20 hover:text-accent-dark sm:min-h-0"
+                  onClick={() => patch({ works: current.works.filter((item) => item.key !== work.key) })}
+                >
                   {work.name} ×
-                </button>
+                </Button>
               ))}
               {!current.works.length && <span className="text-xs text-muted">未填写</span>}
             </div>
@@ -181,9 +190,17 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             <span className="text-xs text-muted">角色</span>
             <div className="flex flex-wrap gap-1.5">
               {current.characters.map((character) => (
-                <button key={character.work + '|' + character.name} type="button" className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark" onClick={() => patch({ characters: current.characters.filter((item) => !(item.work === character.work && item.name === character.name)) })}>
+                <Button
+                  key={character.work + '|' + character.name}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除角色 ${character.name}`}
+                  className="h-auto min-h-0 gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-normal text-accent-dark hover:bg-accent/20 hover:text-accent-dark sm:min-h-0"
+                  onClick={() => patch({ characters: current.characters.filter((item) => !(item.work === character.work && item.name === character.name)) })}
+                >
                   {character.name}{character.work ? '（' + character.work + '）' : ''} ×
-                </button>
+                </Button>
               ))}
               {!current.characters.length && <span className="text-xs text-muted">未填写；同名角色不会跨作品自动合并</span>}
             </div>
@@ -197,9 +214,17 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
             <span className="text-xs text-muted">地点</span>
             <div className="flex flex-wrap gap-1.5">
               {current.locations.map((location) => (
-                <button key={location.work + '|' + location.name} type="button" className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent-dark" onClick={() => patch({ locations: current.locations.filter((item) => !(item.work === location.work && item.name === location.name)) })}>
+                <Button
+                  key={location.work + '|' + location.name}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除地点 ${location.name}`}
+                  className="h-auto min-h-0 gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-normal text-accent-dark hover:bg-accent/20 hover:text-accent-dark sm:min-h-0"
+                  onClick={() => patch({ locations: current.locations.filter((item) => !(item.work === location.work && item.name === location.name)) })}
+                >
                   {location.name} ×
-                </button>
+                </Button>
               ))}
               {!current.locations.length && <span className="text-xs text-muted">未填写</span>}
             </div>
@@ -236,9 +261,15 @@ export function NoteKnowledgePanel({ note, knowledge, onChange }: {
                         </a>
                       )}
                     </div>
-                    <button type="button" aria-label="移除来源" className="shrink-0 text-fg-subtle hover:text-danger-fg" onClick={() => patch({ sources: current.sources.filter((item) => item.id !== source.id) })}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <IconButton
+                      icon={Trash2}
+                      label="移除来源"
+                      variant="danger-ghost"
+                      size="sm"
+                      iconClassName="h-3.5 w-3.5"
+                      className="h-7 min-h-7 w-7 shrink-0 p-0 text-fg-subtle hover:text-danger-fg sm:min-h-7"
+                      onClick={() => patch({ sources: current.sources.filter((item) => item.id !== source.id) })}
+                    />
                   </div>
                 </li>
               ))}

@@ -1,4 +1,9 @@
 import { expect, test } from '@playwright/test';
+import type { RuntimeOverview } from '@sthstart/contracts';
+
+// These screenshots rely on deterministic route fixtures. The real offline
+// worker and an offline reload are covered in offline-and-mobile.spec.ts.
+test.use({ serviceWorkers: 'block' });
 
 let browserErrors: string[] = [];
 let expectedAdminSessionProbes = 0;
@@ -84,6 +89,19 @@ const NOTEBOOK_LIST_FIXTURE = {
   pageSize: 50,
 };
 
+const RUNTIME_OVERVIEW_FIXTURE = {
+  services: [
+    { id: 'linshe', name: '邻舍核心', port: 3099, optional: false, installed: true, state: 'stopped', pid: null, startedAt: null, message: null, managed: true },
+    { id: 'vector', name: '向量服务', port: 3102, optional: true, installed: true, state: 'stopped', pid: null, startedAt: null, message: null, managed: true },
+  ],
+  settings: { autoStart: false, autoOpenBrowser: false, useMirror: false, publicLlmEnabled: false, linsheImageViaGateway: false, comfyuiExecutable: '', extraLoraFolders: [], maibotAutostart: false, maibotBrowserMaibot: false, maibotBrowserSnowluma: false, creative: {} },
+  linsheLlm: { enabled: true, textProfileId: null, textModel: null, multimodalProfileId: null, multimodalModel: null, ready: false },
+  linsheHosted: { ready: false, missing: ['未绑定文本模型'], appTokenValid: true, llmTextReady: false, llmMultimodalReady: false, vectorReady: true, vectorMode: 'default', imageReady: false, imagePurpose: 'linshe-chat-image', imageWorkflowId: null, imageWorkflowVersion: null },
+  logPolicy: { globalLevel: 'info', serviceLevels: {}, retentionDays: 7, maxBytes: 1024, sensitiveUntil: null, diagnosticUntil: null },
+  recentErrors: 0,
+  droppedLogs: 0,
+} satisfies RuntimeOverview;
+
 async function useFixedDashboardData(page: import('@playwright/test').Page) {
   await page.clock.setFixedTime(FIXED_NOW);
   await page.route(/\/api\/admin\/workspace\/recent(?:\?|$)/, (route) => route.fulfill({ json: RECENT_WORK_FIXTURE }));
@@ -91,12 +109,12 @@ async function useFixedDashboardData(page: import('@playwright/test').Page) {
 }
 
 /**
- * 截图前等载入态结束：最近工作按 limit=8 截断、近期日程按 limit=5 截断，
+ * 截图前等载入态结束：最近工作按首页的 limit=7 截断、近期日程按 limit=5 截断，
  * 两块列表都达到固定行数后画面高度才确定；骨架行期间 role=status 仍在无障碍树中。
  */
 async function waitForDashboardSettled(page: import('@playwright/test').Page) {
   await expect(page.getByRole('status')).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(8, { timeout: 15_000 });
+  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(7, { timeout: 15_000 });
   await expect(page.getByTestId('upcoming-schedule-list').getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
   // 模块卡数量来自真实库，内容已按 data-visual-dynamic 遮罩；这里只等它们不再是加载前的说明文案。
   await expect(page.getByRole('navigation', { name: '创作模块' }).getByRole('link')).toHaveCount(4);
@@ -162,17 +180,17 @@ test('portal mobile visual baseline', async ({ page }) => {
 });
 
 test('control center overview visual baseline', async ({ page }) => {
+  await page.route(/\/api\/admin\/runtime\/overview(?:\?|$)/, (route) => route.fulfill({ json: RUNTIME_OVERVIEW_FIXTURE }));
   await page.goto('/settings/control-center');
   // 页标题改为「控制中心」；运行总览面板标题为「邻舍运行栈」。
   await waitForControlCenterLoaded(page);
   await expect(page.getByRole('tab', { name: '运行总览' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: '邻舍运行栈' })).toBeVisible();
   await expect(page.getByText('运行栈状态')).toBeVisible();
+  await expect(page.getByText('未绑定文本模型', { exact: true })).toBeVisible();
   await expect(page).toHaveScreenshot('control-center-overview.png', {
     ...screenshotOptions,
     fullPage: false,
-    mask: [page.locator('[data-visual-dynamic]')],
-    maskColor: '#f5f6f8',
   });
 });
 
@@ -210,11 +228,11 @@ test('notebook visual baseline', async ({ page }) => {
     route.request().method() === 'GET' ? route.fulfill({ json: NOTEBOOK_LIST_FIXTURE }) : route.fallback());
   await page.goto('/apps/notebook/new');
   // 标题与元信息改为文档头内联编辑，旧的「编辑资料」浮层按钮已移除。
-  await expect(page.getByRole('heading', { name: '创作资料库', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作笔记', level: 1 })).toBeVisible();
   await expect(page.getByRole('region', { name: '文档标题与元信息' }).getByPlaceholder('无标题笔记')).toBeVisible();
   await expect(page.getByRole('region', { name: '笔记正文' }).getByPlaceholder('写下一段文字记录…')).toBeVisible();
   await expect(page.locator('.notebook-master-list .notebook-list-item')).toHaveCount(2, { timeout: 15_000 });
-  await expect(page.getByText('1 页 · 共 2 条')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '分页', exact: true })).toContainText('共 2 条');
   await expect(page).toHaveScreenshot('notebook.png', {
     ...screenshotOptions,
     fullPage: true,

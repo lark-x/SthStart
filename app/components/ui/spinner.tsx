@@ -1,4 +1,5 @@
 import React from 'react';
+import { Box } from '@mantine/core';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
@@ -20,7 +21,8 @@ export function Spinner({
   };
 
   return (
-    <span
+    <Box
+      component="span"
       role="status"
       className={cn('inline-flex items-center gap-2 text-muted', className)}
       {...props}
@@ -28,7 +30,7 @@ export function Spinner({
       <Loader2 className={cn('animate-spin text-accent', sizeClasses[size])} aria-hidden="true" />
       {label && <span className="text-sm">{label}</span>}
       <span className="sr-only">{label}</span>
-    </span>
+    </Box>
   );
 }
 

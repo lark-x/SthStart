@@ -1,0 +1,117 @@
+/*
+ * SthStart Shell 样式职责拆分 - 外框响应式断点（抽屉汉堡）与自动隐藏滚动条
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* ==================== 响应式外框 ==================== */
+
+html,
+.shell-sidebar,
+.shell-drawer,
+.split-panes > *,
+[data-autohide-scroll] {
+  scrollbar-color: transparent transparent;
+}
+
+html[data-scrolling],
+.shell-sidebar[data-scrolling],
+.shell-drawer[data-scrolling],
+.split-panes > *[data-scrolling],
+[data-autohide-scroll][data-scrolling] {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.shell-sidebar:hover,
+.shell-drawer:hover,
+.split-panes > *:hover,
+[data-autohide-scroll]:hover {
+  scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+}
+
+[data-autohide-scroll][data-scroll-dark] {
+  --scrollbar-thumb: rgb(233 240 236 / 30%);
+  --scrollbar-thumb-hover: rgb(233 240 236 / 48%);
+}
+
+/* The list, rather than the fixed sidebar frame, owns the scroll position. */
+.shell-nav,
+.shell-navigation-drawer [data-dialog-lining][data-autohide-scroll] {
+  --navigation-scroll-thumb: transparent;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--navigation-scroll-thumb) transparent;
+}
+
+.shell-nav[data-scrolling],
+.shell-navigation-drawer [data-dialog-lining][data-autohide-scroll][data-scrolling] {
+  --navigation-scroll-thumb: var(--scrollbar-thumb);
+}
+
+.shell-nav::-webkit-scrollbar-thumb,
+.shell-nav::-webkit-scrollbar-thumb:hover,
+.shell-navigation-drawer [data-dialog-lining][data-autohide-scroll]::-webkit-scrollbar-thumb,
+.shell-navigation-drawer [data-dialog-lining][data-autohide-scroll]::-webkit-scrollbar-thumb:hover {
+  background: var(--navigation-scroll-thumb);
+}
+
+.shell-nav::-webkit-scrollbar-button,
+.shell-navigation-drawer [data-dialog-lining][data-autohide-scroll]::-webkit-scrollbar-button {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .shell-nav,
+  .shell-navigation-drawer [data-dialog-lining][data-autohide-scroll] {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+/* <1024px：侧栏改为工具栏里的菜单按钮与抽屉，工作面贴满视口。 */
+@media (max-width: 1023px) {
+  .shell-root {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .shell-root[data-embed='true'] {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .shell-sidebar {
+    display: none;
+  }
+
+  .shell-toolbar-inner {
+    height: var(--shell-topbar-mobile);
+  }
+
+  .shell-root {
+    --shell-toolbar-height: var(--shell-topbar-mobile);
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 639px) {
+  .tpl-header { padding-block: 8px; }
+  .tpl-header-compact { padding-block: 4px; }
+  .desk-directory { gap: 11px; }
+  .desk-directory-controls { align-items: stretch; flex-direction: column-reverse; gap: 8px; }
+  .desk-directory-search { width: 100%; min-height: 42px; }
+  .desk-directory-filters { margin-inline: -4px; padding-inline: 4px; }
+  .desk-directory-filter { min-height: 34px; padding-inline: 11px; font-size: 12px; }
+  .desk-directory-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .desk-directory-card { min-height: 64px; gap: 11px; padding: 9px 11px; border-radius: 13px; }
+  .desk-directory-icon { width: 38px; height: 38px; border-radius: 12px; }
+  .desk-directory-description { display: none; }
+  .desk-directory-arrow { opacity: .65; transform: none; }
+}

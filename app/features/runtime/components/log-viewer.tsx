@@ -3,6 +3,10 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Pause, Play, Trash2, Copy, Download, Search } from 'lucide-react';
 import type { LogEvent, LogLevel, LogPolicy } from '@sthstart/contracts';
+import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
+import { Alert } from '@/app/components/ui/alert';
 
 export function LogViewer({
   logs,
@@ -88,24 +92,24 @@ export function LogViewer({
               {connected ? 'LIVE STREAM' : 'DISCONNECTED'}
             </span>
 
-            <select
+            <Select
               value={levelFilter}
               onChange={(e) => setLevelFilter(e.target.value)}
               aria-label="日志级别筛选"
-              className="h-8 w-36 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
+              className="w-36"
             >
               <option value="all">所有日志级别</option>
               <option value="error">ERROR</option>
               <option value="warn">WARN</option>
               <option value="info">INFO</option>
               <option value="debug">DEBUG</option>
-            </select>
+            </Select>
 
-            <select
+            <Select
               value={serviceFilter}
               onChange={(e) => setServiceFilter(e.target.value)}
               aria-label="服务筛选"
-              className="h-8 w-40 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
+              className="w-40"
             >
               <option value="all">所有服务</option>
               {services.map((s) => (
@@ -113,16 +117,16 @@ export function LogViewer({
                   {s}
                 </option>
               ))}
-            </select>
+            </Select>
 
             {policy && onUpdatePolicy && (
-              <select
+              <Select
                 value={policy.globalLevel}
                 aria-label="全局日志级别"
                 onChange={(event) => {
                   void onUpdatePolicy({ globalLevel: event.target.value as LogLevel });
                 }}
-                className="h-8 w-32 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] px-2 py-0.5 outline-none"
+                className="w-32"
               >
                 <option value="off">OFF</option>
                 <option value="error">ERROR 起</option>
@@ -130,26 +134,28 @@ export function LogViewer({
                 <option value="info">INFO 起</option>
                 <option value="debug">DEBUG 起</option>
                 <option value="trace">TRACE 起</option>
-              </select>
+              </Select>
             )}
 
             <div className="relative">
-              <input
+              <Input
                 type="text"
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
                 placeholder="搜索日志内容…"
-                className="h-8 w-44 sm:w-60 rounded bg-[#2a3732] border border-white/10 text-sm text-[#dae2de] pl-7 pr-2 outline-none focus:border-accent"
+                aria-label="搜索日志内容"
+                className="w-44 pl-7 sm:w-60"
               />
-              <Search className="h-3.5 w-3.5 absolute left-2 top-2.5 text-white/40" />
+              <Search className="h-3.5 w-3.5 absolute left-2 top-3 text-muted" aria-hidden="true" />
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               onClick={onTogglePause}
-              className="inline-flex items-center gap-1 h-8 px-2.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-sm text-[#dae2de] border border-white/10 transition-colors"
               title={paused ? '恢复实时滚动' : '暂停接收新输出'}
             >
               {paused ? (
@@ -163,49 +169,51 @@ export function LogViewer({
                   <span>暂停</span>
                 </>
               )}
-            </button>
+            </Button>
 
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant={autoScroll ? 'outline' : 'ghost'}
               onClick={() => setAutoScroll((value) => !value)}
-              className={`h-8 px-2.5 rounded text-sm border border-white/10 transition-colors ${
-                autoScroll ? 'bg-[#34453e] text-[#dae2de]' : 'bg-[#2a3732] text-white/50'
-              }`}
               aria-pressed={autoScroll}
               title={autoScroll ? '关闭自动滚动' : '开启自动滚动'}
             >
               自动滚动
-            </button>
+            </Button>
 
-            <button
+            <Button
               type="button"
+              size="icon"
+              variant="ghost"
               onClick={handleCopy}
-              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-sm text-[#dae2de] border border-white/10 transition-colors"
               title="复制当前过滤日志"
               aria-label="复制当前过滤日志"
             >
               <Copy className="h-4 w-4" />
-            </button>
+            </Button>
 
-            <button
+            <Button
               type="button"
+              size="icon"
+              variant="ghost"
               onClick={handleDownload}
-              className="p-1.5 rounded bg-[#2a3732] hover:bg-[#34453e] text-sm text-[#dae2de] border border-white/10 transition-colors"
               title="下载日志文件"
               aria-label="下载日志文件"
             >
               <Download className="h-4 w-4" />
-            </button>
+            </Button>
 
-            <button
+            <Button
               type="button"
+              size="icon"
+              variant="danger-ghost"
               onClick={onClear}
-              className="p-1.5 rounded bg-[#2a3732] hover:bg-danger/20 text-danger border border-white/10 transition-colors"
               title="清空控制台"
               aria-label="清空控制台"
             >
               <Trash2 className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -253,6 +261,7 @@ export function LogViewer({
           )}
         </div>
       </div>
+      {!connected && <Alert variant="warning" title="实时日志连接已中断">历史记录仍保留；可切换分区或刷新页面重新连接。筛选与复制下载仍可使用。</Alert>}
     </div>
   );
 }

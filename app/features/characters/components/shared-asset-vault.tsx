@@ -26,7 +26,9 @@ import {
   ImageOff,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Dialog } from '@/app/components/ui/dialog';
 import { useToast } from '@/app/providers/ui-provider';
 import { useCharacters } from '@/app/features/characters/queries';
@@ -301,35 +303,37 @@ export function SharedAssetVault({
 
       {/* 分类快捷标签栏 */}
       <div className="flex flex-nowrap overflow-x-auto items-center gap-1 p-1 bg-surface-sunken rounded-control border border-border-subtle" role="group" aria-label="公共资产分类">
-        <button
+        <Button
           type="button"
-
+          size="sm"
+          variant={selectedCategory === 'all' ? 'secondary' : 'ghost'}
           aria-pressed={selectedCategory === 'all'}
           onClick={() => setSelectedCategory('all')}
-          className={`shrink-0 whitespace-nowrap min-h-10 px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs sm:text-sm font-medium transition-colors ${
+          className={`h-auto shrink-0 whitespace-nowrap !min-h-10 sm:!min-h-10 px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs sm:text-sm font-medium ${
             selectedCategory === 'all'
               ? 'bg-surface text-ink font-semibold shadow-xs'
-              : 'text-muted hover:text-ink'
+              : 'bg-transparent text-muted shadow-none enabled:hover:bg-transparent enabled:hover:text-ink'
           }`}
         >
           全部分类
-        </button>
+        </Button>
         {SHARED_ASSET_CATEGORIES.map((cat) => (
-          <button
+          <Button
             key={cat.id}
             type="button"
-
+            size="sm"
+            variant={selectedCategory === cat.id ? 'secondary' : 'ghost'}
             aria-pressed={selectedCategory === cat.id}
             onClick={() => setSelectedCategory(cat.id)}
-            className={`shrink-0 whitespace-nowrap min-h-10 px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 ${
+            className={`h-auto shrink-0 whitespace-nowrap !min-h-10 sm:!min-h-10 px-3 py-1.5 rounded-[calc(var(--radius-control)-2px)] text-xs sm:text-sm font-medium gap-1.5 ${
               selectedCategory === cat.id
                 ? 'bg-surface text-ink font-semibold shadow-xs'
-                : 'text-muted hover:text-ink'
+                : 'bg-transparent text-muted shadow-none enabled:hover:bg-transparent enabled:hover:text-ink'
             }`}
             title={cat.description}
           >
             <span>{cat.label}</span>
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -339,23 +343,25 @@ export function SharedAssetVault({
           {/* 关键字搜索 */}
           <div className="relative min-w-0 flex-1 min-w-[200px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
-            <input
+            <Input
               type="search"
               aria-label="搜索公共资产标题或标签"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索资产标题或标签..."
-              className="h-8 pl-8 pr-3 text-xs bg-surface border border-border-subtle rounded-control text-ink placeholder:text-muted/60 focus:outline-none focus:border-accent w-full"
+              className="!h-8 !min-h-8 pl-8 pr-9 text-xs"
             />
             {searchQuery && (
-              <button
+              <IconButton
                 type="button"
-                aria-label="清除资产搜索"
+                icon={X}
+                label="清除资产搜索"
+                size="sm"
+                variant="ghost"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
-              >
-                <X className="h-3 w-3" />
-              </button>
+                className="!absolute right-0.5 top-1/2 !size-7 sm:!size-7 !min-h-7 sm:!min-h-7 -translate-y-1/2 rounded-control p-0"
+                iconClassName="h-3 w-3"
+              />
             )}
           </div>
 
@@ -390,11 +396,11 @@ export function SharedAssetVault({
             {/* 关联角色快速过滤 */}
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
               <Users className="h-3.5 w-3.5 shrink-0" />
-              <select
+              <Select
                 aria-label="按关联角色筛选公共资产"
                 value={selectedCharacterId}
                 onChange={(e) => setSelectedCharacterId(e.target.value)}
-                className="h-8 px-2 text-xs bg-surface border border-border-subtle rounded-control text-ink focus:outline-none focus:border-accent"
+                className="!h-8 !min-h-8 w-auto max-w-[min(15rem,60vw)] px-2 text-xs"
               >
                 <option value="">全部关联角色</option>
                 {allCharacters.map((c) => (
@@ -402,7 +408,7 @@ export function SharedAssetVault({
                     {c.displayName}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* 标签快筛：横向流动排版，禁止中文垂直单字折行 */}
@@ -413,28 +419,32 @@ export function SharedAssetVault({
                   <span>标签:</span>
                 </span>
                 {allTags.map((tag) => (
-                  <button
+                  <Button
                     key={tag}
                     type="button"
+                    size="sm"
+                    variant={selectedTag === tag ? 'accent' : 'ghost'}
                     aria-pressed={selectedTag === tag}
                     onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                    className={`whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-control text-xs transition-colors ${
+                    className={`h-auto !min-h-5 sm:!min-h-5 whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-control text-xs font-normal ${
                       selectedTag === tag
-                        ? 'bg-accent text-fg-on-accent font-medium shadow-xs'
+                        ? 'font-medium shadow-xs'
                         : 'bg-surface-sunken text-muted hover:text-ink hover:bg-surface-hover'
                     }`}
                   >
                     #{tag}
-                  </button>
+                  </Button>
                 ))}
                 {selectedTag && (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="ghost"
                     onClick={() => setSelectedTag(null)}
-                    className="text-xs text-accent hover:underline ml-1 whitespace-nowrap shrink-0"
+                    className="h-auto !min-h-5 sm:!min-h-5 ml-1 px-1 text-xs text-accent hover:text-accent hover:underline whitespace-nowrap shrink-0"
                   >
                     清除标签
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -508,13 +518,16 @@ export function SharedAssetVault({
                 {/* 资产描述与关联信息 */}
                 <div className="p-3 flex-1 flex flex-col justify-between gap-2">
                   <div>
-                    <button type="button"
-                      className="text-xs font-semibold text-ink line-clamp-1 group-hover:text-accent transition-colors cursor-pointer"
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-auto min-h-0 max-w-full justify-start rounded-none border-0 bg-transparent px-0 py-0 text-left text-xs font-semibold text-ink enabled:active:scale-100 enabled:hover:bg-transparent group-hover:text-accent sm:min-h-0 [&_.ui-mantine-button-inner]:max-w-full [&_.ui-mantine-button-label]:block [&_.ui-mantine-button-label]:truncate"
                       title={asset.title}
                       onClick={() => setPreviewAsset(asset)}
                     >
                       {asset.title || '未命名资产'}
-                    </button>
+                    </Button>
 
                     {/* 参与角色头像与名称胶囊 */}
                     {asset.characterIds && asset.characterIds.length > 0 && (
@@ -569,8 +582,12 @@ export function SharedAssetVault({
                       {new Date(asset.createdAt).toLocaleDateString()}
                     </span>
                     <div className="flex items-center gap-1">
-                      <button
+                      <IconButton
+                        icon={Edit2}
+                        label="编辑资产信息"
                         type="button"
+                        size="sm"
+                        variant="ghost"
                         onClick={() => {
                           setEditingAsset(asset);
                           setEditTitle(asset.title || '');
@@ -578,19 +595,19 @@ export function SharedAssetVault({
                           setEditCharacterIds(asset.characterIds || []);
                           setEditTagsStr((asset.tags || []).join(', '));
                         }}
-                        className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-muted transition-colors"
-                        title="编辑资产信息"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
+                        className="!size-7 sm:!size-7 !min-h-7 sm:!min-h-7 rounded text-muted hover:bg-surface-muted hover:text-ink"
+                        iconClassName="h-3.5 w-3.5"
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label="删除资产"
                         type="button"
+                        size="sm"
+                        variant="danger-ghost"
                         onClick={() => handleDelete(asset)}
-                        className="p-1.5 rounded-md text-muted hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                        title="删除资产"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                        className="!size-7 sm:!size-7 !min-h-7 sm:!min-h-7 rounded text-muted hover:bg-danger-bg hover:text-danger-fg"
+                        iconClassName="h-3.5 w-3.5"
+                      />
                     </div>
                   </div>
                 </div>
@@ -653,17 +670,17 @@ export function SharedAssetVault({
           {/* 分类选择 */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-ink">资产分类</label>
-            <select
+            <Select
               value={uploadCategory}
               onChange={(e) => setUploadCategory(e.target.value as SharedAssetCategory)}
-              className="w-full h-8 px-2.5 text-xs bg-surface border border-border-default rounded-md text-ink focus:outline-none focus:border-accent"
+              className="w-full !h-8 !min-h-8 px-2.5 text-xs"
             >
               {SHARED_ASSET_CATEGORIES.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.label} ({cat.description})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* 关联角色多选 */}
@@ -676,9 +693,11 @@ export function SharedAssetVault({
               {allCharacters.map((char) => {
                 const isSelected = uploadCharacterIds.includes(char.id);
                 return (
-                  <button
+                  <Button
                     key={char.id}
                     type="button"
+                    size="sm"
+                    variant="ghost"
                     aria-pressed={isSelected}
                     onClick={() => {
                       if (isSelected) {
@@ -687,7 +706,7 @@ export function SharedAssetVault({
                         setUploadCharacterIds([...uploadCharacterIds, char.id]);
                       }
                     }}
-                    className={`px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 ${
+                    className={`h-auto !min-h-5 sm:!min-h-5 px-2 py-0.5 rounded text-xs gap-1 ${
                       isSelected
                         ? 'bg-surface-sunken text-ink font-semibold'
                         : 'bg-transparent text-muted hover:bg-surface-hover'
@@ -695,7 +714,7 @@ export function SharedAssetVault({
                   >
                     {isSelected && <Check className="h-3 w-3" />}
                     <span>{char.displayName}</span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -760,17 +779,17 @@ export function SharedAssetVault({
           {/* 分类 */}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-ink">资产分类</label>
-            <select
+            <Select
               value={editCategory}
               onChange={(e) => setEditCategory(e.target.value as SharedAssetCategory)}
-              className="w-full h-8 px-2.5 text-xs bg-surface border border-border-default rounded-md text-ink focus:outline-none focus:border-accent"
+              className="w-full !h-8 !min-h-8 px-2.5 text-xs"
             >
               {SHARED_ASSET_CATEGORIES.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.label} ({cat.description})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* 参与角色 */}
@@ -782,9 +801,11 @@ export function SharedAssetVault({
               {allCharacters.map((char) => {
                 const isSelected = editCharacterIds.includes(char.id);
                 return (
-                  <button
+                  <Button
                     key={char.id}
                     type="button"
+                    size="sm"
+                    variant="ghost"
                     aria-pressed={isSelected}
                     onClick={() => {
                       if (isSelected) {
@@ -793,7 +814,7 @@ export function SharedAssetVault({
                         setEditCharacterIds([...editCharacterIds, char.id]);
                       }
                     }}
-                    className={`px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 ${
+                    className={`h-auto !min-h-5 sm:!min-h-5 px-2 py-0.5 rounded text-xs gap-1 ${
                       isSelected
                         ? 'bg-surface-sunken text-ink font-semibold'
                         : 'bg-transparent text-muted hover:bg-surface-hover'
@@ -801,7 +822,7 @@ export function SharedAssetVault({
                   >
                     {isSelected && <Check className="h-3 w-3" />}
                     <span>{char.displayName}</span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -868,13 +889,15 @@ export function SharedAssetVault({
                   </div>
                   <p className="text-sm font-semibold text-ink">{previewAsset.title || '公共资产'}</p>
                   <p className="text-xs text-muted mt-1 max-w-sm">图片暂不可用，可重试加载或编辑资产更新图片。</p>
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="outline"
                     onClick={() => { setPreviewRetry(value => value + 1); setPreviewFailedSrc(null); }}
-                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-surface border border-border-subtle text-ink font-medium text-xs hover:bg-surface-hover transition-colors cursor-pointer"
+                    className="mt-3 h-auto !min-h-7 sm:!min-h-7 px-3 py-1.5 text-xs"
                   >
                     <span>重试加载</span>
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -907,26 +930,30 @@ export function SharedAssetVault({
 
               {/* 动作按钮组 */}
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   onClick={() => {
                     void navigator.clipboard.writeText(previewAsset.url).then(() => toast.success('已复制图片链接到剪贴板')).catch(() => toast.error('复制失败，请手动复制图片链接'));
                   }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-border-subtle text-muted hover:text-ink hover:bg-surface-sunken transition-colors text-xs"
+                  className="h-auto !min-h-6 sm:!min-h-6 px-2.5 py-1 text-xs text-muted"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   <span>复制链接</span>
-                </button>
+                </Button>
                 {previewFailedSrc === previewAsset.url ? (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="outline"
                     disabled
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-border-subtle bg-surface-muted text-muted font-medium text-xs opacity-60 cursor-not-allowed"
+                    className="h-auto !min-h-6 sm:!min-h-6 px-2.5 py-1 text-xs text-muted opacity-60"
                     title="资源文件不可用，无法下载"
                   >
                     <Download className="h-3.5 w-3.5" />
                     <span>原图不可用</span>
-                  </button>
+                  </Button>
                 ) : (
                   <a
                     href={previewAsset.url}

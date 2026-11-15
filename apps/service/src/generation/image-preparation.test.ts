@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import Fastify from 'fastify';
+import { Value } from '@sinclair/typebox/value';
 import { ServiceDatabase, nowIso } from '../database.js';
 import type { SecretStore } from '../security.js';
 import { buildImagePurposeOptions, imageGenerationAudit, resolveImageConfiguration } from './image-configuration.js';
-import { prepareImageGeneration } from './image-preparation.js';
+import { prepareImageGeneration, registerImagePreparationRoutes } from './image-preparation.js';
+import { publishWorkflowVersion } from './workflow-publish.js';
 import { renderWorkflowSnapshot, injectActivityLoras } from './workflows.js';
 import { resolveEffectiveActivityVisualPlan } from '../activities/image-render-common.js';
 import { saveActivityImagePromptPolicy } from '../activities/image-prompt-policies.js';
 import { assertPreparedImageContext } from './image-context.js';
 import { createActorSnapshotFromCharacter } from '../activities/characters.js';
-import { buildCharacterVisualContext, type ContentDocument, type ImageConfigDocument } from '@sthstart/contracts';
+import { buildCharacterVisualContext, CloudRecipeDefinitionSchema, CreativePurposeOptionsSchema, ImageConfigurationSchema,
+  ImagePreparationRequestSchema, ImagePreparationResponseSchema, type ContentDocument, type ImageConfigDocument } from '@sthstart/contracts';
 import { compilePromptRecipe } from '../activities/image-prompt-compiler.js';
 import { projectManagedImage } from './managed-image.js';
 import { activityImageLore } from './image-context.js';
@@ -60,6 +64,164 @@ function fixture() {
     description: '一个女孩在窗边读书', ai: false, parameters: { negativePrompt: '' }, idempotencyKey: 'image-test-request' };
   return { database, secrets, input, definition, bindings };
 }
+
+function cloudFixture(options: { negative?: boolean; editor?: boolean; promptKey?: string } = {}) {
+  const database = new ServiceDatabase(':memory:'); const now = nowIso();
+  database.connection.prepare("INSERT INTO managed_apps(id,name,token_hash,capabilities_json,enabled,created_at,updated_at) VALUES ('creative-center','创作中心','test-token','[]',1,?,?)").run(now, now);
+  database.connection.prepare("INSERT INTO generation_engines(id,name,kind,base_url,enabled,concurrency_limit,created_at,updated_at) VALUES ('cloud-image','Cloud GPT Image','cloud','https://image.invalid/v1',1,1,?,?)").run(now, now);
+  database.connection.prepare("INSERT INTO generation_workflows(id,name,description,engine_kind,category,latest_version,created_at,updated_at) VALUES ('cloud-recipe','GPT Image','','cloud','image',0,?,?)").run(now, now);
+  const promptKey = options.promptKey ?? 'prompt';
+  const schema = { [promptKey]: { type: 'string', semantic: 'prompt', required: true },
+    ...(options.negative ? { negativePrompt: { type: 'string', semantic: 'negative_prompt', default: 'default negative' } } : {}),
+    size: { type: 'string', enum: ['1024x1024', '1536x1024'], default: '1024x1024' },
+    quality: { type: 'string', enum: ['low', 'medium', 'high'], default: 'medium' },
+  };
+  const recipe = { type: 'cloud_recipe', modelId: 'gpt-image-1', operation: 'text-to-image' };
+  assert.equal(Value.Check(CloudRecipeDefinitionSchema, recipe), true);
+  const editor = options.editor === false ? undefined : { version: 2, modelSelection: 'preset-locked', loraSlots: [], promptAssembly: 'service-finalized-v1',
+    fields: Object.fromEntries(Object.keys(schema).map((key, order) => [key, { key, label: key, description: null, section: 'basic', order,
+      type: key === promptKey || key === 'negativePrompt' ? 'long-text' : 'enum' }])), sizePresets: [], constraints: {} };
+  const published = publishWorkflowVersion(database, { workflowId: 'cloud-recipe', engineId: 'cloud-image', definition: recipe, inputSchema: schema,
+    nodeBindings: {}, inputCapabilities: {}, outputDeclarations: ['image'], outputMediaTypes: ['image/png'], editorConfig: editor });
+  database.connection.prepare("INSERT INTO app_generation_assignments(app_id,purpose,workflow_id,workflow_version,engine_id,updated_at) VALUES ('creative-center','text-to-image','cloud-recipe',?,'cloud-image',?)").run(published.version, now);
+  database.connection.prepare("INSERT INTO generation_presets(id,app_id,purpose,name,description,workflow_id,workflow_version,engine_id,values_json,enabled,revision,created_at,updated_at) VALUES ('cloud-preset','creative-center','text-to-image','Cloud','','cloud-recipe',?,'cloud-image','{}',1,1,?,?)").run(published.version, now, now);
+  const secrets = {} as SecretStore;
+  return { database, secrets, input: { appId: 'creative-center' as const, purpose: 'text-to-image', description: '  a harbor at dawn  ', ai: false,
+    parameters: {}, idempotencyKey: 'cloud-image-prepare' }, promptKey };
+}
+
+test('published cloud recipe with no node or media bindings exposes ready UI contracts and prepares exact direct inputs', async () => {
+  const { database, secrets, input } = cloudFixture();
+  const app = Fastify(); let calls = 0;
+  registerImagePreparationRoutes(app, database, secrets, async () => { calls++; throw new Error('no upstream calls allowed'); });
+  try {
+    const response = await app.inject({ method: 'GET', url: '/api/v1/admin/generation/image/options?appId=creative-center&purpose=text-to-image' });
+    assert.equal(response.statusCode, 200); const options = response.json();
+    assert.equal(Value.Check(CreativePurposeOptionsSchema, options), true);
+    assert.equal(Value.Check(ImageConfigurationSchema, options.configuration), true);
+    assert.equal(options.ready, true); assert.equal(options.status, 'ready');
+    assert.equal(options.configuration.promptKey, 'prompt'); assert.equal(options.configuration.negativePromptKey, null);
+    assert.equal(options.configuration.promptMode, 'service-finalized-v1');
+    assert.deepEqual(options.configuration.inputCapabilities, {}); assert.equal(options.configuration.referenceInputKey, null);
+    assert.deepEqual(options.configuration.warnings, []);
+    assert.equal(options.presets[0].configuration.promptKey, 'prompt');
+    const request = { ...input, parameters: { size: '1536x1024', quality: 'high' } };
+    assert.equal(Value.Check(ImagePreparationRequestSchema, request), true);
+    const preparedResponse = await app.inject({ method: 'POST', url: '/api/v1/admin/generation/image/prepare', payload: request });
+    assert.equal(preparedResponse.statusCode, 200, preparedResponse.body); const prepared = preparedResponse.json();
+    assert.equal(Value.Check(ImagePreparationResponseSchema, prepared), true);
+    assert.equal(prepared.promptMode, 'service-finalized-v1'); assert.equal(prepared.positivePrompt, input.description);
+    assert.equal(prepared.negativePrompt, null);
+    assert.deepEqual(prepared.parameters, { prompt: input.description, size: '1536x1024', quality: 'high' });
+    assert.deepEqual(prepared.warnings, []); assert.equal(prepared.optimizerCallId, null);
+    assert.doesNotThrow(() => assertPreparedImageContext(database, input.appId, prepared.preparationId, prepared.contextHash));
+    assert.doesNotThrow(() => imageGenerationAudit(database, input, prepared.configurationHash));
+    assert.equal(calls, 0);
+    const resolved = resolveImageConfiguration(database, input);
+    assert.deepEqual(resolved.workflow.nodeBindings, {}); assert.deepEqual(resolved.workflow.inputCapabilities, {});
+    assert.equal(resolved.workflow.definition.type, 'cloud_recipe');
+    const rendered = renderWorkflowSnapshot(resolved.workflow.definition, resolved.workflow.nodeBindings, prepared.parameters);
+    assert.deepEqual(rendered, resolved.workflow.definition);
+    assert.deepEqual(injectActivityLoras(rendered, resolved.workflow.editorConfig, prepared.diagnostics.loras), resolved.workflow.definition);
+  } finally { await app.close(); database.close(); }
+});
+
+test('cloud image edit exposes declared reference media without graph bindings and text-only recipes do not', () => {
+  const { database, input } = cloudFixture();
+  try {
+    const publish = (operation: string, mediaTypes: string[]) => {
+      const version = publishWorkflowVersion(database, { workflowId: 'cloud-recipe', engineId: 'cloud-image',
+        definition: { type: 'cloud_recipe', modelId: 'gpt-image-1', operation },
+        inputSchema: { prompt: { type: 'string', required: true } }, nodeBindings: {},
+        inputCapabilities: { referenceImage: { semantic: 'init_image', mediaTypes, required: true, maxCount: 1 } },
+        outputDeclarations: ['image'], outputMediaTypes: ['image/png'] });
+      database.connection.prepare("UPDATE app_generation_assignments SET workflow_version=? WHERE workflow_id='cloud-recipe'").run(version.version);
+      return resolveImageConfiguration(database, input).configuration;
+    };
+    const edits = publish('image-to-image', ['image/png', 'image/jpeg']);
+    assert.equal(edits.referenceInputKey, 'referenceImage');
+    assert.equal(edits.inputCapabilities?.referenceImage.required, true);
+    assert.equal(Value.Check(ImageConfigurationSchema, edits), true);
+    assert.equal(publish('text-to-image', ['image/png']).referenceInputKey, null);
+    assert.equal(publish('image-to-image', ['audio/mpeg']).referenceInputKey, null);
+  } finally { database.close(); }
+});
+
+test('cloud direct negative inputs preserve defaults and explicit empty text without a node binding', async () => {
+  const { database, secrets, input } = cloudFixture({ negative: true });
+  try {
+    const configuration = resolveImageConfiguration(database, input).configuration;
+    assert.equal(configuration.promptKey, 'prompt'); assert.equal(configuration.negativePromptKey, 'negativePrompt');
+    const noNetwork: typeof fetch = async () => { throw new Error('no upstream calls allowed'); };
+    const defaults = await prepareImageGeneration(database, secrets, input, noNetwork);
+    assert.equal(defaults.negativePrompt, 'default negative'); assert.equal(defaults.parameters.negativePrompt, 'default negative');
+    const empty = await prepareImageGeneration(database, secrets, { ...input, parameters: { negativePrompt: '' }, idempotencyKey: 'cloud-negative-empty' }, noNetwork);
+    assert.equal(empty.negativePrompt, ''); assert.equal(empty.parameters.negativePrompt, '');
+    assert.equal(Value.Check(ImagePreparationResponseSchema, empty), true);
+  } finally { database.close(); }
+});
+
+test('cloud legacy schemas use direct finalized prompts but undeclared inputs never become phantom mappings', async () => {
+  for (const promptKey of ['prompt', 'positivePrompt']) {
+    const { database, secrets, input } = cloudFixture({ editor: false, promptKey });
+    try {
+      const resolved = resolveImageConfiguration(database, input);
+      assert.equal(resolved.configuration.promptKey, promptKey); assert.equal(resolved.configuration.promptMode, 'service-finalized-v1');
+      const prepared = await prepareImageGeneration(database, secrets, input, async () => { throw new Error('no upstream'); });
+      assert.equal(prepared.parameters[promptKey], input.description);
+      database.connection.prepare("UPDATE generation_workflow_versions SET input_schema_json='{}' WHERE workflow_id='cloud-recipe'").run();
+      assert.equal(buildImagePurposeOptions(database, input.appId, input.purpose).ready, false);
+      await assert.rejects(prepareImageGeneration(database, secrets, input), (error: any) => error.code === 'prompt_binding_required');
+    } finally { database.close(); }
+  }
+});
+
+test('cloud semantic aliases unsupported by execution never become usable prompt mappings', async () => {
+  const { database, secrets, input } = cloudFixture({ negative: true });
+  try {
+    const row = database.connection.prepare("SELECT input_schema_json,editor_config_json FROM generation_workflow_versions WHERE workflow_id='cloud-recipe'").get() as { input_schema_json: string; editor_config_json: string };
+    const schema = JSON.parse(row.input_schema_json); const editor = JSON.parse(row.editor_config_json);
+    schema.avoid = schema.negativePrompt; delete schema.negativePrompt;
+    editor.fields.avoid = { ...editor.fields.negativePrompt, key: 'avoid' }; delete editor.fields.negativePrompt;
+    database.connection.prepare("UPDATE generation_workflow_versions SET input_schema_json=?,editor_config_json=? WHERE workflow_id='cloud-recipe'").run(JSON.stringify(schema), JSON.stringify(editor));
+    const negativeAlias = resolveImageConfiguration(database, input).configuration;
+    assert.equal(negativeAlias.promptKey, 'prompt'); assert.equal(negativeAlias.negativePromptKey, null);
+    schema.caption = schema.prompt; delete schema.prompt;
+    editor.fields.caption = { ...editor.fields.prompt, key: 'caption' }; delete editor.fields.prompt;
+    database.connection.prepare("UPDATE generation_workflow_versions SET input_schema_json=?,editor_config_json=? WHERE workflow_id='cloud-recipe'").run(JSON.stringify(schema), JSON.stringify(editor));
+    const options = buildImagePurposeOptions(database, input.appId, input.purpose);
+    assert.equal(options.ready, false); assert.equal(options.configuration?.promptKey, null);
+    await assert.rejects(prepareImageGeneration(database, secrets, input, async () => { throw new Error('no upstream'); }),
+      (error: any) => error.code === 'prompt_binding_required');
+  } finally { database.close(); }
+});
+
+test('cloud preparation rejects an enabled role LoRA without an insertion anchor before any model dispatch', async () => {
+  const { database, secrets, input } = cloudFixture();
+  try {
+    const now = nowIso();
+    const draft = { schemaVersion: 2, displayName: 'Alice', appearance: { baseText: 'silver hair', defaultOutfitText: 'coat', stableFeatures: [] },
+      visualLoras: [{ model: 'alice.safetensors', strength: 0.7, triggerWord: 'alice_trigger', enabled: true }] };
+    database.connection.prepare("INSERT INTO character_profiles(id,slug,display_name,draft_json,tags_json,archived,created_at,updated_at,draft_revision) VALUES ('cloud-alice','cloud-alice','Alice',?,'[]',0,?,?,1)").run(JSON.stringify(draft), now, now);
+    let calls = 0;
+    await assert.rejects(prepareImageGeneration(database, secrets, { ...input, ai: true, manualFinal: false, context: { characters: [{ characterId: 'cloud-alice' }] } },
+      async () => { calls++; throw new Error('no upstream'); }), /未声明活动 LoRA 插入点/);
+    assert.equal(calls, 0);
+  } finally { database.close(); }
+});
+
+test('Comfy prompt bindings and legacy prompt assembly still require the existing graph mapping', async () => {
+  const { database, input, secrets } = fixture();
+  try {
+    const before = resolveImageConfiguration(database, input).configuration;
+    assert.equal(before.promptKey, 'prompt'); assert.equal(before.negativePromptKey, 'negativePrompt');
+    database.connection.prepare("UPDATE generation_workflow_versions SET node_bindings_json='{}',editor_config_json=NULL WHERE workflow_id='flow-a'").run();
+    const after = resolveImageConfiguration(database, input).configuration;
+    assert.equal(after.promptKey, null); assert.equal(after.negativePromptKey, null); assert.equal(after.promptMode, 'workflow-internal');
+    assert.equal(buildImagePurposeOptions(database, input.appId, input.purpose).ready, false);
+    await assert.rejects(prepareImageGeneration(database, secrets, input), (error: any) => error.code === 'prompt_binding_required');
+  } finally { database.close(); }
+});
 
 test('image options project each preset from its own workflow version and keep defaults isolated', () => {
   const { database } = fixture();
@@ -257,6 +419,20 @@ test('lore content revision participates in preparation identity without leaking
     assert.equal(prepared.diagnostics?.contextSources[0].id, 'world');
     database.connection.prepare("UPDATE creative_notes SET summary='stone bridges' WHERE id='world'").run();
     assert.throws(() => assertPreparedImageContext(database, input.appId, prepared.preparationId, prepared.contextHash), /变化/);
+  } finally { database.close(); }
+});
+
+test('artist string and quality prompt are prepended in the neighbor order and manual finals stay exact', async () => {
+  const { database, secrets, input } = fixture();
+  try {
+    saveActivityImagePromptPolicy(database, { workflowId: 'flow-a', workflowVersion: 1, revision: 0, enabled: false,
+      instructions: '', positiveSuffix: '', negativePrompt: '', outputFormat: 'prose', knowledgeMode: 'none',
+      artistString: '@ebora', qualityPrompt: 'masterpiece, best quality' });
+    const prepared = await prepareImageGeneration(database, secrets, { ...input, ai: false, manualFinal: false },
+      async () => { throw new Error('must not call'); });
+    assert.equal(prepared.positivePrompt, 'masterpiece, best quality, @ebora, 一个女孩在窗边读书');
+    const manual = await prepareImageGeneration(database, secrets, { ...input, ai: false, manualFinal: true, idempotencyKey: 'manual-style-bypass' });
+    assert.equal(manual.positivePrompt, '一个女孩在窗边读书');
   } finally { database.close(); }
 });
 

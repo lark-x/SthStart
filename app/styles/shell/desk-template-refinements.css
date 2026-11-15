@@ -1,0 +1,41 @@
+/*
+ * SthStart Shell 样式职责拆分 - 目录卡片、模板头部精细化微调与无障碍跳转链接
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+
+/* Navigation and document surfaces share theme tokens; content supplies hierarchy. */
+.runtime-strip {
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline);
+}
+.desk-directory-card {
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--surface-sunken);
+  box-shadow: none;
+}
+.desk-directory-card:hover { background: var(--surface-hover); }
+.desk-directory-icon { background: var(--tone-soft); color: var(--tone-fg); }
+.desk-directory-card:hover .desk-directory-icon { transform: none; }
+.desk-directory-filter { font-size: 14px; }
+.desk-eyebrow, .tpl-kicker { color: var(--fg-muted); }
+.tpl-header-main > :first-child { min-width: 0; }
+.tpl-heading { display: flex; min-width: 0; align-items: flex-start; gap: 14px; }
+.tpl-title-icon { display: grid; width: 40px; height: 40px; flex: none; place-items: center; border-radius: 12px; background: var(--tone-soft); color: var(--tone-fg); }
+.tpl-title-icon[data-compact] { width: 32px; height: 32px; border-radius: 10px; }
+@media (max-width: 639px) { .tpl-title-icon { width: 34px; height: 34px; border-radius: 10px; } }
+.tpl-title, .tpl-description, .tpl-actions { overflow-wrap: anywhere; }
+.tpl-actions { min-width: 0; max-width: 100%; }
+@media (max-width: 639px) {
+  .shell-theme-mode-toggle { display: none; }
+}
+@media (min-width: 1024px) {
+  .shell-nav-trigger { display: none; }
+}
+.shell-skip-link { position: fixed; top: 8px; left: 8px; z-index: var(--z-overlay); padding: 8px 16px; border-radius: var(--radius-control); background: var(--surface); color: var(--fg-default); transform: translateY(-200%); }
+.shell-skip-link:focus { transform: translateY(0); }

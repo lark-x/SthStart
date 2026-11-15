@@ -91,7 +91,7 @@ test('用户自定主题创建后处于草稿态，确认前不能开始研究',
   await expect(page.getByRole('button', { name: '确认主题' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /开始研究|再研究一次/ })).toBeVisible();
   // 未配置文本模型时，开始研究应给出明确阻塞说明而不是静默失败。
-  await expect(page.getByText('写入创作资料库')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '打开已发布的资料' })).toHaveCount(0);
 });
 
 test('研究专题视图在窄屏下不横向溢出', async ({ page, request }) => {

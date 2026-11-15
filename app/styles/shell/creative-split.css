@@ -1,0 +1,31 @@
+/*
+ * SthStart Shell 样式职责拆分 - 制作生成器宽屏分栏滚动表面
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* The generator owns one scroll surface; its action area stays outside it. */
+@media (min-width: 1280px) {
+  .creative-split > .creative-configuration {
+    overflow: hidden;
+  }
+  .creative-configuration > div,
+  .creative-configuration .image-generation-panel {
+    height: 100%;
+    min-height: 0;
+  }
+  .creative-configuration .image-generation-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .creative-configuration .image-generation-panel > div:first-child {
+    flex-shrink: 0;
+  }
+  .creative-configuration .image-generation-panel > fieldset {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-padding-block: 16px;
+  }
+}

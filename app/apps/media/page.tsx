@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
-import { MediaLibraryView } from '@/app/features/media-library';
+import { MediaWorkspace } from '@/app/workspaces/media/media-workspace';
 
 export const metadata: Metadata = {
   title: '全局媒体库 — SthStart',
@@ -16,7 +16,7 @@ export default function MediaLibraryPage() {
         title="全局媒体库"
       />
       <Suspense fallback={<div className="py-12 text-center text-sm text-muted">正在加载全局媒体素材…</div>}>
-        <MediaLibraryView />
+        <MediaWorkspace />
       </Suspense>
     </PageContainer>
   );

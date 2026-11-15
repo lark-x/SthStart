@@ -1,0 +1,55 @@
+/*
+ * SthStart Shell 样式职责拆分 - 赫蹏级长文排版流（剧情/小说/叙事长文与外框共享阅读容器）
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* ---------- Heti 赫蹏级中文长文排版与屏幕阅读流 ---------- */
+.shell-main,
+.tpl-container,
+.story-reading-content,
+.narrative-content,
+.novel-prose {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.tpl-description,
+.story-reading-content p,
+.narrative-content p,
+.novel-prose p {
+  text-wrap: pretty;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+}
+
+.story-reading-content,
+.narrative-content,
+.novel-prose,
+.typo-reading {
+  font-family: var(--font-reading);
+  font-size: 16px;
+  font-weight: 430;
+  line-height: 1.85;
+  letter-spacing: 0.015em;
+  color: var(--fg-default);
+  text-wrap: pretty;
+}
+
+.typo-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.tpl-title,
+.story-reading-content :is(h1, h2, h3, h4),
+.narrative-content :is(h1, h2, h3, h4),
+.novel-prose :is(h1, h2, h3, h4) {
+  text-wrap: balance;
+}
+
+.story-reading-content p,
+.narrative-content p,
+.novel-prose p {
+  margin-block: 1.2em;
+  text-indent: 0;
+}

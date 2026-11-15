@@ -35,9 +35,10 @@
   padding: 12px;
   border: 0;
   border-radius: var(--radius-control);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
 }
 .resources-workspace-shell .notebook-list-item + .notebook-list-item { margin-top: 4px; }
-.resources-workspace-shell .notebook-list-item[aria-current='page'] { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
 .resources-workspace-shell .notebook-list-pagination {
   flex-shrink: 0;
   padding: 8px;
@@ -45,11 +46,6 @@
   background: var(--surface);
   color: var(--fg-muted);
 }
-/* Compact Pagination owns its controls; keep the footer flexible as they wrap. */
-.resources-workspace-shell .notebook-list-pagination > * { min-width: 0; }
-.resources-workspace-shell .notebook-list-pagination > nav[aria-label='分页'] { padding-top: 0; border-top: 0; }
-.resources-workspace-shell .notebook-list-pagination details { position: static; }
-.resources-workspace-shell .notebook-list-pagination details > div { right: 8px; bottom: 100%; }
 .resources-workspace-shell .notebook-editor-shell { min-width: 0; min-height: 100%; background: var(--surface-raised); }
 .resources-workspace-shell .notebook-editor-header {
   flex-wrap: wrap;
@@ -61,10 +57,10 @@
   backdrop-filter: none;
 }
 .resources-workspace-shell .notebook-editor-actions { flex-wrap: wrap; gap: 4px; }
-/* The document IS the panel: no second sheet, frame or shadow around the text. */
+/* Keep the writing width readable inside the existing split workspace. */
 .resources-workspace-shell .notebook-editor-frame:not(.zen-workspace) {
   width: 100%;
-  max-width: 760px;
+  max-width: 832px;
   margin: 0 auto;
   padding: 24px 32px 32px;
   border: 0;
@@ -74,15 +70,10 @@
 }
 .resources-workspace-shell .notebook-editor-message {
   width: 100%;
-  max-width: 760px;
+  max-width: 832px;
   margin-inline: auto;
   padding-inline: 32px;
 }
-.resources-workspace-shell .notebook-doc-header { padding-bottom: 16px; }
-.resources-workspace-shell .notebook-doc-header > input { font-size: 28px; line-height: 1.5; }
-.resources-workspace-shell .notebook-content-section { padding-top: 4px; }
-.resources-workspace-shell .notebook-content-heading { border-bottom: 0; }
-.resources-workspace-shell .notebook-textarea { font-size: 16px; line-height: 1.9; }
 @media (min-width: 1024px) {
   .shell-content:has(.resources-workspace-shell) { padding-bottom: 0; }
   .resources-workspace-shell,
@@ -114,9 +105,6 @@
   .resources-inspiration-container,
   .resources-sources-container { border-radius: var(--radius-panel); background: var(--surface); overscroll-behavior: contain; }
 }
-@supports (field-sizing: content) {
-  .resources-workspace-shell .notebook-textarea { field-sizing: content; height: auto; min-height: 120px; max-height: none; resize: none; }
-}
 @media (min-width: 1536px) {
   .resources-workspace-shell { padding-inline: 20px; }
 }
@@ -129,5 +117,4 @@
   .resources-workspace-shell .notebook-editor-header { top: 0; padding-inline: 16px; }
   .resources-workspace-shell .notebook-editor-frame:not(.zen-workspace),
   .resources-workspace-shell .notebook-editor-message { padding-inline: 16px; }
-  .resources-workspace-shell .notebook-doc-header > input { font-size: 24px; }
 }

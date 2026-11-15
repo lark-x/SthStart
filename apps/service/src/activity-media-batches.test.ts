@@ -137,7 +137,7 @@ async function setup() {
   ).run('test-comfy-profile', 'COMFYUI', 'image', 'http://comfy.test/v1', 'sd-xl', null, now, now);
 
   database.connection.prepare(
-    'INSERT INTO generation_engines VALUES (?,?,?,?,?,?,?,?,?)'
+    'INSERT INTO generation_engines(id,name,kind,base_url,credential_account,enabled,concurrency_limit,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)'
   ).run('engine_comfy', 'Comfy Test Engine', 'comfyui', 'http://comfy.test', null, 1, 2, now, now);
 
   database.connection.prepare(

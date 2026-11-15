@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useId } from 'react';
-import { cn } from '../../lib/cn';
+import React from 'react';
+import { Tooltip as MantineTooltip } from '@mantine/core';
+import { useOverlayPortalTarget } from './overlay-policy';
 
 export interface TooltipProps {
   content: React.ReactNode;
@@ -10,22 +11,18 @@ export interface TooltipProps {
 }
 
 export function Tooltip({ content, children, className }: TooltipProps) {
-  const id = useId();
+  const host = useOverlayPortalTarget();
   return (
-    <div className="relative group inline-flex">
-      {React.cloneElement(children, {
-        'aria-describedby': [children.props['aria-describedby'], id].filter(Boolean).join(' '),
-      })}
-      <div
-        id={id}
-        role="tooltip"
-        className={cn(
-          'absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex group-focus-within:flex pointer-events-none z-50 max-w-[min(24rem,calc(100vw-2rem))] w-max rounded-control bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-floating',
-          className
-        )}
-      >
-        {content}
-      </div>
-    </div>
+    <MantineTooltip
+      label={content}
+      withArrow
+      openDelay={180}
+      withinPortal
+      portalProps={host ? { target: host } : undefined}
+      events={{ hover: true, focus: true, touch: true }}
+      className={className}
+    >
+      {children}
+    </MantineTooltip>
   );
 }

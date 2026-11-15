@@ -2,14 +2,12 @@
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import {
-  AlertCircle,
-  RefreshCw,
-  FolderOpen,
-} from 'lucide-react';
+import { RefreshCw, FolderOpen } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Pagination } from '@/app/components/ui/pagination';
+import { Alert } from '@/app/components/ui/alert';
+import { AsyncState } from '@/app/components/ui/async-state';
 import { fetchMediaLibrary } from './api';
 import { MediaCard } from './components/media-card';
 import { MediaToolbar } from './components/media-toolbar';
@@ -22,13 +20,15 @@ import type {
 } from './types';
 import { KNOWN_APP_META } from '@sthstart/contracts';
 import { applyMediaListState, MEDIA_DEFAULT_PAGE_SIZE, MEDIA_PAGE_SIZE_OPTIONS, mediaListUrl, parseMediaListState } from './url-state';
+import type { MediaAdoptAction } from './adopt-action';
 
 export interface MediaLibraryViewProps {
   onChooseArtifact?: (item: MediaLibraryItem) => void;
+  adoptAction?: MediaAdoptAction;
   className?: string;
 }
 
-export function MediaLibraryView({ onChooseArtifact, className = '' }: MediaLibraryViewProps) {
+export function MediaLibraryView({ onChooseArtifact, adoptAction, className = '' }: MediaLibraryViewProps) {
   const searchParams = useSearchParams();
   const [initial] = useState(() => parseMediaListState(searchParams?.toString() ?? ''));
 
@@ -247,27 +247,20 @@ export function MediaLibraryView({ onChooseArtifact, className = '' }: MediaLibr
 
       {/* 错误态 */}
       {error && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-3 rounded-panel border border-danger/20 bg-danger/10 p-4 text-sm text-danger-fg"
-        >
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <span>{error}</span>
+        <Alert variant="danger" title="媒体库暂时无法读取">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="break-words">{error}</span>
+            <Button size="sm" variant="outline" onClick={() => setRefreshCounter((c) => c + 1)}>
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              <span>重试</span>
+            </Button>
           </div>
-          <Button size="sm" variant="outline" onClick={() => setRefreshCounter((c) => c + 1)}>
-            <RefreshCw className="h-4 w-4" />
-            <span>重试</span>
-          </Button>
-        </div>
+        </Alert>
       )}
 
       {/* 内容展示区 */}
       {error && !data ? null : isLoading && !data ? (
-        <div className="flex flex-col items-center justify-center py-20 text-muted">
-          <RefreshCw className="h-8 w-8 animate-spin opacity-50 mb-3" />
-          <p className="text-sm">正在加载全局媒体素材…</p>
-        </div>
+        <AsyncState status="loading" title="正在加载全局媒体素材…" rows={3} className="min-h-56" />
       ) : currentItems.length > 0 ? (
         <div className="space-y-4">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-4">
@@ -277,6 +270,7 @@ export function MediaLibraryView({ onChooseArtifact, className = '' }: MediaLibr
                 item={item}
                 onPreview={handlePreview}
                 onChooseArtifact={onChooseArtifact}
+                adoptAction={adoptAction}
               />
             ))}
           </div>
@@ -328,6 +322,7 @@ export function MediaLibraryView({ onChooseArtifact, className = '' }: MediaLibr
         isOpen={isPreviewOpen}
         onClose={handleClosePreview}
         onChooseArtifact={onChooseArtifact}
+        adoptAction={adoptAction}
       />
     </div>
   );

@@ -421,10 +421,19 @@ function saveTopicToKnowledge(database: ServiceDatabase, topicId: string): { not
     const items = collections.listPending({
       state: request.query?.state,
       collectionId: request.query?.collectionId,
+      q: request.query?.q,
       limit: Number(request.query?.limit) || 60,
       offset: Number(request.query?.offset) || 0,
     });
-    return { items, counts: countsByPendingState(database), total: collections.countPending(request.query) };
+    return {
+      items,
+      counts: countsByPendingState(database),
+      total: collections.countPending({
+        state: request.query?.state,
+        collectionId: request.query?.collectionId,
+        q: request.query?.q,
+      }),
+    };
   });
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/knowledge/pending/:id', async (request, reply) => {

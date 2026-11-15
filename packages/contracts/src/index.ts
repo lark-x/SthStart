@@ -3,6 +3,7 @@ import { ActivityLoraSchema, SceneBeatRenderSettingsSchema } from './activities.
 import { ActivityArtDirectionSchema, ActivityRenderQualitySchema, DirectorSettingsSchema } from './activity-studio.js';
 import { BeatRenderParameterFieldSchema } from './ai-calls.js';
 import { ImageOperationMetadataSchema } from './activity-image-operations.js';
+import { ModelThinkingLevelSchema } from './model-routing.js';
 export * from './activity-studio.js';
 export * from './activity-studio-jobs.js';
 export * from './ai-calls.js';
@@ -16,6 +17,7 @@ export * from './media-library.js';
 export * from './activities.js';
 import { CharacterAssetDetailSchema, type CharacterAssetDetail } from './character-assets.js';
 export * from './character-assets.js';
+export * from './story-world-run-recovery.js';
 
 export const AppStatusSchema = Type.Union([
   Type.Literal('online'),
@@ -189,11 +191,32 @@ export type ServiceConnection = Static<typeof ServiceConnectionSchema>;
 export const ModelCapabilitySchema = LlmModelCapabilitySchema;
 export type ModelCapability = LlmModelCapability;
 
+export const ModelTypeSchema = Type.Union([Type.Literal('chat'), Type.Literal('embedding'), Type.Literal('image')]);
+export type ModelType = Static<typeof ModelTypeSchema>;
+
+export const SaveModelProfileSchema = Type.Object({
+  id: Type.String({ minLength: 2, maxLength: 63, pattern: '^[a-z][a-z0-9_-]{1,62}$' }),
+  connectionId: Type.String({ minLength: 1, maxLength: 160 }),
+  name: Type.String({ minLength: 1, maxLength: 160 }),
+  modelId: Type.String({ minLength: 1, maxLength: 500 }),
+  modelType: Type.Optional(ModelTypeSchema),
+  capabilities: Type.Array(LlmModelCapabilitySchema),
+  contextLength: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
+  maxOutputTokens: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
+  defaultParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  advancedJson: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  thinkingLevel: Type.Optional(ModelThinkingLevelSchema),
+  timeoutMs: Type.Optional(Type.Union([Type.Integer({ minimum: 1000, maximum: 600000 }), Type.Null()])),
+  enabled: Type.Optional(Type.Boolean()),
+});
+export type SaveModelProfile = Static<typeof SaveModelProfileSchema>;
+
 export const ModelProfileSchema = Type.Object({
   id: Type.String(),
   connectionId: Type.String(),
   name: Type.String(),
   modelId: Type.String(),
+  modelType: Type.Optional(ModelTypeSchema),
   capabilities: Type.Array(LlmModelCapabilitySchema),
   contextLength: Type.Union([Type.Integer(), Type.Null()]),
   maxOutputTokens: Type.Union([Type.Integer(), Type.Null()]),
@@ -201,6 +224,8 @@ export const ModelProfileSchema = Type.Object({
   advancedJson: Type.Record(Type.String(), Type.Unknown()),
   testStatus: Type.Union([Type.Literal('untested'), Type.Literal('passed'), Type.Literal('failed')]),
   lastTestedAt: Type.Union([Type.String(), Type.Null()]),
+  thinkingLevel: Type.Optional(ModelThinkingLevelSchema),
+  timeoutMs: Type.Optional(Type.Union([Type.Integer({ minimum: 1000, maximum: 600000 }), Type.Null()])),
   enabled: Type.Boolean(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -798,6 +823,8 @@ export const GenerationEditorConfigSchema = Type.Object({
   })),
   activityLoraInjection: Type.Optional(ActivityLoraInjectionSchema),
   promptAssembly: Type.Optional(PromptAssemblySchema),
+  /** 生成模型要求的提示词语言；缺省视为中文直出。 */
+  promptLanguage: Type.Optional(Type.Union([Type.Literal('zh'), Type.Literal('en')])),
   sizePresets: Type.Array(GenerationSizePresetSchema),
   constraints: Type.Object({
     maxPixels: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -3126,6 +3153,7 @@ export const KnowledgePendingItemSchema = Type.Object({
 });
 export type KnowledgePendingItem = Static<typeof KnowledgePendingItemSchema>;
 export const KnowledgePendingListQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 200 })),
   state: Type.Optional(Type.Union([Type.Literal('pending'), Type.Literal('kept'), Type.Literal('ignored'), Type.Literal('organized')])),
   collectionId: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
@@ -6414,4 +6442,11 @@ export function normalizeCreationProfile(value:Record<string,unknown>):CreationP
 export * from './activity-publication.js';
 export * from './harness-mcp.js';
 export * from './image-generation.js';
+export * from './generation-recovery.js';
 export * from './workspace.js';
+export * from './story-worlds.js';
+export * from './world-authoring.js';
+export * from './web-search.js';
+export * from './model-routing.js';
+export * from './story-world-actors.js';
+export * from './story-world-source-updates.js';

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { EmptyState } from '@/app/components/ui/empty-state';
@@ -181,15 +182,13 @@ export function ModelFieldsEditor({
                 <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto rounded-control border border-border-subtle p-2">
                   {relevant.length === 0 && <p className="text-sm text-muted">没有可用模型；请刷新库存或检查连接。</p>}
                   {relevant.map((item) => (
-                    <label key={`${item.category}/${item.name}`} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={allowed.includes(item.name)}
-                        onChange={() => toggleAllowedModel(field.key, item.name)}
-                      />
-                      <span className="min-w-0 truncate">{item.name}</span>
-                      <span className="text-fg-subtle">{item.category}</span>
-                    </label>
+                    <Checkbox
+                      key={`${item.category}/${item.name}`}
+                      label={item.name}
+                      description={item.category}
+                      checked={allowed.includes(item.name)}
+                      onChange={() => toggleAllowedModel(field.key, item.name)}
+                    />
                   ))}
                 </div>
               </div>

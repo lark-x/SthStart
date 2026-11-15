@@ -10,7 +10,9 @@ import type {
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Dialog } from '@/app/components/ui/dialog';
+import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { Textarea } from '@/app/components/ui/textarea';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
@@ -112,7 +114,7 @@ export function RecommendationDialog({ open, onOpenChange, works, characters, th
             return (
               <li key={item.noteId} className={'space-y-1.5 rounded-lg border p-3 ' + (selected ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
                 <div className="flex items-start gap-3">
-                  <input type="checkbox" className="mt-1" aria-label={'选择 ' + item.title} checked={selected} onChange={() => setPicked((current) => {
+                  <Checkbox className="mt-1" aria-label={'选择 ' + item.title} checked={selected} onChange={() => setPicked((current) => {
                     const next = { ...current };
                     if (next[item.noteId]) delete next[item.noteId];
                     else next[item.noteId] = item;
@@ -363,13 +365,13 @@ export function GapCollectionDialog({ open, onOpenChange, sessionId, works, char
         <ul className="space-y-1.5">
           {gaps.map((gap) => (
             <li key={gap.question}>
-              <label className="flex items-start gap-2">
-                <input type="checkbox" className="mt-1" aria-label={gap.question} checked={Boolean(questions[gap.question])} onChange={(event) => setQuestions((current) => ({ ...current, [gap.question]: event.target.checked }))} />
-                <span className="min-w-0">
-                  <span className="block text-sm text-ink">{gap.question}</span>
-                  <span className="block text-xs text-muted">{gap.reason}</span>
-                </span>
-              </label>
+              <Checkbox
+                className="mt-1"
+                label={gap.question}
+                description={gap.reason}
+                checked={Boolean(questions[gap.question])}
+                onChange={(event) => setQuestions((current) => ({ ...current, [gap.question]: event.target.checked }))}
+              />
             </li>
           ))}
         </ul>
@@ -381,9 +383,9 @@ export function GapCollectionDialog({ open, onOpenChange, sessionId, works, char
           <span className="text-sm font-semibold text-ink">使用资料源</span>
           {usableSources.length
             ? (
-              <select aria-label="补查资料源" className="h-9 w-full rounded border border-border-control bg-surface-raised px-2 text-sm text-ink" value={effectiveSource} onChange={(event) => setSourceChoice(event.target.value)}>
+              <Select aria-label="补查资料源" className="h-9 w-full text-sm" value={effectiveSource} onChange={(event) => setSourceChoice(event.target.value)}>
                 {usableSources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-              </select>
+              </Select>
             )
             : <p className="text-xs text-amber-700">没有可用资料源；补查功能需要先在公共服务里配置。</p>}
         </label>

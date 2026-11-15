@@ -1,11 +1,12 @@
 'use client';
 
-import { CircleDashed, Loader2, RefreshCw } from 'lucide-react';
+import { CircleDashed, RefreshCw } from 'lucide-react';
 import type { CreativeStatusResponse } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Spinner } from '@/app/components/ui/spinner';
 import { statusCopy, statusVariant } from '../types';
 
 export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeStatusResponse; onRefresh: () => void }) {
@@ -56,7 +57,7 @@ export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeSta
             )}
           </>
         ) : (
-          <div className="flex min-h-[180px] items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-accent" aria-label="正在读取生成状态" /></div>
+          <div className="flex min-h-[180px] items-center justify-center"><Spinner size="md" label="正在读取生成状态" /></div>
         )}
       </CardContent>
     </Card>

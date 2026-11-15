@@ -5,6 +5,7 @@ import { Ban, BookmarkCheck, BookmarkPlus, Eye, Library } from 'lucide-react';
 import type { Topic } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { TOPIC_KIND_LABELS, TOPIC_NATURE_LABELS } from '../api';
 
 /** 发布时间未知时明确写出来，不把旧内容标成刚发生。 */
@@ -46,8 +47,7 @@ export function TopicSummaryCard({ topic, selected, onToggle, onToggleFavorite, 
     <li className={'topic-summary-card space-y-3 px-2 py-4 transition-colors ' + (selected ? 'is-selected bg-accent/5' : '')}>
       <div className="flex items-start gap-3">
         {onToggle && (
-          <input
-            type="checkbox"
+          <Checkbox
             className="mt-1"
             aria-label={'选择素材 ' + topic.title}
             checked={Boolean(selected)}

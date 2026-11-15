@@ -3,6 +3,9 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { ImageOff, RefreshCw, User } from 'lucide-react';
+import { Button } from '@/app/components/ui/button';
+import { IconButton } from '@/app/components/ui/icon-button';
+import { pickAvatarTone } from '../model/avatar-tone';
 
 interface CharacterAvatarProps {
   src?: string | null;
@@ -19,14 +22,35 @@ export function CharacterAvatar({
 }: CharacterAvatarProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const initialLetter = (name || '').trim().slice(0, 1) || '?';
+  const tone = pickAvatarTone(name || '');
 
   if (!src || failedSrc === src) {
     return (
       <div
-        className={`relative flex h-full w-full items-center justify-center select-none font-semibold text-muted bg-surface-sunken ${fallbackClassName || ''}`}
+        data-tone={tone}
+        data-character-avatar-fallback="true"
+        className={`relative flex h-full w-full select-none items-center justify-center overflow-hidden bg-[var(--tone-soft)] font-[680] text-[var(--tone-fg)] ${fallbackClassName || ''}`}
         title={name}
       >
-        <span>{initialLetter}</span>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              'radial-gradient(130% 95% at 15% 5%, color-mix(in srgb, var(--tone) 24%, transparent), transparent 58%), radial-gradient(80% 80% at 90% 95%, color-mix(in srgb, var(--tone) 16%, transparent), transparent 60%)',
+          }}
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-2.5 -right-1 select-none text-[2.8em] font-bold leading-none opacity-[0.09]"
+        >
+          {initialLetter}
+        </span>
+        <span className="relative text-[1.4em] font-[680] leading-none tracking-tight">{initialLetter}</span>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_1px_0_rgb(255_255_255/30%),inset_0_0_0_1px_color-mix(in_srgb,var(--tone)_22%,transparent)]"
+        />
       </div>
     );
   }
@@ -87,8 +111,14 @@ export function CharacterVisualPreview({
     if (avatarUrl) retryAvatar();
   };
 
+  const hasAnyVisual = Boolean(portraitUrl || avatarUrl);
+
   return (
-    <div className="group relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken shadow-inner flex items-center justify-center">
+    <div
+      className={`group relative w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken shadow-inner flex items-center justify-center ${
+        hasAnyVisual ? 'aspect-[3/4]' : 'aspect-[4/3]'
+      }`}
+    >
       {showPortrait ? (
         <Image
           key={effectivePortraitSrc}
@@ -125,14 +155,16 @@ export function CharacterVisualPreview({
           </span>
           {((portraitUrl && failedPortraitSrc === portraitUrl) ||
             (avatarUrl && failedAvatarSrc === avatarUrl)) && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               onClick={retryBoth}
-              className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-control bg-surface border border-border-subtle text-xs text-ink hover:bg-surface-hover shadow-2xs cursor-pointer"
+              className="mt-2 h-auto min-h-[var(--control-h-touch)] sm:min-h-7 px-2.5 py-1 text-xs shadow-2xs [&_.ui-mantine-button-label]:gap-1"
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="h-3 w-3" aria-hidden="true" />
               <span>重试加载</span>
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -165,15 +197,15 @@ export function CharacterVisualPreview({
       {isPortraitFailedWithAvatar && (
         <div className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2 rounded-control bg-surface/95 px-2 py-1 text-xs font-medium text-warning-fg border border-border-subtle">
           <span>立绘不可用 · 显示头像</span>
-          <button
-            type="button"
+          <IconButton
+            icon={RefreshCw}
+            label="重试立绘加载"
+            size="icon"
+            variant="ghost"
             onClick={retryPortrait}
-            className="hover:underline flex items-center gap-0.5 text-ink cursor-pointer"
-            title="重试立绘加载"
-            aria-label="重试立绘加载"
-          >
-            <RefreshCw className="h-3 w-3" />
-          </button>
+            className="h-auto !size-6 sm:!size-6 !min-h-6 !min-w-6 p-0 text-ink hover:underline"
+            iconClassName="h-3 w-3"
+          />
         </div>
       )}
     </div>
@@ -210,19 +242,21 @@ export function CharacterAssetImage({
           <ImageOff className="h-4 w-4 stroke-[1.5]" aria-hidden="true" />
         </div>
         <p className="text-xs text-muted">素材暂不可用</p>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="outline"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setFailedSrc(null);
             setRetryCount((c) => c + 1);
           }}
-          className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-control bg-surface border border-border-subtle text-xs text-ink hover:bg-surface-hover shadow-2xs cursor-pointer"
+          className="mt-1.5 h-auto min-h-[var(--control-h-touch)] sm:min-h-7 px-2 py-0.5 text-xs shadow-2xs [&_.ui-mantine-button-label]:gap-1"
         >
-          <RefreshCw className="h-3 w-3" />
+          <RefreshCw className="h-3 w-3" aria-hidden="true" />
           <span>重试</span>
-        </button>
+        </Button>
       </div>
     );
   }

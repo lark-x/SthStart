@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { StoryWorkspace } from '@/app/features/story/story-workspace';
+import { ConnectedStoryWorkspace as StoryWorkspace } from '@/app/workspaces/story/story-workspace';
 
 export const metadata: Metadata = { title: '剧情与记录工作室 — SthStart' };
 export default async function StoryProjectPage({ params }: { params: Promise<{ id: string }> }) {

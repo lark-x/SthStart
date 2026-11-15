@@ -1,7 +1,8 @@
 'use client';
 
-import { Loader2, Upload, X } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 import type { ArtifactDescriptor } from '@sthstart/contracts';
+import { IconButton } from '@/app/components/ui/icon-button';
 import { InputLabel } from '../input-label';
 
 export function ArtifactPicker({
@@ -33,17 +34,15 @@ export function ArtifactPicker({
       <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
         {previewUrl ? <img src={previewUrl} alt={`${label}预览`} className="h-20 w-20 rounded object-cover" /> : <div className="flex h-20 w-20 items-center justify-center rounded bg-ink/8 text-muted"><Upload className="h-5 w-5" aria-hidden="true" /></div>}
         <div className="flex-1">
-          <label htmlFor={id} className="inline-flex min-h-[40px] cursor-pointer items-center justify-center gap-2 rounded border border-border-default bg-surface px-3 text-sm font-semibold text-ink hover:bg-ink/5 active:bg-ink/10">
-            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
+          <label htmlFor={id} className="inline-flex min-h-[var(--control-h-touch)] cursor-pointer items-center justify-center gap-2 rounded-control border border-border-default bg-surface px-3 text-sm font-semibold text-ink hover:bg-surface-hover sm:min-h-[var(--control-h-sm)]">
+            {uploading ? <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /> : <Upload className="h-3.5 w-3.5" aria-hidden="true" />}
             {uploading ? '正在加入媒体库…' : artifact ? `更换${label}` : `选择并上传${label}`}
             <input id={id} type="file" accept={accept ?? 'image/png,image/jpeg,image/webp,image/gif,image/avif'} className="sr-only" disabled={disabled || uploading} onChange={(event) => { onSelect(event.target.files?.[0]); event.currentTarget.value = ''; }} />
           </label>
           <p className="mt-1.5 text-sm leading-relaxed text-muted">{hint} 浏览器不会发送 Base64。</p>
         </div>
         {artifact && (
-          <button type="button" onClick={onRemove} className="flex h-8 w-8 flex-none items-center justify-center self-start rounded text-muted hover:bg-danger/10 hover:text-accent-dark" aria-label={`移除${label}`}>
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <IconButton icon={X} label={`移除${label}`} size="sm" variant="danger-ghost" onClick={onRemove} className="self-start" />
         )}
       </div>
     </div>

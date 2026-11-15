@@ -9,6 +9,7 @@ import {
   Server,
   Activity,
   CloudUpload,
+  Palette,
 } from 'lucide-react';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import styles from './settings-layout.module.css';
@@ -21,6 +22,7 @@ interface SettingsTab {
 }
 
 const SETTINGS_TABS: SettingsTab[] = [
+  { href: '/settings/appearance', label: '外观', icon: Palette, description: '主题、皮肤与强调色' },
   {
     href: '/settings/public-services',
     label: '模型与连接',
@@ -68,7 +70,7 @@ export default function SettingsLayout({
             aria-label="设置中心二级导航"
             className="tpl-panel min-w-0 p-2 lg:sticky lg:top-[calc(var(--shell-sticky-top)_+_1rem)] lg:self-start"
           >
-            <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-1 pb-0.5 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:pb-0">
               {SETTINGS_TABS.map((tab) => {
                 const isActive =
                   pathname === tab.href || pathname.startsWith(`${tab.href}/`);

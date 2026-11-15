@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
+import { adaptEffectiveContext } from '../model/context-selection';
 import { generateId } from '@/app/lib/uuid';
 import type { CreativePurposeOptions, ImagePreparationResponse, ImageConfiguration, ImageContextSelection } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
@@ -9,14 +10,61 @@ import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
+import { Checkbox } from '@/app/components/ui/checkbox';
+import { Spinner } from '@/app/components/ui/spinner';
 import { prepareImageGeneration, type ImageGenerationSubmission } from '../image-api';
 import { ImageModeSwitch, useImageAdvancedMode } from './image-mode-switch';
 import { ImageParameterFields } from './image-parameter-fields';
-import { fetchCharacters } from '@/app/features/characters/api';
-import { fetchNotes } from '@/app/features/notebook/api';
 import { imageFieldGroup, imageProfessionalChanges } from '../image-settings';
 
 export type ImageGenerationInitial = { presetId?: string; parameters: Record<string, unknown>; description?: string; seed?: number | null };
+
+export type ImageContextChoiceItem = {
+  id: string;
+  label: string;
+};
+
+export type ImageContextChoices = {
+  characters: Array<ImageContextChoiceItem>;
+  notes: Array<ImageContextChoiceItem>;
+};
+
+export type ImageContextLoader = () => Promise<ImageContextChoices>;
+
+export type ImageSourcesSlotProps = {
+  effectiveContext: ImageContextSelection;
+  selectedContext: ImageContextSelection;
+  setSelectedContext: React.Dispatch<React.SetStateAction<ImageContextSelection>>;
+  contextChoices: ImageContextChoices;
+  contextLoading: boolean;
+  loadContextChoices: () => Promise<void>;
+  avatar: boolean;
+  hasFixedContext: boolean;
+  sourcesOpen: boolean;
+  setSourcesOpen: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+export type ImageGenerationPanelProps = {
+  appId: 'creative-center' | 'characters';
+  purpose: string;
+  contextKey: string;
+  options?: CreativePurposeOptions;
+  initial?: ImageGenerationInitial | null;
+  initialDescription?: string;
+  referenceInput?: React.ReactNode;
+  context?: ImageContextSelection;
+  onConfigurationChange?(configuration: ImageConfiguration | undefined): void;
+  onGenerate(input: ImageGenerationSubmission): Promise<void>;
+  onRefresh?(): void;
+  loading?: boolean;
+  blockedReason?: string;
+  submitLabel?: string;
+  /** S3.4: 通用生成表单通过传入 loader 解耦业务 API */
+  contextLoader?: ImageContextLoader;
+  contextChoices?: ImageContextChoices;
+  /** S3.4: 支持通过插槽自定义来源选择 UI */
+  sourcesSlot?: React.ReactNode | ((props: ImageSourcesSlotProps) => React.ReactNode);
+};
 
 const SCENE_STYLE_PRESETS = [
   { id: 'free', label: '默认自由', promptSuffix: '' },
@@ -28,28 +76,22 @@ const SCENE_STYLE_PRESETS = [
 
 /** One form for all image consumers. Mode changes only presentation, never generation state. */
 export function ImageGenerationPanel({ appId, purpose, contextKey, options, initial, initialDescription = '', referenceInput, context,
-  onGenerate, onRefresh, onConfigurationChange, loading = false, blockedReason, submitLabel = '开始生成' }: {
-  appId: 'creative-center' | 'characters'; purpose: string; contextKey: string;
-  options?: CreativePurposeOptions; initial?: ImageGenerationInitial | null; initialDescription?: string;
-  referenceInput?: React.ReactNode;
-  context?: ImageContextSelection;
-  onConfigurationChange?(configuration: ImageConfiguration | undefined): void;
-  onGenerate(input: ImageGenerationSubmission): Promise<void>; onRefresh?(): void; loading?: boolean;
-  blockedReason?: string; submitLabel?: string;
-}) {
+  onGenerate, onRefresh, onConfigurationChange, loading = false, blockedReason, submitLabel = '开始生成',
+  contextLoader, contextChoices: externalChoices, sourcesSlot }: ImageGenerationPanelProps) {
   const id = useId();
   const avatar = purpose === 'character-avatar';
   const [selectedContext, setSelectedContext] = useState<ImageContextSelection>({});
-  const [contextChoices, setContextChoices] = useState<{ characters: Array<{ id: string; label: string }>; notes: Array<{ id: string; label: string }> }>({ characters: [], notes: [] });
+  const [internalChoices, setInternalChoices] = useState<ImageContextChoices>({ characters: [], notes: [] });
+  const contextChoices = externalChoices ?? internalChoices;
   const [contextLoading, setContextLoading] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const effectiveContext = context ? { ...context, noteIds: selectedContext.noteIds ?? context.noteIds } : selectedContext;
+  const effectiveContext = adaptEffectiveContext(context, selectedContext);
   const loadContextChoices = async () => {
+    if (!contextLoader) return;
     setContextLoading(true);
     try {
-      const [characters, notes] = await Promise.all([fetchCharacters(), fetchNotes({ kind: 'world' })]);
-      setContextChoices({ characters: characters.items.map(item => ({ id: item.id, label: item.displayName })),
-        notes: notes.items.flatMap(item => item.id ? [{ id: item.id, label: item.title }] : []) });
+      const choices = await contextLoader();
+      setInternalChoices(choices);
     } catch (reason) { setError(reason instanceof Error ? reason.message : '读取来源失败。'); }
     finally { setContextLoading(false); }
   };
@@ -205,11 +247,13 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-1.5">
           <label htmlFor={`${id}-description`} className="text-sm font-semibold text-ink">{avatar ? '头像补充要求' : '描述你的画面'}</label>
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="画风情境预设">
+          <div className="flex flex-wrap items-center gap-1 rounded-control bg-surface-sunken/70 p-0.5 border border-hairline" role="group" aria-label="画风情境预设">
             {SCENE_STYLE_PRESETS.filter(style => !avatar || ['free', 'anime', 'painterly'].includes(style.id)).map((style) => (
-              <button
+              <Button
                 key={style.id}
                 type="button"
+                size="sm"
+                variant="ghost"
                 aria-pressed={activeStyle === style.id}
                 disabled={manual}
                 onClick={() => {
@@ -219,14 +263,10 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
                   setPrepared(null);
                   setError('');
                 }}
-                className={`rounded-full px-2.5 py-0.5 text-sm font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 ${
-                  activeStyle === style.id
-                    ? 'bg-accent/15 text-ink font-semibold'
-                    : 'bg-surface-sunken/60 text-muted hover:bg-surface-sunken hover:text-ink'
-                }`}
+                className="ui-choice h-auto min-h-8 sm:min-h-7 px-2.5 py-1 text-xs font-medium"
               >
                 {style.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -234,38 +274,25 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
         {avatar && <p className="text-xs text-muted">自动沿用当前已保存角色的外观、服装与 LoRA，结果预览后再应用。</p>}
         <Textarea id={`${id}-description`} rows={avatar ? 3 : 5} maxLength={10000} value={description} placeholder={avatar ? '补充表情、背景与头像构图…' : '用中文描述人物、动作、场景和想要的氛围…'}
           onChange={event => { setDescription(event.target.value); setManual(false); setPrepared(null); setError(''); }} />
-        <label className="flex items-start gap-2 text-sm text-ink"><input type="checkbox" checked={ai} onChange={event => { setAi(event.target.checked); setPrepared(null); }} className="mt-1" />
-          <span>AI 生成专业提示词<span className="mt-0.5 block text-xs leading-relaxed text-muted">{manual ? '最终提示词已手动编辑，本次直接使用；修改画面描述后可重新生成。' : '整理画面描述；关闭后仍保留角色、设定来源和方案的自动组装。'}</span></span>
-        </label>
+        <Checkbox label="AI 生成专业提示词" description={manual ? '最终提示词已手动编辑，本次直接使用；修改画面描述后可重新生成。' : '整理画面描述；关闭后仍保留角色、设定来源和方案的自动组装。'} checked={ai} onChange={event => { setAi(event.target.checked); setPrepared(null); }} />
       </div>
       {referenceInput}
-      <details className="space-y-3" open={sourcesOpen}>
-        <summary className="cursor-pointer text-sm font-medium text-ink" onClick={event => {
-          event.preventDefault(); setSourcesOpen(previous => !previous);
-          if (!contextChoices.characters.length && !contextLoading) void loadContextChoices();
-        }}>角色与设定来源</summary>
-        {contextLoading ? <p role="status" className="text-xs text-muted">正在读取来源…</p> : <div className="mt-3 space-y-3">
-          <Button type="button" size="sm" variant="outline" onClick={() => void loadContextChoices()}>刷新来源</Button>
-          {!context && <div className="space-y-2"><p className="text-xs text-muted">选择本次画面中的角色，保留外观和 LoRA。</p>
-            {contextChoices.characters.map(item => <label key={item.id} className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={Boolean(effectiveContext.characters?.some(actor => actor.characterId === item.id))} onChange={event => {
-                setSelectedContext(previous => ({ ...previous, characters: event.target.checked
-                  ? [...(previous.characters ?? []), { characterId: item.id }].slice(0, 8)
-                  : previous.characters?.filter(actor => actor.characterId !== item.id) }));
-              }} />{item.label}</label>)}
-          </div>}
-          <div className="space-y-2"><p className="text-xs text-muted">选择与画面相关的世界观资料，准备时记录其版本。</p>
-            {contextChoices.notes.map(item => <label key={item.id} className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={Boolean(effectiveContext.noteIds?.includes(item.id))} onChange={event => {
-                setSelectedContext(previous => ({ ...previous, noteIds: event.target.checked ? [...(previous.noteIds ?? []), item.id].slice(0, 12)
-                  : previous.noteIds?.filter(noteId => noteId !== item.id) }));
-              }} />{item.label}</label>)}
-            {!contextChoices.notes.length && <p className="text-xs text-muted">暂无世界观资料，可在创作笔记中添加。</p>}
-          </div>
-        </div>}
-      </details>
+      {sourcesSlot !== undefined ? (
+        typeof sourcesSlot === 'function' ? sourcesSlot({
+          effectiveContext,
+          selectedContext,
+          setSelectedContext,
+          contextChoices,
+          contextLoading,
+          loadContextChoices,
+          avatar,
+          hasFixedContext: Boolean(context),
+          sourcesOpen,
+          setSourcesOpen,
+        }) : sourcesSlot
+      ) : null}
       {missingReference && <Alert variant="warning" title="此方案需要参考素材">请选择不要求参考素材的方案，或在支持参考图的业务入口使用此工作流。</Alert>}
-      {loading ? <p role="status" className="text-sm text-muted">正在读取生成方案…</p> : <div className="space-y-2">
+      {loading ? <Spinner size="sm" label="正在读取生成方案…" /> : <div className="space-y-2">
         {advanced && options && options.presets.length > 0 && <details className="space-y-2">
           <summary className="cursor-pointer text-xs text-muted">选择其他工作流</summary>
           <label htmlFor={`${id}-workflow`} className="text-sm font-medium text-ink">工作流</label>
@@ -284,16 +311,16 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
       </div>}
       {configuration && configuration.sizePresets.length > 0 && (!avatar || advanced) && <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-ink">画幅</legend>
-        <div className="grid grid-cols-2 gap-2">{configuration.sizePresets.map(size => <button key={`${size.width}x${size.height}`} type="button"
+        <div className="grid grid-cols-2 gap-2">{configuration.sizePresets.map(size => <Button key={`${size.width}x${size.height}`} type="button" variant="ghost"
           aria-pressed={values.width === size.width && values.height === size.height}
           onClick={() => { update('width', size.width); update('height', size.height); }}
-          className={`flex min-w-0 items-center gap-2 rounded-control border p-2.5 text-left ${values.width === size.width && values.height === size.height ? 'border-accent bg-accent/10 text-ink' : 'border-border-subtle text-muted'}`}>
+          className="ui-choice h-auto min-w-0 justify-start gap-2 bg-surface-sunken p-2.5 text-left font-normal text-muted">
           <span aria-hidden="true" className="block shrink-0 rounded-sm border border-current" style={{ width: size.width >= size.height ? 24 : 24 * size.width / size.height, height: size.height >= size.width ? 24 : 24 * size.height / size.width }} />
           <span className="min-w-0 text-xs">{size.label}<span className="block text-xs text-muted">{size.width} × {size.height}</span></span>
-        </button>)}</div>
+        </Button>)}</div>
       </fieldset>}
       {avatar && !advanced && <p className="text-xs text-muted">头像画幅：{String(values.width ?? '方案默认')} × {String(values.height ?? '方案默认')}；可在专业模式调整。</p>}
-      {manual && !advanced && <p className="text-xs text-muted">已使用手动最终提示词。<button type="button" className="text-accent underline" onClick={() => { setManual(false); setPrepared(null); }}>恢复自动组装</button></p>}
+      {manual && !advanced && <p className="text-xs text-muted">已使用手动最终提示词。<Button type="button" size="sm" variant="ghost" className="h-auto px-0 text-accent underline" onClick={() => { setManual(false); setPrepared(null); }}>恢复自动组装</Button></p>}
       {advanced && configuration && <div className="space-y-4">
         <section className="space-y-3 border-t border-border-subtle pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-ink">{configuration.promptMode === 'service-finalized-v1' ? '最终提示词' : '注入提示词'}</h3>

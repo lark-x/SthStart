@@ -4,9 +4,9 @@ import React from 'react';
 import type { PublicServiceOverview } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { AppTokens } from './app-tokens';
-import { OtherProviders } from './other-providers';
+import { WebSearchPanel } from './web-search-panel';
 import { McpSourceManager } from '@/app/features/mcp-sources/mcp-source-manager';
-import { useCreateApp, useCreateProfile } from '../mutations';
+import { useCreateApp } from '../mutations';
 import { useToast } from '@/app/providers/ui-provider';
 
 export function OtherServicesPanel({
@@ -18,7 +18,6 @@ export function OtherServicesPanel({
 }) {
   const toast = useToast();
   const createAppMutation = useCreateApp();
-  const createProfileMutation = useCreateProfile();
 
   const handleCreateApp = async (id: string, name: string) => {
     const created = await createAppMutation.mutateAsync({
@@ -31,28 +30,27 @@ export function OtherServicesPanel({
     return created.token;
   };
 
-  const handleSaveOther = async (payload: unknown) => {
-    await createProfileMutation.mutateAsync(payload);
-    toast.success('能力配置已保存。');
-    await onRefresh();
-  };
-
   return (
     <div className="space-y-6">
       {overview && !overview.keyring.available && (
         <Alert variant="warning" title="安全存储未连接">
-          配置 KEYRING_FILE_MASTER_KEY 可启用容器内加密存储，或使用环境变量提供模型密钥。
+          暂时无法保存新密钥，可继续使用免密钥搜索。需要密钥的服务请前往运行诊断检查。
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppTokens overview={overview} onCreateApp={handleCreateApp} />
-        <OtherProviders overview={overview} onSaveOther={handleSaveOther} />
+      <div className="tpl-panel p-4">
+        <WebSearchPanel />
       </div>
 
-      <div className="border-t border-border-subtle pt-6">
+      <div className="tpl-panel p-4">
         <McpSourceManager />
       </div>
+
+      <details className="tpl-panel p-4">
+        <summary className="cursor-pointer text-sm font-medium text-ink">应用访问授权（高级）</summary>
+        <p className="my-3 text-sm text-muted">仅在外部应用需要调用 SthStart 服务时使用。日常创作无需配置。</p>
+        <AppTokens overview={overview} onCreateApp={handleCreateApp} />
+      </details>
     </div>
   );
 }

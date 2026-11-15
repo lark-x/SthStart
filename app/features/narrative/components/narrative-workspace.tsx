@@ -24,10 +24,13 @@ import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { WorkspaceHeader } from '@/app/components/shared/workspace-header';
 import { PageTabs } from '@/app/components/ui/page-tabs';
+import { AsyncState } from '@/app/components/ui/async-state';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/lib/cn';
+import type { NarrativeAdoptAction } from '../adopt-action';
+import { narrativeModeFromParams, nextNarrativeReadingHref, type NarrativeMode } from '../model/narrative-route';
 
-export function NarrativeWorkspace() {
+export function NarrativeWorkspace({ adoptAction }: { adoptAction?: NarrativeAdoptAction }) {
   const toast = useToast();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // 窄屏下目录默认收起：正文优先，目录与检索各自单独打开（§8.9）。
@@ -49,9 +52,26 @@ export function NarrativeWorkspace() {
     : searchParams.get('from') === 'resources'
     ? '/apps/resources'
     : undefined;
-  const modeParam = searchParams.get('mode');
-  const mode = modeParam === 'import' ? 'import' : modeParam === 'research' || searchParams.has('project') ? 'research' : 'read';
-  const setMode = (next: 'read' | 'research' | 'import') => {
+  const urlMode: NarrativeMode = narrativeModeFromParams(searchParams);
+  /*
+   * 模式先落在本地，再写入 URL。阅读态的 work/node 同步使用原生 replaceState，
+   * 因此不会发起第二次 RSC 导航；但旧版本可能已经排入一次 replace，故点击时
+   * 同步记录模式意图，避免延迟任务以旧 URL 覆盖刚选中的导入/研究页。
+   * URL 仍是最终来源：刷新、前进后退和深链接会把模式同步回来。
+   */
+  const [mode, setModeState] = useState<NarrativeMode>(urlMode);
+  const [lastUrlMode, setLastUrlMode] = useState<NarrativeMode>(urlMode);
+  const modeRef = useRef<NarrativeMode>(urlMode);
+  if (urlMode !== lastUrlMode) {
+    setLastUrlMode(urlMode);
+    setModeState(urlMode);
+  }
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  const setMode = (next: NarrativeMode) => {
+    modeRef.current = next;
+    setModeState(next);
     const params = new URLSearchParams(searchParams.toString());
     params.set('mode', next);
     if (next !== 'research') { params.delete('project'); params.delete('view'); }
@@ -99,18 +119,20 @@ export function NarrativeWorkspace() {
 
   // 选中的作品与节点进入 URL，刷新、前进后退和从检索结果跳转后都能恢复阅读位置。
   useEffect(() => {
-    if (mode !== 'read' || worksLoading || treeLoading || !activeWorkId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    if (params.get('work') !== activeWorkId) params.set('work', activeWorkId);
-    if (activeNodeId) {
-      if (params.get('node') !== activeNodeId) params.set('node', activeNodeId);
-    } else {
-      params.delete('node');
+    const current = window.location.pathname + window.location.search + window.location.hash;
+    const next = nextNarrativeReadingHref({
+      currentHref: current,
+      workId: activeWorkId,
+      nodeId: activeNodeId,
+      mode,
+      intendedMode: modeRef.current,
+      worksLoading,
+      treeLoading,
+    });
+    if (next) {
+      window.history.replaceState(window.history.state, '', next);
     }
-    const next = `${pathname}?${params.toString()}`;
-    const current = `${pathname}?${searchParams.toString()}`;
-    if (next !== current) router.replace(next, { scroll: false });
-  }, [activeNodeId, activeWorkId, mode, pathname, router, searchParams, treeLoading, worksLoading]);
+  }, [activeNodeId, activeWorkId, mode, treeLoading, worksLoading]);
 
   const handleGenerateConcept = async () => {
     if (!activeNodeId || conceptTaskId || submittingConcept) return;
@@ -242,28 +264,26 @@ export function NarrativeWorkspace() {
   );
   const readingActions = (
               <div className="flex flex-wrap items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
+                  className="md:hidden"
                   aria-expanded={treeOpen}
                   onClick={() => setTreeOpen((open) => !open)}
-                  className="inline-flex h-11 sm:h-9 items-center rounded-control border border-border-default bg-surface px-3 text-sm font-medium text-muted transition-colors hover:text-ink md:hidden"
                 >
                   目录
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant={inspectorOpen ? 'secondary' : 'outline'}
                   aria-expanded={inspectorOpen}
                   onClick={() => setInspectorOpen((open) => !open)}
-                  className={cn(
-                    'inline-flex h-11 sm:h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors',
-                    inspectorOpen
-                      ? 'border-accent/30 bg-accent/12 font-semibold text-accent-dark'
-                      : 'border-border-default bg-surface text-muted hover:text-ink',
-                  )}
                 >
                   检索原文
-                </button>
+                </Button>
               </div>
   );
 
@@ -301,17 +321,22 @@ export function NarrativeWorkspace() {
               {treePanel}
             </div>
 
-            {sourceError ? <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 rounded-panel bg-surface p-6 text-center shadow-xs" role="alert">
-              <h2 className="text-base font-semibold text-ink">档案暂时无法读取</h2>
-              <p className="max-w-md text-sm text-muted">已有内容未被删除。请重试读取，不必重新导入。</p>
-              <Button size="sm" onClick={() => { void refetchWorks(); if (activeWorkId) void refetchTree(); if (activeNodeId) void refetchReading(); }}>重试读取</Button>
-            </section> : worksLoading || treeLoading ? <div role="status" className="flex flex-1 items-center justify-center rounded-panel bg-surface p-6 text-sm text-muted shadow-xs">正在读取档案…</div> : <NarrativeReader
+            {sourceError ? <div className="flex min-w-0 flex-1 items-center justify-center rounded-panel bg-surface p-6 shadow-xs">
+              <AsyncState
+                status="error"
+                title="档案暂时无法读取"
+                description="已有内容未被删除。请重试读取，不必重新导入。"
+                onRetry={() => { void refetchWorks(); if (activeWorkId) void refetchTree(); if (activeNodeId) void refetchReading(); }}
+                retryLabel="重试读取"
+              />
+            </div> : worksLoading || treeLoading ? <div className="min-w-0 flex-1 rounded-panel bg-surface p-6 shadow-xs"><AsyncState status="loading" rows={5} /></div> : <NarrativeReader
               reading={readingData ?? null}
               loading={readingLoading}
               onSaveUtteranceToNotebook={handleSaveToNotebook}
               onOpenImport={() => setMode('import')}
               onGenerateConcept={() => void handleGenerateConcept()}
               generatingConcept={Boolean(conceptTaskId) || submittingConcept}
+              adoptAction={adoptAction}
             />}
 
             {inspectorOpen && <div className="hidden min-h-0 md:flex md:overflow-hidden md:rounded-panel md:shadow-xs"><NarrativeInspector

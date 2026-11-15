@@ -7,6 +7,7 @@ import type { KnowledgePendingItem } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Pagination } from '@/app/components/ui/pagination';
@@ -223,19 +224,15 @@ function NarrativeFragmentPicker({ picked, onChange }: {
           const selected = picked.includes(item.id);
           return (
             <li key={item.id}>
-              <label className={'flex items-start gap-2 rounded border p-2 ' + (selected ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
-                <input
-                  type="checkbox"
+              <div className={'rounded border p-2 ' + (selected ? 'border-accent bg-accent/5' : 'border-border-subtle')}>
+                <Checkbox
                   className="mt-1"
-                  aria-label={'选择原文 ' + item.title}
+                  label={item.title + (item.work ? '（' + item.work + '）' : '')}
+                  description={item.excerpt}
                   checked={selected}
                   onChange={() => onChange(selected ? picked.filter((id) => id !== item.id) : [...picked, item.id])}
                 />
-                <span className="min-w-0">
-                  <span className="block truncate text-xs font-medium text-ink">{item.title}{item.work ? '（' + item.work + '）' : ''}</span>
-                  <span className="line-clamp-2 block text-xs text-muted">{item.excerpt}</span>
-                </span>
-              </label>
+              </div>
             </li>
           );
         })}

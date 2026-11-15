@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { characterKeys } from '@/app/lib/query-keys';
+import { characterKeys } from './query-keys';
 import { fetchCharacters, fetchCharacterDetail, fetchCharacterAssets } from './api';
 
 /** 角色主库列表。各处的全量选择器共用同一份缓存，按需用 enabled 延迟到弹窗打开时再请求。 */

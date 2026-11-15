@@ -6,15 +6,17 @@ import type { BackupTarget } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Switch } from '@/app/components/ui/switch';
+import { Select } from '@/app/components/ui/select';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
+import { FormField } from '@/app/components/ui/form-field';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   useChangeBackupPassword, useConnectRemoteVault, useCreateBackupVault, useLockBackupVault, useRemoveBackupTarget,
   useSaveBackupTarget, useUnlockBackupVault, useVerifyBackupTarget,
 } from '../mutations';
 import { startBackupOAuth, type BackupOverview, type BackupTargetView } from '../api';
-import { describeError } from './backups-workspace';
+import { describeError } from '../model';
 
 export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
   const toast = useToast();
@@ -59,14 +61,15 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
         <div className="space-y-3">
           {!vault && (
             <div className="space-y-2">
-              <label className="block text-sm">
-                <span className="text-muted">设置解锁密码（至少 8 个字符）</span>
+              <FormField label="设置解锁密码" hint="至少 8 个字符。">
                 <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-              </label>
-              <label className="block text-sm">
-                <span className="text-muted">再输入一次</span>
+              </FormField>
+              <FormField
+                label="再输入一次"
+                error={passwordConfirm && password !== passwordConfirm ? '两次输入的密码不一致。' : undefined}
+              >
                 <Input type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} />
-              </label>
+              </FormField>
               <Button
                 disabled={createVault.isPending || password.length < 8 || password !== passwordConfirm}
                 onClick={async () => {
@@ -85,15 +88,15 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
               <div className="mt-3 space-y-2 border-t border-border-default pt-3">
                 <p className="text-sm text-muted">换机或已有备份：连接已有加密仓库</p>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <select
-                    className="h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
+                  <Select
+                    aria-label="已有仓库的网盘类型"
                     value={targetKind}
                     onChange={(event) => setTargetKind(event.target.value as BackupTarget['kind'])}
                   >
                     <option value="local_test">本地测试目录</option>
                     <option value="google_drive">Google Drive</option>
                     <option value="onedrive">OneDrive</option>
-                  </select>
+                  </Select>
                   <Input value={remoteVaultId} onChange={(event) => setRemoteVaultId(event.target.value)} placeholder="远端仓库 ID" />
                   <Input
                     value={targetKind === 'local_test' ? targetDirectory : targetRoot}
@@ -153,10 +156,11 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
                   {useRecovery
                     ? <Input value={recoveryKey} onChange={(event) => setRecoveryKey(event.target.value)} placeholder="XXXXX-XXXXX-…" />
                     : <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="解锁密码" />}
-                  <label className="flex items-center gap-2 text-sm">
-                    <Switch checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-                    在这台设备记住（使用系统凭据库）
-                  </label>
+                  <Switch
+                    label="在这台设备记住（使用系统凭据库）"
+                    checked={remember}
+                    onChange={(event) => setRemember(event.target.checked)}
+                  />
                   <Button
                     disabled={unlockVault.isPending}
                     onClick={async () => {
@@ -242,10 +246,8 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
 
           <div className="space-y-2 border-t border-border-default pt-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="text-muted">网盘类型</span>
-                <select
-                  className="mt-1 h-9 w-full rounded-control border border-border-default bg-surface px-2 text-sm"
+              <FormField label="网盘类型">
+                <Select
                   value={targetKind}
                   onChange={(event) => setTargetKind(event.target.value as BackupTarget['kind'])}
                 >
@@ -253,35 +255,30 @@ export function BackupVaultPanel({ overview }: { overview: BackupOverview }) {
                   <option value="google_drive">Google Drive</option>
                   <option value="onedrive">OneDrive</option>
                   <option value="quark">夸克网盘（待联调）</option>
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="text-muted">显示名称</span>
+                </Select>
+              </FormField>
+              <FormField label="显示名称">
                 <Input value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} placeholder="例如：主力网盘" />
-              </label>
+              </FormField>
             </div>
 
             {targetKind === 'local_test' && (
-              <label className="block text-sm">
-                <span className="text-muted">本地目录（用于测试与模拟验证）</span>
+              <FormField label="本地目录" hint="用于测试与模拟验证。">
                 <Input value={targetDirectory} onChange={(event) => setTargetDirectory(event.target.value)} placeholder="/path/to/backup-dir" />
-              </label>
+              </FormField>
             )}
 
             {(targetKind === 'google_drive' || targetKind === 'onedrive') && (
               <div className="space-y-2">
-                <label className="block text-sm">
-                  <span className="text-muted">自己申请的 client ID（应用不提供公共凭据）</span>
+                <FormField label="自己申请的 client ID" hint="应用不提供公共凭据。">
                   <Input value={clientId} onChange={(event) => setClientId(event.target.value)} />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-muted">client secret（如平台需要；只写入系统凭据库）</span>
+                </FormField>
+                <FormField label="client secret" hint="如平台需要；只写入系统凭据库。">
                   <Input type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} />
-                </label>
-                <label className="block text-sm">
-                  <span className="text-muted">远端目录 / 应用专用文件夹</span>
+                </FormField>
+                <FormField label="远端目录 / 应用专用文件夹">
                   <Input value={targetRoot} onChange={(event) => setTargetRoot(event.target.value)} placeholder={targetKind === 'google_drive' ? 'appDataFolder' : 'approot'} />
-                </label>
+                </FormField>
                 <Button
                   disabled={!clientId || saveTarget.isPending}
                   onClick={async () => {

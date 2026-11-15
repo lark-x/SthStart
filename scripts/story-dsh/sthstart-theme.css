@@ -53,15 +53,22 @@ textarea:focus, input[type="text"]:focus {
   box-shadow: 0 0 0 2px rgba(184, 68, 32, 0.15) !important;
 }
 
-/* 滚动条与 SthStart 统一 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* 滚动条与 SthStart 统一：优先采用现代标准属性，降级包裹 @supports not */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-border-l1) transparent;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--dsw-alias-border-l1);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--dsw-alias-label-tertiary);
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--dsw-alias-border-l1);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--dsw-alias-label-tertiary);
+  }
 }

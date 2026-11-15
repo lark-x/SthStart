@@ -1,0 +1,15 @@
+.anchored-popover {
+  z-index: calc(var(--z-overlay) + 1);
+  box-sizing: border-box;
+  max-width: min(var(--radix-popover-content-available-width, 100vw), calc(100vw - 24px));
+  max-height: var(--radix-popover-content-available-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  color: var(--fg-default);
+  box-shadow: var(--elev-md), 0 0 0 1px var(--border-subtle);
+}
+
+.anchored-popover-title { margin: 0 0 8px; font-size: 14px; font-weight: 600; }

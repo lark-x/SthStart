@@ -1,4 +1,5 @@
 import React from 'react';
+import { Skeleton as MantineSkeleton } from '@mantine/core';
 import { cn } from '../../lib/cn';
 
 export function Skeleton({
@@ -6,7 +7,10 @@ export function Skeleton({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
+    <MantineSkeleton
+      unstyled
+      visible={false}
+      animate={false}
       aria-hidden="true"
       className={cn('skeleton-shimmer rounded-md', className)}
       {...props}

@@ -14,6 +14,7 @@ export interface CloudGenerationOptions {
     baseUrl: string;
     secret: string | null;
     name?: string;
+    headers?: Record<string, string>;
   };
   model: string;
   operation?: 'text-to-image' | 'image-to-image';
@@ -45,6 +46,13 @@ export interface CloudGenerationResult {
   latencyMs: number;
 }
 
+function cloudError(message: string, code: string, status?: number): Error & { code: string; status?: number } {
+  const error = new Error(message) as Error & { code: string; status?: number };
+  error.code = code;
+  if (status !== undefined) error.status = status;
+  return error;
+}
+
 /**
  * 云端图片生成适配器
  * 规范调用 OpenAI 兼容绘图接口 (/images/generations 与 /images/edits)
@@ -55,6 +63,7 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
     model,
     operation = 'text-to-image',
     prompt,
+    negativePrompt,
     size = '1024x1024',
     quality,
     n = 1,
@@ -70,13 +79,19 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
   if (!['text-to-image', 'image-to-image'].includes(operation)) throw new Error('invalid_cloud_operation');
   if (operation === 'image-to-image' && !referenceImage) throw new Error('reference_image_required');
   if (!Number.isInteger(n) || n < 1) throw new Error('invalid_image_count');
+  // GPT Image has no independent negative-prompt field. Carry exclusions in the
+  // same protected prompt for both generation and editing requests.
+  const negative = negativePrompt?.trim();
+  const effectivePrompt = negative ? `${prompt}\n\n画面中避免 / Exclude from the image:\n${negative}` : prompt;
   const params = { ...customParams };
-  for (const key of ['model', 'prompt', 'image', 'mask', 'n', 'size', 'quality', 'response_format', 'output_format']) delete params[key];
+  for (const key of ['model', 'prompt', 'negativePrompt', 'negative_prompt', 'image', 'mask', 'n', 'size', 'quality', 'response_format', 'output_format']) delete params[key];
   const fetchFn = options.fetchFn ?? fetch;
   const baseUrl = engine.baseUrl.replace(/\/+$/, '');
   const startTime = Date.now();
 
-  const authHeaders: Record<string, string> = {};
+  const authHeaders: Record<string, string> = { ...engine.headers };
+  // Fetch supplies the multipart boundary for edit requests.
+  for (const key of Object.keys(authHeaders)) if (key.toLowerCase() === 'content-type' || key.toLowerCase() === 'content-length') delete authHeaders[key];
   if (engine.secret) {
     authHeaders.authorization = `Bearer ${engine.secret}`;
   }
@@ -93,7 +108,7 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
     const formData = new FormData();
     const imageBlob = new Blob([new Uint8Array(referenceImage.buffer)], { type: referenceImage.contentType });
     formData.append('image', imageBlob, referenceImage.filename || 'reference.png');
-    formData.append('prompt', prompt);
+    formData.append('prompt', effectivePrompt);
     formData.append('model', model);
     formData.append('n', String(n));
     if (size) formData.append('size', size);
@@ -124,7 +139,7 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
     const url = `${baseUrl}/images/generations`;
     const payload: Record<string, unknown> = {
       model,
-      prompt,
+      prompt: effectivePrompt,
       n,
       size,
       response_format: 'b64_json',
@@ -148,16 +163,19 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
-    throw new Error(`云端绘图请求失败 [HTTP ${response.status}]: ${errorBody.slice(0, 300)}喵。`);
+    throw cloudError(`云端绘图请求失败 [HTTP ${response.status}]: ${errorBody.slice(0, 300)}喵。`, 'cloud_http_error', response.status);
   }
 
-  const resultJson = (await response.json()) as {
-    data?: Array<{ b64_json?: string; url?: string }>;
-  };
+  let resultJson: { data?: Array<{ b64_json?: string; url?: string }> };
+  try {
+    resultJson = await response.json() as { data?: Array<{ b64_json?: string; url?: string }> };
+  } catch {
+    throw cloudError('云端响应无法解析，提交结果未知。', 'cloud_response_unreadable');
+  }
 
   const dataList = Array.isArray(resultJson.data) ? resultJson.data : [];
   if (!dataList.length) {
-    throw new Error('云端服务未返回任何生成图像数据喵。');
+    throw cloudError('云端服务未返回任何生成图像数据喵。', 'cloud_empty_response');
   }
 
   const images: CloudImageItem[] = [];
@@ -165,7 +183,7 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
   for (const item of dataList) {
     if (item.b64_json) {
       const buffer = Buffer.from(item.b64_json, 'base64');
-      if (!buffer.length) throw new Error('empty_cloud_image');
+      if (!buffer.length) throw cloudError('云端返回了空图像数据。', 'cloud_empty_image');
       const contentType = buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) ? 'image/jpeg'
         : buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP' ? 'image/webp' : 'image/png';
       images.push({ buffer, contentType });
@@ -175,7 +193,7 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
         signal: AbortSignal.any([effectiveSignal, AbortSignal.timeout(30000)]),
       });
       if (!imgRes.ok) {
-        throw new Error(`无法从云端下载生成结果图片 [HTTP ${imgRes.status}]喵。`);
+        throw cloudError(`无法从云端下载生成结果图片 [HTTP ${imgRes.status}]喵。`, 'cloud_image_download_failed', imgRes.status);
       }
       const arrayBuf = await imgRes.arrayBuffer();
       const cType = imgRes.headers.get('content-type') || 'image/png';
@@ -183,7 +201,9 @@ export async function executeCloudGeneration(options: CloudGenerationOptions): P
     }
   }
 
-  if (!images.length || images.some((image) => !image.buffer.length)) throw new Error('云端服务未返回有效图像数据。');
+  if (!images.length || images.some((image) => !image.buffer.length)) {
+    throw cloudError('云端服务未返回有效图像数据。', 'cloud_empty_image');
+  }
   return { images, model, latencyMs };
 }
 

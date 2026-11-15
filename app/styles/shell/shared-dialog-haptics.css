@@ -1,0 +1,107 @@
+/*
+ * SthStart Shell 样式职责拆分 - 共享浮层表面与触感按压反馈
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+ */
+
+[data-autohide-scroll],
+.shell-nav {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+[data-autohide-scroll]::-webkit-scrollbar,
+.shell-nav::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-autohide-scroll]::-webkit-scrollbar-track,
+.shell-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-autohide-scroll]::-webkit-scrollbar-thumb,
+.shell-nav::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: var(--scrollbar-thumb);
+}
+
+[data-autohide-scroll]::-webkit-scrollbar-thumb:hover,
+.shell-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Mantine's menu/popover surfaces inherit the SthStart theme rather than the
+ * stock light/dark palette. */
+.anchored-popover,
+.ui-row-menu,
+.ui-theme-menu {
+  color: var(--fg-default);
+}
+
+.ui-row-menu,
+.ui-theme-menu {
+  min-width: 10rem;
+  max-width: min(20rem, calc(100vw - 24px));
+  padding: 6px;
+  border-color: var(--border-subtle);
+  background: var(--surface-raised);
+  box-shadow: var(--elev-md), 0 0 0 1px var(--border-subtle);
+}
+
+.ui-row-menu [data-menu-item],
+.ui-theme-menu [data-menu-item] {
+  min-height: var(--control-h-sm);
+  padding-inline: 10px;
+  padding-block: 6px;
+  gap: 0.625rem;
+  border-radius: var(--radius-sm);
+  color: var(--fg-default);
+  transition: background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.ui-theme-menu [role='menuitemradio'] {
+  padding-block: 8px;
+}
+
+/* Hide Mantine RadioItem's left dot indicator so all theme swatches stay flush-aligned; selected state is shown on the row and right check icon. */
+.ui-theme-menu [role='menuitemradio'] .mantine-Menu-itemIndicator {
+  display: none;
+}
+
+.ui-theme-menu [role='menuitemradio'][aria-checked='true'] {
+  background: var(--selection-bg);
+  box-shadow: inset 0 0 0 1px var(--selection-border);
+}
+
+.ui-row-menu [data-menu-item]:hover,
+.ui-row-menu [data-menu-item]:focus,
+.ui-theme-menu [data-menu-item]:hover,
+.ui-theme-menu [data-menu-item]:focus {
+  background: var(--surface-hover);
+}
+
+.ui-theme-menu [role='menuitemradio'][aria-checked='true']:hover,
+.ui-theme-menu [role='menuitemradio'][aria-checked='true']:focus {
+  background: color-mix(in srgb, var(--accent) calc(var(--selection-strength) + 5%), transparent);
+}
+
+.ui-menu-item-danger {
+  color: var(--danger-fg) !important;
+}
+
+.ui-menu-item-danger:hover,
+.ui-menu-item-danger:focus {
+  background: var(--danger-bg) !important;
+}
+
+/* 现代精密按压触感反馈 */
+.desk-capsule-btn:active,
+.primary-action:active,
+.shell-collapse-btn:active {
+  transform: scale(0.985);
+  transition-duration: 70ms;
+}

@@ -1,12 +1,12 @@
+import { modelReferences } from './unified-models.js';
+import { connectionSupportsModelType } from './model-routing.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { randomUUID } from 'node:crypto';
 import type { ConnectionTestResult, DiscoveredModelList, PurposeBinding, ServiceConnection, ServiceConnectionKind } from '@sthstart/contracts';
 import { authenticateAdmin } from './access.js';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import type { SecretStore } from './security.js';
-import { upstreamHeaders } from './providers.js';
 
 function safeHeaders(headers: Record<string, unknown>) {
   return Object.fromEntries(
@@ -134,6 +134,17 @@ export function registerConnectionRoutes(
     }
     const headers = safeHeaders(body.headers ?? JSON.parse(String(existing?.headers_json ?? '{}')));
     const options = body.options ?? JSON.parse(String(existing?.options_json ?? '{}'));
+    if (existing) {
+      const models = database.connection.prepare('SELECT id,model_type FROM model_profiles WHERE connection_id=?').all(id) as Array<{id: string; model_type: string}>;
+      if (models.some(model => !connectionSupportsModelType(kind, model.model_type))) {
+        return reply.code(409).send({ error: 'connection_in_use', message: '该协议无法运行已有模型，请先迁移或删除相关模型。' });
+      }
+      if (!enabled || existing.kind !== kind) {
+        const references = [...new Set(models.flatMap(model => modelReferences(database, model.id)))];
+        const engines = database.connection.prepare('SELECT id FROM generation_engines WHERE connection_id=?').all(id);
+        if (references.length || engines.length) return reply.code(409).send({ error: 'connection_in_use', message: `请先更换使用该供应商的配置：${references.join('、') || '绘图方案'}`, references });
+      }
+    }
     let account = existing?.credential_account ? String(existing.credential_account) : connectionSecretAccount(id);
     let secretWarning: string | null = null;
     if (typeof body.secret === 'string' && body.secret.trim()) {
@@ -163,6 +174,8 @@ export function registerConnectionRoutes(
           updated_at = excluded.updated_at
       `).run(id, name, kind, normalizedUrl, account, timeoutMs, JSON.stringify(headers), JSON.stringify(options), enabled ? 1 : 0, now, now);
 
+      database.connection.prepare('UPDATE generation_engines SET base_url=?,credential_account=?,enabled=?,updated_at=? WHERE connection_id=?').run(normalizedUrl, account, enabled ? 1 : 0, now, id);
+      database.connection.prepare(`INSERT INTO generation_engine_options(engine_id,headers_json) SELECT id,? FROM generation_engines WHERE connection_id=? ON CONFLICT(engine_id) DO UPDATE SET headers_json=excluded.headers_json`).run(JSON.stringify(headers), id);
       // 同步更新 provider_profiles 中绑定到该连接的模型 base_url 与启用状态
       database.connection.prepare(`
         UPDATE provider_profiles
@@ -199,6 +212,7 @@ export function registerConnectionRoutes(
     const row = database.connection.prepare('SELECT credential_account FROM service_connections WHERE id = ?').get(request.params.id) as { credential_account: string | null } | undefined;
     if (!row) return reply.code(404).send({ error: 'connection_not_found', message: '连接不存在喵。' });
 
+    if (database.connection.prepare('SELECT id FROM generation_engines WHERE connection_id=?').get(request.params.id)) return reply.code(409).send({ error: 'connection_in_use', message: '生成方案仍在使用此供应商。' });
     database.connection.prepare('DELETE FROM service_connections WHERE id = ?').run(request.params.id);
     const sharedCredential = row.credential_account && database.connection.prepare(`
       SELECT 1 FROM service_connections WHERE credential_account = ?

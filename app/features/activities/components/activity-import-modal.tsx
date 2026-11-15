@@ -7,8 +7,8 @@ import {
   CheckCircle2,
   FolderDown,
 } from 'lucide-react';
-import { useStageActivityZip, useCommitActivityImport } from '../mutations';
-import type { StagedImportPreview } from '../api';
+import { useStageActivityZip, useCommitActivityImport } from '@/app/features/activities/mutations/activities';
+import { type StagedImportPreview } from '@/app/features/activities/shared/types';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Alert } from '@/app/components/ui/alert';

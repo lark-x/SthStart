@@ -66,6 +66,7 @@ export class BackupScheduler {
   private timer: NodeJS.Timeout | null = null;
   private startupTimer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private stopped = false;
   private readonly deferred = new Map<string, number>();
 
   constructor(private readonly options: {
@@ -76,6 +77,7 @@ export class BackupScheduler {
 
   start(): void {
     if (this.timer) return;
+    this.stopped = false;
     // 服务重启：把未结束的运行标为中断，不伪造成功。
     const interrupted = this.options.store.interruptDanglingRuns();
     if (interrupted > 0) this.options.logs.append({ appId: 'sthstart', serviceId: 'backup', stream: 'system', level: 'warn', message: '服务重启：' + interrupted + ' 个未完成的备份运行已标记为中断。', force: true, phase: 'done' });
@@ -86,15 +88,17 @@ export class BackupScheduler {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.startupTimer) { clearTimeout(this.startupTimer); this.startupTimer = null; }
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
   }
 
   async tick(now = new Date()): Promise<string[]> {
-    if (this.ticking) return [];
+    if (this.stopped || this.ticking) return [];
     this.ticking = true;
     const started: string[] = [];
     try {
+      if (this.stopped) return [];
       for (const plan of this.options.store.listDuePlans(now)) {
         if (!plan.targetIds.length) {
           this.options.store.savePlan({ ...plan, targetIds: [], nextRunAt: nextBackupRun(now, plan) });

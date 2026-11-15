@@ -1,0 +1,97 @@
+/*
+ * SthStart Shell 样式职责拆分 - 工作台视口高度锁定与邻舍嵌入适配
+ * 保持 baseline 原始级联顺序，由 app/styles/shell.css 按序引入。
+  */
+
+/* 邻舍独立嵌入：精简外框，锁定视口高度。普通工作台保留桌面导航。 */
+.shell-root[data-embed='true'] {
+  --shell-toolbar-height: 0px;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.shell-root[data-embed='true'] .shell-sidebar {
+  display: none;
+}
+
+.shell-root[data-embed='true'] .shell-main {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.shell-root[data-embed='true'] .shell-content {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* The shell owns viewport height. Children only divide the remaining space. */
+.workspace-fill {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shell-root[data-workspace-header='true'] { --shell-toolbar-height: 0px; }
+.shell-root[data-workspace]:not([data-workspace='creative']) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.shell-root[data-workspace] > .shell-main,
+.shell-root[data-workspace] > .shell-main > .shell-surface {
+  min-height: 0;
+}
+.shell-root[data-workspace]:not([data-workspace='creative']) > .shell-main,
+.shell-root[data-workspace]:not([data-workspace='creative']) > .shell-main > .shell-surface {
+  height: 100%;
+  overflow: hidden;
+}
+.shell-root[data-workspace] .shell-content {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+.shell-root[data-workspace]:not([data-workspace='creative']) .shell-content { overflow: hidden; }
+.shell-root[data-workspace] .shell-content > * { min-width: 0; min-height: 0; }
+.shell-root[data-workspace='editor'] .shell-content > :not(.fixed) { height: 100%; max-height: 100%; }
+.workspace-header { overflow: visible; }
+/* Wide generators share the same height chain; narrow mode stays a document. */
+@media (min-width: 1280px) {
+  .shell-root[data-workspace='creative'] { height: 100dvh; min-height: 0; overflow: hidden; }
+  .shell-root[data-workspace='creative'] > .shell-main,
+  .shell-root[data-workspace='creative'] > .shell-main > .shell-surface { height: 100%; overflow: hidden; }
+  .shell-root[data-workspace='creative'] .shell-content { overflow: hidden; }
+  .shell-root[data-workspace='creative'] .shell-content > .tpl-container {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: var(--workspace-panel-gap);
+    padding-block: 16px;
+  }
+  .shell-root[data-workspace='creative'] .shell-content > .tpl-container > * { flex-shrink: 0; margin-block: 0; }
+  .shell-root[data-workspace='creative'] .shell-content > .tpl-container > .creative-split { flex: 1 1 0%; min-height: 0; }
+  .creative-split > :not(.split-pane-handle):not(.fixed) { height: 100%; }
+}
+
+/* A short layout viewport must not squeeze fixed controls out of the canvas.
+ * Keep a definite inner height (percent-height workbenches depend on it) and
+ * let the document scroll over the minimum canvas. Normal heights stay locked.
+ * This also avoids unmounting editors when the viewport shrinks and recovers. */
+@media (max-height: 500px) {
+  .shell-root[data-workspace]:not([data-embed='true']) {
+    height: max(100dvh, 600px);
+    min-height: 100dvh;
+    overflow: visible;
+  }
+}

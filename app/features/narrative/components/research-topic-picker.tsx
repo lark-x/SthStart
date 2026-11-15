@@ -6,6 +6,7 @@ import type { NarrativeWork, ResearchScope, ResearchTopicSuggestionResult } from
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Alert } from '@/app/components/ui/alert';
 
@@ -85,15 +86,15 @@ export function ResearchTopicPicker({
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm font-semibold text-ink" htmlFor="research-work">研究作品</label>
-            <select
-              id="research-work"
+            <span className="text-sm font-semibold text-ink">研究作品</span>
+            <Select
+              aria-label="研究作品"
               value={activeWorkId}
               onChange={(event) => { onWorkChange(event.target.value); setResult(null); }}
-              className="h-9 rounded-control border border-border-default bg-surface px-3 text-sm"
+              className="w-auto min-w-40"
             >
               {works.map((work) => <option key={work.id} value={work.id}>{work.title}</option>)}
-            </select>
+            </Select>
             <span className="text-xs text-muted">一个专题只对应一个作品，避免同名实体跨作品互相污染。</span>
           </div>
 

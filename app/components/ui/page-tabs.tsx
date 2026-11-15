@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { Tabs } from '@mantine/core';
 import { cn } from '../../lib/cn';
+import { useScrollFade } from './use-scroll-fade';
 
 export interface PageTab {
   id: string;
@@ -28,91 +30,111 @@ export interface PageTabsProps {
  * 真正导航到新页面时请使用链接语义，不要用 tabs 模拟页面跳转。
  */
 export function PageTabs({ tabs, value, onChange, ariaLabel, className, variant = 'page' }: PageTabsProps) {
+  const listRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  useScrollFade(listRef, 'horizontal', 16);
 
-  const focusAndSelect = (index: number) => {
-    const tab = tabs[index];
-    if (!tab || tab.disabled) return;
-    onChange(tab.id);
-    tabRefs.current[index]?.focus();
-    tabRefs.current[index]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  const revealTab = (tab: HTMLButtonElement | null) => {
+    const list = listRef.current;
+    if (!tab || !list) return;
+    const listRect = list.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    const padding = 16;
+    let delta = 0;
+    if (tabRect.left < listRect.left + padding) delta = tabRect.left - listRect.left - padding;
+    else if (tabRect.right > listRect.right - padding) delta = tabRect.right - listRect.right + padding;
+    if (delta !== 0) list.scrollTo({ left: list.scrollLeft + delta, behavior: 'auto' });
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229) return;
-    const selectable = tabs.map((tab, index) => ({ tab, index })).filter(({ tab }) => !tab.disabled);
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) {
+      event.stopPropagation();
+      return;
+    }
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+
+    const focused = event.target as HTMLElement;
+    if (focused.getAttribute('role') !== 'tab') return;
+    const selectable = tabs
+      .map((tab, index) => ({ tab, index }))
+      .filter(({ tab }) => !tab.disabled);
     if (selectable.length === 0) return;
-    const focusedIndex = selectable.findIndex(({ index }) => tabRefs.current[index] === event.target);
+
+    const focusedIndex = selectable.findIndex(({ index }) => tabRefs.current[index] === focused);
     const currentIndex = Math.max(0, focusedIndex >= 0 ? focusedIndex : selectable.findIndex(({ tab }) => tab.id === value));
-    let target: number | null = null;
+    const target = event.key === 'Home'
+      ? selectable[0]
+      : event.key === 'End'
+        ? selectable[selectable.length - 1]
+        : selectable[(currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + selectable.length) % selectable.length];
+    const targetButton = tabRefs.current[target.index];
+    if (!targetButton) return;
 
-    if (event.key === 'ArrowRight') {
-      target = selectable[(currentIndex + 1 + selectable.length) % selectable.length].index;
-    } else if (event.key === 'ArrowLeft') {
-      target = selectable[(currentIndex - 1 + selectable.length) % selectable.length].index;
-    } else if (event.key === 'Home') {
-      target = selectable[0].index;
-    } else if (event.key === 'End') {
-      target = selectable[selectable.length - 1].index;
-    }
-
-    if (target !== null) {
-      event.preventDefault();
-      focusAndSelect(target);
-    }
+    event.preventDefault();
+    event.stopPropagation();
+    targetButton.focus({ preventScroll: true });
+    if (target.tab.id !== value) onChange(target.tab.id);
+    revealTab(targetButton);
   };
+
+  useEffect(() => {
+    const index = tabs.findIndex((tab) => tab.id === value);
+    if (index >= 0) revealTab(tabRefs.current[index]);
+  }, [tabs, value]);
 
   return (
-    <div
-      role="tablist"
-      aria-label={ariaLabel}
-      aria-orientation="horizontal"
-      data-variant={variant}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        'page-tabs',
-        className
-      )}
-    >
-      {tabs.map((tab, index) => {
-        const selected = tab.id === value;
-        return (
-          <button
-            key={tab.id}
-            ref={(node) => {
-              tabRefs.current[index] = node;
-            }}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-controls={tab.panelId}
-            tabIndex={!tab.disabled && (selected || (!tabs.some((item) => item.id === value && !item.disabled) && index === tabs.findIndex((item) => !item.disabled))) ? 0 : -1}
-            disabled={tab.disabled}
-            onClick={() => onChange(tab.id)}
-            onFocus={(event) => event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })}
-            className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-medium transition-colors duration-[var(--motion-fast)]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
-              selected
-                ? 'text-ink font-semibold'
-                : 'text-muted hover:text-ink',
-              tab.disabled && 'pointer-events-none opacity-50'
-            )}
-          >
-            {tab.label}
-            {typeof tab.count === 'number' && (
-              <span
+    <Tabs
+        value={value}
+        onChange={(next) => {
+          if (next !== null) onChange(next);
+        }}
+        className="contents"
+      >
+        <Tabs.List
+          ref={listRef}
+          aria-label={ariaLabel}
+          data-scroll-fade="horizontal"
+          data-variant={variant}
+          className={cn('page-tabs', className)}
+          onKeyDownCapture={handleTabKeyDown}
+        >
+          {tabs.map((tab, index) => {
+            const selected = tab.id === value;
+            return (
+              <Tabs.Tab
+                key={tab.id}
+                ref={(node: HTMLButtonElement | null) => {
+                  tabRefs.current[index] = node;
+                }}
+                value={tab.id}
+                data-value={tab.id}
+                disabled={tab.disabled}
+                aria-controls={tab.panelId || undefined}
+                tabIndex={!tab.disabled && (selected || (!tabs.some((item) => item.id === value && !item.disabled) && index === tabs.findIndex((item) => !item.disabled))) ? 0 : -1}
+                onFocus={(event) => revealTab(event.currentTarget)}
                 className={cn(
-                  'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-5',
-                  selected ? 'bg-surface-sunken text-ink' : 'bg-ink/8 text-muted'
+                  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-medium transition-colors duration-[var(--motion-fast)]',
+                  selected
+                    ? 'text-ink font-semibold'
+                    : 'text-muted hover:text-ink',
+                  tab.disabled && 'pointer-events-none opacity-50'
                 )}
+                rightSection={typeof tab.count === 'number' ? (
+                  <span
+                    className={cn(
+                      'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-5',
+                      selected ? 'bg-surface-sunken text-ink' : 'bg-ink/8 text-muted'
+                    )}
+                  >
+                    {tab.count}
+                  </span>
+                ) : undefined}
               >
-                {tab.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
+                {tab.label}
+              </Tabs.Tab>
+            );
+          })}
+        </Tabs.List>
+      </Tabs>
   );
 }

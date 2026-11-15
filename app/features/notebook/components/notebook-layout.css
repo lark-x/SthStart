@@ -1,4 +1,52 @@
 /* Notebook-only density: the resource shell continues to own panel geometry. */
+.notebook-workspace-shell {
+  --notebook-list-selection: var(--selection-bg);
+  --notebook-list-meta: var(--fg-muted);
+}
+
+/* Selection and secondary metadata share semantic tokens instead of a fixed
+ * subtle foreground. Dark themes raise the selected surface, so 12px metadata
+ * must follow the muted text token to stay above 4.5:1 on that surface. */
+.notebook-workspace-shell .notebook-list-item[aria-current='page'] {
+  background: var(--notebook-list-selection);
+}
+.notebook-list-meta {
+  color: var(--notebook-list-meta, var(--fg-muted));
+}
+.notebook-local-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 20px;
+  padding-inline: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-chip);
+  background: var(--surface-raised);
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.notebook-local-badge[data-local-status='error'],
+.notebook-local-badge[data-local-status='conflict'] {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+.notebook-filter-chip,
+.notebook-filter-toggle,
+.notebook-filter-reset {
+  justify-content: flex-start;
+}
+.notebook-mobile-action-bar {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+@media (max-width: 1023px) {
+  .notebook-mobile-action-bar {
+    position: sticky;
+    top: 0;
+  }
+}
+
 @media (max-height: 500px) {
   /* The document scrolls over a 600px canvas here. A sticky toolbar inside
    * its separately scrolling panel cannot reliably be scrolled into view. */
@@ -11,6 +59,9 @@
 }
 
 .notebook-workspace-shell .notebook-list-search-row input { min-width: 0; }
+/* Let the editor grow with its document inside the scrolling flex pane.
+ * Otherwise its sticky toolbar is capped at the pane's first screen. */
+.notebook-detail-pane > .notebook-editor-shell { flex-shrink: 0; }
 .notebook-editor-compact.notebook-editor-shell > .notebook-editor-header {
   min-height: 48px;
   padding: 4px 16px;
@@ -20,7 +71,7 @@
   backdrop-filter: none;
 }
 
-.notebook-editor-compact .notebook-editor-leading { flex-basis: 160px; }
+.notebook-editor-compact .notebook-editor-leading { flex-basis: 136px; }
 .notebook-editor-compact .notebook-save-status { min-width: 0; max-width: none; font-size: 12px; line-height: 1.5; white-space: normal; text-align: left; overflow: visible; }
 .notebook-editor-compact .notebook-save-status > span:first-child { flex-shrink: 0; }
 .notebook-editor-compact .notebook-editor-actions { flex-wrap: wrap; gap: 4px; }
@@ -29,41 +80,101 @@
 
 .notebook-editor-compact.notebook-editor-shell > .notebook-editor-frame {
   width: 100%;
-  padding-block: 20px 32px;
+  padding-block: 20px 48px;
 }
 
 .notebook-editor-compact .notebook-editor-frame > .notebook-doc-header {
+  display: grid;
+  gap: 4px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
 }
 
-.notebook-editor-compact .notebook-doc-metadata select,
-.notebook-editor-compact .notebook-doc-metadata input {
-  min-height: var(--control-h-sm);
+.notebook-title-field { display: grid; min-width: 0; }
+.notebook-title-input { padding-inline: 0; border-radius: 0; }
+.notebook-doc-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.notebook-metadata-field { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.notebook-metadata-field .ui-mantine-input-wrapper:has(> select.notebook-doc-select) {
+  display: inline-flex;
+  width: auto;
+}
+.notebook-metadata-field > span:first-child { flex: none; color: var(--fg-muted); font-size: 12px; }
+.notebook-doc-metadata :is(select, input) {
+  min-height: 32px;
   border-radius: var(--radius-control);
   background: transparent;
   font-size: 14px;
 }
-
-.notebook-editor-compact .notebook-doc-metadata select:hover,
-.notebook-editor-compact .notebook-doc-metadata input:hover { background: var(--surface-sunken); }
-.notebook-editor-compact .notebook-doc-tags { flex-basis: 160px; }
-.notebook-editor-compact .notebook-editor-frame > .notebook-content-section { padding-top: 0; }
-
-.notebook-editor-compact .notebook-block { min-width: 0; padding-block: 12px; }
-.notebook-editor-compact .notebook-block-header {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 36px;
-  margin-bottom: 4px;
+.notebook-doc-metadata .notebook-doc-select {
+  width: auto;
+  min-height: 32px;
+  padding-inline: 8px;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
 }
-
-.notebook-editor-compact .notebook-block-controls {
+.notebook-doc-metadata :is(select, input):is(:hover, :focus) { background: var(--surface-sunken); }
+.notebook-doc-tags { flex: 1 1 176px; }
+.notebook-doc-tags > input { flex: 1; min-width: 0; }
+.notebook-blocks { display: grid; gap: 16px; }
+.notebook-editor-compact .notebook-block {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.notebook-editor-compact .notebook-block:is(:focus-within, [data-insert-anchor='true']) { border-color: var(--focus-ring); }
+.notebook-block-header { display: flex; order: -1; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.notebook-block-kind { color: var(--fg-muted); font-size: 12px; font-weight: 500; }
+.notebook-editor-compact .notebook-block[data-block-type='text'] {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.notebook-block[data-block-type='text']::before {
+  position: absolute;
+  inset-block: 4px 0;
+  inset-inline-start: -8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--focus-ring);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+}
+.notebook-block[data-block-type='text']:is(:focus-within, [data-insert-anchor='true'])::before { opacity: 1; }
+.notebook-block[data-block-type='text'] .notebook-block-header { justify-content: flex-end; }
+.notebook-block-controls {
   border-radius: var(--radius-control);
   background: var(--surface-raised);
 }
 
-.notebook-editor-compact .notebook-block-controls .notebook-icon-button,
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .notebook-block[data-block-type='text'] .notebook-block-header {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 100%;
+    z-index: 1;
+  }
+  .notebook-block[data-block-type='text'] .notebook-block-controls { flex-direction: column; gap: 0; }
+  .notebook-block:not(:hover, :focus-within) .notebook-block-controls { opacity: 0; pointer-events: none; }
+}
+
+.notebook-editor-compact .notebook-block-controls .notebook-icon-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
 .notebook-workspace-shell .notebook-list-toggle {
   width: 36px;
   height: 36px;
@@ -71,22 +182,64 @@
   min-height: 36px;
 }
 
-.notebook-editor-compact .notebook-block > .notebook-textarea {
-  padding: 4px 0;
+.notebook-paragraph { position: relative; min-width: 0; }
+.notebook-editor-compact .notebook-paragraph :is(.notebook-textarea, .notebook-paragraph-sizing) {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 1lh;
+  margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 0;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.notebook-editor-compact .zen-workspace .notebook-paragraph-sizing { font-size: 16.5px; }
+.notebook-paragraph-sizing { visibility: hidden; pointer-events: none; }
+.notebook-paragraph:has(.notebook-textarea:placeholder-shown) > .notebook-paragraph-sizing { min-height: 2lh; }
+/* The paragraph sizes itself from the hidden mirror span and lays the live
+ * textarea over it. Mantine renders the textarea inside a Textarea root and
+ * Input wrapper, so the overlay has to cover those too; otherwise the textarea
+ * keeps the base 380px scroll box and scrolls inside the document. */
+.notebook-editor-compact .notebook-paragraph > .notebook-textarea,
+.notebook-editor-compact .notebook-paragraph .ui-mantine-input-wrapper {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  max-height: none;
+  resize: none;
+  overflow: hidden;
   background: transparent;
+  outline: none;
 }
-
-.notebook-editor-compact .notebook-block > .notebook-textarea:focus { background: transparent; }
-@supports (field-sizing: content) {
-  .notebook-editor-compact .notebook-block > .notebook-textarea { field-sizing: content; height: auto; min-height: 120px; max-height: none; resize: none; }
+.notebook-editor-compact .notebook-paragraph .notebook-textarea {
+  height: 100%;
+  max-height: none;
+  resize: none;
+  overflow: hidden;
+  /* The Mantine input skin would paint a filled, bordered box behind every
+   * paragraph; the document surface stays flat like the native textarea. */
+  background: transparent;
+  box-shadow: none;
 }
-.notebook-editor-compact .notebook-add-panel { padding-top: 8px; }
-.notebook-editor-compact .notebook-add-grid { gap: 4px; }
-.notebook-editor-compact .notebook-add-grid .notebook-add-button { height: auto; padding-inline: 8px; }
+.notebook-block, .notebook-block [data-block-entry] { scroll-margin-block: 88px 24px; }
+.notebook-insert-options { display: grid; min-width: 128px; }
+.notebook-insert-options button { justify-content: flex-start; }
+.notebook-start-writing {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: var(--control-h-sm);
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+.notebook-start-writing:hover { color: var(--accent); }
 
-.notebook-editor-compact :is(button, summary, a, input, select, textarea):focus-visible,
+.notebook-editor-compact :is(button, summary, a, input, select, textarea):not(.notebook-textarea):focus-visible,
 .notebook-workspace-shell :is(.notebook-list-toggle, .notebook-new-note-action):focus-visible,
 .notebook-properties-drawer :is(button, summary, a, input, select, textarea):focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -98,24 +251,6 @@
 .notebook-properties-drawer :is(button, a, summary) { font-size: 14px; }
 .notebook-properties-drawer button { min-height: var(--control-h-sm); }
 .notebook-properties-drawer [data-autohide-scroll] { overscroll-behavior: contain; overflow-wrap: anywhere; }
-
-@media (hover: hover) and (pointer: fine) {
-  .notebook-editor-compact .notebook-block { padding-inline-end: 40px; min-height: 132px; }
-  .notebook-editor-compact .notebook-block-header {
-    position: absolute;
-    z-index: 1;
-    top: 8px;
-    right: 0;
-    min-height: 0;
-    margin-bottom: 0;
-  }
-  .notebook-editor-compact .notebook-block-controls { flex-direction: column; opacity: 0; pointer-events: none; }
-  .notebook-editor-compact .notebook-block:hover .notebook-block-controls,
-  .notebook-editor-compact .notebook-block:focus-within .notebook-block-controls {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
 
 @media (pointer: coarse), (max-width: 639px) {
   .notebook-workspace-shell .notebook-list-search-row > .notebook-new-note-action,

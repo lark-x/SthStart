@@ -1,0 +1,1606 @@
+{
+  "date": "2026-11-11",
+  "baseline": {
+    "branch": "feat/warm-paper-ui",
+    "head": "68090f7afdf87092c2d30ce73dfd92b2fc99ff9b",
+    "files": 1215
+  },
+  "dependency": {
+    "files": 574,
+    "localEdges": 2035,
+    "fileCycles": 0,
+    "featureCycles": 0,
+    "violations": 0,
+    "stale": 0
+  },
+  "performance": {
+    "baseline": {
+      "browser": "151.0.7922.34",
+      "viewport": "1440x900",
+      "conditions": "production build, fresh context each repeat, local network, reduced motion, 25 notes / 1 story chapter / 1 character / fixture activity, 800ms settling interval",
+      "samples": [
+        {
+          "route": "story",
+          "repeat": 0,
+          "readyMs": 1282.5999999642372,
+          "jsTransferBytes": 1934539,
+          "jsDecodedBytes": 1880594,
+          "jsRequests": 192,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 63.61329999999998,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 1,
+          "readyMs": 1114.199999988079,
+          "jsTransferBytes": 1938194,
+          "jsDecodedBytes": 1880594,
+          "jsRequests": 192,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 55.66219999999976,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 2,
+          "readyMs": 1351.6000000238419,
+          "jsTransferBytes": 1938194,
+          "jsDecodedBytes": 1880594,
+          "jsRequests": 192,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 65.91589999999997,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 3,
+          "readyMs": 1196.1000000238419,
+          "jsTransferBytes": 1938194,
+          "jsDecodedBytes": 1880594,
+          "jsRequests": 192,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 67.32240000000002,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 4,
+          "readyMs": 1194.7999999523163,
+          "jsTransferBytes": 1938194,
+          "jsDecodedBytes": 1880594,
+          "jsRequests": 192,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 53.89520000000084,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 0,
+          "readyMs": 1085.300000011921,
+          "jsTransferBytes": 1295310,
+          "jsDecodedBytes": 1253910,
+          "jsRequests": 138,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 56.43709999999919,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 1,
+          "readyMs": 1073.199999988079,
+          "jsTransferBytes": 1626916,
+          "jsDecodedBytes": 1572916,
+          "jsRequests": 180,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 67.42149999999856,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 2,
+          "readyMs": 1084.1000000238419,
+          "jsTransferBytes": 1295310,
+          "jsDecodedBytes": 1253910,
+          "jsRequests": 138,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 70.53160000000025,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 3,
+          "readyMs": 1064.800000011921,
+          "jsTransferBytes": 1626916,
+          "jsDecodedBytes": 1572916,
+          "jsRequests": 180,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 76.91809999999896,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 4,
+          "readyMs": 1063,
+          "jsTransferBytes": 1295310,
+          "jsDecodedBytes": 1253910,
+          "jsRequests": 138,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 79.18680000000131,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 0,
+          "readyMs": 1098.3999999761581,
+          "jsTransferBytes": 1722176,
+          "jsDecodedBytes": 1667276,
+          "jsRequests": 183,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 64.81000000000131,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 1,
+          "readyMs": 1078.5,
+          "jsTransferBytes": 1722176,
+          "jsDecodedBytes": 1667276,
+          "jsRequests": 183,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 57.61579999999958,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 2,
+          "readyMs": 1093.3999999761581,
+          "jsTransferBytes": 1722176,
+          "jsDecodedBytes": 1667276,
+          "jsRequests": 183,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 66.80919999999969,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 3,
+          "readyMs": 1118.6000000238419,
+          "jsTransferBytes": 1722176,
+          "jsDecodedBytes": 1667276,
+          "jsRequests": 183,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 60.23400000000038,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 4,
+          "readyMs": 1109.5,
+          "jsTransferBytes": 1722176,
+          "jsDecodedBytes": 1667276,
+          "jsRequests": 183,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 70.27410000000236,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 0,
+          "readyMs": 1253.199999988079,
+          "jsTransferBytes": 2024779,
+          "jsDecodedBytes": 1966579,
+          "jsRequests": 194,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 51.90689999999813,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 1,
+          "readyMs": 1232.7999999523163,
+          "jsTransferBytes": 2024779,
+          "jsDecodedBytes": 1966579,
+          "jsRequests": 194,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 51.78050000000076,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 2,
+          "readyMs": 1238.800000011921,
+          "jsTransferBytes": 2024779,
+          "jsDecodedBytes": 1966579,
+          "jsRequests": 194,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 51.96010000000024,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 3,
+          "readyMs": 1240.2000000476837,
+          "jsTransferBytes": 2024779,
+          "jsDecodedBytes": 1966579,
+          "jsRequests": 194,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 65.98739999999816,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 4,
+          "readyMs": 1213.8999999761581,
+          "jsTransferBytes": 2024779,
+          "jsDecodedBytes": 1966579,
+          "jsRequests": 194,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 50.10570000000007,
+          "errors": []
+        }
+      ]
+    },
+    "final": {
+      "browser": "151.0.7922.34",
+      "viewport": "1440x900",
+      "conditions": "production build, fresh context each repeat, local network, reduced motion, 25 notes / 1 story chapter / 1 character / fixture activity, 800ms settling interval",
+      "samples": [
+        {
+          "route": "story",
+          "repeat": 0,
+          "readyMs": 1187.300000011921,
+          "jsTransferBytes": 1940073,
+          "jsDecodedBytes": 1881873,
+          "jsRequests": 194,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 55.73520000000008,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 1,
+          "readyMs": 1218.699999988079,
+          "jsTransferBytes": 1940073,
+          "jsDecodedBytes": 1881873,
+          "jsRequests": 194,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 57.431600000000344,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 2,
+          "readyMs": 1378.300000011921,
+          "jsTransferBytes": 1831508,
+          "jsDecodedBytes": 1881873,
+          "jsRequests": 194,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 69.42990000000009,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 3,
+          "readyMs": 1242,
+          "jsTransferBytes": 1940073,
+          "jsDecodedBytes": 1881873,
+          "jsRequests": 194,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 61.42330000000038,
+          "errors": []
+        },
+        {
+          "route": "story",
+          "repeat": 4,
+          "readyMs": 1238.8999999761581,
+          "jsTransferBytes": 1940073,
+          "jsDecodedBytes": 1881873,
+          "jsRequests": 194,
+          "apiRequests": 9,
+          "longTasks": [],
+          "interactionMs": 74.57889999999861,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 0,
+          "readyMs": 1053.1000000238419,
+          "jsTransferBytes": 1284131,
+          "jsDecodedBytes": 1241831,
+          "jsRequests": 141,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 56.83300000000054,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 1,
+          "readyMs": 1095,
+          "jsTransferBytes": 1619436,
+          "jsDecodedBytes": 1565136,
+          "jsRequests": 181,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 68.93009999999958,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 2,
+          "readyMs": 1061.800000011921,
+          "jsTransferBytes": 1284131,
+          "jsDecodedBytes": 1241831,
+          "jsRequests": 141,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 77.44850000000042,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 3,
+          "readyMs": 1064.3999999761581,
+          "jsTransferBytes": 1619436,
+          "jsDecodedBytes": 1565136,
+          "jsRequests": 181,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 94.26219999999921,
+          "errors": []
+        },
+        {
+          "route": "resources",
+          "repeat": 4,
+          "readyMs": 1075.6000000238419,
+          "jsTransferBytes": 1284131,
+          "jsDecodedBytes": 1241831,
+          "jsRequests": 141,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 97.7968000000019,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 0,
+          "readyMs": 1111.6000000238419,
+          "jsTransferBytes": 1718054,
+          "jsDecodedBytes": 1662854,
+          "jsRequests": 184,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 56.19480000000112,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 1,
+          "readyMs": 1105.300000011921,
+          "jsTransferBytes": 1718054,
+          "jsDecodedBytes": 1662854,
+          "jsRequests": 184,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 54.027900000000955,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 2,
+          "readyMs": 1152.6000000238419,
+          "jsTransferBytes": 1718054,
+          "jsDecodedBytes": 1662854,
+          "jsRequests": 184,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 60.873100000000704,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 3,
+          "readyMs": 1158.300000011921,
+          "jsTransferBytes": 1718054,
+          "jsDecodedBytes": 1662854,
+          "jsRequests": 184,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 59.46809999999823,
+          "errors": []
+        },
+        {
+          "route": "character",
+          "repeat": 4,
+          "readyMs": 1194.6000000238419,
+          "jsTransferBytes": 1718054,
+          "jsDecodedBytes": 1662854,
+          "jsRequests": 184,
+          "apiRequests": 5,
+          "longTasks": [],
+          "interactionMs": 61.188899999997375,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 0,
+          "readyMs": 1210.3999999761581,
+          "jsTransferBytes": 1797143,
+          "jsDecodedBytes": 1739243,
+          "jsRequests": 193,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 50.685600000000704,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 1,
+          "readyMs": 1212.8999999761581,
+          "jsTransferBytes": 1797143,
+          "jsDecodedBytes": 1739243,
+          "jsRequests": 193,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 51.8198999999986,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 2,
+          "readyMs": 1358.4000000357628,
+          "jsTransferBytes": 1797143,
+          "jsDecodedBytes": 1739243,
+          "jsRequests": 193,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 72.16639999999825,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 3,
+          "readyMs": 1282.5,
+          "jsTransferBytes": 1797143,
+          "jsDecodedBytes": 1739243,
+          "jsRequests": 193,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 63.472099999999045,
+          "errors": []
+        },
+        {
+          "route": "activity",
+          "repeat": 4,
+          "readyMs": 1251.199999988079,
+          "jsTransferBytes": 1797143,
+          "jsDecodedBytes": 1739243,
+          "jsRequests": 193,
+          "apiRequests": 7,
+          "longTasks": [],
+          "interactionMs": 64.58439999999973,
+          "errors": []
+        }
+      ]
+    },
+    "comparison": [
+      {
+        "route": "story",
+        "jsTransferBytes": {
+          "before": 1938194,
+          "after": 1940073,
+          "beforeRange": [
+            1934539,
+            1938194
+          ],
+          "afterRange": [
+            1831508,
+            1940073
+          ],
+          "change": 0.1
+        },
+        "jsDecodedBytes": {
+          "before": 1880594,
+          "after": 1881873,
+          "beforeRange": [
+            1880594,
+            1880594
+          ],
+          "afterRange": [
+            1881873,
+            1881873
+          ],
+          "change": 0.1
+        },
+        "jsRequests": {
+          "before": 192,
+          "after": 194,
+          "beforeRange": [
+            192,
+            192
+          ],
+          "afterRange": [
+            194,
+            194
+          ],
+          "change": 1
+        },
+        "apiRequests": {
+          "before": 9,
+          "after": 9,
+          "beforeRange": [
+            9,
+            9
+          ],
+          "afterRange": [
+            9,
+            9
+          ],
+          "change": 0
+        },
+        "readyMs": {
+          "before": 1196.1000000238419,
+          "after": 1238.8999999761581,
+          "beforeRange": [
+            1114.199999988079,
+            1351.6000000238419
+          ],
+          "afterRange": [
+            1187.300000011921,
+            1378.300000011921
+          ],
+          "change": 3.6
+        },
+        "interactionMs": {
+          "before": 63.61329999999998,
+          "after": 61.42330000000038,
+          "beforeRange": [
+            53.89520000000084,
+            67.32240000000002
+          ],
+          "afterRange": [
+            55.73520000000008,
+            74.57889999999861
+          ],
+          "change": -3.4
+        }
+      },
+      {
+        "route": "resources",
+        "jsTransferBytes": {
+          "before": 1295310,
+          "after": 1284131,
+          "beforeRange": [
+            1295310,
+            1626916
+          ],
+          "afterRange": [
+            1284131,
+            1619436
+          ],
+          "change": -0.9
+        },
+        "jsDecodedBytes": {
+          "before": 1253910,
+          "after": 1241831,
+          "beforeRange": [
+            1253910,
+            1572916
+          ],
+          "afterRange": [
+            1241831,
+            1565136
+          ],
+          "change": -1
+        },
+        "jsRequests": {
+          "before": 138,
+          "after": 141,
+          "beforeRange": [
+            138,
+            180
+          ],
+          "afterRange": [
+            141,
+            181
+          ],
+          "change": 2.2
+        },
+        "apiRequests": {
+          "before": 5,
+          "after": 5,
+          "beforeRange": [
+            5,
+            5
+          ],
+          "afterRange": [
+            5,
+            5
+          ],
+          "change": 0
+        },
+        "readyMs": {
+          "before": 1073.199999988079,
+          "after": 1064.3999999761581,
+          "beforeRange": [
+            1063,
+            1085.300000011921
+          ],
+          "afterRange": [
+            1053.1000000238419,
+            1095
+          ],
+          "change": -0.8
+        },
+        "interactionMs": {
+          "before": 70.53160000000025,
+          "after": 77.44850000000042,
+          "beforeRange": [
+            56.43709999999919,
+            79.18680000000131
+          ],
+          "afterRange": [
+            56.83300000000054,
+            97.7968000000019
+          ],
+          "change": 9.8
+        }
+      },
+      {
+        "route": "character",
+        "jsTransferBytes": {
+          "before": 1722176,
+          "after": 1718054,
+          "beforeRange": [
+            1722176,
+            1722176
+          ],
+          "afterRange": [
+            1718054,
+            1718054
+          ],
+          "change": -0.2
+        },
+        "jsDecodedBytes": {
+          "before": 1667276,
+          "after": 1662854,
+          "beforeRange": [
+            1667276,
+            1667276
+          ],
+          "afterRange": [
+            1662854,
+            1662854
+          ],
+          "change": -0.3
+        },
+        "jsRequests": {
+          "before": 183,
+          "after": 184,
+          "beforeRange": [
+            183,
+            183
+          ],
+          "afterRange": [
+            184,
+            184
+          ],
+          "change": 0.5
+        },
+        "apiRequests": {
+          "before": 5,
+          "after": 5,
+          "beforeRange": [
+            5,
+            5
+          ],
+          "afterRange": [
+            5,
+            5
+          ],
+          "change": 0
+        },
+        "readyMs": {
+          "before": 1098.3999999761581,
+          "after": 1152.6000000238419,
+          "beforeRange": [
+            1078.5,
+            1118.6000000238419
+          ],
+          "afterRange": [
+            1105.300000011921,
+            1194.6000000238419
+          ],
+          "change": 4.9
+        },
+        "interactionMs": {
+          "before": 64.81000000000131,
+          "after": 59.46809999999823,
+          "beforeRange": [
+            57.61579999999958,
+            70.27410000000236
+          ],
+          "afterRange": [
+            54.027900000000955,
+            61.188899999997375
+          ],
+          "change": -8.2
+        }
+      },
+      {
+        "route": "activity",
+        "jsTransferBytes": {
+          "before": 2024779,
+          "after": 1797143,
+          "beforeRange": [
+            2024779,
+            2024779
+          ],
+          "afterRange": [
+            1797143,
+            1797143
+          ],
+          "change": -11.2
+        },
+        "jsDecodedBytes": {
+          "before": 1966579,
+          "after": 1739243,
+          "beforeRange": [
+            1966579,
+            1966579
+          ],
+          "afterRange": [
+            1739243,
+            1739243
+          ],
+          "change": -11.6
+        },
+        "jsRequests": {
+          "before": 194,
+          "after": 193,
+          "beforeRange": [
+            194,
+            194
+          ],
+          "afterRange": [
+            193,
+            193
+          ],
+          "change": -0.5
+        },
+        "apiRequests": {
+          "before": 7,
+          "after": 7,
+          "beforeRange": [
+            7,
+            7
+          ],
+          "afterRange": [
+            7,
+            7
+          ],
+          "change": 0
+        },
+        "readyMs": {
+          "before": 1238.800000011921,
+          "after": 1251.199999988079,
+          "beforeRange": [
+            1213.8999999761581,
+            1253.199999988079
+          ],
+          "afterRange": [
+            1210.3999999761581,
+            1358.4000000357628
+          ],
+          "change": 1
+        },
+        "interactionMs": {
+          "before": 51.90689999999813,
+          "after": 63.472099999999045,
+          "beforeRange": [
+            50.10570000000007,
+            65.98739999999816
+          ],
+          "afterRange": [
+            50.685600000000704,
+            72.16639999999825
+          ],
+          "change": 22.3
+        }
+      }
+    ],
+    "investigation": {
+      "initialBaseline": {
+        "browser": "151.0.7922.34",
+        "viewport": "1440x900",
+        "conditions": "production build, fresh context each repeat, local network, reduced motion, 25 notes / 1 story chapter / 1 character / fixture activity, 800ms settling interval",
+        "samples": [
+          {
+            "route": "story",
+            "repeat": 0,
+            "readyMs": 1437,
+            "jsTransferBytes": 1938194,
+            "jsDecodedBytes": 1880594,
+            "jsRequests": 192,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 428.8595000000005,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 1,
+            "readyMs": 1236.300000011921,
+            "jsTransferBytes": 1893105,
+            "jsDecodedBytes": 1880594,
+            "jsRequests": 192,
+            "apiRequests": 9,
+            "longTasks": [
+              62
+            ],
+            "interactionMs": 74.97969999999987,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 2,
+            "readyMs": 1301,
+            "jsTransferBytes": 1938194,
+            "jsDecodedBytes": 1880594,
+            "jsRequests": 192,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 56.02000000000044,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 3,
+            "readyMs": 1249.9000000357628,
+            "jsTransferBytes": 1938194,
+            "jsDecodedBytes": 1880594,
+            "jsRequests": 192,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 70.26659999999902,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 4,
+            "readyMs": 1265.6000000238419,
+            "jsTransferBytes": 1938194,
+            "jsDecodedBytes": 1880594,
+            "jsRequests": 192,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 76.05369999999857,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 0,
+            "readyMs": 1078.300000011921,
+            "jsTransferBytes": 1295310,
+            "jsDecodedBytes": 1253910,
+            "jsRequests": 138,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 113.39450000000033,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 1,
+            "readyMs": 1127.1000000238419,
+            "jsTransferBytes": 1295310,
+            "jsDecodedBytes": 1253910,
+            "jsRequests": 138,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 83.77160000000003,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 2,
+            "readyMs": 1093.8999999761581,
+            "jsTransferBytes": 1295310,
+            "jsDecodedBytes": 1253910,
+            "jsRequests": 138,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 93.70339999999851,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 3,
+            "readyMs": 1126.699999988079,
+            "jsTransferBytes": 1295310,
+            "jsDecodedBytes": 1253910,
+            "jsRequests": 138,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 100.72479999999996,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 4,
+            "readyMs": 1143.5,
+            "jsTransferBytes": 1295310,
+            "jsDecodedBytes": 1253910,
+            "jsRequests": 138,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 113.67290000000139,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 0,
+            "readyMs": 1248.5,
+            "jsTransferBytes": 1722176,
+            "jsDecodedBytes": 1667276,
+            "jsRequests": 183,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 79.09049999999843,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 1,
+            "readyMs": 1182.699999988079,
+            "jsTransferBytes": 1722176,
+            "jsDecodedBytes": 1667276,
+            "jsRequests": 183,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 97.67380000000048,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 2,
+            "readyMs": 1313.0999999642372,
+            "jsTransferBytes": 1722176,
+            "jsDecodedBytes": 1667276,
+            "jsRequests": 183,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 77.22139999999854,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 3,
+            "readyMs": 1273.3999999761581,
+            "jsTransferBytes": 1721404,
+            "jsDecodedBytes": 1667276,
+            "jsRequests": 183,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 81.84430000000066,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 4,
+            "readyMs": 1186,
+            "jsTransferBytes": 1722176,
+            "jsDecodedBytes": 1667276,
+            "jsRequests": 183,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 78.62220000000161,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 0,
+            "readyMs": 1215.9000000357628,
+            "jsTransferBytes": 2024779,
+            "jsDecodedBytes": 1966579,
+            "jsRequests": 194,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 56.0180999999975,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 1,
+            "readyMs": 1196.1000000238419,
+            "jsTransferBytes": 2024779,
+            "jsDecodedBytes": 1966579,
+            "jsRequests": 194,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 61.42269999999917,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 2,
+            "readyMs": 1248.199999988079,
+            "jsTransferBytes": 2024779,
+            "jsDecodedBytes": 1966579,
+            "jsRequests": 194,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 71.09709999999905,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 3,
+            "readyMs": 1199.300000011921,
+            "jsTransferBytes": 2024779,
+            "jsDecodedBytes": 1966579,
+            "jsRequests": 194,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 69.13900000000285,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 4,
+            "readyMs": 1268.5999999642372,
+            "jsTransferBytes": 2024779,
+            "jsDecodedBytes": 1966579,
+            "jsRequests": 194,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 73.62049999999726,
+            "errors": []
+          }
+        ]
+      },
+      "initialLazy": {
+        "browser": "151.0.7922.34",
+        "viewport": "1440x900",
+        "conditions": "production build, fresh context each repeat, local network, reduced motion, 25 notes / 1 story chapter / 1 character / fixture activity, 800ms settling interval",
+        "samples": [
+          {
+            "route": "story",
+            "repeat": 0,
+            "readyMs": 1470.5,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 67.78549999999996,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 1,
+            "readyMs": 1182.0999999642372,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 60.587500000000546,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 2,
+            "readyMs": 1302.199999988079,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 70.68459999999959,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 3,
+            "readyMs": 1200.5999999642372,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 58.5679999999993,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 4,
+            "readyMs": 1249.5,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 77.01360000000022,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 0,
+            "readyMs": 1008.3000000119209,
+            "jsTransferBytes": 1284131,
+            "jsDecodedBytes": 1241831,
+            "jsRequests": 141,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 50.568299999999,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 1,
+            "readyMs": 1018.9000000357628,
+            "jsTransferBytes": 1284131,
+            "jsDecodedBytes": 1241831,
+            "jsRequests": 141,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 82.78930000000037,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 2,
+            "readyMs": 991.2999999523163,
+            "jsTransferBytes": 1284131,
+            "jsDecodedBytes": 1241831,
+            "jsRequests": 141,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 96.29529999999977,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 3,
+            "readyMs": 1078.5,
+            "jsTransferBytes": 1619436,
+            "jsDecodedBytes": 1565136,
+            "jsRequests": 181,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 71.9956000000002,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 4,
+            "readyMs": 1020.1000000238419,
+            "jsTransferBytes": 1619436,
+            "jsDecodedBytes": 1565136,
+            "jsRequests": 181,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 61.4966000000004,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 0,
+            "readyMs": 1120.300000011921,
+            "jsTransferBytes": 1615376,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 59.02719999999681,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 1,
+            "readyMs": 1072.699999988079,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 59.768199999998615,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 2,
+            "readyMs": 1227,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 79.02349999999933,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 3,
+            "readyMs": 1146.5,
+            "jsTransferBytes": 1614895,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 60.48649999999907,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 4,
+            "readyMs": 1090.800000011921,
+            "jsTransferBytes": 1615376,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 62.06109999999899,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 0,
+            "readyMs": 1805.0999999642372,
+            "jsTransferBytes": 1796845,
+            "jsDecodedBytes": 1738945,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 55.63290000000052,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 1,
+            "readyMs": 1825.8999999761581,
+            "jsTransferBytes": 1796845,
+            "jsDecodedBytes": 1738945,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 57.60819999999876,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 2,
+            "readyMs": 1851.300000011921,
+            "jsTransferBytes": 1796845,
+            "jsDecodedBytes": 1738945,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 53.09889999999723,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 3,
+            "readyMs": 1880.5,
+            "jsTransferBytes": 1796845,
+            "jsDecodedBytes": 1738945,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 57.50569999999789,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 4,
+            "readyMs": 1818,
+            "jsTransferBytes": 1796845,
+            "jsDecodedBytes": 1738945,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 51.539099999994505,
+            "errors": []
+          }
+        ]
+      },
+      "finalImplementationFirstRun": {
+        "browser": "151.0.7922.34",
+        "viewport": "1440x900",
+        "conditions": "production build, fresh context each repeat, local network, reduced motion, 25 notes / 1 story chapter / 1 character / fixture activity, 800ms settling interval",
+        "samples": [
+          {
+            "route": "story",
+            "repeat": 0,
+            "readyMs": 1828.3999999761581,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 148.3015000000005,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 1,
+            "readyMs": 1785.5,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 137.39530000000013,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 2,
+            "readyMs": 1616.0999999642372,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 108.16749999999956,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 3,
+            "readyMs": 1700.2999999523163,
+            "jsTransferBytes": 1940073,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 192.84019999999873,
+            "errors": []
+          },
+          {
+            "route": "story",
+            "repeat": 4,
+            "readyMs": 1549.6000000238419,
+            "jsTransferBytes": 1837488,
+            "jsDecodedBytes": 1881873,
+            "jsRequests": 194,
+            "apiRequests": 9,
+            "longTasks": [],
+            "interactionMs": 58.129400000001624,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 0,
+            "readyMs": 1376.800000011921,
+            "jsTransferBytes": 1284131,
+            "jsDecodedBytes": 1241831,
+            "jsRequests": 141,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 178.12139999999636,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 1,
+            "readyMs": 1463.300000011921,
+            "jsTransferBytes": 1284131,
+            "jsDecodedBytes": 1241831,
+            "jsRequests": 141,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 170.25040000000445,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 2,
+            "readyMs": 1374.800000011921,
+            "jsTransferBytes": 1284131,
+            "jsDecodedBytes": 1241831,
+            "jsRequests": 141,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 151.2945000000036,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 3,
+            "readyMs": 1428.800000011921,
+            "jsTransferBytes": 1619436,
+            "jsDecodedBytes": 1565136,
+            "jsRequests": 181,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 143.88639999999577,
+            "errors": []
+          },
+          {
+            "route": "resources",
+            "repeat": 4,
+            "readyMs": 1597.1000000238419,
+            "jsTransferBytes": 1619436,
+            "jsDecodedBytes": 1565136,
+            "jsRequests": 181,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 183.6324999999997,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 0,
+            "readyMs": 1428.8999999761581,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 99.81350000000384,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 1,
+            "readyMs": 1428.6000000238419,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 96.76190000000497,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 2,
+            "readyMs": 1555.199999988079,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 116.86009999999806,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 3,
+            "readyMs": 1501.5,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 121.38960000000225,
+            "errors": []
+          },
+          {
+            "route": "character",
+            "repeat": 4,
+            "readyMs": 1241.7999999523163,
+            "jsTransferBytes": 1718054,
+            "jsDecodedBytes": 1662854,
+            "jsRequests": 184,
+            "apiRequests": 5,
+            "longTasks": [],
+            "interactionMs": 65.71510000000126,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 0,
+            "readyMs": 1564.300000011921,
+            "jsTransferBytes": 1694465,
+            "jsDecodedBytes": 1739243,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 102.579899999997,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 1,
+            "readyMs": 1391.199999988079,
+            "jsTransferBytes": 1694465,
+            "jsDecodedBytes": 1739243,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 69.24179999998887,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 2,
+            "readyMs": 1333.7000000476837,
+            "jsTransferBytes": 1797143,
+            "jsDecodedBytes": 1739243,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 58.12350000000151,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 3,
+            "readyMs": 1346.9000000357628,
+            "jsTransferBytes": 1797143,
+            "jsDecodedBytes": 1739243,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 64.28830000000016,
+            "errors": []
+          },
+          {
+            "route": "activity",
+            "repeat": 4,
+            "readyMs": 1364.5,
+            "jsTransferBytes": 1797143,
+            "jsDecodedBytes": 1739243,
+            "jsRequests": 193,
+            "apiRequests": 7,
+            "longTasks": [],
+            "interactionMs": 67.8521999999939,
+            "errors": []
+          }
+        ]
+      }
+    }
+  },
+  "lint": {
+    "baselineErrors": 70,
+    "finalErrors": 59,
+    "finalWarnings": 136,
+    "newErrors": 0
+  },
+  "tests": {
+    "regressionFiles": 209,
+    "firstRunPassedFiles": 208,
+    "isolatedRerunPassedFiles": 1,
+    "firstRunProcessFailure": "tests/ai/evaluator.test.ts:3221226505",
+    "browserInitial": {
+      "pass": 60,
+      "fail": 4,
+      "skip": 1
+    },
+    "browserFixFollowup": 17,
+    "skippedCandidateFollowup": 1,
+    "learning": 3,
+    "comfy": 14,
+    "publication": 2,
+    "distinctBusinessBrowserTestsPassed": 86
+  }
+}

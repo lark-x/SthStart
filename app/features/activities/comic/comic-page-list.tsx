@@ -1,6 +1,8 @@
 'use client';
 
 import type { ComicPage, ComicPanel, ComicTemplate } from '@sthstart/contracts';
+import { Button } from '@/app/components/ui/button';
+import { Select } from '@/app/components/ui/select';
 
 interface ComicPageListProps {
   pages: ComicPage[];
@@ -36,15 +38,18 @@ export function ComicPageList({ pages, panels, selectedPageId, newPageTemplate, 
         ))}
         {!pages.length && <p className="px-2 py-4 text-center text-xs text-muted">还没有页面</p>}
       </div>
-      <div className="flex shrink-0 gap-1 border-t border-border-default p-2 xl:flex-col">
-        <select aria-label="新页面版式" className="min-w-0 flex-1 rounded-control border border-border-default bg-surface px-2 text-xs text-ink xl:py-1.5" value={newPageTemplate} onChange={(event) => onTemplateChange(event.target.value as ComicTemplate)}>
-          <option value="single">单格</option><option value="duo">双格</option><option value="trio">三格</option><option value="quad">四格</option>
-        </select>
-        <button type="button" onClick={onAdd} disabled={!canAdd} className="rounded-control border border-dashed border-border-strong px-2 py-1.5 text-xs text-muted hover:border-accent hover:text-accent disabled:opacity-50">＋ 新增页</button>
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-t border-border-default p-2 xl:flex-col xl:items-stretch">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:w-full xl:flex-none">
+          <label htmlFor="comic-new-page-template" className="shrink-0 text-xs font-medium text-muted">版式</label>
+          <Select id="comic-new-page-template" className="min-w-0 text-xs" value={newPageTemplate} onChange={(event) => onTemplateChange(event.target.value as ComicTemplate)}>
+            <option value="single">单格</option><option value="duo">双格</option><option value="trio">三格</option><option value="quad">四格</option>
+          </Select>
+        </div>
+        <Button size="sm" variant="outline" onClick={onAdd} disabled={!canAdd} className="justify-start border-dashed text-xs xl:w-full">＋ 新增页</Button>
         {selectedIndex >= 0 && <div className="flex items-center gap-1 xl:justify-between">
-          <button type="button" onClick={() => onMove(-1)} disabled={selectedIndex === 0} aria-label="页面前移" className="rounded border border-border-default px-2 text-xs text-ink disabled:opacity-40">↑</button>
-          <button type="button" onClick={() => onMove(1)} disabled={selectedIndex === pages.length - 1} aria-label="页面后移" className="rounded border border-border-default px-2 text-xs text-ink disabled:opacity-40">↓</button>
-          <button type="button" onClick={onRemove} aria-label="删除当前页" className="rounded border border-border-default px-2 text-xs text-danger">删除</button>
+          <Button size="sm" variant="outline" onClick={() => onMove(-1)} disabled={selectedIndex === 0} aria-label="页面前移" className="px-2 text-xs">↑</Button>
+          <Button size="sm" variant="outline" onClick={() => onMove(1)} disabled={selectedIndex === pages.length - 1} aria-label="页面后移" className="px-2 text-xs">↓</Button>
+          <Button size="sm" variant="danger-ghost" onClick={onRemove} aria-label="删除当前页" className="px-2 text-xs">删除</Button>
         </div>}
       </div>
     </aside>

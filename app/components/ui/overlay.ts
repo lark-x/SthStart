@@ -4,11 +4,11 @@ import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
 /**
- * Dialog/Drawer 共享的弹层行为（计划 §7.3）：
- * - 滚动锁引用计数：嵌套弹层只关闭最上层时不误恢复底层锁，关闭最后一层才还原 overflow。
- * - Escape 只关闭栈顶弹层，避免一次按键误关多层。
- * - 焦点陷阱只命中可见、可交互元素；关闭后恢复触发器焦点（触发器已卸载则交给浏览器回退）。
- * 背景内容 inert 化需要门户级根节点配合，本轮未实现，见交付说明中的遗留风险。
+ * Legacy overlay helper kept only for non-modal consumers that still use the
+ * pre-Mantine accessibility path. Dialog and Drawer use the native dialog as
+ * the single modal owner; never attach this helper to them, because it would
+ * create a second focus trap, Escape listener and body scroll lock. The command
+ * palette uses overlay-policy.tsx for its own single layer policy.
  */
 
 let scrollLockCount = 0;
@@ -104,6 +104,7 @@ export function useOverlayAccessibility({
     const handleKeyDown = (event: KeyboardEvent) => {
       // 下层弹窗不能抢走上层弹窗的 Tab 焦点。
       if (overlayStack[overlayStack.length - 1] !== overlayId) return;
+      // 输入法组合中的 Escape 用于取消候选词，不能连带关闭弹窗。
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -145,8 +146,14 @@ export function useOverlayAccessibility({
       const stackIndex = overlayStack.indexOf(overlayId);
       if (stackIndex !== -1) overlayStack.splice(stackIndex, 1);
       releaseBodyScrollLock();
-      if (previousFocus && previousFocus.isConnected) {
-        previousFocus.focus();
+      // 恢复触发器焦点，但不因滚动容器变化而跳动页面；触发器已卸载时交给浏览器回退。
+      if (previousFocus && previousFocus.isConnected && previousFocus !== document.body) {
+        try {
+          previousFocus.focus({ preventScroll: true });
+        } catch {
+          // 某些宿主环境（如测试桩）的 focus 不接受选项参数。
+          previousFocus.focus();
+        }
       }
     };
   }, [open, containerRef, initialFocusRef]);
