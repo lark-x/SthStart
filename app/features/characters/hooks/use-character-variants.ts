@@ -34,5 +34,12 @@ export function useCharacterVariants({
     toast.info('已移除衍生形态');
   };
 
-  return { variants, setVariants, activeVariantId, setActiveVariantId, addVariant, removeVariant };
+  const updateVariant = (variantId: string, patch: Partial<CharacterVariant>) => {
+    setVariants((current) =>
+      current.map((item) => (item.id === variantId ? { ...item, ...patch } : item)),
+    );
+    markDirty();
+  };
+
+  return { variants, setVariants, activeVariantId, setActiveVariantId, addVariant, removeVariant, updateVariant };
 }

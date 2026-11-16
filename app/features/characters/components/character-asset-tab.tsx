@@ -78,6 +78,8 @@ export function CharacterAssetTab({
   const [editTitle, setEditTitle] = useState('');
   const [editCategory, setEditCategory] = useState<CharacterAssetCategory>('concept');
   const [editTagsStr, setEditTagsStr] = useState('');
+  const [editOutfitDesc, setEditOutfitDesc] = useState('');
+  const [editLoreStory, setEditLoreStory] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
 
   // 同步状态
@@ -201,6 +203,13 @@ export function CharacterAssetTab({
         title: editTitle.trim(),
         category: editCategory,
         tags,
+        userNote: editOutfitDesc.trim(),
+        authorNote: editLoreStory.trim(),
+        metadata: {
+          ...(editingAsset.metadata || {}),
+          outfitDescription: editOutfitDesc.trim(),
+          loreStory: editLoreStory.trim(),
+        },
       });
       toast.success('资产信息已更新');
       setEditingAsset(null);
@@ -409,6 +418,11 @@ export function CharacterAssetTab({
                     <h4 className="text-xs font-semibold text-ink line-clamp-1" title={asset.title}>
                       {asset.title || '未命名资产'}
                     </h4>
+                    {(Boolean(asset.metadata?.outfitDescription) || Boolean(asset.metadata?.loreStory) || asset.userNote || asset.authorNote) && (
+                      <p className="mt-1 text-[11px] text-muted line-clamp-2 leading-snug">
+                        {String(asset.metadata?.outfitDescription || asset.userNote || asset.metadata?.loreStory || asset.authorNote)}
+                      </p>
+                    )}
                     {/* 标签列表 */}
                     {asset.tags && asset.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -463,6 +477,8 @@ export function CharacterAssetTab({
                           setEditTitle(asset.title || '');
                           setEditCategory(asset.category);
                           setEditTagsStr((asset.tags || []).join(', '));
+                          setEditOutfitDesc(String(asset.metadata?.outfitDescription || asset.userNote || ''));
+                          setEditLoreStory(String(asset.metadata?.loreStory || asset.authorNote || ''));
                         }}
                         className="size-7 min-h-7 rounded text-muted"
                         iconClassName="h-3 w-3"
@@ -640,6 +656,30 @@ export function CharacterAssetTab({
               onChange={(e) => setEditTagsStr(e.target.value)}
               placeholder="例如：战斗态, 破损服装"
               className="h-8 text-xs"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="character-asset-edit-outfit" className="block font-semibold text-ink mb-1">服装描述（多皮肤 / 生图参考）</label>
+            <textarea
+              id="character-asset-edit-outfit"
+              rows={2}
+              value={editOutfitDesc}
+              onChange={(e) => setEditOutfitDesc(e.target.value)}
+              placeholder="描述该皮肤或图片的服装剪裁、配色与配饰…"
+              className="w-full rounded-control border border-border-control bg-surface-input p-2 text-xs text-ink"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="character-asset-edit-lore" className="block font-semibold text-ink mb-1">背景故事 / 出处说明</label>
+            <textarea
+              id="character-asset-edit-lore"
+              rows={2}
+              value={editLoreStory}
+              onChange={(e) => setEditLoreStory(e.target.value)}
+              placeholder="记录该皮肤的背景来历或剧情意义…"
+              className="w-full rounded-control border border-border-control bg-surface-input p-2 text-xs text-ink"
             />
           </div>
 

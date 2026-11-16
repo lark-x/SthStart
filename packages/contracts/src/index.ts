@@ -15,8 +15,17 @@ export * from './story.js';
 export * from './projects.js';
 export * from './media-library.js';
 export * from './activities.js';
-import { CharacterAssetDetailSchema, type CharacterAssetDetail } from './character-assets.js';
+import { CharacterAssetCategorySchema, CharacterAssetDetailSchema, type CharacterAssetDetail } from './character-assets.js';
 export * from './character-assets.js';
+import {
+  CharacterUpstreamApplyFieldsSchema,
+  CharacterUpstreamAssetCandidateSchema,
+  CharacterUpstreamEvidenceSourceSchema,
+  CharacterUpstreamSelectedAssetImportSchema,
+  CharacterUpstreamSkinProposalSchema,
+  CharacterVariantKindSchema,
+} from './character-upstream.js';
+export * from './character-upstream.js';
 export * from './story-world-run-recovery.js';
 
 export const AppStatusSchema = Type.Union([
@@ -2110,6 +2119,12 @@ export const CharacterSourceSchema = Type.Object({
     Type.Literal('tavern-card'),
     Type.Literal('character-tavern'),
     Type.Literal('external-card'),
+    Type.Literal('yatta'),
+    Type.Literal('starrailres'),
+    Type.Literal('mihoyo-obc'),
+    Type.Literal('bwiki'),
+    Type.Literal('akasha-mcp'),
+    Type.Literal('fandom'),
     // 人设结构升级时归档的原文，不是外部资料来源。
     Type.Literal('migration_archive'),
   ]),
@@ -2213,6 +2228,7 @@ export const CharacterVariantSchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
   isDefault: Type.Optional(Type.Boolean()),
+  variantKind: Type.Optional(CharacterVariantKindSchema),
   summary: Type.Optional(Type.String()),
   personaText: Type.Optional(Type.String()),
   appearance: Type.Optional(Type.Object({
@@ -2221,6 +2237,8 @@ export const CharacterVariantSchema = Type.Object({
   })),
   avatarUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 export type CharacterVariant = Static<typeof CharacterVariantSchema>;
 
@@ -2279,10 +2297,16 @@ export type CharacterAssetItem = CharacterAssetDetail;
 export const CharacterOfficialAssetCandidateSchema = Type.Object({
   id: Type.String(),
   kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait')]),
+  category: Type.Optional(CharacterAssetCategorySchema),
   url: Type.String(),
   source: Type.String(),
   title: Type.String(),
   previewUrl: Type.Optional(Type.String()),
+  skinName: Type.Optional(Type.String()),
+  width: Type.Optional(Type.Number()),
+  height: Type.Optional(Type.Number()),
+  outfitDescription: Type.Optional(Type.String()),
+  loreStory: Type.Optional(Type.String()),
 });
 export type CharacterOfficialAssetCandidate = Static<typeof CharacterOfficialAssetCandidateSchema>;
 
@@ -2296,14 +2320,56 @@ export type CharacterPreviewOfficialAssetsResponse = Static<typeof CharacterPrev
 export const CharacterImportAssetsRequestSchema = Type.Object({
   items: Type.Array(
     Type.Object({
-      kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait')]),
+      kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait'), Type.Literal('reference')]),
+      category: Type.Optional(CharacterAssetCategorySchema),
+      title: Type.Optional(Type.String()),
       url: Type.String(),
       source: Type.Optional(Type.String()),
       setAsActive: Type.Optional(Type.Boolean()),
+      registerReference: Type.Optional(Type.Boolean()),
+      skinName: Type.Optional(Type.String()),
+      outfitDescription: Type.Optional(Type.String()),
+      loreStory: Type.Optional(Type.String()),
+      tags: Type.Optional(Type.Array(Type.String())),
     })
   ),
 });
 export type CharacterImportAssetsRequest = Static<typeof CharacterImportAssetsRequestSchema>;
+
+export const CharacterUpstreamResearchPreviewSchema = Type.Object({
+  query: Type.String(),
+  resolvedName: Type.String(),
+  resolvedWork: Type.String(),
+  draft: CharacterDraftV2Schema,
+  tags: Type.Array(Type.String()),
+  skinsAndVariants: Type.Array(CharacterUpstreamSkinProposalSchema),
+  assets: Type.Array(CharacterUpstreamAssetCandidateSchema),
+  sources: Type.Array(CharacterUpstreamEvidenceSourceSchema),
+  evidenceSummary: Type.String(),
+  warnings: Type.Array(Type.String()),
+});
+export type CharacterUpstreamResearchPreview = Static<typeof CharacterUpstreamResearchPreviewSchema>;
+
+export const CharacterUpstreamApplyRequestSchema = Type.Object({
+  expectedDraftRevision: Type.Optional(Type.Number()),
+  applyTextFields: Type.Optional(CharacterUpstreamApplyFieldsSchema),
+  draft: CharacterDraftV2Schema,
+  tags: Type.Optional(Type.Array(Type.String())),
+  selectedVariants: Type.Optional(Type.Array(CharacterUpstreamSkinProposalSchema)),
+  selectedSkins: Type.Optional(Type.Array(CharacterUpstreamSkinProposalSchema)),
+  selectedAssets: Type.Optional(Type.Array(CharacterUpstreamSelectedAssetImportSchema)),
+  sources: Type.Optional(Type.Array(CharacterUpstreamEvidenceSourceSchema)),
+});
+export type CharacterUpstreamApplyRequest = Static<typeof CharacterUpstreamApplyRequestSchema>;
+
+export const CharacterUpstreamApplyResponseSchema = Type.Object({
+  profile: CharacterProfileSchema,
+  importedAssetCount: Type.Number(),
+  createdVariantCount: Type.Number(),
+  createdSkinCount: Type.Number(),
+  warnings: Type.Array(Type.String()),
+});
+export type CharacterUpstreamApplyResponse = Static<typeof CharacterUpstreamApplyResponseSchema>;
 
 export const CharacterSetActiveAssetRequestSchema = Type.Object({
   assetId: Type.String(),

@@ -101,10 +101,15 @@ export function CharacterMultiSourceDialog({
       }
       return {
         kind: item.kind,
+        ...(item.category ? { category: item.category } : {}),
         url: item.url,
         source: item.source,
         title: item.title,
         setAsActive,
+        registerReference: item.category === 'costume' || item.kind === 'portrait',
+        ...(item.skinName ? { skinName: item.skinName } : {}),
+        ...(item.outfitDescription ? { outfitDescription: item.outfitDescription } : {}),
+        ...(item.loreStory ? { loreStory: item.loreStory } : {}),
       };
     });
 

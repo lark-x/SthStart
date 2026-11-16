@@ -107,7 +107,21 @@ function CommonFilterControls({ model, onChange, className }: {
   );
 }
 
-export function CharacterFilters({ filter, onChange, facets, onReset, actions }: { actions?: ReactNode; filter: CharacterBrowseQuery; onChange: (patch: CharacterBrowseQuery) => void; facets?: CharacterBrowseResult['facets']; onReset: () => void }) {
+export function CharacterFilters({
+  filter,
+  onChange,
+  facets,
+  onReset,
+  actions,
+  leftSlot,
+}: {
+  actions?: ReactNode;
+  leftSlot?: ReactNode;
+  filter: CharacterBrowseQuery;
+  onChange: (patch: CharacterBrowseQuery) => void;
+  facets?: CharacterBrowseResult['facets'];
+  onReset: () => void;
+}) {
   const [panelOpen, setPanelOpen] = useState(false);
   const filterCountId = useId();
   const [searchInput, setSearchInput] = useState(filter.q || '');
@@ -133,15 +147,21 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
   );
   const chips = activeCharacterFilterChips(filter);
   const clearChip = (chip: CharacterFilterChip) => onChange(chip.clear());
+  const quickWorks = (facets?.works || []).slice(0, 6);
+  const selectedWorks = filter.works || [];
+  const toggleWorkPill = (workName: string) => {
+    const exists = selectedWorks.includes(workName);
+    onChange({ works: exists ? selectedWorks.filter((w) => w !== workName) : [...selectedWorks, workName] });
+  };
 
   return (
     <section
       aria-label="角色筛选控件"
-      className="space-y-3 rounded-panel bg-surface p-3 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)]"
+      className="space-y-2.5 rounded-panel bg-surface p-3 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)]"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Input
-          className="w-full text-base sm:h-[var(--control-h-sm)] sm:min-h-[var(--control-h-sm)] sm:w-[220px] sm:shrink-0 sm:text-sm lg:w-[280px]"
+          className="w-full text-base sm:h-[var(--control-h-sm)] sm:min-h-[var(--control-h-sm)] sm:w-[220px] sm:shrink-0 sm:text-sm lg:w-[260px]"
           aria-label="搜索角色"
           placeholder="搜索姓名、别名、作品或标签…"
           value={searchInput}
@@ -159,12 +179,22 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
             onChange({ q: value });
           }}
         />
+        {leftSlot}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {!panelOpen && (
             <div role="group" aria-label="常用筛选" className="hidden min-w-0 flex-1 flex-wrap items-center gap-2 sm:flex">
               <CommonFilterControls model={model} onChange={onChange} className="flex flex-wrap items-center gap-2" />
             </div>
           )}
+          <Select
+            aria-label="快捷排序"
+            value={filter.sort || 'updated'}
+            onChange={(event) => onChange(characterFilterSelectPatch('sort', event.target.value))}
+            className="h-8 min-h-8 w-auto text-xs"
+          >
+            <option value="updated">排序：最近更新</option>
+            <option value="name">排序：名称</option>
+          </Select>
           <Button
             size="sm"
             variant={chips.length ? 'secondary' : 'outline'}
@@ -182,6 +212,70 @@ export function CharacterFilters({ filter, onChange, facets, onReset, actions }:
           <span id={filterCountId} className="sr-only">已启用 {chips.length} 个筛选条件</span>
           {actions && <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">{actions}</div>}
         </div>
+      </div>
+
+      {/* 通用常用快速筛选胶囊条：点一下立即组合，无需开弹窗 */}
+      <div role="group" aria-label="快捷筛选" className="flex flex-wrap items-center gap-1.5 border-t border-border-subtle/60 pt-2">
+        {quickWorks.map((item) => {
+          const active = selectedWorks.includes(item.name);
+          return (
+            <Button
+              key={item.name}
+              type="button"
+              size="sm"
+              variant={active ? 'secondary' : 'ghost'}
+              onClick={() => toggleWorkPill(item.name)}
+              className={cn(
+                'h-7 min-h-7 rounded-full border px-2.5 text-xs',
+                active
+                  ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)]'
+                  : 'border-hairline bg-surface-sunken/60 text-muted hover:text-ink',
+              )}
+            >
+              {item.name}
+            </Button>
+          );
+        })}
+
+        {quickWorks.length > 0 && <span className="mx-0.5 h-3.5 w-px bg-border-subtle" aria-hidden="true" />}
+
+        {(
+          [
+            { label: '已有 IP', active: filter.originType === 'ip', patch: { originType: filter.originType === 'ip' ? undefined : 'ip' } },
+            { label: '原创角色', active: filter.originType === 'original', patch: { originType: filter.originType === 'original' ? undefined : 'original' } },
+            { label: '有参考图', active: filter.reference === 'yes', patch: { reference: filter.reference === 'yes' ? undefined : 'yes' as const } },
+            { label: '缺参考图', active: filter.reference === 'no', patch: { reference: filter.reference === 'no' ? undefined : 'no' as const } },
+            { label: '未设作品', active: filter.unclassified === 'work', patch: { unclassified: filter.unclassified === 'work' ? undefined : 'work' as const } },
+          ] as const
+        ).map((pill) => (
+          <Button
+            key={pill.label}
+            type="button"
+            size="sm"
+            variant={pill.active ? 'secondary' : 'ghost'}
+            onClick={() => onChange(pill.patch)}
+            className={cn(
+              'h-7 min-h-7 rounded-full border px-2.5 text-xs',
+              pill.active
+                ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)]'
+                : 'border-hairline bg-surface-sunken/60 text-muted hover:text-ink',
+            )}
+          >
+            {pill.label}
+          </Button>
+        ))}
+
+        {chips.length > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={onReset}
+            className="ml-auto h-7 min-h-7 px-2 text-xs text-accent"
+          >
+            清空筛选
+          </Button>
+        )}
       </div>
 
       <ResponsiveEditOverlay

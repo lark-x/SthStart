@@ -13,6 +13,8 @@ import {
   CharacterMigrationReviewSchema,
   CharacterImportSessionSchema,
   CharacterLlmStatusResponseSchema,
+  CharacterUpstreamResearchPreviewSchema,
+  CharacterUpstreamApplyResponseSchema,
 } from '@sthstart/contracts';
 import type {
   CharacterDraftAny,
@@ -32,6 +34,10 @@ import type {
   CharacterOfficialAssetCandidate,
   CharacterImportAssetsRequest,
   CharacterSetActiveAssetRequest,
+  CharacterUpstreamResearchRequest,
+  CharacterUpstreamResearchPreview,
+  CharacterUpstreamApplyRequest,
+  CharacterUpstreamApplyResponse,
 } from '@sthstart/contracts';
 
 export type CharacterDetail = CharacterProfile & {
@@ -106,6 +112,29 @@ export async function generateCharacterDraft(
   useWeb = true,
 ): Promise<{ draft: CharacterDraftAny; sources: CharacterSource[] }> {
   return postJson(`characters/${id}/generate`, { description, useWeb }, undefined, CharacterGenerateResponseSchema);
+}
+
+export async function upstreamResearchCharacter(
+  payload: CharacterUpstreamResearchRequest,
+): Promise<CharacterUpstreamResearchPreview> {
+  return postJson<CharacterUpstreamResearchPreview>(
+    'characters/upstream-research',
+    payload,
+    undefined,
+    CharacterUpstreamResearchPreviewSchema,
+  );
+}
+
+export async function applyCharacterUpstream(
+  id: string,
+  payload: CharacterUpstreamApplyRequest,
+): Promise<CharacterUpstreamApplyResponse> {
+  return postJson<CharacterUpstreamApplyResponse>(
+    `characters/${id}/apply-upstream`,
+    payload,
+    undefined,
+    CharacterUpstreamApplyResponseSchema,
+  );
 }
 
 export async function publishCharacter(id: string, expectedDraftRevision?: number): Promise<CharacterVersion> {

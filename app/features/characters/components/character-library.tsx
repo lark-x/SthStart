@@ -1,9 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, ArrowRight, Tags } from 'lucide-react';
+import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, Tags, LayoutGrid, CircleUser } from 'lucide-react';
 import { Menu } from '@mantine/core';
 import { Button, buttonVariants } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -28,10 +28,30 @@ import { editCharacterOrganization, saveCharacterWork } from '../api';
 import { useBatchMatchOfficialAvatars } from '../mutations';
 import { CharacterAvatar } from './character-image-fallback';
 import { characterFilterUrl } from '../filter-url';
-import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
+import { stripMachineCharacterIndex, type CharacterBrowseQuery, type CharacterWork } from '@sthstart/contracts';
 import { SharedAssetVault } from './shared-asset-vault';
 import { LinsheCharacterVault } from './linshe-character-vault';
+import { CharacterUpstreamDialog } from './character-upstream-dialog';
 import { characterKeys } from '../query-keys';
+
+const DISPLAY_MODE_STORAGE_KEY = 'sthstart:character-display-mode';
+
+function subscribeDisplayMode(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener('sthstart:character-display-mode', callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener('sthstart:character-display-mode', callback);
+  };
+}
+
+function readDisplayMode(): 'avatar' | 'card' {
+  try {
+    return window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY) === 'avatar' ? 'avatar' : 'card';
+  } catch {
+    return 'card';
+  }
+}
 
 export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterBrowseQuery | null } = {}) {
   const browser = useCharacterBrowser({}, true, { persist: true, initialFilter });
@@ -41,7 +61,16 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const batchMatchMutation = useBatchMatchOfficialAvatars();
   const [assetsVisited, setAssetsVisited] = useState(false);
   const [viewTab, setViewTab] = useState<'characters' | 'shared-assets' | 'linshe'>('characters');
+  const displayMode = useSyncExternalStore(subscribeDisplayMode, readDisplayMode, () => 'card' as const);
+  const [upstreamOpen, setUpstreamOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+
+  const updateDisplayMode = (mode: 'avatar' | 'card') => {
+    try {
+      window.localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, mode);
+      window.dispatchEvent(new Event('sthstart:character-display-mode'));
+    } catch {}
+  };
   const [batchOpen, setBatchOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [sharedAssetUploadOpen, setSharedAssetUploadOpen] = useState(false);
@@ -131,6 +160,16 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     <span>新建角色</span>
                   </Link>
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setUpstreamOpen(true)}
+                    className="gap-1.5 text-sm font-medium"
+                  >
+                    <Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />
+                    <span>上游生成 RP 卡</span>
+                  </Button>
 
                   <Button
                     size="sm"
@@ -238,6 +277,32 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             onChange={browser.change}
             onReset={browser.reset}
             facets={browser.facets}
+            leftSlot={
+              <div role="group" aria-label="展示模式" className="inline-flex shrink-0 items-center rounded-control border border-hairline bg-surface-sunken p-0.5 text-xs">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={displayMode === 'avatar' ? 'secondary' : 'ghost'}
+                  aria-pressed={displayMode === 'avatar'}
+                  onClick={() => updateDisplayMode('avatar')}
+                  className="h-7 min-h-7 gap-1 px-2 text-xs"
+                >
+                  <CircleUser className="size-3.5" aria-hidden="true" />
+                  <span>只看头像</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={displayMode === 'card' ? 'secondary' : 'ghost'}
+                  aria-pressed={displayMode === 'card'}
+                  onClick={() => updateDisplayMode('card')}
+                  className="h-7 min-h-7 gap-1 px-2 text-xs"
+                >
+                  <LayoutGrid className="size-3.5" aria-hidden="true" />
+                  <span>信息卡片</span>
+                </Button>
+              </div>
+            }
             actions={
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted tabular-nums">
@@ -371,22 +436,75 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                   </Button>
               )}
             />
+          ) : displayMode === 'avatar' ? (
+            <ul className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+              {browser.data?.items.map((character) => (
+                <li key={character.id}>
+                  <article
+                    data-character-card="true"
+                    className="group relative flex flex-col items-center gap-2 rounded-panel border border-transparent bg-surface p-3 text-center shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] transition-[transform,box-shadow,border-color] duration-[var(--motion-base)] ease-[var(--motion-ease)] hover:-translate-y-0.5 hover:border-border-default hover:shadow-[var(--elev-sm),0_0_0_1px_var(--hairline)] motion-reduce:transform-none"
+                  >
+                    {selectionMode && (
+                      <div className="absolute top-2 left-2 z-10">
+                        <Checkbox
+                          aria-label={`选择 ${character.displayName}`}
+                          checked={!!selected[character.id]}
+                          onChange={(e) =>
+                            setSelected((current) => {
+                              const next = { ...current };
+                              if (e.target.checked) next[character.id] = character.displayName;
+                              else delete next[character.id];
+                              return next;
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`!absolute top-1.5 right-1.5 z-10 !h-7 !min-h-7 !w-7 text-muted transition-opacity hover:!bg-surface-sunken hover:!text-accent ${
+                        character.organization?.favorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                      }`}
+                      aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
+                      aria-pressed={character.organization?.favorite || false}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void toggleFavorite(character.id, !character.organization?.favorite);
+                      }}
+                    >
+                      <Star className={`h-3.5 w-3.5 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`} />
+                    </Button>
+
+                    <Link
+                      href={`/apps/characters/${character.id}`}
+                      className="flex w-full flex-col items-center gap-2 min-w-0"
+                    >
+                      <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken">
+                        <CharacterAvatar
+                          src={character.avatarUrl}
+                          name={character.displayName}
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          fallbackClassName="text-xl"
+                        />
+                      </div>
+                      <span className="w-full truncate text-xs font-medium text-ink group-hover:text-accent">
+                        {character.displayName}
+                      </span>
+                    </Link>
+                  </article>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
+            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5">
               {browser.data?.items.map((character) => {
-                const workName = (character.draft.work || '').trim().toLowerCase();
-                const allTags = (character.tags || [])
-                  .filter((tag) => {
-                    const t = tag.trim().toLowerCase();
-                    return t && t !== workName && t !== character.displayName.trim().toLowerCase();
-                  });
-                const displayTags = allTags.slice(0, 3);
-                const hiddenTagCount = allTags.length - displayTags.length;
                 const draftPersonaSnippet =
                   'personaText' in character.draft && character.draft.personaText
-                    ? character.draft.personaText
+                    ? stripMachineCharacterIndex(character.draft.personaText)
                     : 'identity' in character.draft && character.draft.identity
-                    ? character.draft.identity
+                    ? stripMachineCharacterIndex(character.draft.identity)
                     : '';
                 const rawSnippet =
                   character.draft.summary?.trim() ||
@@ -397,90 +515,67 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                         .trim()
                     : '');
                 const summaryLine = rawSnippet
-                  ? rawSnippet.slice(0, 48)
-                  : '暂无角色概述，点击进入档案补充设定';
+                  ? rawSnippet.slice(0, 56)
+                  : '暂无角色概述';
 
                 return (
-                  <li
-                    key={character.id}
-                    data-character-card="true"
-                    className="group relative flex items-center gap-3.5 rounded-panel border border-transparent bg-surface p-3.5 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] transition-[transform,box-shadow,border-color] duration-[var(--motion-base)] ease-[var(--motion-ease)] hover:-translate-y-0.5 hover:border-border-default hover:shadow-[var(--elev-sm),0_0_0_1px_var(--hairline)] motion-reduce:transform-none"
-                  >
-                    {selectionMode && (
-                      <Checkbox
-                        aria-label={`选择 ${character.displayName}`}
-                        checked={!!selected[character.id]}
-                        onChange={(e) =>
-                          setSelected((current) => {
-                            const next = { ...current };
-                            if (e.target.checked) next[character.id] = character.displayName;
-                            else delete next[character.id];
-                            return next;
-                          })
-                        }
-                        className="mt-0 shrink-0"
-                      />
-                    )}
-
-                    <Link
-                      href={`/apps/characters/${character.id}`}
-                      className="relative flex h-[76px] w-[76px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken shadow-[inset_0_1px_0_rgb(255_255_255/35%)]"
+                  <li key={character.id}>
+                    <article
+                      data-character-card="true"
+                      className="group relative flex items-center gap-3 rounded-panel border border-transparent bg-surface p-3.5 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] transition-[transform,box-shadow,border-color] duration-[var(--motion-base)] ease-[var(--motion-ease)] hover:-translate-y-0.5 hover:border-border-default hover:shadow-[var(--elev-sm),0_0_0_1px_var(--hairline)] motion-reduce:transform-none"
                     >
-                      <CharacterAvatar
-                        src={character.avatarUrl}
-                        name={character.displayName}
-                        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                        fallbackClassName="text-2xl"
-                      />
-                    </Link>
+                      {selectionMode && (
+                        <Checkbox
+                          aria-label={`选择 ${character.displayName}`}
+                          checked={!!selected[character.id]}
+                          onChange={(e) =>
+                            setSelected((current) => {
+                              const next = { ...current };
+                              if (e.target.checked) next[character.id] = character.displayName;
+                              else delete next[character.id];
+                              return next;
+                            })
+                          }
+                          className="mt-0 shrink-0"
+                        />
+                      )}
 
-                    <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
                       <Link
                         href={`/apps/characters/${character.id}`}
-                        className="min-w-0 flex-1 space-y-1.5 block"
+                        className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="truncate text-[16px] font-[620] tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
-                            {character.displayName}
-                          </span>
-                          {character.organization?.favorite && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" aria-label="已收藏" />
-                          )}
-                          <span className="inline-flex max-w-[7.5rem] shrink-0 items-center truncate rounded-md bg-surface-sunken px-2 py-0.5 text-[11px] font-medium text-muted">
-                            {character.draft.work || '未设置作品'}
-                          </span>
-                        </div>
-                        <p className="line-clamp-1 text-[13px] leading-relaxed text-muted">
-                          {summaryLine}
-                        </p>
-                        {displayTags.length > 0 && (
-                          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden pt-0.5">
-                            {displayTags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="inline-flex max-w-[8.5rem] shrink-0 items-center truncate rounded-full border border-hairline bg-surface-sunken px-2 py-0.5 text-[11.5px] font-medium text-muted"
-                                title={tag}
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                            {hiddenTagCount > 0 && (
-                              <span
-                                className="inline-flex shrink-0 items-center rounded-full border border-hairline bg-surface-sunken/70 px-2 py-0.5 text-[11.5px] font-medium tabular-nums text-muted"
-                                title={allTags.slice(displayTags.length).join('、')}
-                              >
-                                +{hiddenTagCount}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <CharacterAvatar
+                          src={character.avatarUrl}
+                          name={character.displayName}
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          fallbackClassName="text-xl"
+                        />
                       </Link>
 
-                      <div className="flex shrink-0 flex-col items-center justify-between gap-1 self-stretch pl-1">
+                      <div className="flex flex-1 min-w-0 items-center justify-between gap-2">
+                        <Link
+                          href={`/apps/characters/${character.id}`}
+                          className="min-w-0 flex-1 space-y-1 block"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="truncate text-[15px] font-[600] tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
+                              {character.displayName}
+                            </span>
+                            <span className="inline-flex max-w-[7.5rem] shrink-0 items-center truncate text-xs text-muted">
+                              {character.draft.work || '未分类'}
+                            </span>
+                          </div>
+                          <p className="line-clamp-1 text-xs leading-relaxed text-muted">
+                            {summaryLine}
+                          </p>
+                        </Link>
+
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="!h-8 !min-h-8 !w-8 text-muted opacity-80 transition-opacity hover:!bg-surface-sunken hover:!text-accent group-hover:opacity-100 focus-visible:!outline-accent"
+                          className={`!h-8 !min-h-8 !w-8 shrink-0 text-muted transition-opacity hover:!bg-surface-sunken hover:!text-accent ${
+                            character.organization?.favorite ? 'opacity-100' : 'opacity-45 group-hover:opacity-100 focus-visible:opacity-100'
+                          }`}
                           aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
                           aria-pressed={character.organization?.favorite || false}
                           onClick={(e) => {
@@ -493,16 +588,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                             className={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`}
                           />
                         </Button>
-
-                        <Link
-                          href={`/apps/characters/${character.id}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-[opacity,transform,background-color,color] duration-[var(--motion-fast)] hover:bg-surface-sunken hover:text-accent focus-visible:outline focus-visible:outline-accent group-hover:bg-surface-sunken/70 group-hover:text-accent [@media(hover:hover)]:-translate-x-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:translate-x-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:translate-x-0 [@media(hover:hover)]:focus-visible:opacity-100 motion-reduce:translate-x-0 motion-reduce:opacity-100"
-                          aria-label={`查看 ${character.displayName}`}
-                        >
-                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                        </Link>
                       </div>
-                    </div>
+                    </article>
                   </li>
                 );
               })}
@@ -786,6 +873,14 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             )}
           </div>
         </Dialog>
+        <CharacterUpstreamDialog
+          open={upstreamOpen}
+          onOpenChange={setUpstreamOpen}
+          onApplied={(newId) => {
+            refresh();
+            router.push(`/apps/characters/${newId}`);
+          }}
+        />
         </section>
       </PageContainer>
     </div>

@@ -1,6 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import crypto from 'node:crypto';
+import type { CharacterAssetCategory } from '@sthstart/contracts';
+import { inferWorkTarget } from './upstream/types.js';
+import { fetchYattaGenshinCharacter } from './upstream/yatta-adapter.js';
+import { fetchStarRailResCharacter } from './upstream/starrailres-adapter.js';
+import { fetchBwikiCharacter } from './upstream/bwiki-adapter.js';
 
 interface GenshinCatalogItem {
   id: number;
@@ -154,10 +159,16 @@ export interface MatchedOfficialAvatar {
 export interface OfficialAssetCandidate {
   id: string;
   kind: 'avatar' | 'portrait';
+  category?: CharacterAssetCategory;
   url: string;
   source: string;
   title: string;
   previewUrl?: string;
+  skinName?: string;
+  width?: number;
+  height?: number;
+  outfitDescription?: string;
+  loreStory?: string;
 }
 
 /**
@@ -256,8 +267,10 @@ export async function searchBwikiAssets(
 
   let wiki = 'ys';
   const workLower = (work || '').toLowerCase();
-  if (workLower.includes('星穹铁道') || workLower.includes('崩坏') || workLower.includes('sr')) {
+  if (workLower.includes('星穹铁道') || workLower.includes('崩铁') || workLower.includes('sr')) {
     wiki = 'sr';
+  } else if (workLower.includes('崩坏3') || workLower.includes('崩坏三') || workLower.includes('bh3')) {
+    wiki = 'bh3';
   } else if (workLower.includes('绝区零') || workLower.includes('zzz')) {
     wiki = 'zzz';
   }
@@ -269,9 +282,10 @@ export async function searchBwikiAssets(
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) return [];
-
-    const data = await res.json() as {
+    if (!res.ok || res.status === 567) return [];
+    const rawText = await res.text();
+    if (rawText.trimStart().startsWith('<')) return [];
+    const data = JSON.parse(rawText) as {
       query?: {
         pages?: Record<string, {
           pageid?: number;
@@ -344,8 +358,15 @@ export async function previewCharacterMultiSourceAssets(
 ): Promise<OfficialAssetCandidate[]> {
   const trimmed = displayName.trim();
   const trimmedEn = (englishName || '').trim();
+  const workTarget = inferWorkTarget(trimmed, work);
 
-  // 1. 并发检索 BWiki (B站中文维基，国内秒级高可用 CDN，支持未实装/剧情角色)
+  // 1. 并发检索结构化上游与 BWiki 页面资源（支持皮肤/SP立绘与防 WAF 节流）
+  const structuredPromise = workTarget === 'genshin'
+    ? fetchYattaGenshinCharacter(trimmed)
+    : workTarget === 'starrail'
+      ? fetchStarRailResCharacter(trimmed)
+      : Promise.resolve(null);
+  const bwikiPagePromise = fetchBwikiCharacter(trimmed, workTarget);
   const bwikiPromise = searchBwikiAssets(trimmed, work);
 
   // 2. 收集角色可能对应的英文名与内部标识
@@ -439,8 +460,34 @@ export async function previewCharacterMultiSourceAssets(
     });
   }
 
-  // 5. 等待 BWiki 检索结果（高可用国内 CDN）
-  const bwikiCandidates = await bwikiPromise;
+  // 5. 汇聚结构化上游皮肤/立绘、BWiki 页面与搜索结果
+  const [structuredBundle, bwikiPageBundle, bwikiCandidates] = await Promise.all([
+    structuredPromise,
+    bwikiPagePromise,
+    bwikiPromise,
+  ]);
+  const structuredCandidates: OfficialAssetCandidate[] = [];
+  const skinMetaMap = new Map<string, { outfitDescription: string; loreStory: string }>();
+  for (const s of [...(structuredBundle?.skinOrVariantCandidates || []), ...(bwikiPageBundle?.skinOrVariantCandidates || [])]) {
+    skinMetaMap.set(s.name, { outfitDescription: s.outfitDescription, loreStory: s.loreStory });
+  }
+  for (const item of [...(structuredBundle?.assets || []), ...(bwikiPageBundle?.assets || [])]) {
+    const skinMeta = item.skinName ? skinMetaMap.get(item.skinName) : undefined;
+    structuredCandidates.push({
+      id: item.id,
+      kind: item.kind === 'avatar' ? 'avatar' : 'portrait',
+      category: item.category,
+      url: item.url,
+      source: item.source,
+      title: item.title,
+      previewUrl: item.previewUrl || item.url,
+      ...(item.skinName ? { skinName: item.skinName } : {}),
+      ...(item.width ? { width: item.width } : {}),
+      ...(item.height ? { height: item.height } : {}),
+      ...(skinMeta?.outfitDescription ? { outfitDescription: skinMeta.outfitDescription } : {}),
+      ...(skinMeta?.loreStory ? { loreStory: skinMeta.loreStory } : {}),
+    });
+  }
 
   // 6. Fandom Wiki 原神百科探针（仅当国内 BWiki 资源较少时作为海外百科兜底）
   if (bwikiCandidates.length < 2) {
@@ -472,8 +519,8 @@ export async function previewCharacterMultiSourceAssets(
   const seenUrls = new Set<string>();
   const verified: OfficialAssetCandidate[] = [];
 
-  // 首先放入 BWiki 候选（已在 BWiki 数据库中存在，高可用，去重）
-  for (const cand of bwikiCandidates) {
+  // 首先放入结构化直连与 BWiki 候选（去重）
+  for (const cand of [...structuredCandidates, ...bwikiCandidates]) {
     if (!seenUrls.has(cand.url)) {
       seenUrls.add(cand.url);
       verified.push(cand);

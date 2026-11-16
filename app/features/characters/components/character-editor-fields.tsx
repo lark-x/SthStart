@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import type { FieldArrayWithId, UseFormRegister } from 'react-hook-form';
+import { useFieldArray, type Control, type FieldArrayWithId, type UseFormRegister } from 'react-hook-form';
 import { BookOpen, PenLine, Plus, Trash2 } from 'lucide-react';
-import type { CharacterDraftV2 } from '@sthstart/contracts';
+import { stripMachineCharacterIndex, type CharacterDraftV2 } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { Input } from '@/app/components/ui/input';
@@ -57,122 +57,165 @@ function parsePersonaBlocks(text: string): PersonaBlock[] {
   return blocks;
 }
 
-function extractPersonaDimensions(blocks: PersonaBlock[]): string[] {
-  const seen = new Set<string>();
-  const dims: string[] = [];
-  for (const b of blocks) {
-    const raw = b.type === 'heading' ? b.text : b.type === 'field' ? b.label : '';
-    if (!raw || raw.includes('MCP角色索引')) continue;
-    const clean = raw.replace(/[：:]+$/, '').trim();
-    if (clean && !seen.has(clean)) {
-      seen.add(clean);
-      dims.push(clean);
-    }
-    if (dims.length >= 10) break;
-  }
-  return dims;
-}
-
 export function CharacterPersonaPanel({
+  control,
   register,
   draft,
   onDirty,
 }: {
+  control?: Control<CharacterFormValues>;
   register: UseFormRegister<CharacterFormValues>;
   draft: CharacterDraftV2;
   onDirty: () => void;
 }) {
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
-  const personaText = draft.personaText || '';
-  const blocks = parsePersonaBlocks(personaText);
-  const dimensions = extractPersonaDimensions(blocks);
+  const cleanPersona = stripMachineCharacterIndex(draft.personaText || '');
+  const [viewMode, setViewMode] = useState<'edit' | 'preview'>(() => (cleanPersona ? 'preview' : 'edit'));
+  const blocks = parsePersonaBlocks(cleanPersona);
+  const exampleFields = useFieldArray({
+    control,
+    name: 'dialogueExamples',
+  });
 
   return (
     <div className="w-full space-y-5 animate-in fade-in duration-200">
-      {/* 一句话概述引言卡片 */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <label htmlFor="char-summary" className="text-[13px] font-semibold text-ink">
-            一句话概述
-          </label>
-          <span className="text-xs text-muted">用于卡片预览与人物列表</span>
-        </div>
+      {/* 一句话概述 */}
+      <div className="space-y-1.5">
+        <label htmlFor="char-summary" className="block text-[13px] font-semibold text-ink">
+          一句话概括
+        </label>
         <Textarea
           id="char-summary"
           rows={2}
           {...register('summary', { onChange: onDirty })}
-          placeholder="例如：枫丹前水神，聚光灯下华丽戏剧化，内心敏感孤单的戏剧家。"
-          className="min-h-[64px] bg-surface-input font-reading text-[15px] font-[450] leading-[1.75] tracking-[0.008em] px-3.5 py-2.5"
+          placeholder="例如：西风骑士团代理团长，以责任感守护蒙德。"
+          className="min-h-[58px] bg-surface-input font-reading text-[15px] font-[450] leading-[1.7] px-3.5 py-2"
         />
       </div>
 
-      {/* 详细人设背景 */}
-      <div className="space-y-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-baseline gap-2.5">
-            <label htmlFor="char-persona" className="text-[13px] font-semibold text-ink">
-              详细人设背景
-            </label>
-            <span className="hidden text-xs text-muted sm:inline">支持 ### 章节与【维度】结构化排版</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-surface-sunken px-2 py-0.5 text-xs font-medium text-muted tabular-nums">
-              {personaText.length} 字
-            </span>
-            <div className="inline-flex items-center rounded-lg border border-hairline bg-surface-sunken p-0.5">
-              <button
-                type="button"
-                aria-pressed={viewMode === 'edit'}
-                onClick={() => setViewMode('edit')}
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                  viewMode === 'edit'
-                    ? 'bg-surface-raised text-ink shadow-2xs ring-1 ring-border-subtle'
-                    : 'text-muted hover:text-ink'
-                }`}
-              >
-                <PenLine className="h-3 w-3" aria-hidden="true" />
-                <span>编辑设定</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={viewMode === 'preview'}
-                onClick={() => setViewMode('preview')}
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                  viewMode === 'preview'
-                    ? 'bg-surface-raised text-ink shadow-2xs ring-1 ring-border-subtle'
-                    : 'text-muted hover:text-ink'
-                }`}
-              >
-                <BookOpen className="h-3 w-3" aria-hidden="true" />
-                <span>设定集预览</span>
-              </button>
-            </div>
-          </div>
+      {/* 说话方式与语流（直接赋予 AI 故事推演沉浸感） */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="char-speech" className="block text-[13px] font-semibold text-ink">
+            说话方式与语气
+          </label>
+          <Textarea
+            id="char-speech"
+            rows={3}
+            {...register('speechText', { onChange: onDirty })}
+            placeholder="例如：礼貌稳重、措辞严谨；面对休息与关心时会短暂停顿并流露疲惫。"
+            className="bg-surface-input text-sm leading-relaxed p-3"
+          />
         </div>
 
-        {/* 设定维度速览标签 */}
-        {dimensions.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-hairline bg-surface-sunken/40 px-3 py-2">
-            <span className="mr-1 text-[11px] font-semibold tracking-wide text-muted">设定维度</span>
-            {dimensions.map((dim) => (
-              <button
-                key={dim}
-                type="button"
-                onClick={() => setViewMode('preview')}
-                className="inline-flex items-center rounded-md border border-hairline bg-surface px-2 py-0.5 text-[11.5px] font-medium text-ink transition-colors hover:border-accent/40 hover:text-accent cursor-pointer"
-                title="点击以设定集画册排版预览完整结构"
-              >
-                {dim}
-              </button>
+        <div className="space-y-1.5">
+          <label htmlFor="char-behavior-rules" className="block text-[13px] font-semibold text-ink">
+            认知边界与行为底线
+          </label>
+          <Textarea
+            id="char-behavior-rules"
+            rows={3}
+            {...register('behaviorRules', { onChange: onDirty })}
+            placeholder="例如：坚守世界观认知盲区，不理解现代网络梗；遇到原则问题绝不妥协。"
+            className="bg-surface-input text-sm leading-relaxed p-3"
+          />
+        </div>
+      </div>
+
+      {/* 防复读情境对话范例 */}
+      <div className="space-y-2 rounded-panel border border-hairline bg-surface-sunken/35 p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-ink">
+            情境对话范例（校准语气与节奏）
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              exampleFields.append({ value: '' });
+              onDirty();
+            }}
+            className="h-7 px-2 text-xs text-accent"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            <span>添加示例</span>
+          </Button>
+        </div>
+
+        {exampleFields.fields.length === 0 ? (
+          <p className="text-xs text-muted">
+            暂无对话示例；可通过「从上游重构 RP 卡」自动提炼原生语音与剧情切片，或手动添加 2~3 条示范。
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {exampleFields.fields.map((field, index) => (
+              <div key={field.id} className="flex items-start gap-2">
+                <Textarea
+                  rows={2}
+                  {...register(`dialogueExamples.${index}.value`, { onChange: onDirty })}
+                  placeholder="情境：日常交流 / 被质疑时……"
+                  className="flex-1 bg-surface-input text-xs leading-relaxed p-2.5"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`移除第 ${index + 1} 条对话示例`}
+                  onClick={() => {
+                    exampleFields.remove(index);
+                    onDirty();
+                  }}
+                  className="h-8 w-8 p-0 text-muted hover:text-danger-fg shrink-0"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* 详细人设背景（清除机器索引行与冗余说明） */}
+      <div className="space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor="char-persona" className="text-[13px] font-semibold text-ink">
+            人设与背景档案
+          </label>
+          <div className="inline-flex items-center rounded-lg border border-hairline bg-surface-sunken p-0.5">
+            <button
+              type="button"
+              aria-pressed={viewMode === 'preview'}
+              onClick={() => setViewMode('preview')}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                viewMode === 'preview'
+                  ? 'bg-surface-raised text-ink shadow-2xs ring-1 ring-border-subtle'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <BookOpen className="h-3 w-3" aria-hidden="true" />
+              <span>阅读视图</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === 'edit'}
+              onClick={() => setViewMode('edit')}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                viewMode === 'edit'
+                  ? 'bg-surface-raised text-ink shadow-2xs ring-1 ring-border-subtle'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              <PenLine className="h-3 w-3" aria-hidden="true" />
+              <span>编辑原文</span>
+            </button>
+          </div>
+        </div>
 
         {/* 编辑视图：始终保持挂载以保留 RHF ref 与输入历史 */}
         <div className={viewMode === 'preview' ? 'hidden' : 'block'}>
           <Textarea
             id="char-persona"
-            rows={16}
+            rows={14}
             {...register('personaText', { onChange: onDirty })}
             placeholder={PERSONA_PLACEHOLDER}
             className="font-reading text-[15.5px] font-[420] leading-[1.85] tracking-[0.012em] p-4"
@@ -248,24 +291,30 @@ export function CharacterPersonaPanel({
 export function CharacterVisualPanel({
   register,
   onDirty,
+  loraFields,
+  onAppendLora,
+  onRemoveLora,
 }: {
   register: UseFormRegister<CharacterFormValues>;
   onDirty: () => void;
+  loraFields?: FieldArrayWithId<CharacterFormValues, 'visualLoras', 'id'>[];
+  onAppendLora?: () => void;
+  onRemoveLora?: (index: number) => void;
 }) {
   return (
     <div className="w-full space-y-5 animate-in fade-in duration-200">
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs">
           <label htmlFor="char-appearance-base" className="text-[13px] font-semibold text-ink">
-            基础外貌特征
+            稳定外貌特征
           </label>
-          <span className="text-muted text-xs">面部、发型发色、身形与体貌特征</span>
+          <span className="text-muted text-xs">跨服装保持不变的面部、发色、瞳色与体貌</span>
         </div>
         <Textarea
           id="char-appearance-base"
-          rows={5}
+          rows={4}
           {...register('appearance.baseText', { onChange: onDirty })}
-          placeholder="例如：蓝白相间中长发，双色渐变微卷发尾；水蓝色异色瞳孔；身形娇小玲珑，神情灵动。"
+          placeholder="例如：金发束成高马尾，碧蓝色眼眸，身姿挺拔。"
           className="bg-surface-input font-reading text-[15px] font-[420] leading-[1.8] tracking-[0.01em] p-3.5"
         />
       </div>
@@ -273,18 +322,34 @@ export function CharacterVisualPanel({
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs">
           <label htmlFor="char-outfit" className="text-[13px] font-semibold text-ink">
-            代表性装扮与配饰
+            默认服装与配饰
           </label>
-          <span className="text-muted text-xs">默认服装、经典礼服或随身配饰</span>
+          <span className="text-muted text-xs">未指定皮肤或特殊服装时使用的基准穿搭</span>
         </div>
         <Textarea
           id="char-outfit"
-          rows={5}
+          rows={4}
           {...register('appearance.defaultOutfitText', { onChange: onDirty })}
-          placeholder="例如：华丽的深蓝与白色枫丹礼服礼帽，精致蕾丝领结，左眼单片水滴装饰。"
+          placeholder="例如：白蓝黑相间的西风骑士团礼服披肩与白色长靴。"
           className="bg-surface-input font-reading text-[15px] font-[420] leading-[1.8] tracking-[0.01em] p-3.5"
         />
       </div>
+
+      {loraFields && onAppendLora && onRemoveLora && (
+        <details className="rounded-panel border border-hairline bg-surface-sunken/35 p-3.5">
+          <summary className="cursor-pointer text-xs font-semibold text-ink select-none">
+            高级生图参数：角色专属 LoRA ({loraFields.length})
+          </summary>
+          <div className="mt-4">
+            <CharacterLoraPanel
+              register={register}
+              fields={loraFields}
+              onAppend={onAppendLora}
+              onRemove={onRemoveLora}
+            />
+          </div>
+        </details>
+      )}
     </div>
   );
 }

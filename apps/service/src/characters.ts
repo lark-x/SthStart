@@ -2,7 +2,18 @@ import { browseCharacters, characterWorks, editCharacterOrganization, normalizeO
 import type { OrganizationEdit } from './characters/organization.js';
 import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
-import { CharacterAvatarGenerationRequestSchema, type CharacterAvatarGenerationRequest } from '@sthstart/contracts';
+import {
+  CharacterAvatarGenerationRequestSchema,
+  CharacterUpstreamApplyRequestSchema,
+  CharacterUpstreamResearchRequestSchema,
+  stripMachineCharacterIndex,
+  type CharacterAssetCategory,
+  type CharacterAvatarGenerationRequest,
+  type CharacterUpstreamApplyRequest,
+  type CharacterUpstreamResearchRequest,
+  type CharacterVariant,
+} from '@sthstart/contracts';
+import { runUpstreamCharacterResearch } from './characters/upstream/orchestrator.js';
 import { imageGenerationAudit, mergeImageParameters, resolveImageConfiguration } from './generation/image-configuration.js';
 import { existsSync } from 'node:fs';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -429,6 +440,98 @@ function characterImportError(reply: FastifyReply, error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
   const status = code.includes('conflict') || code === 'base_draft_revision_required' || code.startsWith('import_session_') ? 409 : code === 'not_found' || code.endsWith('_not_found') ? 404 : 400;
   return reply.code(status).send({ error: code });
+}
+
+async function downloadAndSaveCharacterAsset(
+  config: ServiceConfig,
+  database: ServiceDatabase,
+  fetcher: typeof fetch,
+  characterId: string,
+  item: {
+    kind: 'avatar' | 'portrait' | 'reference';
+    category?: CharacterAssetCategory;
+    title?: string;
+    url: string;
+    source?: string;
+    setAsActive?: boolean;
+    registerReference?: boolean;
+    skinName?: string;
+    outfitDescription?: string;
+    loreStory?: string;
+    tags?: string[];
+  },
+): Promise<{ id: string; kind: 'avatar' | 'portrait' | 'reference'; category: CharacterAssetCategory; url: string; setAvatar: boolean; setPortrait: boolean } | null> {
+  if (!item.url) return null;
+  try {
+    const res = await fetcher(item.url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) return null;
+    const arrayBuf = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuf);
+    if (buffer.length === 0) return null;
+    const contentType = res.headers.get('content-type') || 'image/png';
+    const assetId = randomUUID();
+    const now = nowIso();
+    const ext = contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'png';
+    const category: CharacterAssetCategory = item.category || (item.kind === 'avatar' ? 'avatar' : item.kind === 'portrait' ? 'portrait' : 'concept');
+    const title = (item.title || item.skinName || item.source || `${category}_${Date.now()}`).slice(0, 200);
+    const filename = `${category}_${Date.now()}.${ext}`;
+    const metadata: Record<string, unknown> = {
+      ...(item.skinName ? { skinName: item.skinName } : {}),
+      ...(item.outfitDescription ? { outfitDescription: item.outfitDescription } : {}),
+      ...(item.loreStory ? { loreStory: item.loreStory } : {}),
+    };
+    const tags = Array.isArray(item.tags) ? item.tags.filter(Boolean).slice(0, 20) : (item.skinName ? [item.skinName] : []);
+
+    const artifact = await streamUploadArtifact(config, database, {
+      appId: 'characters',
+      stream: Readable.from([buffer]),
+      contentType,
+      originalName: filename,
+      refType: 'character-asset',
+      refId: assetId,
+      metadata: { characterId, kind: item.kind, category },
+    });
+
+    let setAvatar = false;
+    let setPortrait = false;
+    database.transaction(() => {
+      database.connection.prepare(`INSERT INTO character_assets
+        (id,character_id,kind,created_at,artifact_id,source_url,author_note,user_note,category,title,tags_json,metadata_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        assetId,
+        characterId,
+        item.kind,
+        now,
+        artifact.id,
+        item.url.slice(0, 2_000),
+        (item.loreStory || item.source || '').slice(0, 4_000),
+        (item.outfitDescription || item.title || item.source || '上游导入').slice(0, 4_000),
+        category,
+        title,
+        JSON.stringify(tags),
+        JSON.stringify(metadata),
+      );
+      if (item.registerReference || item.kind === 'reference' || category === 'costume' || category === 'portrait') {
+        const purposes = category === 'costume' ? ['outfit', 'identity'] : ['identity'];
+        database.connection.prepare(`INSERT INTO character_visual_references
+          (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)
+          VALUES (?,?,?,?,1,NULL,?,?)`).run(randomUUID(), characterId, assetId, JSON.stringify(purposes), now, now);
+      }
+      if (item.setAsActive) {
+        if (item.kind === 'avatar' || category === 'avatar') {
+          database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, characterId);
+          setAvatar = true;
+        } else if (item.kind === 'portrait' || category === 'portrait') {
+          database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, characterId);
+          setPortrait = true;
+        }
+      }
+    });
+
+    return { id: assetId, kind: item.kind, category, url: `/api/admin/characters/assets/${assetId}`, setAvatar, setPortrait };
+  } catch {
+    return null;
+  }
 }
 
 export function registerCharacterRoutes(app: FastifyInstance, config: ServiceConfig, database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch = fetch) {
@@ -873,11 +976,18 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   });
 
   app.post<{ Params: { id: string }; Body: { description?: string; useWeb?: boolean } }>('/api/v1/admin/characters/:id/generate', async (request, reply) => {
-    const row = database.connection.prepare('SELECT draft_revision FROM character_profiles WHERE id=?').get(request.params.id) as { draft_revision: number } | undefined; if (!row) return reply.code(404).send({ error: 'not_found' });
-    const description = text(request.body?.description, 4_000); if (description.length < 2) return reply.code(400).send({ error: 'description_required' });
+    const row = database.connection.prepare('SELECT draft_revision, draft_json FROM character_profiles WHERE id=?').get(request.params.id) as { draft_revision: number; draft_json: string } | undefined;
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    const description = text(request.body?.description, 4_000);
+    if (description.length < 2) return reply.code(400).send({ error: 'description_required' });
     try {
-      const found = request.body?.useWeb === false ? [] : await researchCharacter(description, fetcher);
-      const draft = await generateDraft(database, secrets, fetcher, description, found);
+      let existingWork = '';
+      try { existingWork = normalizeCharacterDraft(JSON.parse(row.draft_json)).work || ''; } catch {}
+      const preview = request.body?.useWeb === false
+        ? null
+        : await runUpstreamCharacterResearch(database, secrets, config, fetcher, { query: description, work: existingWork });
+      const draft = preview ? preview.draft : await generateDraft(database, secrets, fetcher, description, []);
+      const found = preview?.sources ?? [];
       const now = nowIso(); database.transaction(() => {
         database.connection.prepare('UPDATE character_profiles SET display_name=?,draft_json=?,draft_revision=?,updated_at=? WHERE id=?').run(draft.displayName, JSON.stringify(draft), Number(row.draft_revision ?? 1) + 1, now, request.params.id);
         upsertCharacterBirthday(database, request.params.id, draft);
@@ -887,6 +997,188 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       });
       return { draft, sources: sourceRows(database, request.params.id) };
     } catch (error) { return reply.code(502).send({ error: 'generation_failed', message: error instanceof Error ? error.message : String(error) }); }
+  });
+
+  // 上游多源 RP 卡与皮肤/衍生形态预览采集
+  app.post<{ Body: CharacterUpstreamResearchRequest }>('/api/v1/admin/characters/upstream-research', {
+    schema: { body: CharacterUpstreamResearchRequestSchema },
+  }, async (request, reply) => {
+    try {
+      return await runUpstreamCharacterResearch(database, secrets, config, fetcher, request.body);
+    } catch (error) {
+      return reply.code(502).send({ error: 'upstream_research_failed', message: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  // 将用户审核后的上游 RP 文本、衍生形态 (variants) 与多皮肤/资产批量写入角色档案
+  app.post<{ Params: { id: string }; Body: CharacterUpstreamApplyRequest }>('/api/v1/admin/characters/:id/apply-upstream', {
+    schema: { body: CharacterUpstreamApplyRequestSchema },
+  }, async (request, reply) => {
+    const profileRow = database.connection.prepare('SELECT * FROM character_profiles WHERE id=? AND archived=0').get(request.params.id) as Record<string, unknown> | undefined;
+    if (!profileRow) return reply.code(404).send({ error: 'not_found' });
+
+    const currentRevision = Number(profileRow.draft_revision ?? 1);
+    if (request.body.expectedDraftRevision != null && Number(request.body.expectedDraftRevision) !== currentRevision) {
+      return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
+    }
+
+    const currentRuntime = toCharacterRuntime(normalizeCharacterDraft(JSON.parse(String(profileRow.draft_json))));
+    const incomingRuntime = toCharacterRuntime(normalizeCharacterDraft(request.body.draft));
+    const apply = request.body.applyTextFields ?? {};
+
+    const nextDraft: CharacterDraftV2 = {
+      schemaVersion: 2,
+      displayName: incomingRuntime.displayName || currentRuntime.displayName,
+      englishName: incomingRuntime.englishName || currentRuntime.englishName,
+      aliases: incomingRuntime.aliases.length ? [...incomingRuntime.aliases] : [...currentRuntime.aliases],
+      originType: incomingRuntime.originType || currentRuntime.originType,
+      work: incomingRuntime.work || currentRuntime.work,
+      summary: apply.summary !== false && incomingRuntime.summary ? incomingRuntime.summary : currentRuntime.summary,
+      personaText: apply.personaText !== false && incomingRuntime.personaText ? stripMachineCharacterIndex(incomingRuntime.personaText) : stripMachineCharacterIndex(currentRuntime.personaText),
+      speechText: apply.speechText !== false && incomingRuntime.speechText ? incomingRuntime.speechText : currentRuntime.speechText,
+      dialogueExamples: apply.dialogueExamples !== false && incomingRuntime.dialogueExamples.length ? [...incomingRuntime.dialogueExamples] : [...currentRuntime.dialogueExamples],
+      behaviorRules: apply.behaviorRules !== false && incomingRuntime.behaviorRules ? incomingRuntime.behaviorRules : currentRuntime.behaviorRules,
+      appearance: {
+        baseText: apply.appearance !== false && incomingRuntime.appearance.baseText ? incomingRuntime.appearance.baseText : currentRuntime.appearance.baseText,
+        defaultOutfitText: apply.appearance !== false && incomingRuntime.appearance.defaultOutfitText ? incomingRuntime.appearance.defaultOutfitText : currentRuntime.appearance.defaultOutfitText,
+      },
+      birthday: request.body.draft.birthday || currentRuntime.birthday,
+    };
+
+    const existingTags: string[] = (() => { try { return JSON.parse(String(profileRow.tags_json || '[]')); } catch { return []; } })();
+    const nextTags = apply.tags !== false && request.body.tags?.length
+      ? [...new Set([...existingTags, ...request.body.tags])]
+      : existingTags;
+
+    const existingVariants: CharacterVariant[] = (() => { try { return JSON.parse(String(profileRow.variants_json || '[]')); } catch { return []; } })();
+    const warnings: string[] = [];
+    let importedAssetCount = 0;
+    let createdSkinCount = 0;
+    let createdVariantCount = 0;
+
+    // 1. 导入选中的通用资产（主头像、主立绘等）
+    for (const assetReq of request.body.selectedAssets || []) {
+      const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, assetReq);
+      if (saved) importedAssetCount += 1;
+      else warnings.push(`资产下载失败: ${assetReq.title || assetReq.url}`);
+    }
+
+    // 2. 导入选中的「普通多皮肤」（保留各自服装描述与背景故事，入 costume 资产 + 生图参考）
+    for (const skin of request.body.selectedSkins || []) {
+      if (!skin.selected) continue;
+      const targetUrl = skin.portraitUrl || skin.avatarUrl;
+      if (targetUrl) {
+        const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, {
+          kind: skin.portraitUrl ? 'reference' : 'avatar',
+          category: 'costume',
+          title: `皮肤 · ${skin.name}`,
+          url: targetUrl,
+          source: skin.source,
+          registerReference: true,
+          skinName: skin.name,
+          outfitDescription: skin.outfitDescription,
+          loreStory: skin.loreStory,
+          tags: [skin.name, '皮肤'],
+        });
+        if (saved) { importedAssetCount += 1; createdSkinCount += 1; }
+        else warnings.push(`皮肤「${skin.name}」图片下载失败`);
+      }
+    }
+
+    // 3. 导入选中的「衍生形态」（崩坏三装甲 / 星铁 SP 等，携带独立服装描述、背景故事与立绘）
+    const nextVariants = [...existingVariants];
+    for (const variant of request.body.selectedVariants || []) {
+      if (!variant.selected) continue;
+      let avatarAssetId: string | null = null;
+      let portraitAssetId: string | null = null;
+      if (variant.avatarUrl) {
+        const savedAv = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, {
+          kind: 'avatar',
+          category: 'avatar',
+          title: `形态头像 · ${variant.name}`,
+          url: variant.avatarUrl,
+          source: variant.source,
+          skinName: variant.name,
+          outfitDescription: variant.outfitDescription,
+          loreStory: variant.loreStory,
+          tags: [variant.name, '衍生形态'],
+        });
+        if (savedAv) { avatarAssetId = savedAv.id; importedAssetCount += 1; }
+      }
+      if (variant.portraitUrl) {
+        const savedPort = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, {
+          kind: 'reference',
+          category: 'costume',
+          title: `形态立绘 · ${variant.name}`,
+          url: variant.portraitUrl,
+          source: variant.source,
+          registerReference: true,
+          skinName: variant.name,
+          outfitDescription: variant.outfitDescription,
+          loreStory: variant.loreStory,
+          tags: [variant.name, '衍生形态'],
+        });
+        if (savedPort) { portraitAssetId = savedPort.id; importedAssetCount += 1; }
+      }
+
+      const idx = nextVariants.findIndex((v) => v.name.trim() === variant.name.trim());
+      const builtVariant: CharacterVariant = {
+        id: idx >= 0 ? nextVariants[idx].id : randomUUID(),
+        name: variant.name,
+        ...(variant.variantKind ? { variantKind: variant.variantKind } : {}),
+        summary: variant.loreStory.slice(0, 120) || `${nextDraft.displayName}的衍生形态「${variant.name}」`,
+        personaText: variant.loreStory,
+        appearance: {
+          baseText: nextDraft.appearance.baseText,
+          defaultOutfitText: variant.outfitDescription,
+        },
+        ...(avatarAssetId ? { avatarAssetId, avatarUrl: `/api/admin/characters/assets/${avatarAssetId}` } : {}),
+        ...(portraitAssetId ? { portraitAssetId, portraitUrl: `/api/admin/characters/assets/${portraitAssetId}` } : {}),
+      };
+      if (idx >= 0) nextVariants[idx] = builtVariant;
+      else { nextVariants.push(builtVariant); createdVariantCount += 1; }
+    }
+
+    const now = nowIso();
+    database.transaction(() => {
+      database.connection.prepare(
+        'UPDATE character_profiles SET display_name=?,draft_json=?,tags_json=?,variants_json=?,draft_revision=?,updated_at=? WHERE id=?',
+      ).run(
+        nextDraft.displayName,
+        JSON.stringify(nextDraft),
+        JSON.stringify(nextTags),
+        JSON.stringify(nextVariants),
+        currentRevision + 1,
+        now,
+        request.params.id,
+      );
+      upsertCharacterBirthday(database, request.params.id, nextDraft);
+      for (const src of request.body.sources || []) {
+        database.connection.prepare(`INSERT INTO character_sources
+          (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,NULL)`).run(
+          randomUUID(),
+          request.params.id,
+          src.title,
+          src.url,
+          src.excerpt.slice(0, 12_000),
+          src.sourceType || 'web',
+          now,
+          null,
+          null,
+          null,
+        );
+      }
+    });
+
+    const updatedRow = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
+    return {
+      profile: mapProfile(database, updatedRow),
+      importedAssetCount,
+      createdVariantCount,
+      createdSkinCount,
+      warnings,
+    };
   });
 
   app.post<{ Params: { id: string }; Body: CharacterAvatarGenerationRequest }>('/api/v1/admin/characters/:id/generate-avatar', {
@@ -1185,18 +1477,30 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     Params: { id: string };
     Body: {
       items?: Array<{
-        kind: 'avatar' | 'portrait';
+        kind: 'avatar' | 'portrait' | 'reference';
+        category?: CharacterAssetCategory;
         url: string;
         source?: string;
         title?: string;
         setAsActive?: boolean;
+        registerReference?: boolean;
+        skinName?: string;
+        outfitDescription?: string;
+        loreStory?: string;
+        tags?: string[];
       }>;
       assets?: Array<{
-        kind: 'avatar' | 'portrait';
+        kind: 'avatar' | 'portrait' | 'reference';
+        category?: CharacterAssetCategory;
         url: string;
         source?: string;
         title?: string;
         setAsActive?: boolean;
+        registerReference?: boolean;
+        skinName?: string;
+        outfitDescription?: string;
+        loreStory?: string;
+        tags?: string[];
       }>;
     };
   }>('/api/v1/admin/characters/:id/import-assets', async (request, reply) => {
@@ -1207,58 +1511,15 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
     let activeAvatarAssetId = profile.avatar_asset_id;
     let activePortraitAssetId = profile.portrait_asset_id;
-    const imported: Array<{ id: string; kind: 'avatar' | 'portrait'; url: string }> = [];
+    const imported: Array<{ id: string; kind: 'avatar' | 'portrait' | 'reference'; url: string }> = [];
 
     for (const item of assetsToImport) {
-      if (!item.url || !['avatar', 'portrait'].includes(item.kind)) continue;
-      try {
-        const res = await fetcher(item.url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
-        if (!res.ok) continue;
-        const arrayBuf = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
-        const contentType = res.headers.get('content-type') || 'image/png';
-        const assetId = randomUUID();
-        const now = nowIso();
-        const ext = contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'png';
-        const filename = `${item.kind}_${Date.now()}.${ext}`;
-
-        const artifact = await streamUploadArtifact(config, database, {
-          appId: 'characters',
-          stream: Readable.from([buffer]),
-          contentType,
-          originalName: filename,
-          refType: 'character-asset',
-          refId: assetId,
-          metadata: { characterId: request.params.id, kind: item.kind },
-        });
-
-        database.transaction(() => {
-          database.connection.prepare(`INSERT INTO character_assets
-            (id,character_id,kind,created_at,artifact_id,source_url,user_note)
-            VALUES (?,?,?,?,?,?,?)`).run(
-            assetId,
-            request.params.id,
-            item.kind,
-            now,
-            artifact.id,
-            item.url,
-            item.title || item.source || '多源导入',
-          );
-          if (item.setAsActive) {
-            if (item.kind === 'avatar') {
-              database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
-              activeAvatarAssetId = assetId;
-            } else if (item.kind === 'portrait') {
-              database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
-              activePortraitAssetId = assetId;
-            }
-          }
-        });
-
-        imported.push({ id: assetId, kind: item.kind, url: `/api/admin/characters/assets/${assetId}` });
-      } catch {
-        // continue with other assets
-      }
+      if (!item.url || !['avatar', 'portrait', 'reference'].includes(item.kind)) continue;
+      const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, item);
+      if (!saved) continue;
+      if (saved.setAvatar) activeAvatarAssetId = saved.id;
+      if (saved.setPortrait) activePortraitAssetId = saved.id;
+      imported.push({ id: saved.id, kind: saved.kind, url: saved.url });
     }
 
     return {

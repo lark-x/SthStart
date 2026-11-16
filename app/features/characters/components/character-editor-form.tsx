@@ -2,17 +2,18 @@
 
 import { useFieldArray, type Control, type FieldErrors, type UseFormClearErrors, type UseFormGetValues, type UseFormRegister, type UseFormSetValue } from 'react-hook-form';
 import { Camera, Images, RotateCcw, User } from 'lucide-react';
-import type { CharacterDraftV2 } from '@sthstart/contracts';
+import type { CharacterDraftV2, CharacterVariant } from '@sthstart/contracts';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Textarea } from '@/app/components/ui/textarea';
 import { TagsInput } from '@/app/components/shared/tags-input';
 import type { CharacterFormValues } from '../model/character-form-values';
 import type { CharacterEditorStatus } from '../model/character-editor-model';
 import { CharacterAssetTab } from './character-asset-tab';
-import { CharacterLoraPanel, CharacterPersonaPanel, CharacterVisualPanel } from './character-editor-fields';
+import { CharacterPersonaPanel, CharacterVisualPanel } from './character-editor-fields';
 
-export type CharacterEditorTab = 'persona' | 'visual' | 'assets' | 'lora';
+export type CharacterEditorTab = 'persona' | 'visual' | 'assets';
 
 /** 右栏表单：档案头、分段视图与保存状态；只通过 RHF 读写值，不另存角色草稿。 */
 export function CharacterEditorForm({
@@ -32,6 +33,8 @@ export function CharacterEditorForm({
   assetsCount,
   avatarAssetId,
   portraitAssetId,
+  activeVariant,
+  onUpdateVariant,
   hasActiveVariant,
   onResetVariant,
   onRefreshCharacter,
@@ -54,6 +57,8 @@ export function CharacterEditorForm({
   assetsCount?: number;
   avatarAssetId?: string | null;
   portraitAssetId?: string | null;
+  activeVariant?: CharacterVariant | null;
+  onUpdateVariant?: (variantId: string, patch: Partial<CharacterVariant>) => void;
   hasActiveVariant: boolean;
   onResetVariant: () => void;
   onRefreshCharacter: () => void;
@@ -157,20 +162,65 @@ export function CharacterEditorForm({
         </div>
       </div>
 
-      {/* 分段创作画布导航 */}
+      {/* 衍生形态专属属性面板（装甲 / SP / 阶段形态自带服装描述与背景故事） */}
+      {activeVariant && onUpdateVariant && (
+        <div className="rounded-panel border border-[var(--selection-border)] bg-[var(--selection-bg)]/35 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-ink">
+              正在编辑衍生形态：{activeVariant.name}
+              {activeVariant.variantKind === 'sp' ? '（SP 形态）' : activeVariant.variantKind === 'stage' ? '（装甲 / 阶段）' : ''}
+            </span>
+            <span className="text-xs text-muted">以下服装描写与背景故事归属当前形态</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block space-y-1 text-xs">
+              <span className="font-medium text-ink">形态服装描述（用于生图与出装）</span>
+              <Textarea
+                rows={3}
+                value={activeVariant.appearance?.defaultOutfitText || ''}
+                onChange={(e) =>
+                  onUpdateVariant(activeVariant.id, {
+                    appearance: {
+                      baseText: activeVariant.appearance?.baseText || draft.appearance.baseText,
+                      defaultOutfitText: e.target.value,
+                    },
+                  })
+                }
+                className="bg-surface text-xs"
+              />
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="font-medium text-ink">形态背景故事（阶段设定）</span>
+              <Textarea
+                rows={3}
+                value={activeVariant.personaText || ''}
+                onChange={(e) => onUpdateVariant(activeVariant.id, { personaText: e.target.value })}
+                className="bg-surface text-xs"
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* 分段创作画布导航（精简为 3 项，LoRA 收进外貌高级区） */}
       <PageTabs variant="local" ariaLabel="角色档案编辑分段" value={activeTab} onChange={id => onTabChange(id as CharacterEditorTab)} className="character-editor-tabs w-fit max-w-full" tabs={[
-        {id:'persona',label:<><User className="h-4 w-4" aria-hidden="true" />人设</>},
-        {id:'visual',label:<><Camera className="h-4 w-4" aria-hidden="true" />外貌</>},
-        {id:'assets',label:<><Images className="h-4 w-4" aria-hidden="true" />资产</>,count:assetsCount},
-        {id:'lora',label:'LoRA',count:visualLoraFields.length || undefined},
+        { id: 'persona', label: <><User className="h-4 w-4" aria-hidden="true" />人设与演绎</> },
+        { id: 'visual', label: <><Camera className="h-4 w-4" aria-hidden="true" />外貌与生图</> },
+        { id: 'assets', label: <><Images className="h-4 w-4" aria-hidden="true" />图片与皮肤</>, count: assetsCount },
       ]} />
 
       {activeTab === 'persona' && (
-        <CharacterPersonaPanel register={register} draft={draft} onDirty={onDirty} />
+        <CharacterPersonaPanel control={control} register={register} draft={draft} onDirty={onDirty} />
       )}
 
       {activeTab === 'visual' && (
-        <CharacterVisualPanel register={register} onDirty={onDirty} />
+        <CharacterVisualPanel
+          register={register}
+          onDirty={onDirty}
+          loraFields={visualLoraFields}
+          onAppendLora={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}
+          onRemoveLora={removeVisualLora}
+        />
       )}
 
       {activeTab === 'assets' && (
@@ -188,20 +238,11 @@ export function CharacterEditorForm({
               <Images className="mx-auto h-8 w-8 text-muted/50 mb-3" />
               <p className="text-sm font-medium text-ink">请先保存角色基础信息</p>
               <p className="text-xs text-muted mt-1">
-                保存后即可开启该角色的 7 大细分分类资产库（立绘、头像、差分、服装、CG、设定图）、标签及邻舍双向推拉。
+                保存后即可管理该角色的头像、主立绘、多皮肤、表情差分与参考图。
               </p>
             </div>
           )}
         </div>
-      )}
-
-      {activeTab === 'lora' && (
-        <CharacterLoraPanel
-          register={register}
-          fields={visualLoraFields}
-          onAppend={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}
-          onRemove={removeVisualLora}
-        />
       )}
 
       {/* 底部保存状态栏 */}

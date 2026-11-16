@@ -4,7 +4,8 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm, useWatch } from 'react-hook-form';
-import { ArrowLeft, Check, Save } from 'lucide-react';
+import { ArrowLeft, Check, Download, FolderInput, Layers, MoreHorizontal, Save, Sparkles } from 'lucide-react';
+import { Menu } from '@mantine/core';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Button } from '@/app/components/ui/button';
@@ -12,6 +13,7 @@ import { Input } from '@/app/components/ui/input';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { useOverlayPortalTarget } from '@/app/components/ui/overlay-policy';
 import { useToast } from '@/app/providers/ui-provider';
 import { useCharacterDetail, useCharacterAssets } from '../queries';
 import { EMPTY_DRAFT_V2 } from '../schemas';
@@ -30,6 +32,7 @@ import { CharacterEditorForm, type CharacterEditorTab } from './character-editor
 import { CharacterAvatarGenerationOverlay, CharacterAvatarUrlDialog, type CharacterAvatarGenerationPanel } from './character-avatar-dialogs';
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterMultiSourceDialog } from './character-multi-source-dialog';
+import { CharacterUpstreamDialog } from './character-upstream-dialog';
 
 const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT_V2);
 
@@ -52,6 +55,8 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
   const [newVariantName, setNewVariantName] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [multiSourceDialogOpen, setMultiSourceDialogOpen] = useState(false);
+  const [upstreamDialogOpen, setUpstreamDialogOpen] = useState(false);
+  const menuPortalTarget = useOverlayPortalTarget();
 
   // Form 仍是唯一表单事实；服务器快照、脏值与恢复由 session Hook 协调。
   const { control, register, getValues, reset, setValue, setError, clearErrors, formState: { isDirty, errors } } = useForm<CharacterFormValues>({ defaultValues: EMPTY_FORM_VALUES });
@@ -83,7 +88,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
 
   const currentVariant = variantsApi.variants.find((variant) => variant.id === variantsApi.activeVariantId) || null;
   const currentAvatarUrl = currentVariant?.avatarUrl || detailData?.avatarUrl;
-  const currentPortraitUrl = detailData?.portraitUrl;
+  const currentPortraitUrl = currentVariant?.portraitUrl || detailData?.portraitUrl;
   const assets = assetsData?.items || [];
 
   const handleFetchUrlAvatar = async () => {
@@ -150,11 +155,11 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
 
   return (
     <PageContainer className="space-y-4 pb-8">
-      {/* 顶部页头 */}
+      {/* 顶部页头：只显示页面定位，不再重复正文的超大号角色标题 */}
       <PageHeader compact
         backHref="/apps/characters"
         backLabel="角色资料库"
-        title={draft.displayName || '新建角色档案'}
+        title="角色档案"
         status={
           <div className="flex items-center gap-2">
             <span
@@ -189,7 +194,18 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           </div>
         }
         actions={
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setUpstreamDialogOpen(true)}
+              className="gap-1.5 text-xs"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+              <span>上游重构 RP 卡</span>
+            </Button>
+
             <Button
               size="sm"
               variant="accent"
@@ -200,6 +216,49 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
               <Save className="h-4 w-4 mr-1.5" aria-hidden="true" />
               <span>保存档案</span>
             </Button>
+
+            <Menu
+              position="bottom-end"
+              withinPortal
+              portalProps={menuPortalTarget ? { target: menuPortalTarget } : undefined}
+              closeOnItemClick
+              returnFocus
+              shadow="md"
+              radius="md"
+            >
+              <Menu.Target>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-label="更多档案操作"
+                  className="px-2.5"
+                >
+                  <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown className="w-48">
+                <Menu.Item
+                  leftSection={<Layers className="h-3.5 w-3.5 text-muted" aria-hidden="true" />}
+                  onClick={() => setAddVariantDialogOpen(true)}
+                >
+                  新增衍生形态
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={<FolderInput className="h-3.5 w-3.5 text-muted" aria-hidden="true" />}
+                  onClick={() => setImportDialogOpen(true)}
+                >
+                  导入酒馆角色卡
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={<Download className="h-3.5 w-3.5 text-muted" aria-hidden="true" />}
+                  disabled={!characterId}
+                  onClick={() => void assetActions.exportTavern(draft.displayName)}
+                >
+                  导出酒馆卡 (JSON)
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           </div>
         }
       />
@@ -271,6 +330,8 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           assetsCount={assetsData?.items?.length}
           avatarAssetId={detailData?.avatarAssetId}
           portraitAssetId={detailData?.portraitAssetId}
+          activeVariant={currentVariant}
+          onUpdateVariant={variantsApi.updateVariant}
           hasActiveVariant={Boolean(currentVariant)}
           onResetVariant={() => variantsApi.setActiveVariantId(null)}
           onRefreshCharacter={() => {
@@ -372,6 +433,23 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           }}
         />
       )}
+
+      {/* 上游一键采集与 RP 卡重构向导 */}
+      <CharacterUpstreamDialog
+        open={upstreamDialogOpen}
+        onOpenChange={setUpstreamDialogOpen}
+        characterId={characterId}
+        initialName={draft.displayName}
+        initialWork={draft.work}
+        draftRevision={detailData?.draftRevision}
+        onApplied={(appliedId) => {
+          if (!characterId) {
+            router.push(`/apps/characters/${appliedId}`);
+          } else {
+            void Promise.all([refetchDetail(), refetchAssets()]);
+          }
+        }}
+      />
     </PageContainer>
   );
 }

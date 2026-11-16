@@ -18,6 +18,8 @@ import {
   deleteCharacterRelationship,
   generateCharacterAvatar,
   applyCharacterAvatar,
+  upstreamResearchCharacter,
+  applyCharacterUpstream,
 } from './api';
 import type { CharacterDraftAny, CharacterVariant } from '@sthstart/contracts';
 
@@ -201,6 +203,26 @@ export function useSetCharacterActiveAsset() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: import('@sthstart/contracts').CharacterSetActiveAssetRequest }) =>
       setCharacterActiveAsset(id, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+      queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: characterKeys.assets(variables.id) });
+    },
+  });
+}
+
+export function useUpstreamResearchCharacter() {
+  return useMutation({
+    mutationFn: (payload: import('@sthstart/contracts').CharacterUpstreamResearchRequest) =>
+      upstreamResearchCharacter(payload),
+  });
+}
+
+export function useApplyCharacterUpstream() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: import('@sthstart/contracts').CharacterUpstreamApplyRequest }) =>
+      applyCharacterUpstream(id, payload),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.all });
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(variables.id) });
