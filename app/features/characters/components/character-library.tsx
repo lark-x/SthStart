@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, Tags, LayoutGrid, CircleUser } from 'lucide-react';
+import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, Tags, LayoutGrid, CircleUser, GitFork } from 'lucide-react';
 import { Menu } from '@mantine/core';
 import { Button, buttonVariants } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -32,6 +32,7 @@ import { stripMachineCharacterIndex, type CharacterBrowseQuery, type CharacterWo
 import { SharedAssetVault } from './shared-asset-vault';
 import { LinsheCharacterVault } from './linshe-character-vault';
 import { CharacterUpstreamDialog } from './character-upstream-dialog';
+import { CharacterForkDialog } from './character-fork-dialog';
 import { characterKeys } from '../query-keys';
 
 const DISPLAY_MODE_STORAGE_KEY = 'sthstart:character-display-mode';
@@ -54,7 +55,7 @@ function readDisplayMode(): 'avatar' | 'card' {
 }
 
 export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterBrowseQuery | null } = {}) {
-  const browser = useCharacterBrowser({}, true, { persist: true, initialFilter });
+  const browser = useCharacterBrowser({ collapseDerivatives: true }, true, { persist: true, initialFilter });
   const hasFilters = hasCharacterFilters(browser.filter);
   const router = useRouter();
   const client = useQueryClient();
@@ -64,6 +65,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const displayMode = useSyncExternalStore(subscribeDisplayMode, readDisplayMode, () => 'card' as const);
   const [upstreamOpen, setUpstreamOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [forkTarget, setForkTarget] = useState<{ id: string; displayName: string; work: string } | null>(null);
 
   const updateDisplayMode = (mode: 'avatar' | 'card') => {
     try {
@@ -89,7 +91,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const [fields, setFields] = useState(emptyOrganizationFields);
   const [replaceTags, setReplaceTags] = useState(false);
   const [replaceGroups, setReplaceGroups] = useState(false);
-  const [work, setWork] = useState<CharacterWork>({ name: '', aliases: [], mediaType: '' });
+  const [work, setWork] = useState<CharacterWork>({ name: '', aliases: [], mediaType: '', workNature: 'canon', parentWork: null });
   const [aliases, setAliases] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -493,6 +495,43 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                         {character.displayName}
                       </span>
                     </Link>
+                    {(character.derivativeCount ?? 0) > 0 && (
+                      <Menu position="bottom" withinPortal portalProps={menuPortalTarget ? { target: menuPortalTarget } : undefined}>
+                        <Menu.Target>
+                          <button
+                            type="button"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--selection-fg)] hover:opacity-90 cursor-pointer"
+                          >
+                            <GitFork className="h-2.5 w-2.5" aria-hidden="true" />
+                            <span>同人 ×{character.derivativeCount}</span>
+                          </button>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                          {(character.familyMembers || []).map((member) => (
+                            <Menu.Item
+                              key={member.id}
+                              onClick={() => router.push(`/apps/characters/${member.id}`)}
+                            >
+                              {member.originType === 'ip' ? '★ 原作' : member.originType === 'derivative' ? '同人' : '原创'} · {member.work || member.displayName}
+                            </Menu.Item>
+                          ))}
+                          <Menu.Divider />
+                          <Menu.Item
+                            leftSection={<GitFork className="h-3.5 w-3.5" aria-hidden="true" />}
+                            onClick={() =>
+                              setForkTarget({
+                                id: character.familyRootId || character.id,
+                                displayName: character.displayName,
+                                work: character.draft.work || '',
+                              })
+                            }
+                          >
+                            复制到同人作品…
+                          </Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    )}
                   </article>
                 </li>
               ))}
@@ -561,6 +600,11 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                             <span className="truncate text-[15px] font-[600] tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
                               {character.displayName}
                             </span>
+                            {character.draft.originType === 'derivative' && (
+                              <span className="inline-flex shrink-0 items-center rounded border border-[var(--selection-border)] bg-[var(--selection-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--selection-fg)]">
+                                同人
+                              </span>
+                            )}
                             <span className="inline-flex max-w-[7.5rem] shrink-0 items-center truncate text-xs text-muted">
                               {character.draft.work || '未分类'}
                             </span>
@@ -569,6 +613,47 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                             {summaryLine}
                           </p>
                         </Link>
+
+                        {(character.derivativeCount ?? 0) > 0 && (
+                          <Menu position="bottom-end" withinPortal portalProps={menuPortalTarget ? { target: menuPortalTarget } : undefined}>
+                            <Menu.Target>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--selection-fg)] hover:opacity-90 cursor-pointer"
+                              >
+                                <GitFork className="h-2.5 w-2.5" aria-hidden="true" />
+                                <span>同人 ×{character.derivativeCount}</span>
+                              </button>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              {(character.familyMembers || []).map((member) => (
+                                <Menu.Item
+                                  key={member.id}
+                                  onClick={() => router.push(`/apps/characters/${member.id}`)}
+                                >
+                                  {member.originType === 'ip' ? '★ 原作' : member.originType === 'derivative' ? '同人' : '原创'} · {member.work || member.displayName}
+                                </Menu.Item>
+                              ))}
+                              <Menu.Divider />
+                              <Menu.Item
+                                leftSection={<GitFork className="h-3.5 w-3.5" aria-hidden="true" />}
+                                onClick={() =>
+                                  setForkTarget({
+                                    id: character.familyRootId || character.id,
+                                    displayName: character.displayName,
+                                    work: character.draft.work || '',
+                                  })
+                                }
+                              >
+                                复制到同人作品…
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
+                        )}
 
                         <Button
                           variant="ghost"
@@ -734,6 +819,35 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               />
             </label>
             <label className="block text-sm font-medium text-ink">
+              <span>作品属性</span>
+              <Select
+                className="mt-1 h-10 min-h-10 text-base sm:text-sm"
+                value={work.workNature || 'canon'}
+                onChange={(e) =>
+                  setWork({
+                    ...work,
+                    workNature: e.target.value as CharacterWork['workNature'],
+                    ...(e.target.value !== 'derivative' ? { parentWork: null } : {}),
+                  })
+                }
+              >
+                <option value="canon">原作（IP 正典）</option>
+                <option value="derivative">同人（基于原作衍生）</option>
+                <option value="original">原创</option>
+              </Select>
+            </label>
+            {work.workNature === 'derivative' && (
+              <label className="block text-sm font-medium text-ink">
+                <span>母原作名称</span>
+                <Input
+                  value={work.parentWork || ''}
+                  onChange={(e) => setWork({ ...work, parentWork: e.target.value })}
+                  placeholder="例如：原神"
+                  className="text-base sm:text-sm"
+                />
+              </label>
+            )}
+            <label className="block text-sm font-medium text-ink">
               <span>作品类型</span>
               <Select
                 className="mt-1 h-10 min-h-10 text-base sm:text-sm"
@@ -881,6 +995,23 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             router.push(`/apps/characters/${newId}`);
           }}
         />
+
+        {forkTarget && (
+          <CharacterForkDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setForkTarget(null);
+            }}
+            characterId={forkTarget.id}
+            displayName={forkTarget.displayName}
+            sourceWork={forkTarget.work}
+            works={browser.facets?.works || []}
+            onForked={(newId) => {
+              refresh();
+              router.push(`/apps/characters/${newId}`);
+            }}
+          />
+        )}
         </section>
       </PageContainer>
     </div>

@@ -135,6 +135,8 @@ export function draftFromWorld(
       title: world.title,
       summary: world.summary,
       timeLabel: world.timeLabel,
+      ...(world.workNature ? { workNature: world.workNature } : {}),
+      ...(world.parentWork !== undefined ? { parentWork: world.parentWork } : {}),
       ...(typeof world.startMinuteOfDay === 'number' ? { startMinuteOfDay: world.startMinuteOfDay } : {}),
       locations: world.locations.map((location) => ({ ...location })),
       visualReferences: (world.visualReferences ?? []).map((reference) => ({

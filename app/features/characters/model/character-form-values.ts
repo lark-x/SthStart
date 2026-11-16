@@ -3,6 +3,7 @@ import type {
   ActivityLora,
   CharacterDraftAny,
   CharacterDraftV2,
+  CharacterOriginType,
 } from '@sthstart/contracts';
 import { toCharacterRuntime } from '@sthstart/contracts';
 import { cleanseHtmlText } from '../cleanse';
@@ -18,8 +19,9 @@ export type StringField = { value: string };
 export type CharacterFormValues = {
   displayName: string;
   englishName: string;
-  originType: 'original' | 'ip';
+  originType: CharacterOriginType;
   work: string;
+  parentCharacterId?: string | null;
   summary: string;
   personaText: string;
   speechText: string;
@@ -48,6 +50,7 @@ export function characterDraftToFormValues(draft: CharacterDraftAny): CharacterF
     englishName: cleanseHtmlText(runtime.englishName),
     originType: runtime.originType,
     work: cleanseHtmlText(runtime.work),
+    ...('parentCharacterId' in draft && draft.parentCharacterId !== undefined ? { parentCharacterId: draft.parentCharacterId } : {}),
     summary: cleanseHtmlText(runtime.summary),
     personaText: cleanseHtmlText(runtime.personaText),
     speechText: cleanseHtmlText(runtime.speechText),
@@ -71,6 +74,7 @@ export function characterFormValuesToDraft(values: CharacterFormValues): Charact
     englishName: cleanseHtmlText(values.englishName),
     originType: values.originType,
     work: cleanseHtmlText(values.work),
+    ...(values.parentCharacterId !== undefined ? { parentCharacterId: values.parentCharacterId } : {}),
     summary: cleanseHtmlText(values.summary),
     personaText: cleanseHtmlText(values.personaText),
     speechText: cleanseHtmlText(values.speechText),

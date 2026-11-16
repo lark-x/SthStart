@@ -313,7 +313,7 @@ test('character library opens, creates a character and edits fields', async ({ p
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/apps/characters/new');
-  // 编辑器按「人设 / 外貌 / 资产 / LoRA」分段；角色名称、作品与标签在分段上方行内编辑。
+  // 编辑器按「人设演绎 / 外貌生图 / 图片皮肤」分段；角色名称、作品与标签在分段上方行内编辑。
   await expect(page.getByRole('heading', { name: '新建角色档案', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: '人设' })).toHaveAttribute('aria-selected', 'true');
 
@@ -351,10 +351,10 @@ test('character library opens, creates a character and edits fields', async ({ p
   await expect(page.getByLabel('基础外貌特征')).toHaveValue('短发，佩戴圆框眼镜；身材娇小、步态轻盈。');
   await expect(page.getByLabel('代表性装扮与配饰')).toHaveValue('深色风衣与围巾。');
 
-  // 导出收在视觉预览卡的「更多」菜单里。
-  await page.getByRole('button', { name: '更多操作', exact: true }).click();
+  // 导出与酒馆卡导入等低频操作收在顶部动作栏的「···」菜单里。
+  await page.getByRole('button', { name: '更多档案操作', exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出酒馆卡 (JSON)' }).click();
+  await page.getByRole('menuitem', { name: '导出酒馆卡 (JSON)' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.json$/);
 });
@@ -700,17 +700,17 @@ test('character editor tabs stay inside a 390px viewport', async ({ page }) => {
     expect(control.height).toBeGreaterThanOrEqual(40);
   }
 
-  // 逐个分区都要能打开，且都不横向溢出。
-  for (const name of ['外貌', '资产', 'LoRA', '人设']) {
+  // 逐个分区都要能打开（LoRA 收在「外貌生图」高级折叠区内），且都不横向溢出。
+  for (const name of ['外貌生图', '图片皮肤', '人设演绎']) {
     await page.getByRole('tab', { name }).click();
     await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
     const geometry = await measure();
     expect(geometry.document, `${name} 不应横向溢出`).toBeLessThanOrEqual(geometry.viewport + 1);
   }
 
-  // 视觉预览与资产在小屏收进折叠条，展开后同样不能横向溢出。
+  // 视觉预览在小屏收进折叠条，展开后同样不能横向溢出。
   await page.getByRole('button', { name: /视觉预览与资产形态/ }).click();
-  await expect(page.getByRole('heading', { name: '形象资产库' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /更换图片/ })).toBeVisible();
   const expanded = await measure();
   expect(expanded.document, '展开视觉预览不应横向溢出').toBeLessThanOrEqual(expanded.viewport + 1);
 });

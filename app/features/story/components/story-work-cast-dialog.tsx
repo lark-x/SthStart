@@ -8,7 +8,7 @@ import { Input } from '@/app/components/ui/input';
 import { Alert } from '@/app/components/ui/alert';
 import { AsyncState } from '@/app/components/ui/async-state';
 import { EmptyState } from '@/app/components/ui/empty-state';
-import { fetchCharacterDetail } from '@/app/features/characters/api';
+import { fetchCharacterDetail, publishCharacter } from '@/app/features/characters/api';
 import type { CharacterProfile } from '@sthstart/contracts';
 import { toCharacterRuntime } from '@sthstart/contracts';
 import { storyApi } from '../api';
@@ -56,9 +56,9 @@ export function StoryWorkCastDialog({
     setImportingId(char.id);
     setError('');
     try {
-      if (!char.latestVersion) throw new Error('请先在角色库发布一个版本。');
+      const targetVersion = char.latestVersion ?? (await publishCharacter(char.id)).version;
       const detail = await fetchCharacterDetail(char.id);
-      const version = detail.versions.find(v => v.version === char.latestVersion);
+      const version = detail.versions.find(v => v.version === targetVersion);
       if (!version) throw new Error('来源版本不存在，请刷新角色库。');
       const runtime = toCharacterRuntime(version.data);
       // 构筑角色设定正文
@@ -67,7 +67,13 @@ export function StoryWorkCastDialog({
         lines.push(`- **所属作品**：${runtime.work}`);
       }
       if (runtime.originType) {
-        lines.push(`- **创作类型**：${runtime.originType === 'ip' ? '原作角色' : '原创角色'}`);
+        const originLabel =
+          runtime.originType === 'ip'
+            ? '原作角色'
+            : runtime.originType === 'derivative'
+              ? '同人衍生'
+              : '原创角色';
+        lines.push(`- **创作类型**：${originLabel}`);
       }
       if (char.tags && char.tags.length > 0) {
         lines.push(`- **标签**：${char.tags.join('、')}`);
@@ -216,11 +222,15 @@ export function StoryWorkCastDialog({
                           size="sm"
                           variant="outline"
                           className="h-7 gap-1 px-2.5 text-xs hover:border-accent hover:text-accent"
-                          disabled={Boolean(importingId) || charactersQuery.isFetching || charactersQuery.isSearchPending || !char.latestVersion}
+                          disabled={Boolean(importingId) || charactersQuery.isFetching || charactersQuery.isSearchPending}
                           onClick={() => void handleImport(char)}
                         >
                           <UserPlus className="size-3" />
-                          {isBusy ? '引入中…' : !char.latestVersion ? '尚未发布' : '引入 v' + char.latestVersion}
+                          {isBusy
+                            ? '引入中…'
+                            : char.draft?.originType === 'original' && char.latestVersion
+                              ? '引入 v' + char.latestVersion
+                              : '引入'}
                         </Button>
                       )}
                     </div>

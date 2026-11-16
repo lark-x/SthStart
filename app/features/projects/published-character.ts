@@ -1,11 +1,14 @@
 import { toCharacterRuntime, type CharacterProfile, type CreateStoryCharacter } from '@sthstart/contracts';
-import { fetchCharacterDetail } from '@/app/features/characters/api';
+import { fetchCharacterDetail, publishCharacter } from '@/app/features/characters/api';
 
-/** Use the selected published snapshot, including its text, rather than the mutable library draft. */
+/** Use the latest published snapshot (auto-freezing the current draft if none exists yet). */
 export async function publishedCharacterInput(character: CharacterProfile): Promise<CreateStoryCharacter> {
-  if (!character.latestVersion) throw new Error('请先在角色库发布一个版本。');
+  const targetVersion =
+    typeof character.latestVersion === 'number' && character.latestVersion > 0
+      ? character.latestVersion
+      : (await publishCharacter(character.id)).version;
   const detail = await fetchCharacterDetail(character.id);
-  const version = detail.versions.find(item => item.version === character.latestVersion);
+  const version = detail.versions.find(item => item.version === targetVersion);
   if (!version) throw new Error('来源版本不存在，请刷新角色库。');
   const runtime = toCharacterRuntime(version.data);
   const notes = [

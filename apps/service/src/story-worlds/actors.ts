@@ -160,8 +160,19 @@ export class StoryWorldActorService {
       actor.personality.trim() ? `性格\n${actor.personality.trim()}` : '',
       actor.goals.length ? `目标\n${actor.goals.join('；')}` : '',
     ].filter(Boolean).join('\n\n').slice(0, 20000);
+    const isDerivativeWorld = world.workNature === 'derivative';
+    const isCanonWorld = world.workNature === 'canon';
+    const originType = isDerivativeWorld ? 'derivative' : isCanonWorld ? 'ip' : 'original';
+    let parentCharacterId: string | null = null;
+    if (isDerivativeWorld && world.parentWork) {
+      const rootRow = database.connection.prepare(
+        "SELECT id FROM character_profiles WHERE archived=0 AND parent_character_id IS NULL AND display_name=? AND json_extract(draft_json,'$.work') COLLATE NOCASE = ? LIMIT 1",
+      ).get(displayName, world.parentWork) as { id: string } | undefined;
+      if (rootRow) parentCharacterId = String(rootRow.id);
+    }
     const draft = toAuthorityDraft({
-      schemaVersion: 2, displayName, englishName: '', aliases: [], originType: 'original', work: definition.title,
+      schemaVersion: 2, displayName, englishName: '', aliases: [], originType, work: definition.title,
+      ...(parentCharacterId ? { parentCharacterId } : {}),
       summary, personaText, speechText: text(actor.speechStyle, 4000), dialogueExamples: [],
       behaviorRules: actor.goals.map((goal) => `- ${goal}`).join('\n').slice(0, 8000),
       appearance: { baseText: text(actor.appearance, 5000), defaultOutfitText: '' },
@@ -200,9 +211,9 @@ export class StoryWorldActorService {
       actorId: actor.id, tick: branch.currentTick, sourceRevision: branch.sourceRevision,
     });
     database.connection.prepare(`INSERT INTO character_profiles
-      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json)
-      VALUES (?,?,?,?,?,NULL,1,0,?,?,1,'[]')`).run(
-      id, slug, displayName, JSON.stringify(draft), JSON.stringify(tags), now, now,
+      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json,parent_character_id)
+      VALUES (?,?,?,?,?,NULL,1,0,?,?,1,'[]',?)`).run(
+      id, slug, displayName, JSON.stringify(draft), JSON.stringify(tags), now, now, parentCharacterId,
     );
     database.connection.prepare(`INSERT INTO character_versions
       (character_id,version,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json,compiler_version)

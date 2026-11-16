@@ -29,10 +29,14 @@ export type WorldBundleResult = Static<typeof WorldBundleResultSchema>;
 export const CreateWorldSetupSchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 200 }),
   idempotencyKey: Type.String({ minLength: 1, maxLength: 160 }),
+  workNature: Type.Optional(Type.Union([Type.Literal('canon'), Type.Literal('derivative'), Type.Literal('original')])),
+  parentWork: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
 }, strict);
 export type CreateWorldSetup = Static<typeof CreateWorldSetupSchema>;
 export const WorldSetupSummarySchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 160 }), title: Type.String({ minLength: 1, maxLength: 200 }),
+  workNature: Type.Optional(Type.Union([Type.Literal('canon'), Type.Literal('derivative'), Type.Literal('original')])),
+  parentWork: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
 }, strict);
 export const WorldSetupListSchema = Type.Object({ items: Type.Array(WorldSetupSummarySchema) }, strict);
 export type WorldSetupList = Static<typeof WorldSetupListSchema>;

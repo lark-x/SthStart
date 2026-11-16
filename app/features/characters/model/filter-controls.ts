@@ -116,7 +116,8 @@ export function buildCharacterFilterControls(
         selects: [
           makeSelect('mediaType', '作品类型', options(MEDIA_TYPES)),
           makeSelect('originType', '创作类型', [
-            { value: 'ip', label: '已有 IP' },
+            { value: 'ip', label: '原作 IP' },
+            { value: 'derivative', label: '同人衍生' },
             { value: 'original', label: '原创' },
           ]),
           makeSelect('reference', '外观参考图', [

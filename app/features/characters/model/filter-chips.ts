@@ -19,7 +19,9 @@ export function activeCharacterFilterChips(filter: CharacterBrowseQuery): Charac
   if (filter.favorite) chips.push({ key: 'favorite', label: '仅收藏', clear: () => ({ favorite: undefined }) });
   const selects: Array<[keyof CharacterBrowseQuery, string, (value: string) => string]> = [
     ['mediaType', '作品类型', (value) => value],
-    ['originType', '创作类型', (value) => (value === 'ip' ? '已有 IP' : '原创')],
+    ['originType', '创作类型', (value) => (value === 'ip' ? '原作 IP' : value === 'derivative' ? '同人衍生' : '原创')],
+    ['workNature', '作品属性', (value) => (value === 'canon' ? '原作' : value === 'derivative' ? '同人' : '原创')],
+    ['parentWork', '母原作', (value) => value],
     ['reference', '外观参考图', (value) => (value === 'yes' ? '有可用参考图' : '无可用参考图')],
     ['appearance', '外观描述', (value) => (value === 'yes' ? '已填写外观' : '未填写外观')],
     ['interpretation', '人设演绎', (value) => value],

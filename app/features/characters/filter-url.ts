@@ -38,9 +38,11 @@ export function normalizeCharacterFilter(input: unknown): CharacterBrowseQuery {
     if (items) source[key] = items;
     else delete source[key];
   }
-  for (const key of ['q', 'mediaType', 'originType', 'interpretation', 'source'] as const) {
+  for (const key of ['q', 'mediaType', 'originType', 'parentWork', 'interpretation', 'source'] as const) {
     if (source[key] !== undefined && typeof source[key] !== 'string') delete source[key];
   }
+  if (source.workNature !== 'canon' && source.workNature !== 'derivative' && source.workNature !== 'original') delete source.workNature;
+  if (source.collapseDerivatives !== undefined && typeof source.collapseDerivatives !== 'boolean') delete source.collapseDerivatives;
   if (source.sort !== undefined && !(typeof source.sort === 'string' && CHARACTER_SORTS.has(source.sort))) delete source.sort;
   if (source.tagMode !== 'any' && source.tagMode !== 'all') delete source.tagMode;
   if (source.reference !== 'yes' && source.reference !== 'no') delete source.reference;

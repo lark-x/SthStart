@@ -81,7 +81,7 @@ export function CharacterPersonaPanel({
       {/* 一句话概述 */}
       <div className="space-y-1.5">
         <label htmlFor="char-summary" className="block text-[13px] font-semibold text-ink">
-          一句话概括
+          一句话概述
         </label>
         <Textarea
           id="char-summary"
@@ -179,7 +179,7 @@ export function CharacterPersonaPanel({
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor="char-persona" className="text-[13px] font-semibold text-ink">
-            人设与背景档案
+            详细人设背景
           </label>
           <div className="inline-flex items-center rounded-lg border border-hairline bg-surface-sunken p-0.5">
             <button
@@ -306,7 +306,7 @@ export function CharacterVisualPanel({
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs">
           <label htmlFor="char-appearance-base" className="text-[13px] font-semibold text-ink">
-            稳定外貌特征
+            基础外貌特征
           </label>
           <span className="text-muted text-xs">跨服装保持不变的面部、发色、瞳色与体貌</span>
         </div>
@@ -322,7 +322,7 @@ export function CharacterVisualPanel({
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs">
           <label htmlFor="char-outfit" className="text-[13px] font-semibold text-ink">
-            默认服装与配饰
+            代表性装扮与配饰
           </label>
           <span className="text-muted text-xs">未指定皮肤或特殊服装时使用的基准穿搭</span>
         </div>

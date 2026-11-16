@@ -14,7 +14,7 @@ import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { streamUploadArtifact } from './artifacts.js';
-import { normalizeCharacterDraft } from './characters/draft.js';
+import { publishCharacterSnapshot } from './characters.js';
 
 export function registerLinsheBridgeRoutes(
   app: FastifyInstance,
@@ -79,151 +79,96 @@ export function registerLinsheBridgeRoutes(
     return status;
   });
 
-  // POST /api/v1/admin/linshe-bridge/sync-character — 双向人设同步（推送到邻舍 / 从邻舍拉取）
+  // POST /api/v1/admin/linshe-bridge/sync-character — 单向权威推送到邻舍（方式 A：SthStart 唯一权威）
   app.post<{
     Body: {
       characterId: string;
-      action: 'push_to_linshe' | 'pull_from_linshe';
+      action: 'push_to_linshe';
       force?: boolean;
     };
   }>('/api/v1/admin/linshe-bridge/sync-character', async (request, reply) => {
     const { characterId, action, force } = request.body || {};
     if (!characterId) return reply.code(400).send({ error: 'character_id_required' });
+    if (action !== 'push_to_linshe') {
+      return reply.code(400).send({ error: 'unsupported_action', message: 'SthStart 为唯一人设权威源，仅支持推送更新到邻舍。' });
+    }
 
     const profile = database.connection
       .prepare('SELECT * FROM character_profiles WHERE id=?')
       .get(characterId) as Record<string, unknown> | undefined;
     if (!profile) return reply.code(404).send({ error: 'character_not_found' });
 
-    if (action === 'push_to_linshe') {
-      // 1. 确保角色已有已发布的版本 (version snapshot)
-      let version = profile.latest_version ? Number(profile.latest_version) : null;
-      if (!version) {
-        // 自动创建初始发布版本
-        version = 1;
-        const draft = normalizeCharacterDraft(JSON.parse(String(profile.draft_json)));
-        const compiledLinshePrompt = compileLinshePrompt(draft);
-        const now = nowIso();
-        database.connection.prepare(`
-          INSERT INTO character_versions (character_id, version, data_json, compiled_linshe_prompt, relationships_json, created_at, compiler_version)
-          VALUES (?, ?, ?, ?, '[]', ?, ?)
-        `).run(characterId, version, JSON.stringify(draft), compiledLinshePrompt, now, CHARACTER_PERSONA_COMPILER_VERSION);
-        database.connection.prepare('UPDATE character_profiles SET latest_version=?, updated_at=? WHERE id=?').run(version, now, characterId);
-      }
+    // 确保将最新 draft_revision（含最新人设与皮肤服饰描写）冻结为版本后再推给邻舍
+    let version = profile.latest_version ? Number(profile.latest_version) : null;
+    const currentRevision = Number(profile.draft_revision ?? 1);
+    const latestVerRow = version
+      ? (database.connection.prepare('SELECT draft_revision FROM character_versions WHERE character_id=? AND version=?').get(characterId, version) as { draft_revision: number | null } | undefined)
+      : undefined;
+    if (!version || !latestVerRow || Number(latestVerRow.draft_revision ?? 0) < currentRevision) {
+      const published = publishCharacterSnapshot(database, characterId, { allowIncomplete: true });
+      if (published) version = published.version;
+    }
 
-      // 2. 检查是否已经链接过
-      const link = database.connection
-        .prepare('SELECT local_id FROM app_character_links WHERE app_id=? AND character_id=?')
-        .get('linshe', characterId) as { local_id: string } | undefined;
+    const link = database.connection
+      .prepare('SELECT local_id FROM app_character_links WHERE app_id=? AND character_id=?')
+      .get('linshe', characterId) as { local_id: string } | undefined;
 
-      try {
-        if (link?.local_id) {
-          // 邻舍中已存在 -> 调用 update-public 升级人设
-          const updateRes = await fetcher(`${linsheBaseUrl}/api/characters/${encodeURIComponent(link.local_id)}/update-public`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ force: Boolean(force) }),
-            signal: AbortSignal.timeout(10000),
-          });
-          const updateBody = (await updateRes.json().catch(() => ({}))) as Record<string, any>;
-          if (!updateRes.ok) {
-            return reply.code(updateRes.status).send({
-              ok: false,
-              action,
-              characterId,
-              message: updateBody.message || updateBody.error || `邻舍更新失败 HTTP ${updateRes.status}`,
-            });
-          }
-          return {
-            ok: true,
-            action,
-            characterId,
-            localId: link.local_id,
-            version,
-            message: `成功将【${profile.display_name}】最新人设推送到邻舍（版本 v${version}）`,
-          };
-        } else {
-          // 邻舍中尚未招募 -> 调用 import-public 招募角色
-          const importRes = await fetcher(`${linsheBaseUrl}/api/characters/import-public`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ characterId, version }),
-            signal: AbortSignal.timeout(10000),
-          });
-          const importBody = (await importRes.json().catch(() => ({}))) as { id?: number; error?: string };
-          if (!importRes.ok) {
-            return reply.code(importRes.status).send({
-              ok: false,
-              action,
-              characterId,
-              message: importBody.error || `邻舍招募失败 HTTP ${importRes.status}`,
-            });
-          }
-          return {
-            ok: true,
-            action,
-            characterId,
-            localId: String(importBody.id || ''),
-            version,
-            message: `成功将【${profile.display_name}】招募入驻邻舍！`,
-          };
-        }
-      } catch (err: any) {
-        return reply.code(502).send({
-          ok: false,
-          action,
-          characterId,
-          message: `无法连接到邻舍服务 (${linsheBaseUrl}): ${err.message}`,
-        });
-      }
-    } else if (action === 'pull_from_linshe') {
-      const link = database.connection
-        .prepare('SELECT local_id FROM app_character_links WHERE app_id=? AND character_id=?')
-        .get('linshe', characterId) as { local_id: string } | undefined;
-      if (!link) {
-        return reply.code(404).send({
-          ok: false,
-          action,
-          characterId,
-          message: '该角色尚未与邻舍建立绑定关系，请先推送到邻舍。',
-        });
-      }
-
-      try {
-        const charRes = await fetcher(`${linsheBaseUrl}/api/characters/${encodeURIComponent(link.local_id)}`, {
+    try {
+      if (link?.local_id) {
+        const updateRes = await fetcher(`${linsheBaseUrl}/api/characters/${encodeURIComponent(link.local_id)}/update-public`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: Boolean(force) }),
           signal: AbortSignal.timeout(10000),
         });
-        if (!charRes.ok) {
-          return reply.code(charRes.status).send({
+        const updateBody = (await updateRes.json().catch(() => ({}))) as Record<string, any>;
+        if (!updateRes.ok) {
+          return reply.code(updateRes.status).send({
             ok: false,
             action,
             characterId,
-            message: `读取邻舍角色数据失败 HTTP ${charRes.status}`,
+            message: updateBody.message || updateBody.error || `邻舍更新失败 HTTP ${updateRes.status}`,
           });
         }
-        const linsheChar = (await charRes.json()) as {
-          display_name?: string;
-          base_prompt?: string;
-          short_prompt?: string;
-        };
-
         return {
           ok: true,
           action,
           characterId,
           localId: link.local_id,
-          message: `已同步读取邻舍【${linsheChar.display_name || profile.display_name}】当前运行状态`,
+          version,
+          message: `已将【${profile.display_name}】最新权威人设与皮肤参照推送到邻舍（v${version}）`,
         };
-      } catch (err: any) {
-        return reply.code(502).send({
+      }
+      const importRes = await fetcher(`${linsheBaseUrl}/api/characters/import-public`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ characterId, version }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const importBody = (await importRes.json().catch(() => ({}))) as { id?: number; error?: string };
+      if (!importRes.ok) {
+        return reply.code(importRes.status).send({
           ok: false,
           action,
           characterId,
-          message: `无法连接到邻舍服务: ${err.message}`,
+          message: importBody.error || `邻舍招募失败 HTTP ${importRes.status}`,
         });
       }
-    } else {
-      return reply.code(400).send({ error: 'unsupported_action' });
+      return {
+        ok: true,
+        action,
+        characterId,
+        localId: String(importBody.id || ''),
+        version,
+        message: `已将【${profile.display_name}】招募入驻邻舍！`,
+      };
+    } catch (err: any) {
+      return reply.code(502).send({
+        ok: false,
+        action,
+        characterId,
+        message: `无法连接到邻舍服务 (${linsheBaseUrl}): ${err.message}`,
+      });
     }
   });
 

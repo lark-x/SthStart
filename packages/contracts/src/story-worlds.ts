@@ -43,6 +43,8 @@ export type WorldBranchMode = Static<typeof WorldBranchModeSchema>;
 export type WorldSourceNature = Static<typeof WorldSourceNatureSchema>;
 export const WorldDefinitionSchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 200 }), summary: text(), timeLabel: text(200),
+  workNature: Type.Optional(Type.Union([Type.Literal('canon'), Type.Literal('derivative'), Type.Literal('original')])),
+  parentWork: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
   /** 世界起点对应的日内分钟（0=00:00，1439=23:59）；缺省表示未定义，不推测昼夜。 */
   startMinuteOfDay: Type.Optional(Type.Integer({ minimum: 0, maximum: 1439 })),
   locations: Type.Array(WorldLocationSchema, { minItems: 1, maxItems: 100 }),

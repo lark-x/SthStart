@@ -1,4 +1,4 @@
-import type { CharacterBrowseQuery, CharacterOrganization, CharacterWork } from '@sthstart/contracts';
+import type { CharacterBrowseQuery, CharacterOrganization, CharacterWork, WorkNature } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { list, text } from './draft.js';
@@ -8,11 +8,73 @@ export function normalizeOrganization(value: unknown): CharacterOrganization {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   return { favorite: data.favorite === true, groups: [...new Set(list(data.groups, 50))], interpretation: text(data.interpretation, 100) };
 }
+function inferWorkNatureFromOrigin(originType: unknown): WorkNature {
+  if (originType === 'derivative') return 'derivative';
+  if (originType === 'original') return 'original';
+  return 'canon';
+}
 export function characterWorks(database: ServiceDatabase): CharacterWork[] {
-  const works = database.connection.prepare('SELECT * FROM character_works ORDER BY name').all().map(row => ({ name: String(row.name), aliases: JSON.parse(String(row.aliases_json)) as string[], mediaType: String(row.media_type) }));
-  const names = database.connection.prepare("SELECT DISTINCT json_extract(draft_json,'$.work') name FROM character_profiles WHERE archived=0").all();
-  for (const row of names) if (row.name && !works.some(w => [w.name, ...w.aliases].some(n => n.toLowerCase() === String(row.name).toLowerCase()))) works.push({ name: String(row.name), aliases: [], mediaType: '' });
+  const works: CharacterWork[] = database.connection.prepare('SELECT * FROM character_works ORDER BY name').all().map((row) => ({
+    name: String(row.name),
+    aliases: JSON.parse(String(row.aliases_json)) as string[],
+    mediaType: String(row.media_type),
+    workNature: (row.work_nature === 'derivative' || row.work_nature === 'original' ? row.work_nature : 'canon') as WorkNature,
+    parentWork: row.parent_work ? String(row.parent_work) : null,
+    worldId: row.world_id ? String(row.world_id) : null,
+    summary: String(row.summary ?? ''),
+  }));
+  const names = database.connection.prepare("SELECT json_extract(draft_json,'$.work') name, json_extract(draft_json,'$.originType') originType FROM character_profiles WHERE archived=0").all();
+  for (const row of names) {
+    if (row.name && !works.some(w => [w.name, ...w.aliases].some(n => n.toLowerCase() === String(row.name).toLowerCase()))) {
+      works.push({
+        name: String(row.name),
+        aliases: [],
+        mediaType: '',
+        workNature: inferWorkNatureFromOrigin(row.originType),
+        parentWork: null,
+        worldId: null,
+        summary: '',
+      });
+    }
+  }
   return works;
+}
+export function upsertCharacterWorkHierarchy(
+  database: ServiceDatabase,
+  input: {
+    name: string;
+    aliases?: string[];
+    mediaType?: string;
+    workNature?: WorkNature;
+    parentWork?: string | null;
+    worldId?: string | null;
+    summary?: string;
+  },
+): CharacterWork {
+  const name = text(input.name, 200);
+  const existing = database.connection.prepare('SELECT * FROM character_works WHERE name=?').get(name) as Record<string, unknown> | undefined;
+  const aliases = input.aliases !== undefined
+    ? [...new Set(list(input.aliases, 50))]
+    : existing ? JSON.parse(String(existing.aliases_json || '[]')) as string[] : [];
+  const mediaType = input.mediaType !== undefined ? text(input.mediaType, 50) : existing ? String(existing.media_type || '') : '';
+  const workNature: WorkNature = input.workNature ?? (existing?.work_nature as WorkNature | undefined) ?? 'canon';
+  const parentWork = workNature === 'derivative'
+    ? (input.parentWork !== undefined ? (text(input.parentWork, 200) || null) : (existing?.parent_work ? String(existing.parent_work) : null))
+    : null;
+  const worldId = input.worldId !== undefined ? (text(input.worldId, 160) || null) : (existing?.world_id ? String(existing.world_id) : null);
+  const summary = input.summary !== undefined ? text(input.summary, 2000) : existing ? String(existing.summary || '') : '';
+  database.connection.prepare(
+    `INSERT INTO character_works(name,aliases_json,media_type,work_nature,parent_work,world_id,summary)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(name) DO UPDATE SET
+       aliases_json=excluded.aliases_json,
+       media_type=excluded.media_type,
+       work_nature=excluded.work_nature,
+       parent_work=excluded.parent_work,
+       world_id=coalesce(excluded.world_id, character_works.world_id),
+       summary=CASE WHEN excluded.summary <> '' THEN excluded.summary ELSE character_works.summary END`,
+  ).run(name, JSON.stringify(aliases), mediaType, workNature, parentWork, worldId, summary);
+  return { name, aliases, mediaType, workNature, parentWork, worldId, summary };
 }
 export function canonicalWork(database: ServiceDatabase, name: string) {
   const trimmed = name.trim();
@@ -50,6 +112,39 @@ export function browseCharacters(database: ServiceDatabase, query: CharacterBrow
   arrayFilter("coalesce(json_extract(p.organization_json,'$.groups'),'[]')", query.groups);
   if (query.favorite) add("json_extract(p.organization_json,'$.favorite')=1");
   if (query.originType) add("json_extract(p.draft_json,'$.originType')=?", query.originType);
+  if (query.workNature) {
+    const matchingWorkNames = expandWorks(works.filter((w) => w.workNature === query.workNature).map((w) => w.name));
+    const expectedOrigin = query.workNature === 'canon' ? 'ip' : query.workNature;
+    if (matchingWorkNames.length) {
+      add(`(json_extract(p.draft_json,'$.work') COLLATE NOCASE IN (${matchingWorkNames.map(() => '?').join(',')}) OR (coalesce(json_extract(p.draft_json,'$.work'),'')='' AND json_extract(p.draft_json,'$.originType')=?))`, ...matchingWorkNames, expectedOrigin);
+    } else {
+      add("json_extract(p.draft_json,'$.originType')=?", expectedOrigin);
+    }
+  }
+  if (query.parentWork) {
+    const parentAliases = expandWorks([query.parentWork]);
+    const childWorkNames = expandWorks(
+      works.filter((w) => w.workNature === 'derivative' && w.parentWork && parentAliases.some((a) => a.toLowerCase() === w.parentWork!.toLowerCase())).map((w) => w.name),
+    );
+    if (childWorkNames.length) {
+      add(`(json_extract(p.draft_json,'$.work') COLLATE NOCASE IN (${childWorkNames.map(() => '?').join(',')}) OR EXISTS(SELECT 1 FROM character_profiles root WHERE root.id=p.parent_character_id AND json_extract(root.draft_json,'$.work') COLLATE NOCASE IN (${parentAliases.map(() => '?').join(',')})))`, ...childWorkNames, ...parentAliases);
+    } else {
+      add(`EXISTS(SELECT 1 FROM character_profiles root WHERE root.id=p.parent_character_id AND json_extract(root.draft_json,'$.work') COLLATE NOCASE IN (${parentAliases.map(() => '?').join(',')}))`, ...parentAliases);
+    }
+  }
+  const filteringDerivativeWork = Boolean(
+    query.works?.some((wName) => works.find((w) => [w.name, ...w.aliases].some((a) => a.toLowerCase() === wName.toLowerCase()))?.workNature === 'derivative'),
+  );
+  if (
+    query.collapseDerivatives
+    && !query.q?.trim()
+    && !query.parentWork
+    && query.originType !== 'derivative'
+    && query.workNature !== 'derivative'
+    && !filteringDerivativeWork
+  ) {
+    add('(p.parent_character_id IS NULL OR NOT EXISTS(SELECT 1 FROM character_profiles root WHERE root.id=p.parent_character_id AND root.archived=0))');
+  }
   if (query.interpretation) add("json_extract(p.organization_json,'$.interpretation')=?", query.interpretation);
   if (query.reference) add(`${query.reference === 'no' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM character_visual_references r WHERE r.character_id=p.id AND r.enabled=1)`);
   if (query.appearance) add(`(length(trim(coalesce(json_extract(p.draft_json,'$.appearance.description'),'')))>0)=${query.appearance === 'yes' ? 1 : 0}`);
@@ -83,7 +178,7 @@ export function browseCharacters(database: ServiceDatabase, query: CharacterBrow
     },
   };
 }
-export type OrganizationEdit = { ids: string[]; work?: string; originType?: 'ip' | 'original'; tags?: string[]; groups?: string[]; interpretation?: string; favorite?: boolean; fillEmpty?: boolean; replaceTags?: boolean; replaceGroups?: boolean };
+export type OrganizationEdit = { ids: string[]; work?: string; originType?: 'ip' | 'derivative' | 'original'; tags?: string[]; groups?: string[]; interpretation?: string; favorite?: boolean; fillEmpty?: boolean; replaceTags?: boolean; replaceGroups?: boolean };
 export function editCharacterOrganization(database: ServiceDatabase, input: OrganizationEdit) {
   if (!Array.isArray(input.ids) || input.ids.length > 500 || input.ids.some(id => typeof id !== 'string')) throw new Error('每次请选择 1 至 500 位角色');
   const ids = [...new Set(list(input.ids, 500))];
@@ -93,7 +188,7 @@ export function editCharacterOrganization(database: ServiceDatabase, input: Orga
       const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=? AND archived=0').get(id);
       if (!row) throw new Error('角色已删除，请刷新列表');
       const draft = JSON.parse(String(row.draft_json));
-      if (input.originType === 'ip' || input.originType === 'original') draft.originType = input.originType;
+      if (input.originType === 'ip' || input.originType === 'derivative' || input.originType === 'original') draft.originType = input.originType;
       const organization = normalizeOrganization(JSON.parse(String(row.organization_json)));
       if (input.work !== undefined && (!input.fillEmpty || !draft.work)) draft.work = canonicalWork(database, text(input.work, 200));
       if (input.interpretation !== undefined && (!input.fillEmpty || !organization.interpretation)) organization.interpretation = text(input.interpretation, 100);

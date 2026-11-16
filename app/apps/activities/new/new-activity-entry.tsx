@@ -27,6 +27,7 @@ import { storyApi } from '@/app/features/story/api';
 import { publicationApi } from '@/app/features/activities/publication/api';
 import { createActivity } from '@/app/features/activities/api/activities';
 import { PlanningWizard } from '@/app/features/activities/components/planning-wizard';
+import { publishCharacter } from '@/app/features/characters/api';
 import { useCharacters } from '@/app/features/characters/queries';
 
 type EntryMode = 'quick' | 'wizard';
@@ -93,9 +94,6 @@ export function NewActivityEntry() {
   const selectedCharacters = selectedCharacterIds
     .map((id) => allCharacters.find((c) => c.id === id))
     .filter((c): c is (typeof allCharacters)[number] => Boolean(c));
-  const selectedUnpublished = selectedCharacters.filter(
-    (c) => typeof c.latestVersion !== 'number' || c.latestVersion < 1
-  );
 
   // 1. 从小说章节派生正式制作版本
   const handleDeriveFromStory = async () => {
@@ -133,19 +131,21 @@ export function NewActivityEntry() {
         throw new Error('请至少选择一位出镜角色。');
       }
 
-      // 检查是否有未发布正式版本的角色，明确提示去角色库发布，不虚构 id 或 version
-      if (selectedUnpublished.length > 0) {
-        throw new Error(
-          `角色《${selectedUnpublished.map((u) => u.displayName).join('》、《')}》尚未发布版本。快速制作要求角色具有已发布版本，请前往角色库发布正式版本后再选用，不可使用未发布角色。`
-        );
-      }
-
-      const actors = selectedCharacters.map((c) => ({
-        sourceCharacterId: c.id,
-        sourceVersion: c.latestVersion as number,
-        displayName: c.displayName,
-        activityRole: '核心主角',
-      }));
+      // 自动将尚未定档的角色快照固化为可用版本，不阻断制作创建
+      const actors = await Promise.all(
+        selectedCharacters.map(async (c) => {
+          const sourceVersion =
+            typeof c.latestVersion === 'number' && c.latestVersion > 0
+              ? c.latestVersion
+              : (await publishCharacter(c.id)).version;
+          return {
+            sourceCharacterId: c.id,
+            sourceVersion,
+            displayName: c.displayName,
+            activityRole: '核心主角',
+          };
+        })
+      );
 
       const res = await createActivity({
         title: customTitle.trim(),
@@ -379,12 +379,20 @@ export function NewActivityEntry() {
                 )}
                 {!charactersQuery.isLoading && !charactersQuery.isError && allCharacters.length === 0 && (
                   <p className="px-1 py-1.5 text-xs leading-relaxed text-muted">
-                    角色库还没有角色。可以先到 <Link href="/apps/characters" className="font-medium text-ink underline">角色库</Link> 建好角色并发布正式版本，再回来挑选；也可以改用「空白画卷起步」。
+                    角色库还没有角色。可以先到 <Link href="/apps/characters" className="font-medium text-ink underline">角色库</Link> 建好角色后再回来挑选；也可以改用「空白画卷起步」。
                   </p>
                 )}
                 {allCharacters.map((c) => {
                   const isSelected = selectedCharacterIds.includes(c.id);
                   const isPublished = typeof c.latestVersion === 'number' && c.latestVersion > 0;
+                  const originText =
+                    c.draft.originType === 'ip'
+                      ? '原作'
+                      : c.draft.originType === 'derivative'
+                        ? '同人'
+                        : isPublished
+                          ? `v${c.latestVersion}`
+                          : '原创';
                   return (
                     <Button
                       key={c.id}
@@ -405,26 +413,13 @@ export function NewActivityEntry() {
                     >
                       {isSelected && <Check className="size-3" />}
                       <span>{c.displayName}</span>
-                      {!isPublished ? (
-                        <span className="rounded-full bg-warning-bg px-1.5 py-0.5 text-xs font-medium text-warning-fg">
-                          未发布
-                        </span>
-                      ) : (
-                        <span className="opacity-60 text-xs">v{c.latestVersion}</span>
-                      )}
+                      <span className="opacity-60 text-xs">{originText}</span>
                       {c.tags?.[0] && <span className="opacity-60 text-xs">· {c.tags[0]}</span>}
                     </Button>
                   );
                 })}
               </div>
             </div>
-
-            {selectedUnpublished.length > 0 && (
-              <Alert variant="warning" title="已选角色中有未发布版本">
-                快速制作只支持已发布角色：{selectedUnpublished.map((c) => `《${c.displayName}》`).join('、')}。
-                请前往 <Link href="/apps/characters" className="font-medium underline">角色库</Link> 发布正式版本后再选用。
-              </Alert>
-            )}
           </div>
 
           {quickError && <Alert variant="danger" title="创建制作工程失败">{quickError}</Alert>}

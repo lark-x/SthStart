@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import type { CharacterImportSession, CharacterWork } from '@sthstart/contracts';
+import type { CharacterImportSession, CharacterOriginType, CharacterWork } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -11,7 +11,7 @@ import { cancelCharacterImportSession, commitCharacterImportSession, createChara
 import type { ImportDuplicate } from '../api';
 import { CharacterOrganizationFields, emptyOrganizationFields, splitLabels } from './character-organization-editor';
 
-type Row = { key: string; filename: string; session?: CharacterImportSession; file?: File; selected: boolean; name: string; work: string; tags: string; groups: string; interpretation: string; status: 'ready' | 'error' | 'done'; error?: string; duplicates: ImportDuplicate[]; characterId?: string; targetId?: string; targetRevision?: number; coverAvatar: boolean; coverReference: boolean; originType: 'ip' | 'original' };
+type Row = { key: string; filename: string; session?: CharacterImportSession; file?: File; selected: boolean; name: string; work: string; tags: string; groups: string; interpretation: string; status: 'ready' | 'error' | 'done'; error?: string; duplicates: ImportDuplicate[]; characterId?: string; targetId?: string; targetRevision?: number; coverAvatar: boolean; coverReference: boolean; originType: CharacterOriginType };
 const STORAGE_KEY = 'sthstart.character-import-batch.v1';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 export function CharacterBatchImport({ open, onOpenChange, onCommitted, works }: { open: boolean; onOpenChange: (open: boolean) => void; onCommitted: () => void; works: CharacterWork[] }) {

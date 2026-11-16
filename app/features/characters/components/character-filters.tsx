@@ -147,12 +147,22 @@ export function CharacterFilters({
   );
   const chips = activeCharacterFilterChips(filter);
   const clearChip = (chip: CharacterFilterChip) => onChange(chip.clear());
-  const quickWorks = (facets?.works || []).slice(0, 6);
+  const allWorks = facets?.works || [];
+  const quickWorks = allWorks.filter((w) => w.workNature !== 'derivative').slice(0, 6);
   const selectedWorks = filter.works || [];
   const toggleWorkPill = (workName: string) => {
     const exists = selectedWorks.includes(workName);
-    onChange({ works: exists ? selectedWorks.filter((w) => w !== workName) : [...selectedWorks, workName] });
+    onChange({
+      works: exists ? selectedWorks.filter((w) => w !== workName) : [...selectedWorks, workName],
+      parentWork: undefined,
+    });
   };
+  const selectedParentWork = selectedWorks.length === 1 ? selectedWorks[0] : (filter.parentWork || '');
+  const derivativeSubWorks = selectedParentWork
+    ? allWorks.filter(
+        (w) => w.workNature === 'derivative' && (w.parentWork || '').toLowerCase() === selectedParentWork.toLowerCase(),
+      )
+    : [];
 
   return (
     <section
@@ -241,8 +251,9 @@ export function CharacterFilters({
 
         {(
           [
-            { label: '已有 IP', active: filter.originType === 'ip', patch: { originType: filter.originType === 'ip' ? undefined : 'ip' } },
-            { label: '原创角色', active: filter.originType === 'original', patch: { originType: filter.originType === 'original' ? undefined : 'original' } },
+            { label: '原作', active: filter.originType === 'ip', patch: { originType: filter.originType === 'ip' ? undefined : 'ip' } },
+            { label: '同人', active: filter.originType === 'derivative', patch: { originType: filter.originType === 'derivative' ? undefined : 'derivative' } },
+            { label: '原创', active: filter.originType === 'original', patch: { originType: filter.originType === 'original' ? undefined : 'original' } },
             { label: '有参考图', active: filter.reference === 'yes', patch: { reference: filter.reference === 'yes' ? undefined : 'yes' as const } },
             { label: '缺参考图', active: filter.reference === 'no', patch: { reference: filter.reference === 'no' ? undefined : 'no' as const } },
             { label: '未设作品', active: filter.unclassified === 'work', patch: { unclassified: filter.unclassified === 'work' ? undefined : 'work' as const } },
@@ -264,6 +275,48 @@ export function CharacterFilters({
             {pill.label}
           </Button>
         ))}
+
+        {derivativeSubWorks.length > 0 && (
+          <>
+            <span className="mx-0.5 h-3.5 w-px bg-border-subtle" aria-hidden="true" />
+            <span className="text-[11px] text-muted">同人衍生：</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={filter.parentWork === selectedParentWork ? 'secondary' : 'ghost'}
+              onClick={() =>
+                onChange(
+                  filter.parentWork === selectedParentWork
+                    ? { parentWork: undefined }
+                    : { parentWork: selectedParentWork, works: undefined },
+                )
+              }
+              className="h-7 min-h-7 rounded-full border border-hairline bg-surface-sunken/60 px-2.5 text-xs text-muted hover:text-ink"
+            >
+              全部《{selectedParentWork}》同人
+            </Button>
+            {derivativeSubWorks.map((sub) => {
+              const active = selectedWorks.includes(sub.name);
+              return (
+                <Button
+                  key={sub.name}
+                  type="button"
+                  size="sm"
+                  variant={active ? 'secondary' : 'ghost'}
+                  onClick={() => onChange({ works: [sub.name], parentWork: undefined })}
+                  className={cn(
+                    'h-7 min-h-7 rounded-full border px-2.5 text-xs',
+                    active
+                      ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)]'
+                      : 'border-hairline bg-surface-sunken/60 text-muted hover:text-ink',
+                  )}
+                >
+                  {sub.name}
+                </Button>
+              );
+            })}
+          </>
+        )}
 
         {chips.length > 0 && (
           <Button

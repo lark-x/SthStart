@@ -1,9 +1,16 @@
-import { browseCharacters, characterWorks, editCharacterOrganization, normalizeOrganization } from './characters/organization.js';
+import { browseCharacters, canonicalWork, characterWorks, editCharacterOrganization, normalizeOrganization, upsertCharacterWorkHierarchy } from './characters/organization.js';
 import type { OrganizationEdit } from './characters/organization.js';
-import type { CharacterBrowseQuery, CharacterWork } from '@sthstart/contracts';
+import type {
+  CharacterBrowseQuery,
+  CharacterFamilyMemberSummary,
+  CharacterForkDerivativeRequest,
+  CharacterOriginType,
+  CharacterWork,
+} from '@sthstart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   CharacterAvatarGenerationRequestSchema,
+  CharacterForkDerivativeRequestSchema,
   CharacterUpstreamApplyRequestSchema,
   CharacterUpstreamResearchRequestSchema,
   stripMachineCharacterIndex,
@@ -70,6 +77,43 @@ function avatarUrl(database: ServiceDatabase, assetId: unknown, assetPath: strin
     : null;
 }
 
+function resolveFamilyMembers(
+  database: ServiceDatabase,
+  characterId: string,
+  parentCharacterId: string | null,
+  assetPath: string,
+): { familyRootId: string; members: CharacterFamilyMemberSummary[] } {
+  const rootId = parentCharacterId || characterId;
+  const rows = database.connection.prepare(
+    `SELECT id, display_name, draft_json, organization_json, avatar_asset_id
+     FROM character_profiles
+     WHERE archived = 0 AND (id = ? OR parent_character_id = ?)
+     ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, created_at ASC`,
+  ).all(rootId, rootId, rootId) as Record<string, unknown>[];
+  const members: CharacterFamilyMemberSummary[] = rows.map((item) => {
+    let work = '';
+    let originType: CharacterOriginType = 'original';
+    try {
+      const d = normalizeCharacterDraft(JSON.parse(String(item.draft_json)));
+      work = d.work || '';
+      originType = d.originType;
+    } catch { /* ignore invalid draft */ }
+    let interpretation = '';
+    try {
+      interpretation = normalizeOrganization(JSON.parse(String(item.organization_json || '{}'))).interpretation;
+    } catch { /* ignore */ }
+    return {
+      id: String(item.id),
+      displayName: String(item.display_name),
+      work,
+      originType,
+      interpretation,
+      avatarUrl: avatarUrl(database, item.avatar_asset_id, assetPath),
+    };
+  });
+  return { familyRootId: rootId, members };
+}
+
 function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, assetPath = '/api/admin/characters/assets'): CharacterProfile {
   const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
   let variants: import('@sthstart/contracts').CharacterVariant[] = [];
@@ -80,6 +124,8 @@ function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, ass
   } catch {
     variants = [];
   }
+  const parentCharacterId = row.parent_character_id ? String(row.parent_character_id) : null;
+  const { familyRootId, members } = resolveFamilyMembers(database, String(row.id), parentCharacterId, assetPath);
   return {
     organization: normalizeOrganization(JSON.parse(String(row.organization_json || '{}'))),
     birthday: effectiveBirthday(draft),
@@ -95,6 +141,10 @@ function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, ass
     archived: Boolean(row.archived), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     ...(row.draft_revision != null ? { draftRevision: Number(row.draft_revision) } : {}),
     variants,
+    parentCharacterId,
+    familyRootId,
+    derivativeCount: Math.max(0, members.filter((m) => m.id !== familyRootId).length),
+    familyMembers: members,
   };
 }
 
@@ -103,7 +153,9 @@ function mapVersion(row: Record<string, unknown>): CharacterVersion {
   const rawProvenance = row.provenance_json ? JSON.parse(String(row.provenance_json)) : undefined;
   const provenance = Array.isArray(rawProvenance) ? { fields: rawProvenance } : rawProvenance;
   return {
-    characterId: String(row.character_id), version: Number(row.version), data: normalizeCharacterDraft(JSON.parse(String(row.data_json))),
+    characterId: String(row.character_id), version: Number(row.version),
+    ...(row.version_label ? { versionLabel: String(row.version_label) } : {}),
+    data: normalizeCharacterDraft(JSON.parse(String(row.data_json))),
     compiledLinshePrompt: String(row.compiled_linshe_prompt), relationships: JSON.parse(String(row.relationships_json ?? '[]')) as CharacterRelationship[], createdAt: String(row.created_at),
     ...(row.draft_revision != null ? { draftRevision: Number(row.draft_revision) } : {}),
     ...(row.compiler_version != null ? { compilerVersion: String(row.compiler_version) } : {}),
@@ -166,6 +218,79 @@ function sourceRows(database: ServiceDatabase, characterId: string): CharacterSo
     id: String(row.id), characterId: String(row.character_id), title: String(row.title), url: row.url ? String(row.url) : null, excerpt: String(row.excerpt), sourceType: row.source_type as CharacterSource['sourceType'], fetchedAt: String(row.fetched_at),
     ...(row.provider_id != null ? { providerId: String(row.provider_id) } : {}), ...(row.external_id != null ? { externalId: String(row.external_id) } : {}), ...(row.payload_hash != null ? { payloadHash: String(row.payload_hash) } : {}), ...(row.source_snapshot_id != null ? { sourceSnapshotId: String(row.source_snapshot_id) } : {}),
   }));
+}
+
+function compileLinshePromptWithCostumes(database: ServiceDatabase, characterId: string, draft: unknown): string {
+  const basePrompt = compileLinshePrompt(draft);
+  const costumeRows = database.connection.prepare(
+    "SELECT title, user_note, metadata_json FROM character_assets WHERE character_id=? AND category='costume' ORDER BY created_at ASC LIMIT 20",
+  ).all(characterId) as Array<{ title: string | null; user_note: string | null; metadata_json: string | null }>;
+  const lines: string[] = [];
+  for (const asset of costumeRows) {
+    let meta: Record<string, unknown> = {};
+    try { meta = asset.metadata_json ? JSON.parse(asset.metadata_json) as Record<string, unknown> : {}; } catch {}
+    const skinName = text(meta.skinName ?? asset.title, 100);
+    const outfitDesc = text(meta.outfitDescription ?? asset.user_note, 600);
+    if (skinName && outfitDesc) lines.push(`- ${skinName}：${outfitDesc}`);
+  }
+  if (lines.length === 0) return basePrompt;
+  const marker = '\n\n## 你的外观\n';
+  const idx = basePrompt.indexOf(marker);
+  const skinSection = `\n\n## 可选皮肤与装扮参考\n${lines.join('\n')}`;
+  return idx >= 0
+    ? `${basePrompt.slice(0, idx)}${skinSection}${basePrompt.slice(idx)}`
+    : `${basePrompt}${skinSection}`;
+}
+
+export function publishCharacterSnapshot(
+  database: ServiceDatabase,
+  characterId: string,
+  options?: { versionLabel?: string; allowIncomplete?: boolean },
+): CharacterVersion | null {
+  const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(characterId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
+  const runtime = toCharacterRuntime(draft);
+  if (!options?.allowIncomplete && (!runtime.displayName || (!runtime.personaText.trim() && !runtime.summary.trim()))) {
+    return null;
+  }
+  const version = Number(row.latest_version ?? 0) + 1;
+  const prompt = compileLinshePromptWithCostumes(database, characterId, draft);
+  const now = nowIso();
+  const versionLabel = text(options?.versionLabel, 120);
+  const appearance = normalizeCharacterAppearance(runtime.appearance.legacy);
+  appearance.description = runtime.appearance.baseText;
+  const publishedReferences = database.connection.prepare('SELECT id FROM character_visual_references WHERE character_id=? AND enabled=1 ORDER BY created_at ASC').all(characterId) as Array<{ id: string }>;
+  appearance.referenceIds = [...new Set([...(appearance.referenceIds ?? []), ...publishedReferences.map((reference) => reference.id)])];
+  const appearanceSnapshot = JSON.stringify({ ...appearance, avatarAssetId: row.avatar_asset_id ?? null, references: visualReferenceRows(database, characterId).filter((reference) => reference.enabled) });
+  const provenance = JSON.stringify(database.connection.prepare('SELECT field_path,value_hash,source_kind,source_snapshot_id,source_pointer,evidence_json,confirmed FROM character_field_provenance WHERE character_id=? ORDER BY created_at DESC').all(characterId));
+  const writeVersion = () => {
+    database.connection.prepare(`INSERT INTO character_versions
+      (character_id,version,version_label,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json,compiler_version)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+      characterId,
+      version,
+      versionLabel,
+      JSON.stringify(draft),
+      prompt,
+      now,
+      JSON.stringify(relationshipRows(database, characterId)),
+      Number(row.draft_revision ?? 1),
+      appearanceSnapshot,
+      provenance,
+      CHARACTER_PERSONA_COMPILER_VERSION,
+    );
+    const frozenAssets = database.connection.prepare(`SELECT DISTINCT a.artifact_id FROM character_assets a
+      WHERE a.character_id=? AND a.artifact_id IS NOT NULL AND (a.id=? OR a.id IN (SELECT asset_id FROM character_visual_references WHERE character_id=? AND enabled=1))`).all(characterId, row.avatar_asset_id ? String(row.avatar_asset_id) : null, characterId) as Array<{ artifact_id: string }>;
+    for (const asset of frozenAssets) createArtifactReference(database, { artifactId: asset.artifact_id, appId: 'characters', refType: 'character-version', refId: `${characterId}:${version}` });
+    database.connection.prepare('UPDATE character_profiles SET latest_version=?,updated_at=? WHERE id=?').run(version, now, characterId);
+    database.connection.prepare(`INSERT INTO personas(id,display_name,tags_json,source,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,tags_json=excluded.tags_json,latest_version=excluded.latest_version,updated_at=excluded.updated_at`).run(characterId, runtime.displayName, String(row.tags_json), 'character-library', version, String(row.created_at), now);
+    database.connection.prepare('INSERT OR REPLACE INTO persona_versions VALUES (?,?,?,?,?,?,?,?)').run(characterId, version, runtime.displayName, prompt, runtime.appearance.baseText || null, row.avatar_asset_id ? String(row.avatar_asset_id) : null, JSON.stringify({ characterData: draft }), now);
+  };
+  if (database.connection.isTransaction) writeVersion();
+  else database.transaction(writeVersion);
+  return mapVersion(database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(characterId, version) as Record<string, unknown>);
 }
 
 /**
@@ -627,9 +752,9 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       const raw = JSON.parse(request.query.filter || '{}');
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error();
       for (const key of ['works', 'tags', 'groups', 'excludeIds']) if (raw[key] !== undefined && (!Array.isArray(raw[key]) || raw[key].length > 500 || raw[key].some((v: unknown) => typeof v !== 'string' || v.length > 1000))) throw new Error();
-      for (const key of ['q', 'mediaType', 'originType', 'interpretation', 'source', 'reference', 'appearance', 'unclassified', 'tagMode', 'sort']) if (raw[key] !== undefined && (typeof raw[key] !== 'string' || raw[key].length > 300)) throw new Error();
+      for (const key of ['q', 'mediaType', 'originType', 'workNature', 'parentWork', 'interpretation', 'source', 'reference', 'appearance', 'unclassified', 'tagMode', 'sort']) if (raw[key] !== undefined && (typeof raw[key] !== 'string' || raw[key].length > 300)) throw new Error();
       for (const key of ['page', 'pageSize']) if (raw[key] !== undefined && (!Number.isSafeInteger(raw[key]) || raw[key] < 1)) throw new Error();
-      if (raw.favorite !== undefined && typeof raw.favorite !== 'boolean') throw new Error();
+      for (const key of ['favorite', 'collapseDerivatives']) if (raw[key] !== undefined && typeof raw[key] !== 'boolean') throw new Error();
       query = raw;
     } catch { return reply.code(400).send({ error: '筛选参数无效' }); }
     const { rows, ...result } = browseCharacters(database, query);
@@ -644,8 +769,15 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!name) return reply.code(400).send({ error: '请填写作品名称' });
     const all = [name, ...aliases].map(n => n.toLowerCase());
     if (characterWorks(database).filter(w => database.connection.prepare('SELECT 1 FROM character_works WHERE name=?').get(w.name)).some(w => w.name.toLowerCase() !== name.toLowerCase() && [w.name, ...w.aliases].some(n => all.includes(n.toLowerCase())))) return reply.code(409).send({ error: '名称或别名已属于其他作品，请先整理已有角色的作品' });
-    database.connection.prepare('INSERT INTO character_works(name,aliases_json,media_type) VALUES (?,?,?) ON CONFLICT(name) DO UPDATE SET aliases_json=excluded.aliases_json,media_type=excluded.media_type').run(name, JSON.stringify(aliases), text(request.body?.mediaType, 50));
-    return { name, aliases, mediaType: text(request.body?.mediaType, 50) };
+    return upsertCharacterWorkHierarchy(database, {
+      name,
+      aliases,
+      mediaType: request.body?.mediaType,
+      workNature: request.body?.workNature,
+      parentWork: request.body?.parentWork,
+      worldId: request.body?.worldId,
+      summary: request.body?.summary,
+    });
   });
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/import-sessions/:id/duplicates', async (request, reply) => {
     const session = getCharacterImportSession(database, request.params.id);
@@ -666,7 +798,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     return { items: rows.map((row) => mapProfile(database, row)) };
   });
 
-  app.post<{ Body: { slug?: string; displayName?: string; draft?: unknown; tags?: string[]; variants?: unknown[] } }>('/api/v1/admin/characters', async (request, reply) => {
+  app.post<{ Body: { slug?: string; displayName?: string; draft?: unknown; tags?: string[]; variants?: unknown[]; parentCharacterId?: string | null } }>('/api/v1/admin/characters', async (request, reply) => {
     const body = request.body ?? {};
     const incoming: Record<string, unknown> = { ...(body.draft as object ?? {}) };
     if (body.displayName != null || !incoming.displayName) incoming.displayName = body.displayName ?? incoming.displayName ?? '';
@@ -674,10 +806,14 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!draft.displayName) return reply.code(400).send({ error: 'display_name_required' });
     const id = randomUUID(); const now = nowIso(); const slug = uniqueSlug(database, request.body?.slug || draft.englishName || draft.displayName);
     const variants = Array.isArray(request.body?.variants) ? request.body.variants : [];
+    const parentCharacterId = text(body.parentCharacterId ?? incoming.parentCharacterId, 200) || null;
     database.connection.prepare(`INSERT INTO character_profiles
-      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json)
-      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,?)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now, JSON.stringify(variants));
+      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json,parent_character_id)
+      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,?,?)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now, JSON.stringify(variants), parentCharacterId);
     upsertCharacterBirthday(database, id, draft);
+    if (draft.originType !== 'original') {
+      publishCharacterSnapshot(database, id, { allowIncomplete: true });
+    }
     return reply.code(201).send(mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(id) as Record<string, unknown>));
   });
 
@@ -943,36 +1079,160 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       : statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id);
     if (Number(result.changes) !== 1) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
     upsertCharacterBirthday(database, request.params.id, draft);
+    if (draft.originType !== 'original') {
+      publishCharacterSnapshot(database, request.params.id, { allowIncomplete: true });
+    }
     return mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>);
   });
 
-  app.post<{ Params: { id: string }; Body: { expectedDraftRevision?: number } }>('/api/v1/admin/characters/:id/publish', async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { expectedDraftRevision?: number; versionLabel?: string } }>('/api/v1/admin/characters/:id/publish', async (request, reply) => {
     const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
     if (request.body?.expectedDraftRevision != null && Number(request.body.expectedDraftRevision) !== Number(row.draft_revision ?? 1)) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: Number(row.draft_revision ?? 1) });
-    const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
-    const runtime = toCharacterRuntime(draft);
-    if (!runtime.displayName || (!runtime.personaText.trim() && !runtime.summary.trim())) return reply.code(400).send({ error: 'character_incomplete', message: '发布前至少需要角色名称，以及人设正文或摘要。' });
-    const version = Number(row.latest_version ?? 0) + 1; const prompt = compileLinshePrompt(draft); const now = nowIso();
-    const appearance = normalizeCharacterAppearance(runtime.appearance.legacy);
-    appearance.description = runtime.appearance.baseText;
-    const publishedReferences = database.connection.prepare('SELECT id FROM character_visual_references WHERE character_id=? AND enabled=1 ORDER BY created_at ASC').all(request.params.id) as Array<{ id: string }>;
-    appearance.referenceIds = [...new Set([...(appearance.referenceIds ?? []), ...publishedReferences.map((reference) => reference.id)])];
-    const appearanceSnapshot = JSON.stringify({ ...appearance, avatarAssetId: row.avatar_asset_id ?? null, references: visualReferenceRows(database, request.params.id).filter((reference) => reference.enabled) });
-    const provenance = JSON.stringify(database.connection.prepare('SELECT field_path,value_hash,source_kind,source_snapshot_id,source_pointer,evidence_json,confirmed FROM character_field_provenance WHERE character_id=? ORDER BY created_at DESC').all(request.params.id));
+    const published = publishCharacterSnapshot(database, request.params.id, { versionLabel: request.body?.versionLabel });
+    if (!published) return reply.code(400).send({ error: 'character_incomplete', message: '发布前至少需要角色名称，以及人设正文或摘要。' });
+    return reply.code(201).send(published);
+  });
+
+  // 从原作主卡（或同源卡）一键复制派生为某部「同人作品」的衍生角色，默认零拷贝共享原角色视觉资产
+  app.post<{ Params: { id: string }; Body: CharacterForkDerivativeRequest }>('/api/v1/admin/characters/:id/fork-derivative', {
+    schema: { body: CharacterForkDerivativeRequestSchema },
+  }, async (request, reply) => {
+    const source = database.connection.prepare('SELECT * FROM character_profiles WHERE id=? AND archived=0').get(request.params.id) as Record<string, unknown> | undefined;
+    if (!source) return reply.code(404).send({ error: 'not_found' });
+
+    const sourceDraft = toAuthorityDraft(JSON.parse(String(source.draft_json)));
+    const targetWorkName = text(request.body.targetWork, 200);
+    if (!targetWorkName) return reply.code(400).send({ error: 'target_work_required', message: '请填写衍生同人作品名称。' });
+
+    const parentWorkName = text(request.body.parentWork, 200) || canonicalWork(database, sourceDraft.work) || null;
+    const rootId = source.parent_character_id ? String(source.parent_character_id) : String(source.id);
+    const newId = randomUUID();
+    const now = nowIso();
+    const displayName = text(request.body.displayName, 200) || sourceDraft.displayName;
+    const slug = uniqueSlug(database, `${sourceDraft.englishName || displayName}-${targetWorkName}`);
+    const derivativeDraft: CharacterDraftV2 = {
+      ...structuredClone(sourceDraft),
+      schemaVersion: 2,
+      displayName,
+      originType: 'derivative',
+      work: targetWorkName,
+      parentCharacterId: rootId,
+      summary: text(request.body.summary, 2000) || sourceDraft.summary,
+    };
+    const interpretation = text(request.body.interpretation, 100) || targetWorkName;
+    const org = {
+      ...normalizeOrganization(JSON.parse(String(source.organization_json || '{}'))),
+      interpretation,
+    };
+    const shareAssets = request.body.shareAssets !== false;
+    const tags = JSON.parse(String(source.tags_json || '[]')) as string[];
+
+    let createdWork!: CharacterWork;
     database.transaction(() => {
-      database.connection.prepare(`INSERT INTO character_versions
-        (character_id,version,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json,compiler_version)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(request.params.id, version, JSON.stringify(draft), prompt, now, JSON.stringify(relationshipRows(database, request.params.id)), Number(row.draft_revision ?? 1), appearanceSnapshot, provenance, CHARACTER_PERSONA_COMPILER_VERSION);
-      const frozenAssets = database.connection.prepare(`SELECT DISTINCT a.artifact_id FROM character_assets a
-        WHERE a.character_id=? AND a.artifact_id IS NOT NULL AND (a.id=? OR a.id IN (SELECT asset_id FROM character_visual_references WHERE character_id=? AND enabled=1))`).all(request.params.id, row.avatar_asset_id ? String(row.avatar_asset_id) : null, request.params.id) as Array<{ artifact_id: string }>;
-      for (const asset of frozenAssets) createArtifactReference(database, { artifactId: asset.artifact_id, appId: 'characters', refType: 'character-version', refId: `${request.params.id}:${version}` });
-      database.connection.prepare('UPDATE character_profiles SET latest_version=?,updated_at=? WHERE id=?').run(version, now, request.params.id);
-      database.connection.prepare(`INSERT INTO personas(id,display_name,tags_json,source,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?)
-        ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,tags_json=excluded.tags_json,latest_version=excluded.latest_version,updated_at=excluded.updated_at`).run(request.params.id, runtime.displayName, String(row.tags_json), 'character-library', version, String(row.created_at), now);
-      database.connection.prepare('INSERT OR REPLACE INTO persona_versions VALUES (?,?,?,?,?,?,?,?)').run(request.params.id, version, runtime.displayName, prompt, runtime.appearance.baseText || null, row.avatar_asset_id ? String(row.avatar_asset_id) : null, JSON.stringify({ characterData: draft }), now);
+      createdWork = upsertCharacterWorkHierarchy(database, {
+        name: targetWorkName,
+        workNature: 'derivative',
+        parentWork: parentWorkName,
+      });
+
+      const sourceVariants = (() => {
+        try { return JSON.parse(String(source.variants_json || '[]')) as CharacterVariant[]; } catch { return []; }
+      })();
+      const assetIdMap = new Map<string, string>();
+
+      if (shareAssets) {
+        const sourceAssets = database.connection.prepare('SELECT * FROM character_assets WHERE character_id=? ORDER BY created_at ASC').all(String(source.id)) as Array<Record<string, string | number | bigint | Uint8Array | null>>;
+        for (const asset of sourceAssets) {
+          const clonedAssetId = randomUUID();
+          assetIdMap.set(String(asset.id), clonedAssetId);
+          database.connection.prepare(`INSERT INTO character_assets
+            (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note,category,title,tags_json,metadata_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+            clonedAssetId,
+            newId,
+            asset.kind,
+            now,
+            asset.artifact_id,
+            asset.source_page,
+            asset.source_url,
+            asset.author_note,
+            asset.user_note,
+            asset.category,
+            asset.title,
+            asset.tags_json,
+            asset.metadata_json,
+          );
+          if (asset.artifact_id) {
+            createArtifactReference(database, {
+              artifactId: String(asset.artifact_id),
+              appId: 'characters',
+              refType: 'character-asset',
+              refId: clonedAssetId,
+            });
+          }
+        }
+      }
+
+      const clonedAvatarId = source.avatar_asset_id ? (assetIdMap.get(String(source.avatar_asset_id)) ?? null) : null;
+      const clonedPortraitId = source.portrait_asset_id ? (assetIdMap.get(String(source.portrait_asset_id)) ?? null) : null;
+      const clonedVariants = shareAssets
+        ? sourceVariants.map((variant) => ({
+            ...variant,
+            avatarAssetId: variant.avatarAssetId ? (assetIdMap.get(variant.avatarAssetId) ?? null) : null,
+            avatarUrl: variant.avatarAssetId && assetIdMap.has(variant.avatarAssetId)
+              ? `/api/admin/characters/assets/${assetIdMap.get(variant.avatarAssetId)}`
+              : variant.avatarUrl,
+            portraitAssetId: variant.portraitAssetId ? (assetIdMap.get(variant.portraitAssetId) ?? null) : null,
+            portraitUrl: variant.portraitAssetId && assetIdMap.has(variant.portraitAssetId)
+              ? `/api/admin/characters/assets/${assetIdMap.get(variant.portraitAssetId)}`
+              : variant.portraitUrl,
+          }))
+        : [];
+
+      database.connection.prepare(`INSERT INTO character_profiles
+        (id,slug,display_name,draft_json,tags_json,avatar_asset_id,portrait_asset_id,latest_version,archived,created_at,updated_at,draft_revision,organization_json,variants_json,parent_character_id)
+        VALUES (?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?)`).run(
+        newId,
+        slug,
+        derivativeDraft.displayName,
+        JSON.stringify(derivativeDraft),
+        JSON.stringify(tags),
+        clonedAvatarId,
+        clonedPortraitId,
+        now,
+        now,
+        JSON.stringify(org),
+        JSON.stringify(clonedVariants),
+        rootId,
+      );
+
+      if (shareAssets) {
+        const sourceRefs = database.connection.prepare('SELECT * FROM character_visual_references WHERE character_id=?').all(String(source.id)) as Array<Record<string, string | number | bigint | Uint8Array | null>>;
+        for (const ref of sourceRefs) {
+          const mappedAssetId = assetIdMap.get(String(ref.asset_id));
+          if (!mappedAssetId) continue;
+          database.connection.prepare(`INSERT INTO character_visual_references
+            (id,character_id,asset_id,purposes_json,enabled,crop_json,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?)`).run(
+            randomUUID(),
+            newId,
+            mappedAssetId,
+            ref.purposes_json,
+            ref.enabled,
+            ref.crop_json,
+            now,
+            now,
+          );
+        }
+      }
+
+      upsertCharacterBirthday(database, newId, derivativeDraft);
+      publishCharacterSnapshot(database, newId, { versionLabel: targetWorkName, allowIncomplete: true });
     });
-    return reply.code(201).send(mapVersion(database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(request.params.id, version) as Record<string, unknown>));
+
+    const createdProfile = mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(newId) as Record<string, unknown>);
+    return reply.code(201).send({ character: createdProfile, work: createdWork });
   });
 
   app.post<{ Params: { id: string }; Body: { description?: string; useWeb?: boolean } }>('/api/v1/admin/characters/:id/generate', async (request, reply) => {
@@ -1168,6 +1428,9 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
           null,
           null,
         );
+      }
+      if (nextDraft.originType !== 'original') {
+        publishCharacterSnapshot(database, request.params.id, { allowIncomplete: true });
       }
     });
 

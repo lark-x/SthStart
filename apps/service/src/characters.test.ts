@@ -331,3 +331,117 @@ test('试演提示词使用统一上下文，并只建议 V2 草稿里真实存�
   assert.ok(prompt.includes('/appearance/baseText'));
   assert.ok(prompt.includes('/appearance/defaultOutfitText'));
 });
+
+test('apply-upstream separates stage variants and costume skins with outfit/lore and registers visual references', async () => {
+  const database = new ServiceDatabase();
+  const artifactDirectory = await mkdtemp(resolve(tmpdir(), 'sthstart-upstream-apply-'));
+  const config = readConfig({ STHSTART_ADMIN_TOKEN: ADMIN_TOKEN, STHSTART_ARTIFACT_DIR: artifactDirectory });
+  const pngBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const mockFetcher: typeof fetch = async () => new Response(pngBytes, {
+    status: 200,
+    headers: { 'content-type': 'image/png' },
+  });
+  const { app } = await createService({ config, database, secrets: new SecretStore({}), fetcher: mockFetcher });
+
+  try {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/admin/characters',
+      headers: adminHeaders,
+      payload: { displayName: '琴', draft: draft('琴') },
+    });
+    assert.equal(created.statusCode, 201);
+    const charId = created.json().id as string;
+
+    const applied = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/characters/${charId}/apply-upstream`,
+      headers: adminHeaders,
+      payload: {
+        draft: {
+          schemaVersion: 2,
+          displayName: '琴',
+          englishName: 'Jean',
+          aliases: ['蒲公英骑士'],
+          originType: 'ip',
+          work: '原神',
+          summary: '西风骑士团代理团长，以责任感守护蒙德。',
+          personaText: '【MCP角色索引】《原神》· 蒙德\n### 身份与动机\n出身古恩希尔德家族，坚守骑士职责。',
+          speechText: '礼貌稳重，措辞严谨。',
+          dialogueExamples: ['日常：愿风神护佑蒙德的安宁。'],
+          behaviorRules: '坚守提瓦特世界观认知边界。',
+          appearance: { baseText: '金发高马尾，碧蓝眼眸', defaultOutfitText: '西风骑士团礼服' },
+        },
+        tags: ['蒙德', '风'],
+        selectedVariants: [
+          {
+            id: 'v-sp',
+            name: '古恩希尔德传承形态',
+            classification: 'variant',
+            variantKind: 'stage',
+            outfitDescription: '典雅干练的黑色西式骑士礼服',
+            loreStory: '古恩希尔德家族重要仪式上的装束与责任阶段。',
+            portraitUrl: 'https://example.test/variant-portrait.png',
+            source: 'Yatta',
+            selected: true,
+          },
+        ],
+        selectedSkins: [
+          {
+            id: 's-sea',
+            name: '海风之梦',
+            classification: 'skin',
+            outfitDescription: '清凉蓝白条纹夏日海滨度假礼裙配草帽',
+            loreStory: '琴在金苹果群岛假日穿戴的夏日装扮。',
+            portraitUrl: 'https://example.test/sea-skin.png',
+            source: 'Yatta',
+            selected: true,
+          },
+        ],
+        selectedAssets: [
+          {
+            kind: 'avatar',
+            category: 'avatar',
+            title: '琴官方头像',
+            url: 'https://example.test/avatar.png',
+            source: 'Yatta',
+            setAsActive: true,
+          },
+        ],
+      },
+    });
+    assert.equal(applied.statusCode, 200, applied.body);
+    const body = applied.json();
+    assert.equal(body.createdVariantCount, 1);
+    assert.equal(body.createdSkinCount, 1);
+    assert.equal(body.importedAssetCount, 3);
+
+    const profile = body.profile;
+    assert.equal(profile.draft.personaText.includes('【MCP角色索引】'), false);
+    assert.equal(profile.draft.speechText, '礼貌稳重，措辞严谨。');
+    assert.deepEqual(profile.draft.dialogueExamples, ['日常：愿风神护佑蒙德的安宁。']);
+    assert.equal(profile.variants.length, 1);
+    assert.equal(profile.variants[0].variantKind, 'stage');
+    assert.equal(profile.variants[0].appearance.defaultOutfitText, '典雅干练的黑色西式骑士礼服');
+    assert.ok(profile.variants[0].portraitAssetId);
+    assert.ok(profile.avatarAssetId);
+
+    const assetsRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/admin/characters/${charId}/assets`,
+      headers: adminHeaders,
+    });
+    assert.equal(assetsRes.statusCode, 200);
+    const skinAsset = (assetsRes.json().items as Array<Record<string, unknown>>).find((a) => String(a.title).includes('海风之梦'));
+    assert.ok(skinAsset);
+    assert.equal(skinAsset.category, 'costume');
+    assert.equal((skinAsset.metadata as Record<string, unknown>).outfitDescription, '清凉蓝白条纹夏日海滨度假礼裙配草帽');
+    assert.equal((skinAsset.metadata as Record<string, unknown>).loreStory, '琴在金苹果群岛假日穿戴的夏日装扮。');
+
+    const refs = database.connection.prepare('SELECT COUNT(*) AS count FROM character_visual_references WHERE character_id=? AND enabled=1').get(charId) as { count: number };
+    assert.ok(refs.count >= 2, '皮肤与形态立绘应自动注册为可用视觉参考图');
+  } finally {
+    await app.close();
+    database.close();
+  }
+});

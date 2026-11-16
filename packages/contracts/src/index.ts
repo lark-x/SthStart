@@ -24,6 +24,7 @@ import {
   CharacterUpstreamSelectedAssetImportSchema,
   CharacterUpstreamSkinProposalSchema,
   CharacterVariantKindSchema,
+  stripMachineCharacterIndex,
 } from './character-upstream.js';
 export * from './character-upstream.js';
 export * from './story-world-run-recovery.js';
@@ -1211,6 +1212,24 @@ export const CharacterSpeechSchema = Type.Object({
 });
 export type CharacterSpeech = Static<typeof CharacterSpeechSchema>;
 
+export const WorkNatureSchema = Type.Union([
+  Type.Literal('canon'),
+  Type.Literal('derivative'),
+  Type.Literal('original'),
+]);
+export type WorkNature = Static<typeof WorkNatureSchema>;
+
+export const CharacterOriginTypeSchema = Type.Union([
+  Type.Literal('original'),
+  Type.Literal('ip'),
+  Type.Literal('derivative'),
+]);
+export type CharacterOriginType = Static<typeof CharacterOriginTypeSchema>;
+
+export function normalizeCharacterOriginType(value: unknown): CharacterOriginType {
+  return value === 'ip' || value === 'derivative' || value === 'original' ? value : 'original';
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // V1 草稿（保留用于兼容读取与迁移来源）
 // ────────────────────────────────────────────────────────────────────────────
@@ -1219,7 +1238,7 @@ export const CharacterDraftSchema = Type.Object({
   displayName: Type.String(),
   englishName: Type.String(),
   aliases: Type.Array(Type.String()),
-  originType: Type.Union([Type.Literal('original'), Type.Literal('ip')]),
+  originType: CharacterOriginTypeSchema,
   work: Type.String(),
   world: Type.String(),
   summary: Type.String(),
@@ -1253,8 +1272,9 @@ export const CharacterDraftV2Schema = Type.Object({
   displayName: Type.String(),
   englishName: Type.String(),
   aliases: Type.Array(Type.String()),
-  originType: Type.Union([Type.Literal('original'), Type.Literal('ip')]),
+  originType: CharacterOriginTypeSchema,
   work: Type.String(),
+  parentCharacterId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   summary: Type.String(),
   personaText: Type.String(),
   speechText: Type.String(),
@@ -1289,7 +1309,7 @@ export type CharacterRuntime = {
   readonly displayName: string;
   readonly englishName: string;
   readonly aliases: readonly string[];
-  readonly originType: 'original' | 'ip';
+  readonly originType: CharacterOriginType;
   readonly work: string;
   readonly summary: string;
   /** 稳定的身份、经历、性格、好恶与内在动机。 */
@@ -1390,7 +1410,7 @@ function v1ToRuntime(draft: CharacterDraft): CharacterRuntime {
     displayName: runtimeText(draft.displayName, 200),
     englishName: runtimeText(draft.englishName, 200),
     aliases: runtimeList(draft.aliases),
-    originType: draft.originType === 'ip' ? 'ip' : 'original',
+    originType: normalizeCharacterOriginType(draft.originType),
     work: runtimeText(draft.work, 300),
     summary: runtimeText(draft.summary, 2_000),
     personaText,
@@ -1425,7 +1445,7 @@ function v2ToRuntime(draft: CharacterDraftV2): CharacterRuntime {
     displayName: runtimeText(draft.displayName, 200),
     englishName: runtimeText(draft.englishName, 200),
     aliases: runtimeList(draft.aliases),
-    originType: draft.originType === 'ip' ? 'ip' : 'original',
+    originType: normalizeCharacterOriginType(draft.originType),
     work: runtimeText(draft.work, 300),
     summary: runtimeText(draft.summary, 2_000),
     personaText: runtimeText(draft.personaText),
@@ -1459,7 +1479,7 @@ export function toCharacterRuntime(input: unknown): CharacterRuntime {
       displayName: runtimeText(source.displayName ?? snapshot.displayName, 200),
       englishName: runtimeText(source.englishName ?? snapshot.englishName, 200),
       aliases: runtimeList(source.aliases ?? snapshot.aliases),
-      originType: (source.originType ?? snapshot.originType) === 'ip' ? 'ip' : 'original',
+      originType: normalizeCharacterOriginType(source.originType ?? snapshot.originType),
       work: runtimeText(source.work ?? snapshot.work, 300),
       summary: runtimeText(source.summary ?? snapshot.summary, 2_000),
       personaText: runtimeText(source.personaText),
@@ -1540,7 +1560,7 @@ export function normalizeCharacterDraft(raw: unknown): CharacterDraft {
     displayName: runtimeText(source.displayName, 200),
     englishName: runtimeText(source.englishName, 200),
     aliases: runtimeList(source.aliases, 50),
-    originType: source.originType === 'ip' ? 'ip' : 'original',
+    originType: normalizeCharacterOriginType(source.originType),
     work: runtimeText(source.work, 300),
     world: runtimeText(source.world, 300),
     summary: runtimeText(source.summary, 2_000),
@@ -1584,8 +1604,13 @@ export function normalizeCharacterDraftV2(raw: unknown): CharacterDraftV2 {
     displayName: runtimeText(source.displayName, 200),
     englishName: runtimeText(source.englishName, 200),
     aliases: runtimeList(source.aliases, 50),
-    originType: source.originType === 'ip' ? 'ip' : 'original',
+    originType: normalizeCharacterOriginType(source.originType),
     work: runtimeText(source.work, 300),
+    ...(typeof source.parentCharacterId === 'string' && source.parentCharacterId.trim()
+      ? { parentCharacterId: source.parentCharacterId.trim() }
+      : source.parentCharacterId === null
+        ? { parentCharacterId: null }
+        : {}),
     summary: runtimeText(source.summary, 2_000),
     personaText: runtimeText(source.personaText),
     speechText: runtimeText(source.speechText, 8_000),
@@ -1714,7 +1739,8 @@ export function migrateCharacterDraftToV2(raw: unknown): CharacterMigrationResul
 // ────────────────────────────────────────────────────────────────────────────
 
 function compileHeading(runtime: CharacterRuntime): string {
-  return `你是${runtime.displayName}${runtime.englishName ? `(${runtime.englishName})` : ''}${runtime.originType === 'ip' && runtime.work ? `，来自《${runtime.work}》` : ''}。`;
+  const fromWork = (runtime.originType === 'ip' || runtime.originType === 'derivative') && runtime.work ? `，来自《${runtime.work}》` : '';
+  return `你是${runtime.displayName}${runtime.englishName ? `(${runtime.englishName})` : ''}${fromWork}。`;
 }
 
 /**
@@ -1734,7 +1760,7 @@ export function compileLinshePrompt(input: unknown): string {
   }
 
   const sections: string[] = [];
-  const personaBody = runtime.personaText.trim() || (runtime.schemaVersion === 1 ? runtime.summary.trim() : '');
+  const personaBody = stripMachineCharacterIndex(runtime.personaText).trim() || (runtime.schemaVersion === 1 ? stripMachineCharacterIndex(runtime.summary).trim() : '');
   sections.push(`## 你的身份与经历\n${neutralizeAppearanceHeadings(personaBody) || '尚未补充。'}`);
 
   if (runtime.speechText.trim()) {
@@ -1863,7 +1889,7 @@ export function buildCharacterContextSections(input: unknown, options: Character
   if (rulesFit.truncated) reduced.push('行为约束');
   if (speechFit.truncated) reduced.push('说话方式');
 
-  const personaRaw = runtime.personaText.trim();
+  const personaRaw = stripMachineCharacterIndex(runtime.personaText).trim();
   const personaBudget = Math.max(0, budgetChars - nameLine.length - rulesFit.text.length - speechFit.text.length - 40);
   const personaFit = truncateAtBoundary(personaRaw, personaBudget);
   if (personaFit.truncated) reduced.push('人设正文');
@@ -2004,7 +2030,7 @@ export function applyV1PatchToV2(stored: unknown, patch: Record<string, unknown>
   if (typeof patch.displayName === 'string' && patch.displayName.trim()) next.displayName = patch.displayName.trim();
   if (typeof patch.englishName === 'string') next.englishName = patch.englishName.trim();
   if (typeof patch.work === 'string') next.work = patch.work.trim();
-  if (patch.originType === 'ip' || patch.originType === 'original') next.originType = patch.originType;
+  if (patch.originType === 'ip' || patch.originType === 'derivative' || patch.originType === 'original') next.originType = patch.originType;
   if (typeof patch.summary === 'string') next.summary = patch.summary.trim();
   if (Array.isArray(patch.aliases)) next.aliases = listPatch('aliases');
 
@@ -2185,6 +2211,7 @@ export type CharacterMigrationReviewList = Static<typeof CharacterMigrationRevie
 export const CharacterVersionSchema = Type.Object({
   characterId: Type.String(),
   version: Type.Number(),
+  versionLabel: Type.Optional(Type.String()),
   data: CharacterDraftAnySchema,
   compiledLinshePrompt: Type.String(),
   relationships: Type.Array(CharacterRelationshipSchema),
@@ -2209,13 +2236,23 @@ export type CharacterOrganization = Static<typeof CharacterOrganizationSchema>;
 export type CharacterBrowseQuery = {
   q?: string; works?: string[]; tags?: string[]; groups?: string[];
   tagMode?: 'any' | 'all'; favorite?: boolean; mediaType?: string; originType?: string;
+  workNature?: WorkNature; parentWork?: string; collapseDerivatives?: boolean;
   reference?: 'yes' | 'no'; appearance?: 'yes' | 'no'; interpretation?: string;
   source?: string; unclassified?: 'work' | 'tags'; excludeIds?: string[];
   birthdayStatus?: CharacterBirthdayStatus; birthdayMonth?: number;
   kinds?: ('birthday' | 'activity')[];
   sort?: 'updated' | 'name'; page?: number; pageSize?: number;
 };
-export type CharacterWork = { name: string; aliases: string[]; mediaType: string };
+export const CharacterWorkSchema = Type.Object({
+  name: Type.String(),
+  aliases: Type.Array(Type.String()),
+  mediaType: Type.String(),
+  workNature: Type.Optional(WorkNatureSchema),
+  parentWork: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  worldId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  summary: Type.Optional(Type.String()),
+});
+export type CharacterWork = Static<typeof CharacterWorkSchema>;
 export type CharacterBrowseResult = {
   items: CharacterProfile[]; total: number; page: number; pageSize: number;
   facets: {
@@ -2242,6 +2279,16 @@ export const CharacterVariantSchema = Type.Object({
 });
 export type CharacterVariant = Static<typeof CharacterVariantSchema>;
 
+export const CharacterFamilyMemberSummarySchema = Type.Object({
+  id: Type.String(),
+  displayName: Type.String(),
+  work: Type.String(),
+  originType: CharacterOriginTypeSchema,
+  interpretation: Type.String(),
+  avatarUrl: Type.Union([Type.String(), Type.Null()]),
+});
+export type CharacterFamilyMemberSummary = Static<typeof CharacterFamilyMemberSummarySchema>;
+
 export const CharacterProfileSchema = Type.Object({
   organization: Type.Optional(CharacterOrganizationSchema),
   birthday: Type.Optional(CharacterBirthdaySchema),
@@ -2261,8 +2308,28 @@ export const CharacterProfileSchema = Type.Object({
   draftRevision: Type.Optional(Type.Number()),
   defaultOutfitId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   variants: Type.Optional(Type.Array(CharacterVariantSchema)),
+  parentCharacterId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  familyRootId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  derivativeCount: Type.Optional(Type.Number()),
+  familyMembers: Type.Optional(Type.Array(CharacterFamilyMemberSummarySchema)),
 });
 export type CharacterProfile = Static<typeof CharacterProfileSchema>;
+
+export const CharacterForkDerivativeRequestSchema = Type.Object({
+  targetWork: Type.String({ minLength: 1, maxLength: 200 }),
+  parentWork: Type.Optional(Type.String({ maxLength: 200 })),
+  displayName: Type.Optional(Type.String({ maxLength: 200 })),
+  summary: Type.Optional(Type.String({ maxLength: 2000 })),
+  interpretation: Type.Optional(Type.String({ maxLength: 100 })),
+  shareAssets: Type.Optional(Type.Boolean()),
+});
+export type CharacterForkDerivativeRequest = Static<typeof CharacterForkDerivativeRequestSchema>;
+
+export const CharacterForkDerivativeResponseSchema = Type.Object({
+  character: CharacterProfileSchema,
+  work: CharacterWorkSchema,
+});
+export type CharacterForkDerivativeResponse = Static<typeof CharacterForkDerivativeResponseSchema>;
 
 export const CharacterListResponseSchema = Type.Object({
   items: Type.Array(CharacterProfileSchema),

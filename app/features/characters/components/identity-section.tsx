@@ -95,11 +95,12 @@ export function IdentitySection({
           <span>来源类型</span>
           <Select
             value={draft.originType}
-            onChange={(e) => onChange({ originType: e.target.value as 'original' | 'ip' })}
+            onChange={(e) => onChange({ originType: e.target.value as 'original' | 'ip' | 'derivative' })}
             className="mt-1.5 text-base sm:text-sm"
           >
             <option value="original">原创角色</option>
-            <option value="ip">已有作品角色 (IP)</option>
+            <option value="ip">原作角色 (IP)</option>
+            <option value="derivative">同人衍生</option>
           </Select>
         </label>
 

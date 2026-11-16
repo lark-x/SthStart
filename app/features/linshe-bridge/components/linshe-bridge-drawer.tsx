@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CHARACTER_ASSET_CATEGORIES,
   SHARED_ASSET_CATEGORIES,
@@ -12,17 +12,11 @@ import {
 import {
   RefreshCw,
   Send,
-  Download,
   Users,
   User,
   Image as ImageIcon,
   Check,
-  AlertCircle,
-  ExternalLink,
   FolderDown,
-  Layers,
-  Sparkles,
-  X,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -137,25 +131,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
     }
   };
 
-  // 执行单角色从邻舍拉取同步
-  const handlePullCharacter = async (charId: string) => {
-    setSyncingCharId(charId);
-    try {
-      const res = await syncCharacterWithLinshe({ characterId: charId, action: 'pull_from_linshe' });
-      if (res.ok) {
-        toast.success(res.message || '人设已从邻舍同步更新至 SthStart！');
-      } else {
-        toast.error('同步失败', res.message);
-      }
-      void refetchStatus();
-    } catch (err: unknown) {
-      toast.error('同步失败', err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingCharId(null);
-    }
-  };
-
-  // 打开相册图片转存弹窗
+  // Opens album image import dialog
   const handleOpenImport = (item: { filename: string; url: string; date?: string; prompt?: string }) => {
     setImportTargetItem(item);
     setImportTitle(item.filename.replace(/\.[^/.]+$/, ''));
@@ -260,7 +236,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
           </Button>
         </div>
 
-        {/* 导航栏：人设双向同步 vs 生图资产回流 */}
+        {/* 导航栏：人设单向推送 vs 生图资产回流 */}
         <div className="flex items-center gap-1 bg-surface-muted p-1 rounded-lg border border-border-default/60">
           <Button
             type="button"
@@ -275,7 +251,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
             }`}
           >
             <Users className="h-3.5 w-3.5" />
-            <span>人设双向同步对照</span>
+            <span>人设单向推送 (SthStart 主档)</span>
           </Button>
           <Button
             type="button"
@@ -294,7 +270,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
           </Button>
         </div>
 
-        {/* 标签 1：人设双向同步对照 */}
+        {/* 标签 1：人设单向推送对照（SthStart 为唯一静态人设主档） */}
         {activeTab === 'sync' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-muted px-1">
@@ -354,20 +330,6 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                           <Send className="h-3 w-3" />
                           <span>{isSyncing ? '同步中...' : '推送至邻舍'}</span>
                         </Button>
-                        {m.linsheCharacterId && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handlePullCharacter(m.sthCharacterId)}
-                            disabled={isSyncing}
-                            className="text-[11px] h-7 px-2 gap-1 text-muted hover:text-ink"
-                            title="拉取邻舍中的最新人设正文更新回 SthStart"
-                          >
-                            <Download className="h-3 w-3" />
-                            <span>拉取</span>
-                          </Button>
-                        )}
                       </div>
                     </div>
                   );

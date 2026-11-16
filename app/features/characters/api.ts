@@ -15,6 +15,7 @@ import {
   CharacterLlmStatusResponseSchema,
   CharacterUpstreamResearchPreviewSchema,
   CharacterUpstreamApplyResponseSchema,
+  CharacterForkDerivativeResponseSchema,
 } from '@sthstart/contracts';
 import type {
   CharacterDraftAny,
@@ -31,13 +32,14 @@ import type {
   CharacterLlmStatusResponse,
   CharacterAssetListResponse,
   CharacterPreviewOfficialAssetsResponse,
-  CharacterOfficialAssetCandidate,
   CharacterImportAssetsRequest,
   CharacterSetActiveAssetRequest,
   CharacterUpstreamResearchRequest,
   CharacterUpstreamResearchPreview,
   CharacterUpstreamApplyRequest,
   CharacterUpstreamApplyResponse,
+  CharacterForkDerivativeRequest,
+  CharacterForkDerivativeResponse,
 } from '@sthstart/contracts';
 
 export type CharacterDetail = CharacterProfile & {
@@ -137,8 +139,31 @@ export async function applyCharacterUpstream(
   );
 }
 
-export async function publishCharacter(id: string, expectedDraftRevision?: number): Promise<CharacterVersion> {
-  return postJson<CharacterVersion>(`characters/${id}/publish`, expectedDraftRevision == null ? undefined : { expectedDraftRevision }, undefined, CharacterVersionSchema);
+export async function publishCharacter(
+  id: string,
+  expectedDraftRevision?: number,
+  versionLabel?: string,
+): Promise<CharacterVersion> {
+  const body =
+    expectedDraftRevision == null && !versionLabel
+      ? undefined
+      : {
+          ...(expectedDraftRevision != null ? { expectedDraftRevision } : {}),
+          ...(versionLabel ? { versionLabel } : {}),
+        };
+  return postJson<CharacterVersion>(`characters/${id}/publish`, body, undefined, CharacterVersionSchema);
+}
+
+export async function forkCharacterDerivative(
+  id: string,
+  payload: CharacterForkDerivativeRequest,
+): Promise<CharacterForkDerivativeResponse> {
+  return postJson<CharacterForkDerivativeResponse>(
+    `characters/${id}/fork-derivative`,
+    payload,
+    undefined,
+    CharacterForkDerivativeResponseSchema,
+  );
 }
 
 export async function uploadCharacterAvatar(
@@ -265,7 +290,7 @@ export async function fetchLinsheBridgeStatus(): Promise<import('@sthstart/contr
 
 export async function syncCharacterWithLinshe(payload: {
   characterId: string;
-  action: 'push_to_linshe' | 'pull_from_linshe';
+  action: 'push_to_linshe';
   force?: boolean;
 }): Promise<import('@sthstart/contracts').LinsheBridgeSyncResult> {
   return postJson('linshe-bridge/sync-character', payload);
@@ -274,7 +299,7 @@ export async function syncCharacterWithLinshe(payload: {
 export async function fetchLinsheGallery(params?: {
   folder?: string;
   character?: string;
-}): Promise<{ images: any[] }> {
+}): Promise<{ images: Array<{ filename: string; url: string; date?: string; prompt?: string }> }> {
   const qs = new URLSearchParams();
   if (params?.folder) qs.set('folder', params.folder);
   if (params?.character) qs.set('character', params.character);
@@ -434,7 +459,7 @@ export async function deleteCharacterRelationship(
 export async function browseCharacters(filter: import('@sthstart/contracts').CharacterBrowseQuery, signal?: AbortSignal): Promise<import('@sthstart/contracts').CharacterBrowseResult> {
   return getJson(`characters/browse?${new URLSearchParams({ filter: JSON.stringify(filter) })}`, { signal });
 }
-export type OrganizationEdit = { ids: string[]; work?: string; originType?: 'ip' | 'original'; tags?: string[]; groups?: string[]; interpretation?: string; favorite?: boolean; fillEmpty?: boolean; replaceTags?: boolean; replaceGroups?: boolean };
+export type OrganizationEdit = { ids: string[]; work?: string; originType?: 'ip' | 'derivative' | 'original'; tags?: string[]; groups?: string[]; interpretation?: string; favorite?: boolean; fillEmpty?: boolean; replaceTags?: boolean; replaceGroups?: boolean };
 export const editCharacterOrganization = (input: OrganizationEdit) => putJson<{ updated: number }>('characters/organization', input);
 export const saveCharacterWork = (input: import('@sthstart/contracts').CharacterWork) => putJson('characters/works', input);
 export type ImportDuplicate = { id: string; displayName: string; draftRevision: number; kind: 'exact' | 'source' | 'name' };

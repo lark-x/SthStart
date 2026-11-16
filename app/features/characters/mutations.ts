@@ -20,8 +20,9 @@ import {
   applyCharacterAvatar,
   upstreamResearchCharacter,
   applyCharacterUpstream,
+  forkCharacterDerivative,
 } from './api';
-import type { CharacterDraftAny, CharacterVariant } from '@sthstart/contracts';
+import type { CharacterDraftAny, CharacterForkDerivativeRequest, CharacterVariant } from '@sthstart/contracts';
 
 export function useCreateCharacter() {
   const queryClient = useQueryClient();
@@ -90,10 +91,22 @@ export function useGenerateCharacterDraft() {
 export function usePublishCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, expectedDraftRevision }: { id: string; expectedDraftRevision?: number }) => publishCharacter(id, expectedDraftRevision),
+    mutationFn: ({ id, expectedDraftRevision, versionLabel }: { id: string; expectedDraftRevision?: number; versionLabel?: string }) =>
+      publishCharacter(id, expectedDraftRevision, versionLabel),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: characterKeys.all });
       queryClient.invalidateQueries({ queryKey: characterKeys.detail(data.characterId) });
+    },
+  });
+}
+
+export function useForkCharacterDerivative() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: CharacterForkDerivativeRequest }) =>
+      forkCharacterDerivative(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
     },
   });
 }

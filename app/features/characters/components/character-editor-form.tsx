@@ -20,7 +20,6 @@ export function CharacterEditorForm({
   characterId,
   control,
   register,
-  getValues,
   setValue,
   clearErrors,
   errors,
@@ -44,7 +43,7 @@ export function CharacterEditorForm({
   characterId?: string;
   control: Control<CharacterFormValues>;
   register: UseFormRegister<CharacterFormValues>;
-  getValues: UseFormGetValues<CharacterFormValues>;
+  getValues?: UseFormGetValues<CharacterFormValues>;
   setValue: UseFormSetValue<CharacterFormValues>;
   clearErrors: UseFormClearErrors<CharacterFormValues>;
   errors: FieldErrors<CharacterFormValues>;
@@ -123,26 +122,37 @@ export function CharacterEditorForm({
               />
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <span className="shrink-0 font-medium text-ink/80">角色定位</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-pressed={draft.originType === 'ip'}
-                onClick={() => {
-                  const current = getValues('originType');
-                  setValue('originType', current === 'ip' ? 'original' : 'ip', { shouldDirty: true });
-                  onDirty();
-                }}
-                className={`min-h-[var(--control-h-touch)] sm:h-8 sm:min-h-8 px-3 rounded-control border text-xs font-medium ${
-                  draft.originType === 'ip'
-                    ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)]'
-                    : 'border-border-control bg-surface-input text-muted enabled:hover:text-ink'
-                }`}
-              >
-                {draft.originType === 'ip' ? 'IP 角色' : '原创角色'}
-              </Button>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+              <span className="shrink-0 font-medium text-ink/80 mr-1">角色定位</span>
+              {(
+                [
+                  { value: 'ip', label: '原作角色' },
+                  { value: 'derivative', label: '同人衍生' },
+                  { value: 'original', label: '原创角色' },
+                ] as const
+              ).map((opt) => {
+                const active = draft.originType === opt.value;
+                return (
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-pressed={active}
+                    onClick={() => {
+                      setValue('originType', opt.value, { shouldDirty: true });
+                      onDirty();
+                    }}
+                    className={`min-h-[var(--control-h-touch)] sm:h-7 sm:min-h-7 px-2.5 rounded-control border text-xs font-medium ${
+                      active
+                        ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)]'
+                        : 'border-border-control bg-surface-input text-muted enabled:hover:text-ink'
+                    }`}
+                  >
+                    {opt.label}
+                  </Button>
+                );
+              })}
             </div>
           </div>
 
@@ -204,9 +214,9 @@ export function CharacterEditorForm({
 
       {/* 分段创作画布导航（精简为 3 项，LoRA 收进外貌高级区） */}
       <PageTabs variant="local" ariaLabel="角色档案编辑分段" value={activeTab} onChange={id => onTabChange(id as CharacterEditorTab)} className="character-editor-tabs w-fit max-w-full" tabs={[
-        { id: 'persona', label: <><User className="h-4 w-4" aria-hidden="true" />人设与演绎</> },
-        { id: 'visual', label: <><Camera className="h-4 w-4" aria-hidden="true" />外貌与生图</> },
-        { id: 'assets', label: <><Images className="h-4 w-4" aria-hidden="true" />图片与皮肤</>, count: assetsCount },
+        { id: 'persona', label: <><User className="hidden h-4 w-4 sm:inline" aria-hidden="true" />人设演绎</> },
+        { id: 'visual', label: <><Camera className="hidden h-4 w-4 sm:inline" aria-hidden="true" />外貌生图</> },
+        { id: 'assets', label: <><Images className="hidden h-4 w-4 sm:inline" aria-hidden="true" />图片皮肤</>, count: assetsCount },
       ]} />
 
       {activeTab === 'persona' && (

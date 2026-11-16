@@ -41,7 +41,7 @@ import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
 import { useCharacterBrowser } from '@/app/features/characters/public';
 import { CharacterPagination } from '@/app/features/characters/public-ui';
-import { fetchCharacterDetail } from '@/app/features/characters/api';
+import { fetchCharacterDetail, publishCharacter } from '@/app/features/characters/api';
 import { fetchPending } from '@/app/features/knowledge/api';
 import { fetchNotes } from '@/app/features/notebook/api';
 import { fetchReadingNode, fetchWorks, fetchWorkTree } from '@/app/features/narrative/api';
@@ -800,21 +800,21 @@ function CharactersTab({
       setNotice('');
       return;
     }
-    if (!profile.latestVersion) {
-      setError(`角色「${profile.displayName}」还没有已发布版本，不能建立真实快照。`);
-      return;
-    }
     setVersionLoadingId(profile.id);
     setError('');
     setNotice('');
     try {
+      if (!profile.latestVersion) {
+        await publishCharacter(profile.id);
+      }
       const detail = await fetchCharacterDetail(profile.id);
       const versions = [...detail.versions].sort(
         (left, right) => right.version - left.version,
       );
-      const version = resolveCharacterVersion(versions, profile.latestVersion);
+      const effectiveLatest = detail.latestVersion ?? profile.latestVersion;
+      const version = resolveCharacterVersion(versions, effectiveLatest);
       if (!version) {
-        setError(`角色「${profile.displayName}」的已发布版本不可读取。`);
+        setError(`角色「${profile.displayName}」缺少有效设定文本，请先补充名称与简介或人设。`);
         return;
       }
       const currentActor = actors.find(
@@ -985,7 +985,7 @@ function CharactersTab({
           className="flex-1"
         />
         <p className="text-xs leading-relaxed text-muted">
-          已发布角色可加入并选择版本；未发布角色需先在角色库发布。
+          支持直接引入原作、同人衍生或原创角色；同人世界可自由选用原作与同人分支。
         </p>
       </div>
 
@@ -1007,7 +1007,7 @@ function CharactersTab({
           <EmptyState
             icon={UserRound}
             title="没有匹配角色"
-            description="调整搜索词，或先在角色库发布一个版本。"
+            description="调整搜索词，或在角色库新建角色。"
           />
         )}
 
@@ -1018,7 +1018,7 @@ function CharactersTab({
           );
           const added = Boolean(existing);
           const selectedItem = selected[profile.id];
-          const unavailable = !profile.latestVersion;
+          const originLabel = profile.draft.originType === 'ip' ? '原作' : profile.draft.originType === 'derivative' ? '同人' : '原创';
           return (
             <div
               key={profile.id}
@@ -1035,13 +1035,13 @@ function CharactersTab({
                 <Checkbox
                   aria-label={`选择 ${profile.displayName}`}
                     checked={Boolean(selectedItem)}
-                  disabled={unavailable || importing || versionLoadingId === profile.id}
+                  disabled={importing || versionLoadingId === profile.id}
                   onChange={() => void toggle(profile)}
                 />
                 <button
                   type="button"
                   className="min-w-0 flex-1 text-left"
-                  disabled={unavailable || importing || versionLoadingId === profile.id}
+                  disabled={importing || versionLoadingId === profile.id}
                   onClick={() => void toggle(profile)}
                 >
                   <span className="flex min-w-0 items-center gap-2">
@@ -1053,10 +1053,10 @@ function CharactersTab({
                         {profile.displayName}
                       </span>
                       <span className="block truncate text-xs text-muted">
-                        {profile.draft.work || '未分类'}
-                        {profile.latestVersion
-                          ? ` · 已发布 v${profile.latestVersion}`
-                          : ' · 尚无已发布版本'}
+                        {originLabel} · {profile.draft.work || '未分类'}
+                        {profile.draft.originType === 'original' && profile.latestVersion
+                          ? ` · 阶段 v${profile.latestVersion}`
+                          : ''}
                       </span>
                     </span>
                   </span>
@@ -1066,21 +1066,21 @@ function CharactersTab({
                   {added && (
                     <Badge variant="secondary" className="mt-2">
                       已在当前世界
-                      {existing?.characterVersion
+                      {existing?.characterVersion && profile.draft.originType === 'original'
                         ? ` · v${existing.characterVersion}`
                         : ''}
                     </Badge>
                   )}
                   {versionLoadingId === profile.id && (
                     <span className="mt-2 block text-xs text-muted">
-                      正在读取已发布版本…
+                      正在同步角色设定…
                     </span>
                   )}
                 </button>
               </div>
-              {selectedItem && (
+              {selectedItem && profile.draft.originType === 'original' && selectedItem.versions.length > 1 && (
                 <label className="flex flex-wrap items-center gap-2 rounded-panel bg-surface-sunken px-3 py-2 text-xs text-muted">
-                  <span className="font-medium text-ink">采用版本</span>
+                  <span className="font-medium text-ink">采用阶段版本</span>
                   <Select
                     aria-label={`选择 ${profile.displayName} 的版本`}
                     value={String(selectedItem.version ?? '')}
@@ -1094,8 +1094,8 @@ function CharactersTab({
                     {selectedItem.versions.map((version) => (
                       <option key={version.version} value={version.version}>
                         v{version.version}
-                        {version.version === profile.latestVersion ? ' · 最新' : ''}
-                        {` · ${version.createdAt}`}
+                        {version.versionLabel ? ` · ${version.versionLabel}` : ''}
+                        {version.version === profile.latestVersion ? '（最新）' : ''}
                       </option>
                     ))}
                   </Select>

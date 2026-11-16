@@ -48,12 +48,13 @@ export function ProjectAddSourceDialog({
 
   const addCharacter = async () => {
     const character = library.data?.items.find((item) => item.id === selected);
-    if (!character?.latestVersion) throw new Error('请先在角色库发布角色版本。');
+    if (!character) throw new Error('请选择要加入的角色。');
+    const resolved = await publishedCharacterInput(character);
     if (overview.characters.some((existing) =>
-      existing.sourceCharacterId === character.id && existing.sourceVersion === character.latestVersion)) {
+      existing.sourceCharacterId === character.id && existing.sourceVersion === resolved.sourceVersion)) {
       throw new Error('这个角色版本已经加入项目。');
     }
-    await storyApi.createCharacter(projectId, await publishedCharacterInput(character));
+    await storyApi.createCharacter(projectId, resolved);
   };
 
   const addActivity = async () => {
@@ -87,7 +88,7 @@ export function ProjectAddSourceDialog({
       onOpenChange={(next) => { if (!next && !busy) { onClose(); reset(); } }}
       title={mode === 'character' ? '从角色库加入' : '关联已有制作'}
       description={mode === 'character'
-        ? '只采用已发布版本。角色名相同也按来源 ID 区分。'
+        ? '从角色库引入当前档案快照到项目；角色名相同也按来源 ID 区分。'
         : '章节制作版本自动属于其来源项目；这里关联独立创建的互动制作。'}
       footer={
         <>
@@ -106,7 +107,7 @@ export function ProjectAddSourceDialog({
       <div className="space-y-4">
         {mode === 'character' ? (
           <>
-            <FormField label="搜索已发布角色">
+            <FormField label="搜索角色库角色">
               <Input
                 placeholder="搜索角色名称"
                 value={library.filter.q ?? ''}
@@ -125,21 +126,31 @@ export function ProjectAddSourceDialog({
             {(library.isPlaceholderData || library.isSearchPending) && (
               <p role="status" className="text-sm text-muted">正在更新角色列表…</p>
             )}
-            <FormField label="角色版本">
+            <FormField label="选择角色">
               <Select
                 className="w-full"
                 value={selected}
                 disabled={library.isFetching || library.isSearchPending}
                 onChange={(event) => setSelected(event.target.value)}
               >
-                <option value="">选择已发布角色</option>
+                <option value="">选择角色</option>
                 {(library.data?.items ?? [])
                   .filter((character) => !character.archived)
-                  .map((character) => (
-                    <option key={character.id} value={character.id} disabled={!character.latestVersion}>
-                      {character.displayName} · {character.latestVersion ? 'v' + character.latestVersion : '尚未发布'}
-                    </option>
-                  ))}
+                  .map((character) => {
+                    const originTag =
+                      character.draft.originType === 'ip'
+                        ? '原作'
+                        : character.draft.originType === 'derivative'
+                          ? '同人'
+                          : character.latestVersion
+                            ? `v${character.latestVersion}`
+                            : '原创草稿';
+                    return (
+                      <option key={character.id} value={character.id}>
+                        {character.displayName} · {character.draft.work || '未分类'} · {originTag}
+                      </option>
+                    );
+                  })}
               </Select>
             </FormField>
             {library.isSuccess && !library.isPlaceholderData && !library.isSearchPending

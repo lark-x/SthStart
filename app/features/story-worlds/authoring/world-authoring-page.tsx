@@ -1085,6 +1085,34 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
                 onChange={(event) => patchDefinition({ title: event.target.value })}
               />
             </FormField>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField label="作品属性">
+                <Select
+                  value={definition.workNature ?? 'original'}
+                  onChange={(event) => {
+                    const nextNature = event.target.value as 'canon' | 'derivative' | 'original';
+                    patchDefinition({
+                      workNature: nextNature,
+                      parentWork: nextNature === 'derivative' ? (definition.parentWork ?? '') : null,
+                    });
+                  }}
+                >
+                  <option value="canon">原作（官方 IP 正典世界）</option>
+                  <option value="derivative">同人（基于原作衍生世界）</option>
+                  <option value="original">原创（角色开启阶段版本）</option>
+                </Select>
+              </FormField>
+              {definition.workNature === 'derivative' && (
+                <FormField label="所属母原作">
+                  <Input
+                    value={definition.parentWork ?? ''}
+                    maxLength={200}
+                    placeholder="例如：原神"
+                    onChange={(event) => patchDefinition({ parentWork: event.target.value || null })}
+                  />
+                </FormField>
+              )}
+            </div>
             <FormField
               label="世界简介"
               hint="写下时代、冲突与基调；事实与推测分开表述，AI 会把不确定处列入缺口。"

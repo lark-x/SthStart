@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm, useWatch } from 'react-hook-form';
-import { ArrowLeft, Check, Download, FolderInput, Layers, MoreHorizontal, Save, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, Download, FolderInput, GitFork, History, Layers, MoreHorizontal, Save, Sparkles } from 'lucide-react';
 import { Menu } from '@mantine/core';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
@@ -16,6 +16,8 @@ import { Skeleton } from '@/app/components/ui/skeleton';
 import { useOverlayPortalTarget } from '@/app/components/ui/overlay-policy';
 import { useToast } from '@/app/providers/ui-provider';
 import { useCharacterDetail, useCharacterAssets } from '../queries';
+import { useCharacterBrowser } from '../hooks/use-character-browser';
+import { usePublishCharacter } from '../mutations';
 import { EMPTY_DRAFT_V2 } from '../schemas';
 import {
   characterDraftToFormValues,
@@ -33,6 +35,7 @@ import { CharacterAvatarGenerationOverlay, CharacterAvatarUrlDialog, type Charac
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterMultiSourceDialog } from './character-multi-source-dialog';
 import { CharacterUpstreamDialog } from './character-upstream-dialog';
+import { CharacterForkDialog } from './character-fork-dialog';
 
 const EMPTY_FORM_VALUES = characterDraftToFormValues(EMPTY_DRAFT_V2);
 
@@ -56,7 +59,12 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [multiSourceDialogOpen, setMultiSourceDialogOpen] = useState(false);
   const [upstreamDialogOpen, setUpstreamDialogOpen] = useState(false);
+  const [forkDialogOpen, setForkDialogOpen] = useState(false);
+  const [stageDialogOpen, setStageDialogOpen] = useState(false);
+  const [stageLabel, setStageLabel] = useState('');
   const menuPortalTarget = useOverlayPortalTarget();
+  const publishMutation = usePublishCharacter();
+  const worksBrowser = useCharacterBrowser({ page: 1, pageSize: 20 }, forkDialogOpen);
 
   // Form 仍是唯一表单事实；服务器快照、脏值与恢复由 session Hook 协调。
   const { control, register, getValues, reset, setValue, setError, clearErrors, formState: { isDirty, errors } } = useForm<CharacterFormValues>({ defaultValues: EMPTY_FORM_VALUES });
@@ -159,7 +167,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
       <PageHeader compact
         backHref="/apps/characters"
         backLabel="角色资料库"
-        title="角色档案"
+        title={characterId ? '角色详情' : '新建角色档案'}
         status={
           <div className="flex items-center gap-2">
             <span
@@ -284,6 +292,86 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           下载保留的草稿，供对照合并
         </Button>
       </Alert>}
+
+      {/* 原作/同人：同源角色族切换条与派生按钮 */}
+      {characterId && (draft.originType !== 'original' || (detailData?.familyMembers?.length ?? 0) > 1) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-hairline bg-surface px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="text-xs font-medium text-muted mr-1">同源版本</span>
+            {(detailData?.familyMembers && detailData.familyMembers.length > 0
+              ? detailData.familyMembers
+              : [{ id: characterId, displayName: draft.displayName, work: draft.work, originType: draft.originType, interpretation: '', avatarUrl: null }]
+            ).map((member) => {
+              const active = member.id === characterId;
+              const prefix = member.originType === 'ip' ? '原作' : member.originType === 'derivative' ? '同人' : '原创';
+              return (
+                <Link
+                  key={member.id}
+                  href={`/apps/characters/${member.id}`}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    active
+                      ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)]'
+                      : 'border-hairline bg-surface-sunken/60 text-muted hover:text-ink'
+                  }`}
+                >
+                  <span>{prefix}</span>
+                  <span>·</span>
+                  <span className="truncate max-w-[160px]">{member.work || member.displayName}</span>
+                </Link>
+              );
+            })}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setForkDialogOpen(true)}
+            className="h-7 min-h-7 gap-1 px-2.5 text-xs"
+          >
+            <GitFork className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            <span>复制到同人作品</span>
+          </Button>
+        </div>
+      )}
+
+      {/* 原创角色专属：阶段人设版本记录（仅原创故事开启多阶段版本） */}
+      {characterId && draft.originType === 'original' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-hairline bg-surface px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted mr-1">
+              <History className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>阶段版本</span>
+            </span>
+            {(detailData?.versions || []).length === 0 ? (
+              <span className="text-xs text-muted">尚无阶段快照（可随故事推进保存阶段版本）</span>
+            ) : (
+              (detailData?.versions || []).slice(0, 6).map((ver) => (
+                <span
+                  key={ver.version}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs ${
+                    ver.version === detailData?.latestVersion
+                      ? 'border-[var(--selection-border)] bg-[var(--selection-bg)] text-[var(--selection-fg)] font-medium'
+                      : 'border-hairline bg-surface-sunken/60 text-muted'
+                  }`}
+                >
+                  <span className="tabular-nums">v{ver.version}</span>
+                  {ver.versionLabel && <span>· {ver.versionLabel}</span>}
+                </span>
+              ))
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setStageDialogOpen(true)}
+            className="h-7 min-h-7 gap-1 px-2.5 text-xs"
+          >
+            <History className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            <span>保存为新阶段</span>
+          </Button>
+        </div>
+      )}
 
       {/* 双栏工作台：左栏立绘卡片与资产管理，右栏沉浸式档案创作 */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 items-start">
@@ -450,6 +538,72 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           }
         }}
       />
+
+      {characterId && (
+        <CharacterForkDialog
+          open={forkDialogOpen}
+          onOpenChange={setForkDialogOpen}
+          characterId={detailData?.familyRootId || characterId}
+          displayName={draft.displayName || detailData?.displayName || '未命名角色'}
+          sourceWork={draft.work || ''}
+          works={worksBrowser.facets?.works || []}
+          onForked={(newId) => {
+            router.push(`/apps/characters/${newId}`);
+          }}
+        />
+      )}
+
+      {characterId && (
+        <Dialog
+          open={stageDialogOpen}
+          onOpenChange={(next) => {
+            if (!publishMutation.isPending) setStageDialogOpen(next);
+          }}
+          title="保存原创角色阶段版本"
+          description="为当前人设保存一个阶段快照（例如：序章少年、黑化觉醒期），供故事世界或剧情项目绑定。"
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <Button size="sm" variant="ghost" disabled={publishMutation.isPending} onClick={() => setStageDialogOpen(false)}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                variant="accent"
+                loading={publishMutation.isPending}
+                onClick={async () => {
+                  try {
+                    if (isDirty) await session.handleSave();
+                    const published = await publishMutation.mutateAsync({
+                      id: characterId,
+                      versionLabel: stageLabel.trim() || undefined,
+                    });
+                    toast.success(`已保存阶段版本 v${published.version}${stageLabel.trim() ? `（${stageLabel.trim()}）` : ''}`);
+                    setStageLabel('');
+                    setStageDialogOpen(false);
+                    void refetchDetail();
+                  } catch (err) {
+                    toast.error('保存阶段失败', err instanceof Error ? err.message : String(err));
+                  }
+                }}
+              >
+                确认保存阶段
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-2 py-1">
+            <label htmlFor="stage-label-input" className="block text-xs font-semibold text-ink">
+              阶段名称（可选）
+            </label>
+            <Input
+              id="stage-label-input"
+              value={stageLabel}
+              onChange={(e) => setStageLabel(e.target.value)}
+              placeholder="例如：第一卷 · 学徒期 / 终局觉醒"
+            />
+          </div>
+        </Dialog>
+      )}
     </PageContainer>
   );
 }

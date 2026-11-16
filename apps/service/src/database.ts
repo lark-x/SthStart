@@ -2073,6 +2073,15 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_branch_id TEXT,
       completion_hash TEXT)`,
   ] },
+  { version: 63, name: 'work-hierarchy-and-character-lineage', statements: [
+    `ALTER TABLE character_works ADD COLUMN work_nature TEXT NOT NULL DEFAULT 'canon' CHECK(work_nature IN ('canon','derivative','original'))`,
+    'ALTER TABLE character_works ADD COLUMN parent_work TEXT',
+    'ALTER TABLE character_works ADD COLUMN world_id TEXT',
+    "ALTER TABLE character_works ADD COLUMN summary TEXT NOT NULL DEFAULT ''",
+    'ALTER TABLE character_profiles ADD COLUMN parent_character_id TEXT REFERENCES character_profiles(id) ON DELETE SET NULL',
+    'CREATE INDEX IF NOT EXISTS idx_character_profiles_parent ON character_profiles(parent_character_id)',
+    "ALTER TABLE character_versions ADD COLUMN version_label TEXT NOT NULL DEFAULT ''",
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

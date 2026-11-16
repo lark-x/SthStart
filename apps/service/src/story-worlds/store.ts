@@ -20,6 +20,7 @@ import {
 } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
+import { upsertCharacterWorkHierarchy } from '../characters/organization.js';
 
 type Row = Record<string, unknown>;
 type SqlValue = string | number | null;
@@ -189,34 +190,87 @@ export class StoryWorldStore {
     this.atomic(() => {
       this.exec('INSERT INTO sw_worlds(id,revision,data_json,created_at,updated_at) VALUES (?,?,?,?,?)',
         id, 1, JSON.stringify(world), createdAt, now);
+      if (world.workNature) {
+        upsertCharacterWorkHierarchy(this.database, {
+          name: world.title,
+          workNature: world.workNature,
+          parentWork: world.parentWork ?? null,
+          worldId: world.id,
+          summary: world.summary,
+        });
+      }
     });
     return clone(world);
   }
 
   listSetups(): WorldSetupList {
-    return { items: this.all('SELECT id,title FROM sw_world_setups WHERE completed_branch_id IS NULL ORDER BY updated_at DESC,id')
-      .map((row) => ({ id: asString(row, 'id'), title: asString(row, 'title') })) };
+    return { items: this.all('SELECT id,title,draft_json FROM sw_world_setups WHERE completed_branch_id IS NULL ORDER BY updated_at DESC,id')
+      .map((row) => {
+        const parsed = parse<WorldAuthoringDraft>(row.draft_json);
+        return {
+          id: asString(row, 'id'),
+          title: asString(row, 'title'),
+          ...(parsed.definition?.workNature ? { workNature: parsed.definition.workNature } : {}),
+          ...(parsed.definition?.parentWork !== undefined ? { parentWork: parsed.definition.parentWork } : {}),
+        };
+      }) };
   }
 
-  createSetup(input: CreateWorldSetup): { id: string; title: string } {
+  createSetup(input: CreateWorldSetup): { id: string; title: string; workNature?: 'canon' | 'derivative' | 'original'; parentWork?: string | null } {
     assertSchema<CreateWorldSetup>(CreateWorldSetupSchema, input, 'story_setup_invalid', '创建请求');
     const title = requiredText(input.title, '世界名称');
     return this.atomic(() => {
       const previous = this.get('SELECT * FROM sw_world_setups WHERE creation_key=?', input.idempotencyKey);
       if (previous) {
         if (previous.creation_title !== title) fail('story_creation_idempotency_conflict', 409, '该创建请求已用于其他名称。');
-        return { id: asString(previous, 'id'), title: asString(previous, 'title') };
+        const prevDraft = parse<WorldAuthoringDraft>(previous.draft_json);
+        return {
+          id: asString(previous, 'id'),
+          title: asString(previous, 'title'),
+          ...(prevDraft.definition?.workNature ? { workNature: prevDraft.definition.workNature } : {}),
+          ...(prevDraft.definition?.parentWork !== undefined ? { parentWork: prevDraft.definition.parentWork } : {}),
+        };
       }
       const id = randomUUID();
       const now = nowIso();
+      const workNature = input.workNature;
+      const parentWork = workNature === 'derivative' ? (input.parentWork?.trim() || null) : null;
+      const initialMode = workNature === 'derivative'
+        ? 'adaptation'
+        : workNature === 'original'
+          ? 'alternate'
+          : 'canon-gap';
       const draft: WorldAuthoringDraft = {
-        definition: { title, summary: '', timeLabel: '故事时间', locations: [], actors: [], sources: [],
-          visualReferences: [], lockedFacts: [], models: { action: null, adjudication: null, narration: null }, visualStyle: '' },
-        initialBranch: { title: '主线', mode: 'canon-gap', direction: '' },
+        definition: {
+          title,
+          summary: '',
+          timeLabel: '故事时间',
+          ...(workNature ? { workNature, parentWork } : {}),
+          locations: [],
+          actors: [],
+          sources: [],
+          visualReferences: [],
+          lockedFacts: [],
+          models: { action: null, adjudication: null, narration: null },
+          visualStyle: '',
+        },
+        initialBranch: { title: '主线', mode: initialMode, direction: '' },
       };
       this.exec(`INSERT INTO sw_world_setups(id,creation_key,creation_title,title,revision,draft_json,created_at,updated_at)
         VALUES (?,?,?,?,1,?,?,?)`, id, input.idempotencyKey, title, title, JSON.stringify(draft), now, now);
-      return { id, title };
+      if (workNature) {
+        upsertCharacterWorkHierarchy(this.database, {
+          name: title,
+          workNature,
+          parentWork,
+          worldId: id,
+        });
+      }
+      return {
+        id,
+        title,
+        ...(workNature ? { workNature, parentWork } : {}),
+      };
     });
   }
 
@@ -312,6 +366,15 @@ export class StoryWorldStore {
       const result = this.exec('UPDATE sw_worlds SET revision=?,data_json=?,updated_at=? WHERE id=? AND revision=?',
         world.revision, JSON.stringify(world), now, worldId, input.expectedRevision);
       if (result.changes !== 1) this.conflictWorld(worldId);
+      if (world.workNature) {
+        upsertCharacterWorkHierarchy(this.database, {
+          name: world.title,
+          workNature: world.workNature,
+          parentWork: world.parentWork ?? null,
+          worldId,
+          summary: world.summary,
+        });
+      }
     });
     return this.requireWorld(worldId);
   }
