@@ -195,7 +195,7 @@ export function StoryDerivativesDialog({
                 {createdActivityId ? (
                   <Link
                     href={`/apps/activities/${createdActivityId}`}
-                    className="inline-flex min-h-10 items-center gap-1.5 rounded-control bg-success px-3 text-sm font-medium text-white shadow-2xs hover:brightness-95"
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-control bg-success-solid px-3 text-sm font-medium text-success-on-solid shadow-2xs hover:brightness-95"
                     target="_blank"
                   >
                     <Check className="size-3.5" />
@@ -224,7 +224,7 @@ export function StoryDerivativesDialog({
                     void handleCopy(JSON.stringify(scriptData, null, 2))
                   }
                 >
-                  {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                  {copied ? <Check className="size-3 text-success-fg" /> : <Copy className="size-3" />}
                   {copied ? '已复制' : '复制 JSON'}
                 </Button>
                 <Button
@@ -303,7 +303,7 @@ export function StoryDerivativesDialog({
                 className="h-7 text-xs"
                 onClick={() => void handleCopy(generateActivityChatText())}
               >
-                {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                {copied ? <Check className="size-3 text-success-fg" /> : <Copy className="size-3" />}
                 {copied ? '已复制' : '复制对白流'}
               </Button>
             </div>
@@ -326,7 +326,7 @@ export function StoryDerivativesDialog({
                   className="h-7 text-xs"
                   onClick={() => void handleCopy(chapterBody)}
                 >
-                  {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                  {copied ? <Check className="size-3 text-success-fg" /> : <Copy className="size-3" />}
                   {copied ? '已复制' : '复制正文'}
                 </Button>
                 <Button

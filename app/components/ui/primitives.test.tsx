@@ -15,6 +15,8 @@ import { Switch } from './switch';
 import { FormField } from './form-field';
 import { useImeSafeHandlers } from './use-ime-safe-handlers';
 import { RowActionsMenu } from './row-actions-menu';
+import { SaveStatus } from './save-status';
+import { EmptyState } from './empty-state';
 import { OverlayFlexScrollArea, isCommandShortcut } from './overlay-policy';
 
 const renderControl = (markup: React.ReactElement) => renderToStaticMarkup(
@@ -105,6 +107,26 @@ test('inline text fields expose their variant on the native control without opti
     const normal = renderControl(<Control aria-label="普通字段" />);
     assert.doesNotMatch(normal, /data-ui-variant=/);
   }
+});
+
+test('Input leftIcon renders in the Mantine left section, hidden from assistive tech, with default start padding', () => {
+  const html = renderControl(<Input aria-label="搜索" leftIcon={<Sparkles data-testid="lead" />} />);
+  const inputTag = /<input\b[^>]*>/.exec(html)?.[0] ?? '';
+  // 图标不再是 Input 之前的绝对定位兄弟节点，而是包裹层内的装饰槽，不会被输入框背景盖住。
+  const section = /<div[^>]*data-position="left"[^>]*>/.exec(html)?.[0];
+  assert.ok(section, 'icon sits in the Mantine left section');
+  assert.ok(section.includes('aria-hidden="true"'), 'section is not announced');
+  assert.ok(html.indexOf('data-position="left"') < html.indexOf('<input'), 'section is rendered inside the wrapper before the control');
+  assert.match(html, /data-testid="lead"/);
+  assert.match(inputTag, /class="[^"]*\bpl-9\b/, 'text starts after the icon by default');
+  assert.doesNotMatch(inputTag, /aria-hidden/, 'the control itself stays accessible');
+  const custom = renderControl(<Input aria-label="搜索" leftIcon={<Sparkles />} className="pl-8" />);
+  const customTag = /<input\b[^>]*>/.exec(custom)?.[0] ?? '';
+  assert.match(customTag, /\bpl-8\b/);
+  assert.doesNotMatch(customTag, /\bpl-9\b/, 'caller padding overrides the default');
+  const plain = renderControl(<Input aria-label="普通字段" />);
+  assert.doesNotMatch(plain, /data-position="left"/);
+  assert.doesNotMatch(/<input\b[^>]*>/.exec(plain)?.[0] ?? '', /\bpl-9\b/);
 });
 
 test('Select hides the chevron for multiple and listbox selects and keeps caller padding', () => {
@@ -278,4 +300,20 @@ test('PageTabs root renders a real layout box instead of display:contents', () =
   );
   assert.match(html, /data-page-tabs-root/);
   assert.doesNotMatch(html, /class="[^"]*\bcontents\b/);
+});
+
+test('SaveStatus exposes its state for the status transition and keys the icon by state', () => {
+  const saving = renderControl(<SaveStatus state="saving" />);
+  assert.match(saving, /data-save-state="saving"/);
+  assert.match(saving, /class="save-status /);
+  assert.match(saving, /class="save-status-icon inline-flex"[^>]*aria-hidden="true"/);
+  assert.match(renderControl(<SaveStatus state="saved" />), /data-save-state="saved"/);
+});
+
+test('EmptyState exposes skin hooks on the root and the icon tile only', () => {
+  const html = renderControl(<EmptyState icon={Sparkles} title="还没有内容" description="说明" />);
+  assert.match(html, /data-ui-empty=""/);
+  assert.equal((html.match(/data-ui-empty-icon=""/g) ?? []).length, 1);
+  const bare = renderControl(<EmptyState title="仅标题" />);
+  assert.doesNotMatch(bare, /data-ui-empty-icon/);
 });

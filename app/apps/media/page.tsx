@@ -1,7 +1,6 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import { PageContainer } from '@/app/components/shared/page-layout';
-import { PageHeader } from '@/app/components/shared/page-header';
+import { CollectionLayout } from '@/app/components/shared/page-archetypes';
 import { MediaWorkspace } from '@/app/workspaces/media/media-workspace';
 
 export const metadata: Metadata = {
@@ -11,13 +10,10 @@ export const metadata: Metadata = {
 
 export default function MediaLibraryPage() {
   return (
-    <PageContainer width="wide" className="space-y-4">
-      <PageHeader compact
-        title="媒体库"
-      />
+    <CollectionLayout title="媒体库">
       <Suspense fallback={<div className="py-12 text-center text-sm text-muted">正在加载全局媒体素材…</div>}>
         <MediaWorkspace />
       </Suspense>
-    </PageContainer>
+    </CollectionLayout>
   );
 }

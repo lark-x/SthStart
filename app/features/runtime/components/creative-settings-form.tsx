@@ -78,7 +78,7 @@ export function CreativeSettingsForm({
               {...register('jsonText', { required: '请输入 JSON 配置' })}
               error={errors.jsonText?.message}
               aria-describedby={errors.jsonText ? 'creative-json-error' : undefined}
-              className="bg-ink p-3 text-sm text-[#dae2de] font-mono leading-relaxed"
+              className="bg-ink p-3 text-sm text-[var(--console-fg)] font-mono leading-relaxed"
               spellCheck={false}
             />
             {errors.jsonText?.message && (

@@ -224,7 +224,7 @@ export function WorldCopilotPanel({
             {effectiveTitle || '未选定章节上下文'}
           </span>
           {modelUsed && (
-            <span className="truncate text-[11px] text-muted" title={modelUsed}>
+            <span className="truncate text-xs text-muted" title={modelUsed}>
               模型：{modelUsed}
             </span>
           )}
@@ -305,7 +305,7 @@ export function WorldCopilotPanel({
             <Bookmark className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
             <span>参考篮 ({references.length})</span>
           </h3>
-          <span className="text-[11px] text-muted">最多 10 条</span>
+          <span className="text-xs text-muted">最多 10 条</span>
         </div>
 
         {references.length === 0 ? (
@@ -320,7 +320,7 @@ export function WorldCopilotPanel({
                 className="group flex max-w-full items-center gap-1.5 rounded-full border border-hairline bg-surface px-2.5 py-1 text-xs text-ink shadow-xs"
                 title={ref.excerpt}
               >
-                <span className="max-w-[190px] truncate font-medium">{ref.title}</span>
+                <span className="max-w-47.5 truncate font-medium">{ref.title}</span>
                 <button
                   type="button"
                   aria-label={`移出参考「${ref.title}」`}

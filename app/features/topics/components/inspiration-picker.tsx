@@ -299,7 +299,7 @@ function PickerBody({ onPickIdea, activityType, leadCharacterId, initialRequirem
                   <p className="text-xs text-muted">推荐人物：{idea.recommendedCharacters.map((character) => character.name + (character.work ? '（' + character.work + '）' : '')).join('、')}</p>
                 )}
                 {idea.stages.length > 0 && <p className="text-xs text-muted">阶段：{idea.stages.map((stage) => stage.title).join(' → ')}</p>}
-                {!!idea.assumptions.length && <p className="text-xs text-amber-700">属于建议：{idea.assumptions.join('；')}</p>}
+                {!!idea.assumptions.length && <p className="text-xs text-warning-fg">属于建议：{idea.assumptions.join('；')}</p>}
                 <div className="mt-auto pt-1">
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => onPickIdea(batch, idea)}>应用这个点子</Button>
                 </div>

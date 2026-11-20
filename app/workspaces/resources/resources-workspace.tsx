@@ -75,7 +75,7 @@ export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspace
 
         {currentView === 'collections' && (
           <div className="h-full overflow-y-auto px-4 py-4 sm:px-6">
-            <div className="mx-auto w-full max-w-[1400px]">
+            <div className="mx-auto w-full max-w-350">
               <CollectionManager onOpenPending={() => handleViewChange('pending')} />
             </div>
           </div>
@@ -83,7 +83,7 @@ export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspace
 
         {currentView === 'pending' && (
           <div className="h-full overflow-y-auto px-4 py-4 sm:px-6">
-            <div className="mx-auto w-full max-w-[1400px]">
+            <div className="mx-auto w-full max-w-350">
               <PendingInbox />
             </div>
           </div>
@@ -97,7 +97,7 @@ export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspace
 
         {currentView === 'sources' && (
           <div className="resources-sources-container h-full overflow-y-auto px-4 py-6 sm:px-6">
-            <div className="mx-auto w-full max-w-[1400px] space-y-4">
+            <div className="mx-auto w-full max-w-350 space-y-4">
               <div className="border-b border-border-subtle pb-3">
                 <h2 className="text-base font-semibold text-ink">数据源连接</h2>
                 <p className="text-xs text-muted">

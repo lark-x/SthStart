@@ -426,7 +426,7 @@ export function SceneBeatEditor({
         <div className="rounded-2xl border border-border-default bg-surface p-8 max-w-lg text-center space-y-4 shadow-sm">
           <Film className="h-12 w-12 mx-auto text-accent opacity-70" />
           <div className="space-y-1.5">
-            <h3 className="text-base font-bold text-ink">本阶段还没有场次</h3>
+            <h3 className="text-base font-semibold text-ink">本阶段还没有场次</h3>
             <p className="text-xs text-muted leading-relaxed">
               新建一场后，可以逐条补充分镜动作、台词和结果；这些内容都会保留在草稿中。
             </p>
@@ -506,14 +506,14 @@ export function SceneBeatEditor({
                   aria-pressed={isActive}
                   className={`h-auto px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                     isActive
-                      ? 'bg-surface font-bold text-ink shadow-2xs border border-border-default'
+                      ? 'bg-surface font-semibold text-ink shadow-2xs border border-border-default'
                       : 'text-muted hover:text-ink hover:bg-surface-muted/60 border border-transparent'
                   }`}
                 >
-                  <span className={`px-1.5 py-0.2 rounded text-xs font-mono ${isActive ? 'bg-accent text-fg-on-accent font-bold' : 'bg-surface-muted text-muted'}`}>
+                  <span className={`px-1.5 py-0.2 rounded text-xs font-mono ${isActive ? 'bg-accent text-fg-on-accent font-semibold' : 'bg-surface-muted text-muted'}`}>
                     第 {sIdx + 1} 场
                   </span>
-                  <span className="truncate max-w-[130px] sm:max-w-[180px]">{cleanSceneTitle(s.title)}</span>
+                  <span className="truncate max-w-32.5 sm:max-w-45">{cleanSceneTitle(s.title)}</span>
                   <span className="text-xs text-muted font-mono">({s.beats.length}镜)</span>
                 </Button>
               );
@@ -540,10 +540,10 @@ export function SceneBeatEditor({
         <div className="rounded-lg bg-surface-muted/40 px-3.5 py-1.5 shrink-0 border border-border-default/50">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
-              <span className="px-1.5 py-0.5 rounded bg-accent text-fg-on-accent font-bold text-xs shrink-0 shadow-2xs font-mono">
+              <span className="px-1.5 py-0.5 rounded bg-accent text-fg-on-accent font-semibold text-xs shrink-0 shadow-2xs font-mono">
                 第 {currentSceneIndex + 1} 场
               </span>
-              <h2 className="truncate text-xs sm:text-sm font-bold text-ink max-w-[180px] sm:max-w-xs" title={cleanSceneTitle(currentScene.title) || '未命名场次'}>
+              <h2 className="truncate text-xs sm:text-sm font-semibold text-ink max-w-45 sm:max-w-xs" title={cleanSceneTitle(currentScene.title) || '未命名场次'}>
                 {cleanSceneTitle(currentScene.title) || '未命名场次'}
               </h2>
               {currentScene.timeText && (
@@ -553,13 +553,13 @@ export function SceneBeatEditor({
                 </span>
               )}
               {currentScene.locationText && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-xs text-muted shrink-0 max-w-[140px]" title={currentScene.locationText}>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-xs text-muted shrink-0 max-w-35" title={currentScene.locationText}>
                   <MapPin className="h-3 w-3 shrink-0 text-muted" />
                   <span className="truncate">{currentScene.locationText}</span>
                 </span>
               )}
               {currentScene.environment?.trim() && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-xs text-muted shrink-0 max-w-[180px]" title={currentScene.environment}>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface border border-border-subtle text-xs text-muted shrink-0 max-w-45" title={currentScene.environment}>
                   <Sparkles className="h-3 w-3 shrink-0 text-accent/70" />
                   <span className="truncate">{currentScene.environment}</span>
                 </span>
@@ -705,17 +705,17 @@ export function SceneBeatEditor({
             className={`${
               isNarrowViewport
                 ? isInspectorCollapsed ? 'flex-1 w-full' : 'hidden'
-                : isInspectorCollapsed ? 'flex-1 w-full' : 'w-[40%] xl:w-[38%] min-w-[320px] shrink-0'
+                : isInspectorCollapsed ? 'flex-1 w-full' : 'w-[40%] xl:w-[38%] min-w-80 shrink-0'
             } h-full flex flex-col min-w-0 bg-surface rounded-xl border border-border-default overflow-hidden shadow-2xs transition-all`}
           >
             {/* 列表工具条 */}
             <div className="px-3.5 py-2 border-b border-border-default bg-surface-muted/30 flex items-center justify-between text-xs shrink-0">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-ink flex items-center gap-1.5">
+                <span className="font-semibold text-ink flex items-center gap-1.5">
                   <Film className="h-3.5 w-3.5 text-accent" />
                   <span>分镜镜头序列</span>
                 </span>
-                <span className="px-1.5 py-0.2 rounded bg-surface-muted text-xs text-muted font-mono font-bold">
+                <span className="px-1.5 py-0.2 rounded bg-surface-muted text-xs text-muted font-mono font-semibold">
                   {currentScene.beats.length} 镜
                 </span>
               </div>
@@ -760,7 +760,7 @@ export function SceneBeatEditor({
                     >
                       {/* 镜号 */}
                       <div className="flex flex-col items-center justify-between self-stretch shrink-0 w-6 py-0.5 text-muted">
-                        <span className={`font-mono text-xs font-bold ${isSelected ? 'text-accent' : 'text-muted'}`}>
+                        <span className={`font-mono text-xs font-semibold ${isSelected ? 'text-accent' : 'text-muted'}`}>
                           #{beatIdx + 1 < 10 ? `0${beatIdx + 1}` : beatIdx + 1}
                         </span>
                       </div>
@@ -777,13 +777,13 @@ export function SceneBeatEditor({
                               className="object-cover"
                             />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center text-xs font-bold text-accent bg-accent/10">
+                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-accent bg-accent/10">
                               {isNarrator ? '旁' : actor?.displayName?.slice(0, 1) || '角'}
                             </div>
                           )}
                         </div>
                         <span
-                          className="text-xs font-bold text-ink text-center leading-tight truncate w-full"
+                          className="text-xs font-semibold text-ink text-center leading-tight truncate w-full"
                           title={actor?.displayName || '旁白'}
                         >
                           {isNarrator ? '旁白' : actor?.displayName || '角色'}
@@ -811,7 +811,7 @@ export function SceneBeatEditor({
                         {/* 结果事实胶囊 */}
                         {beat.outcome && (
                           <div className="pt-0.5">
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 max-w-full truncate">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-xs font-medium bg-success-bg text-success-fg border border-success-border max-w-full truncate">
                               <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
                               <span className="truncate">{beat.outcome}</span>
                             </span>
@@ -822,18 +822,18 @@ export function SceneBeatEditor({
                       {/* 右侧媒体渲染微状态 */}
                       <div className="shrink-0 flex items-center gap-1.5 self-center pl-1">
                         {beat.mediaUrl ? (
-                          <div className="relative h-9 w-14 rounded-md overflow-hidden bg-black/90 border border-border-default shadow-2xs shrink-0">
+                          <div className="relative h-9 w-14 rounded-md overflow-hidden bg-media-backdrop/90 border border-border-default shadow-2xs shrink-0">
                             {beat.mediaType === 'video' ? (
                               <video src={beat.mediaUrl} className="h-full w-full object-cover" />
                             ) : (
                               <Image src={beat.mediaUrl} alt="分镜媒体" fill unoptimized className="object-cover" />
                             )}
-                            <div className="absolute bottom-0.5 right-0.5 px-0.5 rounded bg-black/80 text-[6px] text-white font-mono font-bold">
+                            <div className="absolute bottom-0.5 right-0.5 px-0.5 rounded bg-media-backdrop/80 text-[6px] text-on-media font-mono font-semibold">
                               {beat.mediaType === 'video' ? 'VID' : 'IMG'}
                             </div>
                           </div>
                         ) : (
-                          <div className="text-[9px] text-muted/60 bg-surface-muted/60 px-1.5 py-0.5 rounded border border-dashed border-border-subtle shrink-0">
+                          <div className="text-xs text-muted/60 bg-surface-muted/60 px-1.5 py-0.5 rounded border border-dashed border-border-subtle shrink-0">
                             待绘
                           </div>
                         )}
@@ -906,11 +906,11 @@ export function SceneBeatEditor({
               {/* 镜头工作台：工作流预览、异步候选与人工采纳 */}
               <div className="px-4 py-2 border-b border-border-default bg-surface-muted/40 flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs text-ink flex items-center gap-1.5">
+                  <span className="font-semibold text-xs text-ink flex items-center gap-1.5">
                     <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
                     <span>镜头 #{currentBeatIndex + 1} 视听工坊</span>
                   </span>
-                  <span className="text-xs text-muted font-mono truncate max-w-[120px]">{actors.find(actor => actor.id === currentBeat.characterId)?.displayName || currentBeat.characterName || '旁白'}</span>
+                  <span className="text-xs text-muted font-mono truncate max-w-30">{actors.find(actor => actor.id === currentBeat.characterId)?.displayName || currentBeat.characterName || '旁白'}</span>
                 </div>
                 <IconButton
                   icon={PanelRightClose}

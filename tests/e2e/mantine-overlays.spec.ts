@@ -74,19 +74,19 @@ test('role filter sheet docks to the viewport bottom and scrolls on a short scre
     await page.setViewportSize({ width: 390, height });
     await page.goto('/apps/characters');
     await expectHydrated(page);
-    await page.getByRole('button', { name: '筛选与排序', exact: true }).click();
-    const sheet = page.getByRole('dialog', { name: '角色筛选', exact: true });
+    await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+    const sheet = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
     await expect(sheet).toBeVisible();
 
     /* 抽屉打开与布局完成后测量稳定几何位置。 */
-    await expect.poll(async () => (await measureSheetBottom(page, '角色筛选'))?.bottom).toBe(height);
-    const box = await measureSheetBottom(page, '角色筛选');
+    await expect.poll(async () => (await measureSheetBottom(page, '角色筛选与排序'))?.bottom).toBe(height);
+    const box = await measureSheetBottom(page, '角色筛选与排序');
     expect(box).not.toBeNull();
     // 面板底边贴住视口底边，上方留出遮罩；不能浮在顶部。
     expect(box!.top).toBeGreaterThan(0);
     expect(box!.scroller).not.toBeNull();
 
-    const confirm = sheet.getByRole('button', { name: '确认筛选', exact: true });
+    const confirm = sheet.getByRole('button', { name: '完成', exact: true });
     if (height < 844) {
       // 短视口下内容确实超出面板，正文在面板内滚动即可到达页脚动作。
       expect(box!.scroller!.scrollHeight).toBeGreaterThan(box!.scroller!.clientHeight);
@@ -103,8 +103,8 @@ test('role filter sheet docks to the viewport bottom and scrolls on a short scre
 test('command palette is absent while a modal is open and toggles with Ctrl or Meta K', async ({ page }) => {
   await page.goto('/apps/characters');
   await expectHydrated(page);
-  await page.getByRole('button', { name: '筛选与排序', exact: true }).click();
-  const modal = page.getByRole('dialog', { name: '角色筛选', exact: true });
+  await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+  const modal = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
   await expect(modal).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await page.keyboard.press('Control+k');
@@ -127,8 +127,8 @@ test('command palette is absent while a modal is open and toggles with Ctrl or M
 test('nested paging opens inside the native dialog and Escape closes only the top popover', async ({ page }) => {
   await page.goto('/apps/projects/' + projectId);
   await expectHydrated(page);
-  await page.getByRole('tab', { name: /^参考资料/ }).click();
-  const panel = page.getByRole('tabpanel', { name: '参考资料' });
+  await page.getByRole('tab', { name: /^参考/ }).click();
+  const panel = page.getByRole('tabpanel', { name: /^参考/ });
   await panel.getByRole('button', { name: '添加参考资料', exact: true }).first().click();
 
   const picker = page.getByRole('dialog', { name: '添加参考资料', exact: true });
@@ -136,7 +136,7 @@ test('nested paging opens inside the native dialog and Escape closes only the to
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await picker.getByRole('textbox', { name: '搜索资料', exact: true }).fill(prefix);
   await expect(picker.getByRole('navigation', { name: '分页' })).toContainText('共 45 条');
-  const trigger = picker.getByRole('button', { name: /^跳到指定页/ });
+  const trigger = picker.getByRole('button', { name: /跳到指定页/ });
   await trigger.click();
 
   const jump = picker.getByRole('dialog', { name: '跳到指定页', exact: true });

@@ -141,7 +141,7 @@ export function NoteDocument({
 
               {block.type === 'image' && (
                 <div className="notebook-image-block space-y-2 pt-1">
-                  <div className="notebook-image-preview relative aspect-video w-full max-w-2xl overflow-hidden rounded-[12px] bg-surface-muted flex items-center justify-center text-muted">
+                  <div className="notebook-image-preview relative aspect-video w-full max-w-2xl overflow-hidden rounded-[var(--radius-panel)] bg-surface-muted flex items-center justify-center text-muted">
                     {block.src ? (
                       <LocalNoteImage
                         src={block.src}
@@ -223,7 +223,7 @@ export function NoteDocument({
                   </p>
                   <Link
                     href={"/apps/narrative?utterance=" + encodeURIComponent(block.targetId)}
-                    className="text-info font-semibold inline-flex items-center gap-1 hover:underline text-sm"
+                    className="text-info-fg font-semibold inline-flex items-center gap-1 hover:underline text-sm"
                   >
                     <span>{block.locator || '查看叙事档案'}</span>
                     <ArrowRight className="h-3 w-3" />

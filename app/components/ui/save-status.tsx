@@ -50,11 +50,13 @@ export function SaveStatus({ state, detail, className }: SaveStatusProps) {
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 text-[13px] font-medium leading-none', meta.className, className)}
+      className={cn('save-status inline-flex items-center gap-1.5 text-[13px] font-medium leading-none', meta.className, className)}
+      data-save-state={state}
       role="status"
       aria-live="polite"
     >
-      <StatusIcon state={state} />
+      {/* 以状态为 key 重新挂载图标，配合 motion.css 的淡入完成状态点过渡。 */}
+      <span key={state} className="save-status-icon inline-flex" aria-hidden="true"><StatusIcon state={state} /></span>
       <span>{meta.label}</span>
       {detail && state === 'conflict' && (
         <span className="text-muted font-normal">· {detail}</span>

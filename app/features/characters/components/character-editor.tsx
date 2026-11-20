@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm, useWatch } from 'react-hook-form';
 import { ArrowLeft, Check, Download, FolderInput, GitFork, History, Layers, MoreHorizontal, Save, Sparkles } from 'lucide-react';
 import { Menu } from '@mantine/core';
-import { PageContainer } from '@/app/components/shared/page-layout';
-import { PageHeader } from '@/app/components/shared/page-header';
+import { DetailLayout } from '@/app/components/shared/page-archetypes';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -194,8 +193,8 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         <div className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:px-8">
           <Skeleton className="h-10 w-1/3" />
           <div className="grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-5">
-            <Skeleton className="h-[520px] w-full rounded-xl" />
-            <Skeleton className="h-[640px] w-full rounded-xl" />
+            <Skeleton className="h-130 w-full rounded-xl" />
+            <Skeleton className="h-160 w-full rounded-xl" />
           </div>
         </div>
       </div>
@@ -203,12 +202,12 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
   }
 
   return (
-    <PageContainer className="space-y-4 pb-8">
-      {/* 顶部页头：只显示页面定位，不再重复正文的超大号角色标题 */}
-      <PageHeader compact
-        backHref="/apps/characters"
-        backLabel="角色资料库"
-        title={characterId ? '角色详情' : '新建角色档案'}
+    // Detail 原型：首屏主角是角色名与左栏立绘；页头只放保存状态与档案操作。
+    <DetailLayout
+      className="pb-8"
+      backHref="/apps/characters"
+      backLabel="角色库"
+      title={characterId ? (draft.displayName?.trim() || '未命名角色') : '新建角色档案'}
         status={
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Badge role="status" variant={status === 'error' ? 'error' : status === 'saving' || session.hasUnsavedChanges ? 'warning' : 'online'}
@@ -225,7 +224,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
               )}
             </Badge>
             {draft.work && (
-              <span className="text-xs text-muted truncate max-w-[160px]">
+              <span className="text-xs text-muted truncate max-w-40">
                 {draft.work}
               </span>
             )}
@@ -243,7 +242,6 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
                 setUpstreamDialogOpen(true);
               }}
               disabled={status === 'saving' || savingStage}
-              aria-label="上游重构 RP 卡"
               className="gap-1.5 text-xs"
             >
               <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
@@ -306,7 +304,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
             </Menu>
           </div>
         }
-      />
+    >
 
       {session.errorMessage && (
         <div className="mt-4">
@@ -353,7 +351,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
                 >
                   <span>{prefix}</span>
                   <span>·</span>
-                  <span className="truncate max-w-[160px]">{member.work || member.displayName}</span>
+                  <span className="truncate max-w-40">{member.work || member.displayName}</span>
                 </Link>
               );
             })}
@@ -666,6 +664,6 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           </div>
         </Dialog>
       )}
-    </PageContainer>
+    </DetailLayout>
   );
 }

@@ -313,7 +313,7 @@ export function MediaWorkstation({
               <div
                 key={slot.id}
                 className={`p-4 rounded-panel bg-surface border transition-all space-y-3 shadow-2xs ${
-                  isSlotLocked ? 'border-amber-300 ring-1 ring-amber-200' : 'border-border-default'
+                  isSlotLocked ? 'border-warning-border ring-1 ring-warning-border' : 'border-border-default'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -323,7 +323,7 @@ export function MediaWorkstation({
                     </Badge>
                     <span className="text-sm font-semibold text-ink">{slot.caption}</span>
                     {isSlotLocked && (
-                      <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-0.5">
+                      <Badge variant="outline" className="text-xs bg-warning-bg text-warning-fg border-warning-border flex items-center gap-0.5">
                         <Lock className="h-2.5 w-2.5" />
                         已锁定
                       </Badge>
@@ -339,7 +339,7 @@ export function MediaWorkstation({
                       onClick={() => handleToggleSlotLock(slot.id)}
                       disabled={disabled}
                       className={`h-7 min-h-7 w-7 ${
-                        isSlotLocked ? 'text-amber-600 hover:text-amber-700' : 'text-fg-subtle hover:text-ink'
+                        isSlotLocked ? 'text-warning-fg hover:text-warning-fg' : 'text-fg-subtle hover:text-ink'
                       }`}
                       iconClassName="h-3.5 w-3.5"
                     />
@@ -361,17 +361,17 @@ export function MediaWorkstation({
                   {slot.shotDescription}
                 </p>
 
-                {reviewSlots.has(slot.id)&&<p className="text-xs text-amber-700">此镜头有待复核变化，当前采用的素材仍会保留；可从页头「更多 → 内容变化与处理历史」查看来源与处理方式。</p>}
+                {reviewSlots.has(slot.id)&&<p className="text-xs text-warning-fg">此镜头有待复核变化，当前采用的素材仍会保留；可从页头「更多 → 内容变化与处理历史」查看来源与处理方式。</p>}
                 {/* Bound Asset Preview or Placeholder */}
                 <div className="p-2.5 rounded-lg bg-surface border border-border-subtle space-y-2">
                   <div className="text-sm font-medium text-ink flex items-center justify-between">
                     <span>当前采用素材：</span>
                     {boundKey ? (
-                      <Badge variant="outline" className="text-sm bg-emerald-50 text-emerald-700 border-emerald-300">
+                      <Badge variant="outline" className="text-sm bg-success-bg text-success-fg border-success-border">
                         已选片
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-sm text-amber-700 border-amber-300 bg-amber-50">
+                      <Badge variant="outline" className="text-sm text-warning-fg border-warning-border bg-warning-bg">
                         未选片
                       </Badge>
                     )}
@@ -437,9 +437,9 @@ export function MediaWorkstation({
                         variant="outline"
                         disabled={disabled || isSlotLocked}
                         onClick={() => setWorkbenchSlotId(slot.id)}
-                        className="text-sm h-7 flex items-center gap-1 border-sky-300 text-sky-700 hover:bg-sky-50"
+                        className="text-sm h-7 flex items-center gap-1 border-info-border text-info-fg hover:bg-info-bg"
                       >
-                        <Sparkles className="h-3 w-3 text-sky-500" />
+                        <Sparkles className="h-3 w-3 text-info-fg" />
                         绘制图片
                       </Button>
                     )}

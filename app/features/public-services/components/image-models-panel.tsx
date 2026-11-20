@@ -171,10 +171,10 @@ export function ImageModelsPanel({
     <div className="space-y-4">
       {/* 顶部搜索与操作栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted pointer-events-none" />
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-70">
+          <div className="relative flex-1 min-w-45">
             <Input
+              leftIcon={<Search className="h-4 w-4 text-muted" />}
               placeholder="搜索引擎名称、地址或 ID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -383,7 +383,7 @@ export function ImageModelsPanel({
               <div
                 className={`p-4 rounded-lg border flex items-start gap-3 ${
                   testResult.ok
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    ? 'border-success-border bg-success-bg text-success-fg'
                     : 'border-danger/30 bg-danger/10 text-danger'
                 }`}
               >

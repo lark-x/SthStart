@@ -5,11 +5,13 @@ import Image from 'next/image';
 import { ImageOff, RefreshCw, User } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { IconButton } from '@/app/components/ui/icon-button';
-import { pickAvatarTone } from '../model/avatar-tone';
+import { EntityArt } from '@/app/components/ui/entity-art';
 
 interface CharacterAvatarProps {
   src?: string | null;
   name: string;
+  /** 稳定纹样来源（角色 ID）；缺省时按名字生成。 */
+  seed?: string;
   className?: string;
   fallbackClassName?: string;
 }
@@ -17,41 +19,17 @@ interface CharacterAvatarProps {
 export function CharacterAvatar({
   src,
   name,
+  seed,
   className = 'object-cover',
   fallbackClassName,
 }: CharacterAvatarProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const initialLetter = (name || '').trim().slice(0, 1) || '?';
-  const tone = pickAvatarTone(name || '');
 
   if (!src || failedSrc === src) {
     return (
-      <div
-        data-tone={tone}
-        data-character-avatar-fallback="true"
-        className={`relative flex h-full w-full select-none items-center justify-center overflow-hidden bg-[var(--tone-soft)] font-[680] text-[var(--tone-fg)] ${fallbackClassName || ''}`}
-        title={name}
-      >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              'radial-gradient(130% 95% at 15% 5%, color-mix(in srgb, var(--tone) 24%, transparent), transparent 58%), radial-gradient(80% 80% at 90% 95%, color-mix(in srgb, var(--tone) 16%, transparent), transparent 60%)',
-          }}
-        />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-2.5 -right-1 select-none text-[2.8em] font-bold leading-none opacity-[0.09]"
-        >
-          {initialLetter}
-        </span>
-        <span className="relative text-[1.4em] font-[680] leading-none tracking-tight">{initialLetter}</span>
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_1px_0_rgb(255_255_255/30%),inset_0_0_0_1px_color-mix(in_srgb,var(--tone)_22%,transparent)]"
-        />
-      </div>
+      <span data-character-avatar-fallback="true" className={`block h-full w-full ${fallbackClassName || ''}`} title={name}>
+        <EntityArt seed={seed || name || 'character'} title={name || '角色'} tone="violet" fill decorative={false} className="character-avatar-art" />
+      </span>
     );
   }
 
@@ -72,12 +50,15 @@ interface CharacterVisualPreviewProps {
   portraitUrl?: string | null;
   avatarUrl?: string | null;
   displayName: string;
+  /** 稳定纹样来源（角色 ID）；没有立绘和头像时显示 3:4 生成式立绘。 */
+  seed?: string;
 }
 
 export function CharacterVisualPreview({
   portraitUrl,
   avatarUrl,
   displayName,
+  seed,
 }: CharacterVisualPreviewProps) {
   const [failedPortraitSrc, setFailedPortraitSrc] = useState<string | null>(null);
   const [failedAvatarSrc, setFailedAvatarSrc] = useState<string | null>(null);
@@ -116,7 +97,7 @@ export function CharacterVisualPreview({
   return (
     <div
       className={`group relative w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-sunken shadow-inner flex items-center justify-center ${
-        hasAnyVisual ? 'aspect-[3/4]' : 'aspect-[4/3]'
+        hasAnyVisual || !(portraitUrl || avatarUrl) ? 'aspect-[3/4]' : 'aspect-[4/3]'
       }`}
     >
       {showPortrait ? (
@@ -139,6 +120,10 @@ export function CharacterVisualPreview({
           className="object-cover opacity-90"
           onError={() => setFailedAvatarSrc(avatarUrl || '')}
         />
+      ) : !hasAnyVisual ? (
+        <span className="absolute inset-0" data-character-visual-art="true">
+          <EntityArt seed={seed || displayName || 'character'} title={displayName || '角色'} tone="violet" ratio="portrait" fill decorative={false} />
+        </span>
       ) : (
         <div className="flex flex-col items-center justify-center text-muted p-4 text-center">
           <div className="w-12 h-12 rounded-xl bg-surface border border-border-subtle flex items-center justify-center mb-2 shadow-2xs">
@@ -237,7 +222,7 @@ export function CharacterAssetImage({
   if (!src || failedSrc === src) {
     if (fill) return <div className="flex h-full w-full items-center justify-center bg-surface-sunken text-muted" title="素材暂不可用"><ImageOff className="h-5 w-5" aria-label="素材暂不可用" /></div>;
     return (
-      <div className="w-full h-full min-h-[96px] bg-surface-sunken flex flex-col items-center justify-center p-3 text-center select-none overflow-hidden border border-border-subtle/60 rounded-lg">
+      <div className="w-full h-full min-h-24 bg-surface-sunken flex flex-col items-center justify-center p-3 text-center select-none overflow-hidden border border-border-subtle/60 rounded-lg">
         <div className="w-8 h-8 rounded-control bg-surface border border-border-subtle flex items-center justify-center text-muted mb-1 shadow-2xs">
           <ImageOff className="h-4 w-4 stroke-[1.5]" aria-hidden="true" />
         </div>

@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
   BookOpen,
@@ -18,6 +19,9 @@ import type { WorldHub } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { Button, buttonVariants } from '@/app/components/ui/button';
 import { cn } from '@/app/lib/cn';
+import { CoverField } from '@/app/features/covers/components/cover-field';
+import { EntityImage } from '@/app/components/ui/entity-art';
+import { storyWorldKeys } from '../query-keys';
 import {
   ARC_KIND_LABELS,
   WORK_NATURE_LABELS,
@@ -65,6 +69,12 @@ export function WorldOverviewHub({
   );
 
   const worldSummary = definition?.summary || world.summary || '尚未补充作品导语。';
+  const queryClient = useQueryClient();
+  const refreshCover = () => {
+    void queryClient.invalidateQueries({ queryKey: [...storyWorldKeys.all, 'hub', world.id] });
+    void queryClient.invalidateQueries({ queryKey: storyWorldKeys.overview(world.id) });
+    void queryClient.invalidateQueries({ queryKey: storyWorldKeys.list() });
+  };
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
@@ -72,6 +82,15 @@ export function WorldOverviewHub({
         {/* 紧凑作品导语条：去掉重复大标题与整屏简介墙 */}
         <section className="rounded-[var(--radius-panel)] bg-surface p-4 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <CoverField
+              className="world-hub-cover"
+              entityType="story-world"
+              entityId={world.id}
+              title={world.title}
+              tone="blue"
+              coverArtifactId={world.coverArtifactId}
+              onChanged={refreshCover}
+            />
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 {world.workNature && (
@@ -288,7 +307,7 @@ export function WorldOverviewHub({
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-control)] bg-surface-raised px-3 py-1.5 text-xs shadow-[0_0_0_1px_var(--hairline)] transition-colors hover:bg-surface-hover"
                   >
                     <span className="font-medium text-ink">{region.name}</span>
-                    <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-[11px] text-muted">
+                    <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-xs text-muted">
                       {region.locations.length}
                     </span>
                   </button>
@@ -333,13 +352,9 @@ export function WorldOverviewHub({
                             }}
                             className="inline-flex items-center gap-1.5 rounded-full bg-surface-raised py-1 pl-1.5 pr-2.5 text-xs text-ink shadow-[0_0_0_1px_var(--hairline)] transition-colors hover:bg-surface-hover"
                           >
-                            {avatar ? (
-                              <img src={avatar} alt={actor.name} className="h-4 w-4 rounded-full object-cover" />
-                            ) : (
-                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-surface-sunken text-[10px] font-medium text-muted">
-                                {actor.name.slice(0, 1)}
-                              </span>
-                            )}
+                            <span className="world-actor-chip-avatar" aria-hidden="true">
+                              <EntityImage seed={actor.id} title={actor.name} tone="violet" ratio="avatar" src={avatar ?? null} alt="" />
+                            </span>
                             <span>{actor.name}</span>
                           </button>
                         );

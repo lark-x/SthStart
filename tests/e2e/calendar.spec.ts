@@ -16,16 +16,16 @@ test('calendar shows same-day birthdays and prefills a joint birthday activity',
   for (const name of [first, second]) {
     const response = await request.post(`${service}/api/v1/admin/characters`, {
       headers,
-      data: { displayName: name, draft: { displayName: name, work: '原神', birthday: { status: 'known', calendar: 'gregorian', month, day, source: 'manual' } } },
+      data: { displayName: name, draft: { displayName: name, work: '原神', originType: 'ip', birthday: { status: 'known', calendar: 'gregorian', month, day, source: 'manual' } } },
     });
     expect(response.ok(), await response.text()).toBeTruthy();
   }
 
   await page.goto('/apps/calendar');
-  await expect(page.getByRole('heading', { name: '角色日历' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作日历' })).toBeVisible();
 
   // 日期格可能被其他测试数据占满，因此以“日期详情面板”为准来核对当天全部生日。
-  const dayCell = page.getByRole('button', { name: new RegExp(`^${dateKey}，\\d+ 项事件`) });
+  const dayCell = page.getByRole('button', { name: new RegExp(`${dateKey}，共 \\d+ 项事件$`) });
   await expect(dayCell).toBeVisible();
   await dayCell.click();
   // 详情面板的寿星计数改为「寿星 N 位」。
@@ -65,7 +65,7 @@ test('calendar shows same-day birthdays and prefills a joint birthday activity',
    * 断言本身仍然是“新活动按日期出现在日历上”。
    */
   await expect(async () => {
-    const dayCellAfter = page.getByRole('button', { name: new RegExp(`^${dateKey}，\\d+ 项事件`) });
+    const dayCellAfter = page.getByRole('button', { name: new RegExp(`${dateKey}，共 \\d+ 项事件$`) });
     await dayCellAfter.click();
     await expect(page.getByText(`${first}、${second}的生日聚会`).first()).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 20_000 });

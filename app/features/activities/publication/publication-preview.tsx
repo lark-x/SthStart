@@ -74,10 +74,11 @@ export function PublicationComicPreview({ document }: { document: PublicationDoc
         if (!image) {
           const margin = 48;
           const imageHeight = document.orientation === 'portrait' ? 840 : 660;
+          const css = getComputedStyle(ctx.canvas);
           ctx.save();
-          ctx.fillStyle = '#22272b';
+          ctx.fillStyle = css.getPropertyValue('--publication-placeholder').trim() || 'black';
           ctx.fillRect(margin, margin, size.width - 2 * margin, imageHeight);
-          ctx.fillStyle = '#9ca3af';
+          ctx.fillStyle = css.getPropertyValue('--publication-placeholder-fg').trim() || 'gray';
           ctx.font = '500 28px "Noto Sans SC", sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -131,7 +132,7 @@ export function PublicationComicPreview({ document }: { document: PublicationDoc
       )}
 
       <div className="relative mx-auto w-full max-w-xl">
-        <canvas ref={canvas} width={size.width} height={size.height} aria-label="漫画发布预览" className="mx-auto h-auto w-full rounded-panel border border-border-subtle shadow-sm bg-[#f5f0e7]" />
+        <canvas ref={canvas} width={size.width} height={size.height} aria-label="漫画发布预览" className="mx-auto h-auto w-full rounded-panel border border-border-subtle shadow-sm bg-[var(--publication-paper)]" />
       </div>
     </div>
   );

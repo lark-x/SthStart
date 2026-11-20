@@ -117,7 +117,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
             key={stage.id} id={`stage-${stage.id}`}
             className={`p-3 rounded-panel border transition-all ${
               stage.locked
-                ? 'bg-amber-50/40 border-amber-300/60'
+                ? 'bg-warning-bg border-warning-border'
                 : 'bg-surface border-border-default'
             }`}
           >
@@ -147,7 +147,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   className="h-8 min-w-0 text-sm font-semibold max-w-xs bg-transparent"
                 />
                 {stage.locked && (
-                  <Badge variant="outline" className="shrink-0 whitespace-nowrap text-sm text-amber-700 border-amber-300 bg-amber-50 flex items-center gap-1">
+                  <Badge variant="outline" className="shrink-0 whitespace-nowrap text-sm text-warning-fg border-warning-border bg-warning-bg flex items-center gap-1">
                     <Lock className="h-2.5 w-2.5" />
                     已锁定
                   </Badge>
@@ -164,7 +164,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   title={stage.locked ? '解锁此阶段' : '锁定此阶段（防止AI生成覆盖）'}
                   className="h-7 w-7 p-0 text-muted hover:text-ink"
                 >
-                  {stage.locked ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5" />}
+                  {stage.locked ? <Lock className="h-3.5 w-3.5 text-warning-fg" /> : <Unlock className="h-3.5 w-3.5" />}
                 </Button>
                 <Button
                   type="button"
@@ -192,7 +192,7 @@ export function StagesEditor({ stages, actors, onChange, disabled }: StagesEdito
                   size="sm"
                   onClick={() => handleDeleteStage(index)}
                   disabled={disabled || stages.length <= 2}
-                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 disabled:opacity-30"
+                  className="h-7 w-7 p-0 text-danger-fg hover:text-danger-fg disabled:opacity-30"
                   title={stages.length <= 2 ? '至少需保留2个阶段' : '删除阶段'}
                 >
                   <Trash2 className="h-3.5 w-3.5" />

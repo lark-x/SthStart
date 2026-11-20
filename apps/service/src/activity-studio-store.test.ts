@@ -16,7 +16,10 @@ test('migrating from version 47 to head appends later tables without modifying v
     VALUES ('legacy','已有活动','测试','','','',0,1,'2026-10-01','2026-10-01')`).run();
   const before = connection.prepare("SELECT * FROM activities WHERE id='legacy'").get();
   migrateDatabase(connection,SERVICE_DATABASE_MIGRATIONS,'service');
-  assert.deepEqual(connection.prepare("SELECT * FROM activities WHERE id='legacy'").get(),before);
+  // 只比较迁移前就有的列：后续迁移新增的可空列（如 68 的封面）不改变已有数据。
+  const after = connection.prepare("SELECT * FROM activities WHERE id='legacy'").get() as Record<string, unknown>;
+  assert.deepEqual(Object.fromEntries(Object.keys(before as Record<string, unknown>).map(key => [key, after[key]])),{ ...(before as Record<string, unknown>) });
+  assert.equal(after.cover_artifact_id,null);
   // 断言迁移到当前头部版本，而不是写死某一个编号：新增迁移时不需要改这条用例。
   assert.equal(connection.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
     SERVICE_DATABASE_MIGRATIONS.at(-1)!.version);

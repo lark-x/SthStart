@@ -55,10 +55,13 @@ test('interactive controls use the control radius', async ({ page }) => {
   await page.goto('/settings/public-services');
   const appIdInput = page.getByPlaceholder('应用 ID，例如 my-app');
   const extensionsTab = page.getByRole('tab', { name: '扩展服务', exact: true });
-  for (let attempt = 0; attempt < 12 && !(await appIdInput.isVisible().catch(() => false)); attempt += 1) {
+  // 应用访问授权改为「扩展服务」页内默认折叠的高级区；先切到该页签，再展开折叠区。
+  const advanced = page.locator('details').filter({ has: page.locator('summary', { hasText: '应用访问授权（高级）' }) });
+  for (let attempt = 0; attempt < 12 && !(await advanced.isVisible().catch(() => false)); attempt += 1) {
     await extensionsTab.click();
     await page.waitForTimeout(150);
   }
+  if (!(await advanced.evaluate(el => (el as HTMLDetailsElement).open))) await advanced.locator('summary').click();
   await expect(appIdInput).toBeVisible({ timeout: 10_000 });
   const inputHeight = await appIdInput.evaluate((el) => el.getBoundingClientRect().height);
   expect(inputHeight).toBeGreaterThanOrEqual(36);

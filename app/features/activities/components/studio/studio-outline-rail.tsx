@@ -66,7 +66,7 @@ export function StudioOutlineRail({
                   onClick={() => onSelectStage(stage.id)}
                   aria-label={`第 ${idx + 1} 幕 · ${stage.title}`}
                   aria-pressed={isSelected}
-                  className={`h-8 min-h-8 w-8 rounded-lg p-0 text-xs font-mono font-bold transition-all cursor-pointer ${
+                  className={`h-8 min-h-8 w-8 rounded-lg p-0 text-xs font-mono font-semibold transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-accent text-fg-on-accent shadow-2xs'
                       : 'text-muted hover:text-ink hover:bg-surface-muted'
@@ -150,17 +150,17 @@ export function StudioOutlineRail({
                 className="group flex h-auto w-full min-h-0 cursor-pointer items-center justify-between rounded-none px-2 py-2.5 text-left focus-visible:outline focus-visible:outline-accent"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
+                  <span className={`px-1.5 py-0.2 rounded font-mono text-xs font-semibold ${
                     isStageActive ? 'bg-accent text-fg-on-accent' : 'bg-surface-muted text-muted'
                   }`}>
                     {stageIdx + 1}
                   </span>
-                  <span className="max-w-[110px] truncate text-sm font-medium text-ink" title={stage.title}>
+                  <span className="max-w-27.5 truncate text-sm font-medium text-ink" title={stage.title}>
                     {cleanTitle}
                   </span>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted">
+                <div className="flex shrink-0 items-center gap-1 font-mono text-xs text-muted">
                   <span title={`本幕共 ${totalBeats} 镜，已配图 ${mediaCount}`}>
                     {mediaCount}/{totalBeats}图
                   </span>
@@ -194,11 +194,11 @@ export function StudioOutlineRail({
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <Film className="h-3 w-3 shrink-0 opacity-70" />
-                          <span className="truncate max-w-[100px]" title={scene.title}>
+                          <span className="truncate max-w-25" title={scene.title}>
                             {cleanSceneTitle || `第 ${sceneIdx + 1} 场`}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono opacity-80">
+                        <span className="text-xs font-mono opacity-80">
                           {beatCount}镜
                         </span>
                       </Button>

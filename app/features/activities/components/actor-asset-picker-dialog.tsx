@@ -97,7 +97,7 @@ export function ActorAssetPickerDialog({
             {/* 1. 挑选头像 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-ink flex items-center gap-1.5">
+                <label className="text-xs font-semibold text-ink flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5 text-accent" />
                   <span>选择本场头像 ({avatarCandidates.length})</span>
                 </label>
@@ -146,8 +146,8 @@ export function ActorAssetPickerDialog({
             {/* 2. 挑选立绘 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-ink flex items-center gap-1.5">
-                  <ImageIcon className="h-3.5 w-3.5 text-purple-500" />
+                <label className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                  <ImageIcon className="h-3.5 w-3.5 text-tone-violet-fg" />
                   <span>选择本场立绘 ({portraitCandidates.length})</span>
                 </label>
                 <span className="text-xs text-muted">用于舞台大图、朋友圈半身照</span>
@@ -167,7 +167,7 @@ export function ActorAssetPickerDialog({
                         onClick={() => setSelectedPortraitId(asset.id)}
                         className={`group relative aspect-[3/4] rounded-xl border cursor-pointer overflow-hidden p-1.5 transition-all flex flex-col items-center justify-center ${
                           isSelected
-                            ? 'border-purple-500 bg-purple-500/10 ring-2 ring-purple-500 shadow-sm'
+                            ? 'border-tone-violet/30 bg-tone-violet-soft ring-2 ring-tone-violet/30 shadow-sm'
                             : 'border-border-default bg-surface hover:border-border-hover'
                         }`}
                       >
@@ -181,7 +181,7 @@ export function ActorAssetPickerDialog({
                           />
                         </div>
                         {isSelected && (
-                          <div className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-white shadow-xs">
+                          <div className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-fg-on-accent shadow-xs">
                             <Check className="h-3 w-3" />
                           </div>
                         )}

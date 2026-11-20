@@ -37,7 +37,10 @@
 @import './styles/theme.css';
 @import './styles/workspace-b.css';
 @import './styles/resources.css';
-@import './styles/warm-white-skin.css';
+/* 风格化皮肤（data-ui-skin）：按源码顺序导入，genshin → sticker → 公共层。 */
+@import './styles/skins/genshin.css';
+@import './styles/skins/sticker.css';
+@import './styles/skins/_base.css';
 
 /*
  * ============================================================================
@@ -60,6 +63,7 @@
 @import './styles/notebook.css';
 @import './styles/responsive.css';
 @import './styles/studio-shared.css';
+@import './styles/entity-art.css';
 @import './styles/notebook-refinements.css';
 @import './styles/motion.css';
 @import './styles/mantine-bridge.css';

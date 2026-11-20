@@ -25,15 +25,17 @@ export function EmptyState({
         'flex min-h-40 flex-col items-center justify-center px-5 py-8 text-center',
         className
       )}
+      data-ui-empty=""
       {...props}
     >
       {Icon ? (
-        <div className="mb-3 grid size-9 place-items-center rounded-control bg-surface-sunken text-muted">
+        <div className="mb-3 grid size-9 place-items-center rounded-control bg-surface-sunken text-muted" data-ui-empty-icon="">
           <Icon className="size-[18px]" aria-hidden="true" />
         </div>
       ) : symbol ? (
         <span
           className="mb-3 grid size-9 place-items-center rounded-control bg-surface-sunken text-muted"
+          data-ui-empty-icon=""
           aria-hidden="true"
         >
           {symbol}

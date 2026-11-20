@@ -6,6 +6,7 @@ import type { NarrativeReading } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { cn } from '@/app/lib/cn';
+import { ReaderLayout } from '@/app/components/shared/page-archetypes';
 import type { NarrativeAdoptAction } from '../adopt-action';
 
 /**
@@ -71,7 +72,7 @@ export function NarrativeReader({
 
   return (
     <article ref={articleRef} className="min-w-0 flex-1 overflow-y-auto bg-surface md:rounded-panel md:shadow-xs">
-      <div className="mx-auto w-full max-w-[var(--shell-reading)] px-4 py-6 sm:px-8">
+      <ReaderLayout embedded className="w-full px-4 py-6 sm:px-8">
         <header className="narrative-reader-header space-y-3 pb-6">
           <div className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle">
             <span className="rounded-full bg-surface-sunken px-2.5 py-0.5 font-medium text-muted border border-border-subtle">
@@ -79,7 +80,7 @@ export function NarrativeReader({
             </span>
           </div>
 
-          <h2 className="font-sans text-[26px] font-semibold tracking-tight leading-snug text-ink">
+          <h2 className="font-sans text-[length:var(--text-display)] font-semibold tracking-tight leading-snug text-ink">
             {reading.node.title}
           </h2>
 
@@ -155,7 +156,7 @@ export function NarrativeReader({
                       {/* data-reading-surface 供计划 §11.3 的正文≥16px 验收定位真实正文，沉浸式阅读区启用衬线体。 */}
                       <p
                         data-reading-surface="true"
-                        className={cn('font-serif text-base leading-loose', isNarration ? 'italic text-muted' : 'text-ink')}
+                        className={cn('reader-prose', isNarration ? 'italic text-muted' : 'text-ink')}
                       >
                         {line.text}
                       </p>
@@ -164,7 +165,8 @@ export function NarrativeReader({
                         <small className="mt-1.5 block font-sans text-xs text-fg-subtle">条件：{line.condition}</small>
                       )}
 
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                      {/* 段落操作：手机常驻在正文下方；桌面悬停或聚焦时浮在段落右上角，不再给每段留出一行空白。 */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 opacity-100 transition-opacity sm:absolute sm:right-0 sm:top-0 sm:mt-0 sm:rounded-control sm:bg-surface-raised sm:px-1 sm:shadow-[var(--elev-sm)] sm:opacity-0 sm:pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:focus-within:pointer-events-auto sm:focus-within:opacity-100">
                       {adoptAction?.({ source: { kind: 'narrative', id: line.id } })}
                       <Button
                         type="button"
@@ -172,7 +174,7 @@ export function NarrativeReader({
                         variant="ghost"
                         onClick={() => void onSaveUtteranceToNotebook(line.id)}
                         aria-label={`摘录到笔记：${line.speaker || '旁白'}`}
-                        className="mt-1.5 h-8 px-2.5 text-sm text-fg-subtle opacity-100 transition-opacity hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                        className="h-8 px-2.5 text-sm text-fg-subtle hover:text-ink"
                       >
                         <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>摘录到笔记</span>
@@ -185,7 +187,7 @@ export function NarrativeReader({
             </section>
           ))}
         </div>
-      </div>
+      </ReaderLayout>
     </article>
   );
 }

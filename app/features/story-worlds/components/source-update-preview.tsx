@@ -79,11 +79,11 @@ function EntityCard({ entity }: { entity: WorldSourceUpdateEntity }) {
               <dt className="text-xs font-medium text-muted">{field.label}</dt>
               <dd className="mt-1 grid gap-1.5 sm:grid-cols-2">
                 <div className="rounded-control border border-border-subtle bg-surface px-2.5 py-2">
-                  <p className="text-[11px] font-medium text-muted">当前快照</p>
+                  <p className="text-xs font-medium text-muted">当前快照</p>
                   <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">{field.before}</p>
                 </div>
                 <div className="rounded-control border border-border-subtle bg-surface px-2.5 py-2">
-                  <p className="text-[11px] font-medium text-muted">新版资料</p>
+                  <p className="text-xs font-medium text-muted">新版资料</p>
                   <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">{field.after}</p>
                 </div>
               </dd>
@@ -306,6 +306,17 @@ export interface SourceUpdatePreviewProps {
   branchRevision: number;
   available: boolean;
   onEditWorld?: () => void;
+  /**
+   * 受控的对话框开关。来源面板位于作品左栏，窄屏时左栏会在侧栏与底部抽屉之间切换并重新挂载；
+   * 由工作台持有开关状态，跨断点调整窗口时影响预览不会被意外关闭。
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * 只渲染触发区（`trigger`）或只渲染对话框（`dialog`）。工作台把触发区放在左栏，
+   * 对话框挂在左栏之外，窄屏抽屉关闭时对话框也能保持打开。默认两者都渲染。
+   */
+  part?: 'both' | 'trigger' | 'dialog';
 }
 
 export function sourceUpdateRefreshRequest(preview: WorldSourceUpdatePreview): RefreshWorldSources {
@@ -322,8 +333,16 @@ export function SourceUpdatePreview({
   branchRevision,
   available,
   onEditWorld,
+  open: controlledOpen,
+  onOpenChange,
+  part = 'both',
 }: SourceUpdatePreviewProps) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const actions = useStoryWorldActions();
@@ -332,7 +351,7 @@ export function SourceUpdatePreview({
   const query = useQuery({
     queryKey: [...storyWorldKeys.all, 'source-update-preview', worldId, branchId],
     queryFn: ({ signal }) => fetchWorldSourceUpdatePreview(worldId, branchId, signal),
-    enabled: open && Boolean(worldId) && Boolean(branchId),
+    enabled: part !== 'trigger' && open && Boolean(worldId) && Boolean(branchId),
     staleTime: 0,
     retry: false,
     refetchOnMount: 'always',
@@ -370,9 +389,12 @@ export function SourceUpdatePreview({
     }
   };
 
+  const showTrigger = part !== 'dialog';
+  const showDialog = part !== 'trigger';
+
   return (
     <>
-      {available ? (
+      {!showTrigger ? null : available ? (
         <Alert variant="warning" title="来源有新版本">
           <p>纳入前先比较世界定义与当前分支快照。确认后只影响以后推进，已有事件和记忆不会改写。</p>
           <Button
@@ -402,7 +424,7 @@ export function SourceUpdatePreview({
           检查来源与人物卡版本
         </Button>
       )}
-      {open && createPortal(<Dialog
+      {showDialog && open && createPortal(<Dialog
         open={open}
         onOpenChange={(next) => {
           if (!next) close();

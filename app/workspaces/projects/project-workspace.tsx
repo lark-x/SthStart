@@ -13,6 +13,8 @@ import { Card } from '@/app/components/ui/card';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { PageContainer } from '@/app/components/shared/page-layout';
+import { DetailLayout } from '@/app/components/shared/page-archetypes';
+import { CoverField } from '@/app/features/covers/components/cover-field';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { KnowledgePicker } from '@/app/features/knowledge/components/knowledge-picker';
 import { authorshipLabels, natureLabels } from '@/app/features/notebook/schemas';
@@ -139,13 +141,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   };
 
   return (
-    <PageContainer className="space-y-4">
-      <PageHeader
-        compact
-        backHref={back.href}
-        backLabel={back.label}
-        title={project.title}
-        navigation={
+    <DetailLayout
+      backHref={back.href}
+      backLabel={back.label}
+      title={project.title}
+      navigation={
           <PageTabs
             variant="local"
             ariaLabel="项目内容"
@@ -164,8 +164,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               { id: 'media', label: TAB_LABELS.media, count: media.length, panelId: 'project-panel' },
             ]}
           />
-        }
-        actions={
+      }
+      actions={
           <div className="flex flex-wrap items-center gap-2">
             {worldWorkbenchHref && (
               <Link href={worldWorkbenchHref} className={buttonVariants({ variant: 'primary', size: 'sm' })}>
@@ -177,10 +177,35 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               旧版编辑
             </Link>
           </div>
-        }
-      />
-
-      {project.summary && <p className="max-w-[var(--shell-reading)] text-sm leading-relaxed text-muted">{project.summary}</p>}
+      }
+      media={
+        <CoverField
+          entityType="story-project"
+          entityId={project.id}
+          title={project.title}
+          tone="blue"
+          coverArtifactId={project.coverArtifactId}
+          onChanged={() => {
+            void client.invalidateQueries({ queryKey: projectKeys.overview(projectId) });
+            void client.invalidateQueries({ queryKey: storyKeys.scope(projectId) });
+          }}
+        />
+      }
+      meta={
+        <div className="detail-meta-stack">
+          <p className="detail-meta-eyebrow">创作项目</p>
+          {project.summary
+            ? <p className="detail-meta-summary">{project.summary}</p>
+            : <p className="detail-meta-summary text-muted">还没有项目简介。</p>}
+          <dl className="detail-meta-stats">
+            <div><dt>正文与大纲</dt><dd>{userDocs.length}</dd></div>
+            <div><dt>角色</dt><dd>{characters.length}</dd></div>
+            <div><dt>参考资料</dt><dd>{references.length}</dd></div>
+            <div><dt>制作</dt><dd>{productions.length}</dd></div>
+          </dl>
+        </div>
+      }
+    >
       {error && <Alert variant="danger" title="操作失败" onDismiss={() => setError('')}>{error}</Alert>}
       {notice && <Alert variant="success" onDismiss={() => setNotice('')}>{notice}</Alert>}
 
@@ -527,6 +552,6 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           void client.invalidateQueries({ queryKey: storyKeys.scope(projectId) });
         }}
       />
-    </PageContainer>
+    </DetailLayout>
   );
 }

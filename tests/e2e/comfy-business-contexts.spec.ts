@@ -111,7 +111,8 @@ test('character avatar retains the draft when closing the generation overlay on 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/apps/characters/${(await created.json()).id}`);
   // 窄屏角色页把视觉预览与头像操作收纳在可展开条目中。
-  await page.getByRole('button', { name: '视觉预览与资产形态', exact: false }).click();
+  // 折叠条文案现为「… · 视觉与基础档案」（分支上已确认的有意改动）。
+  await page.getByRole('button', { name: /视觉与基础档案/ }).click();
   await page.getByRole('button', { name: 'AI 生图', exact: true }).click();
   const panel = page.getByLabel('图片生成配置', { exact: true });
   await expect(panel).toHaveAttribute('data-ready', 'true');

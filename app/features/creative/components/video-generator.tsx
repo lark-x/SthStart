@@ -61,7 +61,7 @@ export function VideoGenerator({
           <InputLabel htmlFor="video-prompt">正向提示词</InputLabel>
           <Textarea
             id="video-prompt"
-            className="mt-1.5 min-h-[112px] text-base sm:text-sm"
+            className="mt-1.5 min-h-28 text-base sm:text-sm"
             value={form.prompt}
             onChange={(event) => onFormChange('prompt', event.target.value)}
             placeholder="描述镜头、主体动作与氛围…"

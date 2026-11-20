@@ -275,7 +275,7 @@ export function PlanningCandidatesStep({
           {llmReady === false && <Alert variant="warning" title="文本模型未就绪">请先前往 <a className="underline" href={mcpSettingsHref} target="_blank" rel="noreferrer">公共服务配置</a> 绑定文本模型。</Alert>}
           {researchStale && <Alert variant="warning" title="研究输入已过期">活动意图在研究之后有改动，生成的方案会标记为「基于旧设置」。</Alert>}
           <Button variant="primary" disabled={generating || !intake.cast.length} onClick={onGenerate}>
-            {generating ? <><Spinner size="sm" label="" className="text-white" />正在生成…</> : <><Wand2 className="h-3.5 w-3.5" />根据候选生成方案</>}
+            {generating ? <><Spinner size="sm" label="" className="text-current" />正在生成…</> : <><Wand2 className="h-3.5 w-3.5" />根据候选生成方案</>}
           </Button>
           {generating && job && <p className="text-xs text-muted">任务状态：{job.status === 'queued' ? '排队中' : '生成中'}…</p>}
           {runningJob && hasSession && job && (

@@ -133,7 +133,7 @@ export function StudioDirectorPanel({
         {!beat ? (
           <div className="py-12 text-center text-xs text-muted space-y-2">
             <p>在中间列表点击选择一个镜头</p>
-            <p className="text-[11px] text-muted/80">
+            <p className="text-xs text-muted/80">
               在此调整景别、光影与情绪，并即刻生成高质量画面。
             </p>
           </div>
@@ -141,7 +141,7 @@ export function StudioDirectorPanel({
           <>
             {/* 画面大图预览卡片 */}
             {beat.mediaUrl ? (
-              <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-border-default bg-black/5 shadow-2xs group">
+              <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-border-default bg-media-backdrop/5 shadow-2xs group">
                 <Image
                   src={beat.mediaUrl}
                   alt={beat.action || '分镜画面'}
@@ -154,7 +154,7 @@ export function StudioDirectorPanel({
               <div className="rounded-xl border border-dashed border-border-default p-4 text-center bg-surface-muted/30 space-y-1.5">
                 <Sparkles className="h-5 w-5 mx-auto text-accent/70" />
                 <p className="text-xs text-ink font-semibold">此镜头尚未生成画面</p>
-                <p className="text-[11px] text-muted">
+                <p className="text-xs text-muted">
                   设置下方的景别与氛围后，点击“生成画面”。
                 </p>
               </div>
@@ -178,7 +178,7 @@ export function StudioDirectorPanel({
               const Icon = group.icon;
               return (
                 <div key={group.field} className={`space-y-1.5 ${group.field === 'shotSize' ? 'pt-1' : ''}`}>
-                  <label className="text-[11px] font-bold text-muted uppercase tracking-wider flex items-center gap-1">
+                  <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
                     <Icon className="h-3 w-3" />
                     <span>{group.label}</span>
                   </label>
@@ -195,7 +195,7 @@ export function StudioDirectorPanel({
                           onClick={() => handleUpdateDirector(group.field, item.value)}
                           className={`h-7 min-h-0 rounded-md px-1.5 text-xs ${
                             active
-                              ? 'font-bold shadow-2xs'
+                              ? 'font-semibold shadow-2xs'
                               : 'bg-surface-muted font-medium text-muted hover:bg-surface-muted/80 hover:text-ink'
                           }`}
                         >
@@ -228,7 +228,7 @@ export function StudioDirectorPanel({
               {advancedOpen && (
                 <div className="mt-2 space-y-2.5 text-xs">
                   <div>
-                    <label className="block text-[11px] text-muted mb-1">补充画面提示词</label>
+                    <label className="block text-xs text-muted mb-1">补充画面提示词</label>
                     <Textarea
                       rows={2}
                       value={beat.renderSettings?.customPrompt || ''}
@@ -243,7 +243,7 @@ export function StudioDirectorPanel({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] text-muted mb-1">负面提示词覆写</label>
+                    <label className="block text-xs text-muted mb-1">负面提示词覆写</label>
                     <Input
                       value={beat.renderSettings?.negativePrompt || ''}
                       onChange={(e) => {

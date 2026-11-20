@@ -35,19 +35,21 @@ test.beforeEach(async ({ context }) => {
 
 test('列表计数、搜索空状态与清空搜索', async ({ page }) => {
   await page.goto('/apps/activities?q=' + encodeURIComponent(prefix));
-  const count = page.getByText(/共 \d+ 个制作项目/);
-  await expect(count).toHaveText('共 2 个制作项目');
+  // 总数只在分页处出现一次（同一状态不重复）；列表页头不再另写「共 N 个制作项目」。
+  const count = page.getByRole('navigation', { name: '分页', exact: true });
+  await expect(count).toContainText('共 2 条');
   await expect(page.getByRole('link', { name: prefix + '待删除' })).toBeVisible();
 
   const search = page.getByLabel('搜索制作项目');
   await search.fill('不存在的关键词-' + randomUUID().slice(0, 6));
   await expect(page.getByRole('heading', { name: /没有匹配/ })).toBeVisible();
-  await expect(count).toHaveText('共 0 个制作项目');
+  await expect(count).toContainText('共 0 条');
 
   await page.getByRole('button', { name: '清空搜索' }).first().click();
   await expect(search).toHaveValue('');
   await expect(page.getByRole('link', { name: prefix + '待删除' })).toBeVisible();
-  await expect(count).toHaveText('共 2 个制作项目');
+  // 清空后列出全部制作项目；共享测试库里其他用例也会写入，只要求至少包含本用例的两条。
+  await expect.poll(async () => Number((await count.innerText()).match(/共\s*(\d+)\s*条/)?.[1] ?? 0)).toBeGreaterThanOrEqual(2);
 });
 
 test('删除需要确认弹窗，取消不会删除，确认后才移除', async ({ page, request }) => {
@@ -72,7 +74,7 @@ test('删除需要确认弹窗，取消不会删除，确认后才移除', async
   await page.getByRole('menuitem', { name: '删除制作项目' }).click();
   await dialog.getByRole('button', { name: '彻底删除' }).click();
   await expect(page.getByRole('link', { name: target })).toBeHidden();
-  await expect(page.getByText(/共 \d+ 个制作项目/)).toHaveText('共 1 个制作项目');
+  await expect(page.getByRole('navigation', { name: '分页', exact: true })).toContainText('共 1 条');
 });
 
 test('删除失败时错误留在页面内，确认框保持打开', async ({ page }) => {

@@ -139,7 +139,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
       <div className="space-y-5">
         <ImageModeSwitch advanced={advanced} onChange={setAdvanced} changes={denoise !== HIRES_DENOISE_DEFAULT ? [`重绘幅度：${denoise}`] : []} onRestore={() => { setDenoise(HIRES_DENOISE_DEFAULT); saveDraft({ denoise: HIRES_DENOISE_DEFAULT }); setPreview(null); }} />
         <div className="flex flex-col gap-4 sm:flex-row">
-          <div className="w-full space-y-1.5 sm:max-w-[240px] sm:shrink-0">
+          <div className="w-full space-y-1.5 sm:max-w-60 sm:shrink-0">
             <span className="text-sm font-medium text-ink">原图</span>
             <div className="overflow-hidden rounded-control border border-border-default bg-surface-muted">
               {sourceImageUrl

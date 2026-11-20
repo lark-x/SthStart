@@ -153,7 +153,7 @@ export function WorldImageReader({
                   className="ui-choice h-auto min-h-0 shrink-0 rounded-full bg-surface-sunken px-3 py-1 text-xs font-medium text-muted hover:bg-surface-raised hover:text-ink sm:min-h-0 [&_.ui-mantine-button-label]:gap-1.5"
                 >
                   <span>{actor.name}</span>
-                  <span className="rounded-full bg-ink/5 px-1 text-[10px]">
+                  <span className="rounded-full bg-ink/5 px-1 text-xs">
                     {count}
                   </span>
                 </Button>
@@ -163,7 +163,7 @@ export function WorldImageReader({
 
           {/* Phase Filter Tabs */}
           <div className="flex items-center gap-1 bg-surface-sunken p-1 rounded-lg text-xs shrink-0">
-            <span className="text-[11px] text-muted px-1.5 font-medium flex items-center gap-1">
+            <span className="text-xs text-muted px-1.5 font-medium flex items-center gap-1">
               <Filter className="w-3 h-3" />
               <span>分镜阶段：</span>
             </span>
@@ -279,7 +279,7 @@ export function WorldImageReader({
                       <span className="font-medium text-ink">{location.name}</span>
                     </span>
                     {ev.duration > 0 && formatDuration(ev.duration) ? (
-                      <span className="text-muted text-[11px]">
+                      <span className="text-muted text-xs">
                         {formatDuration(ev.duration)}
                       </span>
                     ) : null}
@@ -323,7 +323,7 @@ export function WorldImageReader({
                       {ev.participantIds.map(pId => (
                         <span
                           key={pId}
-                          className="px-2 py-0.2 rounded-full bg-surface-sunken text-ink text-[11px]"
+                          className="px-2 py-0.2 rounded-full bg-surface-sunken text-ink text-xs"
                         >
                           {lookupActor(actors, pId).name}
                         </span>
@@ -338,7 +338,7 @@ export function WorldImageReader({
                         <ImageIcon className="w-3.5 h-3.5 text-accent" />
                         <span>三阶段分镜叙事（建立 → 行动 → 结果）</span>
                       </span>
-                      <span className="text-[11px]">图像按场景脉络展开，不阻塞文字正文</span>
+                      <span className="text-xs">图像按场景脉络展开，不阻塞文字正文</span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -385,8 +385,7 @@ export function WorldImageReader({
                     </div>
 
                     <div
-                      className="story-reading-content font-serif text-[16px] leading-[1.8] text-ink break-words text-pretty bg-surface-sunken/30 p-4 rounded-[var(--radius-panel)] border border-hairline"
-                      style={{ fontFamily: 'var(--font-serif)' }}
+                      className="story-reading-content reader-prose bg-surface-sunken/30 p-4 rounded-[var(--radius-panel)] border border-hairline"
                     >
                       {ev.summary.split('\n\n').map((paragraph, pIdx) => {
                         const trimmed = paragraph.trim();
@@ -411,7 +410,7 @@ export function WorldImageReader({
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs font-sans"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-media-backdrop/70 backdrop-blur-xs font-sans"
           onClick={() => setPreviewImage(null)}
         >
           <div
@@ -435,7 +434,7 @@ export function WorldImageReader({
 
             {/* Large Image Preview if available */}
             {previewImage.imageUrl && previewImage.status === 'succeeded' ? (
-              <div className="relative rounded-lg overflow-hidden bg-black/10 border border-hairline max-h-[50vh] flex items-center justify-center">
+              <div className="relative rounded-lg overflow-hidden bg-media-backdrop/10 border border-hairline max-h-[50vh] flex items-center justify-center">
                 <img
                   src={previewImage.imageUrl}
                   alt={previewImage.caption || '分镜原图'}
@@ -454,10 +453,10 @@ export function WorldImageReader({
                 <div className="rounded border border-hairline bg-surface-sunken/50 p-2.5 space-y-1.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-ink">来源事件</span>
-                    <span className="text-[11px] text-muted">{formatTick(previewEvent.tick)}</span>
+                    <span className="text-xs text-muted">{formatTick(previewEvent.tick)}</span>
                   </div>
                   <p className="font-medium text-ink">{previewEvent.title}</p>
-                  <p className="text-[11px] text-muted">
+                  <p className="text-xs text-muted">
                     {lookupLocation(locations, previewEvent.locationId).name}
                     {' · '}
                     {previewEvent.participantIds.map(id => lookupActor(actors, id).name).join('、')}
@@ -470,7 +469,7 @@ export function WorldImageReader({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      className="h-auto min-h-0 px-0 text-[11px] font-medium text-accent hover:bg-transparent sm:min-h-0"
+                      className="h-auto min-h-0 px-0 text-xs font-medium text-accent hover:bg-transparent sm:min-h-0"
                       onClick={() => {
                         setPreviewImage(null);
                         onSelectEvent(previewEvent.id);
@@ -488,12 +487,12 @@ export function WorldImageReader({
                   {previewAdoptInput ? (
                     <>
                       {adoptAction(previewAdoptInput)}
-                      <p className="text-[11px] leading-relaxed text-muted">
+                      <p className="text-xs leading-relaxed text-muted">
                         只引用现有媒体文件并保留来源；不会复制图片或改写世界事件。
                       </p>
                     </>
                   ) : (
-                    <p className="text-[11px] leading-relaxed text-muted">
+                    <p className="text-xs leading-relaxed text-muted">
                       {previewImage.artifactId
                         ? '该分镜尚未成功生成文件，暂时不能加入项目。'
                         : '该分镜还没有可引用的媒体文件。'}
@@ -515,16 +514,16 @@ export function WorldImageReader({
                 </summary>
                 <div className="mt-2 space-y-2.5 pt-1">
                   <div>
-                    <span className="font-medium text-ink block mb-0.5 font-mono text-[11px]">Prompt:</span>
-                    <pre className="text-muted bg-surface-sunken p-2 rounded border border-hairline text-[11px] whitespace-pre-wrap font-mono">
+                    <span className="font-medium text-ink block mb-0.5 font-mono text-xs">Prompt:</span>
+                    <pre className="text-muted bg-surface-sunken p-2 rounded border border-hairline text-xs whitespace-pre-wrap font-mono">
                       {previewImage.prompt}
                     </pre>
                   </div>
 
                   {previewImage.negativePrompt && (
                     <div>
-                      <span className="font-medium text-ink block mb-0.5 font-mono text-[11px]">Negative Prompt:</span>
-                      <pre className="text-muted bg-surface-sunken p-2 rounded border border-hairline text-[11px] whitespace-pre-wrap font-mono">
+                      <span className="font-medium text-ink block mb-0.5 font-mono text-xs">Negative Prompt:</span>
+                      <pre className="text-muted bg-surface-sunken p-2 rounded border border-hairline text-xs whitespace-pre-wrap font-mono">
                         {previewImage.negativePrompt}
                       </pre>
                     </div>
@@ -532,8 +531,8 @@ export function WorldImageReader({
 
                   {previewImage.consistencyNote && (
                     <div>
-                      <span className="font-medium text-amber-800 dark:text-amber-300 block mb-0.5">一致性约束提示：</span>
-                      <p className="text-muted bg-amber-500/5 p-2 rounded border border-amber-500/20 text-amber-900 dark:text-amber-200">
+                      <span className="font-medium text-warning-fg block mb-0.5">一致性约束提示：</span>
+                      <p className="text-muted bg-warning-bg p-2 rounded border border-warning-border text-warning-fg">
                         {previewImage.consistencyNote}
                       </p>
                     </div>
@@ -542,7 +541,7 @@ export function WorldImageReader({
                   {previewImage.error && (
                     <div>
                       <span className="font-medium text-danger-fg block mb-0.5">错误诊断信息：</span>
-                      <pre className="text-danger-fg bg-danger/10 p-2 rounded border border-danger/20 text-[11px] whitespace-pre-wrap font-mono">
+                      <pre className="text-danger-fg bg-danger/10 p-2 rounded border border-danger/20 text-xs whitespace-pre-wrap font-mono">
                         {previewImage.error}
                       </pre>
                     </div>
@@ -582,14 +581,14 @@ function PhaseColumn({
         <div className="flex items-center gap-1.5">
           <ImagePhaseBadge phase={phase} />
         </div>
-        <span className="text-[11px] text-muted font-mono">{images.length} 帧</span>
+        <span className="text-xs text-muted font-mono">{images.length} 帧</span>
       </div>
 
       {/* Images or Empty Slot */}
       {images.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-6 rounded bg-surface border border-dashed border-hairline/80 text-center min-h-[140px]">
+        <div className="flex flex-col items-center justify-center p-6 rounded bg-surface border border-dashed border-hairline/80 text-center min-h-36">
           <span className="text-xs text-muted font-medium">无{cfg.label}分镜</span>
-          <span className="text-[10px] text-muted mt-1 leading-snug">{cfg.description}</span>
+          <span className="text-xs text-muted mt-1 leading-snug">{cfg.description}</span>
         </div>
       ) : (
         <div className="space-y-3">
@@ -647,7 +646,7 @@ function ImageCard({
 
       {/* Visual Render or Status Representation */}
       {image.status === 'succeeded' && image.imageUrl ? (
-        <div className="relative aspect-video rounded overflow-hidden bg-black/5">
+        <div className="relative aspect-video rounded overflow-hidden bg-media-backdrop/5">
           <img
             src={image.imageUrl}
             alt={image.caption || '分镜图'}
@@ -659,19 +658,19 @@ function ImageCard({
         <div className="aspect-video rounded bg-surface-sunken border border-success/30 flex flex-col items-center justify-center p-3 text-center space-y-1.5 animate-pulse">
           <Clock className="w-5 h-5 text-success animate-spin" />
           <span className="text-xs font-semibold text-success-fg">正在渲染画面...</span>
-          <span className="text-[10px] text-muted line-clamp-1">{image.caption || '分镜渲染中'}</span>
+          <span className="text-xs text-muted line-clamp-1">{image.caption || '分镜渲染中'}</span>
         </div>
       ) : image.status === 'queued' ? (
         <div className="aspect-video rounded bg-surface-sunken border border-warning/30 flex flex-col items-center justify-center p-3 text-center space-y-1">
           <Clock className="w-5 h-5 text-warning-fg" />
           <span className="text-xs font-semibold text-warning-fg">排队调度中</span>
-          <span className="text-[10px] text-muted">等待公共生图名额</span>
+          <span className="text-xs text-muted">等待公共生图名额</span>
         </div>
       ) : image.status === 'failed' ? (
         <div className="aspect-video rounded bg-danger/5 border border-danger/20 flex flex-col items-center justify-center p-3 text-center space-y-1">
           <AlertCircle className="w-5 h-5 text-danger-fg" />
           <span className="text-xs font-semibold text-danger-fg">生成失败</span>
-          <span className="text-[10px] text-danger-fg/80 line-clamp-2">
+          <span className="text-xs text-danger-fg/80 line-clamp-2">
             {image.error || '生成接口异常'}
           </span>
         </div>
@@ -679,20 +678,20 @@ function ImageCard({
         <div className="aspect-video rounded bg-warning/5 border border-warning/20 flex flex-col items-center justify-center p-3 text-center space-y-1">
           <AlertCircle className="w-5 h-5 text-warning-fg" />
           <span className="text-xs font-semibold text-warning-fg">状态待核对</span>
-          <span className="text-[10px] text-muted">外部任务未明确返回</span>
+          <span className="text-xs text-muted">外部任务未明确返回</span>
         </div>
       ) : image.status === 'stale' ? (
         <div className="aspect-video rounded bg-surface-sunken border border-hairline flex flex-col items-center justify-center p-3 text-center space-y-1">
           <RefreshCw className="w-5 h-5 text-muted" />
           <span className="text-xs font-semibold text-muted">待按新设定重做</span>
-          <span className="text-[10px] text-muted">事件已演进</span>
+          <span className="text-xs text-muted">事件已演进</span>
         </div>
       ) : (
         /* planned status */
         <div className="aspect-video rounded bg-surface-sunken/60 border border-dashed border-hairline flex flex-col items-center justify-center p-3 text-center space-y-1">
           <ImageIcon className="w-5 h-5 text-muted/60" />
           <span className="text-xs font-medium text-muted">分镜已规划（未生成）</span>
-          <span className="text-[10px] text-muted line-clamp-1">{image.caption || '待调度生图'}</span>
+          <span className="text-xs text-muted line-clamp-1">{image.caption || '待调度生图'}</span>
         </div>
       )}
 
@@ -701,7 +700,7 @@ function ImageCard({
         <p className="font-medium text-ink line-clamp-1 group-hover:text-accent transition-colors">
           {image.caption || '分镜画面'}
         </p>
-        <p className="text-[11px] text-muted line-clamp-1 mt-0.5 leading-snug">
+        <p className="text-xs text-muted line-clamp-1 mt-0.5 leading-snug">
           {IMAGE_PHASE_CONFIG[image.phase]?.label} · 点击展开详情
         </p>
       </div>
@@ -713,7 +712,7 @@ function ImageCard({
           {adoptInput
             ? adoptAction(adoptInput)
             : (
-              <p className="text-[11px] leading-snug text-muted">
+              <p className="text-xs leading-snug text-muted">
                 {image.artifactId ? '该分镜尚未生成文件，暂时不能加入项目。' : '该分镜还没有可引用的媒体文件。'}
               </p>
             )}

@@ -404,10 +404,10 @@ export function RecordsEditor({
           {/* 阶段标题与概览 */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="px-2.5 py-1 rounded-md bg-accent/15 text-accent font-bold text-xs shrink-0">
+              <span className="px-2.5 py-1 rounded-md bg-accent/15 text-accent font-semibold text-xs shrink-0">
                 第 {currentStageIndex >= 0 ? currentStageIndex + 1 : 1} 幕
               </span>
-              <h2 className="text-sm font-bold text-ink truncate">
+              <h2 className="text-sm font-semibold text-ink truncate">
                 {currentStage?.title || '未命名阶段'}
               </h2>
               {currentStage?.location && (
@@ -417,7 +417,7 @@ export function RecordsEditor({
                 </span>
               )}
               {currentStage?.stagePremise && (
-                <span className="text-xs text-accent font-medium bg-accent/10 px-2 py-0.5 rounded truncate max-w-[280px]">
+                <span className="text-xs text-accent font-medium bg-accent/10 px-2 py-0.5 rounded truncate max-w-70">
                   主旨：{currentStage.stagePremise}
                 </span>
               )}
@@ -558,7 +558,7 @@ export function RecordsEditor({
         >
           <div className="space-y-4">
             {/* 剧本流卡片列表 */}
-            <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-[400px] space-y-4">
+            <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-100 space-y-4">
               {stageMessages.length === 0 && stagePosts.length === 0 ? (
                 <div className="py-16 text-center text-sm text-muted space-y-3">
                   <Layers className="h-10 w-10 mx-auto text-accent opacity-60" />
@@ -598,7 +598,7 @@ export function RecordsEditor({
                         {/* 台词与信息 */}
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-2 text-xs">
-                            <span className="font-bold text-ink">{speaker?.displayName || msg.speakerActorId || '系统'}</span>
+                            <span className="font-semibold text-ink">{speaker?.displayName || msg.speakerActorId || '系统'}</span>
                             {speaker?.activityRole && (
                               <span className="text-xs text-muted bg-surface-muted px-1.5 py-0.2 rounded font-normal">
                                 {speaker.activityRole}
@@ -613,7 +613,7 @@ export function RecordsEditor({
                             <span className="text-xs text-muted font-mono opacity-60">#{idx + 1}</span>
 
                             {lockedRecordMap.has(msg.id) && (
-                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200">
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-xs bg-warning-bg text-warning-fg border border-warning-border">
                                 <Lock className="h-2.5 w-2.5" /> 已锁定
                               </span>
                             )}
@@ -669,13 +669,13 @@ export function RecordsEditor({
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => onOpenWorkbench?.(slotId)}
-                                  className="h-auto min-h-0 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                                  className="h-auto min-h-0 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-warning-bg text-warning-fg border border-warning-border hover:bg-warning-bg"
                                   title="打开 AI 生图与分镜工作台"
                                 >
-                                  <Camera className="h-3 w-3 text-amber-600" />
+                                  <Camera className="h-3 w-3 text-warning-fg" />
                                   <span>分镜插槽:</span>
                                   <span className="font-mono font-semibold">{slotId}</span>
-                                  <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                                  <Sparkles className="w-2.5 h-2.5 text-warning-fg" />
                                 </Button>
                               ))}
                             </div>
@@ -697,7 +697,7 @@ export function RecordsEditor({
                             label={lockedRecordMap.has(msg.id) ? '解锁此台词' : '锁定此台词（防止大模型重新生成时覆盖）'}
                             onClick={() => handleToggleRecordLock('message', msg.id)}
                             size="sm"
-                            className={`h-6 min-h-6 w-6 p-0 ${lockedRecordMap.has(msg.id) ? 'text-amber-600' : ''}`}
+                            className={`h-6 min-h-6 w-6 p-0 ${lockedRecordMap.has(msg.id) ? 'text-warning-fg' : ''}`}
                             iconClassName="h-3.5 w-3.5"
                           />
                           <IconButton
@@ -770,7 +770,7 @@ export function RecordsEditor({
           {wideDetailColumn && selectedMessage && (
             <aside className="sticky top-20 h-fit rounded-panel bg-surface border border-border-default p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-xs font-bold text-ink">记录详情</h3>
+                <h3 className="text-xs font-semibold text-ink">记录详情</h3>
                 <IconButton
                   icon={X}
                   label="关闭记录详情"
@@ -808,7 +808,7 @@ export function RecordsEditor({
       {/* 2.2 朋友圈动态视图 */}
       {activeTab === 'moments' && (
         <div className="space-y-4">
-          <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-4">
+          <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-75 space-y-4">
             {stagePosts.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted space-y-2">
                 <Share2 className="h-8 w-8 mx-auto text-muted opacity-60" />
@@ -829,7 +829,7 @@ export function RecordsEditor({
                           {author?.displayName?.slice(0, 1) || '?'}
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-ink">{author?.displayName || '未知角色'}</p>
+                          <p className="text-xs font-semibold text-ink">{author?.displayName || '未知角色'}</p>
                           <p className="text-xs text-muted">{author?.activityRole}</p>
                         </div>
                       </div>
@@ -839,7 +839,7 @@ export function RecordsEditor({
                           label={lockedRecordMap.has(post.id) ? '解锁此动态' : '锁定此动态'}
                           onClick={() => handleToggleRecordLock('post', post.id)}
                           size="sm"
-                          className={`h-6 min-h-6 w-6 p-0 ${lockedRecordMap.has(post.id) ? 'text-amber-600' : ''}`}
+                          className={`h-6 min-h-6 w-6 p-0 ${lockedRecordMap.has(post.id) ? 'text-warning-fg' : ''}`}
                           iconClassName="h-3 w-3"
                         />
                         <IconButton
@@ -887,7 +887,7 @@ export function RecordsEditor({
       {/* 2.3 剧情事实沉淀视图 */}
       {activeTab === 'facts' && (
         <div className="space-y-4">
-          <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-[300px] space-y-3">
+          <div className="rounded-panel bg-surface border border-border-default p-4 sm:p-6 min-h-75 space-y-3">
             {stageFacts.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted space-y-2">
                 <FileCheck className="h-8 w-8 mx-auto text-muted opacity-60" />
@@ -898,8 +898,8 @@ export function RecordsEditor({
               stageFacts.map((fact) => (
                 <div key={fact.id} className="p-3 rounded bg-surface-raised border border-border-subtle flex items-start justify-between gap-3 text-xs">
                   <div className="space-y-1">
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-xs">
-                      {fact.status === 'happened' ? '✓ 已发生事实' : '○ 规划事实'}
+                    <span className="px-1.5 py-0.5 rounded bg-success-bg text-success-fg font-semibold text-xs">
+                      {fact.status === 'happened' ? '已发生事实' : '规划事实'}
                     </span>
                     <p className="text-ink font-medium leading-relaxed">{fact.text}</p>
                   </div>

@@ -42,14 +42,14 @@ export function SourceNatureBadge({
   const renderIcon = () => {
     switch (nature) {
       case 'canon':
-        return <BookCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />;
+        return <BookCheck className="w-3 h-3 text-tone-green-fg" />;
       case 'author':
-        return <PenTool className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />;
+        return <PenTool className="w-3 h-3 text-tone-blue-fg" />;
       case 'ai':
-        return <Sparkles className="w-3 h-3 text-amber-600 dark:text-amber-400" />;
+        return <Sparkles className="w-3 h-3 text-tone-orange-fg" />;
       case 'unverified':
       default:
-        return <HelpCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />;
+        return <HelpCircle className="w-3 h-3 text-tone-pink-fg" />;
     }
   };
 
@@ -78,11 +78,11 @@ export function BranchModeBadge({
   const renderIcon = () => {
     switch (mode) {
       case 'canon-gap':
-        return <Sparkles className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />;
+        return <Sparkles className="w-3.5 h-3.5 text-tone-blue-fg" />;
       case 'adaptation':
-        return <GitBranch className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />;
+        return <GitBranch className="w-3.5 h-3.5 text-tone-violet-fg" />;
       case 'alternate':
-        return <Layers className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />;
+        return <Layers className="w-3.5 h-3.5 text-tone-orange-fg" />;
       default:
         return <GitBranch className="w-3.5 h-3.5" />;
     }
@@ -98,7 +98,7 @@ export function BranchModeBadge({
         <span>{cfg.label}</span>
       </span>
       {showDescription && (
-        <span className="text-[11px] text-muted font-sans mt-0.5 px-1 leading-snug">
+        <span className="text-xs text-muted font-sans mt-0.5 px-1 leading-snug">
           {cfg.description}
         </span>
       )}
@@ -118,11 +118,11 @@ export function ImagePhaseBadge({
   const renderIcon = () => {
     switch (phase) {
       case 'establishing':
-        return <Compass className="w-3 h-3 text-blue-600 dark:text-blue-400" />;
+        return <Compass className="w-3 h-3 text-tone-blue-fg" />;
       case 'action':
-        return <Zap className="w-3 h-3 text-amber-600 dark:text-amber-400" />;
+        return <Zap className="w-3 h-3 text-tone-orange-fg" />;
       case 'result':
-        return <Flag className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />;
+        return <Flag className="w-3 h-3 text-tone-green-fg" />;
       default:
         return <Compass className="w-3 h-3" />;
     }
@@ -172,7 +172,7 @@ export function ImageStatusBadge({
   return (
     <Badge
       variant={cfg.variant}
-      className={`gap-1 font-sans text-[11px] ${className || ''}`}
+      className={`gap-1 font-sans text-xs ${className || ''}`}
       title={cfg.description}
     >
       {renderIcon()}

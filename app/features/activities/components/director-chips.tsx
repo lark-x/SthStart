@@ -164,7 +164,7 @@ export function DirectorChips({
       {/* 光影与氛围 (Lighting & Atmosphere) */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted shrink-0 w-12">
-          <Sparkles className="h-3 w-3 text-amber-500" />
+          <Sparkles className="h-3 w-3 text-warning-fg" />
           <span>光影</span>
         </span>
         <div className="flex flex-wrap items-center gap-1">

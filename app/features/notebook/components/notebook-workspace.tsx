@@ -346,11 +346,8 @@ export function NotebookWorkspace({
           <div className="notebook-master-toolbar notebook-list-filters p-3 space-y-2.5 border-b border-border-subtle bg-surface/70">
             <div className="notebook-list-search-row flex min-w-0 items-center gap-2">
             <div className="relative min-w-0 flex-1">
-              <Search
-                className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
-                aria-hidden="true"
-              />
               <Input
+                leftIcon={<Search className="h-3.5 w-3.5 text-muted" />}
                 value={query}
                 onCompositionStart={() => setComposing(true)}
                 onCompositionEnd={() => setComposing(false)}
@@ -379,7 +376,7 @@ export function NotebookWorkspace({
                     variant="ghost"
                     aria-pressed={isActive}
                     onClick={() => { setSelectedFilter(opt.value); setPage(1); }}
-                    className="ui-choice notebook-filter-chip sm:min-h-7 sm:h-7 sm:px-1.5 px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-muted rounded-md"
+                    className="ui-choice notebook-filter-chip sm:min-h-7 sm:h-7 sm:px-2 px-2 py-0.5 text-sm font-medium whitespace-nowrap text-muted rounded-md"
                   >
                     {opt.label}
                   </Button>

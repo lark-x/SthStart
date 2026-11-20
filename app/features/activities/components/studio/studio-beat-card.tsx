@@ -77,7 +77,7 @@ export function StudioBeatCard({
                 className="object-cover"
               />
             ) : (
-              <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-muted">
+              <span className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted">
                 {isNarrator ? '旁' : actorName.slice(0, 1)}
               </span>
             )}
@@ -182,7 +182,7 @@ export function StudioBeatCard({
                   e.stopPropagation();
                   onQuickGenerate();
                 }}
-                className="absolute inset-0 flex items-center justify-center gap-1 bg-ink/20 text-xs font-medium text-white opacity-100 backdrop-blur-[1px] transition-opacity focus-visible:opacity-100 lg:bg-ink/45 lg:opacity-0 lg:group-hover/media:opacity-100"
+                className="absolute inset-0 flex items-center justify-center gap-1 bg-ink/20 text-xs font-medium text-on-media opacity-100 backdrop-blur-[1px] transition-opacity focus-visible:opacity-100 lg:bg-ink/45 lg:opacity-0 lg:group-hover/media:opacity-100"
                 title="重新绘制此画面"
                 aria-label={`重新绘制分镜 ${index + 1} 画面`}
               >

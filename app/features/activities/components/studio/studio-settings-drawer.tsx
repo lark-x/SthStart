@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { Drawer } from '@/app/components/ui/drawer';
 import { PageTabs } from '@/app/components/ui/page-tabs';
@@ -9,6 +10,8 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { ActivityCreationProfile } from '../creation-profile-picker';
+import { CoverField } from '@/app/features/covers/components/cover-field';
+import { activityKeys } from '../../query-keys';
 
 import type { StudioSettingsTab } from '../../studio/model/studio-view';
 
@@ -44,6 +47,7 @@ export function StudioSettingsDrawer({
   beforeApplyProfile,
   onProfileApplied,
 }: StudioSettingsDrawerProps) {
+  const queryClient = useQueryClient();
   useEffect(() => {
     if (!open || !focusId) return;
     const frame = requestAnimationFrame(() => {
@@ -71,6 +75,21 @@ export function StudioSettingsDrawer({
         <div className="space-y-4 py-4">
           {tab === 'basics' && (
             <div className="space-y-3.5 text-sm">
+              <div>
+                <p className="block font-semibold text-ink mb-1">封面</p>
+                <CoverField
+                  entityType="activity"
+                  entityId={activityRecord.id}
+                  title={activity.title || activityRecord.title}
+                  tone="pink"
+                  coverArtifactId={activityRecord.coverArtifactId}
+                  onChanged={() => {
+                    void queryClient.invalidateQueries({ queryKey: activityKeys.detail(activityRecord.id) });
+                    void queryClient.invalidateQueries({ queryKey: [...activityKeys.all, 'list'] });
+                    void queryClient.invalidateQueries({ queryKey: [...activityKeys.all, 'page'] });
+                  }}
+                />
+              </div>
               <div>
                 <label className="block font-semibold text-ink mb-1">活动标题</label>
                 <Input
@@ -162,13 +181,13 @@ export function StudioSettingsDrawer({
                           className="object-cover"
                         />
                       ) : (
-                        <span className="flex h-full w-full items-center justify-center font-bold text-muted">
+                        <span className="flex h-full w-full items-center justify-center font-semibold text-muted">
                           {actor.displayName.slice(0, 1)}
                         </span>
                       )}
                     </div>
                     <div>
-                      <span className="font-bold text-ink">{actor.displayName}</span>
+                      <span className="font-semibold text-ink">{actor.displayName}</span>
                     </div>
                   </div>
 

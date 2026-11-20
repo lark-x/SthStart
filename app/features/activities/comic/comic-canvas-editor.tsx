@@ -41,7 +41,8 @@ export function ComicCanvasEditor({ document, page, selectedPanelId, selectedBub
       const selected = layout.find((item) => item.panelId === selectedPanelId);
       if (selected) {
         ctx.save();
-        ctx.strokeStyle = '#d1492e';
+        const css = getComputedStyle(canvas);
+        ctx.strokeStyle = css.getPropertyValue('--danger-solid').trim() || 'crimson';
         ctx.lineWidth = 7;
         ctx.setLineDash([18, 10]);
         ctx.strokeRect(selected.rect.x + 4, selected.rect.y + 4, selected.rect.width - 8, selected.rect.height - 8);
@@ -50,7 +51,7 @@ export function ComicCanvasEditor({ document, page, selectedPanelId, selectedBub
         const bubble = panel?.bubbles.find((item) => item.id === selectedBubbleId);
         if (bubble) {
           ctx.save();
-          ctx.strokeStyle = '#277c66';
+          ctx.strokeStyle = css.getPropertyValue('--success-solid').trim() || 'seagreen';
           ctx.lineWidth = 6;
           ctx.strokeRect(selected.rect.x + bubble.rect.x * selected.rect.width, selected.rect.y + bubble.rect.y * selected.rect.height,
             bubble.rect.width * selected.rect.width, bubble.rect.height * selected.rect.height);

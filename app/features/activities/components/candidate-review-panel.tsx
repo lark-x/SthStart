@@ -52,7 +52,7 @@ export function CandidateReviewPanel({ activityId, candidateId, onApplied }: {
       <Checkbox label={`${unit.title} ${unit.applied ? '（已采用）' : ''}`} disabled={unit.applied || !!unit.conflict} checked={selected.includes(unit.id)} onChange={e => setSelected(ids => e.target.checked ? [...ids, unit.id] : ids.filter(id => id !== unit.id))}/>
       {unit.kind === 'replace_stage' && <p className="text-xs text-muted">整阶段替换：原阶段记录将被候选替换，相关媒体和事实会重新检查。若只改几句，请使用局部重写。</p>}
       <div className="grid md:grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-muted mb-1">当前版本</p><div className="rounded-xl bg-surface-raised p-3 whitespace-pre-wrap break-words">{unit.before || '（新增）'}</div></div><div><p className="text-xs text-muted mb-1">候选内容</p><div className="rounded-xl bg-accent/10 p-3 whitespace-pre-wrap break-words">{unit.after}</div></div></div>
-      {unit.conflict && <p className="text-xs text-amber-700">{unit.conflict}，请核对后重新生成。</p>}
+      {unit.conflict && <p className="text-xs text-warning-fg">{unit.conflict}，请核对后重新生成。</p>}
     </article>)}</div>
     <div className="flex gap-2 flex-wrap"><Button size="sm" disabled={busy || !selected.length} onClick={apply}>采用所选 {selected.length} 项</Button><Button size="sm" variant="outline" onClick={async () => { try {
         await postJson(`/api/admin/activities/${activityId}/candidates/${candidateId}/dismiss`, { dismissed: !data?.dismissed });

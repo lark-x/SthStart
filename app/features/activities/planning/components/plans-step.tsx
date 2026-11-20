@@ -110,7 +110,7 @@ export function PlanningPlansStep({
                 );
               })()}
               {!!summary?.caveats?.length && (
-                <ul className="space-y-0.5 text-xs text-amber-700">
+                <ul className="space-y-0.5 text-xs text-warning-fg">
                   {summary.caveats.map((caveat) => <li key={caveat}>· {caveat}</li>)}
                 </ul>
               )}

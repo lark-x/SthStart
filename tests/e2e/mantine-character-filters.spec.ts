@@ -38,8 +38,8 @@ async function openCharacterFilters(page: import('@playwright/test').Page) {
   // The SSR markup paints the trigger before its handler attaches; wait for the shell's
   // client-ready flag so the first click cannot land on an inert button.
   await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
-  await page.getByRole('button', { name: '筛选与排序', exact: true }).click();
-  const panel = page.getByRole('dialog', { name: '角色筛选', exact: true });
+  await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+  const panel = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
   await expect(panel).toBeVisible();
   return panel;
 }
@@ -57,24 +57,20 @@ async function readTotalCount(page: import('@playwright/test').Page) {
 }
 
 test.describe('B1 character filters', () => {
-  test('one arrangement exposes works, tags, groups, favorites and every existing option at desktop and phone widths', async ({ page }) => {
+  test('the toolbar keeps one search box and one filter entry while the panel exposes every option at desktop and phone widths', async ({ page }) => {
     for (const width of [1024, 390]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto('/apps/characters');
-      const quick = page.getByRole('group', { name: '常用筛选', exact: true });
-      if (width === 1024) {
-        await expect(quick).toBeVisible();
-        for (const label of ['作品', '标签', '分组']) {
-          await expect(quick.getByRole('button', { name: new RegExp(`^${label}(?: \\(\\d+\\))?$`) })).toBeVisible();
-        }
-        await expect(quick.getByRole('checkbox', { name: '仅收藏', exact: true })).toBeVisible();
-      } else {
-        await expect(quick).toBeHidden();
-      }
+      await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
+      // 页头控件预算（设计语言 §3）：筛选行只有搜索框、筛选入口与展示方式；
+      // 作品、标签、分组、类别与排序都在面板里，不再平铺在列表上方。
+      const toolbar = page.getByRole('region', { name: '角色筛选控件' });
+      await expect(toolbar.getByRole('searchbox', { name: '搜索角色', exact: true })).toBeVisible();
+      await expect(toolbar.getByRole('group', { name: '展示模式', exact: true })).toBeVisible();
+      await expect(toolbar.getByRole('combobox')).toHaveCount(0);
+      await expect(page.getByRole('group', { name: '常用筛选', exact: true })).toHaveCount(0);
 
       const panel = await openCharacterFilters(page);
-      await expect(quick).toHaveCount(0);
-
       const common = panel.getByRole('group', { name: '作品、标签与分组', exact: true });
       await expect(common).toBeVisible();
       for (const label of ['作品', '标签', '分组']) {
@@ -83,15 +79,15 @@ test.describe('B1 character filters', () => {
       await expect(common.getByRole('checkbox', { name: '仅收藏', exact: true })).toHaveCount(1);
       await expect(panel.getByRole('group', { name: '资料条件', exact: true })).toBeVisible();
       await expect(panel.getByRole('group', { name: '生日与排序', exact: true })).toBeVisible();
-      await expect(panel.getByRole('combobox')).toHaveCount(11);
-      for (const label of ['作品类型', '创作类型', '外观参考图', '外观描述', '人设演绎', '导入来源', '待整理', '标签匹配', '生日状态', '生日月份', '排序']) {
+      await expect(panel.getByRole('combobox')).toHaveCount(12);
+      for (const label of ['母原作与衍生作品', '作品类型', '创作类型', '外观参考图', '外观描述', '人设演绎', '导入来源', '待整理', '标签匹配', '生日状态', '生日月份', '排序']) {
         await expect(panel.getByRole('combobox', { name: label, exact: true })).toBeVisible();
       }
       await expect(panel.getByRole('button', { name: '重置筛选', exact: true })).toBeVisible();
-      await expect(panel.getByRole('button', { name: '确认筛选', exact: true })).toBeVisible();
+      await expect(panel.getByRole('button', { name: '完成', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
 
-      await panel.getByRole('button', { name: '确认筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '完成', exact: true }).click();
       await expect(panel).toBeHidden();
     }
   });
@@ -105,10 +101,10 @@ test.describe('B1 character filters', () => {
     await works.getByRole('checkbox', { name: work, exact: true }).check();
     await page.keyboard.press('Escape');
     await expect(works).toBeHidden();
-    await panel.getByRole('button', { name: '确认筛选', exact: true }).click();
+    await panel.getByRole('button', { name: '完成', exact: true }).click();
 
     await expect(page.getByRole('button', { name: `移除筛选：作品：${work}`, exact: true })).toBeVisible();
-    const filterTrigger = page.getByRole('button', { name: '筛选与排序', exact: true });
+    const filterTrigger = page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ });
     await expect(filterTrigger).toHaveAccessibleDescription('已启用 1 个筛选条件');
     await expect(page.getByRole('navigation', { name: '分页', exact: true })).toContainText('共 25 条');
     await expect(page).toHaveURL(/cf=/);
@@ -139,13 +135,13 @@ test.describe('B1 character filters', () => {
 
     await panel.getByRole('checkbox', { name: '仅收藏', exact: true }).check();
     await panel.getByRole('combobox', { name: '标签匹配', exact: true }).selectOption('all');
-    await panel.getByRole('button', { name: '确认筛选', exact: true }).click();
+    await panel.getByRole('button', { name: '完成', exact: true }).click();
 
     await expect(page.getByRole('button', { name: `移除筛选：标签：${tagA}`, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: `移除筛选：分组：${group}`, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '移除筛选：仅收藏', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '移除筛选：标签：全部匹配', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '筛选与排序', exact: true }))
+    await expect(page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }))
       .toHaveAccessibleDescription('已启用 4 个筛选条件');
     await expect(page.getByRole('navigation', { name: '分页', exact: true })).toContainText('共 1 条');
 
@@ -154,13 +150,13 @@ test.describe('B1 character filters', () => {
     await expect(page.getByRole('button', { name: '移除筛选：仅收藏', exact: true })).toHaveCount(0);
     // 重置回到进入页面时的未筛选集合；总数随共享库中其他 spec 的写入变化。
     expect(await readTotalCount(page)).toBe(unfilteredTotal);
-    await panel.getByRole('button', { name: '确认筛选', exact: true }).click();
+    await panel.getByRole('button', { name: '完成', exact: true }).click();
   });
 
   test('CJK composition in the outer search does not apply an intermediate query or act as a shortcut', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/apps/characters');
-    const search = page.getByRole('textbox', { name: '搜索角色', exact: true });
+    const search = page.getByRole('searchbox', { name: '搜索角色', exact: true });
     await search.click();
     await search.evaluate((element) => element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'fu' })));
     await search.fill('芙');
@@ -176,14 +172,14 @@ test.describe('B1 character filters', () => {
     await search.evaluate((element) => element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '芙' })));
     await expect(search).toHaveValue('芙');
     await expect.poll(() => decodeURIComponent(page.url())).toContain('芙');
-    await expect(page.getByRole('button', { name: '筛选与排序', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ })).toBeVisible();
   });
 
   test('the last view tab is reachable at phone width through the shared tab adapter', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/apps/characters');
     await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
-    const first = page.getByRole('tab', { name: '专属角色卡', exact: true });
+    const first = page.getByRole('tab', { name: '角色卡', exact: true });
     await first.focus();
     await page.keyboard.press('End');
     const last = page.getByRole('tab', { name: '邻舍角色', exact: true });

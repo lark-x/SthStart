@@ -179,7 +179,7 @@ export function HistoryDrawer({ open, onOpenChange, activity, onRestored }: Hist
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm text-ink">{rev.id.slice(0, 12)}…</span>
                     {isCurrent && (
-                      <Badge variant="outline" className="text-sm bg-emerald-50 text-emerald-700 border-emerald-300">
+                      <Badge variant="outline" className="text-sm bg-success-bg text-success-fg border-success-border">
                         当前采用
                       </Badge>
                     )}

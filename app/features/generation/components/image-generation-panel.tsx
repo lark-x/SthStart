@@ -263,7 +263,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
                   setPrepared(null);
                   setError('');
                 }}
-                className="ui-choice h-auto min-h-8 sm:min-h-7 px-2.5 py-1 text-xs font-medium"
+                className="ui-choice h-auto min-h-8 sm:min-h-7 px-2.5 py-1 text-sm font-medium"
               >
                 {style.label}
               </Button>
@@ -272,7 +272,7 @@ export function ImageGenerationPanel({ appId, purpose, contextKey, options, init
         </div>
         {manual && <p className="text-xs text-muted">当前直接使用手动提示词，画风选项已暂停。编辑画面描述后可重新选择。</p>}
         {avatar && <p className="text-xs text-muted">自动沿用当前已保存角色的外观、服装与 LoRA，结果预览后再应用。</p>}
-        <Textarea id={`${id}-description`} rows={avatar ? 3 : 5} maxLength={10000} value={description} placeholder={avatar ? '补充表情、背景与头像构图…' : '用中文描述人物、动作、场景和想要的氛围…'}
+        <Textarea id={`${id}-description`} className="text-base" rows={avatar ? 3 : 5} maxLength={10000} value={description} placeholder={avatar ? '补充表情、背景与头像构图…' : '用中文描述人物、动作、场景和想要的氛围…'}
           onChange={event => { setDescription(event.target.value); setManual(false); setPrepared(null); setError(''); }} />
         <Checkbox label="AI 生成专业提示词" description={manual ? '最终提示词已手动编辑，本次直接使用；修改画面描述后可重新生成。' : '整理画面描述；关闭后仍保留角色、设定来源和方案的自动组装。'} checked={ai} onChange={event => { setAi(event.target.checked); setPrepared(null); }} />
       </div>

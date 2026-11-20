@@ -21,7 +21,7 @@ process.env.STHSTART_E2E_DIRECTORY = dataDirectory;
 export default defineConfig({
   testDir: './tests/e2e',
   // 这几份依赖专用的模拟服务或独立数据目录，分别由 tests/config 下的 comfy、learning 配置运行。
-  testIgnore: ['comfy-image-experience.spec.ts', 'comfy-business-contexts.spec.ts', 'learning-story.spec.ts', 'story-worlds*.spec.ts'],
+  testIgnore: ['comfy-image-experience.spec.ts', 'comfy-business-contexts.spec.ts', 'learning-story.spec.ts', 'story-worlds*.spec.ts', 'world-authoring.spec.ts'],
   timeout: 30_000,
   /*
    * 整套用例共用一个 portal 进程和一个 service 进程。默认按 CPU 一半（本机 20 核 → 10）

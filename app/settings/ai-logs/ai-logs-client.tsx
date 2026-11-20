@@ -184,7 +184,7 @@ export function AiLogsClient() {
 
   const detailContent = (<>
           {activeBusinessHref && <div className="mb-3 flex justify-end"><Link href={activeBusinessHref} className="inline-flex items-center gap-1 text-sm text-ink hover:text-accent">返回业务页面<ExternalLink className="h-3.5 w-3.5" /></Link></div>}
-          {!selectedId ? <div className="flex min-h-[280px] items-center justify-center p-8 text-center text-sm text-muted">选择一条调用，查看脱敏后的请求、响应和作业时间线。</div>
+          {!selectedId ? <div className="flex min-h-70 items-center justify-center p-8 text-center text-sm text-muted">选择一条调用，查看脱敏后的请求、响应和作业时间线。</div>
             : detail.isPending ? <div className="p-6 text-sm text-muted">正在读取调用详情…</div>
               : detail.isError ? <div className="p-6"><Alert variant="danger" title="读取详情失败"><p>{detail.error.message}</p><Button variant="outline" className="mt-3" disabled={detail.isFetching} onClick={() => void detail.refetch()}>重试详情</Button></Alert></div>
                 : detail.data && <div className="min-w-0 space-y-4 pb-6">

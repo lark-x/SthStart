@@ -318,14 +318,18 @@ function LocalCalendarView() {
                 const inMonth = cell.day !== undefined;
                 const isToday = cell.key === todayKey;
                 const isSelected = cell.key === selectedDate;
+                // 月初月末的补位格没有日期，只占网格位置，不作为可操作的按钮。
+                if (!inMonth) return <div key={cell.key} className="calendar-day ui-choice is-outside" aria-hidden="true" />;
+                // 读屏名称先复述格内可见文字（日期、前三个事件、溢出提示），再补完整日期与事件数，满足 WCAG 2.5.3。
+                const visibleSummary = [String(cell.day), ...events.slice(0, 3).map(event => event.title), ...(events.length > 3 ? [`还有 ${events.length - 3} 项`] : [])].join(' ');
                 return (
                   <button
                     key={cell.key}
                     type="button"
-                    className={`calendar-day ui-choice ${inMonth ? 'is-in-month' : 'is-outside'}`}
-                    disabled={!inMonth}
+                    className="calendar-day ui-choice is-in-month"
                     onClick={() => selectDay(cell.key)}
-                    aria-label={inMonth ? `${cell.key}，${events.length} 项事件` : undefined}
+                    aria-label={`${visibleSummary}，${cell.key}，共 ${events.length} 项事件`}
+                    data-date={cell.key}
                     aria-pressed={isSelected}
                     data-today={isToday || undefined}
                   >

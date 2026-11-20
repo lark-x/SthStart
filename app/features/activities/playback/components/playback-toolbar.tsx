@@ -209,7 +209,7 @@ export function PlaybackToolbar({
             onChange={(e) => onSelectPreset(e.target.value)}
             disabled={disabled}
             aria-label="回放预设"
-            className="h-8 min-h-8 w-auto max-w-[140px] text-xs"
+            className="h-8 min-h-8 w-auto max-w-35 text-xs"
           >
             <option value="">默认配置</option>
             {presets.map((p) => (

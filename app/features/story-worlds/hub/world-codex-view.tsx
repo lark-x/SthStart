@@ -14,6 +14,7 @@ import type { WorldHub } from '@sthstart/contracts';
 import { Badge } from '@/app/components/ui/badge';
 import { buttonVariants } from '@/app/components/ui/button';
 import { cn } from '@/app/lib/cn';
+import { EntityImage } from '@/app/components/ui/entity-art';
 import {
   ORIGIN_TYPE_LABELS,
   buildAiStudioHref,
@@ -138,13 +139,13 @@ export function WorldCodexView({ hub, initialTarget }: WorldCodexViewProps) {
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-xs font-medium transition-colors',
+                  'inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] px-3 py-1.5 text-xs font-medium transition-colors',
                   tab === item.id ? 'bg-surface-raised text-ink shadow-xs' : 'text-muted hover:text-ink',
                 )}
               >
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{item.label}</span>
-                <span className="text-[11px] opacity-70">{item.count}</span>
+                <span className="text-xs opacity-70">{item.count}</span>
               </button>
             );
           })}
@@ -173,7 +174,7 @@ export function WorldCodexView({ hub, initialTarget }: WorldCodexViewProps) {
                   className={sideRowClass(activeRegion?.id === reg.id)}
                 >
                   <span className="truncate">{reg.name}</span>
-                  <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-[11px]">{reg.locations.length}</span>
+                  <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-xs">{reg.locations.length}</span>
                 </button>
               ))}
             </div>
@@ -205,7 +206,7 @@ export function WorldCodexView({ hub, initialTarget }: WorldCodexViewProps) {
                       </div>
                       <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-muted">{loc.description}</p>
                     </div>
-                    <div className="mt-3 flex items-center justify-between border-t border-hairline pt-2 text-[11px] text-muted">
+                    <div className="mt-3 flex items-center justify-between border-t border-hairline pt-2 text-xs text-muted">
                       <span>常驻人物 {residentCount} 位</span>
                       <span>{loc.id}</span>
                     </div>
@@ -228,7 +229,7 @@ export function WorldCodexView({ hub, initialTarget }: WorldCodexViewProps) {
                   <div className="rounded-[var(--radius-control)] bg-surface-sunken/70 p-3.5 text-xs">
                     <p className="font-semibold text-ink">画面基准：{locationVisualRef.name}</p>
                     <p className="mt-1.5 leading-relaxed text-muted">{locationVisualRef.description}</p>
-                    <p className="mt-2 text-[11px] text-muted">
+                    <p className="mt-2 text-xs text-muted">
                       参考图：{locationVisualRef.referenceArtifactIds.length} 张
                     </p>
                   </div>
@@ -311,13 +312,9 @@ export function WorldCodexView({ hub, initialTarget }: WorldCodexViewProps) {
                           onClick={() => setSelectedActorId(actor.id)}
                           className={cn(cardClass(activeActor?.id === actor.id), 'flex items-start gap-3 p-4')}
                         >
-                          {card?.avatarUrl ? (
-                            <img src={card.avatarUrl} alt={actor.name} className="h-11 w-11 shrink-0 rounded-full object-cover" />
-                          ) : (
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-sm font-semibold text-ink">
-                              {actor.name.slice(0, 1)}
-                            </div>
-                          )}
+                          <span className="world-actor-avatar" aria-hidden="true">
+                            <EntityImage seed={actor.id} title={actor.name} tone="violet" ratio="avatar" src={card?.avatarUrl ?? null} alt="" />
+                          </span>
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="text-sm font-semibold text-ink">{actor.name}</span>
@@ -452,7 +449,7 @@ export function WorldCodexView({ hub, initialTarget }: WorldCodexViewProps) {
                       </Badge>
                     </summary>
                     <p className="mt-2 whitespace-pre-wrap leading-relaxed text-muted">{src.content}</p>
-                    {src.sourceUrl && <p className="mt-1.5 text-[11px] text-muted">来源：{src.sourceUrl}</p>}
+                    {src.sourceUrl && <p className="mt-1.5 text-xs text-muted">来源：{src.sourceUrl}</p>}
                   </details>
                 ))}
               </div>

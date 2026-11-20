@@ -69,7 +69,7 @@ export function SchemaFieldInput({
     return (
       <div>
         <InputLabel htmlFor={id} hint={field.required ? undefined : '可选'}>{field.label}</InputLabel>
-        <Textarea id={id} className="mt-1.5 min-h-[96px]" value={value == null ? '' : String(value)} onChange={(event) => onChange(event.target.value)} maxLength={10000} />
+        <Textarea id={id} className="mt-1.5 min-h-24" value={value == null ? '' : String(value)} onChange={(event) => onChange(event.target.value)} maxLength={10000} />
       </div>
     );
   }

@@ -56,7 +56,7 @@ export function StudioMobileView({
           <ArrowLeft className="h-4 w-4" />
           <span>活动列表</span>
         </Link>
-        <span className="text-xs font-bold text-ink truncate max-w-[180px]">
+        <span className="text-xs font-semibold text-ink truncate max-w-45">
           {document.activity.title || activity.title || '活动'}
         </span>
         <Button
@@ -65,7 +65,7 @@ export function StudioMobileView({
           onClick={handleCopyLink}
           className="h-7 px-2 text-xs"
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? <Check className="h-3.5 w-3.5 text-success-fg" /> : <Copy className="h-3.5 w-3.5" />}
           <span className="ml-1">{copied ? '已复制' : '分享'}</span>
         </Button>
       </header>
@@ -75,7 +75,7 @@ export function StudioMobileView({
         <Laptop className="h-4 w-4 text-accent shrink-0 mt-0.5" />
         <div className="text-xs space-y-0.5 min-w-0">
           <p className="font-semibold text-ink">当前处于移动端速览模式</p>
-          <p className="text-muted leading-relaxed text-[11px]">
+          <p className="text-muted leading-relaxed text-xs">
             如需进行镜头拖拽编排、批量 AI 绘图、漫剧分格与高级演播，建议在电脑端（桌面大屏）打开体验。
           </p>
         </div>
@@ -85,7 +85,7 @@ export function StudioMobileView({
       <section className="mx-4 mt-3 rounded-2xl border border-border-default bg-surface p-4 space-y-3 shadow-2xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-xs">
               {document.activity.type || activity.type || '视觉演出'}
             </Badge>
             {document.activity.theme && (
@@ -94,7 +94,7 @@ export function StudioMobileView({
               </span>
             )}
           </div>
-          <h1 className="text-base font-bold text-ink tracking-tight">
+          <h1 className="text-base font-semibold text-ink tracking-tight">
             {document.activity.title || activity.title}
           </h1>
           {document.activity.location && (
@@ -108,7 +108,7 @@ export function StudioMobileView({
         {/* 参与角色头像列表 */}
         {actors.length > 0 && (
           <div className="pt-2 border-t border-border-subtle/60 flex items-center gap-2 overflow-x-auto pb-1">
-            <span className="text-[11px] font-medium text-muted shrink-0">登场角色:</span>
+            <span className="text-xs font-medium text-muted shrink-0">登场角色:</span>
             {actors.map((actor) => (
               <div
                 key={actor.id}
@@ -124,12 +124,12 @@ export function StudioMobileView({
                       className="object-cover"
                     />
                   ) : (
-                    <span className="flex h-full w-full items-center justify-center text-[9px] font-bold">
+                    <span className="flex h-full w-full items-center justify-center text-xs font-semibold">
                       {actor.displayName.slice(0, 1)}
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] font-medium text-ink">
+                <span className="text-xs font-medium text-ink">
                   {actor.displayName}
                 </span>
               </div>
@@ -163,7 +163,7 @@ export function StudioMobileView({
         <section className="mx-4 mt-3 space-y-3">
           {activeStage.instruction && (
             <div className="rounded-xl bg-surface-muted/60 p-3 text-xs border border-border-default/50 space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted">本幕目标</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">本幕目标</span>
               <p className="text-ink/90 leading-relaxed">{activeStage.instruction}</p>
             </div>
           )}
@@ -183,15 +183,15 @@ export function StudioMobileView({
                   {/* 场次标题 */}
                   <div className="flex items-center justify-between border-b border-border-subtle/60 pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-bold font-mono text-accent">
+                      <span className="rounded bg-accent/10 px-1.5 py-0.5 text-xs font-semibold font-mono text-accent">
                         第 {sIdx + 1} 场
                       </span>
-                      <h3 className="text-xs font-bold text-ink truncate max-w-[180px]">
+                      <h3 className="text-xs font-semibold text-ink truncate max-w-45">
                         {scene.title}
                       </h3>
                     </div>
                     {scene.locationText && (
-                      <span className="text-[11px] text-muted truncate max-w-[120px]">
+                      <span className="text-xs text-muted truncate max-w-30">
                         {scene.locationText}
                       </span>
                     )}
@@ -200,7 +200,7 @@ export function StudioMobileView({
                   {/* 分镜气泡流 */}
                   <div className="space-y-2.5">
                     {scene.beats.length === 0 ? (
-                      <p className="text-[11px] text-muted italic">暂无分镜</p>
+                      <p className="text-xs text-muted italic">暂无分镜</p>
                     ) : (
                       scene.beats.map((beat, bIdx) => {
                         const actor = beat.characterId ? actorMap.get(beat.characterId) : undefined;
@@ -214,13 +214,13 @@ export function StudioMobileView({
                             {/* 镜头角色与动作 */}
                             <div className="flex items-center justify-between gap-2 text-xs">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="text-[10px] font-mono text-muted">#{bIdx + 1}</span>
-                                <span className={`font-bold text-[11px] ${isNarrator ? 'text-muted' : 'text-ink'}`}>
+                                <span className="text-xs font-mono text-muted">#{bIdx + 1}</span>
+                                <span className={`font-semibold text-xs ${isNarrator ? 'text-muted' : 'text-ink'}`}>
                                   {isNarrator ? '旁白' : actor?.displayName || beat.characterName || '角色'}
                                 </span>
                               </div>
                               {beat.mediaUrl && (
-                                <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.2 text-[9px] font-bold text-emerald-600">
+                                <span className="rounded-full bg-success-bg px-1.5 py-0.2 text-xs font-semibold text-success-fg">
                                   已配图
                                 </span>
                               )}
@@ -228,7 +228,7 @@ export function StudioMobileView({
 
                             {/* 动作描述 */}
                             {beat.action && (
-                              <p className="text-[11px] text-muted leading-relaxed italic">
+                              <p className="text-xs text-muted leading-relaxed italic">
                                 ({beat.action})
                               </p>
                             )}

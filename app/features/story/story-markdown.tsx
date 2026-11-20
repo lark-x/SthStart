@@ -24,7 +24,7 @@ export function StoryMarkdown({ source }: { source: string }) {
         // eslint-disable-next-line @next/next/no-img-element
         return safe ? <img {...props} src={safe} alt={alt ?? ''} loading="lazy" referrerPolicy="no-referrer" className="max-h-96 max-w-full rounded-control" /> : <span className="text-xs text-muted">（不安全或无效的图片链接已隐藏）</span>;
       },
-      h1: ({ children }) => <h1 className="mb-4 mt-7 text-3xl font-bold">{children}</h1>,
+      h1: ({ children }) => <h1 className="mb-4 mt-7 text-3xl font-semibold">{children}</h1>,
       h2: ({ children }) => <h2 className="mb-3 mt-6 border-b border-border-subtle pb-2 text-2xl font-semibold">{children}</h2>,
       h3: ({ children }) => <h3 className="mb-2 mt-5 text-xl font-semibold">{children}</h3>,
       p: ({ children }) => <p className="my-3 leading-7">{children}</p>,

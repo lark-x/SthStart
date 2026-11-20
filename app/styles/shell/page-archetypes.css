@@ -1,0 +1,146 @@
+/*
+ * 页面原型布局（sthstart-design-language §2–§7）：Collection / Overview / Detail / Reader。
+ * 只用语义 token；由 app/styles/shell.css 按序引入。
+ */
+
+/* ---------- Collection ---------- */
+.collection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.collection-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.collection-search { min-width: 0; flex: 1 1 240px; max-width: 28rem; }
+.collection-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.collection-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 0; }
+.collection-chip-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.collection-chip {
+  display: inline-flex;
+  max-width: 16rem;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-chip);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--hairline);
+  color: var(--fg-default);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+.collection-chip-remove {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+.collection-chip-remove:hover { background: var(--surface-hover); color: var(--fg-default); }
+.collection-chip-remove:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.collection-summary { color: var(--fg-subtle); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
+
+.collection-view-toggle {
+  display: inline-flex;
+  height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.collection-view-option {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: calc(var(--radius-control) - 2px);
+  color: var(--fg-muted);
+  font-size: var(--text-body);
+  font-weight: 500;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+.collection-view-option:hover:not(:disabled) { color: var(--fg-default); }
+.collection-view-option[aria-pressed='true'] { background: var(--surface-raised); color: var(--fg-default); box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline); }
+.collection-view-option:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.collection-view-option:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+
+/* 少数据：内容区收窄居中，避免一张卡片配大片空白。 */
+.collection-footer { min-width: 0; }
+/* 少数据（1–2 条）：列表改用更宽的卡片并限制总宽，避免一张小卡配整屏空白；
+ * 工具条与页头保持全宽，左缘对齐不变。 */
+.collection-layout[data-sparse] [data-collection-items] {
+  max-width: 56rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+}
+
+@media (max-width: 639px) {
+  .collection-search { flex-basis: 100%; max-width: none; }
+  .collection-toolbar-end { margin-left: 0; }
+}
+
+/* ---------- Overview ---------- */
+.overview-layout { display: flex; flex-direction: column; gap: 20px; }
+.overview-greeting { min-width: 0; }
+.overview-next-steps { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+
+/* ---------- Detail ---------- */
+.detail-hero { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+/* 首屏主角是实体的图像与名称：桌面封面固定宽度，窄屏铺满一行。 */
+.detail-media { flex: 0 0 clamp(220px, 32%, 360px); min-width: 0; }
+@media (max-width: 639px) { .detail-media { flex-basis: 100%; } }
+.detail-meta-stack { display: grid; gap: 10px; min-width: 0; }
+.detail-meta-eyebrow { margin: 0; color: var(--fg-subtle); font-size: var(--text-meta); font-weight: 500; }
+.detail-meta-summary { margin: 0; max-width: 40em; color: var(--fg-default); font-size: var(--text-body); line-height: 1.7; overflow-wrap: anywhere; }
+.detail-meta-stats { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 0; }
+.detail-meta-stats > div { display: flex; align-items: baseline; gap: 6px; }
+.detail-meta-stats dt { color: var(--fg-subtle); font-size: var(--text-meta); }
+.detail-meta-stats dd { margin: 0; color: var(--fg-default); font-size: var(--text-section); font-weight: 600; font-variant-numeric: tabular-nums; }
+.detail-meta { min-width: 0; flex: 1 1 280px; }
+.detail-body { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 1280px) { .detail-body-with-aside { grid-template-columns: minmax(0, 1fr) var(--shell-aside); } }
+
+/* ---------- Reader ---------- */
+/* 阅读栏宽度按 rem 计算，不受工作台里继承的小字号影响；正文自身再按 40em（约 40 个汉字）收束。 */
+.reader-layout { width: 100%; max-width: 44rem; margin-inline: auto; }
+.reader-meta { margin-bottom: 16px; color: var(--fg-subtle); font-size: var(--text-meta); }
+/* 长文正文：衬线体只在这里启用；不低于 16px，行高 1.8，段距 0.6em。 */
+.reader-prose { max-width: 40em; font-family: var(--font-serif); font-size: max(16px, var(--text-reading)); line-height: 1.8; overflow-wrap: anywhere; text-wrap: pretty; }
+.reader-prose p { margin: 0; line-height: inherit; }
+.reader-body { color: var(--fg-default); }
+.reader-prose p + p { margin-top: 0.6em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .collection-chip-remove, .collection-view-option { transition: none; }
+}
+
+/* 制作项目卡片视图 */
+.activity-card-grid { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.activity-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline);
+  transition: box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
+}
+.activity-card:hover { transform: translateY(-1px); box-shadow: var(--elev-sm), 0 0 0 1px var(--hairline); }
+@media (prefers-reduced-motion: reduce) { .activity-card, .activity-card:hover { transition: none; transform: none; } }
+
+/* 制作项目封面：卡片顶部 16:10，行视图 40px 头像比例。 */
+.activity-card-cover { display: block; margin: -4px -4px 4px; border-radius: var(--radius-panel); }
+.activity-card-cover:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.activity-row-thumb { width: 40px; flex: none; }
+/* 作品卡片封面：顶部 16:10，四周收进卡片内边距。 */
+.work-card-cover { display: block; margin: -8px -8px 0; border-radius: var(--radius-panel); }
+.work-card-cover:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

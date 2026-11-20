@@ -134,31 +134,31 @@ export function ActivityImportModal({ open, onOpenChange }: ActivityImportModalP
         {stagedResult && (
           <div className="p-4 rounded-lg bg-surface border border-border-default space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-ink">
+              <span className="text-sm font-semibold text-ink">
                 {stagedResult.preview.activity?.title || stagedResult.preview.title || '活动工程'}
               </span>
-              <Badge variant="outline" className="text-sm bg-emerald-50 text-emerald-700 border-emerald-300">
+              <Badge variant="outline" className="text-sm bg-success-bg text-success-fg border-success-border">
                 校验通过
               </Badge>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pt-1">
               <div className="p-2 rounded bg-surface-raised border border-border-default">
-                <div className="text-sm font-bold text-ink">{stagedResult.preview.stageCount}</div>
+                <div className="text-sm font-semibold text-ink">{stagedResult.preview.stageCount}</div>
                 <div className="text-sm text-muted">阶段数量</div>
               </div>
               <div className="p-2 rounded bg-surface-raised border border-border-default">
-                <div className="text-sm font-bold text-ink">{stagedResult.preview.actorCount}</div>
+                <div className="text-sm font-semibold text-ink">{stagedResult.preview.actorCount}</div>
                 <div className="text-sm text-muted">角色数量</div>
               </div>
               <div className="p-2 rounded bg-surface-raised border border-border-default">
-                <div className="text-sm font-bold text-ink">
+                <div className="text-sm font-semibold text-ink">
                   {stagedResult.preview.messageCount + stagedResult.preview.postCount}
                 </div>
                 <div className="text-sm text-muted">记录总数</div>
               </div>
               <div className="p-2 rounded bg-surface-raised border border-border-default">
-                <div className="text-sm font-bold text-ink">
+                <div className="text-sm font-semibold text-ink">
                   {stagedResult.preview.assetCount ?? stagedResult.preview.mediaCount}
                 </div>
                 <div className="text-sm text-muted">媒体文件</div>

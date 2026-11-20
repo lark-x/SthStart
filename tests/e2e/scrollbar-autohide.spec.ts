@@ -70,7 +70,7 @@ test('scrollbars stay invisible until the reader scrolls, then hide again', asyn
 
 test('auto-hide keeps the platform scrollbar width untouched', async ({ page }) => {
   await page.goto('/apps/calendar');
-  await expect(page.getByRole('heading', { name: '角色日历' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创作日历' })).toBeVisible();
 
   /*
    * 测试跑在 headless Chromium 上，用的是 overlay 滚动条、沟槽恒为 0，

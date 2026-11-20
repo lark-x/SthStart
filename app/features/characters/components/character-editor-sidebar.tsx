@@ -126,7 +126,7 @@ export function CharacterEditorSidebar({
                 <span className="block truncate text-xs font-semibold text-ink">
                   {displayName || '未命名角色'} · 视觉与基础档案
                 </span>
-                <span className="block text-[11px] text-muted">
+                <span className="block text-xs text-muted">
                   {currentVariant ? `形态：${currentVariant.name}` : '主档案'} · {assetsLoaded ? `${assets.length} 个资产` : '暂无资产'}
                 </span>
               </span>
@@ -151,7 +151,7 @@ export function CharacterEditorSidebar({
             </span>
           </div>
 
-          <CharacterVisualPreview portraitUrl={portraitUrl} avatarUrl={avatarUrl} displayName={displayName} />
+          <CharacterVisualPreview portraitUrl={portraitUrl} avatarUrl={avatarUrl} displayName={displayName} seed={characterId} />
 
           {/* 立绘操作 */}
           <div className="grid grid-cols-2 gap-2">
@@ -253,7 +253,7 @@ export function CharacterEditorSidebar({
           <div className="border-t border-hairline pt-3 space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 space-y-1">
-                <h2 className="text-lg font-bold tracking-tight text-ink leading-snug">
+                <h2 className="text-lg font-semibold tracking-tight text-ink leading-snug">
                   {displayName || '未命名角色'}
                   {currentVariant ? ` · ${currentVariant.name}` : ''}
                 </h2>
@@ -261,7 +261,7 @@ export function CharacterEditorSidebar({
                   <Badge variant="outline">{originLabel}</Badge>
                   {work && <Badge variant="outline">{work}</Badge>}
                   {hasBirthday && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-sunken/50 px-2 py-0.5 text-[11px] text-muted">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-sunken/50 px-2 py-0.5 text-xs text-muted">
                       <Cake className="h-3 w-3 text-accent" aria-hidden="true" />
                       <span>{birthday?.month}月{birthday?.day}日</span>
                     </span>
@@ -281,7 +281,7 @@ export function CharacterEditorSidebar({
                 {tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center rounded-md border border-hairline bg-surface-sunken/50 px-2 py-0.5 text-[11px] text-muted"
+                    className="inline-flex items-center rounded-md border border-hairline bg-surface-sunken/50 px-2 py-0.5 text-xs text-muted"
                   >
                     {tag}
                   </span>
@@ -290,13 +290,13 @@ export function CharacterEditorSidebar({
             )}
 
             {currentVariant && (
-              <p role="status" className="text-[11px] leading-relaxed text-muted">
+              <p role="status" className="text-xs leading-relaxed text-muted">
                 当前处于衍生形态「{currentVariant.name}」，人设与图片独立保存。
               </p>
             )}
 
             {editing && !currentVariant && (
-              <p className="text-[11px] font-medium text-accent-dark">
+              <p className="text-xs font-medium text-accent-dark">
                 正在编辑主档案信息。
               </p>
             )}

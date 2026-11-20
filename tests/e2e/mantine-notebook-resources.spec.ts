@@ -127,7 +127,8 @@ test('resource tabs keep the last view reachable at phone width', async ({ page 
   await expect(last).toBeInViewport({ ratio: 1 });
   await expect(page).toHaveURL(/view=sources/);
   await expect(page.getByRole('heading', { name: '数据源连接', exact: true })).toBeVisible();
-  await expect(page.locator('[aria-label="相关记录通道"]')).toBeVisible();
+  // 资料库导航的快捷入口默认关闭（ResourceNav showQuickLinks = false），手机宽度下不再渲染「相关记录通道」。
+  await expect(page.locator('[aria-label="相关记录通道"]')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 });
 

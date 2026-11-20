@@ -40,19 +40,19 @@ interface TaskDrawerProps {
 function domainIcon(domain: TaskDomain) {
   switch (domain) {
     case 'activity_media_batch':
-      return <Layers className="h-3.5 w-3.5 text-sky-500" />;
+      return <Layers className="h-3.5 w-3.5 text-tone-blue-fg" />;
     case 'activity_text':
-      return <FileText className="h-3.5 w-3.5 text-indigo-500" />;
+      return <FileText className="h-3.5 w-3.5 text-tone-blue-fg" />;
     case 'generation':
-      return <Camera className="h-3.5 w-3.5 text-purple-500" />;
+      return <Camera className="h-3.5 w-3.5 text-tone-violet-fg" />;
     case 'topic_collection':
-      return <Globe className="h-3.5 w-3.5 text-emerald-500" />;
+      return <Globe className="h-3.5 w-3.5 text-tone-green-fg" />;
     case 'idea_generation':
-      return <Lightbulb className="h-3.5 w-3.5 text-amber-500" />;
+      return <Lightbulb className="h-3.5 w-3.5 text-tone-orange-fg" />;
     case 'research':
-      return <Search className="h-3.5 w-3.5 text-cyan-500" />;
+      return <Search className="h-3.5 w-3.5 text-tone-blue-fg" />;
     case 'planning':
-      return <ListTodo className="h-3.5 w-3.5 text-teal-500" />;
+      return <ListTodo className="h-3.5 w-3.5 text-tone-green-fg" />;
     default:
       return <Sparkles className="h-3.5 w-3.5 text-accent" />;
   }
@@ -116,7 +116,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
 
           <div className="text-xs text-muted">
             {activeCount > 0 ? (
-              <span className="text-sky-600 flex items-center gap-1">
+              <span className="text-info-fg flex items-center gap-1">
                 <Spinner className="h-3 w-3" />
                 {activeCount} 个任务运行中
               </span>
@@ -179,37 +179,37 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                     {/* Status Badge */}
                     <div className="flex-shrink-0">
                       {isRunning && (
-                        <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-info-bg text-info-fg border-info-border flex items-center gap-1">
                           <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
                           处理中
                         </Badge>
                       )}
                       {isWaiting && (
-                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-warning-bg text-warning-fg border-warning-border flex items-center gap-1">
                           <Clock className="h-2.5 w-2.5" />
                           排队中
                         </Badge>
                       )}
                       {isSucceeded && (
-                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-success-bg text-success-fg border-success-border flex items-center gap-1">
                           <CheckCircle2 className="h-2.5 w-2.5" />
                           已完成
                         </Badge>
                       )}
                       {isPartial && (
-                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-warning-bg text-warning-fg border-warning-border flex items-center gap-1">
                           <AlertTriangle className="h-2.5 w-2.5" />
                           部分成功
                         </Badge>
                       )}
                       {isFailed && (
-                        <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-danger-bg text-danger-fg border-danger-border flex items-center gap-1">
                           <XCircle className="h-2.5 w-2.5" />
                           失败
                         </Badge>
                       )}
                       {isStopped && (
-                        <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700 border-slate-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-surface-sunken text-fg-default border-border-default flex items-center gap-1">
                           <Square className="h-2.5 w-2.5" />
                           已停止
                         </Badge>
@@ -261,7 +261,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                           variant="ghost"
                           disabled={retryMutation.isPending}
                           onClick={() => retryMutation.mutate({ domain: task.domain, taskId: task.taskId })}
-                          className="h-auto min-h-9 px-1.5 text-xs font-medium text-sky-600 sm:min-h-8"
+                          className="h-auto min-h-9 px-1.5 text-xs font-medium text-info-fg sm:min-h-8"
                         >
                           <span className="inline-flex items-center gap-1">
                             <RotateCcw className="h-2.5 w-2.5" aria-hidden="true" />

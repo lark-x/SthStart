@@ -176,11 +176,11 @@ export function LinsheCharacterVault() {
           <div>
             <h3 className="text-xs font-semibold text-ink flex items-center gap-1.5">
               <span>邻舍实时生态角色卡</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-accent/10 text-[10px] text-accent font-medium">
+              <span className="px-1.5 py-0.2 rounded-full bg-accent/10 text-xs text-accent font-medium">
                 1:1 独立复刻
               </span>
             </h3>
-            <p className="text-[11px] text-muted">
+            <p className="text-xs text-muted">
               与「邻舍」日程、作息和梦乡状态完全打通，支持叫醒与置顶交互。
             </p>
           </div>
@@ -234,9 +234,9 @@ export function LinsheCharacterVault() {
           ))}
         </div>
 
-        <div className="relative min-w-0 w-full sm:w-auto sm:min-w-[220px]">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" aria-hidden="true" />
+        <div className="relative min-w-0 w-full sm:w-auto sm:min-w-55">
           <Input
+            leftIcon={<Search className="h-3.5 w-3.5 text-muted" />}
             type="search"
             aria-label="搜索邻舍角色名字、地点或行为"
             value={searchDraft}
@@ -265,7 +265,7 @@ export function LinsheCharacterVault() {
         </div>
       ) : error ? (
         <div className="p-12 text-center text-muted bg-surface/40 rounded-2xl border border-dashed border-border-default space-y-2">
-          <AlertCircle className="mx-auto h-8 w-8 text-amber-500/80" />
+          <AlertCircle className="mx-auto h-8 w-8 text-warning-fg" />
           <p className="text-sm font-medium text-ink">无法连接到邻舍服务 (端口 3099)</p>
           <p className="text-xs text-muted max-w-md mx-auto">
             请确认邻舍服务已通过 `npm run dev:linshe` 正常启动并在后台运行。
@@ -287,12 +287,12 @@ export function LinsheCharacterVault() {
             const isBusy = !char.is_sleeping && char.reply_delay > 0;
 
             const statusBadge = isSleeping
-              ? { label: '在梦乡', bg: 'bg-[#9580cc]/15 text-[#7c6db8]' }
+              ? { label: '在梦乡', bg: 'bg-tone-violet-soft text-tone-violet-fg' }
               : isDrowsy
-              ? { label: '迷迷糊糊', bg: 'bg-[#8ca0be]/15 text-[#6d84a8]' }
+              ? { label: '迷迷糊糊', bg: 'bg-tone-blue-soft text-tone-blue-fg' }
               : isBusy
-              ? { label: '正忙', bg: 'bg-accent/15 text-[#c06858]' }
-              : { label: '在线', bg: 'bg-emerald-500/15 text-emerald-700' };
+              ? { label: '正忙', bg: 'bg-tone-pink-soft text-tone-pink-fg' }
+              : { label: '在线', bg: 'bg-success-bg text-success-fg' };
 
             const tagList = Array.isArray(char.tags) ? char.tags.slice(0, 2) : [];
             const isShaking = shakingCardId === char.id;
@@ -300,12 +300,12 @@ export function LinsheCharacterVault() {
             return (
               <div
                 key={char.id}
-                className={`group relative flex flex-col rounded-[18px] transition-all duration-200 ${
+                className={`group relative flex flex-col rounded-[var(--radius-xl)] transition-all duration-200 ${
                   isSleeping ? 'opacity-85' : ''
                 }`}
               >
                 {/* 主卡片体 (Card Inner) */}
-                <div className="relative flex flex-col gap-3 p-4 rounded-[18px] bg-surface border border-border-default shadow-xs hover:border-accent/40 hover:shadow-md transition-all">
+                <div className="relative flex flex-col gap-3 p-4 rounded-[var(--radius-xl)] bg-surface border border-border-default shadow-xs hover:border-accent/40 hover:shadow-md transition-all">
                   {/* 左上角置顶红心按钮 */}
                   <IconButton
                     type="button"
@@ -318,8 +318,8 @@ export function LinsheCharacterVault() {
                     }}
                     className={`!absolute left-2.5 top-2.5 z-10 !size-6 !min-h-6 rounded-full transition-all focus-visible:opacity-100 ${
                       char.pinned
-                        ? 'opacity-100 text-rose-500 bg-rose-50 hover:!bg-rose-50'
-                        : 'text-muted hover:!bg-surface-muted hover:!text-rose-500 sm:pointer-fine:opacity-0 sm:pointer-fine:group-hover:opacity-60 sm:pointer-fine:hover:!opacity-100'
+                        ? 'opacity-100 text-danger-fg bg-danger-bg hover:!bg-danger-bg'
+                        : 'text-muted hover:!bg-surface-muted hover:!text-danger-fg sm:pointer-fine:opacity-0 sm:pointer-fine:group-hover:opacity-60 sm:pointer-fine:hover:!opacity-100'
                     }`}
                     iconClassName={`h-3.5 w-3.5 transition-transform active:scale-125 ${char.pinned ? 'fill-current' : ''}`}
                   />
@@ -351,7 +351,7 @@ export function LinsheCharacterVault() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-white text-base font-bold font-sans">
+                        <span className="text-on-media text-base font-semibold font-sans">
                           {char.display_name.charAt(0)}
                         </span>
                       )}
@@ -359,11 +359,11 @@ export function LinsheCharacterVault() {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-semibold text-ink truncate max-w-[110px]" title={char.display_name}>
+                        <span className="text-sm font-semibold text-ink truncate max-w-27.5" title={char.display_name}>
                           {char.display_name}
                         </span>
                         <span
-                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${statusBadge.bg}`}
+                          className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${statusBadge.bg}`}
                         >
                           {statusBadge.label}
                         </span>
@@ -375,10 +375,10 @@ export function LinsheCharacterVault() {
                           {tagList.map((tag, idx) => (
                             <span
                               key={tag}
-                              className={`text-[9.5px] font-medium px-1.5 py-0.2 rounded-full ${
+                              className={`text-xs font-medium px-1.5 py-0.2 rounded-full ${
                                 idx === 0
-                                  ? 'bg-emerald-500/10 text-emerald-700'
-                                  : 'bg-amber-500/10 text-amber-700'
+                                  ? 'bg-success-bg text-success-fg'
+                                  : 'bg-warning-bg text-warning-fg'
                               }`}
                             >
                               {tag}
@@ -403,15 +403,15 @@ export function LinsheCharacterVault() {
 
                   {/* 底部日记小注 */}
                   {char._description && (
-                    <div className="pt-2 border-t border-border-default/40 text-[11px] text-muted/80 line-clamp-1 italic">
+                    <div className="pt-2 border-t border-border-default/40 text-xs text-muted/80 line-clamp-1 italic">
                       {char._description}
                     </div>
                   )}
 
                   {/* SthStart 本地人设绑定标识 */}
-                  <div className="pt-1.5 flex items-center justify-between text-[10.5px]">
+                  <div className="pt-1.5 flex items-center justify-between text-xs">
                     {char.sthLink ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                      <span className="inline-flex items-center gap-1 text-success-fg font-medium">
                         <CheckCircle2 className="h-3 w-3" />
                         <span>已关联本地档案 (v{char.sthLink.latestVersion || 1})</span>
                       </span>

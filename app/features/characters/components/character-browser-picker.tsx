@@ -162,6 +162,7 @@ function FamilyChoice({
               <CharacterAvatar
                 src={profile.avatarUrl}
                 name={profile.displayName}
+                seed={profile.id}
               />
             </div>
             <div className="min-w-0 flex-1">

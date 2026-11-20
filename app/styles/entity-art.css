@@ -1,0 +1,174 @@
+/*
+ * EntityArt / EntityImage：实体的视觉代表（设计语言 §5）。
+ * 纹样颜色全部来自最近的 [data-tone]（--tone / --tone-soft / --tone-fg），四套主题与皮肤自动跟随。
+ */
+
+.entity-art,
+.entity-image {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  isolation: isolate;
+}
+
+.entity-art-fill {
+  width: 100%;
+  height: 100%;
+}
+
+.entity-art {
+  display: grid;
+  place-items: center;
+  /* 暖纸底：模块柔色叠一层极淡的纸纹。 */
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--fg-default) 5%, transparent) 0.6px, transparent 0.8px) 0 0 / 6px 6px,
+    linear-gradient(150deg, var(--tone-soft), color-mix(in srgb, var(--tone) 16%, var(--surface)));
+  color: var(--tone-fg);
+}
+
+.entity-image .entity-art {
+  border-radius: inherit;
+  box-shadow: none;
+}
+
+.entity-art-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.entity-art-glyph {
+  position: relative;
+  font-size: clamp(0.625rem, 40cqmin, calc(var(--text-display) * 2));
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--tone-fg);
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.entity-art,
+.entity-image {
+  container-type: size;
+}
+
+.entity-image {
+  background: var(--surface-sunken);
+}
+
+.entity-image-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity var(--motion-base) var(--motion-ease);
+}
+
+.entity-image-img[data-fit='contain'] {
+  object-fit: contain;
+}
+
+.entity-image-img[data-loaded='false'] {
+  opacity: 0;
+}
+
+.entity-image-skeleton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+/* 头像尺寸（1:1 小图）使用控件圆角，避免小尺寸下圆角过大。 */
+.entity-art[data-ratio='avatar'],
+.entity-image[data-ratio='avatar'] {
+  border-radius: var(--radius-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entity-image-img {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .entity-art,
+  .entity-image {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* 封面字段与选择器（features/covers）。 */
+.cover-field {
+  display: grid;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+}
+
+/* 编辑页与新建流程里的封面：表单列内限宽，避免 16:10 封面占满整行。 */
+.wa-cover,
+.new-activity-cover {
+  width: min(100%, 20rem);
+}
+
+.cover-field-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cover-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cover-picker-item {
+  display: grid;
+  width: 100%;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-panel) + 4px);
+  background: transparent;
+  color: var(--fg-default);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+}
+
+.cover-picker-item:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.cover-picker-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cover-picker-item[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.cover-picker-item:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.cover-picker-name {
+  overflow: hidden;
+  font-size: var(--text-meta);
+  color: var(--fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

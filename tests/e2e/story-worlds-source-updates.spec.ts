@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type {
+
   StoryWorld,
   WorldBranch,
   WorldBranchDetail,
@@ -9,6 +10,11 @@ import type {
   WorldEventPage,
   WorldOverview,
 } from '@sthstart/contracts';
+/*
+ * 作品工作台改版（分支上已确认的有意改动）：主标题为作品名，事件阅读 / 轨迹流 / 图像叙事留在
+ * 「沙盒调试视图 (旧)」（?view=sandbox）。
+ */
+const worldHeading = (page: Page) => page.getByRole('main').first().getByRole('heading', { level: 1 }).first();
 
 const service = 'http://127.0.0.1:4974';
 const headers = { 'x-sthstart-admin-token': 'story-worlds-isolated-e2e-admin-token-4974' };
@@ -160,6 +166,11 @@ async function expectDialogFitsViewport(page: Page) {
   expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.innerHeight + 1);
 }
 
+/*
+ * 2026-11-20 P4：此前对话框在视口跨过 1152px 时消失，是功能缺陷而非用例过期——来源面板位于作品左栏，
+ * 左栏在侧栏与底部抽屉之间切换时重新挂载，带走了对话框状态。现由工作台持有开关并在左栏之外渲染对话框，
+ * 本用例在对话框打开时从 1440 缩到 390 再放回，覆盖这一回归。
+ */
 test('source preview applies source and clock updates, preserves events, and rejects a stale world revision', async ({ page, request }) => {
   test.setTimeout(90_000);
   await fixture(request);
@@ -207,8 +218,8 @@ test('source preview applies source and clock updates, preserves events, and rej
   expect(firstUpdatedWorld.revision).toBe(overviewBeforeFirstUpdate.world.revision + 1);
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/apps/story-worlds?world=${world.id}&branch=${branch.id}`);
-  await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+  await page.goto(`/apps/story-worlds?world=${world.id}&branch=${branch.id}&view=sandbox`);
+  await expect(worldHeading(page)).toBeVisible();
   const source = sourceSection(page);
   await expect(source.getByText('来源有新版本', { exact: true })).toBeVisible();
   await source.getByRole('button', { name: '查看影响', exact: true }).click();
@@ -262,7 +273,7 @@ test('source preview applies source and clock updates, preserves events, and rej
   await updateWorld(request, world.id, overviewBeforeSecondUpdate.world.revision, secondUpdatedDefinition);
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+  await expect(worldHeading(page)).toBeVisible();
   await expect(source.getByText('来源有新版本', { exact: true })).toBeVisible();
   await source.getByRole('button', { name: '查看影响', exact: true }).click();
   await expect(dialog).toBeVisible();

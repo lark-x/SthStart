@@ -55,8 +55,8 @@ export function NarrativeInspector({
     <aside className="flex max-h-[50dvh] w-full flex-col bg-surface md:h-full md:max-h-none md:min-h-0 md:w-72 md:flex-none md:rounded-panel md:shadow-xs">
       <div className="shrink-0 border-b border-border-subtle p-3">
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-fg-subtle" aria-hidden="true" />
           <Input
+            leftIcon={<Search className="h-4 w-4 text-fg-subtle" />}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onCompositionStart={() => { composingRef.current = true; }}

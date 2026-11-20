@@ -341,9 +341,9 @@ export function SharedAssetVault({
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {/* 关键字搜索 */}
-          <div className="relative min-w-0 flex-1 min-w-[200px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
+          <div className="relative min-w-0 flex-1 min-w-50">
             <Input
+              leftIcon={<Search className="h-3.5 w-3.5 text-muted" />}
               type="search"
               aria-label="搜索公共资产标题或标签"
               value={searchQuery}
@@ -377,7 +377,7 @@ export function SharedAssetVault({
             <Filter className="h-3.5 w-3.5" />
             <span>高级筛选</span>
             {hasAdvancedFilters && (
-              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--fg-on-accent)]/20 px-1 text-[10px] font-semibold">
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--fg-on-accent)]/20 px-1 text-xs font-semibold">
                 {(selectedCharacterId ? 1 : 0) + (selectedTag ? 1 : 0)}
               </span>
             )}
@@ -503,8 +503,8 @@ export function SharedAssetVault({
                   />
 
                   {/* 悬停微渐变遮罩与放大图标 */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center pointer-events-none">
-                    <span className="p-2 rounded-full bg-white/20 backdrop-blur-md text-white shadow-md">
+                  <div className="absolute inset-0 bg-gradient-to-t from-media-backdrop/60 via-media-backdrop/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center pointer-events-none">
+                    <span className="p-2 rounded-full bg-on-media/20 backdrop-blur-md text-on-media shadow-md">
                       <Eye className="h-5 w-5" />
                     </span>
                   </div>
@@ -547,7 +547,7 @@ export function SharedAssetVault({
                                   className="h-3.5 w-3.5 rounded-full object-cover"
                                 />
                               )}
-                              <span className="truncate max-w-[64px]">
+                              <span className="truncate max-w-16">
                                 {char?.displayName || '未知角色'}
                               </span>
                             </span>
@@ -874,7 +874,7 @@ export function SharedAssetVault({
         {previewAsset && (
           <div className="space-y-4 pt-1">
             {/* 自然长宽比图片展示 */}
-            <div className="relative w-full min-h-[240px] max-h-[72vh] rounded-panel overflow-hidden bg-surface-sunken border border-border-subtle flex items-center justify-center p-2">
+            <div className="relative w-full min-h-60 max-h-[72vh] rounded-panel overflow-hidden bg-surface-sunken border border-border-subtle flex items-center justify-center p-2">
               {previewFailedSrc !== previewAsset.url ? (
                 <img
                   src={previewRetry ? `${previewAsset.url}${previewAsset.url.includes('?') ? '&' : '?'}retry=${previewRetry}` : previewAsset.url}

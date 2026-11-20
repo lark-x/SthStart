@@ -40,7 +40,7 @@ export function CharacterKnowledgePanel({ characterName, work }: { characterName
     <section className="space-y-3" aria-label="相关资料">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="flex items-center gap-2 text-sm font-bold text-ink"><BookOpen className="h-4 w-4 text-accent" />相关资料（{relatedQuery.data?.total ?? 0}）</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-ink"><BookOpen className="h-4 w-4 text-accent" />相关资料（{relatedQuery.data?.total ?? 0}）</h3>
           <p className="text-xs text-muted">按角色{work ? '与作品' : ''}查询资料库；只显示已标记为「可参考」的资料。</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ function CharacterCollectForm({ characterName, work, onDone }: { characterName: 
           <Select aria-label="资料源" value={effective} className="h-9 text-sm" onChange={(event) => setSourceId(event.target.value)}>
             {usable.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
           </Select>
-        ) : <p className="text-xs text-amber-700">没有可用资料源；请先在公共服务里配置。</p>}
+        ) : <p className="text-xs text-warning-fg">没有可用资料源；请先在公共服务里配置。</p>}
       </label>
       <Button variant="primary" disabled={busy || !usable.length} onClick={() => void start()}>{busy ? '正在发起…' : '保存并立即搜集'}</Button>
       <p className="text-xs text-muted">任务只负责搜集与保存来源，不会自动修改这个角色的人设。</p>

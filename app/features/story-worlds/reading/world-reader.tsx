@@ -29,6 +29,7 @@ import {
   ImageStatusBadge,
 } from './badges';
 import { Button } from '@/app/components/ui/button';
+import { ReaderLayout } from '@/app/components/shared/page-archetypes';
 
 export function WorldReader({
   events,
@@ -134,7 +135,7 @@ export function WorldReader({
                 title={`查看 ${actor.name} 参与的剧情`}
               >
                 <span>{actor.name}</span>
-                <span className="rounded-full bg-ink/5 px-1 text-[10px]">
+                <span className="rounded-full bg-ink/5 px-1 text-xs">
                   {actorEventsCount}
                 </span>
               </Button>
@@ -174,7 +175,7 @@ export function WorldReader({
           )}
         </div>
       ) : (
-        <div className="space-y-6">
+        <ReaderLayout embedded className="space-y-6" aria-label="故事阅读流">
           {visibleEvents.map((ev) => {
             const location = lookupLocation(locations, ev.locationId);
             const isSelected = selectedEventId === ev.id;
@@ -234,7 +235,7 @@ export function WorldReader({
 
                     {/* Duration (only when > 0, human readable minutes) */}
                     {ev.duration > 0 && formatDuration(ev.duration) ? (
-                      <span className="text-muted text-[11px]">
+                      <span className="text-muted text-xs">
                         {formatDuration(ev.duration)}
                       </span>
                     ) : null}
@@ -279,7 +280,7 @@ export function WorldReader({
 
                   {/* Perspective Switcher Controls (Sans-serif UI) */}
                   <div className="flex flex-wrap items-center gap-1.5 p-1 bg-surface-sunken rounded-lg font-sans text-xs">
-                    <span className="text-muted px-2 py-1 text-[11px] font-semibold shrink-0 flex items-center gap-1">
+                    <span className="text-muted px-2 py-1 text-xs font-semibold shrink-0 flex items-center gap-1">
                       <Eye className="w-3 h-3" />
                       <span>叙述视角：</span>
                     </span>
@@ -355,8 +356,7 @@ export function WorldReader({
 
                   {/* Only the explicitly chosen narrative is shown; personal gaps stay visible. */}
                   {(chosenKey === 'objective' || activePerspective) && <div
-                    className="story-reading-content max-w-[75ch] font-serif text-[16.5px] leading-[1.85] text-ink break-words text-pretty py-1 selection:bg-accent-soft"
-                    style={{ fontFamily: 'var(--font-serif)' }}
+                    className="story-reading-content reader-prose py-1 selection:bg-accent-soft"
                   >
                     {activePerspective ? (
                       /* Specific participant perspective chosen */
@@ -364,7 +364,7 @@ export function WorldReader({
                         const trimmed = paragraph.trim();
                         if (!trimmed) return null;
                         return (
-                          <p key={pIdx} className="my-3 text-justify">
+                          <p key={pIdx} className="text-justify">
                             {trimmed}
                           </p>
                         );
@@ -396,11 +396,11 @@ export function WorldReader({
                       return (
                         <span
                           key={pId}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-sunken text-ink text-[11px] font-medium"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-sunken text-ink text-xs font-medium"
                         >
                           <span className="w-1 h-1 rounded-full bg-accent" />
                           <span>{actor.name}</span>
-                          <span className="text-[10px] text-muted">
+                          <span className="text-xs text-muted">
                             ({actor.role === 'main' ? '主角' : '配角'})
                           </span>
                         </span>
@@ -416,7 +416,7 @@ export function WorldReader({
                           <ImageIcon className="w-3.5 h-3.5" />
                           <span>分镜画面 ({eventImages.length})</span>
                         </span>
-                        <span className="text-[11px]">点击图片或右上方展开档案查看原画提示</span>
+                        <span className="text-xs">点击图片或右上方展开档案查看原画提示</span>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
@@ -432,7 +432,7 @@ export function WorldReader({
                             </div>
 
                             {img.imageUrl && img.status === 'succeeded' ? (
-                              <div className="relative aspect-video rounded overflow-hidden bg-black/5 mb-1.5">
+                              <div className="relative aspect-video rounded overflow-hidden bg-media-backdrop/5 mb-1.5">
                                 <img
                                   src={img.imageUrl}
                                   alt={img.caption || '分镜画面'}
@@ -442,13 +442,13 @@ export function WorldReader({
                               </div>
                             ) : (
                               <div className="aspect-video rounded bg-surface border border-dashed border-hairline flex flex-col items-center justify-center p-2 text-center mb-1.5">
-                                <span className="text-[11px] text-muted font-medium line-clamp-1">
+                                <span className="text-xs text-muted font-medium line-clamp-1">
                                   {img.caption || '分镜构图'}
                                 </span>
                               </div>
                             )}
 
-                            <p className="text-[11px] text-muted line-clamp-1 group-hover:text-ink transition-colors">
+                            <p className="text-xs text-muted line-clamp-1 group-hover:text-ink transition-colors">
                               {img.caption || '分镜规划'}
                             </p>
                           </div>
@@ -469,10 +469,10 @@ export function WorldReader({
                         className="h-auto min-h-0 w-full justify-between px-0 py-1 text-left text-xs font-normal text-muted hover:bg-transparent hover:text-ink sm:min-h-0 [&_.ui-mantine-button-inner]:w-full [&_.ui-mantine-button-label]:flex [&_.ui-mantine-button-label]:w-full [&_.ui-mantine-button-label]:items-center [&_.ui-mantine-button-label]:justify-between"
                       >
                         <span className="flex items-center gap-1.5 font-semibold text-ink">
-                          <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <FileText className="w-3.5 h-3.5 text-info-fg" />
                           <span>沉淀事实与认知边界 ({ev.facts.length})</span>
                         </span>
-                        <span className="text-[11px] text-accent font-medium">
+                        <span className="text-xs text-accent font-medium">
                           {showFacts ? '收起事实' : `展开事实 (${ev.facts.length})`}
                         </span>
                       </Button>
@@ -488,7 +488,7 @@ export function WorldReader({
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <SourceNatureBadge nature={fact.nature} />
-                                  <span className="text-[11px] text-muted">
+                                  <span className="text-xs text-muted">
                                     已知晓角色：{knownActors.length > 0 ? knownActors.join('、') : '仅环境记录'}
                                   </span>
                                 </div>
@@ -513,10 +513,10 @@ export function WorldReader({
                         className="h-auto min-h-0 w-full justify-between px-0 py-1 text-left text-xs font-normal text-muted hover:bg-transparent hover:text-ink sm:min-h-0 [&_.ui-mantine-button-inner]:w-full [&_.ui-mantine-button-label]:flex [&_.ui-mantine-button-label]:w-full [&_.ui-mantine-button-label]:items-center [&_.ui-mantine-button-label]:justify-between"
                       >
                         <span className="flex items-center gap-1.5 font-semibold text-ink">
-                          <HeartHandshake className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <HeartHandshake className="w-3.5 h-3.5 text-warning-fg" />
                           <span>角色心理与关系演变 ({ev.stateChanges.length})</span>
                         </span>
-                        <span className="text-[11px] text-accent font-medium">
+                        <span className="text-xs text-accent font-medium">
                           {showStates ? '收起状态' : `展开状态 (${ev.stateChanges.length})`}
                         </span>
                       </Button>
@@ -533,14 +533,14 @@ export function WorldReader({
                                 <div className="flex items-center justify-between">
                                   <span className="font-semibold text-ink">{actor.name}</span>
                                   {st.emotion && (
-                                    <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-800 dark:text-amber-300 text-[11px]">
+                                    <span className="px-2 py-0.5 rounded-full bg-warning-bg text-warning-fg text-xs">
                                       情绪：{st.emotion}
                                     </span>
                                   )}
                                 </div>
 
                                 {st.goals.length > 0 && (
-                                  <div className="text-[11px] text-muted">
+                                  <div className="text-xs text-muted">
                                     <span className="font-medium text-ink">当前目标：</span>
                                     <span>{st.goals.join('；')}</span>
                                   </div>
@@ -548,17 +548,17 @@ export function WorldReader({
 
                                 {st.relationships.length > 0 && (
                                   <div className="space-y-1 pt-1 border-t border-hairline/60">
-                                    <span className="text-[11px] font-medium text-ink">关系变化：</span>
+                                    <span className="text-xs font-medium text-ink">关系变化：</span>
                                     {st.relationships.map((rel, rIdx) => {
                                       const target = lookupActor(actors, rel.actorId);
                                       return (
                                         <div
                                           key={rIdx}
-                                          className="text-[11px] text-muted pl-2 border-l border-accent/40"
+                                          className="text-xs text-muted pl-2 border-l border-accent/40"
                                         >
                                           对 <strong className="text-ink">{target.name}</strong>：{rel.description}
                                           {rel.sourceEventId && (
-                                            <span className="text-[10px] text-muted ml-1.5">
+                                            <span className="text-xs text-muted ml-1.5">
                                               (源于事件 #{rel.sourceEventId})
                                             </span>
                                           )}
@@ -578,7 +578,7 @@ export function WorldReader({
               </article>
             );
           })}
-        </div>
+        </ReaderLayout>
       )}
     </div>
   );

@@ -88,7 +88,7 @@ test('one supplier card combines legacy text and image connections with purpose 
   await expect(card).toContainText(shortName);
   await expect(card).toContainText('2 条连接');
   await expect(page.getByRole('heading', { name: longName, exact: true })).toHaveCount(0);
-  await card.getByRole('button', { name: `打开供应商 ${shortName}`, exact: true }).click();
+  await card.getByRole('button', { name: `详情：打开供应商 ${shortName}`, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: shortName, exact: true });
   await expect(dialog.getByRole('tab', { name: /文本 \/ 看图.*1/ })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: /绘图.*1/ })).toBeVisible();
@@ -97,6 +97,128 @@ test('one supplier card combines legacy text and image connections with purpose 
   await dialog.getByText('连接明细（2）', { exact: true }).click();
   await expect(dialog.getByText(textId, { exact: false })).toBeVisible();
   await expect(dialog.getByText(imageId, { exact: false })).toBeVisible();
+});
+
+test('supplier detail keeps per-connection settings and supports repeated additions of every model type', async ({ page, request }) => {
+  const suffix = Date.now().toString(36);
+  const name = `持续管理 ${suffix}`;
+  const ids = [`manage-text-${suffix}`, `manage-image-${suffix}`];
+  for (const [index, id] of ids.entries()) {
+    expect((await request.post(`${service}/api/v1/admin/connections`, { headers, data: {
+      id, name: index ? `${name} 绘图` : name,
+      kind: index ? 'openai-compatible-image' : 'openai-compatible-text',
+      baseUrl: `https://manage-${suffix}.example/v1`,
+      timeoutMs: index ? 90000 : 30000,
+      headers: { 'X-Route': index ? 'image' : 'text' }, options: { route: index },
+    } })).status()).toBe(201);
+  }
+  await page.goto('/settings/public-services');
+  const card = page.locator(`[data-supplier-connections*="${ids[0]}"]`);
+  await card.getByRole('button', { name: `详情：打开供应商 ${name}`, exact: true }).click();
+  let detail = page.getByRole('dialog', { name, exact: true });
+  await detail.getByRole('button', { name: '编辑供应商', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑供应商', exact: true });
+  await expect(detail).toBeHidden();
+  const renamed = `${name} 已修改`;
+  await editor.getByLabel('供应商名称').fill(renamed);
+  await editor.getByRole('button', { name: '保存供应商' }).click();
+  await expect(editor).toBeHidden();
+  detail = page.getByRole('dialog', { name: renamed, exact: true });
+  await expect(detail).toBeVisible();
+  const stored = await (await request.get(`${service}/api/v1/admin/connections`, { headers })).json();
+  for (const [index, id] of ids.entries()) {
+    const connection = stored.items.find((item: { id: string }) => item.id === id);
+    expect(connection.name).toBe(renamed);
+    expect(connection.timeoutMs).toBe(index ? 90000 : 30000);
+    expect(connection.headers).toEqual({ 'X-Route': index ? 'image' : 'text' });
+    expect(connection.options).toEqual({ route: index });
+  }
+  for (const [type, label] of [['chat', '文本 / 看图'], ['embedding', '向量计算'], ['image', '绘图']]) {
+    await detail.getByRole('tab', { name: new RegExp(label.replace('/', '\\/')) }).click();
+    await detail.getByRole('button', { name: '添加模型', exact: true }).first().click();
+    const picker = page.getByRole('dialog', { name: `添加模型 · ${renamed}`, exact: true });
+    await expect(detail).toBeHidden();
+    await expect(picker.getByLabel('模型用途')).toHaveValue(type);
+    await picker.getByLabel('手动添加模型 ID').fill(`managed-${type}`);
+    await picker.getByRole('button', { name: '加入', exact: true }).click();
+    await picker.getByRole('button', { name: '保存所选模型（1）' }).click();
+    await expect(picker).toBeHidden();
+    await expect(detail.getByText(`managed-${type}`, { exact: true })).toBeVisible();
+  }
+  await detail.getByRole('button', { name: '模型操作：managed-image' }).click();
+  await page.getByRole('menuitem', { name: '编辑模型', exact: true }).click();
+  const modelEditor = page.getByRole('dialog', { name: '编辑模型', exact: true });
+  await modelEditor.getByLabel('显示名称').fill('已修改绘图模型');
+  await modelEditor.getByRole('button', { name: '保存模型', exact: true }).click();
+  await expect(modelEditor).toBeHidden();
+  await expect(detail.getByText('已修改绘图模型', { exact: true })).toBeVisible();
+  await page.reload();
+  await card.getByRole('button', { name: `详情：打开供应商 ${renamed}`, exact: true }).click();
+  for (const label of ['文本 / 看图', '向量计算', '绘图']) {
+    await expect(detail.getByRole('tab', { name: new RegExp(`${label.replace('/', '\\/')}.*1`) })).toBeVisible();
+  }
+});
+
+test('changing model type ignores an older catalog response', async ({ page, request }) => {
+  const id = `catalog-race-${Date.now().toString(36)}`;
+  expect((await request.post(`${service}/api/v1/admin/connections`, { headers, data: {
+    id, name: id, kind: 'openai-compatible-text', baseUrl: `https://${id}.example/v1`,
+  } })).status()).toBe(201);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/admin/connections/discover-models', async route => {
+    await pending;
+    await route.fulfill({ json: { models: ['old-chat-catalog'] } });
+  });
+  await page.goto('/settings/public-services');
+  await page.getByRole('button', { name: `添加模型 · ${id}`, exact: true }).click();
+  const picker = page.getByRole('dialog', { name: `添加模型 · ${id}`, exact: true });
+  const started = page.waitForRequest('**/api/admin/connections/discover-models');
+  await picker.getByRole('button', { name: '获取模型列表' }).click();
+  await started;
+  await picker.getByLabel('模型用途').selectOption('embedding');
+  const finished = page.waitForResponse('**/api/admin/connections/discover-models');
+  release();
+  await finished;
+  await expect(picker.getByRole('checkbox', { name: 'old-chat-catalog' })).toBeHidden();
+  await expect(picker.getByRole('button', { name: '获取模型列表' })).toBeEnabled();
+});
+
+test('partial model saves remain retryable when refreshing the list also fails', async ({ page, request }) => {
+  const id = `partial-models-${Date.now().toString(36)}`;
+  expect((await request.post(`${service}/api/v1/admin/connections`, { headers, data: {
+    id, name: id, kind: 'openai-compatible-text', baseUrl: `https://${id}.example/v1`,
+  } })).status()).toBe(201);
+  await page.goto('/settings/public-services');
+  await page.getByRole('button', { name: `添加模型 · ${id}`, exact: true }).click();
+  const picker = page.getByRole('dialog', { name: `添加模型 · ${id}`, exact: true });
+  for (const model of ['saved-once', 'retry-model']) {
+    await picker.getByLabel('手动添加模型 ID').fill(model);
+    await picker.getByRole('button', { name: '加入', exact: true }).click();
+  }
+  let fail = true;
+  const saves: string[] = [];
+  await page.route('**/api/admin/models', async route => {
+    if (route.request().method() === 'GET') {
+      if (fail) return route.fulfill({ status: 503, json: { message: '刷新暂不可用' } });
+      return route.fallback();
+    }
+    const payload = route.request().postDataJSON();
+    saves.push(payload.modelId);
+    if (fail && payload.modelId === 'retry-model') {
+      return route.fulfill({ status: 503, json: { message: '模型保存暂不可用' } });
+    }
+    return route.fallback();
+  });
+  await picker.getByRole('button', { name: '保存所选模型（2）' }).click();
+  await expect(picker.getByText(/部分模型未保存.*列表刷新失败/)).toBeVisible();
+  await expect(picker.getByRole('button', { name: '保存所选模型（1）' })).toBeVisible();
+  fail = false;
+  await picker.getByRole('button', { name: '保存所选模型（1）' }).click();
+  await expect(picker).toBeHidden();
+  expect(saves).toEqual(['saved-once', 'retry-model', 'retry-model']);
+  const stored = await (await request.get(`${service}/api/v1/admin/models`, { headers })).json();
+  expect(stored.items.filter((item: { connectionId: string }) => item.connectionId === id)).toHaveLength(2);
 });
 
 test('search service switches explicitly, keeps settings across reload, and previews without real upstream calls', async ({ page, request }) => {

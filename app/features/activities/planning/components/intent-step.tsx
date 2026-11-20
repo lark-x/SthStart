@@ -292,7 +292,7 @@ export function PlanningIntentStep({
                   >
                     <Lightbulb className="h-3.5 w-3.5" />打开话题素材
                   </Button>
-                  {!intake.cast.length && <p className="text-xs text-amber-700">也可以先去「话题素材库」页面独立挑素材、生成点子。</p>}
+                  {!intake.cast.length && <p className="text-xs text-warning-fg">也可以先去「话题素材库」页面独立挑素材、生成点子。</p>}
                 </section>
               </div>
             </details>
@@ -362,7 +362,7 @@ export function PlanningIntentStep({
                   <a href={mcpSettingsHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">配置资料源<ExternalLink className="h-3 w-3" /></a>
                 </div>
                 {sourcesLoading && <Spinner size="sm" label="正在读取资料源…" />}
-                {sourcesError && <p className="text-xs text-amber-700">暂时无法读取资料源列表；不选择资料源时请使用「跳过检索，直接构思」。</p>}
+                {sourcesError && <p className="text-xs text-warning-fg">暂时无法读取资料源列表；不选择资料源时请使用「跳过检索，直接构思」。</p>}
                 {!sourcesLoading && !enabledSources.length && (
                   <p className="text-xs text-muted">还没有启用的资料源。可以先去配置，或跳过检索直接构思。</p>
                 )}

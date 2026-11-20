@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { CoverArtifactIdFieldSchema } from './covers.js';
 
 export const StoryContextSettingsSchema = Type.Object({
   contextWindow: Type.Integer({ minimum: 16384, maximum: 131072 }),
@@ -19,6 +20,8 @@ export const StoryProjectSchema = Type.Object({
   projectType: Type.Optional(StoryProjectTypeSchema),
   contextSettings: StoryContextSettingsSchema,
   workId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  /** 封面引用的媒体 ID；通过 PUT covers/story-project/:id 设置，不随项目修订写入。 */
+  coverArtifactId: CoverArtifactIdFieldSchema,
   createdAt: Type.String(), updatedAt: Type.String(),
 });
 export type StoryProject = Static<typeof StoryProjectSchema>;

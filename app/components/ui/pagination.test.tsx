@@ -41,8 +41,8 @@ test('numbered navigation uses Mantine compound controls and keeps Chinese page 
   assert.match(html, /aria-label="下一页"/);
   assert.match(html, /class="pagination-ellipsis"/);
   assert.match(html, /共 201 条，当前 81–100 条/);
-  assert.match(html, /每页条数，当前 20 条/);
-  assert.match(html, /跳到指定页，当前第 5 页，共 11 页/);
+  assert.match(html, /aria-label="每页 20 条，更改每页条数"/, 'accessible name starts with the visible label');
+  assert.match(html, /aria-label="跳页 5 \/ 11，跳到指定页，当前第 5 页，共 11 页"/);
 });
 
 test('compact presentation keeps paging usable without numbered controls', () => {

@@ -23,8 +23,8 @@ async function readScroll(panel: Locator): Promise<ScrollSnapshot> {
 
 async function openFilters(page: Page) {
   await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
-  await page.getByRole('button', { name: '筛选与排序', exact: true }).click();
-  const panel = page.getByRole('dialog', { name: '角色筛选', exact: true });
+  await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+  const panel = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
   await expect(panel).toBeVisible();
   return panel;
 }

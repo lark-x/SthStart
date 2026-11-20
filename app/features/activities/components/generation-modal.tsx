@@ -404,9 +404,9 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
         </label>
 
         {job && ['queued', 'preparing', 'submitting', 'accepted', 'running'].includes(job.status) && (
-          <div className="flex items-center gap-3 rounded-lg border border-amber-200/80 bg-amber-50/50 p-3.5">
-            <Spinner className="h-4 w-4 text-amber-600" />
-            <div className="text-sm text-amber-900">AI 正在生成内容中… 请稍候</div>
+          <div className="flex items-center gap-3 rounded-lg border border-warning-border bg-warning-bg p-3.5">
+            <Spinner className="h-4 w-4 text-warning-fg" />
+            <div className="text-sm text-warning-fg">AI 正在生成内容中… 请稍候</div>
           </div>
         )}
         {jobFailure && (
@@ -433,7 +433,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
           <div className="space-y-3 rounded-lg border border-border-default bg-surface p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-2.5">
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="border-green-300 bg-green-50 text-xs text-green-700">
+                <Badge variant="outline" className="border-success-border bg-success-bg text-xs text-success-fg">
                   生成候选已就绪
                 </Badge>
                 <span className="text-xs text-muted">
@@ -543,7 +543,7 @@ export function GenerationModal({ open, onOpenChange, activity, document, stages
                       return (
                         <div key={index} className="rounded-xl border border-border-subtle bg-surface-raised p-3 shadow-2xs">
                           <div className="flex items-center gap-2 mb-2">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent">
                               {authorName.slice(0, 1)}
                             </div>
                             <span className="text-xs font-semibold text-ink">{authorName}</span>

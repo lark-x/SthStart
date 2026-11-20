@@ -16,7 +16,7 @@ export const ActorTrajectoryEdge = memo(function ActorTrajectoryEdge({
 }: EdgeProps) {
   const edgeData = data as unknown as TrajectoryEdgeData | undefined;
   const isSelected = Boolean(edgeData?.isSelected);
-  const color = edgeData?.color || 'var(--border-default, #d8d2c6)';
+  const color = edgeData?.color || 'var(--border-default)';
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -35,7 +35,7 @@ export const ActorTrajectoryEdge = memo(function ActorTrajectoryEdge({
         <path
           d={edgePath}
           fill="none"
-          stroke="var(--accent-ring, rgba(102, 89, 149, 0.3))"
+          stroke="var(--accent-ring)"
           strokeWidth={8}
           strokeLinecap="round"
           className="pointer-events-none transition-all"
@@ -66,7 +66,7 @@ export const ActorTrajectoryEdge = memo(function ActorTrajectoryEdge({
           className="pointer-events-none"
         >
           <div
-            className="flex items-center justify-center h-full px-2 py-0.5 rounded-full text-[10px] font-semibold text-white shadow-xs select-none"
+            className="flex items-center justify-center h-full px-2 py-0.5 rounded-full text-xs font-semibold text-fg-on-accent shadow-xs select-none"
             style={{ backgroundColor: color }}
           >
             <span className="truncate">{edgeData.actorName}</span>

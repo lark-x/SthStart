@@ -4,6 +4,8 @@ description: >-
   Use when implementing or refactoring frontend user interactions, workspace layouts, state ergonomics,
   forms, and keyboard shortcuts in SthStart. Enforces viewport lock, independent scrolling, inline direct
   manipulation, progressive disclosure, floating contextual controls, and keyboard ergonomics.
+  Page archetypes and visual direction live in sthstart-design-language; tokens and primitives live in
+  sthstart-ui-system.
 ---
 
 # SthStart 创作工作台与交互工程准则 (Workspace Interaction)
@@ -24,15 +26,17 @@ description: >-
 
 ---
 
-## 一、 页面架构模式（严格二选一）
+## 一、 滚动模式（按页面原型）
+
+页面原型（Overview / Collection / Detail / Workbench / Reader·Canvas）见 `sthstart-design-language` §2。Overview、Collection、Detail 与 Reader 走自然文档流；Workbench 与画布走视口锁高。
 
 1. **自然文档流页面 (Natural Document Flow)**：
-   - **适用场景**：项目列表、设置中心、通用表单、历史归档；
-   - **组件复用**：统一使用 `PageContainer`、页面标题与 `PageTabs`；
+   - **适用场景**：项目列表、设置中心、通用表单、历史归档、长文阅读；
+   - **组件复用**：统一使用 `PageContainer`（阅读用 `ReadingContainer`）、`PageHeader` 与 `PageTabs`；
    - **滚动规约**：页面整体随视口自然纵向滚动，不强加全屏 IDE 布局。
 
 2. **持续创作工作台 (Creative Workbench)**：
-   - **适用场景**：活动工作室、漫画制作工坊、角色属性工坊、分镜编辑器；
+   - **适用场景**：活动工作室、漫画制作工坊、角色属性工坊、分镜编辑器、故事流画布；
    - **组件复用**：统一使用 `WorkspaceHeader` 与 `SplitPanes`；全屏沉浸时沿用 `AppShell` 的 embed 模式，并保留返回导航与全局关键操作；
    - **视口锁高规约**：
      - 根容器配置 `h-full min-h-0 min-w-0 overflow-hidden`，严禁在内部嵌套 `h-screen` 重复计入顶栏；
@@ -50,14 +54,17 @@ description: >-
 ## 二、 原生行内即时交互 (Inline Direct Manipulation)
 
 1. **标题与单行属性编辑**：
-   - 实体标题采用透明背景无边框输入框：
+   - 实体标题使用共享 `Input` / `Textarea` 的 `variant="inline"`：透明无框，聚焦显示 2px 底线并预留位置，避免布局跳动；错误态与强制高对比度模式由原语处理。不要手写透明 `<input>`。
      ```tsx
-     <input
-       value={title}
-       onChange={...}
-       className="w-full bg-transparent border-0 border-b border-transparent hover:border-border-default/50 focus:border-accent p-0 pb-1 text-2xl font-bold tracking-tight outline-none transition-colors"
+     <Input
+       variant="inline"
+       aria-label="活动标题"
+       value={titleDraft}
+       onChange={(event) => setTitleDraft(event.target.value)}
+       onBlur={persistTitle}
      />
      ```
+   - 字号用字阶 token，字重不超过 600（见 `sthstart-ui-system` §1）。
    - 失去焦点 (`onBlur`) 或防抖自动持久化，不强迫创作者停下心流点击“确认保存”。
 2. **标签与元数据交互**：
    - 标签组采用紧凑胶囊组件，支持原地输入回车添加、点击删除，不依赖模态框。
@@ -67,10 +74,10 @@ description: >-
 ## 三、 渐进暴露与情境唤起 (Contextual Actions)
 
 1. **微操作胶囊 (Floating Capsule Overlay)**：
-   - 针对卡片、画面、素材项，在悬停时展示半透明工具胶囊：
+   - 针对卡片、画面、素材项，在悬停或键盘聚焦时展示工具胶囊。使用表面与阴影 token，不用 `bg-black/60` 等原生色板，保证四套主题下都清晰：
      ```tsx
-     <div className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1 rounded-full bg-black/60 backdrop-blur-md px-3 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-       {/* 矢量图标按钮 */}
+     <div className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1 rounded-[var(--radius-chip)] bg-surface-raised/90 px-3 py-1.5 shadow-[var(--elev-md)] backdrop-blur-md opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+       {/* IconButton，每个带 aria-label */}
      </div>
      ```
 2. **聚合顶栏与溢出菜单 (More Actions Overflow)**：
@@ -83,11 +90,11 @@ description: >-
 ## 四、 键盘人体工学 (Keyboard Ergonomics)
 
 - `Ctrl/Cmd + S`：显式触发全量草稿保存；
-- `Ctrl/Cmd + B`：切换/折叠大纲导航侧栏；
+- `Ctrl/Cmd + B`：切换/折叠大纲导航侧栏（现有实现见 `app/features/story/hooks/use-story-workspace-layout.ts`：桌面折叠，窄屏打开抽屉）。若某个编辑器支持富文本加粗，该编辑器聚焦时必须让出此快捷键；
 - `Escape`：关闭所有正在打开的浮层、下拉菜单或筛选抽屉；在分栏拖拽时撤销并回滚比例；
 - 列表与自动补全：完整支持 `ArrowUp` / `ArrowDown` 焦点轮巡与 `Enter` 确认；
 - **CJK 输入法互锁守卫 (IME Composition Guard)**：所有监听快捷键 `onKeyDown` 的输入组件必须拦截输入法合成态（`isComposing` 或 `keyCode === 229`），杜绝中文拼音选词回车误触发提交、保存或焦点跳变；
-- 焦点管理：所有可交互元素必须具备清晰但克制的聚焦环（`focus-visible:ring-1 focus-visible:ring-accent`）。
+- 焦点管理：优先使用原语自带的聚焦样式；自定义可交互元素与 `Button` 保持一致（`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring`）；行内输入以 `variant="inline"` 的 2px 底线表示聚焦，不再叠加外框。
 
 ---
 

@@ -78,9 +78,9 @@ export function LogViewer({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-panel border border-border-default bg-ink text-[#dae2de] overflow-hidden shadow-lg">
+      <div className="rounded-panel border border-border-default bg-[var(--console-bg)] text-[var(--console-fg)] overflow-hidden shadow-lg">
         {/* Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-white/10 bg-[#1f2925]">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-[var(--console-line)] bg-[var(--console-bar)]">
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
@@ -88,7 +88,7 @@ export function LogViewer({
               }`}
               title={connected ? 'SSE 实时已连接' : '未连接'}
             />
-            <span className="text-sm font-mono text-[#8bbfa0] mr-2">
+            <span className="text-sm font-mono text-[var(--console-accent)] mr-2">
               {connected ? 'LIVE STREAM' : 'DISCONNECTED'}
             </span>
 
@@ -223,10 +223,10 @@ export function LogViewer({
           data-visual-dynamic="true"
           data-autohide-scroll
           data-scroll-dark
-          className="h-[520px] overflow-y-auto p-3 font-mono text-sm leading-relaxed space-y-1 select-text"
+          className="h-130 overflow-y-auto p-3 font-mono text-sm leading-relaxed space-y-1 select-text"
         >
           {filteredLogs.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-white/40 text-sm">
+            <div className="flex h-full items-center justify-center text-[var(--console-muted)] text-sm">
               暂无符合条件的日志记录
             </div>
           ) : (
@@ -240,18 +240,18 @@ export function LogViewer({
                   key={log.id}
                   className={`flex items-start gap-2.5 py-0.5 px-1.5 rounded hover:bg-surface-raised/5 ${
                     isError
-                      ? 'text-[#ff9b8b] bg-danger/10'
+                      ? 'text-[var(--console-danger)] bg-danger/10'
                       : isWarn
-                      ? 'text-[#e9c676] bg-warning/10'
+                      ? 'text-[var(--console-warning)] bg-warning/10'
                       : isDebug
-                      ? 'text-[#dae2de]/60'
-                      : 'text-[#dae2de]'
+                      ? 'text-[var(--console-muted)]'
+                      : 'text-[var(--console-fg)]'
                   }`}
                 >
-                  <time className="text-white/40 text-sm flex-shrink-0 pt-0.5">
+                  <time className="text-[var(--console-muted)] text-sm flex-shrink-0 pt-0.5">
                     {log.timestamp.slice(11, 19)}
                   </time>
-                  <span className="font-semibold text-[#8bbfa0] flex-shrink-0 text-sm w-24 truncate">
+                  <span className="font-semibold text-[var(--console-accent)] flex-shrink-0 text-sm w-24 truncate">
                     [{log.serviceId}]
                   </span>
                   <span className="break-all whitespace-pre-wrap flex-1">{log.message}</span>

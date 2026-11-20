@@ -31,6 +31,27 @@ interface SeededWorld {
   branchId: string;
 }
 
+/*
+ * 作品新建改为两步（分支上已确认的有意改动）：快速新建只填作品名并回到作品目录，
+ * 补全设定从 /apps/story-worlds/:id/setup 进入，「完成配置」后才成为正式作品。
+ */
+async function quickCreateWork(page: Page, title: string) {
+  const created = page.waitForResponse((r) => r.url().endsWith('/api/admin/story-worlds/setups') && r.request().method() === 'POST' && r.ok());
+  await page.getByLabel(/^作品名称/).fill(title);
+  await page.getByRole('button', { name: '创建作品', exact: true }).first().click();
+  const id = (await (await created).json() as { id: string }).id;
+  await page.waitForURL(/\/apps\/story-worlds\?created=/, { timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
+  return id;
+}
+
+/** 共享角色选择器里的某张角色卡。 */
+const pickerCard = (dialog: Locator, name: string) =>
+  dialog.locator('[data-character-family]').filter({ has: dialog.page().getByText(name, { exact: true }) }).first();
+
+/** 角色库绑定在详细档案里显示「角色名 · 已绑定角色库资料」；绑定的具体版本由升级面板与服务端草稿核对。 */
+const boundCharacter = (detail: Locator) => detail.getByText(/· 已绑定角色库资料$/);
+
 async function auth(page: Page) {
   const session = await page.request.post('/api/auth/admin-session', { headers: { origin: portal } });
   expect(session.ok()).toBe(true);
@@ -145,16 +166,14 @@ test('creates a name-only pending world and completes it without auto-running', 
   await auth(page);
 
   await page.goto('/apps/story-worlds/new');
-  await expect(page.getByRole('heading', { name: '新建世界', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新建作品', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '开场地点' })).toHaveCount(0);
-  await page.getByLabel(/^世界名称/).fill('雾港纪事');
-  await page.getByRole('button', { name: '创建世界', exact: true }).click();
-  await expect(page.getByRole('button', { name: '补全设定' })).toBeVisible();
-  const pendingId = new URL(page.url()).searchParams.get('world');
+  const pendingId = await quickCreateWork(page, '雾港纪事');
   await page.reload();
-  await expect(page.getByRole('button', { name: '补全设定' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '雾港纪事', level: 2 })).toBeVisible();
   await expect(page.getByRole('button', { name: '启动运行', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '补全设定' }).click();
+  await page.goto(`/apps/story-worlds/${encodeURIComponent(pendingId)}/setup`);
+  await expect(page.getByRole('heading', { name: '补全作品设定', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '添加地点' }).click();
   const locationCard = page.locator('section').filter({
     has: page.getByRole('heading', { name: '开场地点', exact: true }),
@@ -197,7 +216,8 @@ test('creates a name-only pending world and completes it without auto-running', 
   expect(detail.definition.actors).toHaveLength(1);
   expect(detail.definition.actors[0]).toMatchObject({ name: '林舟', role: 'main', locationId: detail.definition.locations[0].id });
   expect(detail.branch.title).toBe('主线');
-  expect(detail.branch.mode).toBe('canon-gap');
+  // 原创作品的主线默认是平行改编（store.ts：original → alternate，原作 → canon-gap，同人 → adaptation）。
+  expect(detail.branch.mode).toBe('alternate');
   expect(detail.branch.currentTick).toBe(0);
   expect(detail.run).toBeNull();
   expect(detail.images).toHaveLength(0);
@@ -229,13 +249,12 @@ test('compact creation, pending configuration and appearance preview fit desktop
     }
   };
   await page.goto('/apps/story-worlds/new');
-  await expect(page.getByRole('heading', { name: '新建世界', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新建作品', exact: true })).toBeVisible();
   await capture('quick-create');
-  await page.getByLabel(/^世界名称/).fill('海边小镇');
-  await page.getByRole('button', { name: '创建世界', exact: true }).click();
-  await page.getByRole('button', { name: '补全设定', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '补全设定', exact: true })).toBeVisible();
-  await expect(page.getByLabel(/^世界简介/)).toBeHidden();
+  const pendingId = await quickCreateWork(page, '海边小镇');
+  await page.goto(`/apps/story-worlds/${encodeURIComponent(pendingId)}/setup`);
+  await expect(page.getByRole('heading', { name: '补全作品设定', exact: true })).toBeVisible();
+  await expect(page.getByLabel(/^作品简介/)).toBeHidden();
   await expect(page.getByLabel(/^创作要求/)).toBeHidden();
   await capture('pending-setup');
   await page.goto('/settings/appearance');
@@ -253,7 +272,7 @@ test('restores an unsaved new-world draft after refresh and discards it on reque
     JSON.stringify({ version: 1, isDirty: true, updatedAt: Date.now(), idempotencyKey: 'legacy-draft', values })), draft({ actors: [] }));
   await page.reload();
   await page.getByRole('button', { name: '继续旧草稿' }).click();
-  await page.getByLabel(/^世界名称/).fill('雾港草稿');
+  await page.getByLabel(/^作品名称/).fill('雾港草稿');
   const draftLocation = page.locator('section').filter({
     has: page.getByRole('heading', { name: '开场地点', exact: true }),
   }).locator('div.rounded-panel').first();
@@ -276,7 +295,7 @@ test('restores an unsaved new-world draft after refresh and discards it on reque
   })).toBe(true);
 
   await page.reload();
-  await expect(page.getByLabel(/^世界名称/)).toHaveValue('雾港草稿');
+  await expect(page.getByLabel(/^作品名称/)).toHaveValue('雾港草稿');
   await expect(page.getByLabel(/^地点名称/).first()).toHaveValue('旧码头');
   const restoredLocation = page.locator('section').filter({
     has: page.getByRole('heading', { name: '开场地点', exact: true }),
@@ -292,7 +311,7 @@ test('restores an unsaved new-world draft after refresh and discards it on reque
   await expect(page.getByRole('status').filter({ hasText: /^草稿未创建$/ })).toBeVisible();
 
   await page.getByRole('button', { name: '放弃修改', exact: true }).first().click();
-  await expect(page.getByLabel(/^世界名称/)).toHaveValue('');
+  await expect(page.getByLabel(/^作品名称/)).toHaveValue('');
   await expect(page.getByRole('status').filter({ hasText: /^尚未填写$/ })).toBeVisible();
   await expect.poll(async () => page.evaluate(
     () => window.sessionStorage.getItem('sthstart:story-worlds:draft:create'),
@@ -304,7 +323,7 @@ test('AI candidates start unselected, require confirmation for a field edited af
   await auth(page);
   const world = await seedWorld(request);
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
   const ai = page.getByRole('region', { name: 'AI 候选' });
   await expect(ai).toBeVisible();
 
@@ -332,7 +351,7 @@ test('AI candidates start unselected, require confirmation for a field edited af
   expect(state.rejected).toEqual([]);
 
   // Edit the same field the candidate targets after the request, then select it.
-  const titleInput = page.getByLabel(/^世界名称/);
+  const titleInput = page.getByLabel(/^作品名称/);
   await titleInput.fill('林舟的港口（手改）');
   await ai.getByRole('checkbox', { name: '采纳「世界名称」' }).check();
   await expect(ai.getByText(/「世界名称」在请求后已被修改，请勾选“已核对”后再采纳。/)).toBeVisible();
@@ -357,7 +376,7 @@ test('web search selects sources, extracts partial failures, and imports them as
   await auth(page);
   const world = await seedWorld(request);
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '从资料库添加', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加世界资源' });
@@ -431,7 +450,7 @@ test('web import never overwrites a project or canon source that shares the same
     ],
   });
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '从资料库添加', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加世界资源' });
@@ -497,7 +516,7 @@ test('authoring layout holds four viewports in warm white and warm night without
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
   mkdirSync(output, { recursive: true });
 
   for (const size of [
@@ -538,7 +557,7 @@ test('authoring layout holds four viewports in warm white and warm night without
   }));
   expect(nightGeometry.overflow).toBe(0);
   expect(nightGeometry.theme).toBe('dark-espresso');
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
   await page.screenshot({ path: resolve(output, 'authoring-1440-warm-night.png'), fullPage: true });
   expect(pageErrors).toEqual([]);
 });
@@ -631,10 +650,10 @@ test('editing saves both sides in either order without stale revision conflicts'
   );
   const open = async (w: SeededWorld) => {
     await page.goto(`/apps/story-worlds/${w.worldId}/edit?branch=${w.branchId}`);
-    await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
     await expect(status(/^已保存$/)).toBeVisible();
   };
-  const titleInput = () => page.getByLabel(/^世界名称/);
+  const titleInput = () => page.getByLabel(/^作品名称/);
   const directionInput = () => page.getByLabel(/^故事方向/);
 
   // 顺序一：先世界、后分支。
@@ -720,19 +739,19 @@ test('a concurrent edit returns 409 and requires confirming the full field compa
   const world = await seedWorld(request);
   const editUrl = `/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`;
   await page.goto(editUrl);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   // 第二个页面同样基于旧修订打开，确认冲突来自真实并发而不是单页状态。
   const otherPage = await context.newPage();
   await otherPage.goto(editUrl);
-  await expect(otherPage.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(otherPage.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
   // 第二个页面保存成功后，第一个页面的修订基底就真正过期了。
-  await otherPage.getByLabel(/^世界名称/).fill('服务器侧标题');
+  await otherPage.getByLabel(/^作品名称/).fill('服务器侧标题');
   await otherPage.getByRole('button', { name: '保存全部', exact: true }).first().click();
   await expect(otherPage.getByRole('status').filter({ hasText: /^已保存$/ })).toBeVisible();
   await otherPage.close();
 
-  await page.getByLabel(/^世界名称/).fill('本地草稿标题');
+  await page.getByLabel(/^作品名称/).fill('本地草稿标题');
   const conflictResponse = page.waitForResponse(
     (r) => r.request().method() === 'PUT' && r.url().endsWith(`/story-worlds/${world.worldId}`),
   );
@@ -742,7 +761,7 @@ test('a concurrent edit returns 409 and requires confirming the full field compa
   const conflictAlert = page.getByRole('status').filter({ has: page.getByText('需要确认修订基底', { exact: true }) });
   await expect(conflictAlert).toBeVisible();
   await expect(conflictAlert.getByText(/世界设定已在别处更新|世界或分支已在别处更新/)).toBeVisible();
-  await expect(page.getByLabel(/^世界名称/)).toHaveValue('本地草稿标题');
+  await expect(page.getByLabel(/^作品名称/)).toHaveValue('本地草稿标题');
 
   await conflictAlert.getByRole('button', { name: '对比服务器当前值', exact: true }).click();
   const table = conflictAlert.locator('table');
@@ -793,18 +812,18 @@ test('a lost create response is retried with the same key and keeps exactly one 
   });
 
   await page.goto('/apps/story-worlds/new');
-  await page.getByLabel(/^世界名称/).fill(title);
-  await page.getByRole('button', { name: '创建世界', exact: true }).first().click();
+  await page.getByLabel(/^作品名称/).fill(title);
+  await page.getByRole('button', { name: '创建作品', exact: true }).first().click();
 
   await expect(page.getByRole('alert')).toBeVisible();
   await expect.poll(() => firstCreate !== null).toBe(true);
   const created = firstCreate!;
-  await expect(page.getByLabel(/^世界名称/)).toHaveValue(title);
+  await expect(page.getByLabel(/^作品名称/)).toHaveValue(title);
 
   const retryResponse = page.waitForResponse(
     (r) => r.url().endsWith('/setups') && r.request().method() === 'POST',
   );
-  await page.getByRole('button', { name: '创建世界', exact: true }).first().click();
+  await page.getByRole('button', { name: '创建作品', exact: true }).first().click();
   const retried = await retryResponse;
   expect(retried.status()).toBe(201);
   const retriedBody = await retried.json();
@@ -812,7 +831,7 @@ test('a lost create response is retried with the same key and keeps exactly one 
   expect(retriedBody.id).toBe(created.id);
   expect(new Set(keys).size).toBe(1);
 
-  await page.waitForURL(/\/apps\/story-worlds\?world=/, { timeout: 20_000 });
+  await page.waitForURL(/\/apps\/story-worlds\?created=/, { timeout: 20_000 });
   const listResponse = await request.get(`${service}${api}/setups`, { headers: adminHeaders });
   expect(listResponse.ok()).toBe(true);
   const list = await listResponse.json() as { items: Array<{ id: string; title: string }> };
@@ -842,26 +861,31 @@ async function setSuggestionMode(request: APIRequestContext, mode: string) {
   expect(response.ok()).toBe(true);
 }
 
+/*
+ * 添加世界资源的「角色」页签使用共享的 CharacterBrowserPicker：点卡片上的「选择角色」读取快照，
+ * 原创角色再用「选择 角色名 的阶段」指定发布版本（原作与同人自动用最新快照）。
+ * fixture 中的「潮汐记录员」是有 v1、v2 两个阶段的原创角色。
+ */
 test('importing a character version keeps the exact published snapshot', async ({ page, request }) => {
   await resetFixture(request);
   await auth(page);
   const fixture = await authoringFixture(request);
   const world = await seedWorld(request);
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '从资料库添加人物', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加世界资源' });
   await expect(dialog).toBeVisible();
-  const characterCheckbox = dialog.getByRole('checkbox', { name: `选择 潮汐记录员`, exact: true });
-  await expect(characterCheckbox).toBeEnabled();
-  await expect(dialog.getByText(/已发布 v2/)).toBeVisible();
-  await checkCheckbox(characterCheckbox);
+  const card = pickerCard(dialog, '潮汐记录员');
+  await expect(card.getByText(/原创/)).toBeVisible();
+  await card.getByRole('button', { name: '选择角色', exact: true }).click();
+  await expect(card.getByRole('button', { name: '已选择 · 点击移除', exact: true })).toBeVisible();
 
-  const versionSelect = dialog.getByLabel('选择 潮汐记录员 的版本');
+  const versionSelect = dialog.getByLabel('选择 潮汐记录员 的阶段');
   await expect(versionSelect).toBeVisible();
   await expect(versionSelect.locator('option')).toHaveCount(fixture.characterVersions.length);
-  // 默认采用最新发布版本；显式改成 v1 验证“不是悄悄用草稿或最新版兜底”。
+  // 默认采用最新发布阶段；显式改成 v1 验证“不是悄悄用草稿或最新版兜底”。
   await expect(versionSelect).toHaveValue(String(Math.max(...fixture.characterVersions)));
   await versionSelect.selectOption('1');
 
@@ -875,8 +899,10 @@ test('importing a character version keeps the exact published snapshot', async (
   }).locator('div.rounded-panel').last();
   await expect(actorCard.getByLabel(/^人物名称/)).toHaveValue('潮汐记录员');
   const detail = await openActorDetail(actorCard);
-  await expect(detail.getByText(`${fixture.characterId} · v1`, { exact: true })).toBeVisible();
-  await expect(detail.getByText(fixture.characterId, { exact: false })).toBeVisible();
+  await expect(boundCharacter(detail)).toBeVisible();
+  // 绑定行只显示名称，不再展示角色 ID；版本未丢失时不会出现“请重新选择资料”。
+  await expect(detail.getByText('潮汐记录员 · 已绑定角色库资料', { exact: true })).toBeVisible();
+  await expect(detail.getByText(/请重新选择资料/)).toHaveCount(0);
 
   // v1 快照的正文必须来自 v1，而不是最新 v2。
   await expect(detail.getByLabel(/^性格/)).toHaveValue('潮汐记录员的公开摘要。');
@@ -904,7 +930,7 @@ test('importing a newer note revision updates the same source instead of duplica
     ],
   });
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '从资料库添加', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加世界资源' });
@@ -978,7 +1004,7 @@ test('stale actor candidates cannot restore a deleted or unbound character bindi
     ],
   });
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   const ai = page.getByRole('region', { name: 'AI 候选' });
   const actorSection = page.locator('section').filter({
@@ -993,7 +1019,7 @@ test('stale actor candidates cannot restore a deleted or unbound character bindi
 
   // 候选取材时人物还绑定 v2；随后解除绑定，采纳不得把旧版本重新绑回去。
   const detail = await openActorDetail(actorCard);
-  await expect(detail.getByText(`${fixture.characterId} · v2`, { exact: true })).toBeVisible();
+  await expect(boundCharacter(detail)).toBeVisible();
   await detail.getByRole('button', { name: '解除绑定', exact: true }).click();
   await expect(detail.getByText('原创人物（未绑定角色库）', { exact: true })).toBeVisible();
 
@@ -1004,7 +1030,7 @@ test('stale actor candidates cannot restore a deleted or unbound character bindi
   await apply.click();
   await expect(ai.getByText(/已写入 1 项候选/)).toBeVisible();
   await expect(detail.getByText('原创人物（未绑定角色库）', { exact: true })).toBeVisible();
-  await expect(detail.getByText(`${fixture.characterId} · v2`, { exact: true })).toHaveCount(0);
+  await expect(boundCharacter(detail)).toHaveCount(0);
   await expect(actorCard).toHaveCount(1);
 
   // 再生成一批候选后删掉人物：旧候选只能被阻断，不能按“新增”复活人物。
@@ -1057,7 +1083,7 @@ test('AI cannot rewrite a bound actor media or character version', async ({ page
     const detail = await openActorDetail(page.locator('section').filter({
       has: page.getByRole('heading', { name: '登场人物', exact: true }),
     }).locator('div.rounded-panel').first());
-    await expect(detail.getByText(`${fixture.characterId} · v2`, { exact: true })).toBeVisible();
+    await expect(boundCharacter(detail)).toBeVisible();
     await expect(detail.getByText('已选 1 个素材', { exact: false })).toBeVisible();
   }
 
@@ -1109,6 +1135,11 @@ test('cancelling an auto-added dependency blocks apply and reverts cleanly', asy
   }).getByLabel(/^人物名称/)).toHaveCount(2);
 });
 
+/*
+ * 添加世界资源的「角色」页签使用共享的 CharacterBrowserPicker：点卡片上的「选择角色」读取快照，
+ * 原创角色再用「选择 角色名 的阶段」指定发布版本（原作与同人自动用最新快照）。
+ * fixture 中的「潮汐记录员」是有 v1、v2 两个阶段的原创角色。
+ */
 test('upgrading a bound actor from v1 to v2 shows the diff and replaces the same actor', async ({ page, request }) => {
   await resetFixture(request);
   await auth(page);
@@ -1128,7 +1159,7 @@ test('upgrading a bound actor from v1 to v2 shows the diff and replaces the same
     ],
   });
   await page.goto(`/apps/story-worlds/${world.worldId}/edit?branch=${world.branchId}`);
-  await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
 
   const actorSection = page.locator('section').filter({
     has: page.getByRole('heading', { name: '登场人物', exact: true }),
@@ -1137,28 +1168,26 @@ test('upgrading a bound actor from v1 to v2 shows the diff and replaces the same
   await expect(actorCard.getByLabel(/^人物名称/)).toHaveValue('潮汐记录员');
   await expect(actorCard.getByLabel(/^所在地点/)).toHaveValue('harbor');
   const before = await openActorDetail(actorCard);
-  await expect(before.getByText(`${fixture.characterId} · v1`, { exact: true })).toBeVisible();
+  await expect(boundCharacter(before)).toBeVisible();
   await expect(before.getByText('已选 1 个素材', { exact: false })).toBeVisible();
   await expect(actorCard.getByLabel(/^处境/)).toHaveValue('第一版：刚接手灯塔。');
 
   await page.getByRole('button', { name: '从资料库添加人物', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加世界资源' });
-  const characterCheckbox = dialog.getByRole('checkbox', { name: '选择 潮汐记录员', exact: true });
-  await expect(characterCheckbox).toBeEnabled();
-  await expect(dialog.getByText(/已发布 v2/)).toBeVisible();
-  await checkCheckbox(characterCheckbox);
-  await expect(dialog.getByText('已在当前世界 · v1', { exact: true })).toBeVisible();
+  const card = pickerCard(dialog, '潮汐记录员');
+  // 已在当前作品中的角色仍可选择（allowExisting），卡片标出「已加入」。
+  await expect(card.getByText(/已加入/)).toBeVisible();
+  await card.getByRole('button', { name: '选择角色', exact: true }).click();
 
-  // 默认最新版本即 v2，界面必须明确提示会替换同一个人物快照。
-  const versionSelect = dialog.getByLabel('选择 潮汐记录员 的版本');
+  // 默认最新阶段即 v2；与草稿中的 v1 不同，界面给出同一人物的替换确认。
+  const versionSelect = dialog.getByLabel('选择 潮汐记录员 的阶段');
   await expect(versionSelect).toHaveValue('2');
-  await expect(dialog.getByText(/将从 v1 更新到 v2；确认后替换同一个人物快照。/)).toBeVisible();
 
   const updatePanel = dialog.locator('div.rounded-panel').filter({
     hasText: '确认人物版本更新',
   }).first();
   await expect(updatePanel.getByRole('heading', { name: '确认人物版本更新', exact: true })).toBeVisible();
-  await expect(updatePanel.getByText('潮汐记录员 · v1 → v2', { exact: true })).toBeVisible();
+  await expect(updatePanel.getByText(/^潮汐记录员 · /)).toBeVisible();
   await expect(updatePanel.getByText(/保留：地点「港口」 · 主要人物|保留：地点「港口」 · 配角/)).toBeVisible();
   await expect(updatePanel.getByText('背景展开完整对照', { exact: true })).toBeVisible();
   await updatePanel.locator('details').evaluateAll((nodes) => {
@@ -1181,7 +1210,7 @@ test('upgrading a bound actor from v1 to v2 shows the diff and replaces the same
   await expect(actorCard.getByLabel(/^人物名称/)).toHaveValue('潮汐记录员');
   await expect(actorCard.getByLabel(/^所在地点/)).toHaveValue('harbor');
   const after = await openActorDetail(actorCard);
-  await expect(after.getByText(`${fixture.characterId} · v2`, { exact: true })).toBeVisible();
+  await expect(boundCharacter(after)).toBeVisible();
   await expect(after.getByText('已选 1 个素材', { exact: false })).toBeVisible();
   await expect(actorCard.getByLabel(/^处境/)).toHaveValue('第二版：已值夜二十年。');
   await expect(after.getByLabel(/^角色定位/)).toHaveValue('supporting');

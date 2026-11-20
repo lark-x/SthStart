@@ -1,0 +1,210 @@
+/*
+ * 风格化皮肤 · 原神轻纪行（genshin）：仅 data-ui-skin='genshin' 的令牌。
+ * app/globals.css 按 genshin.css → sticker.css → _base.css 导入；三份合起来与拆分前 warm-white-skin.css 的规则一致，层叠结果不变。
+ * 规则依赖 theme.css 的基础令牌；不要在这里引入新的基础画布。
+ */
+
+/* ============================================================================
+ * 风格化套件 1：原神 · 轻纪行（Genshin Clean Chronicle）
+ * 90% 洁净温润羊皮纪行纸感 + 10% 微金内环 / 2px 实体微底座 / 书签导航
+ * ============================================================================ */
+:is(html, [data-appearance-preview])[data-theme][data-ui-skin='genshin'][data-color-mode='light'] {
+  --bg-app: #efeae0;
+  --bg-nav: #e5decf;
+  --nav-surface: #e5decf;
+  --nav-foreground: #2e3340;
+  --nav-muted: #686257;
+
+  --surface: #faf7f0;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e0d8c7;
+  --surface-selected: #ffffff;
+  --surface-input: #ffffff;
+
+  --fg-default: #353b49;
+  --fg-muted: #6b655b;
+  --fg-subtle: #847d72;
+
+  --border-subtle: #dcd3c0;
+  --border-default: #d2c8b3;
+  --border-strong: #c2b295;
+  --border-control: #8a7f6d;
+  --hairline: rgb(166 148 116 / 28%);
+
+  --accent: #3b4255;
+  --accent-dark: #2c3242;
+  --accent-soft: #e6e4df;
+  --fg-on-accent: #f4efe6;
+  --action-primary: var(--accent);
+  --action-primary-hover: var(--accent-dark);
+  --action-on-primary: var(--fg-on-accent);
+  --selection-fg: #353b49;
+
+  --skin-ornament: #c49f58;
+  --border-w: 1px;
+  --card-lip: 0 2px 0 rgb(166 148 116 / 38%), 0 4px 12px rgb(53 59 73 / 4%);
+  --card-lip-hover: 0 3px 0 rgb(166 148 116 / 52%), 0 8px 18px rgb(53 59 73 / 8%);
+  --btn-primary-border: #252b38;
+  --btn-primary-shadow: 0 2px 0 #222734, inset 0 0 0 1px rgb(216 192 145 / 55%);
+  --btn-secondary-shadow: 0 2px 0 #c5b69a, inset 0 1px 0 #ffffff;
+  --btn-danger-border: #8c2a23;
+  --btn-danger-shadow: 0 2px 0 #70201a, inset 0 1px 0 rgb(255 255 255 / 22%);
+  --btn-active-shadow: 0 0 0 transparent, inset 0 0 0 1px rgb(216 192 145 / 45%);
+  --switch-lip: 0 1.5px 0 #c5b69a;
+  --lining-shadow: inset 0 1px 0 #ffffff, 0 1px 2px rgb(53 59 73 / 4%);
+  --dialog-lip: 0 4px 0 #c2b295, 0 20px 48px rgb(35 39 46 / 22%);
+  --header-line: linear-gradient(90deg, #c49f58 0%, #dcd3c0 45%, transparent 100%);
+  --input-focus-shadow: 0 0 0 2px rgb(196 159 88 / 25%);
+}
+
+:is(html, [data-appearance-preview])[data-theme][data-ui-skin='genshin'][data-color-mode='dark'] {
+  --bg-app: #1b202c;
+  --bg-nav: #151923;
+  --nav-surface: #151923;
+  --nav-foreground: #ece5d8;
+  --nav-muted: #969eae;
+
+  --surface: #242a3a;
+  --surface-raised: #2d3548;
+  --surface-sunken: #141821;
+  --surface-selected: #2d3548;
+  --surface-input: #1e2433;
+
+  --fg-default: #ece5d8;
+  --fg-muted: #9fa8b8;
+  --fg-subtle: #7f899c;
+
+  --border-subtle: #363f54;
+  --border-default: #434e66;
+  --border-strong: #586580;
+  --border-control: #6b7894;
+  --hairline: rgb(211 188 142 / 18%);
+
+  --accent: #d3bc8e;
+  --accent-dark: #e2cfa8;
+  --accent-soft: rgb(211 188 142 / 16%);
+  --fg-on-accent: #1b202c;
+  --action-primary: var(--accent);
+  --action-primary-hover: var(--accent-dark);
+  --action-on-primary: var(--fg-on-accent);
+  --selection-fg: #ece5d8;
+
+  --skin-ornament: #d3bc8e;
+  --border-w: 1px;
+  --card-lip: 0 2px 0 #0f131b, 0 4px 12px rgb(0 0 0 / 28%);
+  --card-lip-hover: 0 3px 0 #0f131b, 0 8px 20px rgb(0 0 0 / 38%);
+  --btn-primary-border: #9e875b;
+  --btn-primary-shadow: 0 2px 0 #8f794d, inset 0 0 0 1px rgb(255 248 232 / 45%);
+  --btn-secondary-shadow: 0 2px 0 #0f131b, inset 0 1px 0 rgb(255 255 255 / 8%);
+  --btn-danger-border: #8c2a23;
+  --btn-danger-shadow: 0 2px 0 #4d1511;
+  --btn-active-shadow: 0 0 0 transparent;
+  --switch-lip: 0 1.5px 0 #0f131b;
+  --lining-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+  --dialog-lip: 0 4px 0 #0f131b, 0 24px 56px rgb(0 0 0 / 55%);
+  --header-line: linear-gradient(90deg, #d3bc8e 0%, #363f54 50%, transparent 100%);
+  --input-focus-shadow: 0 0 0 2px rgb(211 188 142 / 25%);
+}
+
+/* ============================================================================
+ * 表达分级（设计语言 §9）· genshin
+ * L2 氛围：默认开启。L3 主题化：data-skin-flourish='off' 时关闭。
+ * 颜色只取令牌；正文区、表单、数据表格与状态色不受影响。
+ * 选择器统一以 html[data-theme][data-ui-skin='genshin'] 开头，优先级高于 _base.css 的通用皮肤规则。
+ * ============================================================================ */
+
+/* L2 · 画布：极淡菱格纹理与右上角星辉。阅读视图（ReaderLayout）保持纯色纸面。 */
+html[data-theme][data-ui-skin='genshin'] .shell-surface {
+  background-image:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--accent) 8%, transparent) 0, transparent 24rem),
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 3.5%, transparent) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--accent) 3.5%, transparent) 0 1px, transparent 1px 24px);
+}
+html[data-theme][data-ui-skin='genshin'] .shell-surface:has([data-page-archetype='reader']) {
+  background-image: none;
+}
+
+/* L2 · 页头饰线起点的菱形纹章。 */
+html[data-theme][data-ui-skin='genshin'] .tpl-header::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* L2 · 空态插图：图标外一圈金线环与顶部小星。 */
+html[data-theme][data-ui-skin='genshin'] [data-ui-empty-icon] {
+  position: relative;
+  box-shadow: 0 0 0 4px var(--surface), 0 0 0 5px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+html[data-theme][data-ui-skin='genshin'] [data-ui-empty-icon]::after {
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  translate: -50% 0;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  pointer-events: none;
+}
+
+/* L2 · 头像框：发丝内衬加一圈细金环。 */
+html[data-theme][data-ui-skin='genshin'] :is(.entity-art, .entity-image)[data-ratio='avatar'] {
+  box-shadow: inset 0 0 0 1px var(--hairline), 0 0 0 1px var(--surface), 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* L2 · EntityArt 纹样变体：叠一层极淡的斜向纪行纹。 */
+html[data-theme][data-ui-skin='genshin'] .entity-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--tone-fg) 7%, transparent) 0 1px, transparent 1px 9px);
+  pointer-events: none;
+}
+html[data-theme][data-ui-skin='genshin'] .entity-art-glyph {
+  z-index: 1;
+}
+
+/* L3 · 首页「继续创作」主卡：右侧同心星轨。 */
+html[data-theme][data-ui-skin='genshin']:not([data-skin-flourish='off']) .continue-card {
+  background-image:
+    radial-gradient(circle at 100% 50%,
+      transparent 0 4.5rem,
+      color-mix(in srgb, var(--accent) 14%, transparent) 4.5rem calc(4.5rem + 1px),
+      transparent calc(4.5rem + 1px) 7rem,
+      color-mix(in srgb, var(--accent) 10%, transparent) 7rem calc(7rem + 1px),
+      transparent calc(7rem + 1px) 9.5rem,
+      color-mix(in srgb, var(--accent) 6%, transparent) 9.5rem calc(9.5rem + 1px),
+      transparent calc(9.5rem + 1px)),
+    linear-gradient(100deg, transparent 55%, color-mix(in srgb, var(--accent) 5%, transparent));
+}
+
+/* L3 · 问候区插画：标题后的四芒星。 */
+html[data-theme][data-ui-skin='genshin']:not([data-skin-flourish='off']) .overview-greeting .tpl-title::after {
+  content: '';
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-inline-start: 0.45em;
+  vertical-align: 0.05em;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--surface)));
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+}
+
+/* L3 · 加载动画：骨架高光改为微金。 */
+html[data-theme][data-ui-skin='genshin']:not([data-skin-flourish='off']) .skeleton-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--fg-default) 6%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 20%, transparent) 50%,
+    color-mix(in srgb, var(--fg-default) 6%, transparent) 100%
+  );
+}

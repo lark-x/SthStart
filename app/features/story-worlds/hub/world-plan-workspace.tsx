@@ -656,7 +656,7 @@ export function WorldPlanWorkspace({
                     <BookOpen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate text-sm">{outlineDoc.title}</span>
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted">主线大纲</span>
+                  <span className="shrink-0 text-xs text-muted">主线大纲</span>
                 </span>
               </button>
             )}
@@ -677,7 +677,7 @@ export function WorldPlanWorkspace({
                     <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span className="truncate text-sm">{doc.title}</span>
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted">{doc.wordCount}字</span>
+                  <span className="shrink-0 text-xs text-muted">{doc.wordCount}字</span>
                 </span>
               </button>
             ))}
@@ -703,7 +703,7 @@ export function WorldPlanWorkspace({
                 }}
                 className={navRowClass(activeArc?.id === line.id && viewKind === 'chapter')}
               >
-                <span className="text-[11px] text-muted">{line.chapterCode || `第 ${index + 1} 节`}</span>
+                <span className="text-xs text-muted">{line.chapterCode || `第 ${index + 1} 节`}</span>
                 <span className="truncate text-sm">{line.title}</span>
               </button>
             ))}
@@ -737,10 +737,10 @@ export function WorldPlanWorkspace({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm">{line.title}</span>
-                  <span className="shrink-0 text-[11px] text-muted">{line.actorIds.length} 人</span>
+                  <span className="shrink-0 text-xs text-muted">{line.actorIds.length} 人</span>
                 </div>
                 {line.timeWindowLabel && (
-                  <span className="mt-0.5 truncate text-[11px] text-muted">{line.timeWindowLabel}</span>
+                  <span className="mt-0.5 truncate text-xs text-muted">{line.timeWindowLabel}</span>
                 )}
               </button>
             ))}
@@ -865,7 +865,7 @@ export function WorldPlanWorkspace({
             aria-selected={rightTab === 'stage'}
             onClick={() => setRightTab('stage')}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1.5 text-sm font-medium transition-colors',
+              'flex items-center justify-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-sm font-medium transition-colors',
               rightTab === 'stage'
                 ? 'bg-surface-raised text-ink shadow-xs'
                 : 'text-muted hover:text-ink',
@@ -880,7 +880,7 @@ export function WorldPlanWorkspace({
             aria-selected={rightTab === 'copilot'}
             onClick={() => setRightTab('copilot')}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-[6px] px-2.5 py-1.5 text-sm font-medium transition-colors',
+              'flex items-center justify-center gap-1.5 rounded-[var(--radius-xs)] px-2.5 py-1.5 text-sm font-medium transition-colors',
               rightTab === 'copilot'
                 ? 'bg-surface-raised text-ink shadow-xs'
                 : 'text-muted hover:text-ink',
@@ -889,7 +889,7 @@ export function WorldPlanWorkspace({
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             <span>AI 写作助手</span>
             {references.length > 0 && (
-              <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-[11px] font-semibold text-ink">
+              <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-xs font-semibold text-ink">
                 {references.length}
               </span>
             )}
@@ -1127,7 +1127,7 @@ export function WorldPlanWorkspace({
                                       <div className="min-w-0 flex-1">
                                         <p className="text-sm font-semibold text-ink">{item.title}</p>
                                         {item.locator && (
-                                          <p className="mt-0.5 truncate text-[11px] text-muted">{item.locator}</p>
+                                          <p className="mt-0.5 truncate text-xs text-muted">{item.locator}</p>
                                         )}
                                       </div>
 
@@ -1169,7 +1169,7 @@ export function WorldPlanWorkspace({
                                         )}
                                         {readState.data && (
                                           <>
-                                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                                               <span>
                                                 原文范围：第 {readState.data.startOffset}–{readState.data.endOffset} 行
                                                 {readState.data.totalLines != null ? ` / 共 ${readState.data.totalLines} 行` : ''}

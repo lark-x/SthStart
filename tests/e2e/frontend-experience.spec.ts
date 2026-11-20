@@ -85,8 +85,8 @@ test('activity keeps local input on a real version conflict and lets the user re
  * （navigation.tsx 的 activePaths）。这里断言每个页面都能到达所属入口，且该入口被标为当前页。
  */
 const ROUTE_NAV_LABEL: Record<string, string> = {
-  '/apps/projects': '创作项目',
-  '/apps/activities': '创作项目',
+  '/apps/projects': '作品',
+  '/apps/activities': '作品',
   '/apps/resources': '资料库',
   '/apps/notebook': '资料库',
   '/apps/narrative': '资料库',

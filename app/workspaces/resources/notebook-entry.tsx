@@ -59,7 +59,7 @@ export function NotebookEntryWorkspace() {
 
       {view !== 'notes' && (
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-          <div className="mx-auto w-full max-w-[1400px]">
+          <div className="mx-auto w-full max-w-350">
             {view === 'collections'
               ? <CollectionManager onOpenPending={() => setView('pending')} />
               : <PendingInbox />}

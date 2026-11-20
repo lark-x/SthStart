@@ -23,5 +23,6 @@
 @import './shell/zen-workspace.css';
 @import './shell/desk-template-refinements.css';
 @import './shell/home-overview.css';
+@import './shell/page-archetypes.css';
 @import './shell/settings-nav.css';
 @import './shell/workspace-shell-footer.css';

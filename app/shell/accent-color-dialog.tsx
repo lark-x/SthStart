@@ -5,16 +5,8 @@ import { Check } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
-import { deriveCustomAccent, normalizeAccentColor } from '@/app/lib/theme-preference';
+import { ACCENT_PRESETS as COLORS, deriveCustomAccent, normalizeAccentColor } from '@/app/lib/theme-preference';
 import { useTheme } from '@/app/providers/ui-provider';
-
-const COLORS = [
-  ['雾蓝', '#5176B0'],
-  ['暮紫', '#8564B8'],
-  ['玫瑰', '#B55D7B'],
-  ['暖铜', '#A86742'],
-  ['岩灰', '#6E747D'],
-] as const;
 
 export function AccentColorDialog({ onClose }: { onClose: () => void }) {
   const { accentColor, colorMode, setAccentColor } = useTheme();
@@ -58,7 +50,7 @@ export function AccentColorDialog({ onClose }: { onClose: () => void }) {
               aria-pressed={color === hex}
               onClick={() => setDraft(color)}
             >
-              <span className="grid size-6 place-items-center rounded-full text-white" style={{ backgroundColor: deriveCustomAccent(color, false) }}>
+              <span className="grid size-6 place-items-center rounded-full text-on-media" style={{ backgroundColor: deriveCustomAccent(color, false) }}>
                 {color === hex && <Check size={14} aria-hidden="true" />}
               </span>
             </Button>
@@ -86,7 +78,7 @@ export function AccentColorDialog({ onClose }: { onClose: () => void }) {
           />
         </div>
         <p id={fieldId + '-help'} className="text-xs text-muted">
-          {hex ? '预览会随浅色或深色皮肤调整，确保文字易读。' : '请输入六位颜色代码，例如 #5176B0。'}
+          {hex ? '预览会随浅色或深色皮肤调整，确保文字易读。' : `请输入六位颜色代码，例如 ${COLORS[0][1]}。`}
         </p>
         <div className="flex flex-wrap items-center gap-2 rounded-control border border-border-subtle bg-surface-sunken p-3 text-sm" aria-label="效果预览" role="group">
           <span className="mr-auto text-muted">效果预览</span>

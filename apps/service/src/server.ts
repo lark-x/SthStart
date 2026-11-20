@@ -58,6 +58,7 @@ import { StoryRuntime } from './story/runtime.js';
 import { registerStoryRoutes } from './story/routes.js';
 import { registerPublicationRoutes } from './publication/routes.js';
 import { registerWorkspaceRoutes } from './workspace.js';
+import { ensureCoverApp, registerCoverRoutes } from './covers.js';
 import { registerProjectRoutes } from './projects.js';
 import { registerMediaLibraryRoutes } from './media-library.js';
 import { startImageKnowledgeScheduler } from './generation/image-knowledge-index.js';
@@ -163,6 +164,7 @@ export async function createService(options: ServiceOptions = {}) {
     .run(hashToken(linsheAppToken), JSON.stringify(['llm', 'vector', 'image', 'generation', 'artifact', 'persona', 'logs']), identityUpdatedAt, identityUpdatedAt);
   database.connection.prepare("INSERT OR IGNORE INTO storage_policies(app_id,mode) VALUES ('linshe','keep')").run();
   ensureCreativeApp(database);
+  ensureCoverApp(database);
   ensureGenerationConsumerApps(database);
   ensureLocalComfyuiEngine(database);
   const storyAppToken = issueToken('sth_app');
@@ -317,6 +319,7 @@ export async function createService(options: ServiceOptions = {}) {
   registerCreativeRoutes(app, config, database, secrets, options.fetcher);
   registerNotebookRoutes(app, config, database);
   registerWorkspaceRoutes(app, database);
+  registerCoverRoutes(app, config, database);
   registerProjectRoutes(app, config, database, narrativeDatabase);
   const worldStore = new StoryWorldStore(database);
   const worldContext = { config, database, secrets, fetcher: options.fetcher, store: worldStore };

@@ -2,6 +2,16 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { WorldEvent, WorldEventPage } from '@sthstart/contracts';
+/*
+ * 作品工作台改版（分支上已确认的有意改动）：主标题为作品名，事件阅读 / 轨迹流 / 图像叙事留在
+ * 「沙盒调试视图 (旧)」（?view=sandbox），运行设置收进「作品操作菜单」。
+ */
+const worldHeading = (page: Page) => page.getByRole('main').first().getByRole('heading', { level: 1 }).first();
+async function openRunSettings(page: Page) {
+  await page.getByRole('button', { name: '作品操作菜单', exact: true }).click();
+  await page.getByRole('menuitem', { name: '沙盒引擎运行设置', exact: true }).click();
+}
+
 const service = 'http://127.0.0.1:4974';
 const headers = { 'x-sthstart-admin-token': 'story-worlds-isolated-e2e-admin-token-4974' };
 const output = resolve('artifacts/visual-verification/story-worlds');
@@ -30,9 +40,9 @@ test('run through shared events, reload, reading, image planning, historical bra
   const f = await fixture(request);
   await auth(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/apps/story-worlds?world=' + f.worldId + '&branch=' + f.branchId);
-  await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '运行设置', exact: true }).click();
+  await page.goto('/apps/story-worlds?world=' + f.worldId + '&branch=' + f.branchId + '&view=sandbox');
+  await expect(worldHeading(page)).toBeVisible();
+  await openRunSettings(page);
   const dialog = page.getByRole('dialog', { name: '运行设置' });
   await dialog.getByLabel('推进时长（分钟）').fill('60');
   await ensureRunStepFields(dialog);
@@ -42,7 +52,7 @@ test('run through shared events, reload, reading, image planning, historical bra
   await expect(dialog).not.toBeVisible();
   await expect.poll(async () => (await detail(request, f)).run?.status, { timeout: 25000 }).toBe('completed');
   await page.reload();
-  await page.getByRole('tab', { name: /故事阅读/ }).click();
+  await page.getByRole('tab', { name: /事件阅读/ }).click();
   await expect(page.getByText('港口的重逢', { exact: true }).first()).toBeVisible();
   const eventResponse = await request.get(service + api + '/' + f.worldId + '/branches/' + f.branchId + '/events', { headers });
   const eventPage = await eventResponse.json() as WorldEventPage; const events = eventPage.items;
@@ -89,7 +99,7 @@ test('run through shared events, reload, reading, image planning, historical bra
   const fixtureDirectory = resolve('artifacts/story-worlds-implementation'); mkdirSync(fixtureDirectory, { recursive: true });
   writeFileSync(resolve(fixtureDirectory, 'reader-browser-fixture.json'), JSON.stringify({ worldId: f.worldId, branchId: f.branchId, responses: fixtureResponses }, null, 2));
 
-  await page.reload(); await page.getByRole('tab', { name: /故事阅读/ }).click();
+  await page.reload(); await page.getByRole('tab', { name: /事件阅读/ }).click();
   const reader = page.locator('.sw-reader');
   const missingArticle = reader.locator('article').filter({ has: page.getByRole('heading', { name: fixtureEvent.title, exact: true }) });
   await expect(missingArticle.getByText(fixtureEvent.summary, { exact: true })).toHaveCount(1);
@@ -157,7 +167,7 @@ test('run through shared events, reload, reading, image planning, historical bra
     }
   }
   await page.unroute(eventRoute); await page.setViewportSize({ width: 1440, height: 900 });
-  await page.reload(); await page.getByRole('tab', { name: /故事阅读/ }).click();
+  await page.reload(); await page.getByRole('tab', { name: /事件阅读/ }).click();
   await expect(reader.getByRole('heading', { name: fixtureEvent.title, exact: true })).toHaveCount(0);
   expect(pageErrors).toEqual([]);
   // Plan via the real UI selection panel, then assert the actual persisted task plan.
@@ -172,7 +182,7 @@ test('run through shared events, reload, reading, image planning, historical bra
   await expect(planDialog).not.toBeVisible();
   await expect.poll(async () => (await detail(request, f)).images.length).toBeGreaterThan(0);
   // Backend versions are also checked independently of rendering and preserved on adoption.
-  await page.getByRole('button',{name:'故事世界操作',exact:true}).click();
+  await page.getByRole('button', { name: '作品操作菜单', exact: true }).click();
   await page.getByRole('menuitem',{name:'从历史节点分支',exact:true}).click();
   const forkDialog=page.getByRole('dialog',{name:'新建世界分支'});
   await forkDialog.getByLabel('分支标题').fill('另一个归航日');
@@ -185,8 +195,8 @@ test('run through shared events, reload, reading, image planning, historical bra
   const forkId = (await fork.json()).id;
   const forkEvents = await request.get(service + api + '/' + f.worldId + '/branches/' + forkId + '/events', { headers });
   expect((await forkEvents.json()).items).toHaveLength(3);
-  await page.goto('/apps/story-worlds?world='+f.worldId+'&branch='+f.branchId);
-  await page.getByRole('tab',{name:/故事阅读/}).click();
+  await page.goto('/apps/story-worlds?world='+f.worldId+'&branch='+f.branchId + '&view=sandbox');
+  await page.getByRole('tab',{name:/事件阅读/}).click();
   await page.getByRole('button', { name: '港口的重逢', exact: true }).click();
   await page.getByRole('button',{name:'采纳',exact:true}).first().click();
   const adoptDialog=page.getByRole('dialog',{name:'采纳进创作项目'});
@@ -259,9 +269,9 @@ test('twelve characters and one thousand events have bounded windows and usable 
   for (const size of [{ width: 1920, height: 1080 }, { width: 1440, height: 900 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(size);
     const start = Date.now();
-    await page.goto('/apps/story-worlds?world=' + f.performanceWorldId + '&branch=' + f.performanceBranchId);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: /故事流/ }).click();
+    await page.goto('/apps/story-worlds?world=' + f.performanceWorldId + '&branch=' + f.performanceBranchId + '&view=sandbox');
+    await expect(worldHeading(page)).toBeVisible();
+    await page.getByRole('tab', { name: /沙盒轨迹流/ }).click();
     await expect(page.locator('.react-flow')).toBeVisible();
     await expect(page.locator('.react-flow__node').first()).toBeVisible();
     await page.waitForTimeout(600);
@@ -284,7 +294,7 @@ test('twelve characters and one thousand events have bounded windows and usable 
       await page.screenshot({path:resolve(output,'flow-dark.png'),fullPage:true});
       await page.evaluate(()=>{document.documentElement.dataset.theme='light-paper';document.documentElement.dataset.colorMode='light';document.documentElement.style.colorScheme='light';document.documentElement.dataset.eyeCare='true';});
     }
-    await page.getByRole('tab', { name: /故事阅读/ }).click();
+    await page.getByRole('tab', { name: /事件阅读/ }).click();
     await expect(page.getByText('港口生活片段 1', { exact: true }).first()).toBeVisible();
     if (size.width === 390) await page.screenshot({ path: resolve(output, 'reading-mobile.png'), fullPage: true });
     test.info().annotations.push({ type: 'timing', description: size.width + 'px ready and reading ' + (Date.now() - start) + 'ms' });

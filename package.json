@@ -57,7 +57,7 @@
     "test:mcp:dsh": "node --import tsx/esm --test apps/service/src/publication/dsh-harness.test.ts scripts/story-dsh/generate-web-patch.test.mjs",
     "mcp:inspect": "node scripts/story-mcp-inspector.mjs",
     "skills:sync": "node scripts/sync-story-skills.mjs",
-    "ci:core": "npm run check:architecture && npm run typecheck && npm run test:regression && npm run skills:sync -- --check && npm run build",
+    "ci:core": "npm run check:architecture && npm run check:ui && npm run typecheck && npm run test:regression && npm run skills:sync -- --check && npm run build",
     "verify": "npm run typecheck && npm run test && npm run build && npm run lint",
     "start": "npm run start:local",
     "stop": "node scripts/stop-local.mjs",
@@ -74,6 +74,8 @@
     "deploy:local": "npm run build && npm run start:local",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern upstream",
     "check:architecture": "node scripts/architecture/check.mjs",
+    "check:ui": "node scripts/ui/check-tokens.mjs",
+    "test:ui-check": "node --test scripts/ui/check-tokens.test.mjs",
     "test:architecture": "node --test scripts/architecture/check.test.mjs"
   },
   "dependencies": {
@@ -96,15 +98,19 @@
     "react-hook-form": "^7.86.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "remark-parse": "11.0.0",
     "tailwind-merge": "^3.6.0",
+    "unified": "11.0.5",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@cloudflare/vite-plugin": "1.53.1",
     "@cloudflare/workers-types": "5.20260823.1",
     "@openai/sites-vite-plugin": "^0.1.0 || ^0.2.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "4.2.1",
+    "@types/mdast": "4.0.4",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",

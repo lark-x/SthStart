@@ -10,8 +10,8 @@ import { STEPS, type CandidateStatus, type CustomCastMember, type StepIndex } fr
 
 const BASIS_LABEL: Record<string, string> = { documented: '资料支持', inferred: '资料推测', creative: '联动建议' };
 const BASIS_CLASS: Record<string, string> = {
-  documented: 'bg-green-50 text-green-700 border-green-200',
-  inferred: 'bg-amber-50 text-amber-800 border-amber-200',
+  documented: 'bg-success-bg text-success-fg border-success-border',
+  inferred: 'bg-warning-bg text-warning-fg border-warning-border',
   creative: 'bg-accent/10 text-accent-dark border-accent/30',
 };
 
@@ -134,7 +134,7 @@ export function PlanningStepNav({
               (step === value ? 'border-accent bg-accent/10 font-semibold text-accent-dark hover:bg-accent/15'
                 : reachable ? 'border-border-default bg-transparent text-muted hover:bg-surface-hover' : 'border-border-subtle bg-transparent text-fg-subtle opacity-60')}
           >
-            <span className={'flex h-5 w-5 items-center justify-center rounded-full bg-surface text-xs ' + (done(value) && step !== value ? 'bg-green-100 text-green-700' : '')}>
+            <span className={'flex h-5 w-5 items-center justify-center rounded-full bg-surface text-xs ' + (done(value) && step !== value ? 'bg-success-bg text-success-fg' : '')}>
               {done(value) && step !== value ? <Check className="h-3 w-3" /> : index + 1}
             </span>
             {label}
@@ -184,8 +184,8 @@ export function PlanningFooter({
     <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-subtle bg-paper/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1 text-xs text-muted">
-          {researching ? <span className="flex items-center gap-1.5 text-amber-800"><Spinner size="sm" label="" />{researchLabel || '正在检索资料…'}</span>
-            : generating ? <span className="flex items-center gap-1.5 text-amber-800"><Spinner size="sm" label="" />正在生成方案…</span>
+          {researching ? <span className="flex items-center gap-1.5 text-warning-fg"><Spinner size="sm" label="" />{researchLabel || '正在检索资料…'}</span>
+            : generating ? <span className="flex items-center gap-1.5 text-warning-fg"><Spinner size="sm" label="" />正在生成方案…</span>
               : sessionId ? '企划会话 ' + sessionId.slice(0, 8) + '（刷新页面后仍可继续）' : '还没有企划会话'}
         </span>
         <div className="flex flex-wrap items-center gap-2">

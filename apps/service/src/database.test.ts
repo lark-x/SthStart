@@ -321,3 +321,34 @@ test('migration 67 adds auto MCP transport without changing existing source reco
     assert.deepEqual(connection.prepare('PRAGMA foreign_key_check').all(), []);
   } finally { connection.close(); }
 });
+
+test('migration 68 adds nullable entity covers to an old database without touching existing rows', () => {
+  const connection = new DatabaseSync(':memory:');
+  try {
+    connection.exec('PRAGMA foreign_keys = ON');
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter(m => m.version <= 67), 'service');
+    connection.prepare(`INSERT INTO story_projects(id,title,summary,revision,context_settings_json,created_at,updated_at)
+      VALUES ('legacy-project','旧项目','保留摘要',3,'{"contextWindow":32768}','then','later')`).run();
+    connection.prepare("INSERT INTO activities(id,title,type,created_at,updated_at) VALUES ('legacy-activity','旧制作','daily','then','later')").run();
+    connection.prepare("INSERT INTO sw_worlds(id,revision,data_json,created_at,updated_at) VALUES ('legacy-world',2,'{\"title\":\"旧世界\"}','then','later')").run();
+    const before = {
+      project: { ...connection.prepare("SELECT * FROM story_projects WHERE id='legacy-project'").get()! },
+      activity: { ...connection.prepare("SELECT * FROM activities WHERE id='legacy-activity'").get()! },
+      world: { ...connection.prepare("SELECT * FROM sw_worlds WHERE id='legacy-world'").get()! },
+    };
+
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'service');
+
+    for (const [table, id, key] of [['story_projects', 'legacy-project', 'project'], ['activities', 'legacy-activity', 'activity'], ['sw_worlds', 'legacy-world', 'world']] as const) {
+      const row = { ...connection.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id)! };
+      assert.equal(row.cover_artifact_id, null, table + ' starts without a cover');
+      delete row.cover_artifact_id;
+      assert.deepEqual(row, before[key], table + ' keeps every existing column value');
+    }
+    assert.equal(connection.prepare("SELECT name FROM schema_migrations WHERE version=68").get()!.name, 'entity-covers');
+    const triggers = connection.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%cover_cleanup' ORDER BY name").all().map(row => row.name);
+    assert.deepEqual(triggers, ['trg_activities_cover_cleanup', 'trg_story_projects_cover_cleanup', 'trg_sw_worlds_cover_cleanup']);
+    assert.equal(connection.prepare('PRAGMA integrity_check').get()!.integrity_check, 'ok');
+    assert.deepEqual(connection.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { connection.close(); }
+});

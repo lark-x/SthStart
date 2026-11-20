@@ -125,7 +125,7 @@ export default function LinshePage() {
               onError={() => setFrameFailed(true)}
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3">
-              <a className="pointer-events-auto rounded-control border border-white/20 bg-[#171d1b]/90 px-3 py-2 text-xs font-medium text-[#f4f0e7] hover:bg-[#252e2a]" href={launchUrl} target="_blank" rel="noreferrer">页面没有响应？在新窗口打开</a>
+              <a className="pointer-events-auto rounded-control border border-on-media/20 bg-[color-mix(in_srgb,var(--console-bg)_90%,transparent)] px-3 py-2 text-xs font-medium text-[var(--console-fg)] hover:bg-[var(--console-bar)]" href={launchUrl} target="_blank" rel="noreferrer">页面没有响应？在新窗口打开</a>
             </div>
           </>
         ) : (
@@ -144,7 +144,7 @@ export default function LinshePage() {
               actions={state !== 'loading' ? <>
                 <Button variant="primary" onClick={() => void refresh()}>重新检测</Button>
                 {!localOnlyLaunch && <Button variant="outline" onClick={() => { setFrameFailed(false); setForceOpen(true); }}>仍然尝试加载</Button>}
-                {!localOnlyLaunch && <a className="inline-flex min-h-10 items-center justify-center rounded-control border border-white/20 px-4 text-sm font-semibold text-[#f4f0e7] hover:bg-white/10" href={launchUrl} target="_blank" rel="noreferrer">在新窗口打开</a>}
+                {!localOnlyLaunch && <a className="inline-flex min-h-10 items-center justify-center rounded-control border border-on-media/20 px-4 text-sm font-semibold text-[var(--console-fg)] hover:bg-on-media/10" href={launchUrl} target="_blank" rel="noreferrer">在新窗口打开</a>}
               </> : undefined}
             />
             {frameFailed && <Alert variant="warning" title="iframe 加载失败" className="mt-4 w-full max-w-xl text-left">页面可能拒绝嵌入、尚未启动，或网络连接中断。工具与返回入口仍可使用。</Alert>}

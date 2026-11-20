@@ -261,3 +261,10 @@ html[data-theme] .shell-root .resources-workspace-shell .notebook-filter-chip[ar
   .resources-workspace-shell .notebook-editor-frame:not(.zen-workspace),
   .resources-workspace-shell .notebook-editor-message { padding-inline: 16px; }
 }
+
+/* 手机宽度：资料库五个视图页签只保留文字，保证末项「数据源」完整可见、无需横向滚动。
+ * 图标约占每项 20px，五项合计约 100px，正是 390px 下的溢出量。 */
+@media (max-width: 639px) {
+  .resources-view-tab-label { gap: 0; }
+  .resources-view-tab-label > svg { display: none; }
+}

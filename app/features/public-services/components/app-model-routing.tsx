@@ -99,7 +99,7 @@ function AssignmentForm({
         highlighted ? 'bg-accent/5' : ''
       }`}
     >
-      <div className="min-w-[140px] space-y-1">
+      <div className="min-w-35 space-y-1">
         <div className="flex items-center gap-1.5">
           <strong className="text-sm font-semibold text-ink">{app.name}</strong>
           {app.id === 'linshe' && <span className="system-app-badge">系统</span>}

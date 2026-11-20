@@ -155,8 +155,8 @@ export function ModelLibrary({
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
             <Input
+              leftIcon={<Search className="size-4 text-muted" />}
               type="search"
               aria-label="搜索供应商或模型"
               placeholder="搜索供应商或模型"
@@ -193,7 +193,9 @@ export function ModelLibrary({
                     data-supplier-connections={connectionIds.join(',')}
                   >
                     <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDetailKey(group.key)} aria-label={`管理供应商 ${group.name}`}>
+                      <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDetailKey(group.key)}>
+                        {/* 读屏名称以「管理供应商」开头并包含卡内全部可见文字。 */}
+                        <span className="sr-only">管理供应商 </span>
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <h3 className="break-words text-sm font-semibold text-ink">{group.name}</h3>
                           <Badge variant="secondary">{group.kindLabel}</Badge>
@@ -221,7 +223,7 @@ export function ModelLibrary({
                           <Plus className="size-4" aria-hidden="true" />
                           添加模型
                         </Button>
-                        <Button size="sm" variant="ghost" className="flex-1 sm:flex-none" onClick={() => setDetailKey(group.key)} aria-label={`打开供应商 ${group.name}`}>
+                        <Button size="sm" variant="ghost" className="flex-1 sm:flex-none" onClick={() => setDetailKey(group.key)} aria-label={`详情：打开供应商 ${group.name}`}>
                           详情
                         </Button>
                         <RowActionsMenu

@@ -5,6 +5,7 @@ import { Compass, BookOpen, Palette } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Dialog } from '@/app/components/ui/dialog';
+import { Switch } from '@/app/components/ui/switch';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { PageContainer } from '@/app/components/shared/page-layout';
 import { AccentColorDialog } from '@/app/shell/accent-color-dialog';
@@ -15,7 +16,7 @@ import styles from './appearance.module.css';
 type Preview = { kind: 'theme'; id: ThemeId } | { kind: 'skin'; id: UiSkinId };
 
 export function AppearanceSettings() {
-  const { themeId, uiSkin, accentColor, setThemeId, setUiSkin } = useTheme();
+  const { themeId, uiSkin, skinFlourish, accentColor, setThemeId, setUiSkin, setSkinFlourish } = useTheme();
   const [preview, setPreview] = useState<Preview | null>(null);
   const [accentOpen, setAccentOpen] = useState(false);
   const sampleTheme = preview?.kind === 'theme' ? preview.id : themeId;
@@ -76,6 +77,17 @@ export function AppearanceSettings() {
             </li>
           ))}
         </ul>
+        <div className="border-t border-border-subtle pt-3">
+          <Switch
+            label="皮肤主题装饰"
+            description={uiSkin === 'default'
+              ? '启用风格化皮肤后生效：首页主卡图样、问候区插画与加载动画。'
+              : '首页主卡图样、问候区插画与加载动画。关闭后保留按钮、导航等基础皮肤效果。'}
+            checked={skinFlourish === 'on'}
+            disabled={uiSkin === 'default'}
+            onChange={(event) => setSkinFlourish(event.currentTarget.checked ? 'on' : 'off')}
+          />
+        </div>
       </section>
 
       {accentOpen && <AccentColorDialog onClose={() => setAccentOpen(false)} />}

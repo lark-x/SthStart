@@ -76,8 +76,8 @@ export function StoryDshControlPanel() {
         const anotherProjectRunning = Boolean(runningProject && runningProject.id !== project.id);
         const stateLabel = statusQuery?.isLoading ? '检测中' : statusQuery?.isError ? '状态不可用'
           : status?.running ? '在线' : status?.paired ? '已配对 · 离线' : '未配对';
-        const stateClass = status?.running ? 'bg-emerald-100 text-emerald-800'
-          : status?.paired ? 'bg-amber-100 text-amber-900' : 'bg-surface-muted text-muted';
+        const stateClass = status?.running ? 'bg-success-bg text-success-fg'
+          : status?.paired ? 'bg-warning-bg text-warning-fg' : 'bg-surface-muted text-muted';
         const startHref = localAccess && status?.paired && !status.running && !anotherProjectRunning
           ? makeLaunchHref(project.id) : undefined;
 
@@ -111,7 +111,7 @@ export function StoryDshControlPanel() {
               <BookOpen className="size-4" />项目与配对设置
             </Link>
           </div>
-          {anotherProjectRunning && status?.paired && <p className="mt-3 text-xs text-amber-800">端口 3081 当前由“{runningProject?.title}”使用。先关闭该实例，再启动此项目。</p>}
+          {anotherProjectRunning && status?.paired && <p className="mt-3 text-xs text-warning-fg">端口 3081 当前由“{runningProject?.title}”使用。先关闭该实例，再启动此项目。</p>}
         </article>;
       })}
     </div>

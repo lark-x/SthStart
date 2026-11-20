@@ -40,28 +40,29 @@ export function MediaCard({ item, onPreview, onChooseArtifact, adoptAction }: Me
       <button
         type="button"
         onClick={() => onPreview(item)}
-        aria-label={`预览 ${item.originalName || item.id}`}
         className="relative aspect-[4/3] w-full overflow-hidden border-b border-border-subtle bg-surface-sunken flex items-center justify-center cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
       >
+        {/* 读屏名称 =「预览 文件名」+ 卡内可见状态（如「源文件缺失」），可见文字始终包含在名称里。 */}
+        <span className="sr-only">预览 {item.originalName || item.id}</span>
         {isMissing ? (
           <div className="flex flex-col items-center gap-1.5 p-3 text-center text-warning-fg">
             <AlertTriangle className="h-6 w-6 stroke-[1.5]" />
-            <span className="text-[11px] font-medium">源文件缺失</span>
+            <span className="text-xs font-medium">源文件缺失</span>
           </div>
         ) : isQuarantined ? (
           <div className="flex flex-col items-center gap-1.5 p-3 text-center text-danger-fg">
             <AlertTriangle className="h-6 w-6 stroke-[1.5]" />
-            <span className="text-[11px] font-medium">文件已隔离</span>
+            <span className="text-xs font-medium">文件已隔离</span>
           </div>
         ) : loadError ? (
           <div className="flex flex-col items-center gap-1.5 p-3 text-center text-muted">
             <AlertTriangle className="h-6 w-6 stroke-[1.5]" />
-            <span className="text-[11px]">缩略图加载失败</span>
+            <span className="text-xs">缩略图加载失败</span>
           </div>
         ) : isImage ? (
           <img
             src={previewSrc}
-            alt={item.originalName || '媒体图片'}
+            alt=""
             loading="lazy"
             onError={() => setLoadError(true)}
             className="h-full w-full object-contain transition-transform duration-[var(--motion-fast)] group-hover:scale-[1.02]"
@@ -70,7 +71,7 @@ export function MediaCard({ item, onPreview, onChooseArtifact, adoptAction }: Me
           item.thumbnailUrl ? (
             <img
               src={item.thumbnailUrl}
-              alt={item.originalName || '视频封面'}
+              alt=""
               loading="lazy"
               onError={() => setLoadError(true)}
               className="h-full w-full object-contain"
@@ -78,33 +79,33 @@ export function MediaCard({ item, onPreview, onChooseArtifact, adoptAction }: Me
           ) : (
             <div className="flex flex-col items-center gap-1.5 text-muted">
               <FileVideo className="h-8 w-8" />
-              <span className="text-[11px]">视频产物</span>
+              <span className="text-xs">视频产物</span>
             </div>
           )
         ) : isAudio ? (
           <div className="flex flex-col items-center gap-1.5 text-muted">
             <FileAudio className="h-8 w-8" />
-            <span className="text-[11px]">音频素材</span>
+            <span className="text-xs">音频素材</span>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1.5 text-muted">
             <FileText className="h-8 w-8" />
-            <span className="text-[11px]">文件产物</span>
+            <span className="text-xs">文件产物</span>
           </div>
         )}
 
         {/* 状态徽标 */}
         <div className="absolute left-2 top-2 flex flex-wrap gap-1">
           {isMissing ? (
-            <Badge variant="warning" className="px-1.5 py-0.5 text-[10px] font-semibold">
+            <Badge variant="warning" className="px-1.5 py-0.5 text-xs font-semibold">
               缺失
             </Badge>
           ) : isQuarantined ? (
-            <Badge variant="error" className="px-1.5 py-0.5 text-[10px] font-semibold">
+            <Badge variant="error" className="px-1.5 py-0.5 text-xs font-semibold">
               隔离
             </Badge>
           ) : (
-            <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/90 backdrop-blur-xs">
+            <span className="rounded bg-media-backdrop/60 px-1.5 py-0.5 text-xs text-on-media/90 backdrop-blur-xs">
               {item.mediaKind.toUpperCase()}
             </span>
           )}
@@ -112,7 +113,7 @@ export function MediaCard({ item, onPreview, onChooseArtifact, adoptAction }: Me
 
         {/* 引用计数徽标 */}
         {item.referenceSummary.totalCount > 0 && (
-          <div className="absolute right-2 top-2 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/90 backdrop-blur-xs">
+          <div className="absolute right-2 top-2 flex items-center gap-1 rounded bg-media-backdrop/60 px-1.5 py-0.5 text-xs text-on-media/90 backdrop-blur-xs">
             <Layers className="h-3 w-3" />
             <span>{item.referenceSummary.totalCount} 引用</span>
           </div>

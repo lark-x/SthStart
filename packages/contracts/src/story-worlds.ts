@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { CoverArtifactIdFieldSchema } from './covers.js';
 
 const id = Type.String({ minLength: 1, maxLength: 160 });
 const text = (maxLength = 20000) => Type.String({ maxLength });
@@ -85,7 +86,10 @@ export const WorldDefinitionSchema = Type.Object({
   visualStyle: text(8000),
 }, strict);
 export type WorldDefinition = Static<typeof WorldDefinitionSchema>;
-export const StoryWorldSchema = Type.Object({ ...WorldDefinitionSchema.properties, id, revision, createdAt: Type.String(), updatedAt: Type.String() }, strict);
+/** `coverArtifactId` 是实体元数据而非 definition：保存世界时必须和 id/revision 一样剔除（见 STORY_WORLD_METADATA_KEYS）。 */
+export const StoryWorldSchema = Type.Object({ ...WorldDefinitionSchema.properties, id, revision, coverArtifactId: CoverArtifactIdFieldSchema, createdAt: Type.String(), updatedAt: Type.String() }, strict);
+/** StoryWorld 上不属于 WorldDefinition 的字段；从世界还原 definition 时统一剔除。 */
+export const STORY_WORLD_METADATA_KEYS: readonly string[] = ['id', 'revision', 'coverArtifactId', 'createdAt', 'updatedAt'];
 export type StoryWorld = Static<typeof StoryWorldSchema>;
 export const CreateStoryWorldSchema = WorldDefinitionSchema;
 export const UpdateStoryWorldSchema = Type.Object({ expectedRevision: revision, definition: WorldDefinitionSchema }, strict);

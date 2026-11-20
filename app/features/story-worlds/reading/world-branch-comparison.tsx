@@ -191,7 +191,7 @@ export function WorldBranchComparison({
           </span>
           <span className="hidden sm:inline text-muted">| 起点前的共识历史保持一致，起点之后各自分化</span>
         </div>
-        <div className="flex items-center gap-3 text-[11px] font-mono">
+        <div className="flex items-center gap-3 text-xs font-mono">
           <span>左侧：{visibleLeftEvents.length} 事件</span>
           <span>右侧：{visibleRightEvents.length} 事件</span>
         </div>
@@ -288,12 +288,12 @@ function BranchHeader({
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono text-muted uppercase">
+            <span className="text-xs font-mono text-muted uppercase">
               {side === 'left' ? '分支 A (基底/参照)' : '分支 B (对比分支)'}
             </span>
-            <span className="text-[11px] text-muted font-mono">#{branch.id.slice(0, 8)}</span>
+            <span className="text-xs text-muted font-mono">#{branch.id.slice(0, 8)}</span>
           </div>
-          <h3 className="text-base font-bold text-ink">{branch.title}</h3>
+          <h3 className="text-base font-semibold text-ink">{branch.title}</h3>
         </div>
 
         {/* Branch Mode Badge (canon-gap | adaptation | alternate) */}
@@ -354,35 +354,35 @@ function BranchEventCard({
       {/* Event Header Meta */}
       <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold text-ink font-mono bg-surface-sunken px-2 py-0.5 rounded text-[11px]">
+          <span className="font-semibold text-ink font-mono bg-surface-sunken px-2 py-0.5 rounded text-xs">
             {formatTick(event.tick)}
           </span>
-          <span className="text-muted text-[11px] flex items-center gap-0.5">
+          <span className="text-muted text-xs flex items-center gap-0.5">
             <MapPin className="w-3 h-3 text-muted" />
             <span>{location.name}</span>
           </span>
         </div>
 
         {isDiverged ? (
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-accent-soft text-accent-dark font-medium">
+          <span className="text-xs px-1.5 py-0.2 rounded-full bg-accent-soft text-accent-dark font-medium">
             分歧后独立事件
           </span>
         ) : (
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-surface-sunken text-muted">
+          <span className="text-xs px-1.5 py-0.2 rounded-full bg-surface-sunken text-muted">
             分歧前共识事件
           </span>
         )}
       </div>
 
       {/* Event Title (Clickable heading for direct accessibility) */}
-      <h4 className="text-sm font-bold text-ink leading-snug">
+      <h4 className="text-sm font-semibold text-ink leading-snug">
         {onSelectEvent ? (
           <Button
             type="button"
             size="sm"
             variant="ghost"
             onClick={() => onSelectEvent(event.id, branchId)}
-            className="h-auto min-h-0 justify-start whitespace-normal rounded p-0 text-left text-sm font-bold leading-snug text-ink hover:bg-transparent hover:text-accent sm:min-h-0"
+            className="h-auto min-h-0 justify-start whitespace-normal rounded p-0 text-left text-sm font-semibold leading-snug text-ink hover:bg-transparent hover:text-accent sm:min-h-0"
             title="展开此分支事件详细档案"
           >
             {event.title}
@@ -395,7 +395,6 @@ function BranchEventCard({
       {/* Narrative Prose (SERIF FONT FOR PROSE ONLY) */}
       <p
         className="story-reading-content font-serif text-sm leading-relaxed text-ink/90 line-clamp-4 break-words text-pretty bg-surface-sunken/20 p-2.5 rounded border border-hairline/60"
-        style={{ fontFamily: 'var(--font-serif)' }}
       >
         {event.summary}
       </p>
@@ -403,15 +402,15 @@ function BranchEventCard({
       {/* State Changes Highlights (How characters differ in this branch) */}
       {event.stateChanges.length > 0 && (
         <div className="text-xs space-y-1 pt-1 border-t border-hairline">
-          <div className="text-[11px] text-muted flex items-center gap-1">
-            <HeartHandshake className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+          <div className="text-xs text-muted flex items-center gap-1">
+            <HeartHandshake className="w-3 h-3 text-warning-fg" />
             <span>角色状态演化：</span>
           </div>
           <div className="space-y-1">
             {event.stateChanges.slice(0, 2).map((st, idx) => {
               const actor = lookupActor(actors, st.actorId);
               return (
-                <div key={idx} className="text-[11px] text-muted flex items-baseline gap-1.5">
+                <div key={idx} className="text-xs text-muted flex items-baseline gap-1.5">
                   <span className="font-semibold text-ink">{actor.name}:</span>
                   {st.emotion && <span>情绪[{st.emotion}]</span>}
                   {st.relationships.length > 0 && (
@@ -429,7 +428,7 @@ function BranchEventCard({
       {/* Independent Branch Images Preview (Strictly partitioned) */}
       {images.length > 0 && (
         <div className="pt-2 border-t border-hairline">
-          <div className="flex items-center justify-between text-[11px] text-muted mb-1.5">
+          <div className="flex items-center justify-between text-xs text-muted mb-1.5">
             <span className="flex items-center gap-1 font-semibold text-ink">
               <ImageIcon className="w-3 h-3 text-accent" />
               <span>本分支专属配图 ({images.length})</span>
@@ -443,11 +442,11 @@ function BranchEventCard({
                 className="flex flex-col p-1.5 rounded bg-surface-sunken/60 border border-hairline space-y-1"
               >
                 <div className="flex items-center justify-between gap-0.5">
-                  <ImagePhaseBadge phase={img.phase} className="text-[9px] px-1 py-0" />
-                  <ImageStatusBadge status={img.status} className="text-[9px] px-1 py-0" />
+                  <ImagePhaseBadge phase={img.phase} className="text-xs px-1 py-0" />
+                  <ImageStatusBadge status={img.status} className="text-xs px-1 py-0" />
                 </div>
                 {img.imageUrl && img.status === 'succeeded' ? (
-                  <div className="aspect-video rounded overflow-hidden bg-black/5">
+                  <div className="aspect-video rounded overflow-hidden bg-media-backdrop/5">
                     <img
                       src={img.imageUrl}
                       alt={img.caption || '分镜画面'}
@@ -456,7 +455,7 @@ function BranchEventCard({
                     />
                   </div>
                 ) : (
-                  <div className="aspect-video rounded bg-surface border border-dashed border-hairline flex items-center justify-center text-[10px] text-muted p-1 text-center">
+                  <div className="aspect-video rounded bg-surface border border-dashed border-hairline flex items-center justify-center text-xs text-muted p-1 text-center">
                     <span className="line-clamp-2">{img.caption || '分镜构图'}</span>
                   </div>
                 )}

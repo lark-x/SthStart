@@ -18,7 +18,9 @@ description: >-
 | 共享契约 | `npm run test:contracts`；跨层字段或调用变化增加 `npm run typecheck` |
 | 服务业务逻辑 | 对应模块测试；签名或跨模块变更增加类型检查 |
 | 前端工具、API 客户端 | 对应测试，或 `npm run test:portal`；类型变化增加类型检查 |
-| 前端布局与交互 | 受影响路由的浏览器检查；全局外框变更扩大到代表性页面 |
+| 前端布局与交互 | 受影响路由的浏览器检查，流程与评分见 `frontend-visual-qa`；全局外框变更扩大到代表性页面 |
+| 业务层样式（`app/shell`、`app/workspaces`、`app/features`、`app/apps`、`app/settings`） | `npm run check:ui`；修改检查规则后运行 `npm run test:ui-check` |
+| 主题、共享原语、`app/styles/` | `sthstart-ui-system` §6 的定向测试、`npm run typecheck` 与 `npm run check:ui` |
 | Windows Worker | `npm run test:windows-worker` |
 | 邻舍适配契约 | `npm run test:linshe-contract` |
 | 数据库迁移 | 临时旧版数据库升级、数据保留和完整性检查，不拿用户数据库试迁移 |

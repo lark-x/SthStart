@@ -164,12 +164,12 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
           <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-accent/10 px-2 py-1 text-xs font-semibold text-accent">{proposal.operation === 'create' ? '新建' : '更新'} · {kindName[proposal.kind]}</span><span className="text-xs text-muted">{proposal.origin === 'native_dsh' ? '外部代理会话' : proposal.origin === 'legacy' ? '旧版内置会话' : '未知来源'}</span><span className="ml-auto text-xs text-muted">{new Date(proposal.createdAt).toLocaleString('zh-CN')}</span></div>
           <h4 className="mt-3 font-semibold">{proposal.proposedTitle}</h4>
           <p className="mt-1 text-sm text-muted">{proposal.operation === 'create' ? '将创建新的正式资料。' : `目标：${target ? titleOf(target) : '条目不存在'} · 基于 v${proposal.baseRevision ?? '—'}${target ? ` / 当前 v${target.revision}` : ''}`}</p>
-          {stale && proposal.status === 'pending' && <p role="alert" className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-900">基准版本已变化或目标已删除。此提案保持待审，不能覆盖当前正式内容。</p>}
+          {stale && proposal.status === 'pending' && <p role="alert" className="mt-2 rounded bg-warning-bg p-2 text-sm text-warning-fg">基准版本已变化或目标已删除。此提案保持待审，不能覆盖当前正式内容。</p>}
           <p className="mt-2 whitespace-pre-wrap text-sm">理由：{proposal.reason || '未提供'}</p>
           <details className="mt-3 rounded-control border border-border-default p-3">
             <summary className="cursor-pointer text-sm font-medium">查看逐行差异与完整预览</summary>
             {proposal.operation === 'update' && target && <div className="mt-3">
-              {diff ? <pre className="max-h-72 overflow-auto rounded bg-surface-muted p-3 font-mono text-xs leading-5">{diff.map((line, index) => <div key={`${index}-${line.type}`} className={line.type === 'add' ? 'bg-emerald-100 text-emerald-900' : line.type === 'remove' ? 'bg-rose-100 text-rose-900' : 'text-muted'}>{line.type === 'add' ? '+ ' : line.type === 'remove' ? '− ' : '  '}{line.text || ' '}</div>)}</pre> : <p className="text-xs text-muted">条目超过 300 行，出于浏览器性能考虑请使用下面的完整对照预览。</p>}
+              {diff ? <pre className="max-h-72 overflow-auto rounded bg-surface-muted p-3 font-mono text-xs leading-5">{diff.map((line, index) => <div key={`${index}-${line.type}`} className={line.type === 'add' ? 'bg-success-bg text-success-fg' : line.type === 'remove' ? 'bg-danger-bg text-danger-fg' : 'text-muted'}>{line.type === 'add' ? '+ ' : line.type === 'remove' ? '− ' : '  '}{line.text || ' '}</div>)}</pre> : <p className="text-xs text-muted">条目超过 300 行，出于浏览器性能考虑请使用下面的完整对照预览。</p>}
             </div>}
             <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
               {proposal.operation === 'update' && target && <div className="min-w-0 rounded border border-border-default p-3"><b className="text-xs text-muted">当前正式内容</b><h5 className="my-2 font-semibold">{titleOf(target)}</h5><div className="max-h-72 overflow-y-auto"><StoryMarkdown source={current} /></div></div>}
@@ -201,7 +201,7 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
       <div className="rounded-panel border border-border-default bg-surface p-4">
         <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">外部创作代理</h3><p className="mt-1 text-sm text-muted">支持通过 Antigravity、Claude 等 Agent 协作推进剧情草稿。</p></div><Badge variant={bridge.data?.running ? 'online' : 'secondary'} dot>{bridge.data?.running ? '运行中' : bridge.data?.paired ? '已配对 · 离线' : '未配对'}</Badge></div>
         {isLocalHost ? <a className="mt-3 inline-flex items-center gap-2 rounded-control border border-border-default px-3 py-2 text-sm font-medium hover:bg-surface-hover" href="http://127.0.0.1:3081" target="_blank" rel="noreferrer noopener">打开本机代理工作台 <ExternalLink className="size-4" /></a>
-          : <p className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-900">创作代理运行在启动器所在主机。本页面来自远程地址，不能直接提供当前设备可用的链接。</p>}
+          : <p className="mt-3 rounded bg-warning-bg p-3 text-sm text-warning-fg">创作代理运行在启动器所在主机。本页面来自远程地址，不能直接提供当前设备可用的链接。</p>}
         <p className="mt-3 text-xs text-muted">桥接：{bridge.data?.paired ? `已配对 · 最近使用 ${bridge.data.lastUsedAt ? new Date(bridge.data.lastUsedAt).toLocaleString('zh-CN') : '暂无'}` : '尚未配对'}{bridge.data?.lastHeartbeatAt ? ` · 心跳 ${new Date(bridge.data.lastHeartbeatAt).toLocaleTimeString('zh-CN')}` : ''}</p>
       </div>
       <div className="rounded-panel border border-border-default p-4">
@@ -210,14 +210,14 @@ export function StoryReviewPanel({ open, onOpenChange, projectId, entries, activ
         <pre className="mt-3 overflow-x-auto rounded-control bg-surface-muted p-3 text-xs">{`Set-ExecutionPolicy -Scope Process Bypass; & ${"'F:\\Project\\SthStart\\scripts\\story-dsh\\start.ps1'"} -ProjectId '${projectId.replaceAll("'", "''")}' -PortalUrl '${localPortal.replaceAll("'", "''")}' -Pair`}</pre>
         <p className="mt-2 text-xs text-muted">端口已占用时启动器会停止并提示，不会终止占用进程；每个项目使用独立工作目录。</p>
         <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" disabled={grantBusy} onClick={() => void generateGrant()}><Plus className="size-4" />{bridge.data?.paired ? '重新生成 Token' : '生成一次性 Token'}</Button>{bridge.data?.paired && <Button size="sm" variant="outline" onClick={() => void revokeGrant()}>撤销桥接</Button>}</div>
-        {oneTimeToken && <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3"><label className="block text-xs font-semibold text-amber-950">一次性 Token（关闭页面或重新生成后不再显示）<Input readOnly value={oneTimeToken} className="mt-2 font-mono text-xs" onFocus={(event) => event.currentTarget.select()} /></label><Button size="sm" variant="outline" className="mt-2" onClick={() => void navigator.clipboard.writeText(oneTimeToken).then(() => setNotice('Token 已复制。')).catch(() => setNotice('浏览器未授权剪贴板，请在上方文本框中手动复制。'))}><Copy className="size-4" />复制 Token</Button><p className="mt-2 text-xs text-amber-950">不要发给其他人或贴入对话；此 Token 只能访问当前项目的只读资料与提案接口。</p></div>}
+        {oneTimeToken && <div className="mt-3 rounded border border-warning-border bg-warning-bg p-3"><label className="block text-xs font-semibold text-warning-fg">一次性 Token（关闭页面或重新生成后不再显示）<Input readOnly value={oneTimeToken} className="mt-2 font-mono text-xs" onFocus={(event) => event.currentTarget.select()} /></label><Button size="sm" variant="outline" className="mt-2" onClick={() => void navigator.clipboard.writeText(oneTimeToken).then(() => setNotice('Token 已复制。')).catch(() => setNotice('浏览器未授权剪贴板，请在上方文本框中手动复制。'))}><Copy className="size-4" />复制 Token</Button><p className="mt-2 text-xs text-warning-fg">不要发给其他人或贴入对话；此 Token 只能访问当前项目的只读资料与提案接口。</p></div>}
         <details className="mt-4 rounded-control border border-border-default p-3"><summary className="cursor-pointer text-sm font-medium">桥接权限与备份边界</summary><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted"><li>创作代理可读取正式资料、搜索、提交待审提案与查看提案状态；不能直接改写正式资料。</li><li>撤销或重新生成会立即使旧凭据失效。</li><li>外部智能代理的工作目录和模型凭据不包含在普通 SthStart 备份中，需单独安全备份。</li></ul></details>
       </div>
     </section>}
 
     {tab === 'archive' && <ReadOnlyArchive projectId={projectId} />}
   </>;
-  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-[400px] shrink-0 flex-col overflow-hidden rounded-panel bg-surface shadow-xs">
+  if (wide) return open ? <aside aria-label="审阅与项目连接" className="flex h-full min-h-0 w-100 shrink-0 flex-col overflow-hidden rounded-panel bg-surface shadow-xs">
     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4 py-2"><h2 className="text-sm font-semibold">审阅与项目连接</h2><Button size="sm" variant="ghost" aria-label="关闭审阅面板" onClick={() => onOpenChange(false)}><X className="size-4" /></Button></div>
     <div className="min-h-0 flex-1 overflow-y-auto p-4">{content}</div>
   </aside> : null;

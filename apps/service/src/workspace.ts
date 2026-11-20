@@ -19,7 +19,7 @@ export function registerWorkspaceRoutes(app: FastifyInstance, database: ServiceD
           ${hasBindings
             ? `MAX(w.updated_at, COALESCE((SELECT MAX(d.updated_at) FROM sw_project_bindings b JOIN story_documents d ON d.project_id = b.project_id WHERE b.world_id = w.id), w.updated_at))`
             : 'w.updated_at'
-          } AS updatedAt
+          } AS updatedAt, w.cover_artifact_id AS imageArtifactId
           FROM sw_worlds w`
       : '';
 
@@ -28,19 +28,21 @@ export function registerWorkspaceRoutes(app: FastifyInstance, database: ServiceD
       : "WHERE project_type='fiction'";
 
     const items = database.connection.prepare(`
-      SELECT id,title,kind,updatedAt FROM (
-        SELECT id,title,CASE WHEN type='publication' THEN 'publication' ELSE 'activity' END AS kind,updated_at AS updatedAt FROM activities WHERE archived=0
+      SELECT id,title,kind,updatedAt,imageArtifactId FROM (
+        SELECT id,title,CASE WHEN type='publication' THEN 'publication' ELSE 'activity' END AS kind,updated_at AS updatedAt,cover_artifact_id AS imageArtifactId FROM activities WHERE archived=0
         ${worldSelect}
         UNION ALL
         SELECT p.id,p.title,'story' AS kind,MAX(p.updated_at,
           COALESCE((SELECT MAX(updated_at) FROM story_documents WHERE project_id=p.id),p.updated_at),
           COALESCE((SELECT MAX(updated_at) FROM story_characters WHERE project_id=p.id),p.updated_at),
-          COALESCE((SELECT MAX(captured_at) FROM project_links WHERE project_id=p.id),p.updated_at)) AS updatedAt
+          COALESCE((SELECT MAX(captured_at) FROM project_links WHERE project_id=p.id),p.updated_at)) AS updatedAt,p.cover_artifact_id AS imageArtifactId
           FROM story_projects p ${storyFilter}
         UNION ALL
-        SELECT id,title,'note' AS kind,updated_at AS updatedAt FROM creative_notes
+        SELECT id,title,'note' AS kind,updated_at AS updatedAt,NULL AS imageArtifactId FROM creative_notes
         UNION ALL
-        SELECT id,display_name AS title,'character' AS kind,updated_at AS updatedAt FROM character_profiles WHERE archived=0
+        SELECT c.id,c.display_name AS title,'character' AS kind,c.updated_at AS updatedAt,
+          (SELECT a.artifact_id FROM character_assets a WHERE a.id=COALESCE(c.avatar_asset_id,c.portrait_asset_id)) AS imageArtifactId
+          FROM character_profiles c WHERE c.archived=0
       ) ORDER BY updatedAt DESC,kind,id LIMIT ?
     `).all(request.query.limit ?? 8) as RecentWorkResponse['items'];
     return { items };

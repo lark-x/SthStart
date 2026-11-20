@@ -23,12 +23,12 @@ import { IconButton } from '@/app/components/ui/icon-button';
 const inlineContent = '[&_.ui-mantine-button-inner]:flex [&_.ui-mantine-button-inner]:h-auto [&_.ui-mantine-button-inner]:items-center [&_.ui-mantine-button-label]:flex [&_.ui-mantine-button-label]:h-auto [&_.ui-mantine-button-label]:items-center [&_.ui-mantine-button-label]:gap-1';
 /* 共享基类带 1px 透明描边；胶囊条沿用原来的零描边，否则每个按钮宽 2px。 */
 const chromeBase = 'h-auto min-h-0 shrink-0 border-0';
-const compactPill = `${chromeBase} rounded-full px-1.5 py-0.5 text-[11px] font-medium text-fg-default enabled:hover:text-fg-default sm:min-h-0 ${inlineContent}`;
+const compactPill = `${chromeBase} rounded-full px-1.5 py-0.5 text-xs font-medium text-fg-default enabled:hover:text-fg-default sm:min-h-0 ${inlineContent}`;
 const compactToggle = `${chromeBase} rounded-full px-1.5 py-0.5 text-xs font-medium sm:min-h-0 ${inlineContent}`;
 const compactToggleOn = `${compactToggle} bg-accent-soft font-semibold text-accent enabled:hover:bg-accent-soft enabled:hover:text-accent`;
 const compactToggleOff = `${compactToggle} text-fg-default enabled:hover:text-fg-default`;
 /* 22px 与改动前的 p-1 + 14px 图标一致，保证胶囊条在 1024 宽度下不被挤断。 */
-const compactIcon = 'size-[22px] min-h-0 border-0 p-0 sm:size-[22px] sm:min-h-0';
+const compactIcon = 'size-5.5 min-h-0 border-0 p-0 sm:size-5.5 sm:min-h-0';
 /* ghost 基类的 hover 会把图标染成 ink；浮动条上的图标维持原色相。 */
 const iconIdle = 'text-fg-default enabled:hover:text-fg-default';
 
@@ -92,8 +92,8 @@ export const FlowToolbar = memo(function FlowToolbar({
           ref={overflowRef}
           className="mb-2 p-3 rounded-xl shadow-lg border border-hairline backdrop-blur-md w-72 text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-150"
           style={{
-            backgroundColor: 'color-mix(in srgb, var(--surface-raised, #ffffff) 96%, transparent)',
-            color: 'var(--fg-default, #2b2925)',
+            backgroundColor: 'color-mix(in srgb, var(--surface-raised) 96%, transparent)',
+            color: 'var(--fg-default)',
           }}
         >
           <div className="flex items-center justify-between border-b border-hairline pb-1.5">
@@ -102,20 +102,20 @@ export const FlowToolbar = memo(function FlowToolbar({
               icon={X}
               label="关闭统计与快捷键浮层"
               iconClassName="h-3.5 w-3.5"
-              className="size-[18px] min-h-0 p-0 sm:size-[18px] sm:min-h-0"
+              className="size-4.5 min-h-0 p-0 sm:size-4.5 sm:min-h-0"
               onClick={() => setShowOverflow(false)}
             />
           </div>
 
           {/* 详细指标 */}
-          <div className="flex items-center justify-between text-fg-muted font-mono text-[11px] bg-surface-sunken p-1.5 rounded-lg">
+          <div className="flex items-center justify-between text-fg-muted font-mono text-xs bg-surface-sunken p-1.5 rounded-lg">
             <span>当前视口: +{from}m ~ +{to}m</span>
             <span>节点: {renderedNodesCount} / {totalEventsCount}</span>
           </div>
 
           {/* 更多快速时间跳转点 */}
           <div>
-            <div className="text-[10px] text-fg-subtle mb-1">更多时间定位：</div>
+            <div className="text-xs text-fg-subtle mb-1">更多时间定位：</div>
             <div className="flex items-center gap-1">
               {[
                 { label: '0h', tick: 0 },
@@ -133,7 +133,7 @@ export const FlowToolbar = memo(function FlowToolbar({
                     onJumpToTick(item.tick);
                     setShowOverflow(false);
                   }}
-                  className={`h-auto min-h-0 flex-1 rounded border border-hairline px-1 py-1 text-[11px] font-medium text-fg-default enabled:hover:text-fg-default sm:min-h-0 ${inlineContent}`}
+                  className={`h-auto min-h-0 flex-1 rounded border border-hairline px-1 py-1 text-xs font-medium text-fg-default enabled:hover:text-fg-default sm:min-h-0 ${inlineContent}`}
                 >
                   {item.label}
                 </Button>
@@ -144,7 +144,7 @@ export const FlowToolbar = memo(function FlowToolbar({
           {/* 小地图显示切换 */}
           {onToggleMiniMap ? (
             <div className="flex items-center justify-between pt-1 border-t border-hairline">
-              <span className="text-[11px] text-fg-muted flex items-center gap-1">
+              <span className="text-xs text-fg-muted flex items-center gap-1">
                 <MapIcon className="w-3 h-3 text-fg-subtle" />
                 右下角小地图
               </span>
@@ -153,7 +153,7 @@ export const FlowToolbar = memo(function FlowToolbar({
                 variant="ghost"
                 onClick={onToggleMiniMap}
                 aria-pressed={Boolean(showMiniMap)}
-                className={`h-auto min-h-0 rounded border-0 px-2 py-0.5 text-[11px] font-medium sm:min-h-0 ${inlineContent} ${
+                className={`h-auto min-h-0 rounded border-0 px-2 py-0.5 text-xs font-medium sm:min-h-0 ${inlineContent} ${
                   showMiniMap ? 'bg-accent-soft text-accent enabled:hover:bg-accent-soft enabled:hover:text-accent' : 'bg-surface-sunken text-fg-muted enabled:hover:bg-surface-sunken enabled:hover:text-fg-muted'
                 }`}
               >
@@ -163,7 +163,7 @@ export const FlowToolbar = memo(function FlowToolbar({
           ) : null}
 
           {/* 键盘无障碍指南 */}
-          <div className="pt-1 border-t border-hairline text-[10px] text-fg-subtle space-y-1">
+          <div className="pt-1 border-t border-hairline text-xs text-fg-subtle space-y-1">
             <div className="flex items-center gap-1 font-medium text-fg-muted">
               <Keyboard className="w-3 h-3" />
               键盘快捷键：
@@ -182,15 +182,15 @@ export const FlowToolbar = memo(function FlowToolbar({
       <div
         className="flex items-center gap-1 p-1 rounded-full shadow-md backdrop-blur-md border border-hairline transition-all shrink-0"
         style={{
-          backgroundColor: 'color-mix(in srgb, var(--surface-raised, #ffffff) 94%, transparent)',
+          backgroundColor: 'color-mix(in srgb, var(--surface-raised) 94%, transparent)',
         }}
       >
         {/* 视口时段状态徽标 */}
         <div
           className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono font-medium shrink-0"
           style={{
-            backgroundColor: 'var(--surface-sunken, #ebe7df)',
-            color: 'var(--fg-muted, #5a564f)',
+            backgroundColor: 'var(--surface-sunken)',
+            color: 'var(--fg-muted)',
           }}
           title={`当前视口：+${from}m ~ +${to}m，已渲染 ${renderedNodesCount} 个节点（总事件 ${totalEventsCount}）`}
         >
@@ -230,7 +230,7 @@ export const FlowToolbar = memo(function FlowToolbar({
           title="切换无事件空白折叠 (F)"
         >
           <FoldHorizontal className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline text-[11px]">{foldGaps ? '已折叠' : '完整'}</span>
+          <span className="hidden sm:inline text-xs">{foldGaps ? '已折叠' : '完整'}</span>
         </Button>
 
         {/* 功能切换：缩放聚合 LOD (C) */}
@@ -243,7 +243,7 @@ export const FlowToolbar = memo(function FlowToolbar({
           title="切换事件多尺度聚合 (C)"
         >
           <Layers className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline text-[11px]">{enableClustering ? '聚合' : '展开'}</span>
+          <span className="hidden sm:inline text-xs">{enableClustering ? '聚合' : '展开'}</span>
         </Button>
 
         <div className="w-px h-3.5 bg-border-subtle my-auto shrink-0" />

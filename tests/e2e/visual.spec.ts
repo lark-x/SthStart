@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { RuntimeOverview } from '@sthstart/contracts';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 // These screenshots rely on deterministic route fixtures. The real offline
 // worker and an offline reload are covered in offline-and-mobile.spec.ts.
@@ -109,12 +110,12 @@ async function useFixedDashboardData(page: import('@playwright/test').Page) {
 }
 
 /**
- * 截图前等载入态结束：最近工作按首页的 limit=7 截断、近期日程按 limit=5 截断，
+ * 截图前等载入态结束：最近工作按首页的 HOME_RECENT_LIMIT（6）截断、近期日程按 limit=5 截断，
  * 两块列表都达到固定行数后画面高度才确定；骨架行期间 role=status 仍在无障碍树中。
  */
 async function waitForDashboardSettled(page: import('@playwright/test').Page) {
   await expect(page.getByRole('status')).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(7, { timeout: 15_000 });
+  await expect(page.getByTestId('recent-work-list').getByRole('listitem')).toHaveCount(6, { timeout: 15_000 });
   await expect(page.getByTestId('upcoming-schedule-list').getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
   // 模块卡数量来自真实库，内容已按 data-visual-dynamic 遮罩；这里只等它们不再是加载前的说明文案。
   await expect(page.getByRole('navigation', { name: '创作模块' }).getByRole('link')).toHaveCount(4);
@@ -210,11 +211,12 @@ test('control center logs visual baseline', async ({ page }) => {
 
 test('character editor visual baseline', async ({ page }) => {
   await page.goto('/apps/characters/new');
-  // 编辑器改为页头「新建角色档案」+「人设 / 外貌 / 资产 / LoRA」分段，不再有「编辑身份资料」浮层入口。
+  // 新建档案保留编辑表单；人设、外貌生图与图片皮肤共用三个分段。
   await expect(page.getByRole('heading', { name: '新建角色档案', level: 1 })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '人设' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: '人设演绎' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('角色名称')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '形象资产库' })).toBeVisible();
+  // 新建页已不再放「视觉预览」侧栏，改为等人设分段的最后一个字段渲染完成。
+  await expect(page.getByLabel('详细人设背景')).toBeVisible();
   await expect(page).toHaveScreenshot('character-editor.png', {
     ...screenshotOptions,
     fullPage: true,
@@ -252,5 +254,187 @@ test('narrative visual baseline', async ({ page }) => {
   await expect(page).toHaveScreenshot('narrative.png', {
     ...screenshotOptions,
     fullPage: true,
+  });
+});
+
+/*
+ * 页面原型基线（前端视觉计划 P0）：首页、制作项目、制作工作台、角色库、作品目录、资料库、媒体库、设置，
+ * 各取暖白（light-paper）与暖夜（dark-espresso）。
+ *
+ * 全量并发跑时其他用例会持续往共享测试库写数据，列表与计数随执行顺序漂移。这里把页面用到的
+ * /api/admin/* 响应录成 HAR，回放时只读 HAR；未录到的请求才回落到真实服务。页面时钟固定在录制时刻，
+ * 「x 小时前」之类的相对时间也随之固定。
+ *
+ * 重新录制（页面改动导致接口变化时）：
+ *   STHSTART_VISUAL_RECORD=1 npx playwright test tests/e2e/visual.spec.ts -g "record page archetype fixtures"
+ * 然后再用 --update-snapshots 生成截图，并在交付记录里写明原因。
+ */
+const FIXTURE_DIR = 'tests/e2e/visual-fixtures';
+const MANIFEST_PATH = `${FIXTURE_DIR}/manifest.json`;
+const RECORDING = process.env.STHSTART_VISUAL_RECORD === '1';
+const ARCHETYPE_THEMES = ['light-paper', 'dark-espresso'] as const;
+const servicePort = process.env.E2E_SERVICE_PORT ?? 4200;
+const serviceAdmin = `http://127.0.0.1:${servicePort}/api/v1/admin`;
+const portalOrigin = 'http://127.0.0.1:' + (process.env.E2E_PORTAL_PORT ?? 4273);
+const serviceHeaders = { 'x-sthstart-admin-token': 'sthstart-e2e-secret-0123456789abcdef' };
+
+type ArchetypeManifest = { recordedAt: string; activityId: string };
+type ArchetypePage = { id: string; heading: RegExp | string; path: (manifest: ArchetypeManifest) => string; fullPage: boolean };
+
+const ARCHETYPE_PAGES: ArchetypePage[] = [
+  { id: 'activities', heading: /.+/, path: () => '/apps/activities', fullPage: true },
+  { id: 'activity-workbench', heading: /.+/, path: manifest => `/apps/activities/${manifest.activityId}`, fullPage: false },
+  { id: 'characters', heading: /.+/, path: () => '/apps/characters', fullPage: true },
+  { id: 'story-worlds', heading: '作品', path: () => '/apps/story-worlds', fullPage: true },
+  { id: 'resources', heading: /.+/, path: () => '/apps/resources', fullPage: false },
+  { id: 'media', heading: /.+/, path: () => '/apps/media', fullPage: true },
+  { id: 'settings', heading: /.+/, path: () => '/settings/public-services', fullPage: true },
+];
+
+const harPath = (id: string) => `${FIXTURE_DIR}/${id}.har`;
+
+/** 回放只按方法与 URL 匹配；去掉请求头、Cookie 和多余响应头，不把会话凭据写进仓库。 */
+function scrubHar(file: string) {
+  const har = JSON.parse(readFileSync(file, 'utf8')) as { log: { entries: Array<{ request: { headers: unknown[]; cookies: unknown[] }; response: { headers: Array<{ name: string; value: string }>; cookies: unknown[] } }> } };
+  for (const entry of har.log.entries) {
+    entry.request.headers = [];
+    entry.request.cookies = [];
+    entry.response.cookies = [];
+    entry.response.headers = entry.response.headers.filter(header => header.name.toLowerCase() === 'content-type');
+  }
+  writeFileSync(file, JSON.stringify(har, null, 2) + '\n');
+}
+
+async function seedArchetypeFixtures(request: import('@playwright/test').APIRequestContext): Promise<ArchetypeManifest> {
+  const create = async <T,>(path: string, data: object): Promise<T> => {
+    const response = await request.post(serviceAdmin + path, { headers: serviceHeaders, data });
+    expect(response.ok(), 'fixture: ' + path).toBe(true);
+    return response.json();
+  };
+  const project = await create<{ id: string }>('/story/projects', { title: '港口来信', summary: '守灯人与末班船的故事。' });
+  await create('/story/projects/' + project.id + '/documents', { kind: 'chapter', title: '海边来信', body: '潮水退去。\n\n灯塔亮起。' });
+  for (const [name, work] of [['林舟', '港口来信'], ['苏禾', '港口来信'], ['遥音', '样本作品']]) {
+    await create('/characters', { displayName: name, tags: ['基线'], draft: { displayName: name, work } });
+  }
+  await create('/notebook/notes', {
+    title: '港口城市的世界观笔记', kind: 'note', stage: 'reference', summary: '潮汐、码头与旧灯塔的设定。', tags: ['世界'],
+    content: [{ id: 'body', type: 'text', text: '旧灯塔每晚八点亮起。' }],
+    knowledge: { schemaVersion: 1, nature: 'personal', authorship: 'handwritten', usage: 'reference', works: [], characters: [], locations: [], sources: [] },
+  });
+  const activity = await create<{ activity: { id: string } }>('/activities', {
+    document: JSON.parse(readFileSync('packages/activity-playback/fixtures/rework_sample_v1.json', 'utf8')),
+  });
+  return { recordedAt: new Date().toISOString(), activityId: activity.activity.id };
+}
+
+async function preparePage(page: import('@playwright/test').Page, theme: string) {
+  expect((await page.request.post('/api/auth/admin-session', { headers: { origin: portalOrigin } })).ok()).toBe(true);
+  await page.addInitScript(id => { if (location.protocol === 'http:') localStorage.setItem('sthstart_theme_id', id); }, theme);
+}
+
+async function waitForArchetypeSettled(page: import('@playwright/test').Page, theme: string, heading: RegExp | string) {
+  await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true', { timeout: 15_000 });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+  await expect(page.getByRole('main').first().getByRole('heading', { level: 1, name: heading }).first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  await expect(page.locator('.skeleton-shimmer, [aria-busy="true"]')).toHaveCount(0, { timeout: 15_000 });
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+}
+
+test.describe('page archetype baselines', () => {
+  test('record page archetype fixtures', async ({ browser, request }) => {
+    test.skip(!RECORDING, 'Set STHSTART_VISUAL_RECORD=1 to re-record the archetype API fixtures.');
+    test.setTimeout(240_000);
+    mkdirSync(FIXTURE_DIR, { recursive: true });
+    const manifest = await seedArchetypeFixtures(request);
+    writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n');
+    for (const archetype of ARCHETYPE_PAGES) {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+      await context.routeFromHAR(harPath(archetype.id), { url: /\/api\/admin\//, update: true, updateContent: 'embed', updateMode: 'minimal' });
+      const page = await context.newPage();
+      await page.clock.setFixedTime(new Date(manifest.recordedAt));
+      await preparePage(page, 'light-paper');
+      await page.goto(archetype.path(manifest));
+      await waitForArchetypeSettled(page, 'light-paper', archetype.heading);
+      await context.close();
+      scrubHar(harPath(archetype.id));
+    }
+  });
+
+  for (const archetype of ARCHETYPE_PAGES) {
+    for (const theme of ARCHETYPE_THEMES) {
+      test(`${archetype.id} ${theme} visual baseline`, async ({ page }) => {
+        test.skip(RECORDING, 'Recording run only refreshes the API fixtures.');
+        const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as ArchetypeManifest;
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.routeFromHAR(harPath(archetype.id), { url: /\/api\/admin\//, notFound: 'fallback' });
+        await page.clock.setFixedTime(new Date(manifest.recordedAt));
+        await preparePage(page, theme);
+        await page.goto(archetype.path(manifest));
+        await waitForArchetypeSettled(page, theme, archetype.heading);
+        await expectNoHorizontalOverflow(page);
+        await expect(page).toHaveScreenshot(`${archetype.id}-${theme}.png`, {
+          ...screenshotOptions,
+          fullPage: archetype.fullPage,
+          mask: [page.locator('[data-visual-dynamic]')],
+        });
+      });
+    }
+  }
+});
+
+/*
+ * 风格化皮肤基线（前端视觉计划 P3）：genshin / sticker × 暖白 / 暖夜，取角色库、资料库、制作项目。
+ * 皮肤 CSS 拆分（app/styles/skins/）前先生成，拆分后必须零像素差异；之后皮肤表达分级等有意改动
+ * 才更新，并在交付记录写明原因。数据与页面原型基线一样来自 HAR，时钟固定。
+ * 首页不放在这里：模块卡计数来自共享测试库，遮罩宽度随数字位数变化，皮肤下卡片高度也随之漂移；
+ * 首页的皮肤观感由交付记录里的人工截图核对。
+ */
+const SKIN_IDS = ['genshin', 'sticker'] as const;
+const SKIN_PAGES = [
+  { id: 'characters', fixture: 'characters', path: () => '/apps/characters', fullPage: true },
+  { id: 'resources', fixture: 'resources', path: () => '/apps/resources', fullPage: false },
+  { id: 'activities', fixture: 'activities', path: () => '/apps/activities', fullPage: true },
+];
+
+test.describe('ui skin baselines', () => {
+  for (const skin of SKIN_IDS) {
+    for (const theme of ARCHETYPE_THEMES) {
+      for (const skinPage of SKIN_PAGES) {
+        test(`${skinPage.id} ${skin} ${theme} skin baseline`, async ({ page }) => {
+          test.skip(RECORDING, 'Recording run only refreshes the API fixtures.');
+          const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as ArchetypeManifest;
+          await page.setViewportSize({ width: 1440, height: 900 });
+          await page.routeFromHAR(harPath(skinPage.fixture), { url: /\/api\/admin\//, notFound: 'fallback' });
+          await page.clock.setFixedTime(new Date(manifest.recordedAt));
+          await preparePage(page, theme);
+          await page.addInitScript(id => { if (location.protocol === 'http:') localStorage.setItem('sthstart_ui_skin', id); }, skin);
+          await page.goto(skinPage.path());
+          await expect(page.locator('html')).toHaveAttribute('data-ui-skin', skin);
+          await waitForArchetypeSettled(page, theme, /.+/);
+          await expectNoHorizontalOverflow(page);
+          await expect(page).toHaveScreenshot(`skin-${skinPage.id}-${skin}-${theme}.png`, {
+            ...screenshotOptions,
+            fullPage: skinPage.fullPage,
+            mask: [page.locator('[data-visual-dynamic]')],
+          });
+        });
+      }
+    }
+  }
+});
+
+test('portal desktop dark-espresso visual baseline', async ({ page }) => {
+  await page.addInitScript(() => { if (location.protocol === 'http:') localStorage.setItem('sthstart_theme_id', 'dark-espresso'); });
+  await useFixedDashboardData(page);
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark-espresso');
+  await expect(page.getByRole('heading', { name: '工作台', level: 1 })).toBeVisible();
+  await waitForDashboardSettled(page);
+  await expectNoHorizontalOverflow(page);
+  await expect(page).toHaveScreenshot('portal-desktop-dark-espresso.png', {
+    ...screenshotOptions,
+    fullPage: true,
+    mask: [page.locator('[data-visual-dynamic]')],
   });
 });

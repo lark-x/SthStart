@@ -475,7 +475,7 @@ export function CharacterUpstreamDialog({
                             checked={checked}
                             onChange={() => toggleAsset(asset)}
                           />
-                          <div className="flex items-center justify-between gap-1 text-[11px] text-muted">
+                          <div className="flex items-center justify-between gap-1 text-xs text-muted">
                             <span className="truncate">{asset.source}</span>
                             {checked && asset.kind === 'avatar' && (
                               <button

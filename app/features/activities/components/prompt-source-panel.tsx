@@ -26,15 +26,15 @@ interface PromptSourcePanelProps {
 }
 
 const KIND_COLORS: Record<string, string> = {
-  identity: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
-  appearance: 'bg-indigo-900/40 text-indigo-300 border-indigo-700/50',
-  outfit: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
-  scene: 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50',
-  action: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
-  composition: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
-  style: 'bg-pink-900/40 text-pink-300 border-pink-700/50',
-  negative: 'bg-red-900/40 text-red-300 border-red-700/50',
-  supplement: 'bg-gray-800/40 text-gray-300 border-gray-700/50',
+  identity: 'bg-tone-violet-soft text-tone-violet-fg border-tone-violet/30',
+  appearance: 'bg-info-bg text-info-fg border-info-border',
+  outfit: 'bg-info-bg text-info-fg border-info-border',
+  scene: 'bg-success-bg text-success-fg border-success-border',
+  action: 'bg-warning-bg text-warning-fg border-warning-border',
+  composition: 'bg-warning-bg text-warning-fg border-warning-border',
+  style: 'bg-tone-pink-soft text-tone-pink-fg border-tone-pink/30',
+  negative: 'bg-danger-bg text-danger-fg border-danger-border',
+  supplement: 'bg-surface-muted text-fg-default border-border-subtle',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -81,7 +81,7 @@ export function PromptSourcePanel({
 
   if (!blocks || blocks.length === 0) {
     return (
-      <div className="p-4 text-center text-sm text-slate-400 border border-dashed border-slate-800 rounded-lg">
+      <div className="p-4 text-center text-sm text-fg-muted border border-dashed border-border-subtle rounded-lg">
         尚未生成提示词分块，请点击“准备配方”
       </div>
     );
@@ -89,12 +89,12 @@ export function PromptSourcePanel({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm font-semibold text-slate-400 px-1">
+      <div className="flex items-center justify-between text-sm font-semibold text-fg-muted px-1">
         <span>提示词分块与源头溯源 ({blocks.length})</span>
-        <span className="text-sm text-slate-500">点击分块可查看来源设定并跳转定位</span>
+        <span className="text-sm text-fg-subtle">点击分块可查看来源设定并跳转定位</span>
       </div>
 
-      <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-105 overflow-y-auto pr-1">
         {blocks.map((b) => {
           const isExpanded = expandedBlockId === b.id;
           const colorClass = KIND_COLORS[b.kind] || KIND_COLORS.supplement;
@@ -106,8 +106,8 @@ export function PromptSourcePanel({
           return (
             <div
               key={b.id}
-              className={`rounded-lg border bg-slate-900/60 transition-all ${
-                isExpanded ? 'border-sky-500/50 shadow-sm' : 'border-slate-800 hover:border-slate-700'
+              className={`rounded-lg border bg-surface transition-all ${
+                isExpanded ? 'border-info-border shadow-sm' : 'border-border-subtle hover:border-border-subtle'
               }`}
             >
               <div
@@ -121,11 +121,11 @@ export function PromptSourcePanel({
                     {label}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-200 font-mono break-words leading-relaxed">
+                    <p className="text-sm text-fg-default font-mono break-words leading-relaxed">
                       {b.renderedText}
                     </p>
                     {b.originalText && b.originalText !== b.renderedText && (
-                      <p className="text-sm text-slate-400 mt-1 line-through opacity-70">
+                      <p className="text-sm text-fg-muted mt-1 line-through opacity-70">
                         原文: {b.originalText}
                       </p>
                     )}
@@ -139,8 +139,8 @@ export function PromptSourcePanel({
                       label={b.locked ? '已锁定，AI改写不可变更' : '未锁定'}
                       variant="ghost"
                       size="icon"
-                      className="h-7 min-h-7 w-7 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                      iconClassName={b.locked ? 'h-3.5 w-3.5 text-amber-400' : 'h-3.5 w-3.5 opacity-50'}
+                      className="h-7 min-h-7 w-7 text-fg-muted hover:bg-surface-muted hover:text-fg-default"
+                      iconClassName={b.locked ? 'h-3.5 w-3.5 text-warning-fg' : 'h-3.5 w-3.5 opacity-50'}
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleLock(b.id);
@@ -148,16 +148,16 @@ export function PromptSourcePanel({
                     />
                   )}
                   {isExpanded ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                    <ChevronUp className="w-3.5 h-3.5 text-fg-muted" />
                   ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                    <ChevronDown className="w-3.5 h-3.5 text-fg-muted" />
                   )}
                 </div>
               </div>
 
               {isExpanded && (
-                <div className="px-3 pb-3 pt-1 border-t border-slate-800/80 bg-slate-950/40 text-sm space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-slate-400">
+                <div className="px-3 pb-3 pt-1 border-t border-border-subtle bg-surface-sunken text-sm space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-fg-muted">
                     <span>来源模式: {b.origin === 'source' ? '源头注入' : b.origin === 'manual' ? '手动覆盖' : 'AI派生'}</span>
                     <span>·</span>
                     <span>精度: {b.mappingPrecision}</span>
@@ -165,8 +165,8 @@ export function PromptSourcePanel({
 
                   {refs.length > 0 ? (
                     <div className="space-y-1.5 pt-1">
-                      <div className="text-sm font-medium text-slate-300 flex items-center gap-1">
-                        <LinkIcon className="w-3 h-3 text-sky-400" />
+                      <div className="text-sm font-medium text-fg-default flex items-center gap-1">
+                        <LinkIcon className="w-3 h-3 text-info-fg" />
                         关联设定源头:
                       </div>
                       {refs.map((r) => {
@@ -176,10 +176,10 @@ export function PromptSourcePanel({
                         return (
                           <div
                             key={r.id}
-                            className="bg-slate-900 border border-slate-800 rounded p-2 flex flex-col gap-1.5"
+                            className="bg-surface border border-border-subtle rounded p-2 flex flex-col gap-1.5"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-semibold text-sky-300">
+                              <span className="font-semibold text-info-fg">
                                 {r.labelSnapshot}
                               </span>
                               <div className="flex items-center gap-1">
@@ -187,7 +187,7 @@ export function PromptSourcePanel({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 text-sm px-2 text-sky-400 hover:text-sky-300 hover:bg-sky-950/40"
+                                    className="h-6 text-sm px-2 text-info-fg hover:text-info-fg hover:bg-info-bg"
                                     onClick={() =>
                                       onLocateSource(r.entityKind, r.entityId, r.fieldPath)
                                     }
@@ -199,11 +199,11 @@ export function PromptSourcePanel({
                               </div>
                             </div>
 
-                            <div className="text-sm text-slate-400 font-mono">
-                              字段路径: <span className="text-slate-300">{r.fieldPath}</span>
+                            <div className="text-sm text-fg-muted font-mono">
+                              字段路径: <span className="text-fg-default">{r.fieldPath}</span>
                             </div>
 
-                            <div className="text-sm bg-slate-950/80 p-1.5 rounded border border-slate-800/60 text-slate-300 font-mono break-all">
+                            <div className="text-sm bg-surface-sunken p-1.5 rounded border border-border-subtle text-fg-default font-mono break-all">
                               快照值: {JSON.stringify(r.valueSnapshot)}
                             </div>
 
@@ -211,7 +211,7 @@ export function PromptSourcePanel({
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-6 text-sm px-2 text-slate-300"
+                                className="h-6 text-sm px-2 text-fg-default"
                                 disabled={isChecking}
                                 onClick={() => handleInspectSource(r.id)}
                               >
@@ -221,12 +221,12 @@ export function PromptSourcePanel({
                               {check && (
                                 <div className="flex items-center gap-1 text-sm">
                                   {check.hasChanged ? (
-                                    <span className="text-amber-400 flex items-center gap-0.5">
+                                    <span className="text-warning-fg flex items-center gap-0.5">
                                       <AlertTriangle className="w-3 h-3" />
                                       已与源头发生漂移 (需更新配方)
                                     </span>
                                   ) : (
-                                    <span className="text-emerald-400">与当前设定完全一致</span>
+                                    <span className="text-success-fg">与当前设定完全一致</span>
                                   )}
                                 </div>
                               )}
@@ -236,7 +236,7 @@ export function PromptSourcePanel({
                       })}
                     </div>
                   ) : (
-                    <div className="text-sm text-slate-500 italic">
+                    <div className="text-sm text-fg-subtle italic">
                       无直接引用的结构化字段 (手动补充或预设提示词)
                     </div>
                   )}

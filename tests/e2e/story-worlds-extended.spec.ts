@@ -1,6 +1,16 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+/*
+ * 作品工作台改版（分支上已确认的有意改动）：主标题为作品名，事件阅读 / 轨迹流 / 图像叙事留在
+ * 「沙盒调试视图 (旧)」（?view=sandbox），运行设置收进「作品操作菜单」。
+ */
+const worldHeading = (page: Page) => page.getByRole('main').first().getByRole('heading', { level: 1 }).first();
+async function openRunSettings(page: Page) {
+  await page.getByRole('button', { name: '作品操作菜单', exact: true }).click();
+  await page.getByRole('menuitem', { name: '沙盒引擎运行设置', exact: true }).click();
+}
+
 
 const service = 'http://127.0.0.1:4974';
 const headers = { 'x-sthstart-admin-token': 'story-worlds-isolated-e2e-admin-token-4974' };
@@ -64,6 +74,61 @@ async function openActorDetail(card: Locator) {
   return details;
 }
 
+/*
+ * 新建作品是两步（分支上已确认的有意改动）：快速新建只填作品名并生成待配置作品（setups 接口），
+ * 详细设定在 /apps/story-worlds/:id/setup 补全，「完成配置」后才成为正式作品并建立主线。
+ */
+async function startWorkFromMenu(page: Page, title: string) {
+  await page.getByRole('button', { name: '作品操作菜单', exact: true }).click();
+  await page.getByRole('menuitem', { name: '新建作品', exact: true }).click();
+  await page.waitForURL(/\/apps\/story-worlds\/new$/, { timeout: 20000 });
+  await expect(page.getByRole('heading', { name: '新建作品', exact: true })).toBeVisible();
+  const created = page.waitForResponse((r) => r.url().endsWith('/api/admin/story-worlds/setups') && r.request().method() === 'POST' && r.ok());
+  await page.getByLabel(/^作品名称/).fill(title);
+  await page.getByRole('button', { name: '创建作品', exact: true }).first().click();
+  const pendingId = (await (await created).json() as { id: string }).id;
+  await page.waitForURL(/\/apps\/story-worlds\?created=/, { timeout: 20000 });
+  await page.goto(`/apps/story-worlds/${encodeURIComponent(pendingId)}/setup`);
+  await expect(page.getByRole('heading', { name: '补全作品设定', exact: true })).toBeVisible();
+  return pendingId;
+}
+
+/** 「完成配置」把待配置作品转为正式作品，回到工作台；返回服务端读回的作品与主线 ID。 */
+async function completeSetup(page: Page, request: APIRequestContext, pendingId: string) {
+  await page.getByRole('button', { name: '完成配置', exact: true }).click();
+  await page.waitForURL(/\/apps\/story-worlds\?world=/, { timeout: 20000 });
+  const url = new URL(page.url());
+  expect(url.searchParams.get('world')).toBe(pendingId);
+  const branchId = url.searchParams.get('branch');
+  expect(branchId).toBeTruthy();
+  const listResponse = await request.get(service + api, { headers });
+  expect(listResponse.ok()).toBe(true);
+  const world = (await listResponse.json()).items.find((item: { id: string }) => item.id === pendingId);
+  expect(world).toBeTruthy();
+  const branchResponse = await request.get(service + api + '/' + pendingId + '/branches/' + branchId, { headers });
+  expect(branchResponse.ok()).toBe(true);
+  const detail = await branchResponse.json();
+  return { world, branch: detail.branch, definition: detail.definition, branchId: branchId! };
+}
+
+/** 设定页的地点不预置；第 index 个地点不存在时先添加。 */
+async function locationCard(page: Page, index: number) {
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: '开场地点', exact: true }) });
+  // 只数真正的地点卡：外层 section 还可能包含高级设定等其他 rounded-panel。
+  const cards = section.locator('div.rounded-panel').filter({ has: page.getByLabel(/^地点名称/) });
+  while (await cards.count() <= index) await page.getByRole('button', { name: '添加地点', exact: true }).click();
+  return cards.nth(index);
+}
+
+/** 待配置作品的「名称与简介」默认收起；填写简介前先展开。 */
+async function openOptionalSection(page: Page, title: string) {
+  const details = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: title }) }).first();
+  if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open))) {
+    await details.locator('summary').first().click();
+  }
+  await expect(details).toHaveJSProperty('open', true);
+}
+
 /** 地点描述默认收起；填写前先展开该地点的描述折叠区。 */
 async function openLocationDescription(card: Locator) {
   const details = card.locator('details').filter({ hasText: /地点描述|补充地点描述/ }).first();
@@ -80,24 +145,17 @@ test.describe('Story Worlds Extended Verification', () => {
     await auth(page);
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    await page.goto(`/apps/story-worlds?world=${f.worldId}&branch=${f.branchId}`);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await page.goto(`/apps/story-worlds?world=${f.worldId}&branch=${f.branchId}&view=sandbox`);
+    await expect(worldHeading(page)).toBeVisible();
 
-    // 新建世界改为独立页面；入口仍从行操作菜单进入。
-    await page.getByRole('button', { name: '故事世界操作', exact: true }).click();
-    await page.getByRole('menuitem', { name: '新建世界', exact: true }).click();
-    await page.waitForURL(/\/apps\/story-worlds\/new$/, { timeout: 20000 });
-    await expect(page.getByRole('heading', { name: '新建世界', exact: true })).toBeVisible();
-
-    // Fill world basics
-    await page.getByLabel(/^世界名称/).fill('林间工坊');
-    await page.getByLabel(/^世界简介/).fill('工坊中研究自然生灵的日常。');
+    // 入口仍从作品操作菜单进入；快速新建后在设定页补全。
+    const pendingId = await startWorkFromMenu(page, '林间工坊');
     await ensureAdvancedSection(page);
+    await openOptionalSection(page, '名称与简介');
+    await page.getByLabel(/^作品简介/).fill('工坊中研究自然生灵的日常。');
     await page.getByLabel(/^时间标签/).fill('谷雨');
 
-    // Rename default location and fill its collapsed description.
-    const firstLocation = page.locator('section').filter({ has: page.getByRole('heading', { name: '开场地点', exact: true }) })
-      .locator('div.rounded-panel').first();
+    const firstLocation = await locationCard(page, 0);
     await firstLocation.getByLabel(/^地点名称/).fill('实验木屋');
     const locationDetail = await openLocationDescription(firstLocation);
     await locationDetail.getByLabel(/^地点描述/).fill('木屋里有晒干的草药和一张长桌。');
@@ -111,39 +169,35 @@ test.describe('Story Worlds Extended Verification', () => {
     await actorCard.getByLabel(/^人物名称/).fill('白芷');
     await actorCard.getByLabel(/^处境/).fill('常驻工坊的草药学者。');
     const actorDetail = await openActorDetail(actorCard);
+    await actorDetail.getByLabel(/^角色定位/).selectOption('main');
     await actorDetail.getByLabel(/^性格/).fill('安静、对植物格外有耐心。');
     await actorDetail.getByLabel(/^外貌/).fill('袖口沾着草汁，随身带一本标本册。');
 
-    // 创建走一次 create-bundle，同时建立世界与初始分支。
-    const createWorldResponsePromise = page.waitForResponse(
-      (r) => r.url().endsWith('/story-worlds/create-bundle') && r.request().method() === 'POST',
-    );
-    await page.getByRole('button', { name: '创建世界', exact: true }).first().click();
-    const createWorldResponse = await createWorldResponsePromise;
-    expect(createWorldResponse.status()).toBe(201);
-    const bundle = await createWorldResponse.json();
+    // 完成配置后同时得到正式作品和主线；原创作品的主线默认是平行改编。
+    const bundle = await completeSetup(page, request, pendingId);
     expect(bundle.world.title).toBe('林间工坊');
+    expect(bundle.world.summary).toBe('工坊中研究自然生灵的日常。');
     expect(bundle.branch.title).toBe('主线');
-    expect(bundle.branch.mode).toBe('canon-gap');
-    await page.waitForURL(/\/apps\/story-worlds\?world=/, { timeout: 20000 });
-    const createdWorld = bundle.world;
-    expect(page.url()).toContain(`world=${createdWorld.id}`);
-    // 创建成功后必须不刷新就能在新世界下工作（列表缓存由页面更新）。
-    await expect(page.locator('.sw-canvas-title')).toHaveText('主线');
-    await expect(page.getByLabel('选择故事世界')).toHaveValue(createdWorld.id);
-    expect(bundle.world.locations[0]).toMatchObject({
+    expect(bundle.branch.mode).toBe('alternate');
+    // 创建成功后必须不刷新就能在新作品下工作（列表缓存由页面更新）。
+    await expect(worldHeading(page)).toHaveText('林间工坊');
+    expect(bundle.definition.locations[0]).toMatchObject({
       name: '实验木屋', description: '木屋里有晒干的草药和一张长桌。',
     });
-    expect(bundle.world.actors[0]).toMatchObject({
+    expect(bundle.definition.actors[0]).toMatchObject({
       name: '白芷', role: 'main',
       background: '常驻工坊的草药学者。',
       personality: '安静、对植物格外有耐心。',
       appearance: '袖口沾着草汁，随身带一本标本册。',
     });
 
+    // 平行分支在沙盒视图里创建并切换。
+    await page.goto(`/apps/story-worlds?world=${pendingId}&branch=${bundle.branchId}&view=sandbox`);
+    await expect(worldHeading(page)).toHaveText('林间工坊');
+
     // Create a new branch on the created world
-    await page.getByRole('button', { name: '故事世界操作', exact: true }).click();
-    await page.getByRole('menuitem', { name: '新建分支', exact: true }).click();
+    await page.getByRole('button', { name: '作品操作菜单', exact: true }).click();
+    await page.getByRole('menuitem', { name: '新建平行分支', exact: true }).click();
 
     const branchDialog = page.getByRole('dialog', { name: '新建世界分支' });
     await expect(branchDialog).toBeVisible();
@@ -173,7 +227,7 @@ test.describe('Story Worlds Extended Verification', () => {
 
     // Open workspace directly in reading view
     await page.goto(`/apps/story-worlds?world=${f.worldId}&branch=${f.branchId}&view=reading`);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await expect(worldHeading(page)).toBeVisible();
 
     // Verify mobile layout renders the reader
     // This spec owns its initial events and must not depend on the other spec.
@@ -184,7 +238,7 @@ test.describe('Story Worlds Extended Verification', () => {
     } });
     await expect.poll(async () => (await (await request.get(service + api + '/' + f.worldId + '/branches/' + f.branchId, { headers })).json()).run?.status, { timeout: 25000 }).toBe('completed');
     await page.reload();
-    await expect(page.getByRole('tab', { name: /故事阅读/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /事件阅读/ })).toBeVisible();
     await expect(page.getByText('港口的重逢').first()).toBeVisible();
 
     // Test mobile actor filter navigation pills
@@ -215,7 +269,7 @@ test.describe('Story Worlds Extended Verification', () => {
     // Test Start and Pause run with controllable fixture delay
     await request.post(service + '/__fixture/delay', { data: { ms: 1200 } });
 
-    await page.getByRole('button', { name: '运行设置', exact: true }).click();
+    await openRunSettings(page);
     const runDialog = page.getByRole('dialog', { name: '运行设置' });
     await expect(runDialog).toBeVisible();
 
@@ -244,8 +298,8 @@ test.describe('Story Worlds Extended Verification', () => {
     await auth(page);
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    await page.goto(`/apps/story-worlds?world=${f.worldId}&branch=${f.branchId}`);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await page.goto(`/apps/story-worlds?world=${f.worldId}&branch=${f.branchId}&view=sandbox`);
+    await expect(worldHeading(page)).toBeVisible();
 
     // Open branch comparison dialog from canvas actions
     const compareButton = page.getByRole('button', { name: '比较', exact: true });
@@ -285,8 +339,8 @@ test.describe('Story Worlds Extended Verification', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // Navigate to the pre-seeded branch with an uncertain run
-    await page.goto(`/apps/story-worlds?world=${f.uncertainWorldId}&branch=${f.uncertainBranchId}`);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await page.goto(`/apps/story-worlds?world=${f.uncertainWorldId}&branch=${f.uncertainBranchId}&view=sandbox`);
+    await expect(worldHeading(page)).toBeVisible();
 
     // Runbar should display uncertain status badge and recovery button
     await expect(page.locator('.sw-runbar-main').getByText('结果不明')).toBeVisible();
@@ -341,8 +395,8 @@ test.describe('Story Worlds Extended Verification', () => {
 
     // Step A: Load the 12-actors 1000-events performance branch
     const tLoadStart = performance.now();
-    await page.goto(`/apps/story-worlds?world=${f.performanceWorldId}&branch=${f.performanceBranchId}`);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await page.goto(`/apps/story-worlds?world=${f.performanceWorldId}&branch=${f.performanceBranchId}&view=sandbox`);
+    await expect(worldHeading(page)).toBeVisible();
     await expect(page.locator('.sw-canvas-title')).toHaveText('一千段经历');
     const loadDuration = performance.now() - tLoadStart;
     test.info().annotations.push({
@@ -433,7 +487,7 @@ test.describe('Story Worlds Extended Verification', () => {
     await expect(storyLineSelect).toHaveValue('');
 
     // Step E: Pan and Zoom (平移与缩放)
-    await page.getByRole('tab', { name: /故事流/ }).click();
+    await page.getByRole('tab', { name: /沙盒轨迹流/ }).click();
     await expect(page.locator('.react-flow')).toBeVisible();
     await expect(page.locator('.react-flow__node').first()).toBeVisible();
 
@@ -470,7 +524,7 @@ test.describe('Story Worlds Extended Verification', () => {
     // Step F: Mobile Viewport Reading & Event Drawer (移动阅读与事件详情)
     await page.setViewportSize({ width: 390, height: 844 });
     const tMobileReadStart = performance.now();
-    await page.getByRole('tab', { name: /故事阅读/ }).click();
+    await page.getByRole('tab', { name: /事件阅读/ }).click();
     await expect(page.locator('.sw-reader')).toBeVisible();
     const firstEventButton = page.locator('.sw-reader article h2 button').first();
     await expect(firstEventButton).toBeVisible();
@@ -519,7 +573,7 @@ test.describe('Story Worlds Extended Verification', () => {
     // Using fixture fake provider explicitly, not upstream model
     await request.post(service + '/__fixture/delay', { data: { ms: 600 } });
 
-    await page.getByRole('button', { name: '运行设置', exact: true }).click();
+    await openRunSettings(page);
     const runDialog = page.getByRole('dialog', { name: '运行设置' });
     await expect(runDialog).toBeVisible();
 
@@ -555,28 +609,22 @@ test.describe('Story Worlds Extended Verification', () => {
     await auth(page);
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    await page.goto('/apps/story-worlds?world=' + f.worldId + '&branch=' + f.branchId);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await page.goto('/apps/story-worlds?world=' + f.worldId + '&branch=' + f.branchId + '&view=sandbox');
+    await expect(worldHeading(page)).toBeVisible();
 
-    await page.getByRole('button', { name: '故事世界操作', exact: true }).click();
-    await page.getByRole('menuitem', { name: '新建世界', exact: true }).click();
-    await page.waitForURL(/\/apps\/story-worlds\/new$/, { timeout: 20000 });
-    await expect(page.getByRole('heading', { name: '新建世界', exact: true })).toBeVisible();
-
-    await page.getByLabel(/^世界名称/).fill('港口时辰与道具参考');
-    await page.getByLabel(/^世界简介/).fill('验证世界起点时刻与场景道具参考的保存与读取。');
+    const pendingId = await startWorkFromMenu(page, '港口时辰与道具参考');
     await ensureAdvancedSection(page);
+    await openOptionalSection(page, '名称与简介');
+    await page.getByLabel(/^作品简介/).fill('验证世界起点时刻与场景道具参考的保存与读取。');
     await page.getByLabel(/^时间标签/).fill('谷雨');
     // 结构字段：08:00 必须保存为日内分钟 480，而不是自由文本。
     await page.getByLabel(/^起点时刻/).fill('08:00');
 
-    const locationSection = page.locator('section').filter({ has: page.getByRole('heading', { name: '开场地点', exact: true }) });
-    await locationSection.getByLabel(/^地点名称/).first().fill('孤云石林');
-    const stoneForest = locationSection.locator('div.rounded-panel').first();
+    const stoneForest = await locationCard(page, 0);
+    await stoneForest.getByLabel(/^地点名称/).fill('孤云石林');
     await (await openLocationDescription(stoneForest)).getByLabel(/^地点描述/).fill('灰白石柱间终年有雾。');
-    await page.getByRole('button', { name: '添加地点', exact: true }).click();
-    await locationSection.getByLabel(/^地点名称/).nth(1).fill('港口');
-    const harborCard = locationSection.locator('div.rounded-panel').nth(1);
+    const harborCard = await locationCard(page, 1);
+    await harborCard.getByLabel(/^地点名称/).fill('港口');
     await (await openLocationDescription(harborCard)).getByLabel(/^地点描述/).fill('三号码头、系船柱与吊机。');
 
     await page.getByRole('button', { name: '新建人物', exact: true }).first().click();
@@ -587,6 +635,7 @@ test.describe('Story Worlds Extended Verification', () => {
     await firstActor.getByLabel(/^人物名称/).fill('林舟');
     await firstActor.getByLabel(/^处境/).fill('在港口记录潮汐的旅人。');
     const firstActorDetail = await openActorDetail(firstActor);
+    await firstActorDetail.getByLabel(/^角色定位/).selectOption('main');
     await firstActorDetail.getByLabel(/^性格/).fill('沉默，习惯先记录再开口。');
     await firstActorDetail.getByLabel(/^外貌/).fill('深蓝防水外套，袖口有盐渍。');
 
@@ -613,13 +662,7 @@ test.describe('Story Worlds Extended Verification', () => {
     await expect(mediaDialog).not.toBeVisible();
     await expect(visualReferences.getByText('最多 10 个；只保存素材 ID。').first()).toBeVisible();
 
-    const createResponsePromise = page.waitForResponse(
-      (r) => r.url().endsWith('/story-worlds/create-bundle') && r.request().method() === 'POST',
-    );
-    await page.getByRole('button', { name: '创建世界', exact: true }).first().click();
-    const createResponse = await createResponsePromise;
-    expect(createResponse.status()).toBe(201);
-    const bundle = await createResponse.json();
+    const bundle = await completeSetup(page, request, pendingId);
     const created = bundle.world;
     expect(bundle.branch.title).toBe('主线');
 
@@ -637,7 +680,6 @@ test.describe('Story Worlds Extended Verification', () => {
       description: '提手缠旧布条，灯罩有缺口。',
       referenceArtifactIds: [],
     });
-    await page.waitForURL(/\/apps\/story-worlds\?world=/, { timeout: 20000 });
 
     // 服务端独立读取：列表响应保留结构时刻和两条场景/道具参考。
     const listResponse = await request.get(service + api, { headers });
@@ -649,8 +691,8 @@ test.describe('Story Worlds Extended Verification', () => {
       .toEqual(['港口锚点', '黄铜灯']);
 
     // 重新加载并打开编辑页：UI 读回必须仍是 08:00 和同两条参考。
-    await page.goto('/apps/story-worlds/' + created.id + '/edit?branch=' + bundle.branch.id);
-    await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+    await page.goto('/apps/story-worlds/' + created.id + '/edit?branch=' + bundle.branchId);
+    await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
     await ensureAdvancedSection(page);
     await expect(page.getByLabel(/^起点时刻/)).toHaveValue('08:00');
 
@@ -679,8 +721,8 @@ test.describe('Story Worlds Extended Verification', () => {
 
     // 390 窄屏：直接进入编辑页，展开高级设定与参考区并留证。
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/apps/story-worlds/' + created.id + '/edit?branch=' + bundle.branch.id);
-    await expect(page.getByRole('heading', { name: '世界设定', exact: true })).toBeVisible();
+    await page.goto('/apps/story-worlds/' + created.id + '/edit?branch=' + bundle.branchId);
+    await expect(page.getByRole('heading', { name: '作品设定', exact: true })).toBeVisible();
     await ensureAdvancedSection(page);
     mkdirSync(output, { recursive: true });
     await expect(page.getByLabel(/^起点时刻/)).toHaveValue('08:00');

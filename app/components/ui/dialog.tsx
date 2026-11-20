@@ -7,6 +7,14 @@ import { cn } from '../../lib/cn';
 import { OverlayFlexScrollArea, OverlayLayer, useModalFocusContainment, useOverlayEscapeLayer, useOverlayTransitionDuration } from './overlay-policy';
 import { useWebKitReturnFocus } from './use-webkit-return-focus';
 
+/** 浮层动效（设计语言 §8）：透明度 + 缩放 0.98→1；减少动态效果时时长为 0。 */
+const DIALOG_TRANSITION = {
+  in: { opacity: 1, transform: 'scale(1)' },
+  out: { opacity: 0, transform: 'scale(0.98)' },
+  common: { transformOrigin: 'center' },
+  transitionProperty: 'opacity, transform',
+};
+
 export interface DialogProps extends Omit<React.ComponentPropsWithRef<'div'>, 'title' | 'children'> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -111,7 +119,7 @@ export function Dialog({
         closeOnClickOutside
         padding={0}
         scrollAreaComponent={OverlayFlexScrollArea}
-        transitionProps={{ duration: transitionDuration, transition: 'pop', timingFunction: 'var(--motion-spring)' }}
+        transitionProps={{ duration: transitionDuration, transition: DIALOG_TRANSITION, timingFunction: 'var(--motion-ease)' }}
       >
         <Modal.Overlay />
         <Modal.Content

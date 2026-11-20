@@ -162,11 +162,8 @@ function MediaPickerBody({
         <div className="min-w-0 flex-1">
           <label htmlFor={searchId} className="mb-1 block text-sm font-medium text-ink">搜索媒体</label>
           <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
-              aria-hidden="true"
-            />
             <Input
+              leftIcon={<Search className="h-4 w-4 text-muted" />}
               id={searchId}
               value={query}
               placeholder="按文件名或应用搜索"

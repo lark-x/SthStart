@@ -468,7 +468,7 @@ export function TopicLibraryView({ embedded = false }: { embedded?: boolean } = 
                       key={topic.id}
                       className="inline-flex items-center gap-1.5 rounded-full border border-border-default/70 bg-surface-sunken/60 px-2.5 py-1 text-xs text-ink"
                     >
-                      <span className="max-w-[180px] truncate">{topic.title}</span>
+                      <span className="max-w-45 truncate">{topic.title}</span>
                       <IconButton
                         icon={X}
                         label={`移除 ${topic.title}`}

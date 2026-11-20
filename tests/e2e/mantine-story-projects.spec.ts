@@ -72,7 +72,8 @@ test('project continues into Story and returns through the same filtered directo
     await card.click();
     await expect(page).toHaveURL(new RegExp('/apps/projects/' + seeded.projectId + '\\?returnTo='));
     await expect(page.getByRole('heading', { name: prefix, level: 1 })).toBeVisible();
-    const continueLink = page.getByRole('link', { name: '继续写作', exact: true });
+    // 未关联作品的历史项目只提供「旧版编辑」入口进入正文编辑器。
+    const continueLink = page.getByRole('link', { name: '旧版编辑', exact: true });
     await expect(continueLink).toBeVisible();
     await expect(continueLink).toHaveCount(1);
 
@@ -98,7 +99,7 @@ test('reopening the project sample restores the chapter and both chapters stay s
   try {
     await page.goto('/apps/projects/' + seeded.projectId);
     await expect(page.getByRole('heading', { name: prefix, level: 1 })).toBeVisible();
-    await page.getByRole('link', { name: '继续写作', exact: true }).click();
+    await page.getByRole('link', { name: '旧版编辑', exact: true }).click();
     const editor = page.getByRole('textbox', { name: '小说正文编辑' });
     await expect(editor).toBeVisible();
     const chapterList = page.getByRole('complementary', { name: '正式剧情资料树' });
@@ -119,14 +120,14 @@ test('project states expose one action and nested reference paging keeps only th
   const seeded = await seedStory(request);
   try {
     await page.goto('/apps/projects/' + seeded.projectId);
-    await page.getByRole('tab', { name: /^参考资料/ }).click();
+    await page.getByRole('tab', { name: /^参考/ }).click();
     await expect(page.getByRole('button', { name: '添加参考资料', exact: true })).toHaveCount(1);
     await page.getByRole('button', { name: '添加参考资料', exact: true }).click();
     const picker = page.getByRole('dialog', { name: '添加参考资料', exact: true });
     await picker.getByRole('textbox', { name: '搜索资料', exact: true }).fill(prefix);
     const paging = picker.getByRole('navigation', { name: '分页', exact: true });
     await expect(paging).toContainText('共 24 条');
-    const trigger = paging.getByRole('button', { name: /^跳到指定页/ });
+    const trigger = paging.getByRole('button', { name: /跳到指定页/ });
     await trigger.click();
     const jump = picker.getByRole('dialog', { name: '跳到指定页', exact: true });
     await expect(jump.getByRole('textbox', { name: '跳转页码' })).toBeFocused();

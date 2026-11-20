@@ -1,5 +1,6 @@
 'use client';
 
+import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import type { ComicHistoryImage, ComicPanel } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
@@ -94,7 +95,7 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
             className={`group relative block w-28 overflow-hidden rounded-control border bg-surface text-left ${item.current ? 'border-accent ring-1 ring-accent' : 'border-border-default'} disabled:cursor-not-allowed disabled:opacity-50`}>
             {item.previewUrl ? <img src={item.previewUrl} alt="漫画绘制历史缩略图" loading="lazy" className="aspect-[4/3] w-full object-cover" />
               : <span className="grid aspect-[4/3] place-items-center bg-surface-muted text-xs text-muted">文件不可用</span>}
-            <span className="absolute left-1 top-1 rounded bg-ink/75 px-1 py-0.5 text-xs font-medium text-white">{item.current ? '当前' : item.sourceChanged ? '描述不同' : '历史'}</span>
+            <span className="absolute left-1 top-1 rounded bg-ink/75 px-1 py-0.5 text-xs font-medium text-on-media">{item.current ? '当前' : item.sourceChanged ? '描述不同' : '历史'}</span>
             {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1 py-0.5 text-xs font-medium text-fg-on-accent">细化</span>}
             <span className="block truncate px-1.5 py-1 text-xs text-muted">{new Date(item.createdAt).toLocaleString()}</span>
           </button>
@@ -121,7 +122,7 @@ export function ComicImageHistory({ activityId, panel, draftVersion, flush, getD
       <summary className="cursor-pointer text-xs font-medium text-muted">失败与处理中记录（{nonImageJobs.length}）</summary>
       <div className="mt-1 flex max-h-20 flex-col gap-1 overflow-y-auto pb-1 text-xs" data-autohide-scroll>{nonImageJobs.map((job) => <div key={job.id} className="flex items-center justify-between gap-2">
         <span className={job.status === 'failed' || job.status === 'interrupted' ? 'min-w-0 truncate text-danger' : 'min-w-0 truncate text-muted'}>{new Date(job.createdAt).toLocaleString()} · {statusText(job.status)}{job.errorMessage ? ` · ${job.errorMessage}` : ''}</span>
-        {job.callId && <a className="shrink-0 text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(job.callId)}`} target="_blank" rel="noreferrer">调用日志 ↗</a>}
+        {job.callId && <a className="shrink-0 text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(job.callId)}`} target="_blank" rel="noreferrer">调用日志<ExternalLink className="ml-0.5 inline size-3 align-[-1px]" aria-hidden="true" /></a>}
       </div>)}</div>
     </details>}
     {selectImage.isError && <p role="alert" className="px-3 pb-2 text-xs text-danger">{selectImage.error instanceof Error ? selectImage.error.message : '切换图片失败。'}</p>}

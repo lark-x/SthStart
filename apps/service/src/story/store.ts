@@ -40,6 +40,7 @@ function project(row: Row): StoryProject {
     projectType: (row.project_type === null || row.project_type === undefined ? 'fiction' : String(row.project_type)) as StoryProjectType,
     contextSettings: JSON.parse(str(row, 'context_settings_json')) as StoryContextSettings,
     workId: row.work_id === null || row.work_id === undefined ? null : String(row.work_id),
+    coverArtifactId: row.cover_artifact_id === null || row.cover_artifact_id === undefined ? null : String(row.cover_artifact_id),
     createdAt: str(row, 'created_at'), updatedAt: str(row, 'updated_at') };
 }
 function document(row: Row): StoryDocument {

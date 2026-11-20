@@ -91,9 +91,10 @@ test('migration 59 upgrades a v58 database, preserves world data, and reopens cl
     reopened = new DatabaseSync(path);
     reopened.exec('PRAGMA foreign_keys = ON');
 
+    // 迁移 68 起新增可空封面列，旧世界从 null 开始，其余字段原样保留。
     assert.deepEqual(
       { ...(reopened.prepare('SELECT * FROM sw_worlds WHERE id=?').get(world.id) as Record<string, unknown>) },
-      world,
+      { ...world, cover_artifact_id: null },
     );
     assert.deepEqual(
       { ...(reopened.prepare('SELECT * FROM sw_branches WHERE id=?').get(branch.id) as Record<string, unknown>) },

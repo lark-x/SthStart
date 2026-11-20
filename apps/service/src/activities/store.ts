@@ -206,7 +206,7 @@ export class ActivityStore {
     const row = this.connection.prepare(
       `SELECT id, title, type, theme, location, rules, archived, head_version,
       current_content_revision_id, current_media_revision_id, current_playback_revision_id,
-              scheduled_date, created_at, updated_at
+              scheduled_date, cover_artifact_id, created_at, updated_at
        FROM activities WHERE id = ?`
     ).get(id) as Record<string, unknown> | undefined;
 
@@ -224,6 +224,7 @@ export class ActivityStore {
       currentMediaRevisionId: row.current_media_revision_id ? String(row.current_media_revision_id) : null,
       currentPlaybackRevisionId: row.current_playback_revision_id ? String(row.current_playback_revision_id) : null,
       scheduledDate: row.scheduled_date ? String(row.scheduled_date) : null,
+      coverArtifactId: row.cover_artifact_id ? String(row.cover_artifact_id) : null,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     };
@@ -261,7 +262,7 @@ export class ActivityStore {
     const rows = this.connection.prepare(
       `SELECT id, title, type, theme, location, rules, archived, head_version,
               current_content_revision_id, current_media_revision_id, current_playback_revision_id,
-              created_at, updated_at
+              cover_artifact_id, created_at, updated_at
        FROM activities
        ${where}
        ORDER BY updated_at DESC, id DESC
@@ -282,6 +283,7 @@ export class ActivityStore {
       currentContentRevisionId: r.current_content_revision_id ? String(r.current_content_revision_id) : null,
       currentMediaRevisionId: r.current_media_revision_id ? String(r.current_media_revision_id) : null,
       currentPlaybackRevisionId: r.current_playback_revision_id ? String(r.current_playback_revision_id) : null,
+      coverArtifactId: r.cover_artifact_id ? String(r.cover_artifact_id) : null,
       createdAt: String(r.created_at),
       updatedAt: String(r.updated_at),
     }));

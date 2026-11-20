@@ -14,12 +14,12 @@ const MODULES: Array<{ href: string; title: string; unit: string; description: s
   { href: '/apps/media', title: '媒体库', unit: '个文件', description: '图像、音频与多模态资产', icon: Film, tone: 'orange', count: 'media' },
 ];
 
-/** 首页四个模块入口：Bento 模块卡片，展示大号统计数字与说明。 */
+/** 首页统计卡：四个模块入口，图标、模块名与数量同一行，说明在下一行。 */
 export function HomeModules() {
   const counts = useWorkspaceCounts();
 
   return (
-    <nav aria-label="创作模块" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <nav aria-label="创作模块" className="home-modules" data-motion-list="">
       {MODULES.map(({ href, title, unit, description, icon: Icon, tone, count }) => {
         const value = counts[count];
         return (
@@ -28,15 +28,13 @@ export function HomeModules() {
             href={href}
             className="home-module group"
             data-tone={tone}
-            aria-labelledby={`home-module-title-${count}`}
-            aria-describedby={[
-              ...(value === undefined ? [] : [`home-module-count-${count}`]),
-              `home-module-meta-${count}`,
-            ].join(' ')}
           >
+            {/* 标题在前：读屏名称以模块名开头、包含可见文字；视觉上由 CSS 把头部（图标与统计）排在最上。 */}
+            <span id={`home-module-title-${count}`} className="home-module-title">{title}</span>
+            <span id={`home-module-meta-${count}`} className="home-module-meta">{description}</span>
             <span className="home-module-head">
               <span className="home-module-icon" aria-hidden="true">
-                <Icon className="h-5 w-5" />
+                <Icon className="h-4 w-4" />
               </span>
               <span className="flex items-center gap-2">
                 {value !== undefined && (
@@ -47,8 +45,6 @@ export function HomeModules() {
                 <ArrowUpRight className="home-module-arrow h-4 w-4" aria-hidden="true" />
               </span>
             </span>
-            <span id={`home-module-title-${count}`} className="home-module-title">{title}</span>
-            <span id={`home-module-meta-${count}`} className="home-module-meta">{description}</span>
           </Link>
         );
       })}

@@ -143,11 +143,11 @@ export function ActivityPresetsModal({
   const getKindBadge = (kind: ActivityPresetKind) => {
     switch (kind) {
       case 'activity_template':
-        return <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200"><Layers className="h-3 w-3 mr-1 inline" />活动模板</Badge>;
+        return <Badge variant="outline" className="text-xs bg-info-bg text-info-fg border-info-border"><Layers className="h-3 w-3 mr-1 inline" />活动模板</Badge>;
       case 'production_preset':
-        return <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200"><Sparkles className="h-3 w-3 mr-1 inline" />生产预设</Badge>;
+        return <Badge variant="outline" className="text-xs bg-tone-violet-soft text-tone-violet-fg border-tone-violet/30"><Sparkles className="h-3 w-3 mr-1 inline" />生产预设</Badge>;
       case 'playback_preset':
-        return <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200"><PlaySquare className="h-3 w-3 mr-1 inline" />回放预设</Badge>;
+        return <Badge variant="outline" className="text-xs bg-warning-bg text-warning-fg border-warning-border"><PlaySquare className="h-3 w-3 mr-1 inline" />回放预设</Badge>;
       case 'creation_profile': return <Badge variant="outline">创作配置</Badge>;
       default:
         return <Badge variant="outline" className="text-xs">{kind}</Badge>;

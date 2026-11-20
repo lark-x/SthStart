@@ -313,7 +313,7 @@ function StoryWorldFlowInner({
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1.2}
-          color="var(--border-default, #d8d2c6)"
+          color="var(--border-default)"
         />
 
         {/* 角色轨道背景参考辅助线 (SVG Layer 在 viewport 坐标系下严格跟随缩放平移) */}
@@ -329,7 +329,7 @@ function StoryWorldFlowInner({
                 y1={lane.y}
                 x2={layout.totalWidth}
                 y2={lane.y}
-                stroke="var(--border-subtle, #e6e1d7)"
+                stroke="var(--border-subtle)"
                 strokeWidth={1}
                 strokeDasharray="4 4"
                 opacity={0.6}
@@ -345,23 +345,23 @@ function StoryWorldFlowInner({
             zoomable
             pannable
             nodeColor={node => {
-              if (node.type === 'cluster') return 'var(--accent, #665995)';
-              if (node.type === 'foldGap') return 'var(--border-strong, #a9a39a)';
-              return 'var(--tone-violet, #7862c4)';
+              if (node.type === 'cluster') return 'var(--accent)';
+              if (node.type === 'foldGap') return 'var(--border-strong)';
+              return 'var(--tone-violet)';
             }}
             nodeStrokeWidth={1.5}
             nodeBorderRadius={4}
-            maskColor="rgba(240, 237, 230, 0.65)"
+            maskColor="color-mix(in srgb, var(--bg-app) 65%, transparent)"
             style={{
               width: 140,
               height: 85,
               marginBottom: 16,
               marginRight: 16,
               borderRadius: 8,
-              border: '1px solid var(--hairline, rgba(31, 30, 28, 0.1))',
-              backgroundColor: 'color-mix(in srgb, var(--surface, #fcfbf8) 92%, transparent)',
+              border: '1px solid var(--hairline)',
+              backgroundColor: 'color-mix(in srgb, var(--surface) 92%, transparent)',
               backdropFilter: 'blur(8px)',
-              boxShadow: 'var(--elev-sm, 0 2px 6px rgba(0,0,0,0.06))',
+              boxShadow: 'var(--elev-sm)',
             }}
           />
         ) : null}

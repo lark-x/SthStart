@@ -246,3 +246,24 @@
     height: 26rem;
   }
 }
+
+/*
+ * React Flow 署名角标：保留署名，改用主题文字色与透明底。
+ * 默认样式是半透明白底 + 10px 灰字，在暗色主题下只剩一个空白小方块。
+ */
+.co-canvas .react-flow__attribution {
+  padding: 2px 6px;
+  background: transparent;
+}
+
+.co-canvas .react-flow__attribution a {
+  color: var(--fg-subtle);
+  font-size: 12px;
+  opacity: 0.72;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+
+.co-canvas .react-flow__attribution a:hover,
+.co-canvas .react-flow__attribution a:focus-visible {
+  opacity: 1;
+}

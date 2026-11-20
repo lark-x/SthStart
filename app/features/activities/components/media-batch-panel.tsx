@@ -542,17 +542,17 @@ export function MediaBatchPanel({
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           {hasBound && (
-                            <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300">
+                            <Badge variant="outline" className="text-xs bg-success-bg text-success-fg border-success-border">
                               已有素材
                             </Badge>
                           )}
                           {preflightUnready && (
-                            <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-300">
+                            <Badge variant="outline" className="text-xs bg-danger-bg text-danger-fg border-danger-border">
                               {preflightUnready.reason}
                             </Badge>
                           )}
                           {preflightReady?.reason && (
-                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
+                            <Badge variant="outline" className="text-xs bg-warning-bg text-warning-fg border-warning-border">
                               {preflightReady.reason}
                             </Badge>
                           )}
@@ -615,31 +615,31 @@ export function MediaBatchPanel({
                       {summary?.displayState === 'needs_attention' && <Badge>远端结果待核对，请查看原任务</Badge>}
                       {summary?.displayState === 'preparing' && <Badge>正在准备任务</Badge>}
                       {summary?.displayState === 'running' && (
-                        <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-info-bg text-info-fg border-info-border flex items-center gap-1">
                           <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                           正在生图 ({summary.succeeded}/{summary.total})
                         </Badge>
                       )}
                       {summary?.displayState === 'succeeded' && (
-                        <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-success-bg text-success-fg border-success-border flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" />
                           全部成功完成 ({summary.total} 张)
                         </Badge>
                       )}
                       {summary?.displayState === 'partial' && (
-                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-warning-bg text-warning-fg border-warning-border flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />
                           部分成功 ({summary.succeeded} 成功 / {summary.failed} 失败)
                         </Badge>
                       )}
                       {summary?.displayState === 'stopped' && (
-                        <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700 border-slate-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-surface-sunken text-fg-default border-border-default flex items-center gap-1">
                           <Square className="h-3 w-3" />
                           已手动终止
                         </Badge>
                       )}
                       {summary?.displayState === 'failed' && (
-                        <Badge variant="outline" className="text-xs bg-rose-50 text-rose-700 border-rose-300 flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs bg-danger-bg text-danger-fg border-danger-border flex items-center gap-1">
                           <XCircle className="h-3 w-3" />
                           全部生成失败
                         </Badge>
@@ -654,7 +654,7 @@ export function MediaBatchPanel({
                           variant="outline"
                           onClick={handleCancelBatch}
                           disabled={cancelBatchMutation.isPending}
-                          className="h-7 text-xs flex items-center gap-1 text-rose-700 border-rose-300 hover:bg-rose-50"
+                          className="h-7 text-xs flex items-center gap-1 text-danger-fg border-danger-border hover:bg-danger-bg"
                         >
                           <Square className="h-3 w-3" />
                           停止未开始任务
@@ -668,7 +668,7 @@ export function MediaBatchPanel({
                           variant="outline"
                           onClick={handleRetryFailed}
                           disabled={retryFailedMutation.isPending}
-                          className="h-7 text-xs flex items-center gap-1 text-sky-700 border-sky-300 hover:bg-sky-50"
+                          className="h-7 text-xs flex items-center gap-1 text-info-fg border-info-border hover:bg-info-bg"
                         >
                           <RotateCcw className="h-3 w-3" />
                           重试失败条目 ({summary?.failed})
@@ -682,9 +682,9 @@ export function MediaBatchPanel({
                     <div
                       className={`h-full transition-all duration-300 ${
                         summary?.displayState === 'failed'
-                          ? 'bg-rose-500'
+                          ? 'bg-danger-solid'
                           : summary?.displayState === 'succeeded'
-                          ? 'bg-emerald-500'
+                          ? 'bg-success-solid'
                           : 'bg-accent'
                       }`}
                       style={{ width: `${progressPercent}%` }}
@@ -698,7 +698,7 @@ export function MediaBatchPanel({
                     onClick={handleAdoptSelected}>采用所选 {Object.keys(selectedAssets).length} 张</Button>
                 </div>
                 {/* Per-slot Candidates Gallery */}
-                <div className="max-h-[500px] overflow-y-auto space-y-4 pr-1">
+                <div className="max-h-125 overflow-y-auto space-y-4 pr-1">
                   {imageSlots.map((slot) => {
                     const items = itemsBySlot.get(slot.id) || [];
                     if (items.length === 0) return null;
@@ -736,7 +736,7 @@ export function MediaBatchPanel({
                                 key={item.id}
                                 className={`group relative rounded-lg border overflow-hidden bg-surface-raised flex flex-col transition-all ${
                                   isAdopted
-                                    ? 'border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
+                                    ? 'border-success-border ring-2 ring-success-border shadow-xs'
                                     : 'border-border-default hover:border-border-strong'
                                 }`}
                               >
@@ -749,7 +749,7 @@ export function MediaBatchPanel({
                                       className="w-full h-full object-contain"
                                     />
                                   ) : item.state === 'skipped' ? <span className="text-xs text-muted">已停止</span> : item.state === 'failed' ? (
-                                    <div className="flex flex-col items-center justify-center p-2 text-center text-rose-600">
+                                    <div className="flex flex-col items-center justify-center p-2 text-center text-danger-fg">
                                       <XCircle className="h-5 w-5 mb-1" />
                                       <span className="text-xs">{String(item.error?.message || '生成失败')}</span>
                                     </div>
@@ -763,13 +763,13 @@ export function MediaBatchPanel({
                                   )}
 
                                   {/* Badge on candidate index */}
-                                  <div className="absolute top-1 left-1 bg-black/60 px-1 py-0.5 rounded text-xs font-mono text-white">
+                                  <div className="absolute top-1 left-1 bg-media-backdrop/60 px-1 py-0.5 rounded text-xs font-mono text-on-media">
                                     #{item.candidateIndex}
                                   </div>
 
                                   {/* Currently adopted badge */}
                                   {isAdopted && (
-                                    <div className="absolute top-1 right-1 bg-emerald-600 px-1.5 py-0.5 rounded text-xs font-medium text-white flex items-center gap-0.5 shadow-xs">
+                                    <div className="absolute top-1 right-1 bg-success-solid px-1.5 py-0.5 rounded text-xs font-medium text-success-on-solid flex items-center gap-0.5 shadow-xs">
                                       <Check className="h-3 w-3" />
                                       已采用
                                     </div>
@@ -806,7 +806,7 @@ export function MediaBatchPanel({
                                       onClick={() => handleAdopt(slot.id, output.assetKey)}
                                       className={`w-full h-6 text-xs flex items-center justify-center gap-1 ${
                                         isAdopted
-                                          ? 'border-emerald-400 text-emerald-700 bg-emerald-50'
+                                          ? 'border-success-border text-success-fg bg-success-bg'
                                           : 'bg-accent hover:bg-accent-dark text-fg-on-accent'
                                       }`}
                                     >

@@ -1,6 +1,6 @@
 # SthStart 前端核心规则
 
-适用于 `app/` 的页面、组件与样式开发。具体视觉美学与设计系统参照项目的 `frontend-design-aesthetics` skill；工作台架构与交互工程参照 `frontend-workspace-interaction` skill；浏览器视觉验证流程参照 `frontend-visual-verification` skill；检查范围参照 `project-verifier` skill。以下保留各类页面共同需要的约束。
+适用于 `app/` 的页面、组件与样式开发。视觉方向、页面原型与皮肤表达参照项目的 `sthstart-design-language` skill；token、UI 原语与主题皮肤契约参照 `sthstart-ui-system` skill；工作台架构与交互工程参照 `frontend-workspace-interaction` skill；浏览器验收与视觉评分参照 `frontend-visual-qa` skill；检查范围参照 `project-verifier` skill。前端视觉推进计划见 [2026-11-20 前端视觉计划](../docs/development/reviews/2026-11-20-frontend-visual-plan.md)。以下保留各类页面共同需要的约束。
 
 ## 架构与代码归属
 

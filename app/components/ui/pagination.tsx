@@ -69,8 +69,9 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
   const jumpTrigger = (
     <Button size="sm" variant="ghost" className="pagination-trigger pagination-jump-trigger"
       data-state={open === 'jump' ? 'open' : 'closed'}
-      aria-label={`跳到指定页，当前第 ${state.page} 页，共 ${state.pageCount} 页`} disabled={loading}>
-      <span className="pagination-jump-label">跳页</span>
+      aria-label={`跳页 ${state.page} / ${state.pageCount}，跳到指定页，当前第 ${state.page} 页，共 ${state.pageCount} 页`} disabled={loading}>
+      {/* 读屏名称以可见文字「跳页 当前 / 总数」开头，再补完整说明（WCAG 2.5.3）。 */}
+      <span className="pagination-jump-label">跳页</span>{' '}
       <span className="pagination-page-counter">{state.page} / {state.pageCount}</span>
       <ChevronDown size={14} aria-hidden="true" />
     </Button>
@@ -118,7 +119,7 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
             className="pagination-size-menu"
             trigger={<Button size="sm" variant="ghost" className="pagination-trigger"
               data-state={open === 'size' ? 'open' : 'closed'}
-              aria-label={`每页条数，当前 ${state.pageSize} 条`} disabled={loading}>
+              aria-label={`每页 ${state.pageSize} 条，更改每页条数`} disabled={loading}>
               每页 {state.pageSize} 条 <ChevronDown size={14} aria-hidden="true" />
             </Button>}
           >

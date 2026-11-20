@@ -16,7 +16,7 @@ function StatusRow({ label, status }: { label: string; status: CharacterLlmStatu
   if (!status) return null;
   const ok = status.ready;
   return (
-    <p className={`flex items-start gap-1.5 text-xs ${ok ? 'text-green-700' : 'text-amber-700'}`}>
+    <p className={`flex items-start gap-1.5 text-xs ${ok ? 'text-success-fg' : 'text-warning-fg'}`}>
       {ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
       <span className="min-w-0">
         {label}：

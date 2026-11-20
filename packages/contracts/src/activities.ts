@@ -378,6 +378,8 @@ export const ActivitySchema = Type.Object({
   currentContentRevisionId: Type.Union([Type.String(), Type.Null()]),
   currentMediaRevisionId: Type.Union([Type.String(), Type.Null()]),
   currentPlaybackRevisionId: Type.Union([Type.String(), Type.Null()]),
+  /** 封面引用的媒体 ID；通过 PUT covers/activity/:id 设置，不改变 headVersion。 */
+  coverArtifactId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 });

@@ -1,3 +1,9 @@
+/*
+ * 风格化皮肤公共层：暖白纸面按钮收尾、自定义强调色在皮肤下的覆盖、6-Zone 联动规则。按皮肤区分的少量规则留在这里，与同优先级的通用规则保持原有先后。
+ * app/globals.css 按 genshin.css → sticker.css → _base.css 导入；三份合起来与拆分前 warm-white-skin.css 的规则一致，层叠结果不变。
+ * 规则依赖 theme.css 的基础令牌；不要在这里引入新的基础画布。
+ */
+
 /* Skin-only finishing. Shared geometry lives in shell.css, workspace-b.css and resources.css.
  * Keep every theme's existing palette, including warm night, in theme.css. */
 :is(html, [data-appearance-preview])[data-theme='light-paper'] {
@@ -8,209 +14,6 @@
   box-shadow: var(--elev-xs), inset 0 1px 0 rgb(255 255 255 / 70%);
 }
 
-/* ============================================================================
- * 风格化套件 1：原神 · 轻纪行（Genshin Clean Chronicle）
- * 90% 洁净温润羊皮纪行纸感 + 10% 微金内环 / 2px 实体微底座 / 书签导航
- * ============================================================================ */
-:is(html, [data-appearance-preview])[data-theme][data-ui-skin='genshin'][data-color-mode='light'] {
-  --bg-app: #efeae0;
-  --bg-nav: #e5decf;
-  --nav-surface: #e5decf;
-  --nav-foreground: #2e3340;
-  --nav-muted: #686257;
-
-  --surface: #faf7f0;
-  --surface-raised: #ffffff;
-  --surface-sunken: #e0d8c7;
-  --surface-selected: #ffffff;
-  --surface-input: #ffffff;
-
-  --fg-default: #353b49;
-  --fg-muted: #6b655b;
-  --fg-subtle: #847d72;
-
-  --border-subtle: #dcd3c0;
-  --border-default: #d2c8b3;
-  --border-strong: #c2b295;
-  --border-control: #8a7f6d;
-  --hairline: rgb(166 148 116 / 28%);
-
-  --accent: #3b4255;
-  --accent-dark: #2c3242;
-  --accent-soft: #e6e4df;
-  --fg-on-accent: #f4efe6;
-  --action-primary: var(--accent);
-  --action-primary-hover: var(--accent-dark);
-  --action-on-primary: var(--fg-on-accent);
-  --selection-fg: #353b49;
-
-  --skin-ornament: #c49f58;
-  --border-w: 1px;
-  --card-lip: 0 2px 0 rgb(166 148 116 / 38%), 0 4px 12px rgb(53 59 73 / 4%);
-  --card-lip-hover: 0 3px 0 rgb(166 148 116 / 52%), 0 8px 18px rgb(53 59 73 / 8%);
-  --btn-primary-border: #252b38;
-  --btn-primary-shadow: 0 2px 0 #222734, inset 0 0 0 1px rgb(216 192 145 / 55%);
-  --btn-secondary-shadow: 0 2px 0 #c5b69a, inset 0 1px 0 #ffffff;
-  --btn-danger-border: #8c2a23;
-  --btn-danger-shadow: 0 2px 0 #70201a, inset 0 1px 0 rgb(255 255 255 / 22%);
-  --btn-active-shadow: 0 0 0 transparent, inset 0 0 0 1px rgb(216 192 145 / 45%);
-  --switch-lip: 0 1.5px 0 #c5b69a;
-  --lining-shadow: inset 0 1px 0 #ffffff, 0 1px 2px rgb(53 59 73 / 4%);
-  --dialog-lip: 0 4px 0 #c2b295, 0 20px 48px rgb(35 39 46 / 22%);
-  --header-line: linear-gradient(90deg, #c49f58 0%, #dcd3c0 45%, transparent 100%);
-  --input-focus-shadow: 0 0 0 2px rgb(196 159 88 / 25%);
-}
-
-:is(html, [data-appearance-preview])[data-theme][data-ui-skin='genshin'][data-color-mode='dark'] {
-  --bg-app: #1b202c;
-  --bg-nav: #151923;
-  --nav-surface: #151923;
-  --nav-foreground: #ece5d8;
-  --nav-muted: #969eae;
-
-  --surface: #242a3a;
-  --surface-raised: #2d3548;
-  --surface-sunken: #141821;
-  --surface-selected: #2d3548;
-  --surface-input: #1e2433;
-
-  --fg-default: #ece5d8;
-  --fg-muted: #9fa8b8;
-  --fg-subtle: #7f899c;
-
-  --border-subtle: #363f54;
-  --border-default: #434e66;
-  --border-strong: #586580;
-  --border-control: #6b7894;
-  --hairline: rgb(211 188 142 / 18%);
-
-  --accent: #d3bc8e;
-  --accent-dark: #e2cfa8;
-  --accent-soft: rgb(211 188 142 / 16%);
-  --fg-on-accent: #1b202c;
-  --action-primary: var(--accent);
-  --action-primary-hover: var(--accent-dark);
-  --action-on-primary: var(--fg-on-accent);
-  --selection-fg: #ece5d8;
-
-  --skin-ornament: #d3bc8e;
-  --border-w: 1px;
-  --card-lip: 0 2px 0 #0f131b, 0 4px 12px rgb(0 0 0 / 28%);
-  --card-lip-hover: 0 3px 0 #0f131b, 0 8px 20px rgb(0 0 0 / 38%);
-  --btn-primary-border: #9e875b;
-  --btn-primary-shadow: 0 2px 0 #8f794d, inset 0 0 0 1px rgb(255 248 232 / 45%);
-  --btn-secondary-shadow: 0 2px 0 #0f131b, inset 0 1px 0 rgb(255 255 255 / 8%);
-  --btn-danger-border: #8c2a23;
-  --btn-danger-shadow: 0 2px 0 #4d1511;
-  --btn-active-shadow: 0 0 0 transparent;
-  --switch-lip: 0 1.5px 0 #0f131b;
-  --lining-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
-  --dialog-lip: 0 4px 0 #0f131b, 0 24px 56px rgb(0 0 0 / 55%);
-  --header-line: linear-gradient(90deg, #d3bc8e 0%, #363f54 50%, transparent 100%);
-  --input-focus-shadow: 0 0 0 2px rgb(211 188 142 / 25%);
-}
-
-/* ============================================================================
- * 风格化套件 4：手账贴纸（Sticker Neo-Clean）
- * 墨水细描边 + 2px 硬边贴纸底座 + 双层内胆弹窗 + 利落按压手势
- * ============================================================================ */
-:is(html, [data-appearance-preview])[data-theme][data-ui-skin='sticker'][data-color-mode='light'] {
-  --bg-app: #f3f0e8;
-  --bg-nav: #e8e3d7;
-  --nav-surface: #e8e3d7;
-  --nav-foreground: #24221f;
-  --nav-muted: #5c574f;
-
-  --surface: #fcfbf8;
-  --surface-raised: #ffffff;
-  --surface-sunken: #e2dcd0;
-  --surface-selected: #ffffff;
-  --surface-input: #ffffff;
-
-  --fg-default: #24221f;
-  --fg-muted: #625d54;
-  --fg-subtle: #7a7469;
-
-  --border-subtle: #3b3833;
-  --border-default: #3b3833;
-  --border-strong: #24221f;
-  --border-control: #24221f;
-  --hairline: #3b3833;
-
-  --accent: #4c648c;
-  --accent-dark: #3b5073;
-  --accent-soft: #dfe6f2;
-  --fg-on-accent: #ffffff;
-  --action-primary: var(--accent);
-  --action-primary-hover: var(--accent-dark);
-  --action-on-primary: var(--fg-on-accent);
-  --selection-fg: #24221f;
-
-  --skin-ornament: #d96b43;
-  --border-w: 1.5px;
-  --card-lip: 2px 2px 0 #24221f;
-  --card-lip-hover: 3px 3px 0 #24221f;
-  --btn-primary-border: #24221f;
-  --btn-primary-shadow: 2px 2px 0 #24221f, inset 0 1px 0 rgb(255 255 255 / 25%);
-  --btn-secondary-shadow: 2px 2px 0 #24221f;
-  --btn-danger-border: #24221f;
-  --btn-danger-shadow: 2px 2px 0 #24221f;
-  --btn-active-shadow: 0 0 0 #24221f;
-  --switch-lip: 1.5px 1.5px 0 #24221f;
-  --lining-shadow: 2px 2px 0 rgb(36 34 31 / 12%);
-  --dialog-lip: 4px 4px 0 #24221f, 0 20px 44px rgb(36 34 31 / 18%);
-  --header-line: linear-gradient(90deg, #24221f 0%, #3b3833 65%, transparent 100%);
-  --input-focus-shadow: 2px 2px 0 var(--accent);
-}
-
-:is(html, [data-appearance-preview])[data-theme][data-ui-skin='sticker'][data-color-mode='dark'] {
-  --bg-app: #18181b;
-  --bg-nav: #121215;
-  --nav-surface: #121215;
-  --nav-foreground: #f4f4f6;
-  --nav-muted: #a0a0ab;
-
-  --surface: #232328;
-  --surface-raised: #2d2d34;
-  --surface-sunken: #101013;
-  --surface-selected: #2d2d34;
-  --surface-input: #1c1c21;
-
-  --fg-default: #f4f4f6;
-  --fg-muted: #a0a0ab;
-  --fg-subtle: #7e7e8a;
-
-  --border-subtle: #45454f;
-  --border-default: #52525e;
-  --border-strong: #686875;
-  --border-control: #686875;
-  --hairline: #45454f;
-
-  --accent: #b8e828;
-  --accent-dark: #c9f24b;
-  --accent-soft: rgb(184 232 40 / 16%);
-  --fg-on-accent: #121215;
-  --action-primary: var(--accent);
-  --action-primary-hover: var(--accent-dark);
-  --action-on-primary: var(--fg-on-accent);
-  --selection-fg: #f4f4f6;
-
-  --skin-ornament: #b8e828;
-  --border-w: 1.5px;
-  --card-lip: 2px 2px 0 #000000;
-  --card-lip-hover: 3px 3px 0 #000000;
-  --btn-primary-border: #000000;
-  --btn-primary-shadow: 2px 2px 0 #000000, inset 0 1px 0 rgb(255 255 255 / 35%);
-  --btn-secondary-shadow: 2px 2px 0 #000000;
-  --btn-danger-border: #000000;
-  --btn-danger-shadow: 2px 2px 0 #000000;
-  --btn-active-shadow: 0 0 0 #000000;
-  --switch-lip: 1.5px 1.5px 0 #000000;
-  --lining-shadow: 2px 2px 0 rgb(0 0 0 / 45%);
-  --dialog-lip: 4px 4px 0 #000000, 0 24px 56px rgb(0 0 0 / 60%);
-  --header-line: linear-gradient(90deg, #b8e828 0%, #45454f 65%, transparent 100%);
-  --input-focus-shadow: 2px 2px 0 var(--accent);
-}
 
 /* 自定义主题色覆盖：确保自定义强调色在风格化套件下依旧拥有更高优先级与对比度 */
 :is(html, [data-appearance-preview])[data-theme][data-ui-skin][data-custom-accent][data-color-mode='light'] {
@@ -249,15 +52,8 @@ html[data-ui-skin] .shell-brand-mark {
 
 html[data-ui-skin] .shell-nav-link:is([aria-current='page'], [data-active='true']) {
   background: var(--surface-raised);
-  border: var(--border-w) solid var(--border-strong);
-  box-shadow: var(--card-lip);
-}
-
-html[data-ui-skin] .shell-nav-link:is([aria-current='page'], [data-active='true'])::before {
-  inset-inline-start: 4px;
-  width: 3px;
-  height: 16px;
-  background: var(--skin-ornament, var(--accent));
+  border: 1px solid var(--hairline);
+  box-shadow: var(--elev-xs);
 }
 
 /* Zone 2: 页头渐变纹章分隔线 */
@@ -291,15 +87,7 @@ html[data-ui-skin] .page-tabs[data-variant='local'] > [aria-selected='true'] {
 }
 
 html[data-ui-skin] .page-tabs[data-variant='local'] > [aria-selected='true']::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 2px;
-  width: 16px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--skin-ornament, var(--accent));
-  transform: translateX(-50%);
+  display: none;
 }
 
 html[data-ui-skin] .page-tabs[data-variant='page'] > [aria-selected='true']::after {
@@ -346,17 +134,25 @@ html[data-ui-skin] [data-dialog-lining] {
   box-shadow: var(--lining-shadow);
 }
 
-html[data-ui-skin] [data-dialog-footer] {
+html[data-ui-skin] :where([data-dialog-footer]) {
   border-top-color: transparent;
   margin-top: 12px;
   padding-top: 4px;
 }
 
 /* Zone 6: 按钮底座按压、拨动开关与干净焦点输入框 */
-html[data-ui-skin] :is(button, a):is([data-ui-variant='primary'], [data-ui-variant='accent']),
-html[data-ui-skin] .primary-action {
+html[data-ui-skin] :is(button, a):is([data-ui-variant='primary'], [data-ui-variant='accent']):not(:disabled):not([aria-disabled='true']),
+html[data-ui-skin] .primary-action:not(:disabled):not([aria-disabled='true']) {
   border: var(--border-w) solid var(--btn-primary-border);
   box-shadow: var(--btn-primary-shadow);
+}
+
+html[data-ui-skin] :is(button, a):is([data-ui-variant='primary'], [data-ui-variant='accent'], .primary-action):is(:disabled, [aria-disabled='true']) {
+  background: var(--surface-sunken) !important;
+  color: var(--ink-muted) !important;
+  border: 1px solid var(--hairline) !important;
+  box-shadow: none !important;
+  opacity: 0.72;
 }
 
 html[data-ui-skin] :is(button, a):is([data-ui-variant='secondary'], [data-ui-variant='outline']) {
@@ -412,20 +208,8 @@ html[data-ui-skin] .desk-directory-filter[aria-pressed='true'] {
   position: relative;
   background: var(--surface-raised);
   color: var(--fg-default);
-  border: var(--border-w) solid var(--border-strong);
-  box-shadow: var(--card-lip);
-}
-
-html[data-ui-skin] .settings-navigation-link[aria-current='page']::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: 4px;
-  top: 50%;
-  width: 3px;
-  height: 16px;
-  border-radius: 2px;
-  background: var(--skin-ornament, var(--accent));
-  transform: translateY(-50%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--elev-xs);
 }
 
 /* Zone 2 补充：沉浸工作区顶栏与首页页头装饰分隔线 */

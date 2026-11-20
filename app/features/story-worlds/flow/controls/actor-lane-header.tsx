@@ -1,6 +1,9 @@
 import React, { memo } from 'react';
 import type { ActorLane } from '../types';
 
+/** 左侧角色轨道列宽度；时间标尺据此避让，两处必须一致。 */
+export const ACTOR_LANE_HEADER_WIDTH = 146;
+
 interface ActorLaneHeaderProps {
   actorLanes: ActorLane[];
   viewport: { x: number; y: number; zoom: number };
@@ -27,19 +30,19 @@ export const ActorLaneHeader = memo(function ActorLaneHeader({
       aria-label="角色轨道列表"
       className="absolute left-0 top-0 bottom-0 pointer-events-none select-none z-10 overflow-hidden"
       style={{
-        width: 146,
-        backgroundColor: 'color-mix(in srgb, var(--surface, #fcfbf8) 94%, transparent)',
+        width: ACTOR_LANE_HEADER_WIDTH,
+        backgroundColor: 'color-mix(in srgb, var(--surface) 94%, transparent)',
         backdropFilter: 'blur(8px)',
-        borderRight: '1px solid var(--hairline, rgba(31, 30, 28, 0.08))',
+        borderRight: '1px solid var(--hairline)',
       }}
     >
       {/* 顶部高度严格对齐 TimeRuler 的 32px 高度 */}
       <div
         className="h-8 px-2.5 flex items-center justify-between text-xs font-semibold tracking-wider text-fg-subtle border-b border-hairline"
-        style={{ backgroundColor: 'var(--surface-sunken, #ebe7df)' }}
+        style={{ backgroundColor: 'var(--surface-sunken)' }}
       >
         <span className="truncate">角色 ({actorLanes.length})</span>
-        <span className="text-[10px] font-normal text-fg-muted shrink-0">基准</span>
+        <span className="text-xs font-normal text-fg-muted shrink-0">基准</span>
       </div>
 
       {/* 轨道标头列表：中心点严格对齐 viewport 坐标系下的 lane.y */}
@@ -59,17 +62,17 @@ export const ActorLaneHeader = memo(function ActorLaneHeader({
                 top: screenCenterY,
                 transform: 'translateY(-50%)',
                 height: badgeHeight,
-                backgroundColor: 'var(--surface-raised, #ffffff)',
+                backgroundColor: 'var(--surface-raised)',
                 borderLeftWidth: 3,
                 borderLeftColor: lane.color,
               }}
               title={`${lane.actor.name} (${lane.actor.role === 'main' ? '主角' : '配角'})`}
             >
               <span
-                className="flex items-center justify-center rounded-full text-[9px] font-bold text-white shrink-0"
+                className="flex items-center justify-center rounded-full text-xs font-semibold text-fg-on-accent shrink-0"
                 style={{
-                  width: isCompact ? 14 : 18,
-                  height: isCompact ? 14 : 18,
+                  width: isCompact ? 16 : 20,
+                  height: isCompact ? 16 : 20,
                   backgroundColor: lane.color,
                 }}
               >
@@ -80,8 +83,8 @@ export const ActorLaneHeader = memo(function ActorLaneHeader({
                 <div
                   className="font-medium truncate leading-tight"
                   style={{
-                    color: 'var(--fg-default, #2b2925)',
-                    fontSize: isCompact ? 10 : 11,
+                    color: 'var(--fg-default)',
+                    fontSize: 12,
                   }}
                 >
                   {lane.actor.name}
@@ -89,16 +92,16 @@ export const ActorLaneHeader = memo(function ActorLaneHeader({
                 {!isCompact ? (
                   <div className="flex items-center gap-1 mt-0.5">
                     <span
-                      className="text-[9px] px-1 py-0.2 rounded font-medium"
+                      className="text-xs px-1 rounded font-medium"
                       style={{
                         backgroundColor:
                           lane.actor.role === 'main'
-                            ? 'color-mix(in srgb, var(--accent, #665995) 12%, var(--surface, #fcfbf8))'
-                            : 'var(--surface-sunken, #ebe7df)',
+                            ? 'color-mix(in srgb, var(--accent) 12%, var(--surface))'
+                            : 'var(--surface-sunken)',
                         color:
                           lane.actor.role === 'main'
-                            ? 'var(--accent, #665995)'
-                            : 'var(--fg-muted, #5a564f)',
+                            ? 'var(--accent)'
+                            : 'var(--fg-muted)',
                       }}
                     >
                       {lane.actor.role === 'main' ? '主角' : '配角'}

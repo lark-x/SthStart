@@ -119,7 +119,7 @@ export function ResearchReview({
         <aside
           className={cn(
             'h-full min-h-0 w-full flex flex-col rounded-panel border border-border-default bg-surface overflow-hidden',
-            !isStandaloneWorkspace && 'max-h-[600px]'
+            !isStandaloneWorkspace && 'max-h-150'
           )}
         >
           <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between gap-2">
@@ -167,7 +167,7 @@ export function ResearchReview({
           <aside
             className={cn(
               'h-full min-h-0 w-full flex flex-col rounded-panel border border-border-default bg-surface overflow-hidden',
-              !isStandaloneWorkspace && 'max-h-[600px]'
+              !isStandaloneWorkspace && 'max-h-150'
             )}
           >
             <div className="px-3 py-2 border-b border-border-default bg-surface-muted/40 flex items-center justify-between gap-2">
@@ -288,7 +288,7 @@ export function ResearchReview({
       {/* 三栏核心区：结论列表(220-250px) ｜ 结论与总稿(主区受控自适应) ｜ 证据原文(340-420px) */}
       <div className={cn('min-w-0 flex-1 flex flex-row gap-4', isStandaloneWorkspace && 'min-h-0 overflow-hidden p-4')}>
         {/* 左栏：结论列表 */}
-        {showClaimsInline && <div className="h-full min-h-0 w-[220px] shrink-0">{claimsPanel}</div>}
+        {showClaimsInline && <div className="h-full min-h-0 w-55 shrink-0">{claimsPanel}</div>}
 
         {/* 中栏：结论正文与总稿编辑（主区受控，独立平滑滚动） */}
         <section

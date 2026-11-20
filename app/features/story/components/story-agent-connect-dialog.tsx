@@ -113,7 +113,7 @@ export function StoryAgentConnectDialog({
         <div className="flex items-center justify-between w-full">
           <div className="text-xs text-muted">
             {pendingProposalsCount > 0 ? (
-              <span className="text-amber-500 font-medium">
+              <span className="text-warning-fg font-medium">
                 有 {pendingProposalsCount} 条待审提案等待处理
               </span>
             ) : (
@@ -184,7 +184,7 @@ export function StoryAgentConnectDialog({
             <div className="flex items-center gap-2">
               <KeyRound className="size-4 text-muted" />
               <span className="text-xs text-muted">访问令牌：</span>
-              <code className="font-mono text-xs bg-surface px-2 py-1 rounded border border-border-default max-w-[180px] sm:max-w-xs truncate">
+              <code className="font-mono text-xs bg-surface px-2 py-1 rounded border border-border-default max-w-45 sm:max-w-xs truncate">
                 {activeToken || '暂无可用令牌'}
               </code>
             </div>
@@ -196,7 +196,7 @@ export function StoryAgentConnectDialog({
                   onClick={() => handleCopy(createdToken, 'token')}
                 >
                   {copiedType === 'token' ? (
-                    <Check className="size-3.5 text-emerald-500" />
+                    <Check className="size-3.5 text-success-fg" />
                   ) : (
                     <Copy className="size-3.5" />
                   )}
@@ -229,7 +229,7 @@ export function StoryAgentConnectDialog({
               onClick={() => handleCopy(mcpConfigJson, 'json')}
             >
               {copiedType === 'json' ? (
-                <Check className="size-3.5 text-emerald-500" />
+                <Check className="size-3.5 text-success-fg" />
               ) : (
                 <Copy className="size-3.5" />
               )}
@@ -239,7 +239,7 @@ export function StoryAgentConnectDialog({
           <p className="text-xs text-muted leading-relaxed">
             将以下配置粘贴至您的智能体配置中（例如 Antigravity 的 MCP 设置、Cursor 的 <code>.cursor/mcp.json</code> 或 Claude Desktop 的 <code>claude_desktop_config.json</code>）：
           </p>
-          <pre className="p-3 rounded-control bg-zinc-950 text-zinc-100 font-mono text-xs overflow-x-auto leading-5 border border-zinc-800">
+          <pre className="p-3 rounded-control bg-surface-sunken text-fg-default font-mono text-xs overflow-x-auto leading-5 border border-border-subtle">
             {mcpConfigJson}
           </pre>
         </div>
@@ -271,7 +271,7 @@ export function StoryAgentConnectDialog({
               <p className="text-muted mt-0.5">在设定与正文中进行模糊语义检索。</p>
             </div>
             <div className="p-2 rounded border border-border-default bg-surface">
-              <code className="font-semibold text-emerald-500">submit_proposal</code>
+              <code className="font-semibold text-success-fg">submit_proposal</code>
               <p className="text-muted mt-0.5">向作者提交修改草稿或新建章节提案供人类审核。</p>
             </div>
             <div className="p-2 rounded border border-border-default bg-surface">

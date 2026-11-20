@@ -621,6 +621,8 @@ export function StoryWorldsWorkspace({
   const selectedEventId = eventSelection.branchId === (branch?.id ?? '') ? eventSelection.id : '';
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null;
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  // 影响预览对话框的开关由工作台持有：左栏跨断点重新挂载时不关闭对话框。
+  const [sourcePreviewOpen, setSourcePreviewOpen] = useState(false);
   const [mobileEventsOpen, setMobileEventsOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [memoryActorId, setMemoryActorId] = useState('');
@@ -744,7 +746,8 @@ export function StoryWorldsWorkspace({
         backLabel="作品目录"
         status={(
           <span className="flex flex-wrap items-center gap-1.5">
-            {(run && (url.view === 'sandbox' || isRunActive(run.status) || run.status === 'uncertain' || run.status === 'paused')) && (
+            {/* 沙盒视图的运行条已显示状态与额度；页头只在其他视图提示仍在进行的运行，同一状态不重复出现。 */}
+            {(run && url.view !== 'sandbox' && (isRunActive(run.status) || run.status === 'uncertain' || run.status === 'paused')) && (
               <>
                 <Badge variant={runStatusTone(run.status)} dot>{runStatusLabel(run.status)}</Badge>
                 <span className="text-xs text-muted">
@@ -879,7 +882,7 @@ export function StoryWorldsWorkspace({
                   aria-label="切换平行分支"
                   value={url.branchId}
                   onChange={(event) => url.selectBranch(event.target.value)}
-                  className="h-8 w-auto min-w-[160px] text-xs"
+                  className="h-9 w-auto min-w-40 text-sm"
                 >
                   {branches.map((item) => (
                     <option key={item.id} value={item.id}>{item.title}</option>
@@ -1247,15 +1250,28 @@ export function StoryWorldsWorkspace({
                     </div>
                   )}
                   <SourceUpdatePreview
+                    part="trigger"
                     worldId={world?.id ?? ''}
                     worldRevision={world?.revision ?? 0}
                     branchId={branch?.id ?? ''}
                     branchRevision={branch?.revision ?? 0}
                     available={Boolean(detail?.sourceUpdatesAvailable && world && branch)}
-                    onEditWorld={openEditWorld}
+                    open={sourcePreviewOpen}
+                    onOpenChange={setSourcePreviewOpen}
                   />
                 </section>
             </WorldFilterRail>
+            <SourceUpdatePreview
+              part="dialog"
+              worldId={world?.id ?? ''}
+              worldRevision={world?.revision ?? 0}
+              branchId={branch?.id ?? ''}
+              branchRevision={branch?.revision ?? 0}
+              available={Boolean(detail?.sourceUpdatesAvailable && world && branch)}
+              onEditWorld={openEditWorld}
+              open={sourcePreviewOpen}
+              onOpenChange={setSourcePreviewOpen}
+            />
 
             <section className="sw-canvas" aria-labelledby="sw-branch-title">
               <div className="sw-canvas-head">

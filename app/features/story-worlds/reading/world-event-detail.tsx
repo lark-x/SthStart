@@ -92,13 +92,13 @@ export function WorldEventDetail({
               <span className="font-medium text-ink">{location.name}</span>
             </span>
             {event.duration > 0 && formatDuration(event.duration) ? (
-              <span className="text-muted text-[11px]">
+              <span className="text-muted text-xs">
                 {formatDuration(event.duration)}
               </span>
             ) : null}
           </div>
 
-          <h2 className="text-xl md:text-2xl font-bold text-ink tracking-tight">
+          <h2 className="text-xl md:text-2xl font-semibold text-ink tracking-tight">
             {event.title}
           </h2>
 
@@ -116,7 +116,7 @@ export function WorldEventDetail({
                       size="sm"
                       variant="ghost"
                       onClick={() => onSelectEvent?.(causeId)}
-                      className="h-6 min-h-6 gap-0 rounded border border-hairline bg-surface px-1.5 font-mono text-[11px] text-accent hover:text-accent sm:min-h-6"
+                      className="h-6 min-h-6 gap-0 rounded border border-hairline bg-surface px-1.5 font-mono text-xs text-accent hover:text-accent sm:min-h-6"
                       title={`跳转查看前置事件 ${causeId}`}
                     >
                       #{causeId.slice(0, 8)}
@@ -161,13 +161,13 @@ export function WorldEventDetail({
                     <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-ink truncate">{actor.name}</p>
-                      <p className="text-[11px] text-muted truncate">
+                      <p className="text-xs text-muted truncate">
                         {actor.role === 'main' ? '核心主角' : '世界配角'}
                       </p>
                     </div>
                   </div>
                   {hasPerspective && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-soft text-accent-dark font-medium shrink-0">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-accent-soft text-accent-dark font-medium shrink-0">
                       有主观视角
                     </span>
                   )}
@@ -236,8 +236,7 @@ export function WorldEventDetail({
                   </span>
                 </div>
                 <div
-                  className="story-reading-content font-serif text-[16px] leading-[1.85] text-ink break-words text-pretty"
-                  style={{ fontFamily: 'var(--font-serif)' }}
+                  className="story-reading-content reader-prose"
                 >
                   {currentPerspective.text.split('\n\n').map((para, idx) => (
                     <p key={idx} className="my-2.5 text-justify">
@@ -252,8 +251,7 @@ export function WorldEventDetail({
                   <span>世界客观事实裁定概要</span>
                 </div>
                 <div
-                  className="story-reading-content font-serif text-[16px] leading-[1.85] text-ink break-words text-pretty"
-                  style={{ fontFamily: 'var(--font-serif)' }}
+                  className="story-reading-content reader-prose"
                 >
                   {event.summary.split('\n\n').map((para, idx) => (
                     <p key={idx} className="my-2.5 text-justify">
@@ -270,10 +268,10 @@ export function WorldEventDetail({
         <section className="space-y-3">
           <div className="flex items-center justify-between text-xs font-semibold text-ink">
             <span className="flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <FileText className="w-3.5 h-3.5 text-info-fg" />
               <span>事件沉淀事实与知晓范围 ({event.facts.length})</span>
             </span>
-            <span className="text-[11px] text-muted font-normal">
+            <span className="text-xs text-muted font-normal">
               区分亲历知晓与信息差
             </span>
           </div>
@@ -297,16 +295,16 @@ export function WorldEventDetail({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <SourceNatureBadge nature={fact.nature} />
-                      <span className="text-[11px] text-muted font-mono">
+                      <span className="text-xs text-muted font-mono">
                         #{fact.id.slice(0, 8)}
                       </span>
                     </div>
 
-                    <p className="text-ink leading-relaxed font-sans text-[13px]">
+                    <p className="text-ink leading-relaxed font-sans text-sm">
                       {fact.content}
                     </p>
 
-                    <div className="pt-2 border-t border-hairline/60 flex flex-wrap items-center gap-3 text-[11px]">
+                    <div className="pt-2 border-t border-hairline/60 flex flex-wrap items-center gap-3 text-xs">
                       <div className="flex items-center gap-1 text-muted">
                         <span className="font-medium text-ink">已知晓角色：</span>
                         {knownActors.length > 0 ? (
@@ -321,10 +319,10 @@ export function WorldEventDetail({
                       </div>
 
                       {unknownParticipants.length > 0 && (
-                        <div className="flex items-center gap-1 text-rose-700 dark:text-rose-300">
+                        <div className="flex items-center gap-1 text-danger-fg">
                           <span className="font-medium">在场但被隐瞒/未察觉：</span>
                           {unknownParticipants.map(a => (
-                            <span key={a.id} className="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-800 dark:text-rose-200">
+                            <span key={a.id} className="px-1.5 py-0.2 rounded bg-danger-bg text-danger-fg">
                               {a.name}
                             </span>
                           ))}
@@ -342,10 +340,10 @@ export function WorldEventDetail({
         <section className="space-y-3">
           <div className="flex items-center justify-between text-xs font-semibold text-ink">
             <span className="flex items-center gap-1.5">
-              <HeartHandshake className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <HeartHandshake className="w-3.5 h-3.5 text-warning-fg" />
               <span>角色状态与人际关系演进 ({event.stateChanges.length})</span>
             </span>
-            <span className="text-[11px] text-muted font-normal">
+            <span className="text-xs text-muted font-normal">
               心理变化与记忆依据
             </span>
           </div>
@@ -366,21 +364,21 @@ export function WorldEventDetail({
                     className="p-3.5 rounded-lg bg-surface-sunken/40 border border-hairline space-y-2 text-xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-ink text-sm">{actor.name}</span>
+                      <span className="font-semibold text-ink text-sm">{actor.name}</span>
                       {st.emotion && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-800 dark:text-amber-300 font-medium text-[11px]">
+                        <span className="px-2 py-0.5 rounded-full bg-warning-bg text-warning-fg font-medium text-xs">
                           情绪：{st.emotion}
                         </span>
                       )}
                     </div>
 
-                    <div className="text-[11px] text-muted">
+                    <div className="text-xs text-muted">
                       <span>位于地点：</span>
                       <span className="text-ink font-medium">{loc.name}</span>
                     </div>
 
                     {st.goals.length > 0 && (
-                      <div className="text-[11px]">
+                      <div className="text-xs">
                         <span className="text-muted block mb-0.5 font-medium">更新目标：</span>
                         <ul className="list-disc list-inside space-y-0.5 text-ink pl-1">
                           {st.goals.map((g, gIdx) => (
@@ -392,13 +390,13 @@ export function WorldEventDetail({
 
                     {st.relationships.length > 0 && (
                       <div className="pt-2 border-t border-hairline/60 space-y-1">
-                        <span className="text-[11px] font-medium text-ink block">人际关系更新：</span>
+                        <span className="text-xs font-medium text-ink block">人际关系更新：</span>
                         {st.relationships.map((rel, rIdx) => {
                           const target = lookupActor(actors, rel.actorId);
                           return (
                             <div
                               key={rIdx}
-                              className="text-[11px] bg-surface p-2 rounded border border-hairline space-y-0.5"
+                              className="text-xs bg-surface p-2 rounded border border-hairline space-y-0.5"
                             >
                               <div className="flex items-center justify-between">
                                 <span className="font-semibold text-ink">对 {target.name}：</span>
@@ -408,7 +406,7 @@ export function WorldEventDetail({
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => onSelectEvent?.(rel.sourceEventId!)}
-                                    className="h-auto min-h-0 gap-0 p-0 font-mono text-[10px] font-normal text-accent hover:bg-transparent hover:text-accent hover:underline sm:min-h-0"
+                                    className="h-auto min-h-0 gap-0 p-0 font-mono text-xs font-normal text-accent hover:bg-transparent hover:text-accent hover:underline sm:min-h-0"
                                   >
                                     记忆来源：事件 #{rel.sourceEventId}
                                   </Button>
@@ -434,7 +432,7 @@ export function WorldEventDetail({
               <ImageIcon className="w-3.5 h-3.5 text-accent" />
               <span>分镜配图规划与生图状态 ({eventImages.length})</span>
             </span>
-            <span className="text-[11px] text-muted font-normal">
+            <span className="text-xs text-muted font-normal">
               建立 / 行动 / 结果三阶段
             </span>
           </div>
@@ -467,13 +465,13 @@ export function WorldEventDetail({
                           >
                             <div className="flex items-center justify-between">
                               <ImageStatusBadge status={img.status} />
-                              <span className="text-[11px] text-muted font-mono">
+                              <span className="text-xs text-muted font-mono">
                                 #{img.id.slice(0, 8)}
                               </span>
                             </div>
 
                             {img.imageUrl && img.status === 'succeeded' && (
-                              <div className="aspect-video rounded overflow-hidden bg-black/10 border border-hairline">
+                              <div className="aspect-video rounded overflow-hidden bg-media-backdrop/10 border border-hairline">
                                 <img
                                   src={img.imageUrl}
                                   alt={img.caption || '分镜画面'}
@@ -488,17 +486,17 @@ export function WorldEventDetail({
                               <p className="text-muted leading-relaxed">{img.caption || '分镜构图说明'}</p>
                             </div>
 
-                            <details className="text-[11px] text-muted group">
+                            <details className="text-xs text-muted group">
                               <summary className="cursor-pointer hover:text-accent font-medium select-none">
                                 高级生成参数与提示词
                               </summary>
-                              <div className="mt-1.5 p-2 rounded bg-surface border border-hairline space-y-1 font-mono text-[10.5px]">
+                              <div className="mt-1.5 p-2 rounded bg-surface border border-hairline space-y-1 font-mono text-xs">
                                 <p><strong className="text-ink">Prompt:</strong> {img.prompt}</p>
                                 {img.negativePrompt && (
                                   <p><strong className="text-ink">Negative:</strong> {img.negativePrompt}</p>
                                 )}
                                 {img.consistencyNote && (
-                                  <p className="text-amber-800 dark:text-amber-300">
+                                  <p className="text-warning-fg">
                                     <strong className="text-ink">Consistency:</strong> {img.consistencyNote}
                                   </p>
                                 )}

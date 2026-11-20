@@ -467,10 +467,10 @@ export function StudioShell({ activityId }: StudioShellProps) {
 
       {/* 导出交付浮层 */}
       {overlays.exportOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-media-backdrop/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-2xl rounded-2xl border border-border-default bg-surface shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="h-11 px-4 border-b border-border-default flex items-center justify-between shrink-0">
-              <span className="text-xs font-bold text-ink">活动资产与格式导出</span>
+              <span className="text-xs font-semibold text-ink">活动资产与格式导出</span>
               <IconButton icon={X} label="关闭导出交付" size="icon" className="h-7 w-7" onClick={() => { overlays.setExportOpen(false); clearDeepLink(); }} />
             </div>
             <PrepareNotice status={preview.prepareStatus} error={preview.prepareError} onRetry={() => { void preview.prepareContent(); }} />

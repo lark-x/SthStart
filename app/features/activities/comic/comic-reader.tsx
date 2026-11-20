@@ -155,7 +155,7 @@ export function ComicReader({ document, fontReady, assets, loading, missingArtif
       {currentPage ? <><canvas ref={canvasRef} width={1920} height={1080} aria-label="漫画逐格阅读画面" className="hidden max-h-full w-auto max-w-full bg-surface shadow-lg md:block" style={{ aspectRatio: '16 / 9' }} />
         {activePanel ? <div className="w-full max-w-full space-y-3 md:hidden"><div className="max-h-28 space-y-1 overflow-y-auto rounded-panel bg-surface p-3 text-sm leading-relaxed text-ink">{activePanel.bubbles.filter((bubble) => frame.visibleBubbleIds.includes(bubble.id)).map((bubble) => <p key={bubble.id}><span className="mr-2 text-xs text-muted">{bubble.kind === 'caption' ? '旁白' : bubble.kind === 'emphasis' ? '强调' : '对话'}</span>{bubble.text}</p>)}
             {!activePanel.bubbles.some((bubble) => frame.visibleBubbleIds.includes(bubble.id)) && <p className="text-muted">当前画格还没有显示台词。</p>}</div><canvas ref={focusCanvasRef} aria-label="当前漫画画格" className="max-h-[58dvh] w-full bg-surface object-contain shadow-lg" /></div>
-          : <p className="text-sm text-white md:hidden">点击“下一步”开始阅读。</p>}</>
+          : <p className="text-sm text-on-media md:hidden">点击“下一步”开始阅读。</p>}</>
         : <p className="text-sm text-muted">漫画还没有页面。</p>}
     </div>
     <div aria-live="polite" className="shrink-0 border-t border-border-default px-3 py-2 text-xs text-muted">

@@ -237,7 +237,7 @@ export function CharacterMultiSourceDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[460px] overflow-y-auto p-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-115 overflow-y-auto p-1">
               {candidates.map((candidate) => {
                 const isSelected = selectedIds.has(candidate.id);
                 return (
@@ -252,7 +252,7 @@ export function CharacterMultiSourceDialog({
                   >
                     {/* Checkbox indicator in top-right */}
                     <div
-                      className={`absolute top-3 right-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border text-white transition-colors ${
+                      className={`absolute top-3 right-3 z-10 flex h-5 w-5 items-center justify-center rounded-md border text-fg-on-accent transition-colors ${
                         isSelected
                           ? 'bg-accent border-accent'
                           : 'bg-surface/80 border-border-default group-hover:border-accent'
@@ -288,8 +288,8 @@ export function CharacterMultiSourceDialog({
                         <span
                           className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-semibold ${
                             candidate.kind === 'avatar'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                              : 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                              ? 'bg-info-bg text-info-fg'
+                              : 'bg-tone-violet-soft text-tone-violet-fg'
                           }`}
                         >
                           {candidate.kind === 'avatar' ? (
@@ -304,7 +304,7 @@ export function CharacterMultiSourceDialog({
                             </>
                           )}
                         </span>
-                        <span className="text-xs text-fg-subtle truncate max-w-[110px]" title={candidate.source}>
+                        <span className="text-xs text-fg-subtle truncate max-w-27.5" title={candidate.source}>
                           {candidate.source}
                         </span>
                       </div>

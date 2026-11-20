@@ -3,11 +3,14 @@ import test from 'node:test';
 import {
   applyThemeId,
   applyThemeMode,
+  applySkinFlourish,
   applyUiSkin,
   readThemeId,
+  readSkinFlourish,
   readThemeMode,
   readUiSkinId,
   THEMES,
+  SKIN_FLOURISH_STORAGE_KEY,
   THEME_BOOTSTRAP_SCRIPT,
   UI_SKINS,
   UI_SKIN_STORAGE_KEY,
@@ -154,4 +157,30 @@ test('UI_SKINS, readUiSkinId and applyUiSkin support default, genshin and sticke
   assert.equal(attrs.get('data-ui-skin'), 'sticker');
   applyUiSkin(root, 'default');
   assert.equal(attrs.has('data-ui-skin'), false);
+});
+
+test('skin flourish (L3) defaults on, only an explicit off disables it, and the bootstrap applies it before first paint', () => {
+  const storage = new Map<string, string>();
+  const get = (key: string) => storage.get(key) ?? null;
+  assert.equal(readSkinFlourish(get), 'on');
+  storage.set(SKIN_FLOURISH_STORAGE_KEY, 'unexpected');
+  assert.equal(readSkinFlourish(get), 'on');
+  storage.set(SKIN_FLOURISH_STORAGE_KEY, 'off');
+  assert.equal(readSkinFlourish(get), 'off');
+
+  const attrs = new Map<string, string>();
+  const root = {
+    setAttribute: (key: string, value: string) => attrs.set(key, value),
+    removeAttribute: (key: string) => attrs.delete(key),
+  };
+  applySkinFlourish(root, 'off');
+  assert.equal(attrs.get('data-skin-flourish'), 'off');
+  applySkinFlourish(root, 'on');
+  assert.equal(attrs.has('data-skin-flourish'), false);
+
+  assert.match(THEME_BOOTSTRAP_SCRIPT, new RegExp(SKIN_FLOURISH_STORAGE_KEY));
+  assert.match(THEME_BOOTSTRAP_SCRIPT, /data-skin-flourish/);
+  // 新开关不能改变基础主题矩阵的首屏写入。
+  assert.equal(THEME_BOOTSTRAP_SCRIPT.split('data-mantine-color-scheme').length - 1, 2);
+  assert.equal(THEMES.length, 4);
 });

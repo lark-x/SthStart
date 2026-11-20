@@ -202,8 +202,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
           }
           if (index === 8 && viewport.width === 390) {
             await expectClientReady(page);
-            await page.getByRole('button', { name: '筛选与排序', exact: true }).click();
-            const filter = page.getByRole('dialog', { name: '角色筛选', exact: true });
+            await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+            const filter = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
             await expect(filter).toBeVisible();
             await expect.poll(() => filter.evaluate(el =>
               Math.abs(window.innerHeight - el.getBoundingClientRect().bottom)

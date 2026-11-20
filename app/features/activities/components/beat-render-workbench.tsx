@@ -364,7 +364,7 @@ export function BeatRenderWorkbench({
           <div className="min-w-0"><div className="text-xs font-semibold text-ink">当前镜头画面</div><div className="max-w-full truncate text-xs text-muted">{settingsLabel}</div></div>
           <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void handleOpenSettings()}><Settings2 className="mr-1 h-4 w-4" />绘制设置</Button>
         </div>
-        <div className={`relative ${currentUrl ? 'aspect-video' : 'min-h-40 py-5'} w-full overflow-hidden rounded-control border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-black' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
+        <div className={`relative ${currentUrl ? 'aspect-video' : 'min-h-40 py-5'} w-full overflow-hidden rounded-control border ${unavailableMediaUrl === currentUrl ? 'border-border-default bg-surface-muted' : currentUrl ? 'border-border-default bg-media-backdrop' : 'border-dashed border-border-control bg-surface-muted/50'} flex items-center justify-center transition-all`}>
           {currentUrl ? unavailableMediaUrl === currentUrl
             ? <div role="status" className="p-4 text-center text-sm text-muted">当前画面文件不可用，历史图片仍可重新选择。</div>
             : beat.mediaType === 'video' ? <video src={currentUrl} controls onError={() => setUnavailableMediaUrl(currentUrl)} className="h-full w-full object-contain" />
@@ -420,7 +420,7 @@ export function BeatRenderWorkbench({
                 return <div key={itemKey} className="w-28 flex-none space-y-1 sm:w-32">
                   <button type="button" disabled={disabled || working === 'select' || !image.available}
                     onClick={() => void selectImage(candidate, image.artifactId)} aria-label={`${label}${isHires ? '（细化）' : ''}，绘制于 ${new Date(candidate.createdAt).toLocaleString()}`}
-                    className={`group relative block h-20 w-28 overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-black'}`}>
+                    className={`group relative block h-20 w-28 overflow-hidden rounded border text-left sm:h-24 sm:w-32 ${isCurrent ? 'border-accent ring-2 ring-accent/30' : 'border-border-default'} ${!image.available ? 'bg-surface-muted' : 'bg-media-backdrop'}`}>
                     {image.available ? <img src={image.mediaUrl} alt="历史镜头图片缩略图" className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex h-full items-center justify-center px-2 text-center text-xs text-muted">文件不可用</span>}
                     <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-xs font-semibold ${isCurrent ? 'bg-accent text-fg-on-accent' : isNew ? 'bg-surface text-ink' : 'bg-ink/75 text-fg-on-accent'}`}>{label}</span>
                     {isHires && <span className="absolute right-1 top-1 rounded bg-accent/90 px-1.5 py-0.5 text-xs font-semibold text-fg-on-accent">细化</span>}

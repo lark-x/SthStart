@@ -128,8 +128,8 @@ export function ModelFieldsEditor({
           <label htmlFor="model-search" className="mb-1 block text-sm font-medium text-ink">从连接库存中筛选模型</label>
           <div className="flex gap-2">
             <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
-              <Input id="model-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索模型文件名" className="pl-7" />
+              <Input
+                leftIcon={<Search className="h-3.5 w-3.5 text-fg-subtle" />} id="model-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索模型文件名" className="pl-7" />
             </div>
             <Button type="button" size="sm" variant="outline" onClick={() => { void loadModels(true); }} loading={loadingModels}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />刷新库存

@@ -3,8 +3,10 @@ import { isOwnedDirectory } from './global-setup';
 
 const pages = [
   { route: '/', name: 'home', title: '工作台', action: '新建创作' },
-  { route: '/apps/projects', name: 'projects', title: '创作项目', action: '新建项目' },
-  { route: '/apps/story-worlds', name: 'story-worlds', title: '故事世界', action: '运行设置' },
+  // 旧创作项目列表保留为「历史创作项目」，新建入口为兼容项目。
+  { route: '/apps/projects', name: 'projects', title: '历史创作项目', action: '新建兼容项目' },
+  // 作品工作台的主标题就是作品名；运行设置收进「作品操作菜单」，以菜单按钮作为页头动作。
+  { route: '/apps/story-worlds', name: 'story-worlds', title: '海雾中的末班船', action: '作品操作菜单' },
   { route: '/settings/public-services', name: 'public-services', title: '模型与公共服务', action: '刷新模型与扩展服务配置' },
 ] as const;
 
@@ -78,7 +80,7 @@ for (const viewport of [
           const search = header.getByRole('button', { name: '搜索与命令', exact: true });
           await expect(action).toBeEnabled();
           if (fixture.name === 'story-worlds') {
-            await expect(header.getByRole('button', { name: '故事世界操作', exact: true })).toBeInViewport();
+            await expect(header.getByRole('button', { name: '作品操作菜单', exact: true })).toBeInViewport();
           }
           const [titleBox, actionBox, searchBox, headerBox] = await Promise.all([box(title), box(action), box(search), box(header)]);
           const centerY = ({ y, height }: { y: number; height: number }) => y + height / 2;
@@ -102,7 +104,24 @@ for (const viewport of [
               expect(Math.min(control.width, control.height), 'touch target: ' + controlName).toBeGreaterThanOrEqual(44);
             }
           }
-          expect(Math.abs(centerY(actionBox) - centerY(searchBox)), fixture.name + ': actions and global tools share a row').toBeLessThanOrEqual(2);
+          if (phone && fixture.name !== 'story-worlds') {
+            /*
+             * 手机页头（前端视觉计划 P3）：标题与全局工具同一行（应用栏），页面动作在其下方，
+             * 不再出现只放全局工具的空行。标题过长时在自己的列内换行。
+             */
+            const searchCenter = centerY(searchBox);
+            expect(searchCenter, fixture.name + ': global tools sit in the title row').toBeGreaterThanOrEqual(titleBox.y - 4);
+            expect(searchCenter, fixture.name + ': global tools sit in the title row').toBeLessThanOrEqual(titleBox.y + titleBox.height + 4);
+            expect(actionBox.y, fixture.name + ': page actions start below the title row').toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
+          } else if (viewport.width >= 360) {
+            expect(Math.abs(centerY(actionBox) - centerY(searchBox)), fixture.name + ': actions and global tools share a row').toBeLessThanOrEqual(2);
+          } else {
+            // 320px 下作品工作台的长作品名与工具无法同排，允许换行；两者仍须完整落在页头内。
+            for (const control of [actionBox, searchBox]) {
+              expect(control.y, fixture.name + ': control inside header').toBeGreaterThanOrEqual(headerBox.y - 1);
+              expect(control.y + control.height, fixture.name + ': control inside header').toBeLessThanOrEqual(headerBox.y + headerBox.height + 1);
+            }
+          }
           if (!phone) {
             expect(headerBox.height, fixture.name + ': tablet/desktop header has one row').toBeLessThanOrEqual(64);
             expect(Math.abs(centerY(titleBox) - centerY(searchBox))).toBeLessThanOrEqual(4);

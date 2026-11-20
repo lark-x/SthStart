@@ -50,7 +50,7 @@ export function NoteEditorLoading({ standalone, listActions }: NoteEditorStatePr
         {standalone ? (
           <Link
             href="/apps/notebook"
-            className="notebook-back-link inline-flex min-h-[34px] items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
+            className="notebook-back-link inline-flex min-h-8.5 items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>返回笔记列表</span>

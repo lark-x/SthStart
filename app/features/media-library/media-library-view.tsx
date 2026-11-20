@@ -263,7 +263,7 @@ export function MediaLibraryView({ onChooseArtifact, adoptAction, className = ''
         <AsyncState status="loading" title="正在加载全局媒体素材…" rows={3} className="min-h-56" />
       ) : currentItems.length > 0 ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-4" data-motion-list="">
             {currentItems.map((item) => (
               <MediaCard
                 key={item.id}

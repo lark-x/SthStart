@@ -63,22 +63,22 @@ export const SOURCE_NATURE_CONFIG: Record<
   canon: {
     label: '原作有据',
     description: '经官方原作设定或已知设定核实的事实',
-    badgeClass: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/20',
+    badgeClass: 'bg-tone-green-soft text-tone-green-fg border-tone-green/30',
   },
   author: {
     label: '作者设定',
     description: '创作者主观制定的世界补充设定与规则',
-    badgeClass: 'bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 border-indigo-500/20',
+    badgeClass: 'bg-tone-blue-soft text-tone-blue-fg border-tone-blue/30',
   },
   ai: {
     label: 'AI 创作',
     description: '由模拟系统推导演进生成的动态事件事实',
-    badgeClass: 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20',
+    badgeClass: 'bg-tone-orange-soft text-tone-orange-fg border-tone-orange/30',
   },
   unverified: {
     label: '待核实',
     description: '尚未对照原作或核心设定确认的待查内容',
-    badgeClass: 'bg-rose-500/10 text-rose-800 dark:text-rose-300 border-rose-500/20',
+    badgeClass: 'bg-tone-pink-soft text-tone-pink-fg border-tone-pink/30',
   },
 };
 
@@ -95,19 +95,19 @@ export const BRANCH_MODE_CONFIG: Record<
     label: '原作留白',
     subtitle: '同人留白补完',
     description: '严格遵循官方既定设定，在原作未详述的空白时段展开角色日常与行动',
-    badgeClass: 'bg-sky-500/10 text-sky-800 dark:text-sky-300 border-sky-500/20',
+    badgeClass: 'bg-tone-blue-soft text-tone-blue-fg border-tone-blue/30',
   },
   adaptation: {
     label: '原作改编',
     subtitle: '设定基底改编',
     description: '以原作角色与世界观为基底，对关键因果或情节走向进行主观微调与演绎',
-    badgeClass: 'bg-purple-500/10 text-purple-800 dark:text-purple-300 border-purple-500/20',
+    badgeClass: 'bg-tone-violet-soft text-tone-violet-fg border-tone-violet/30',
   },
   alternate: {
     label: '平行世界',
     subtitle: '全新平行宇宙',
     description: '改变核心前提条件或历史节点，推演完全独立自洽的平行宇宙走向',
-    badgeClass: 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20',
+    badgeClass: 'bg-tone-orange-soft text-tone-orange-fg border-tone-orange/30',
   },
 };
 
@@ -124,19 +124,19 @@ export const IMAGE_PHASE_CONFIG: Record<
     label: '场景建立',
     stepOrder: 1,
     description: '交代空间环境、时间光影、氛围基调与角色站位',
-    subtleClass: 'bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/20',
+    subtleClass: 'bg-tone-blue-soft text-tone-blue-fg border-tone-blue/30',
   },
   action: {
     label: '关键行动',
     stepOrder: 2,
     description: '刻画核心动作、角色言语互动、冲突转折或重要决策',
-    subtleClass: 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20',
+    subtleClass: 'bg-tone-orange-soft text-tone-orange-fg border-tone-orange/30',
   },
   result: {
     label: '结果变化',
     stepOrder: 3,
     description: '展现事态收尾、心理余波、关系改变与后续影响',
-    subtleClass: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/20',
+    subtleClass: 'bg-tone-green-soft text-tone-green-fg border-tone-green/30',
   },
 };
 

@@ -1,3 +1,11 @@
+# 已归档：frontend-visual-verification
+
+2026-11-20 归档，由 `frontend-visual-qa` 取代。归档原因：原文端口与实际 Playwright 配置不一致（4173 / 4273），引用了其他 Agent 的工具名，没有像素基线维护规则和视觉评分标准。详见 [前端视觉计划](../development/reviews/2026-11-20-frontend-visual-plan.md) §3。
+
+以下为归档前原文，不再被 Skill 自动发现。
+
+---
+
 ---
 name: frontend-visual-verification
 description: >-

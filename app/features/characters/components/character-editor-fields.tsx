@@ -378,7 +378,7 @@ export function CharacterPersonaPanel({
           rows={2}
           {...register('summary', { onChange: onDirty })}
           placeholder="例如：西风骑士团代理团长，以责任感守护蒙德。"
-          className="min-h-[58px] bg-surface-input font-reading text-[15px] font-[450] leading-[1.7] px-3.5 py-2"
+          className="min-h-14.5 bg-surface-input font-reading text-[15px] font-[450] leading-[1.7] px-3.5 py-2"
         />
       </div>
 

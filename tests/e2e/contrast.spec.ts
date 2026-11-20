@@ -480,9 +480,9 @@ test('checkbox keeps a 3:1 resting edge with stable keyboard focus and checked s
     await page.goto('/apps/characters');
     await expect(page.locator('html')).toHaveAttribute('data-theme', expectedTheme);
     await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
-    const trigger = page.getByRole('button', { name: '筛选与排序', exact: true });
+    const trigger = page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ });
     await expect(trigger).toBeVisible();
-    const panel = page.getByRole('dialog', { name: '角色筛选', exact: true });
+    const panel = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
     for (let attempt = 0; attempt < 12 && !(await panel.isVisible()); attempt += 1) {
       await trigger.click();
       await page.waitForTimeout(150);

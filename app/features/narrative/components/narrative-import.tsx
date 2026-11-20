@@ -286,14 +286,14 @@ export function NarrativeImport({
         )}
 
         {remoteDoc && (
-          <div className="space-y-2 rounded-control bg-surface-dark p-4 text-[#dae2de]">
+          <div className="space-y-2 rounded-control bg-surface-dark p-4 text-[var(--console-fg)]">
             <div className="flex justify-between text-sm">
               <strong>{remoteDoc.fileName}</strong>
               <span>
                 {remoteDoc.lineRange} / 共 {remoteDoc.totalLines} 行
               </span>
             </div>
-            <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded bg-black/25 p-3 font-mono text-sm">
+            <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded bg-media-backdrop/25 p-3 font-mono text-sm">
               {remoteDoc.content}
             </pre>
           </div>
@@ -302,7 +302,7 @@ export function NarrativeImport({
 
       {/* JSON Import Workbench */}
       {/* 专用深色代码面板（§8.9）：仅 JSON 原文查看使用深色，正文与表单沿用全站主题。 */}
-      <div className="space-y-4 rounded-panel bg-surface-dark p-5 text-[#dae2de]">
+      <div className="space-y-4 rounded-panel bg-surface-dark p-5 text-[var(--console-fg)]">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">
             规范化剧情 JSON 工作台
@@ -320,7 +320,7 @@ export function NarrativeImport({
             setJsonText(e.target.value);
             setPreview(null);
           }}
-          className="w-full rounded bg-black/25 p-4 font-mono text-sm leading-relaxed text-[#dae2de] border border-white/10 outline-none"
+          className="w-full rounded bg-media-backdrop/25 p-4 font-mono text-sm leading-relaxed text-[var(--console-fg)] border border-on-media/10 outline-none"
           spellCheck={false}
         />
 

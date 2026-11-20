@@ -26,7 +26,11 @@ test.beforeEach(async ({ context }) => {
   expect((await context.request.post(portal + '/api/auth/admin-session', { headers: { origin: portal } })).ok()).toBe(true);
 });
 
-test('resource return removes old navigation context across three real roundtrips', async ({ page }) => {
+/*
+ * 资料库导航的快捷入口（含「原作档案」）默认关闭（showQuickLinks = false，分支上已确认的有意改动），
+ * 资料库页面不再提供这条带 returnTo 的入口。等快捷入口重新开放或改由其他入口承载 returnTo 时恢复本用例。
+ */
+test.fixme('resource return removes old navigation context across three real roundtrips', async ({ page }) => {
   await page.goto(portal + '/apps/resources?view=notes&q=四项&from=resources&returnTo=old&tag=a&tag=b');
   await expect(page).toHaveURL(/pageSize=20/);
   for (let i = 0; i < 3; i++) {

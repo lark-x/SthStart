@@ -2128,6 +2128,22 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     `ALTER TABLE mcp_sources ADD COLUMN transport TEXT NOT NULL DEFAULT 'auto'
       CHECK(transport IN ('auto','streamable-http','sse'))`,
   ] },
+  // 作品封面：三类实体各加一个可空的中心媒体引用。媒体被强制删除时置空；
+  // 实体删除时由触发器清理封面引用，避免媒体库残留指向已删除实体的引用。
+  { version: 68, name: 'entity-covers', statements: [
+    'ALTER TABLE story_projects ADD COLUMN cover_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL',
+    'ALTER TABLE sw_worlds ADD COLUMN cover_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL',
+    'ALTER TABLE activities ADD COLUMN cover_artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL',
+    `CREATE TRIGGER IF NOT EXISTS trg_story_projects_cover_cleanup AFTER DELETE ON story_projects BEGIN
+      DELETE FROM artifact_references WHERE ref_type='entity-cover' AND ref_id='story-project:' || OLD.id;
+    END`,
+    `CREATE TRIGGER IF NOT EXISTS trg_sw_worlds_cover_cleanup AFTER DELETE ON sw_worlds BEGIN
+      DELETE FROM artifact_references WHERE ref_type='entity-cover' AND ref_id='story-world:' || OLD.id;
+    END`,
+    `CREATE TRIGGER IF NOT EXISTS trg_activities_cover_cleanup AFTER DELETE ON activities BEGIN
+      DELETE FROM artifact_references WHERE ref_type='entity-cover' AND ref_id='activity:' || OLD.id;
+    END`,
+  ] },
 ];
 
 function userTables(connection: DatabaseSync) {

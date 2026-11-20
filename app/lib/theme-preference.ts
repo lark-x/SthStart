@@ -134,6 +134,25 @@ export function applyUiSkin(
   }
 }
 
+/**
+ * 皮肤主题化装饰（L3：首页主卡图样、加载动画、问候区插画）的开关，默认开启。
+ * 只在启用风格化皮肤时生效；关闭后保留 L1 点缀与 L2 氛围，不影响基础主题矩阵。
+ */
+export const SKIN_FLOURISH_STORAGE_KEY = 'sthstart_skin_flourish';
+export type SkinFlourish = 'on' | 'off';
+
+export function readSkinFlourish(getItem: (key: string) => string | null): SkinFlourish {
+  return getItem(SKIN_FLOURISH_STORAGE_KEY) === 'off' ? 'off' : 'on';
+}
+
+export function applySkinFlourish(
+  root: { setAttribute(name: string, value: string): void; removeAttribute(name: string): void },
+  value: SkinFlourish,
+) {
+  if (value === 'off') root.setAttribute('data-skin-flourish', 'off');
+  else root.removeAttribute('data-skin-flourish');
+}
+
 export function getThemeConfig(id: ThemeId): ThemeConfig {
   const found = THEMES.find((t) => t.id === id);
   return found ?? THEMES[0];
@@ -296,4 +315,13 @@ export function applyThemeMode(
  * `data-mantine-color-scheme` 与 `data-color-mode` 同源写入：Mantine 的首屏样式
  * 依赖该属性，不能等到 React 挂载后再补。
  */
-export const THEME_BOOTSTRAP_SCRIPT = `try{var i=localStorage.getItem('sthstart_theme_id')||localStorage.getItem('sthstart_theme');var e=localStorage.getItem('sthstart_eye_care_mode');var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;var t='light-paper';if(i==='light-paper'||i==='light-zinc'||i==='dark-espresso'||i==='dark-obsidian'){t=i}else if(i==='warm'){t='light-paper'}else if(i==='neutral'){t='light-zinc'}else if(e==='true'){t='light-paper'}else if(e==='false'){t='light-zinc'}else if(d){t='dark-espresso'}var m=t.indexOf('dark')===0?'dark':'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-color-mode',m);document.documentElement.setAttribute('data-mantine-color-scheme',m);document.documentElement.style.colorScheme=m;var mc=document.querySelector('meta[name="color-scheme"]');if(mc){mc.setAttribute('content',m);}if(t==='light-paper'){document.documentElement.setAttribute('data-eye-care','true')}else{document.documentElement.removeAttribute('data-eye-care')}var s=localStorage.getItem('sthstart_ui_skin');if(s==='genshin'||s==='sticker'){document.documentElement.setAttribute('data-ui-skin',s)}else{document.documentElement.removeAttribute('data-ui-skin')}}catch(e){document.documentElement.setAttribute('data-theme','light-paper');document.documentElement.setAttribute('data-color-mode','light');document.documentElement.setAttribute('data-mantine-color-scheme','light');document.documentElement.style.colorScheme='light';var mc=document.querySelector('meta[name="color-scheme"]');if(mc){mc.setAttribute('content','light');}document.documentElement.setAttribute('data-eye-care','true')}`;
+export const THEME_BOOTSTRAP_SCRIPT = `try{var i=localStorage.getItem('sthstart_theme_id')||localStorage.getItem('sthstart_theme');var e=localStorage.getItem('sthstart_eye_care_mode');var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;var t='light-paper';if(i==='light-paper'||i==='light-zinc'||i==='dark-espresso'||i==='dark-obsidian'){t=i}else if(i==='warm'){t='light-paper'}else if(i==='neutral'){t='light-zinc'}else if(e==='true'){t='light-paper'}else if(e==='false'){t='light-zinc'}else if(d){t='dark-espresso'}var m=t.indexOf('dark')===0?'dark':'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-color-mode',m);document.documentElement.setAttribute('data-mantine-color-scheme',m);document.documentElement.style.colorScheme=m;var mc=document.querySelector('meta[name="color-scheme"]');if(mc){mc.setAttribute('content',m);}if(t==='light-paper'){document.documentElement.setAttribute('data-eye-care','true')}else{document.documentElement.removeAttribute('data-eye-care')}var s=localStorage.getItem('sthstart_ui_skin');if(s==='genshin'||s==='sticker'){document.documentElement.setAttribute('data-ui-skin',s)}else{document.documentElement.removeAttribute('data-ui-skin')}var f=localStorage.getItem('sthstart_skin_flourish');if(f==='off'){document.documentElement.setAttribute('data-skin-flourish','off')}else{document.documentElement.removeAttribute('data-skin-flourish')}}catch(e){document.documentElement.setAttribute('data-theme','light-paper');document.documentElement.setAttribute('data-color-mode','light');document.documentElement.setAttribute('data-mantine-color-scheme','light');document.documentElement.style.colorScheme='light';var mc=document.querySelector('meta[name="color-scheme"]');if(mc){mc.setAttribute('content','light');}document.documentElement.setAttribute('data-eye-care','true')}`;
+
+/** 自定义强调色的预设色票（用户可选的数据值，不是界面样式 token）。 */
+export const ACCENT_PRESETS = [
+  ['雾蓝', '#5176B0'],
+  ['暮紫', '#8564B8'],
+  ['玫瑰', '#B55D7B'],
+  ['暖铜', '#A86742'],
+  ['岩灰', '#6E747D'],
+] as const;

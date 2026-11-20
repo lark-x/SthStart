@@ -23,27 +23,27 @@ export const FoldGapNode = memo(function FoldGapNode({ data }: NodeProps) {
       style={{
         width: 100,
         padding: '8px 6px',
-        borderRadius: 'var(--radius-control, 8px)',
-        backgroundColor: 'var(--surface-sunken, #ebe7df)',
-        border: '1px dashed var(--border-strong, #a9a39a)',
-        color: 'var(--fg-muted, #5a564f)',
-        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.03)',
+        borderRadius: 'var(--radius-control)',
+        backgroundColor: 'var(--surface-sunken)',
+        border: '1px dashed var(--border-strong)',
+        color: 'var(--fg-muted)',
+        boxShadow: 'inset 0 1px 2px color-mix(in srgb, var(--fg-default) 3%, transparent)',
       }}
     >
-      <div className="flex items-center gap-1 text-[11px] font-semibold text-fg-default mb-0.5">
+      <div className="flex items-center gap-1 text-xs font-semibold text-fg-default mb-0.5">
         <FoldHorizontal className="w-3.5 h-3.5 text-accent" />
         <span>空闲折叠</span>
       </div>
 
-      <div className="flex items-center gap-0.5 text-[10px] font-mono text-fg-muted mb-0.5">
+      <div className="flex items-center gap-0.5 text-xs font-mono text-fg-muted mb-0.5">
         <Clock className="w-2.5 h-2.5 text-fg-subtle" />
         <span>+{gap.gapMinutes}m</span>
       </div>
 
       <div
-        className="text-[9px] text-center text-fg-subtle leading-tight px-1 py-0.5 rounded"
+        className="text-xs text-center text-fg-subtle leading-tight px-1 py-0.5 rounded"
         style={{
-          backgroundColor: 'color-mix(in srgb, var(--bg-app, #f3f0e9) 80%, var(--surface, #fcfbf8))',
+          backgroundColor: 'color-mix(in srgb, var(--bg-app) 80%, var(--surface))',
         }}
         title={`从第 ${gap.startTick} 分钟至第 ${gap.endTick} 分钟，无角色活动`}
       >

@@ -39,7 +39,7 @@ test('notebook paging is local to the footer, validates input and restores URL s
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/apps/resources?q=' + encodeURIComponent(prefix));
   const nav = page.getByRole('navigation', { name: '分页', exact: true });
-  const jump = nav.getByRole('button', { name: /^跳到指定页/ });
+  const jump = nav.getByRole('button', { name: /跳到指定页/ });
   const panel = page.getByRole('dialog', { name: '跳到指定页', exact: true });
   await expect(nav).toContainText('当前 1–20 条');
   await jump.press('Enter');
@@ -80,12 +80,12 @@ test('notebook paging is local to the footer, validates input and restores URL s
 
 test('nested paging popover accepts keyboard input and Escape only closes the top layer', async ({ page }) => {
   await page.goto('/apps/projects/' + projectId);
-  await page.getByRole('tab', { name: /^参考资料/ }).click();
+  await page.getByRole('tab', { name: /^参考/ }).click();
   await page.getByRole('button', { name: '添加参考资料', exact: true }).click();
   const picker = page.getByRole('dialog', { name: '添加参考资料', exact: true });
   await picker.getByRole('textbox', { name: '搜索资料', exact: true }).fill(prefix);
   await expect(picker.getByRole('navigation', { name: '分页' })).toContainText('共 45 条');
-  const trigger = picker.getByRole('button', { name: /^跳到指定页/ });
+  const trigger = picker.getByRole('button', { name: /跳到指定页/ });
   await trigger.click();
   const jump = picker.getByRole('dialog', { name: '跳到指定页', exact: true });
   const input = jump.getByRole('textbox', { name: '跳转页码' });
@@ -101,7 +101,12 @@ test('nested paging popover accepts keyboard input and Escape only closes the to
 test('character facet popover searches, filters and dismisses without losing the applied choice', async ({ page }, info) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/apps/characters');
-  const tagButton = page.getByRole('button', { name: /^标签( \(\d+\))?$/ });
+  await expect(page.locator('.shell-root')).toHaveAttribute('data-client-ready', 'true');
+  // 标签筛选收进「筛选」面板（页头控件预算）；面板内的多选弹层行为不变。
+  await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+  const filterPanel = page.getByRole('dialog', { name: '角色筛选与排序', exact: true });
+  await expect(filterPanel).toBeVisible();
+  const tagButton = filterPanel.getByRole('button', { name: /^标签( \(\d+\))?$/ });
   await tagButton.click();
   const popup = page.getByRole('dialog', { name: '按标签筛选' });
   const search = popup.getByRole('textbox', { name: '搜索标签' });
@@ -121,7 +126,7 @@ test('directory paging keeps numbered navigation on desktop and fits a touch vie
   await page.goto('/apps/characters');
   const nav = page.getByRole('navigation', { name: '分页', exact: true });
   await expect(nav).toBeVisible();
-  await page.getByRole('textbox', { name: '搜索角色', exact: true }).fill(prefix);
+  await page.getByRole('searchbox', { name: '搜索角色', exact: true }).fill(prefix);
   await expect(nav).toContainText('共 25 条');
   await nav.getByRole('button', { name: '第 2 页', exact: true }).click();
   await expect(nav.getByRole('button', { name: '第 2 页', exact: true })).toHaveAttribute('aria-current', 'page');
@@ -131,7 +136,7 @@ test('directory paging keeps numbered navigation on desktop and fits a touch vie
   const sizes = page.getByRole('dialog', { name: '每页条数', exact: true });
   await expect(sizes).toBeInViewport({ ratio: 1 });
   await sizes.getByRole('button', { name: '100 条' }).click();
-  await expect(nav.getByRole('button', { name: /当前 100 条/ })).toBeVisible();
+  await expect(nav.getByRole('button', { name: /^每页 100 条/ })).toBeVisible();
   await expect(nav.getByRole('button', { name: '下一页' })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
 });

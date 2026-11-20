@@ -25,7 +25,7 @@ import { ComicImageHistory } from './comic-image-history';
 import { ComicReader } from './comic-reader';
 import { useComicAssets } from './use-comic-assets';
 import { exportComicOfflineReader, fetchComicRevisions } from './api';
-import { ArrowLeft, BookOpen, Sparkles, SlidersHorizontal, Save, RefreshCw } from 'lucide-react';
+import { ArrowLeft, BookOpen, Sparkles, SlidersHorizontal, Save, RefreshCw, ExternalLink } from 'lucide-react';
 
 interface ComicWorkstationProps {
   activity: Activity;
@@ -472,7 +472,7 @@ export function ComicWorkstation({ activity, content, actors, onBack, onEdit, re
         <section className="max-h-48 overflow-y-auto p-3" aria-label="分镜生成任务">
         {latestStoryboardJob.errorMessage && <p role="alert" className="text-sm text-danger">{latestStoryboardJob.errorMessage}</p>}
         <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-ink">分镜草案任务</h3><p className="text-xs text-muted">{busy(latestStoryboardJob) ? '生成中…' : latestStoryboardJob.status === 'succeeded' ? `已生成 ${resultPanels.length} 格；尚未应用到漫画` : `状态：${latestStoryboardJob.status}`}</p></div>
-          {latestStoryboardJob.callId && <a className="text-xs font-medium text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(latestStoryboardJob.callId)}`} target="_blank" rel="noreferrer">查看调用日志 ↗</a>}
+          {latestStoryboardJob.callId && <a className="text-xs font-medium text-accent hover:underline" href={`/settings/ai-logs?callId=${encodeURIComponent(latestStoryboardJob.callId)}`} target="_blank" rel="noreferrer">查看调用日志<ExternalLink className="ml-0.5 inline size-3 align-[-1px]" aria-hidden="true" /></a>}
         </div>
         {canApply && <><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{resultPanels.map((item, index) => <article key={item.id} className="min-w-0 rounded-control border border-border-default bg-surface p-2 text-xs"><p className="font-semibold text-ink">{index + 1}. {item.shotSize}</p><p className="mt-1 line-clamp-3 text-muted">{item.visualDescription}</p><p className="mt-1 line-clamp-2 text-muted">{item.bubbles.map((bubble) => bubble.text).join(' / ')}</p></article>)}</div>
           <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="primary" loading={applyStoryboard.isPending} onClick={() => void applyStoryboardResult('append')} disabled={draftState.status !== 'saved'}>追加到漫画</Button><Button size="sm" variant="outline" loading={applyStoryboard.isPending} onClick={() => void applyStoryboardResult('replace_scene')} disabled={draftState.status !== 'saved'}>替换该场次页面…</Button></div>

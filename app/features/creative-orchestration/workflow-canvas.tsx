@@ -60,16 +60,16 @@ const NODE_META: Record<
   CreativeNode['kind'],
   { tone: string; Icon: React.ComponentType<{ size?: number; className?: string }> }
 > = {
-  context: { tone: 'var(--tone-green, #3f7a5a)', Icon: BookOpen },
-  agent: { tone: 'var(--accent, #665995)', Icon: Sparkles },
-  tool: { tone: 'var(--tone-blue, #3b6ea5)', Icon: Wrench },
-  parallel: { tone: 'var(--muted, #767067)', Icon: Split },
-  join: { tone: 'var(--muted, #767067)', Icon: GitMerge },
-  condition: { tone: 'var(--tone-orange, #b86e2b)', Icon: GitBranch },
-  revision: { tone: 'var(--tone-orange, #b86e2b)', Icon: RotateCcw },
-  approval: { tone: 'var(--accent, #665995)', Icon: ShieldCheck },
-  adopt: { tone: 'var(--tone-green, #3f7a5a)', Icon: CheckCircle2 },
-  subworkflow: { tone: 'var(--tone-blue, #3b6ea5)', Icon: Workflow },
+  context: { tone: 'var(--tone-green)', Icon: BookOpen },
+  agent: { tone: 'var(--accent)', Icon: Sparkles },
+  tool: { tone: 'var(--tone-blue)', Icon: Wrench },
+  parallel: { tone: 'var(--muted)', Icon: Split },
+  join: { tone: 'var(--muted)', Icon: GitMerge },
+  condition: { tone: 'var(--tone-orange)', Icon: GitBranch },
+  revision: { tone: 'var(--tone-orange)', Icon: RotateCcw },
+  approval: { tone: 'var(--accent)', Icon: ShieldCheck },
+  adopt: { tone: 'var(--tone-green)', Icon: CheckCircle2 },
+  subworkflow: { tone: 'var(--tone-blue)', Icon: Workflow },
 };
 
 const EDGE_LABELS: Record<NonNullable<CreativeEdge['when']>, string> = {
@@ -81,11 +81,11 @@ const EDGE_LABELS: Record<NonNullable<CreativeEdge['when']>, string> = {
 };
 
 const EDGE_TONES: Record<NonNullable<CreativeEdge['when']>, string> = {
-  always: 'var(--border-strong, #8f887d)',
-  approved: 'var(--tone-green, #3f7a5a)',
-  rejected: 'var(--tone-orange, #b86e2b)',
-  ordinary: 'var(--muted, #767067)',
-  important: 'var(--accent, #665995)',
+  always: 'var(--border-strong)',
+  approved: 'var(--tone-green)',
+  rejected: 'var(--tone-orange)',
+  ordinary: 'var(--muted)',
+  important: 'var(--accent)',
 };
 
 const EDGE_CYCLE: NonNullable<CreativeEdge['when']>[] = [
@@ -176,9 +176,9 @@ function CreativeFlowEdge({
 
   const when = data?.when ?? 'always';
   const stroke = isFeedback
-    ? 'var(--tone-orange, #b86e2b)'
+    ? 'var(--tone-orange)'
     : selected
-      ? 'var(--accent, #665995)'
+      ? 'var(--accent)'
       : EDGE_TONES[when];
 
   return (

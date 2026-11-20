@@ -47,7 +47,7 @@ export function ImageGenerationPanel({
   return (
     <div className={`${advanced ? 'xl:col-span-5' : 'xl:col-span-6'} min-w-0 border-r border-border-default p-4 overflow-y-auto space-y-4 bg-paper`}>
       <div className="flex items-center justify-between pb-2 border-b border-border-default">
-        <span className="text-sm font-bold text-muted uppercase tracking-wider">
+        <span className="text-sm font-semibold text-muted uppercase tracking-wider">
           绘制设置
         </span>
         <Button
@@ -73,7 +73,7 @@ export function ImageGenerationPanel({
       <div className="bg-surface/60 border border-border-default rounded-panel p-3 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-muted flex items-center gap-1.5">
-            <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
+            <ImageIcon className="w-3.5 h-3.5 text-info-fg" />
             单图参考 / 图生图 (I2I)
           </span>
           <div className="flex items-center gap-2">
@@ -104,7 +104,7 @@ export function ImageGenerationPanel({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 text-sm px-1 text-muted hover:text-red-400"
+                className="h-6 text-sm px-1 text-muted hover:text-danger-fg"
                 onClick={() => generation.selectReferenceAsset(null)}
               >
                 清除
@@ -184,14 +184,14 @@ export function ImageGenerationPanel({
                     step="0.05"
                     value={generation.denoise}
                     onChange={(event) => generation.setDenoise(parseFloat(event.target.value))}
-                    className="flex-1 h-1 bg-surface-muted rounded accent-sky-500"
+                    className="flex-1 h-1 bg-surface-muted rounded accent-info-solid"
                   />
                 </div>
               )}
             </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-500 italic">
+          <p className="text-sm text-fg-subtle italic">
             未选择参考图，将使用纯文本提示词进行文生图 (T2I)
           </p>
         )}
@@ -324,7 +324,7 @@ export function ImageGenerationPanel({
         {advanced && preparedCompilation && (
           <div className="text-sm text-muted font-mono flex items-center justify-between pt-1 border-t border-border-default">
             <span>执行计划哈希:</span>
-            <span className="text-sky-400">{preparedCompilation.executionPlanHash.slice(0, 16)}...</span>
+            <span className="text-info-fg">{preparedCompilation.executionPlanHash.slice(0, 16)}...</span>
           </div>
         )}
 

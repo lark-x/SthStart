@@ -1,11 +1,11 @@
 'use client';
-import { useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, SlidersHorizontal, User, Users, MoreHorizontal, Tags, LayoutGrid, CircleUser, GitFork, CheckSquare, Images } from 'lucide-react';
+import { Star, Plus, Download, Upload, Sparkles, SlidersHorizontal, User, Users, Tags, LayoutGrid, CircleUser, GitFork, CheckSquare, Images } from 'lucide-react';
 import { Menu } from '@mantine/core';
-import { Button, buttonVariants } from '@/app/components/ui/button';
+import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
 import { Checkbox } from '@/app/components/ui/checkbox';
@@ -15,8 +15,7 @@ import { Dialog } from '@/app/components/ui/dialog';
 import { FloatingActionBar } from '@/app/components/ui/floating-action-bar';
 import { useOverlayPortalTarget } from '@/app/components/ui/overlay-policy';
 import { PageTabs } from '@/app/components/ui/page-tabs';
-import { PageHeader } from '@/app/components/shared/page-header';
-import { PageContainer } from '@/app/components/shared/page-layout';
+import { CollectionLayout, CollectionViewToggle, useCollectionView } from '@/app/components/shared/page-archetypes';
 import { CharacterImportDialog } from './character-import-dialog';
 import { CharacterBatchImport } from './character-batch-import';
 import { CharacterFilters } from './character-filters';
@@ -36,24 +35,7 @@ import { CharacterBatchAssetsDialog, CharacterBatchEnrichRpDialog, CharacterBatc
 import { characterKeys } from '../query-keys';
 import { useToast } from '@/app/providers/ui-provider';
 
-const DISPLAY_MODE_STORAGE_KEY = 'sthstart:character-display-mode';
-
-function subscribeDisplayMode(callback: () => void) {
-  window.addEventListener('storage', callback);
-  window.addEventListener('sthstart:character-display-mode', callback);
-  return () => {
-    window.removeEventListener('storage', callback);
-    window.removeEventListener('sthstart:character-display-mode', callback);
-  };
-}
-
-function readDisplayMode(): 'avatar' | 'card' {
-  try {
-    return window.localStorage.getItem(DISPLAY_MODE_STORAGE_KEY) === 'avatar' ? 'avatar' : 'card';
-  } catch {
-    return 'card';
-  }
-}
+const DISPLAY_MODES = ['card', 'avatar'] as const;
 
 export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterBrowseQuery | null } = {}) {
   const browser = useCharacterBrowser({ collapseDerivatives: true }, true, { persist: true, initialFilter });
@@ -63,17 +45,16 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const toast = useToast();
   const [assetsVisited, setAssetsVisited] = useState(false);
   const [viewTab, setViewTab] = useState<'characters' | 'shared-assets' | 'linshe'>('characters');
-  const displayMode = useSyncExternalStore(subscribeDisplayMode, readDisplayMode, () => 'card' as const);
+  const { view: displayMode, setView: updateDisplayMode } = useCollectionView({
+    allowed: DISPLAY_MODES,
+    fallback: 'card',
+    itemCount: browser.data?.items.length,
+    sparseView: 'card',
+  });
   const [upstreamOpen, setUpstreamOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [forkTarget, setForkTarget] = useState<{ id: string; displayName: string; work: string } | null>(null);
 
-  const updateDisplayMode = (mode: 'avatar' | 'card') => {
-    try {
-      window.localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, mode);
-      window.dispatchEvent(new Event('sthstart:character-display-mode'));
-    } catch {}
-  };
   const [batchOpen, setBatchOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [sharedAssetUploadOpen, setSharedAssetUploadOpen] = useState(false);
@@ -132,142 +113,53 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   };
   return (
     <div className="text-ink">
-      <PageContainer className="space-y-4">
-        <PageHeader compact
-          title="角色库"
-          navigation={
-            <PageTabs
-              variant="local" ariaLabel="角色资料视图" value={viewTab}
-              tabs={[
-                { id: 'characters', label: <><User className="size-3.5" aria-hidden="true" />角色卡</>, panelId: 'character-cards' },
-                { id: 'shared-assets', label: <><Users className="size-3.5" aria-hidden="true" />公共资产</>, panelId: 'character-shared-assets' },
-                { id: 'linshe', label: <><Sparkles className="size-3.5" aria-hidden="true" />邻舍角色</>, panelId: 'character-linshe' },
-              ]}
-              onChange={value => {
-                if (value === 'shared-assets') setAssetsVisited(true);
-                if (value === 'characters' || value === 'shared-assets' || value === 'linshe') setViewTab(value);
-              }}
-            />
-          }
-          actions={<div className="flex flex-wrap items-center gap-2">
-              {viewTab === 'characters' && (
-                <>
-                  <Link
-                    className={buttonVariants({ size: 'sm', variant: 'primary' })}
-                    href="/apps/characters/new"
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    <span>新建角色</span>
-                  </Link>
-
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setUpstreamOpen(true)}
-                    className="gap-1.5 text-sm font-medium"
-                  >
-                    <Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />
-                    <span>RP 卡生成</span>
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setImportOpen(true)}
-                    className="gap-1.5 text-sm font-medium"
-                  >
-                    <Search className="h-4 w-4 text-muted" aria-hidden="true" />
-                    <span>导入</span>
-                  </Button>
-                </>
-              )}
-
-              {viewTab === 'shared-assets' && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="accent"
-                  onClick={() => setSharedAssetUploadOpen(true)}
-                  className="gap-1.5 text-sm font-semibold shadow-xs"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  <span>上传公共资产</span>
-                </Button>
-              )}
-
-              <Menu
-                position="bottom-end"
-                withinPortal
-                portalProps={menuPortalTarget ? { target: menuPortalTarget } : undefined}
-                closeOnItemClick
-                returnFocus
-                transitionProps={{ duration: 140, transition: 'pop-top-right' }}
-                shadow="md"
-                radius="md"
-              >
-                <Menu.Target>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label="更多角色操作"
-                    className="h-9 min-h-0 px-2.5 text-muted hover:text-ink"
-                  >
-                    <MoreHorizontal className="size-4" aria-hidden="true" />
-                  </Button>
-                </Menu.Target>
-                <Menu.Dropdown aria-label="更多角色操作" className="ui-row-menu w-52">
-                  <Menu.Item
-                    leftSection={<Images className="size-3.5 text-muted" aria-hidden="true" />}
-                    onClick={() => {
-                      setError('');
-                      setBatchAvatarScope('missing');
-                      setBatchAvatarOpen(true);
-                    }}
-                  >
-                    批量获取形象与皮肤
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<Sparkles className="size-3.5 text-muted" aria-hidden="true" />}
-                    onClick={() => {
-                      setError('');
-                      setBatchEnrichRpScope('incomplete');
-                      setBatchEnrichRpOpen(true);
-                    }}
-                  >
-                    批量补全角色卡
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<Users className="size-3.5 text-muted" aria-hidden="true" />}
-                    onClick={() => {
-                      setError('');
-                      setBatchImportLocalOpen(true);
-                    }}
-                  >
-                    导入本地精选人设库
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<Upload className="size-3.5 text-muted" aria-hidden="true" />}
-                    onClick={() => {
-                      setError('');
-                      setBatchOpen(true);
-                    }}
-                  >
-                    批量导入角色
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<Tags className="size-3.5 text-muted" aria-hidden="true" />}
-                    onClick={() => {
-                      setError('');
-                      newWork();
-                      setWorksOpen(true);
-                    }}
-                  >
-                    作品与别名
-                  </Menu.Item>
-                </Menu.Dropdown>
-              </Menu>
-          </div>}
-        />
+      <CollectionLayout
+        title="角色库"
+        itemCount={viewTab === 'characters' ? browser.data?.items.length : undefined}
+        navigation={
+          <PageTabs
+            variant="local" ariaLabel="角色资料视图" value={viewTab}
+            tabs={[
+              { id: 'characters', label: <><User className="size-3.5" aria-hidden="true" />角色卡</>, panelId: 'character-cards' },
+              { id: 'shared-assets', label: <><Users className="size-3.5" aria-hidden="true" />公共资产</>, panelId: 'character-shared-assets' },
+              { id: 'linshe', label: <><Sparkles className="size-3.5" aria-hidden="true" />邻舍角色</>, panelId: 'character-linshe' },
+            ]}
+            onChange={value => {
+              if (value === 'shared-assets') setAssetsVisited(true);
+              if (value === 'characters' || value === 'shared-assets' || value === 'linshe') setViewTab(value);
+            }}
+          />
+        }
+        primaryAction={viewTab === 'shared-assets'
+          ? { id: 'upload-shared-asset', label: '上传公共资产', icon: <Plus className="h-4 w-4" aria-hidden="true" />, onSelect: () => setSharedAssetUploadOpen(true) }
+          : viewTab === 'characters'
+            ? { id: 'new-character', label: '新建角色', icon: <Plus className="h-4 w-4" aria-hidden="true" />, href: '/apps/characters/new' }
+            : undefined}
+        secondaryActions={viewTab === 'characters'
+          ? [{ id: 'import-character', label: '导入', icon: <Download className="h-4 w-4" aria-hidden="true" />, onSelect: () => setImportOpen(true) }]
+          : []}
+        overflowLabel="更多角色操作"
+        overflowActions={[
+          ...(viewTab === 'characters' ? [
+            { id: 'rp-card', label: 'RP 卡生成', icon: <Sparkles className="size-3.5 text-muted" aria-hidden="true" />, onSelect: () => setUpstreamOpen(true) },
+            {
+              id: 'selection-mode',
+              label: selectionMode ? '退出批量管理' : '批量管理',
+              icon: <CheckSquare className="size-3.5 text-muted" aria-hidden="true" />,
+              onSelect: () => {
+                const nextMode = !selectionMode;
+                setSelectionMode(nextMode);
+                if (!nextMode) setSelected({});
+              },
+            },
+          ] : []),
+          { id: 'batch-avatar', label: '批量获取形象与皮肤', icon: <Images className="size-3.5 text-muted" aria-hidden="true" />, onSelect: () => { setError(''); setBatchAvatarScope('missing'); setBatchAvatarOpen(true); } },
+          { id: 'batch-enrich', label: '批量补全角色卡', icon: <Sparkles className="size-3.5 text-muted" aria-hidden="true" />, onSelect: () => { setError(''); setBatchEnrichRpScope('incomplete'); setBatchEnrichRpOpen(true); } },
+          { id: 'import-local', label: '导入本地精选人设库', icon: <Users className="size-3.5 text-muted" aria-hidden="true" />, onSelect: () => { setError(''); setBatchImportLocalOpen(true); } },
+          { id: 'batch-import', label: '批量导入角色', icon: <Upload className="size-3.5 text-muted" aria-hidden="true" />, onSelect: () => { setError(''); setBatchOpen(true); } },
+          { id: 'works', label: '作品与别名', icon: <Tags className="size-3.5 text-muted" aria-hidden="true" />, onSelect: () => { setError(''); newWork(); setWorksOpen(true); } },
+        ]}
+      >
         <section aria-label="角色资料内容" className="space-y-4">
 
           <div id="character-shared-assets" role="tabpanel" aria-label="多角色公共资产库" hidden={viewTab !== 'shared-assets'}>
@@ -296,51 +188,17 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             onChange={browser.change}
             onReset={browser.reset}
             facets={browser.facets}
+            summary={browser.isFetching ? <span role="status">筛选中…</span> : undefined}
             leftSlot={
-              <div role="group" aria-label="展示模式" className="inline-flex h-9 shrink-0 items-center rounded-control border border-hairline bg-surface-sunken p-0.5 text-xs">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={displayMode === 'avatar' ? 'secondary' : 'ghost'}
-                  aria-pressed={displayMode === 'avatar'}
-                  onClick={() => updateDisplayMode('avatar')}
-                  className="h-7.5 min-h-0 gap-1 px-2 text-xs"
-                >
-                  <CircleUser className="size-3.5" aria-hidden="true" />
-                  <span>头像</span>
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={displayMode === 'card' ? 'secondary' : 'ghost'}
-                  aria-pressed={displayMode === 'card'}
-                  onClick={() => updateDisplayMode('card')}
-                  className="h-7.5 min-h-0 gap-1 px-2 text-xs"
-                >
-                  <LayoutGrid className="size-3.5" aria-hidden="true" />
-                  <span>卡片</span>
-                </Button>
-              </div>
-            }
-            actions={
-              <div className="flex items-center gap-2">
-                <span className="whitespace-nowrap text-xs text-muted tabular-nums">
-                  共 {browser.data?.total ?? '—'} 位{browser.isFetching ? ' · 筛选中…' : ''}
-                </span>
-                <Button
-                  size="sm"
-                  variant={selectionMode ? 'secondary' : 'outline'}
-                  onClick={() => {
-                    const nextMode = !selectionMode;
-                    setSelectionMode(nextMode);
-                    if (!nextMode) setSelected({});
-                  }}
-                  className="h-9 min-h-0 px-2.5 text-sm font-medium"
-                >
-                  <CheckSquare className="size-3.5 text-muted" aria-hidden="true" />
-                  <span>{selectionMode ? '退出管理' : '批量管理'}</span>
-                </Button>
-              </div>
+              <CollectionViewToggle
+                label="展示模式"
+                value={displayMode}
+                onChange={updateDisplayMode}
+                options={[
+                  { value: 'card', label: '卡片', icon: <LayoutGrid className="size-3.5" aria-hidden="true" /> },
+                  { value: 'avatar', label: '头像', icon: <CircleUser className="size-3.5" aria-hidden="true" /> },
+                ]}
+              />
             }
           />
 
@@ -355,7 +213,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     key={id}
                     variant="outline"
                     size="sm"
-                    className="!h-[22px] !min-h-[22px] gap-1 rounded-control !border-border-default !bg-surface !px-2 py-0 text-xs font-normal !text-ink hover:!border-accent/50"
+                    className="!h-6 !min-h-6 gap-1 rounded-control !border-border-default !bg-surface !px-2 py-0 text-xs font-normal !text-ink hover:!border-accent/50"
                     onClick={() =>
                       setSelected((current) => {
                         const next = { ...current };
@@ -447,7 +305,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                 <div key={n} className="flex items-center gap-3.5 rounded-panel border border-border-subtle bg-surface p-3.5">
-                  <Skeleton className="h-[76px] w-[76px] rounded-xl flex-none" />
+                  <Skeleton className="h-14 w-14 rounded-xl flex-none" />
                   <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/2" />
                     <Skeleton className="h-3.5 w-5/6" />
@@ -517,6 +375,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                         <CharacterAvatar
                           src={character.avatarUrl}
                           name={character.displayName}
+                          seed={character.id}
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                           fallbackClassName="text-xl"
                         />
@@ -531,7 +390,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                           <button
                             type="button"
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--selection-fg)] hover:opacity-90 cursor-pointer"
+                            className="inline-flex items-center gap-1 rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2 py-0.5 text-sm font-medium text-[var(--selection-fg)] hover:opacity-90 cursor-pointer"
                           >
                             <GitFork className="h-2.5 w-2.5" aria-hidden="true" />
                             <span>同人 ×{character.derivativeCount}</span>
@@ -567,7 +426,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               ))}
             </ul>
           ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5">
+            <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3.5" data-collection-items>
               {browser.data?.items.map((character) => {
                 const draftPersonaSnippet =
                   'personaText' in character.draft && character.draft.personaText
@@ -616,6 +475,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                         <CharacterAvatar
                           src={character.avatarUrl}
                           name={character.displayName}
+                          seed={character.id}
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                           fallbackClassName="text-xl"
                         />
@@ -627,11 +487,11 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                           className="min-w-0 flex-1 space-y-1 block"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="truncate text-[15px] font-[600] tracking-[-0.01em] text-ink transition-colors group-hover:text-accent">
+                            <span className="truncate text-[length:var(--text-card-title)] font-semibold tracking-tight text-ink transition-colors group-hover:text-accent">
                               {character.displayName}
                             </span>
                             {character.draft.originType === 'derivative' && (
-                              <span className="inline-flex shrink-0 items-center rounded border border-[var(--selection-border)] bg-[var(--selection-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--selection-fg)]">
+                              <span className="inline-flex shrink-0 items-center rounded border border-[var(--selection-border)] bg-[var(--selection-bg)] px-1.5 py-0.5 text-xs font-medium text-[var(--selection-fg)]">
                                 同人
                               </span>
                             )}
@@ -653,7 +513,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                                   e.preventDefault();
                                   e.stopPropagation();
                                 }}
-                                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--selection-fg)] hover:opacity-90 cursor-pointer"
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2 py-0.5 text-sm font-medium text-[var(--selection-fg)] hover:opacity-90 cursor-pointer"
                               >
                                 <GitFork className="h-2.5 w-2.5" aria-hidden="true" />
                                 <span>同人 ×{character.derivativeCount}</span>
@@ -950,7 +810,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           />
         )}
         </section>
-      </PageContainer>
+      </CollectionLayout>
     </div>
   );
 }

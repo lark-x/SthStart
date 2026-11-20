@@ -202,7 +202,8 @@ test('version 54 database with projects, chapter text, character snapshots, and 
 
     // Verify exact content of project
     const preservedProject = reopened.prepare('SELECT * FROM story_projects WHERE id = ?').get(testProject.id) as Record<string, unknown>;
-    assert.deepEqual({ ...preservedProject }, testProject);
+    // 迁移 68 新增的可空封面列从 null 开始，其余字段原样保留。
+    assert.deepEqual({ ...preservedProject }, { ...testProject, cover_artifact_id: null });
 
     // Verify exact content of chapter (including full body text)
     const preservedChapter = reopened.prepare('SELECT * FROM story_documents WHERE id = ?').get(testChapter.id) as Record<string, unknown>;

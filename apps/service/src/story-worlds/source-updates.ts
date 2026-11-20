@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { STORY_WORLD_METADATA_KEYS } from '@sthstart/contracts';
 import type {
   StoryWorld, WorldActor, WorldDefinition, WorldLocation, WorldModelBindings, WorldSource,
 } from '@sthstart/contracts';
@@ -23,7 +24,7 @@ const SOURCE_NATURE_LABELS: Record<WorldSource['nature'], string> = {
 };
 
 function worldDefinitionOf(world: StoryWorld): WorldDefinition {
-  const metadata = new Set(['id', 'revision', 'createdAt', 'updatedAt']);
+  const metadata = new Set(STORY_WORLD_METADATA_KEYS);
   return structuredClone(
     Object.fromEntries(Object.entries(world).filter(([key]) => !metadata.has(key))),
   ) as WorldDefinition;

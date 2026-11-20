@@ -1,5 +1,11 @@
 import React, { memo, useMemo } from 'react';
 import type { TimeGap } from '../types';
+import { ACTOR_LANE_HEADER_WIDTH } from './actor-lane-header';
+
+/** 刻度标签与角色轨道列之间的最小间隙。 */
+const LABEL_LANE_GAP = 4;
+/** 10px 等宽字每字约 6px，加左右内边距 12px；按半宽估算标签左缘，避免被角色列盖住。 */
+const estimateLabelHalfWidth = (label: string) => label.length * 3 + 6;
 
 interface TimeRulerProps {
   viewport: { x: number; y: number; zoom: number };
@@ -53,18 +59,20 @@ export const TimeRuler = memo(function TimeRuler({
       const worldX = tickToX(t);
       const screenX = worldX * viewport.zoom + viewport.x;
 
-      // 仅在可视区域右侧（避开左侧 146px 角色栏），且与上一个刻度保持安全间距
-      if (screenX >= 150 && screenX <= containerWidth + 60) {
+      const hours = Math.floor(t / 60);
+      const mins = t % 60;
+      const timeStr = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+      const label = `+${t}m (${timeStr})`;
+      // 标签居中于刻度：整段标签都要落在角色轨道列右侧，且与上一个刻度保持安全间距
+      const labelLeft = screenX - estimateLabelHalfWidth(label);
+      if (labelLeft >= ACTOR_LANE_HEADER_WIDTH + LABEL_LANE_GAP && screenX <= containerWidth + 60) {
         if (screenX - lastScreenX >= 95) {
           lastScreenX = screenX;
-          const hours = Math.floor(t / 60);
-          const mins = t % 60;
-          const timeStr = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
           list.push({
             tick: t,
             x: screenX,
             isMajor: t % 60 === 0,
-            label: `+${t}m (${timeStr})`,
+            label,
           });
         }
       }
@@ -78,9 +86,9 @@ export const TimeRuler = memo(function TimeRuler({
       aria-label="相对时间标尺"
       className="absolute top-0 left-0 right-0 h-8 select-none z-10 pointer-events-none overflow-hidden"
       style={{
-        backgroundColor: 'color-mix(in srgb, var(--surface, #fcfbf8) 94%, transparent)',
+        backgroundColor: 'color-mix(in srgb, var(--surface) 94%, transparent)',
         backdropFilter: 'blur(8px)',
-        borderBottom: '1px solid var(--hairline, rgba(31, 30, 28, 0.08))',
+        borderBottom: '1px solid var(--hairline)',
       }}
     >
       {/* 刻度线与时间标签 */}
@@ -94,9 +102,9 @@ export const TimeRuler = memo(function TimeRuler({
             title={`点击跳转至相对第 ${m.tick} 分钟`}
           >
             <div
-              className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded transition-colors whitespace-nowrap group-hover:bg-accent-soft group-hover:text-accent"
+              className="text-xs font-mono font-medium px-1.5 py-0.5 rounded transition-colors whitespace-nowrap group-hover:bg-accent-soft group-hover:text-accent"
               style={{
-                color: m.isMajor ? 'var(--fg-default, #2b2925)' : 'var(--fg-subtle, #69645b)',
+                color: m.isMajor ? 'var(--fg-default)' : 'var(--fg-subtle)',
                 fontWeight: m.isMajor ? 600 : 400,
               }}
             >
@@ -106,7 +114,7 @@ export const TimeRuler = memo(function TimeRuler({
               className="w-px flex-1 mt-auto transition-colors group-hover:bg-accent"
               style={{
                 height: m.isMajor ? 8 : 4,
-                backgroundColor: m.isMajor ? 'var(--border-strong, #a9a39a)' : 'var(--border-subtle, #e6e1d7)',
+                backgroundColor: m.isMajor ? 'var(--border-strong)' : 'var(--border-subtle)',
               }}
             />
           </div>

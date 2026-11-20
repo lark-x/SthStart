@@ -81,8 +81,14 @@ function isActiveRun(status: WorldRun['status']) {
   return status === 'queued' || status === 'running' || status === 'paused' || status === 'uncertain';
 }
 
+/** 写入 data_json 的世界快照不含封面：封面只存在 cover_artifact_id 列。 */
+function persistedWorld(world: StoryWorld): Omit<StoryWorld, 'coverArtifactId'> {
+  const { coverArtifactId: _coverArtifactId, ...rest } = world;
+  return rest;
+}
+
 function definitionOf(world: StoryWorld): WorldDefinition {
-  const { id: _id, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...definition } = world;
+  const { id: _id, revision: _revision, coverArtifactId: _coverArtifactId, createdAt: _createdAt, updatedAt: _updatedAt, ...definition } = world;
   return clone(definition);
 }
 
@@ -199,12 +205,12 @@ export class StoryWorldStore {
     const now = nowIso();
     const world: StoryWorld = {
       ...clone(definition), title: requiredText(definition.title, '世界名称'),
-      id, revision: 1, createdAt, updatedAt: now,
+      id, revision: 1, coverArtifactId: null, createdAt, updatedAt: now,
     };
     this.atomic(() => {
       this.syncWork(world, id);
       this.exec('INSERT INTO sw_worlds(id,revision,data_json,created_at,updated_at) VALUES (?,?,?,?,?)',
-        id, 1, JSON.stringify(world), createdAt, now);
+        id, 1, JSON.stringify(persistedWorld(world)), createdAt, now);
     });
     return clone(world);
   }
@@ -379,7 +385,7 @@ export class StoryWorldStore {
     this.atomic(() => {
       this.syncWork(world, worldId);
       const result = this.exec('UPDATE sw_worlds SET revision=?,data_json=?,updated_at=? WHERE id=? AND revision=?',
-        world.revision, JSON.stringify(world), now, worldId, input.expectedRevision);
+        world.revision, JSON.stringify(persistedWorld(world)), now, worldId, input.expectedRevision);
       if (result.changes !== 1) this.conflictWorld(worldId);
     });
     return this.requireWorld(worldId);
@@ -1000,6 +1006,8 @@ export class StoryWorldStore {
   private worldFromRow(row: Row): StoryWorld {
     return {
       ...parse<StoryWorld>(row.data_json), revision: asNumber(row, 'revision'),
+      // 封面是实体列，不在 definition 快照里；旧 data_json 不含该字段。
+      coverArtifactId: row.cover_artifact_id === null || row.cover_artifact_id === undefined ? null : String(row.cover_artifact_id),
       createdAt: asString(row, 'created_at'), updatedAt: asString(row, 'updated_at'),
     };
   }

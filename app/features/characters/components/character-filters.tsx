@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useId, useRef, useState } from 'react';
-import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import type { CharacterBrowseQuery, CharacterBrowseResult } from '@sthstart/contracts';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -10,6 +10,7 @@ import { Checkbox } from '@/app/components/ui/checkbox';
 import { AnchoredPopover } from '@/app/components/ui/anchored-popover';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { cn } from '@/app/lib/cn';
+import { CollectionFilterButton, CollectionFilterChips } from '@/app/components/shared/page-archetypes';
 import { activeCharacterFilterChips, type CharacterFilterChip } from '../model/filter-chips';
 import {
   buildCharacterFilterControls,
@@ -114,9 +115,12 @@ export function CharacterFilters({
   onReset,
   actions,
   leftSlot,
+  summary,
 }: {
   actions?: ReactNode;
   leftSlot?: ReactNode;
+  /** 结果统计，显示在筛选胶囊旁。 */
+  summary?: ReactNode;
   filter: CharacterBrowseQuery;
   onChange: (patch: CharacterBrowseQuery) => void;
   facets?: CharacterBrowseResult['facets'];
@@ -146,6 +150,7 @@ export function CharacterFilters({
     </label>
   );
   const chips = activeCharacterFilterChips(filter);
+  const panelChips = chips.filter((chip) => chip.key !== 'q');
   const clearChip = (chip: CharacterFilterChip) => onChange(chip.clear());
   const allWorks = facets?.works || [];
   const parentWorks = allWorks.filter((w) => w.workNature !== 'derivative');
@@ -158,103 +163,47 @@ export function CharacterFilters({
       )
     : [];
 
-  const worksControl = model.multi.find((item) => item.key === 'works');
-  const originTabs = [
-    { label: '全部', value: undefined as CharacterBrowseQuery['originType'] },
-    { label: '原作', value: 'ip' as const },
-    { label: '同人', value: 'derivative' as const },
-    { label: '原创', value: 'original' as const },
-  ] as const;
-
   return (
-    <section
-      aria-label="角色筛选控件"
-      className="space-y-2.5 rounded-panel bg-surface p-3 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)]"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          className="h-9 min-h-0 w-full text-sm sm:w-40 xl:w-52"
-          aria-label="搜索角色"
-          placeholder="搜索姓名、作品或标签…"
-          value={searchInput}
-          onChange={(event) => {
-            const value = event.target.value;
-            setSearchInput(value);
-            if (composingRef.current) return;
-            onChange({ q: value });
-          }}
-          onCompositionStart={() => { composingRef.current = true; }}
-          onCompositionEnd={(event) => {
-            composingRef.current = false;
-            const value = event.currentTarget.value;
-            setSearchInput(value);
-            onChange({ q: value });
-          }}
-        />
-
-        <div
-          role="group"
-          aria-label="角色类别"
-          className="inline-flex h-9 shrink-0 items-center rounded-control border border-hairline bg-surface-sunken p-0.5"
-        >
-          {originTabs.map((item) => {
-            const active = (filter.originType ?? undefined) === item.value;
-            return (
-              <button
-                key={item.label}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onChange({ originType: item.value })}
-                className={cn(
-                  'h-7.5 rounded-[6px] px-2.5 text-xs font-medium transition-colors',
-                  active
-                    ? 'bg-surface-raised text-ink shadow-xs'
-                    : 'text-muted hover:text-ink',
-                )}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {worksControl && (
-          <MultiFilter
-            control={worksControl}
-            onChange={(values) => onChange({ works: values })}
+    <section aria-label="角色筛选控件" className="space-y-2.5">
+      <div className="collection-toolbar" data-collection-toolbar>
+        <div className="collection-search">
+          <Input
+            leftIcon={<Search className="h-4 w-4 text-muted" />}
+            type="search"
+            className="text-base sm:text-sm"
+            aria-label="搜索角色"
+            placeholder="搜索姓名、作品或标签…"
+            value={searchInput}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSearchInput(value);
+              if (composingRef.current) return;
+              onChange({ q: value });
+            }}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const value = event.currentTarget.value;
+              setSearchInput(value);
+              onChange({ q: value });
+            }}
           />
-        )}
-
-        <Select
-          aria-label="快捷排序"
-          value={filter.sort || 'updated'}
-          onChange={(event) => onChange(characterFilterSelectPatch('sort', event.target.value))}
-          className="h-9 min-h-0 w-auto text-sm"
-        >
-          <option value="updated">最近更新</option>
-          <option value="name">按名称</option>
-        </Select>
-
-        <Button
-          size="sm"
-          variant={chips.length ? 'secondary' : 'outline'}
-          aria-label="筛选与排序"
-          aria-describedby={chips.length ? filterCountId : undefined}
-          aria-haspopup="dialog"
-          aria-expanded={panelOpen}
-          onClick={() => setPanelOpen(true)}
-          className="h-9 min-h-0 gap-1.5 px-2.5 text-sm"
-        >
-          <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-          <span>更多筛选</span>
-          {!!chips.length && <span aria-hidden="true" className="tabular-nums">({chips.length})</span>}
-        </Button>
-        <span id={filterCountId} className="sr-only">已启用 {chips.length} 个筛选条件</span>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {leftSlot}
-          {actions}
         </div>
+
+        <CollectionFilterButton
+          activeCount={panelChips.length}
+          expanded={panelOpen}
+          describedBy={panelChips.length ? filterCountId : undefined}
+          onClick={() => setPanelOpen(true)}
+        />
+        <span id={filterCountId} className="sr-only">已启用 {panelChips.length} 个筛选条件</span>
+
+        {(leftSlot || actions) && (
+          <div className="collection-toolbar-end">
+            {leftSlot}
+            {actions}
+          </div>
+        )}
       </div>
 
       {derivativeSubWorks.length > 0 && (
@@ -340,32 +289,12 @@ export function CharacterFilters({
         </div>
       </ResponsiveEditOverlay>
 
-      {!panelOpen && !!chips.length && (
-        <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-border-subtle/50 pt-2">
-          {chips.map((chip) => (
-            <Button
-              type="button"
-              key={chip.key}
-              size="sm"
-              variant="ghost"
-              aria-label={`移除筛选：${chip.label}`}
-              className="h-7 min-h-0 gap-1 border border-border-subtle bg-surface-sunken px-2 text-xs text-ink hover:border-accent/40"
-              onClick={() => clearChip(chip)}
-            >
-              <span aria-hidden="true">{chip.label}</span>
-              <X className="size-3 text-muted" aria-hidden="true" />
-            </Button>
-          ))}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onReset}
-            className="ml-auto h-7 min-h-0 px-2 text-xs text-accent"
-          >
-            清空筛选
-          </Button>
-        </div>
+      {!panelOpen && (
+        <CollectionFilterChips
+          chips={chips.map((chip) => ({ id: chip.key, label: chip.label, onRemove: () => clearChip(chip) }))}
+          onClearAll={onReset}
+          summary={summary}
+        />
       )}
     </section>
   );

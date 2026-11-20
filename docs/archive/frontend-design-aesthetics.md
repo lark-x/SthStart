@@ -1,3 +1,11 @@
+# 已归档：frontend-design-aesthetics
+
+2026-11-20 归档，由 `sthstart-design-language`（视觉方向）与 `sthstart-ui-system`（token、原语、皮肤契约） 取代。归档原因：原文把色值写死在 Skill 中，与 `app/styles/theme.css` 形成两份来源；内容以禁止项和 CSS 细节为主，缺少页面原型、图像、空态与动效的正向指导。详见 [前端视觉计划](../development/reviews/2026-11-20-frontend-visual-plan.md) §3。
+
+以下为归档前原文，不再被 Skill 自动发现。
+
+---
+
 ---
 name: frontend-design-aesthetics
 description: >-

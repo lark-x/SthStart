@@ -25,7 +25,7 @@ export function ImageConfigPanel({
   return (
     <div className={`${advanced ? '' : 'hidden'} xl:col-span-3 min-w-0 border-r border-border-default p-4 overflow-y-auto space-y-4 bg-surface/30`}>
       <div className="flex items-center justify-between pb-2 border-b border-border-default">
-        <span className="text-sm font-bold text-muted uppercase tracking-wider">
+        <span className="text-sm font-semibold text-muted uppercase tracking-wider">
           1. 设定范围与覆盖
         </span>
         <div className="flex items-center gap-1">

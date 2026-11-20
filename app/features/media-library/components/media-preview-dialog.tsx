@@ -58,7 +58,7 @@ export function MediaPreviewDialog({
             )}
           </div>
           {/* 媒体展示区：非 ready (missing/quarantined) 严格禁止发起实体预览请求 */}
-          <div className="flex flex-1 items-center justify-center border-b border-border-subtle bg-surface-sunken p-4 min-h-[240px] md:min-h-[360px]">
+          <div className="flex flex-1 items-center justify-center border-b border-border-subtle bg-surface-sunken p-4 min-h-60 md:min-h-90">
             {isMissing ? (
               <div className="flex flex-col items-center gap-3 text-center text-muted p-6">
                 <AlertTriangle className="h-10 w-10 text-warning-fg" />
@@ -93,7 +93,7 @@ export function MediaPreviewDialog({
                 controls
                 src={item.fileUrl}
                 onError={() => setFailedUrl(item.fileUrl)}
-                className="max-h-[60vh] max-w-full rounded bg-black"
+                className="max-h-[60vh] max-w-full rounded bg-media-backdrop"
               >
                 您的浏览器不支持视频播放。
               </video>
@@ -114,7 +114,7 @@ export function MediaPreviewDialog({
         <div className="w-full shrink-0 space-y-5 border-t border-border-subtle bg-surface p-5 text-xs text-ink md:w-80 md:border-l md:border-t-0">
             {/* 来源信息 */}
             <div className="space-y-1.5">
-              <span className="text-[11px] font-medium text-muted uppercase tracking-wider">来源业务</span>
+              <span className="text-xs font-medium text-muted uppercase tracking-wider">来源业务</span>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-sm text-ink">{item.appName}</span>
                 <a
@@ -128,35 +128,35 @@ export function MediaPreviewDialog({
 
             {/* 文件属性 */}
             <div className="space-y-2 border-t border-border-subtle pt-4">
-              <span className="text-[11px] font-medium text-muted uppercase tracking-wider">技术元数据</span>
+              <span className="text-xs font-medium text-muted uppercase tracking-wider">技术元数据</span>
               <div className="grid grid-cols-2 gap-2 text-muted">
                 <div>
-                  <span className="block text-[10px]">媒体类型</span>
+                  <span className="block text-xs">媒体类型</span>
                   <span className="text-ink font-medium">{item.mediaType || item.contentType || '未知'}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px]">大小</span>
+                  <span className="block text-xs">大小</span>
                   <span className="text-ink font-medium">{formatByteSize(item.byteSize)}</span>
                 </div>
                 {item.width && item.height ? (
                   <div>
-                    <span className="block text-[10px]">分辨率</span>
+                    <span className="block text-xs">分辨率</span>
                     <span className="text-ink font-medium">{item.width} × {item.height}</span>
                   </div>
                 ) : null}
                 {item.durationMs ? (
                   <div>
-                    <span className="block text-[10px]">时长</span>
+                    <span className="block text-xs">时长</span>
                     <span className="text-ink font-medium">{(item.durationMs / 1000).toFixed(1)}s</span>
                   </div>
                 ) : null}
                 <div>
-                  <span className="block text-[10px]">创建时间</span>
+                  <span className="block text-xs">创建时间</span>
                   <span className="text-ink font-medium">{formatDateTime(item.createdAt)}</span>
                 </div>
                 <div>
-                  <span className="block text-[10px]">SHA-256</span>
-                  <span className="text-ink font-mono text-[10px] truncate block" title={item.sha256 || ''}>
+                  <span className="block text-xs">SHA-256</span>
+                  <span className="text-ink font-mono text-xs truncate block" title={item.sha256 || ''}>
                     {item.sha256 ? item.sha256.slice(0, 10) + '…' : '无'}
                   </span>
                 </div>
@@ -165,9 +165,9 @@ export function MediaPreviewDialog({
 
             {/* 引用摘要 */}
             <div className="space-y-2 border-t border-border-subtle pt-4">
-              <span className="text-[11px] font-medium text-muted uppercase tracking-wider flex items-center justify-between">
+              <span className="text-xs font-medium text-muted uppercase tracking-wider flex items-center justify-between">
                 <span>引用摘要</span>
-                <span className="rounded bg-surface-sunken px-1.5 py-0.2 text-[10px] text-muted">
+                <span className="rounded bg-surface-sunken px-1.5 py-0.2 text-xs text-muted">
                   共 {item.referenceSummary.totalCount} 处引用
                 </span>
               </span>
@@ -176,17 +176,17 @@ export function MediaPreviewDialog({
                   {item.references.map((ref, idx) => (
                     <li
                       key={ref.id || idx}
-                      className="rounded bg-surface-subtle p-1.5 text-[11px] text-muted border border-border-subtle/50"
+                      className="rounded bg-surface-subtle p-1.5 text-xs text-muted border border-border-subtle/50"
                     >
                       <div className="font-medium text-ink">{ref.appName || ref.appId}</div>
-                      <div className="truncate text-[10px] text-muted">
+                      <div className="truncate text-xs text-muted">
                         {ref.refType} · {ref.refId}
                       </div>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-[11px] text-muted">暂无跨应用登记引用</p>
+                <p className="text-xs text-muted">暂无跨应用登记引用</p>
               )}
             </div>
 

@@ -261,7 +261,7 @@ export function CharacterBatchAssetsDialog({
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg bg-emerald-500/10 p-3 border border-emerald-500/20">
+              <div className="rounded-lg bg-success-bg p-3 border border-success-border">
                 <div className="text-2xl font-semibold text-success-fg">{result.updated}</div>
                 <div className="text-xs text-muted">新增/更新角色</div>
               </div>
@@ -269,7 +269,7 @@ export function CharacterBatchAssetsDialog({
                 <div className="text-2xl font-semibold text-ink">{result.skipped}</div>
                 <div className="text-xs text-muted">已存在/跳过</div>
               </div>
-              <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/20">
+              <div className="rounded-lg bg-danger-bg p-3 border border-danger-border">
                 <div className="text-2xl font-semibold text-danger-fg">{result.failed}</div>
                 <div className="text-xs text-muted">失败</div>
               </div>
@@ -280,12 +280,12 @@ export function CharacterBatchAssetsDialog({
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-ink">{item.displayName}</span>
                     {item.sourceUsed && (
-                      <span className="text-[11px] text-muted">{item.sourceUsed}</span>
+                      <span className="text-xs text-muted">{item.sourceUsed}</span>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {item.avatarAdded && <Badge variant="online">头像 ✓</Badge>}
-                    {item.portraitAdded && <Badge variant="online">立绘 ✓</Badge>}
+                    {item.avatarAdded && <Badge variant="online">已加头像</Badge>}
+                    {item.portraitAdded && <Badge variant="online">已加立绘</Badge>}
                     {(item.skinsAdded ?? 0) > 0 && <Badge variant="accent">皮肤 +{item.skinsAdded}</Badge>}
                     {item.success && !item.avatarAdded && !item.portraitAdded && !(item.skinsAdded ?? 0) && (
                       <span className="text-muted">{item.error || '已是最新'}</span>
@@ -496,7 +496,7 @@ export function CharacterBatchEnrichRpDialog({
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg bg-emerald-500/10 p-3 border border-emerald-500/20">
+              <div className="rounded-lg bg-success-bg p-3 border border-success-border">
                 <div className="text-2xl font-semibold text-success-fg">{result.updated}</div>
                 <div className="text-xs text-muted">成功补全</div>
               </div>
@@ -504,7 +504,7 @@ export function CharacterBatchEnrichRpDialog({
                 <div className="text-2xl font-semibold text-ink">{result.skipped}</div>
                 <div className="text-xs text-muted">已完整/跳过</div>
               </div>
-              <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/20">
+              <div className="rounded-lg bg-danger-bg p-3 border border-danger-border">
                 <div className="text-2xl font-semibold text-danger-fg">{result.failed}</div>
                 <div className="text-xs text-muted">失败</div>
               </div>
@@ -515,7 +515,7 @@ export function CharacterBatchEnrichRpDialog({
                   <div className="min-w-0">
                     <span className="font-semibold text-ink">{item.displayName}</span>
                     {item.sourceUsed && (
-                      <span className="ml-2 text-[11px] text-muted">{item.sourceUsed}</span>
+                      <span className="ml-2 text-xs text-muted">{item.sourceUsed}</span>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-1">
@@ -702,7 +702,7 @@ export function CharacterBatchImportLocalDialog({
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg bg-emerald-500/10 p-3 border border-emerald-500/20">
+              <div className="rounded-lg bg-success-bg p-3 border border-success-border">
                 <div className="text-2xl font-semibold text-success-fg">{result.importRes.created}</div>
                 <div className="text-xs text-muted">新增入库</div>
               </div>
@@ -710,7 +710,7 @@ export function CharacterBatchImportLocalDialog({
                 <div className="text-2xl font-semibold text-ink">{result.importRes.updated + result.importRes.skipped}</div>
                 <div className="text-xs text-muted">已有/更新（{result.importRes.updated} 更新）</div>
               </div>
-              <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/20">
+              <div className="rounded-lg bg-danger-bg p-3 border border-danger-border">
                 <div className="text-2xl font-semibold text-danger-fg">{result.importRes.failed}</div>
                 <div className="text-xs text-muted">失败</div>
               </div>

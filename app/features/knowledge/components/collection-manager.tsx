@@ -241,8 +241,8 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
                     下次执行：{collection.nextRunAt ? formatTopicTime(collection.nextRunAt) : collection.frequency === 'once' ? '一次性任务不自动执行' : '未安排'}
                     {latest ? ' · 最近一次：' + (RUN_STATE_LABEL[latest.status] ?? latest.status) + '（新增 ' + latest.newCount + '，有变化 ' + latest.changedCount + '，重复 ' + latest.duplicateCount + '）' : ' · 还没有执行记录'}
                   </p>
-                  {collection.pausedReason && <p className="text-xs text-amber-700">{collection.pausedReason}</p>}
-                  {latest?.errorMessage && <p className="text-xs text-amber-700">上次提示：{latest.errorMessage}</p>}
+                  {collection.pausedReason && <p className="text-xs text-warning-fg">{collection.pausedReason}</p>}
+                  {latest?.errorMessage && <p className="text-xs text-warning-fg">上次提示：{latest.errorMessage}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" disabled={busy || !collection.sources.length} onClick={() => void execute(collection)}><Play className="h-3.5 w-3.5" />立即执行</Button>
@@ -399,7 +399,7 @@ function CollectionForm({ draft, onChange, sources, workOptions }: {
       <div className="space-y-2">
         <span className="text-sm font-semibold text-ink">资料源</span>
         <p className="text-xs text-muted">只列出已启用且可用的资料源；密钥在公共服务里配置，这里不重复录入。</p>
-        {!sources.length && <p className="text-xs text-amber-700">还没有启用的 MCP 资料源；现在保存会得到一个暂停任务。</p>}
+        {!sources.length && <p className="text-xs text-warning-fg">还没有启用的 MCP 资料源；现在保存会得到一个暂停任务。</p>}
         <ul className="space-y-2">
           {sources.map((source) => {
             const binding = draft.sourceBindings.find((item) => item.sourceId === source.id);
@@ -433,7 +433,7 @@ function CollectionForm({ draft, onChange, sources, workOptions }: {
                         {tools.map((tool) => <option key={tool.name} value={tool.name}>{tool.name}</option>)}
                       </Select>
                     </label>
-                    {!tools.length && <p className="text-xs text-amber-700 sm:col-span-2">该资料源还没有发现工具，请先在公共服务里测试连接。</p>}
+                    {!tools.length && <p className="text-xs text-warning-fg sm:col-span-2">该资料源还没有发现工具，请先在公共服务里测试连接。</p>}
                   </div>
                 )}
               </li>

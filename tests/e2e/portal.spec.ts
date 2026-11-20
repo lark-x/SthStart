@@ -60,7 +60,7 @@ test('portal home lists the four creative modules and opens them', async ({ page
   const modules = page.getByRole('navigation', { name: '创作模块' });
   await expect(modules.getByRole('link')).toHaveCount(4);
   for (const [name, href] of [
-    ['创作项目', '/apps/projects'],
+    ['作品', '/apps/story-worlds'],
     ['角色库', '/apps/characters'],
     ['资料库', '/apps/resources'],
     ['媒体库', '/apps/media'],
@@ -73,7 +73,7 @@ test('portal home lists the four creative modules and opens them', async ({ page
 
   await modules.getByRole('link', { name: /^(?:\d[\d,]*\s+)?角色库/ }).click();
   await expect(page).toHaveURL(/\/apps\/characters(?:\?.*)?$/);
-  await expect(page.getByRole('heading', { name: '角色资料库', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '角色库', level: 1 })).toBeVisible();
   const noHorizontalOverflow = await page.evaluate(() =>
     document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
   );
@@ -101,7 +101,8 @@ test('creative center exposes a safe unconfigured image workspace', async ({ pag
   await expect(page.getByLabel('参考图片')).toBeVisible();
   await expect(page.getByText('浏览器不会发送 Base64。')).toBeVisible();
 
-  for (const mode of ['文本生图', '图生图', '文生视频', '图生视频', '首尾帧视频']) {
+  // 视频模式已从自由生成移除；两个图片模式都走共享的图片生成面板。
+  for (const mode of ['文本生图', '图生图']) {
     const tab = page.getByRole('tab', { name: mode });
     await tab.click();
     await expect(tab).toHaveAttribute('aria-selected', 'true');
@@ -117,12 +118,7 @@ test('creative center exposes a safe unconfigured image workspace', async ({ pag
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '开始生成' })).toBeVisible();
   }
-
-  await page.getByRole('tab', { name: '图生视频' }).click();
-  await expect(page.getByLabel('首帧图片')).toBeVisible();
-  await page.getByRole('tab', { name: '首尾帧视频' }).click();
-  await expect(page.getByLabel('首帧图片')).toBeVisible();
-  await expect(page.getByLabel('尾帧图片')).toBeVisible();
+  await expect(page.getByRole('tab', { name: /视频/ })).toHaveCount(0);
 });
 
 test('local admin session opens the control center and switches tabs', async ({ page }) => {
@@ -309,7 +305,7 @@ test('character library opens, creates a character and edits fields', async ({ p
   const characterName = `测试角色 ${suffix}`;
 
   await page.goto('/apps/characters');
-  await expect(page.getByRole('heading', { name: '角色资料库' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '角色库', level: 1 })).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/apps/characters/new');
@@ -335,6 +331,8 @@ test('character library opens, creates a character and edits fields', async ({ p
   await expect(page.getByText('角色档案创建成功')).toBeVisible({ timeout: 15_000 });
   await createdDetailResponse;
   await expect(page).toHaveURL(/\/apps\/characters\/[^/]+$/);
+  // 创建后进入阅读态；编辑需要显式切换。
+  await page.getByRole('button', { name: '编辑档案', exact: true }).click();
   await expect(page.getByLabel('角色名称')).toHaveValue(characterName);
 
   await page.getByRole('tab', { name: '外貌' }).click();
@@ -345,6 +343,7 @@ test('character library opens, creates a character and edits fields', async ({ p
 
   // 刷新后仍要从权威草稿里读回这几块内容。
   await page.reload();
+  await page.getByRole('button', { name: '编辑档案', exact: true }).click();
   await expect(page.getByLabel('一句话概述')).toHaveValue('测试角色的简要身份描述。');
   await expect(page.getByPlaceholder('如：原神、星穹铁道、原创世界')).toHaveValue('SthStart Origin');
   await page.getByRole('tab', { name: '外貌' }).click();
@@ -709,7 +708,7 @@ test('character editor tabs stay inside a 390px viewport', async ({ page }) => {
   }
 
   // 视觉预览在小屏收进折叠条，展开后同样不能横向溢出。
-  await page.getByRole('button', { name: /视觉预览与资产形态/ }).click();
+  await page.getByRole('button', { name: /视觉与基础档案/ }).click();
   await expect(page.getByRole('button', { name: /更换图片/ })).toBeVisible();
   const expanded = await measure();
   expect(expanded.document, '展开视觉预览不应横向溢出').toBeLessThanOrEqual(expanded.viewport + 1);

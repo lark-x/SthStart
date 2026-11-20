@@ -116,12 +116,12 @@ ${activeEntryContent || '（暂无正文）'}
           <span className="font-semibold text-ink">DSH 创作终端</span>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
-              isRunning ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' : 'bg-surface text-muted'
+              isRunning ? 'bg-success-bg text-success-fg' : 'bg-surface text-muted'
             }`}
           >
             <span
               className={`size-1.5 rounded-full ${
-                isRunning ? 'bg-emerald-500 animate-pulse' : 'bg-muted/50'
+                isRunning ? 'bg-success-solid animate-pulse' : 'bg-muted/50'
               }`}
             />
             {isRunning ? '已连接 (3081)' : '未连接'}
@@ -135,12 +135,12 @@ ${activeEntryContent || '（暂无正文）'}
               size="sm"
               variant="outline"
               className={`h-7 gap-1 px-2 text-xs transition-colors ${
-                contextCopied ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'text-muted hover:text-accent'
+                contextCopied ? 'border-success-border bg-success-bg text-success-fg' : 'text-muted hover:text-accent'
               }`}
               title="一键提取当前小说章节正文与设定，格式化复制为 DSH 提示词"
               onClick={() => void handleCopyStoryContext()}
             >
-              {contextCopied ? <Check className="size-3 text-emerald-600" /> : <FileText className="size-3" />}
+              {contextCopied ? <Check className="size-3 text-success-fg" /> : <FileText className="size-3" />}
               <span className="hidden xl:inline">{contextCopied ? '已复制上下文' : '注入本章上下文'}</span>
             </Button>
           )}
@@ -191,7 +191,7 @@ ${activeEntryContent || '（暂无正文）'}
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 px-2 text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                className="h-7 px-2 text-danger-fg hover:bg-danger-bg"
                 title="停止 DSH 后台服务"
                 disabled={stopMutation.isPending}
                 onClick={() => stopMutation.mutate()}
@@ -258,7 +258,7 @@ ${activeEntryContent || '（暂无正文）'}
             </p>
 
             {errorMsg && (
-              <div className="mt-3 flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-danger-fg">
                 <AlertCircle className="size-3.5 shrink-0" />
                 <span>{errorMsg}</span>
               </div>

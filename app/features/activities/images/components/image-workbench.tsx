@@ -87,7 +87,7 @@ export function ImageWorkbench({
         if (!open) void config.flushConfig().then((saved) => { if (saved) onClose(); });
       }}
       title="素材绘制"
-      className="max-w-[1100px] w-full flex flex-col p-2 sm:p-4 overflow-hidden bg-surface text-ink"
+      className="max-w-275 w-full flex flex-col p-2 sm:p-4 overflow-hidden bg-surface text-ink"
     >
       {editingSource && (
         <SourceFieldEditor
@@ -143,16 +143,16 @@ export function ImageWorkbench({
         <div className={`${advanced ? 'flex' : 'hidden'} items-center gap-3`}>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted">生图引擎就绪度:</span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium border ${t2iCap?.readiness === 'ready' ? 'bg-emerald-950 text-emerald-300 border-emerald-700/60' : 'bg-amber-950 text-amber-300 border-amber-700/60'}`}>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium border ${t2iCap?.readiness === 'ready' ? 'bg-success-bg text-success-fg border-success-border' : 'bg-warning-bg text-warning-fg border-warning-border'}`}>
               文生图: {t2iCap?.readiness || '未配置'}
             </span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium border ${i2iCap?.readiness === 'ready' ? 'bg-emerald-950 text-emerald-300 border-emerald-700/60' : 'bg-surface-muted text-muted border-border-default'}`}>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium border ${i2iCap?.readiness === 'ready' ? 'bg-success-bg text-success-fg border-success-border' : 'bg-surface-muted text-muted border-border-default'}`}>
               图生图: {i2iCap?.readiness || '未配置'}
             </span>
           </div>
 
           {notice && (
-            <div className={`text-sm px-2.5 py-1 rounded border font-medium ${notice.type === 'success' ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800' : 'bg-red-950/80 text-red-300 border-red-800'}`}>
+            <div className={`text-sm px-2.5 py-1 rounded border font-medium ${notice.type === 'success' ? 'bg-success-bg text-success-fg border-success-border' : 'bg-danger-bg text-danger-fg border-danger-border'}`}>
               {notice.text}
             </div>
           )}

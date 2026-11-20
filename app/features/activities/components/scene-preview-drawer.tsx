@@ -197,7 +197,7 @@ export function ScenePreviewDrawer({
             本场次暂无动作分镜卡片，请先在场次中添加或由 AI 编写动作。
           </div>
         ) : (
-          <div className="relative min-h-[300px] rounded-xl border border-border-default bg-gradient-to-b from-surface via-surface to-surface-muted/30 p-6 flex flex-col justify-between overflow-hidden shadow-xs">
+          <div className="relative min-h-75 rounded-xl border border-border-default bg-gradient-to-b from-surface via-surface to-surface-muted/30 p-6 flex flex-col justify-between overflow-hidden shadow-xs">
             {/* 步骤计数 */}
             <div className="flex items-center justify-between text-xs text-muted mb-4 pb-2 border-b border-border-subtle">
               <span className="font-semibold text-accent">
@@ -212,7 +212,7 @@ export function ScenePreviewDrawer({
             <div className="space-y-4 my-auto">
               {/* 核心舞台画面 / 外部生成的视频或图片 */}
               {currentBeat?.mediaUrl && (
-                <div className="relative w-full rounded-xl overflow-hidden border border-border-default bg-black/90 aspect-video shadow-md flex items-center justify-center">
+                <div className="relative w-full rounded-xl overflow-hidden border border-border-default bg-media-backdrop/90 aspect-video shadow-md flex items-center justify-center">
                   {currentBeat.mediaType === 'video' ? (
                     <video
                       key={currentBeat.mediaUrl}
@@ -233,7 +233,7 @@ export function ScenePreviewDrawer({
                       />
                     </div>
                   )}
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs font-semibold flex items-center gap-1 backdrop-blur-xs pointer-events-none">
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-media-backdrop/60 text-on-media text-xs font-semibold flex items-center gap-1 backdrop-blur-xs pointer-events-none">
                     {currentBeat.mediaType === 'video' ? (
                       <>
                         <Film className="h-3 w-3 text-accent" />
@@ -261,13 +261,13 @@ export function ScenePreviewDrawer({
                       className="object-cover"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-sm font-bold text-muted">
+                    <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-muted">
                       {isNarrator ? '旁' : currentActor?.displayName?.slice(0, 1) || '角'}
                     </div>
                   )}
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-ink">
+                  <h4 className="text-base font-semibold text-ink">
                     {isNarrator ? '旁白 / 场景交代' : currentActor?.displayName || '未命名角色'}
                   </h4>
                   {currentActor?.activityRole && (
@@ -278,7 +278,7 @@ export function ScenePreviewDrawer({
 
               {/* 核心动作与行为 (Action/What) - 醒目大字 */}
               <div className="p-4 rounded-xl bg-surface border border-border-default shadow-xs space-y-1">
-                <div className="text-xs font-bold text-accent uppercase tracking-wider">
+                <div className="text-xs font-semibold text-accent uppercase tracking-wider">
                   主体动作 / 发生事件
                 </div>
                 <p className="text-sm sm:text-base font-semibold text-ink leading-relaxed">
@@ -301,7 +301,7 @@ export function ScenePreviewDrawer({
 
               {/* 剧情结果 / 产生的线索 (Outcome) */}
               {currentBeat?.outcome && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 font-medium">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success-bg border border-success-border text-xs text-success-fg font-medium">
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                   <span>结果/事实：{currentBeat.outcome}</span>
                 </div>

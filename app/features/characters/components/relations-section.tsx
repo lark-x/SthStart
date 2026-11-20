@@ -152,7 +152,7 @@ export function RelationsSection({
                       <span className="text-sm font-semibold text-ink">
                         {other?.displayName || otherId}
                       </span>
-                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-surface-sunken text-fg-subtle border border-border-subtle">
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-surface-sunken text-fg-subtle border border-border-subtle">
                         {isOutward ? `-> ${rel.relationType}` : `<- ${rel.relationType}`}
                       </span>
                     </div>

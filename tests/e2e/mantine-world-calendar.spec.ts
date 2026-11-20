@@ -169,6 +169,8 @@ async function mockAdmin(page: Page, state: FixtureState = {}) {
     }
 
     if (path === 'story-worlds') return json(route, { items: state.worldsEmpty ? [] : [WORLD] });
+    // 作品创建后、尚未配置故事前的待配置世界；本套用例没有待配置项。
+    if (path === 'story-worlds/setups') return json(route, { items: [] });
     if (path === 'story-worlds/' + WORLD.id) return json(route, { world: WORLD, branches: BRANCHES });
     const branchPrefix = 'story-worlds/' + WORLD.id + '/branches/';
     if (path.startsWith(branchPrefix)) {
@@ -250,10 +252,10 @@ test.describe('C1 world, narrative and calendar', () => {
       await page.addInitScript((id) => { localStorage.setItem('sthstart_theme_id', id); }, theme);
       await page.goto('/apps/calendar');
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      await expect(page.getByRole('heading', { name: '角色日历' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '创作日历' })).toBeVisible();
 
       const selected = page.locator('.calendar-day[aria-pressed="true"]');
-      await expect(selected).toHaveAttribute('aria-label', /^2026-11-13，3 项事件$/);
+      await expect(selected).toHaveAttribute('aria-label', /2026-11-13，共 3 项事件$/);
       /*
        * A short desktop viewport used to clip the final week inside the panel.
        * The grid itself must end inside its visible panel, and the last day of
@@ -262,7 +264,7 @@ test.describe('C1 world, narrative and calendar', () => {
       const layout = await page.evaluate(() => {
         const grid = document.querySelector('.calendar-grid');
         const panel = document.querySelector('.calendar-panel');
-        const lastDay = document.querySelector('.calendar-day[aria-label^="2026-11-30"]');
+        const lastDay = document.querySelector('.calendar-day[data-date="2026-11-30"]');
         return {
           gridBottom: grid?.getBoundingClientRect().bottom ?? 0,
           panelBottom: panel?.getBoundingClientRect().bottom ?? 0,
@@ -293,18 +295,18 @@ test.describe('C1 world, narrative and calendar', () => {
 
     await page.setViewportSize({ width: 1440, height: 900 });
     const selected = page.locator('.calendar-day[aria-pressed="true"]');
-    await expect(selected).toHaveAttribute('aria-label', /^2026-11-13，3 项事件$/);
+    await expect(selected).toHaveAttribute('aria-label', /2026-11-13，共 3 项事件$/);
 
-    await page.locator('.calendar-day[aria-label^="2026-11-20"]').click();
-    await expect(page.locator('.calendar-day[aria-pressed="true"]')).toHaveAttribute('aria-label', /^2026-11-20，1 项事件$/);
+    await page.locator('.calendar-day[data-date="2026-11-20"]').click();
+    await expect(page.locator('.calendar-day[aria-pressed="true"]')).toHaveAttribute('aria-label', /2026-11-20，共 1 项事件$/);
     await expect(page.getByText('2026-11-20', { exact: true })).toBeVisible();
     await expect(page.getByText('港口夜航', { exact: true }).first()).toBeVisible();
 
     await page.getByRole('button', { name: '仅生日', exact: true }).click();
-    await expect(page.locator('.calendar-day[aria-label^="2026-11-13"]')).toHaveAttribute('aria-label', /^2026-11-13，2 项事件$/);
+    await expect(page.locator('.calendar-day[data-date="2026-11-13"]')).toHaveAttribute('aria-label', /2026-11-13，共 2 项事件$/);
     await expect(page.getByText('秋日茶会互动', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '全部', exact: true }).click();
-    await expect(page.locator('.calendar-day[aria-label^="2026-11-13"]')).toHaveAttribute('aria-label', /^2026-11-13，3 项事件$/);
+    await expect(page.locator('.calendar-day[data-date="2026-11-13"]')).toHaveAttribute('aria-label', /2026-11-13，共 3 项事件$/);
 
     await page.getByRole('button', { name: '上个月', exact: true }).click();
     await expect(page.getByText('2026 年 10 月').first()).toBeVisible();
@@ -314,7 +316,7 @@ test.describe('C1 world, narrative and calendar', () => {
 
     await page.getByRole('button', { name: '今天', exact: true }).click();
     await expect(page.getByText('2026 年 11 月').first()).toBeVisible();
-    await expect(page.locator('.calendar-day[aria-pressed="true"]')).toHaveAttribute('aria-label', /^2026-11-13，3 项事件$/);
+    await expect(page.locator('.calendar-day[aria-pressed="true"]')).toHaveAttribute('aria-label', /2026-11-13，共 3 项事件$/);
 
     await page.getByRole('button', { name: /^筛选/ }).click();
     const filters = page.getByRole('dialog', { name: '日历筛选' });
@@ -322,14 +324,15 @@ test.describe('C1 world, narrative and calendar', () => {
     await expect(filters.getByRole('combobox', { name: '作品', exact: true })).toBeVisible();
     await filters.getByLabel('仅显示收藏角色相关的事件').check();
     await filters.getByRole('button', { name: '完成', exact: true }).click();
-    await expect(page.locator('.calendar-day[aria-label^="2026-11-13"]')).toHaveAttribute('aria-label', /^2026-11-13，1 项事件$/);
+    await expect(page.locator('.calendar-day[data-date="2026-11-13"]')).toHaveAttribute('aria-label', /2026-11-13，共 1 项事件$/);
   });
 
   test('world filters keep the canvas clear and return focus on narrow viewports', async ({ page }, info) => {
     await mockAdmin(page);
     for (const viewport of [{ width: 390, height: 570 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
-      await page.goto('/apps/story-worlds');
+      // 不带 world 参数时显示作品目录；世界筛选属于作品的沙盒视图。
+      await page.goto('/apps/story-worlds?world=' + WORLD.id + '&branch=' + BRANCHES[0].id + '&view=sandbox');
       const trigger = page.getByRole('button', { name: '筛选', exact: true });
       await expect(trigger).toBeVisible();
       await expect(page.getByRole('main')).toHaveCount(1);
@@ -354,7 +357,7 @@ test.describe('C1 world, narrative and calendar', () => {
   test('empty event range shows one actionable empty state instead of layered views', async ({ page }, info) => {
     await mockAdmin(page, { eventsEmpty: true });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/apps/story-worlds?view=reading');
+    await page.goto('/apps/story-worlds?world=' + WORLD.id + '&branch=' + BRANCHES[0].id + '&view=reading');
     const view = page.getByRole('region', { name: '归航主线', exact: true });
     const rangeAction = view.getByRole('button', { name: '查看全部时间', exact: true });
     const clearAction = view.getByRole('button', { name: '清除人物和故事线筛选', exact: true });
@@ -364,7 +367,7 @@ test.describe('C1 world, narrative and calendar', () => {
     await filter.locator('.sw-actor-filter').first().click();
     await page.keyboard.press('Escape');
     await expect(filter).toBeHidden();
-    for (const tab of ['故事阅读', '图像叙事', '故事流']) {
+    for (const tab of ['事件阅读', '图像叙事', '沙盒轨迹流']) {
       await view.getByRole('tab', { name: new RegExp('^' + tab) }).click();
       await expect(view.getByText('这个时间窗口没有事件', { exact: true })).toHaveCount(1);
       await expect(rangeAction).toBeInViewport();
@@ -383,14 +386,15 @@ test.describe('C1 world, narrative and calendar', () => {
     const state: FixtureState = { worldsEmpty: true };
     await mockAdmin(page, state);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/apps/story-worlds');
+    // 作品目录之外的空态：带 world 参数进入工作台但服务端没有任何世界。
+    await page.goto('/apps/story-worlds?world=' + WORLD.id);
     await expect(page.getByText('还没有故事世界')).toBeVisible();
     await expect(page.getByRole('button', { name: '创建第一个世界' })).toBeVisible();
 
     state.worldsEmpty = false;
     await page.addInitScript(() => { localStorage.setItem('sthstart_theme_id', 'dark-espresso'); });
-    await page.goto('/apps/story-worlds?world=' + WORLD.id + '&branch=' + BRANCHES[0].id);
-    await expect(page.getByRole('heading', { name: '故事世界', exact: true })).toBeVisible();
+    await page.goto('/apps/story-worlds?world=' + WORLD.id + '&branch=' + BRANCHES[0].id + '&view=sandbox');
+    await expect(page.getByRole('heading', { name: WORLD.title, level: 1 })).toBeVisible();
     await expect(page.getByText('已完成', { exact: true }).first()).toBeVisible();
 
     const branches = page.locator('.sw-branch-row');
@@ -411,10 +415,10 @@ test.describe('C1 world, narrative and calendar', () => {
     await expect(eventRow).toBeVisible();
     await eventRow.click();
     // Selecting an event swaps the rail list for its detail panel.
-    await expect(page.getByRole('heading', { name: '码头的清晨', level: 2 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '码头的清晨', level: 2 }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: '客观全景', exact: true })).toBeVisible();
 
-    await page.getByRole('tab', { name: /故事阅读/ }).click();
+    await page.getByRole('tab', { name: /事件阅读/ }).click();
     const reader = page.locator('.sw-reader');
     const allEvents = reader.getByRole('button', { name: /全部事件长卷/ });
     // The left rail actor filter also drives the reader, so 林舟 opens selected.

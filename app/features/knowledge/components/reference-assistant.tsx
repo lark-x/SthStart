@@ -387,7 +387,7 @@ export function GapCollectionDialog({ open, onOpenChange, sessionId, works, char
                 {usableSources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
               </Select>
             )
-            : <p className="text-xs text-amber-700">没有可用资料源；补查功能需要先在公共服务里配置。</p>}
+            : <p className="text-xs text-warning-fg">没有可用资料源；补查功能需要先在公共服务里配置。</p>}
         </label>
 
         {findings && (

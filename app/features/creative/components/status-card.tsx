@@ -57,7 +57,7 @@ export function CreativeStatusCard({ status, onRefresh }: { status?: CreativeSta
             )}
           </>
         ) : (
-          <div className="flex min-h-[180px] items-center justify-center"><Spinner size="md" label="正在读取生成状态" /></div>
+          <div className="flex min-h-45 items-center justify-center"><Spinner size="md" label="正在读取生成状态" /></div>
         )}
       </CardContent>
     </Card>

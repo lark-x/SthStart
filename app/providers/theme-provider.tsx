@@ -5,12 +5,16 @@ import {
   applyThemeId,
   ACCENT_STORAGE_KEY,
   UI_SKIN_STORAGE_KEY,
+  SKIN_FLOURISH_STORAGE_KEY,
   applyCustomAccent,
+  applySkinFlourish,
   applyUiSkin,
   normalizeAccentColor,
   readThemeId,
+  readSkinFlourish,
   readUiSkinId,
   type ColorMode,
+  type SkinFlourish,
   type ThemeId,
   type ThemeTone,
   type UiSkinId,
@@ -33,6 +37,9 @@ export interface ThemeContextType {
   themeTone: ThemeTone;
   uiSkin: UiSkinId;
   setUiSkin: (skinId: UiSkinId) => void;
+  /** L3 主题化装饰开关（默认开启）。 */
+  skinFlourish: SkinFlourish;
+  setSkinFlourish: (value: SkinFlourish) => void;
   accentColor: string | null;
   setAccentColor: (value: string | null) => void;
   setThemeId: (themeId: ThemeId) => void;
@@ -51,6 +58,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   // 初始值必须与 SSR 渲染一致（light-paper / default）：localStorage 在挂载后再同步
   const [themeId, setThemeIdState] = useState<ThemeId>('light-paper');
   const [uiSkin, setUiSkinState] = useState<UiSkinId>('default');
+  const [skinFlourish, setSkinFlourishState] = useState<SkinFlourish>('on');
   const [accentColor, setAccentState] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +83,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       applyUiSkin(document.documentElement, savedSkin);
     };
     readSkin();
+    const readFlourish = () => {
+      let saved: SkinFlourish = 'on';
+      try {
+        saved = readSkinFlourish((key) => localStorage.getItem(key));
+      } catch {
+        return;
+      }
+      setSkinFlourishState(saved);
+      applySkinFlourish(document.documentElement, saved);
+    };
+    readFlourish();
     const readAccent = () => {
       let saved: string | null;
       try {
@@ -89,6 +108,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const syncAccent = (event: StorageEvent) => {
       if (event.key === ACCENT_STORAGE_KEY || event.key === null) readAccent();
       if (event.key === UI_SKIN_STORAGE_KEY || event.key === null) readSkin();
+      if (event.key === SKIN_FLOURISH_STORAGE_KEY || event.key === null) readFlourish();
     };
     window.addEventListener('storage', syncAccent);
     return () => window.removeEventListener('storage', syncAccent);
@@ -105,6 +125,18 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       }
       applyUiSkin(document.documentElement, nextSkin);
     }
+  }, []);
+
+  const setSkinFlourish = useCallback((value: SkinFlourish) => {
+    setSkinFlourishState(value);
+    if (typeof window === 'undefined') return;
+    try {
+      if (value === 'off') localStorage.setItem(SKIN_FLOURISH_STORAGE_KEY, 'off');
+      else localStorage.removeItem(SKIN_FLOURISH_STORAGE_KEY);
+    } catch {
+      /* 本次会话内仍然生效 */
+    }
+    applySkinFlourish(document.documentElement, value);
   }, []);
 
   const setAccentColor = useCallback((value: string | null) => {
@@ -186,6 +218,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       themeTone,
       uiSkin,
       setUiSkin,
+      skinFlourish,
+      setSkinFlourish,
       accentColor,
       setAccentColor,
       setThemeId,
@@ -193,7 +227,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       eyeCare,
       toggleEyeCare,
     }),
-    [themeId, colorMode, themeTone, uiSkin, setUiSkin, accentColor, setAccentColor, setThemeId, toggleColorMode, eyeCare, toggleEyeCare]
+    [themeId, colorMode, themeTone, uiSkin, setUiSkin, skinFlourish, setSkinFlourish, accentColor, setAccentColor, setThemeId, toggleColorMode, eyeCare, toggleEyeCare]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

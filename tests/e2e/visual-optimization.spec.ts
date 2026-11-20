@@ -45,7 +45,8 @@ async function settled(page: Page, name: string) {
   if (name === 'home') {
     await expect(page.getByTestId('recent-work-list').getByRole('listitem').first()).toBeVisible();
     await expect(page.getByRole('region', { name: '本地服务状态' })).not.toContainText('正在获取服务状态');
-    await expect(page.locator('.home-module-meta').first()).toContainText('个项目');
+    // 模块卡的说明文字是固定描述，统计数在 .home-module-count（数字 + 读屏单位）。
+    await expect(page.locator('.home-module-count').first()).toContainText(/\d/);
   } else if (name === 'projects') {
     await expect(page.getByRole('heading', { name: '海港来信', exact: true }).first()).toBeVisible();
   } else if (name === 'characters') {
@@ -82,16 +83,22 @@ for (const [width, height] of [[1920, 1080], [1440, 900], [1024, 768], [390, 844
           await settled(page, name);
           expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), name).toBeLessThanOrEqual(1);
           await expect(page.locator('main')).not.toContainText(/This page couldn.t load|Internal Server Error|加载失败/);
-          expect(await page.locator('.tpl-title').evaluate(el => getComputedStyle(el).fontSize), name).toBe('22px');
+          // 资料库是视口锁高的工作台，页头使用紧凑标题（resources.css，分支上已确认的有意改动）；其余页面用 22px 页面字阶。
+          expect(await page.locator('.tpl-title').evaluate(el => getComputedStyle(el).fontSize), name).toBe(name === 'resources' ? '19px' : '22px');
           if (name === 'home') {
-            expect(await page.locator('.tpl-section-title').first().evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
-            expect(await page.locator('.home-module-title').first().evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
+            // 分区标题跟随字阶 token（theme.css 的 --text-section），不写死像素值。
+            const sectionSize = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--text-section').trim());
+            expect(await page.locator('.tpl-section-title').first().evaluate(el => getComputedStyle(el).fontSize)).toBe(sectionSize);
+            // P1 压低统计卡后，模块名使用正文字阶（--text-body）。
+            const bodySize = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--text-body').trim());
+            expect(await page.locator('.home-module-title').first().evaluate(el => getComputedStyle(el).fontSize)).toBe(bodySize);
             const colors = await page.locator('.home-module-icon').evaluateAll(elements => elements.map(el => getComputedStyle(el).color));
             expect(new Set(colors).size).toBe(4);
           }
           if (name === 'projects' && width >= 1024) {
             expect((await page.getByRole('combobox', { name: '项目排序' }).boundingBox())!.width).toBeLessThanOrEqual(200);
-            expect(await page.getByRole('heading', { name: '海港来信', exact: true }).first().evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
+            const cardTitleSize = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--text-section').trim());
+            expect(await page.getByRole('heading', { name: '海港来信', exact: true }).first().evaluate(el => getComputedStyle(el).fontSize)).toBe(cardTitleSize);
           }
           const pathToImage = resolve(output, name + '_' + width + 'x' + height + '_' + theme + '.png');
           await page.screenshot({ path: pathToImage, fullPage: true, animations: 'disabled', caret: 'hide' });

@@ -82,10 +82,10 @@ for (const theme of ['light-paper', 'light-zinc', 'dark-espresso', 'dark-obsidia
         } else if (path === '/apps/characters') {
           await expect(page.getByRole('link', { name: '新建角色', exact: true })).toHaveCount(1);
           await expect(page.getByRole('link', { name: '新建角色', exact: true })).toBeVisible();
-          await expect(page.getByRole('textbox', { name: '搜索角色' })).toBeVisible();
+          await expect(page.getByRole('searchbox', { name: '搜索角色' })).toBeVisible();
           if (theme === 'light-paper') {
-            const cards = page.getByRole('tab', { name: '专属角色卡', exact: true });
-            const assets = page.getByRole('tab', { name: '多角色公共资产库', exact: true });
+            const cards = page.getByRole('tab', { name: '角色卡', exact: true });
+            const assets = page.getByRole('tab', { name: '公共资产', exact: true });
             await cards.press('ArrowRight');
             await expect(assets).toHaveAttribute('aria-selected', 'true');
             await expect(page.getByRole('button', { name: '上传公共资产', exact: true })).toBeVisible();
@@ -94,7 +94,7 @@ for (const theme of ['light-paper', 'light-zinc', 'dark-espresso', 'dark-obsidia
             await page.screenshot({ path: info.outputPath('characters.png'), animations: 'disabled' });
           }
         } else if (path === '/settings/public-services') {
-          await expect(page.getByRole('button', { name: '添加模型', exact: true })).toBeVisible({ timeout: 15_000 });
+          await expect(page.getByRole('button', { name: '添加供应商', exact: true })).toBeVisible({ timeout: 15_000 });
           await expect(page.getByRole('button', { name: /^刷新/ })).toHaveCount(1);
           await expect(page.getByRole('tab', { name: '模型', exact: true })).toBeVisible();
           await expect(page.getByRole('tab', { name: '扩展服务', exact: true })).toBeVisible();
@@ -119,8 +119,8 @@ test('character and resource controls remain reachable at tablet and phone width
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/apps/characters');
     await expect(page.getByRole('link', { name: '新建角色', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '筛选与排序', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '角色筛选', exact: true }).getByRole('combobox', { name: '作品类型' })).toBeVisible();
+    await page.getByRole('button', { name: /^筛选(?:\s*\(\d+\))?$/ }).click();
+    await expect(page.getByRole('dialog', { name: '角色筛选与排序', exact: true }).getByRole('combobox', { name: '作品类型' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     await page.goto('/apps/resources');
     await expect(page.getByRole('tab', { name: '创作笔记', exact: true })).toBeVisible();

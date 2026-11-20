@@ -78,7 +78,7 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
           未来 {days} 天内没有生日或已排期活动。
         </div>
       ) : (
-        <ul className="home-list" data-testid="upcoming-schedule-list">
+        <ul className="home-list" data-testid="upcoming-schedule-list" data-motion-list="">
           {/* 同上：行数与行距纳入基线，日期与标题按动态内容遮罩。 */}
           {events.map((event) => {
             const badge = parseDayBadge(event.date);
@@ -91,10 +91,10 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
                     aria-hidden="true"
                     className="flex h-11 w-10 flex-none flex-col items-center justify-center overflow-hidden rounded-lg border border-border-subtle bg-surface-sunken/70 shadow-2xs"
                   >
-                    <span className="w-full bg-[var(--tone-soft)] py-0.5 text-center text-[10px] font-semibold leading-none text-[var(--tone-fg)] tabular-nums">
+                    <span className="w-full bg-[var(--tone-soft)] py-0.5 text-center text-xs font-semibold leading-none text-[var(--tone-fg)] tabular-nums">
                       {badge.month}
                     </span>
-                    <span className="flex flex-1 items-center justify-center text-sm font-bold leading-none text-ink tabular-nums">
+                    <span className="flex flex-1 items-center justify-center text-sm font-semibold leading-none text-ink tabular-nums">
                       {badge.day}
                     </span>
                   </div>
@@ -110,7 +110,7 @@ export function UpcomingSchedule({ days = 45, limit = 5 }: { days?: number; limi
                   <div className="flex flex-wrap items-center gap-1.5 text-xs text-fg-subtle" data-visual-dynamic="true">
                     <span
                       data-tone={tone}
-                      className="inline-flex items-center gap-1 rounded-full bg-[var(--tone-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--tone-fg)]"
+                      className="inline-flex items-center gap-1 rounded-full bg-[var(--tone-soft)] px-2 py-0.5 text-xs font-medium text-[var(--tone-fg)]"
                     >
                       {event.kind === 'birthday'
                         ? <Cake className="h-3 w-3" aria-hidden="true" />

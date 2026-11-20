@@ -11,9 +11,13 @@ import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert } from '@/app/components/ui/alert';
 import { AsyncState } from '@/app/components/ui/async-state';
+import { EntityImage } from '@/app/components/ui/entity-art';
+import { coverImageUrl } from '@/app/features/covers/api';
+import { Clapperboard, Plus } from 'lucide-react';
 import { useCharacterBrowser, characterFilterUrl } from '@/app/features/characters/public';
 import { useStoryWorlds } from '@/app/features/story-worlds/queries';
 import { fetchWorldSetups, pendingWorldsKey } from '@/app/features/story-worlds/authoring/setup-api';
+import { RecentSceneDrafts } from '@/app/features/story-scene-drafts/recent';
 import { mergeWorkDirectory } from './work-directory-model';
 
 const natureLabels = { canon: '原作', derivative: '同人', original: '原创' } as const;
@@ -37,9 +41,13 @@ export function WorkDirectory() {
 
   return (
     <PageContainer className="py-5">
-      <PageHeader title="作品" actions={<Link href={newHref} className={buttonVariants({ variant: 'primary' })}>新建作品</Link>} />
+      <PageHeader title="作品" actions={<div className="flex flex-wrap gap-2">
+        <Link href={newHref} className={buttonVariants({ variant: 'secondary' })}><Plus className="size-4" aria-hidden="true" />新建作品</Link>
+        <Link href="/apps/story-worlds/scenes/new" className={buttonVariants({ variant: 'primary' })}><Clapperboard className="size-4" aria-hidden="true" />新建一幕</Link>
+      </div>} />
       <p className="mt-2 text-sm text-muted">选择作品进入章节大纲与设定集，或继续整理角色卡片。</p>
       {created && <p role="status" className="mt-4 text-sm text-ink">已创建《{created.name}》，作品已收录到下方卡片网格。</p>}
+      <RecentSceneDrafts />
       <search className="my-5 block max-w-md">
         <label htmlFor="work-search" className="sr-only">搜索作品</label>
         <Input id="work-search" type="search" name="workSearch" value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索作品名称、别名或母原作…" />
@@ -68,6 +76,16 @@ export function WorkDirectory() {
                 key={item.key}
                 className="flex min-w-0 flex-col justify-between gap-4 rounded-[var(--radius-panel)] bg-surface p-5 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)] transition-shadow hover:shadow-[var(--elev-sm),0_0_0_1px_var(--border-default)]"
               >
+                <Link href={openHref} tabIndex={-1} aria-hidden="true" className="work-card-cover">
+                  <EntityImage
+                    seed={item.worldId ?? item.key}
+                    title={item.name}
+                    tone="blue"
+                    ratio="cover"
+                    src={coverImageUrl(worldMeta?.coverArtifactId)}
+                    alt=""
+                  />
+                </Link>
                 <div className="min-w-0 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="truncate text-base font-semibold text-ink">{item.name}</h2>

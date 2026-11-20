@@ -735,13 +735,13 @@ export function WorldAiPanelView({
 
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <div className="rounded-control border border-border-subtle bg-surface-sunken/40 px-2.5 py-2">
-                        <p className="text-[11px] font-medium text-muted">当前</p>
+                        <p className="text-xs font-medium text-muted">当前</p>
                         <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
                           {item.before}
                         </p>
                       </div>
                       <div className="rounded-control border border-accent/30 bg-accent/5 px-2.5 py-2">
-                        <p className="text-[11px] font-medium text-muted">候选</p>
+                        <p className="text-xs font-medium text-muted">候选</p>
                         <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
                           {item.after}
                         </p>

@@ -162,8 +162,8 @@ export function NotebookList() {
 
       <div className="notebook-list-filters notebook-toolbar flex flex-col items-stretch gap-3 border-b border-border-subtle pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-md">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
           <Input
+            leftIcon={<Search className="h-4 w-4 text-muted" />}
             value={query}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}

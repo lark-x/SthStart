@@ -268,6 +268,28 @@
   --tone-fg: var(--accent-dark);
 }
 
+/*
+ * 运行日志控制台：终端风格的深色面板，四套主题共用同一组读数色，
+ * 避免日间主题下 bg-ink 变深而暗色主题下 bg-ink 变浅导致文字不可读。
+ */
+:root {
+  /* 图像与视频之上的遮罩与文字：媒体本身不随主题变化，四套主题共用。 */
+  --media-backdrop: #0f0e0d;
+  --on-media: #ffffff;
+  /* 发布卡片导出图：内容色，不随主题变化。 */
+  --publication-paper: #f5f0e7;
+  --publication-placeholder: #22272b;
+  --publication-placeholder-fg: #9ca3af;
+  --console-bg: #18201d;
+  --console-bar: #1f2925;
+  --console-fg: #dae2de;
+  --console-muted: #9aa8a1;
+  --console-accent: #8bbfa0;
+  --console-danger: #ff9b8b;
+  --console-warning: #e9c676;
+  --console-line: rgb(255 255 255 / 10%);
+}
+
 [data-tone='violet'] { --tone: var(--tone-violet); --tone-soft: var(--tone-violet-soft); --tone-fg: var(--tone-violet-fg); }
 [data-tone='blue'] { --tone: var(--tone-blue); --tone-soft: var(--tone-blue-soft); --tone-fg: var(--tone-blue-fg); }
 [data-tone='orange'] { --tone: var(--tone-orange); --tone-soft: var(--tone-orange-soft); --tone-fg: var(--tone-orange-fg); }
@@ -515,6 +537,8 @@
   --color-fg-inverse: var(--fg-inverse);
   --color-fg-on-accent: var(--fg-on-accent);
   --color-overlay-backdrop: var(--overlay-backdrop);
+  --color-media-backdrop: var(--media-backdrop);
+  --color-on-media: var(--on-media);
   --color-action-primary: var(--action-primary);
   --color-action-primary-hover: var(--action-primary-hover);
   --color-action-on-primary: var(--action-on-primary);

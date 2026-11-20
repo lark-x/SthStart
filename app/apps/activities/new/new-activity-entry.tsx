@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -27,6 +27,7 @@ import { publicationApi } from '@/app/features/activities/publication/api';
 import { createActivity } from '@/app/features/activities/api/activities';
 import { PlanningWizard } from '@/app/features/activities/components/planning-wizard';
 import { CharacterBrowserPicker, type CharacterBrowserSelection } from '@/app/features/characters/public-ui';
+import { PendingCoverField, applyPendingCover } from '@/app/features/covers/components/cover-field';
 
 type EntryMode = 'quick' | 'wizard';
 type QuickTab = 'story' | 'character' | 'blank';
@@ -58,6 +59,10 @@ export function NewActivityEntry() {
   const [selectedCharacters, setSelectedCharacters] = useState<Record<string, CharacterBrowserSelection>>({});
   const [quickCreating, setQuickCreating] = useState(false);
   const [quickError, setQuickError] = useState('');
+  /** 新建前暂存的封面；创建成功后写入（封面失败不阻止进入工坊）。 */
+  const [quickCover, setQuickCover] = useState<string | null>(null);
+  // useId 在服务端与客户端一致，生成式占位不会造成水合差异。
+  const coverSeed = `new-activity-${useId()}`;
 
   const [prevParam, setPrevParam] = useState(storyProjectIdParam);
   if (storyProjectIdParam !== prevParam) {
@@ -141,6 +146,7 @@ export function NewActivityEntry() {
         actors,
       });
 
+      await applyPendingCover('activity', res.activity.id, quickCover);
       router.push(`/apps/activities/${res.activity.id}`);
     } catch (err) {
       setQuickError(err instanceof Error ? err.message : '创建制作工程失败');
@@ -327,6 +333,16 @@ export function NewActivityEntry() {
                 className="max-w-md text-base sm:text-sm"
               />
             </div>
+
+            <PendingCoverField
+              className="new-activity-cover max-w-xs"
+              seed={coverSeed}
+              title={customTitle.trim()}
+              tone="orange"
+              value={quickCover}
+              onChange={setQuickCover}
+              disabled={quickCreating}
+            />
 
             <div>
               <label htmlFor="custom-activity-theme" className="mb-1.5 block text-xs font-medium text-fg-subtle">

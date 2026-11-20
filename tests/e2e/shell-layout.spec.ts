@@ -11,7 +11,8 @@ const evidence = resolve('artifacts/visual-verification/world-authoring');
 const routes = [
   { path: '/', owner: 'shell' },
   { path: '/apps/characters', owner: 'shell' },
-  { path: '/apps/story-worlds', owner: 'workspace' },
+  // 不带 world 参数时是作品目录（普通页面，外框顶栏）；进入某部作品后才是工作台。
+  { path: '/apps/story-worlds', owner: 'shell' },
   { path: '/apps/narrative', owner: 'workspace' },
   { path: '/apps/resources', owner: 'shell' },
   { path: '/apps/notebook', owner: 'shell' },
@@ -61,7 +62,7 @@ test.describe('shell top bar', () => {
     const collapse = sidebar.getByRole('button', { name: '收起导航', exact: true });
     await expect(collapse).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByRole('dialog', { name: '导航' })).toBeHidden();
-    await expect(sidebar.getByText('故事世界', { exact: true })).toBeVisible();
+    await expect(sidebar.getByText('作品', { exact: true })).toBeVisible();
     await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBeGreaterThan(200);
     await page.screenshot({ path: info.outputPath('workspace-sidebar-expanded.png'), animations: 'disabled' });
     await sidebar.getByRole('link', { name: '工作台' }).last().click();
@@ -89,7 +90,8 @@ test.describe('shell top bar', () => {
     await expect(collapse).toBeVisible();
     await otherTab.close();
 
-    await page.goto('/apps/story-worlds');
+    // 作品目录是普通页面；用自带页头的工作台路由检查「打开全站导航」。
+    await page.goto('/apps/narrative');
     await page.getByRole('button', { name: '打开全站导航' }).click();
     await expect(page.getByRole('dialog', { name: '导航' })).toBeVisible();
   });
@@ -171,8 +173,8 @@ test.describe('shell top bar', () => {
     const search = palette.getByRole('textbox', { name: '搜索命令', exact: true });
     await expect(search).toBeFocused();
     await expect(page.getByRole('dialog')).toHaveCount(1);
-    await search.fill('故事世界');
-    await expect(palette.getByRole('option', { name: /故事世界/ }).first()).toBeVisible();
+    await search.fill('作品');
+    await expect(palette.getByRole('option', { name: /作品/ }).first()).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(palette).toBeHidden();
     await expect(trigger).toBeFocused();

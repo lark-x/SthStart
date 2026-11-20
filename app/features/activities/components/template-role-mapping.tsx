@@ -18,8 +18,8 @@ export function TemplateRoleMapping({ payload, actors, value, onChange }: {
     <p className="text-xs text-muted">下面是自动建议，可以调整。同一人可以承担多个职责；更换参与者后请检查映射。</p>
     {roles.map(role => <div key={role.id} className="space-y-1"><label className="text-sm">{role.label}{role.required ? '（必选）' : ''}{role.multiple ? ' · 可多人' : ''}</label>
       <div className="flex flex-wrap gap-x-4 gap-y-1">{actors.map(actor => <Checkbox key={actor.id} label={actor.displayName} checked={(value[role.id] || []).includes(actor.id)} onChange={e => onChange({ ...value, [role.id]: e.target.checked ? (role.multiple ? [...(value[role.id] || []), actor.id] : [actor.id]) : (value[role.id] || []).filter(id => id !== actor.id) })}/>)}</div>
-      {(value[role.id] || []).some(id => !actors.some(a => a.id === id)) && <p className="text-xs text-red-600">已映射角色被移除，请重新选择。</p>}
-      {role.required && !(value[role.id] || []).length && <p className="text-xs text-amber-700">尚未选择此职责。</p>}
+      {(value[role.id] || []).some(id => !actors.some(a => a.id === id)) && <p className="text-xs text-danger-fg">已映射角色被移除，请重新选择。</p>}
+      {role.required && !(value[role.id] || []).length && <p className="text-xs text-warning-fg">尚未选择此职责。</p>}
     </div>)}
     <details open className="border-t border-border-default pt-2"><summary className="text-sm cursor-pointer">本次套用预览</summary><div className="mt-2 space-y-2 text-xs text-muted">{((payload.stages || []) as Array<{
         title?: string;

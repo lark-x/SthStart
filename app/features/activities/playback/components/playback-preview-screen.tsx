@@ -48,9 +48,9 @@ export function PlaybackPreviewScreen({
     <div className="flex flex-col items-center">
       <div className="w-full flex justify-center">
         {deviceLayout === 'phone' ? (
-          <div className="w-full max-w-[320px] bg-stone-900 rounded-[36px] p-2.5 shadow-2xl border-4 border-stone-800 flex flex-col relative overflow-hidden">
+          <div className="w-full max-w-80 bg-surface rounded-[36px] p-2.5 shadow-2xl border-4 border-border-subtle flex flex-col relative overflow-hidden">
             {/* Phone notch */}
-            <div className="w-24 h-3.5 bg-stone-800 rounded-full mx-auto mb-1.5 flex-shrink-0" />
+            <div className="w-24 h-3.5 bg-surface-muted rounded-full mx-auto mb-1.5 flex-shrink-0" />
 
             {/* 实测的就是 iframe 的显示宽度：外壳有内边距与边框，量外壳会偏大。 */}
             <div
@@ -85,7 +85,7 @@ export function PlaybackPreviewScreen({
             </div>
 
             {/* Bottom bar indicator */}
-            <div className="w-20 h-1 bg-stone-700 rounded-full mx-auto mt-1.5 flex-shrink-0" />
+            <div className="w-20 h-1 bg-surface-muted rounded-full mx-auto mt-1.5 flex-shrink-0" />
           </div>
         ) : (
           <div

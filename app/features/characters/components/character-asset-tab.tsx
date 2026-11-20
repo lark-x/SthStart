@@ -425,7 +425,7 @@ export function CharacterAssetTab({
                       {asset.title || '未命名资产'}
                     </h4>
                     {(Boolean(asset.metadata?.outfitDescription) || Boolean(asset.metadata?.loreStory) || asset.userNote || asset.authorNote) && (
-                      <p className="mt-1 text-[11px] text-muted line-clamp-2 leading-snug">
+                      <p className="mt-1 text-xs text-muted line-clamp-2 leading-snug">
                         {String(asset.metadata?.outfitDescription || asset.userNote || asset.metadata?.loreStory || asset.authorNote)}
                       </p>
                     )}

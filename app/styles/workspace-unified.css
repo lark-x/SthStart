@@ -121,16 +121,18 @@
   }
   .tpl-header-navigation { flex: 0 1 auto; }
   .resources-workspace-header .tpl-header-navigation { flex-basis: 100%; }
-  /* Let the tool cluster wrap as a unit before breaking its own row. Page
-     actions still come before global tools in both visual and focus order. */
-  .tpl-header-tools {
-    display: flex;
-    flex: 1 1 auto;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    min-inline-size: 0;
-  }
+  /*
+   * 手机页头（前端视觉计划 P3）：标题与全局工具同一行（应用栏），子导航、页面动作各占一行，
+   * 不再出现只放全局工具的空行。DOM 顺序不变：页面动作仍先于全局工具获得焦点，
+   * 只有全局工具在视觉上移到标题行右侧。标题过长时在自己的列内换行，不挤出工具。
+   */
+  .shell-root .tpl-header-main { flex-wrap: wrap; row-gap: 8px; }
+  .shell-root .tpl-header-main > .tpl-heading { order: 0; flex: 1 1 0; min-inline-size: 0; }
+  .tpl-header-tools { display: contents; }
+  .tpl-header-tools > .page-global-actions { order: 1; margin-inline-start: auto; gap: 0; }
+  .tpl-header-navigation { order: 2; flex: 1 1 100%; }
+  .resources-workspace-header .tpl-header-navigation { order: 2; }
+  .tpl-header-tools > .tpl-actions { order: 3; flex: 1 1 100%; }
   .shell-root .tpl-header .tpl-actions { margin-inline-start: 0; justify-content: flex-start; }
   .tpl-actions + .page-global-actions { margin-inline-start: auto; border-inline-start: 0; padding-inline-start: 0; }
 }

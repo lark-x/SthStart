@@ -254,7 +254,15 @@ test('home recent work links the real project, activity and notebook records', a
 
   await expect(page.getByRole('heading', { name: '工作台', level: 1 })).toBeVisible();
   const recent = page.getByRole('region', { name: '最近工作' });
-  await expect(recent.getByRole('link', { name: /全部项目/ })).toHaveAttribute('href', '/apps/projects');
+  await expect(recent.getByRole('link', { name: /全部作品/ })).toHaveAttribute('href', '/apps/story-worlds');
+  // 共享测试库里其他用例会并发写入；最近工作只取前 6 条，种子记录被挤出时重新读取一次。
+  await expect(async () => {
+    await page.reload();
+    await expectHydrated(page);
+    for (const title of [seeded.projectTitle, seeded.activityTitle, seeded.noteTitle]) {
+      await expect(recent.getByRole('link', { name: new RegExp(title) })).toBeVisible({ timeout: 3_000 });
+    }
+  }).toPass({ timeout: 30_000 });
 
   const projectRow = recent.getByRole('link', { name: new RegExp(seeded.projectTitle) });
   const activityRow = recent.getByRole('link', { name: new RegExp(seeded.activityTitle) });
@@ -286,7 +294,7 @@ test('home quick create exposes named actions, focus and the mobile layout', asy
   await trigger.click();
   const menu = page.getByRole('menu', { name: '新建创作', exact: true });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitem', { name: /新建创作项目/ })).toHaveAttribute('href', '/apps/projects?new=1');
+  await expect(menu.getByRole('menuitem', { name: /新建作品/ })).toHaveAttribute('href', '/apps/story-worlds/new');
   await expect(menu.getByRole('menuitem', { name: /新建创作笔记/ })).toHaveAttribute('href', '/apps/notebook/new');
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
@@ -294,7 +302,7 @@ test('home quick create exposes named actions, focus and the mobile layout', asy
 
   const modules = page.getByRole('navigation', { name: '创作模块' });
   for (const [label, href] of [
-    ['创作项目', '/apps/projects'],
+    ['作品', '/apps/story-worlds'],
     ['角色库', '/apps/characters'],
     ['资料库', '/apps/resources'],
     ['媒体库', '/apps/media'],

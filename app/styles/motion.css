@@ -54,7 +54,14 @@
   to { opacity: 1; transform: translateX(-50%) scaleX(1); }
 }
 
+/* 面板 / 标签切换（设计语言 §8）：淡入 + 横移 4px。 */
 @keyframes tab-panel-in {
+  from { opacity: 0; transform: translateX(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 列表首次出现（设计语言 §8）：淡入 + 上移 4px，逐项错开 30ms，最多错开 8 项。 */
+@keyframes list-item-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
@@ -117,8 +124,30 @@
 
 @media (prefers-reduced-motion: no-preference) {
   [role='tabpanel']:not([hidden]) {
-    animation: tab-panel-in 160ms var(--motion-ease) both;
+    /* 沿用原有的 both 填充：面板结束后保持同一合成层，已有视觉基线以此为准。 */
+    animation: tab-panel-in var(--motion-fast) var(--motion-ease) both;
   }
+
+  /*
+   * 列表进入：页面原型的列表容器（[data-collection-items]）与首页等显式标记的列表（[data-motion-list]）。
+   * 第 9 项起与第 8 项同时出现，长列表不会越拖越久。
+   */
+  :is([data-collection-items], [data-motion-list]) > * {
+    /* backwards：等待错开时停在起始帧，结束后回到普通样式，不保留合成层（文字抗锯齿与静态时一致）。 */
+    animation: list-item-in var(--motion-base) var(--motion-ease) backwards;
+    animation-delay: 210ms;
+  }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(1) { animation-delay: 0ms; }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(2) { animation-delay: 30ms; }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(3) { animation-delay: 60ms; }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(4) { animation-delay: 90ms; }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(5) { animation-delay: 120ms; }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(6) { animation-delay: 150ms; }
+  :is([data-collection-items], [data-motion-list]) > :nth-child(7) { animation-delay: 180ms; }
+
+  /* 保存状态：图标随状态重新挂载时淡入，文字颜色平滑过渡；不弹 toast。 */
+  .save-status { transition: color var(--motion-fast) var(--motion-ease); }
+  .save-status-icon { animation: anim-fade-in var(--motion-fast) var(--motion-ease) backwards; }
 
   .status-dot { position: relative; }
   .status-dot[data-status='running']::after,
@@ -150,7 +179,11 @@
   .skeleton-shimmer,
   .ui-choice,
   .status-dot::after,
-  .page-tabs[data-variant] > [role='tab'] {
+  .page-tabs[data-variant] > [role='tab'],
+  [role='tabpanel'],
+  :is([data-collection-items], [data-motion-list]) > *,
+  .save-status,
+  .save-status-icon {
     animation: none !important;
     transition: none !important;
   }

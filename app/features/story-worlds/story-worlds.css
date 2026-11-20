@@ -524,3 +524,11 @@
     transition: none;
   }
 }
+
+/* 作品首页封面：桌面固定宽度，窄屏铺满导语条。 */
+.world-hub-cover { width: 100%; }
+@media (min-width: 1024px) { .world-hub-cover { flex: 0 0 15rem; width: 15rem; } }
+.world-actor-chip-avatar { display: block; width: 20px; flex: none; }
+.world-actor-chip-avatar .entity-image[data-ratio] { border-radius: 9999px; }
+.world-actor-avatar { display: block; width: 44px; flex: none; }
+.world-actor-avatar .entity-image[data-ratio] { border-radius: 9999px; }

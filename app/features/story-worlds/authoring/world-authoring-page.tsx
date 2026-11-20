@@ -40,6 +40,7 @@ import { Drawer } from '@/app/components/ui/drawer';
 import { useToast } from '@/app/providers/ui-provider';
 import { ApiClientError } from '@/app/lib/api-client';
 import { usePublicOverview } from '@/app/features/public-services/queries';
+import { CoverField, PendingCoverField, applyPendingCover } from '@/app/features/covers/components/cover-field';
 import type { WorldList } from '../api';
 import { useStoryWorldOverview, useWorldBranchDetail } from '../queries';
 import { storyWorldKeys } from '../query-keys';
@@ -162,6 +163,8 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
   const searchParams = useSearchParams();
   const toast = useToast();
   const isEdit = Boolean(worldId);
+  /** 待配置作品还不是正式作品，封面先暂存，完成配置后写入（见 applyPendingCover）。 */
+  const [pendingCover, setPendingCover] = useState<string | null>(null);
   const branchParam = searchParams.get('branch')?.trim() ?? '';
   const projectId = searchParams.get('projectId')?.trim() ?? '';
   const pendingBackHref = worldId ? `/apps/story-worlds?world=${encodeURIComponent(worldId)}${projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''}` : '/apps/story-worlds';
@@ -585,6 +588,10 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
           expectedRevision: session.baseRevision, draft: normalizeDraftForSubmit(values), complete: check.ok,
         });
         if (result.status === 'ready') {
+          // 待配置作品在完成配置后才成为正式作品，暂存的封面此时写入。
+          const coverError = await applyPendingCover('story-world', result.world.id, pendingCover);
+          if (coverError) toast.warning('封面没有保存', coverError);
+          else if (pendingCover) result.world = { ...result.world, coverArtifactId: pendingCover };
           session.markSaved({ values: draftFromWorld(result.world, result.branch),
             baseRevision: result.world.revision, branchRevision: result.branch.revision });
           queryClient.setQueryData<WorldOverview>(storyWorldKeys.overview(worldId), { world: result.world, branches: [result.branch] });
@@ -791,7 +798,7 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
       setSaving(false);
     }
   }, [
-    saving, values, worldId, session, overview, detail, serverBranch,
+    saving, values, worldId, session, overview, detail, serverBranch, pendingCover,
     branchLocked, branchChanged, router, toast, queryClient, pending, conflict,
   ]);
   useEffect(() => {
@@ -1077,6 +1084,31 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
             title="作品简介"
             description="先写清这是一个怎样的世界。人物、地点与方向都建立在这段简介上。"
           >
+            {isEdit && !pending && overview.data?.world ? (
+              <CoverField
+                className="wa-cover"
+                entityType="story-world"
+                entityId={overview.data.world.id}
+                title={overview.data.world.title}
+                tone="blue"
+                coverArtifactId={overview.data.world.coverArtifactId}
+                onChanged={(cover) => {
+                  queryClient.setQueryData<WorldOverview>(storyWorldKeys.overview(cover.entityId), (current) => (
+                    current ? { ...current, world: { ...current.world, coverArtifactId: cover.coverArtifactId } } : current));
+                  void queryClient.invalidateQueries({ queryKey: storyWorldKeys.list() });
+                }}
+              />
+            ) : pending && worldId ? (
+              <PendingCoverField
+                className="wa-cover"
+                seed={worldId}
+                title={definition.title}
+                tone="blue"
+                value={pendingCover}
+                onChange={setPendingCover}
+                disabled={saving}
+              />
+            ) : null}
             <FormField label="作品名称" required error={issueFor(shownValidation, 'title')}>
               <Input
                 value={definition.title}
@@ -1703,7 +1735,7 @@ function ComparisonValue({ value }: { value: string }) {
       <summary className="cursor-pointer text-xs text-accent underline underline-offset-2">
         展开 {value.length} 字符
       </summary>
-      <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-control bg-surface-sunken/60 p-2 text-[11px] leading-relaxed">
+      <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-control bg-surface-sunken/60 p-2 text-xs leading-relaxed">
         {value}
       </pre>
     </details>

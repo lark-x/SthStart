@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- candidate thumbnails use the same artifact endpoint as the existing workbench. */
 
-import { AlertTriangle, Check, SplitSquareVertical } from 'lucide-react';
+import { AlertTriangle, Check, SplitSquareVertical, ExternalLink } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Spinner } from '@/app/components/ui/spinner';
 import type { ImageAttemptsState } from '../hooks/use-image-attempts';
@@ -33,7 +33,7 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
   return (
     <div className={`${advanced ? 'xl:col-span-4' : 'xl:col-span-6'} min-w-0 p-4 overflow-y-auto space-y-4 bg-surface/30`}>
       <div className="flex items-center justify-between pb-2 border-b border-border-default">
-        <span className="text-sm font-bold text-muted uppercase tracking-wider">
+        <span className="text-sm font-semibold text-muted uppercase tracking-wider">
           图片历史与绘制记录 ({attempts.length})
         </span>
         <Button
@@ -72,7 +72,7 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
         <p role="status">已显示全部图片历史</p>
       )}
       {attempts.length === 0 && !attemptsQuery.isError && !attemptsQuery.isLoading ? (
-        <div className="p-8 text-center text-sm text-slate-500 border border-dashed border-border-default rounded-lg">
+        <div className="p-8 text-center text-sm text-fg-subtle border border-dashed border-border-default rounded-lg">
           还没有绘制记录。选择上方预设后点击“绘制新图”即可开始。
         </div>
       ) : (
@@ -89,18 +89,18 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
               <div
                 key={attempt.id}
                 onClick={() => attemptsState.selectAttempt(attempt.id)}
-                className={`rounded-lg border p-3 cursor-pointer transition ${isSelected ? 'bg-surface border-sky-500 shadow-md ring-1 ring-sky-500/20' : 'bg-paper/60 border-border-default hover:border-border-default'}`}
+                className={`rounded-lg border p-3 cursor-pointer transition ${isSelected ? 'bg-surface border-info-border shadow-md ring-1 ring-info-border' : 'bg-paper/60 border-border-default hover:border-border-default'}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <span
                       className={`inline-flex items-center px-1.5 py-0.5 rounded text-sm font-medium border ${
                         isSucceeded
-                          ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                          ? 'bg-success-bg text-success-fg border-success-border'
                           : running
-                            ? 'bg-sky-950 text-sky-300 border-sky-800'
+                            ? 'bg-info-bg text-info-fg border-info-border'
                             : isFailed
-                              ? 'bg-red-950 text-red-300 border-red-800'
+                              ? 'bg-danger-bg text-danger-fg border-danger-border'
                               : 'bg-surface-muted text-muted border-border-default'
                       }`}
                     >
@@ -111,7 +111,7 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
                       Seed: {attempt.actualSeed}
                     </span>
                     {attempt.imageOperation?.operation === 'hires' && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-medium border bg-sky-950 text-sky-300 border-sky-800" title="放大细化结果，沿用来源图的实际参数">细化</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-medium border bg-info-bg text-info-fg border-info-border" title="放大细化结果，沿用来源图的实际参数">细化</span>
                     )}
                     {attempt.imageOperation?.operation === 'hires' && attempt.imageOperation.parentArtifactId && (
                       <a
@@ -120,7 +120,7 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
                         rel="noreferrer"
                         href={`/api/admin/artifacts/${encodeURIComponent(attempt.imageOperation.parentArtifactId)}/file`}
                       >
-                        来源图 ↗
+                        来源图<ExternalLink className="ml-0.5 inline size-3 align-[-1px]" aria-hidden="true" />
                       </a>
                     )}
                   </div>
@@ -202,13 +202,13 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
                         className="w-full h-full object-contain"
                         onError={(event) => { (event.target as HTMLElement).style.display = 'none'; }}
                       />
-                      <div className="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-sm font-mono text-muted">
+                      <div className="absolute bottom-1 right-1 bg-media-backdrop/70 px-1.5 py-0.5 rounded text-sm font-mono text-muted">
                         {output.width && output.height ? `${output.width}x${output.height}` : output.assetKey}
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <div className="text-sm text-slate-500 font-mono">
+                      <div className="text-sm text-fg-subtle font-mono">
                         {output.sha256 ? `${output.sha256.slice(0, 10)}...` : output.assetKey}
                       </div>
                       <Button
@@ -223,17 +223,17 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
                     </div>
                   </div>
                 ) : running ? (
-                  <div className="aspect-video rounded bg-paper border border-border-default/80 flex flex-col items-center justify-center text-sm text-sky-400 gap-2">
-                    <Spinner className="w-5 h-5 text-sky-400" />
+                  <div className="aspect-video rounded bg-paper border border-border-default/80 flex flex-col items-center justify-center text-sm text-info-fg gap-2">
+                    <Spinner className="w-5 h-5 text-info-fg" />
                     <span>ComfyUI 生图中...</span>
                   </div>
                 ) : isFailed ? (
-                  <div className="p-3 rounded bg-red-950/40 border border-red-900/60 text-sm text-red-300 space-y-1">
+                  <div className="p-3 rounded bg-danger-bg border border-danger-border text-sm text-danger-fg space-y-1">
                     <div className="font-semibold flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" />
                       生成失败: {attempt.errorCode || 'error'}
                     </div>
-                    <p className="text-sm text-red-400 break-words">{attempt.errorMessage || '未知错误'}</p>
+                    <p className="text-sm text-danger-fg break-words">{attempt.errorMessage || '未知错误'}</p>
                   </div>
                 ) : null}
               </div>
@@ -243,11 +243,11 @@ export function ImageAttemptPanel({ advanced, slotId, attemptsState }: ImageAtte
       )}
 
       {compareAttempt && currentAttempt && compareAttempt.id !== currentAttempt.id && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-50 bg-media-backdrop/80 flex items-center justify-center p-6">
           <div className="bg-surface border border-border-default rounded-xl max-w-5xl w-full p-4 space-y-4">
             <div className="flex items-center justify-between border-b border-border-default pb-2">
-              <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-                <SplitSquareVertical className="w-4 h-4 text-sky-400" />
+              <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
+                <SplitSquareVertical className="w-4 h-4 text-info-fg" />
                 候选双屏对比 (Side-by-side Candidate Comparison)
               </h3>
               <Button variant="ghost" size="sm" onClick={() => setCompareAttemptId(null)}>关闭对比</Button>
@@ -288,11 +288,11 @@ function CompareCandidate({ label, attempt, buttonLabel, onAdopt }: {
         <span>{label}: {attempt.id.slice(0, 8)}</span>
         <span className="font-mono text-muted">Seed: {attempt.actualSeed}</span>
       </div>
-      <div className="aspect-video bg-black rounded overflow-hidden flex items-center justify-center border border-border-default">
+      <div className="aspect-video bg-media-backdrop rounded overflow-hidden flex items-center justify-center border border-border-default">
         {output ? (
           <img src={`/api/admin/artifacts/${output.artifactId}/file`} alt={`Candidate ${label}`} className="w-full h-full object-contain" />
         ) : (
-          <span className="text-sm text-slate-500">无画面</span>
+          <span className="text-sm text-fg-subtle">无画面</span>
         )}
       </div>
       {output && (

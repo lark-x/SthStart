@@ -46,8 +46,8 @@ export function StoryTreePanel({
       {/* 顶部搜索与项目概要 */}
       <div className="story-tree-header shrink-0 p-3 border-b border-border-default/60">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted" />
           <Input
+            leftIcon={<Search className="size-4 text-muted" />}
             aria-label={isReflection ? '搜索纲要或随笔' : '搜索正文或设定'}
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}

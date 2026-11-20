@@ -47,7 +47,7 @@ export function StoryScriptPreview({ body, castList, indent2em, charCount, color
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-xs font-semibold text-muted">{line.speaker}</span>
                 {cast?.work && (
-                  <span className="rounded border border-border-default/60 px-1 py-0.2 text-[9px] text-muted">
+                  <span className="rounded border border-border-default/60 px-1 py-0.2 text-xs text-muted">
                     {cast.work}
                   </span>
                 )}

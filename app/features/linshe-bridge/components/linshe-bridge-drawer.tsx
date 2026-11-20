@@ -201,7 +201,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
           <div className="flex items-center gap-3">
             <div
               className={`h-3 w-3 rounded-full ${
-                bridgeStatus?.linsheAvailable ? 'bg-emerald-500 ring-4 ring-emerald-500/20' : 'bg-rose-500 ring-4 ring-rose-500/20'
+                bridgeStatus?.linsheAvailable ? 'bg-success-solid ring-4 ring-success-border' : 'bg-danger-solid ring-4 ring-danger-border'
               }`}
             />
             <div>
@@ -210,12 +210,12 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                   {bridgeStatus?.linsheAvailable ? '邻舍引擎运行中 (v3.9.0 兼容)' : '邻舍引擎未连接'}
                 </span>
                 {bridgeStatus?.ready && (
-                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-medium">
+                  <span className="text-xs text-success-fg bg-success-bg px-1.5 py-0.2 rounded font-medium">
                     网关就绪
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-muted mt-0.5">
+              <p className="text-xs text-muted mt-0.5">
                 角色卡数: {bridgeStatus?.charactersCount ?? 0} · 公共资产数: {bridgeStatus?.sharedAssetsCount ?? 0}
               </p>
             </div>
@@ -297,11 +297,11 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                         <div className="flex items-center gap-2">
                           <h4 className="text-xs font-semibold text-ink truncate">{m.sthName}</h4>
                           <span
-                            className={`px-1.5 py-0.2 rounded text-[10px] font-medium ${
+                            className={`px-1.5 py-0.2 rounded text-xs font-medium ${
                               m.status === 'synced'
-                                ? 'bg-emerald-50 text-emerald-700'
+                                ? 'bg-success-bg text-success-fg'
                                 : m.status === 'update_available'
-                                ? 'bg-amber-50 text-amber-700'
+                                ? 'bg-warning-bg text-warning-fg'
                                 : 'bg-surface-muted text-muted'
                             }`}
                           >
@@ -312,7 +312,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                               : '仅 SthStart 本地'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-muted truncate mt-0.5">
+                        <p className="text-xs text-muted truncate mt-0.5">
                           {m.linsheCharacterId ? `邻舍 ID: ${m.linsheCharacterId}` : '尚未推送到邻舍'}
                         </p>
                       </div>
@@ -324,7 +324,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                           size="sm"
                           onClick={() => handlePushCharacter(m.sthCharacterId)}
                           disabled={isSyncing}
-                          className="text-[11px] h-7 px-2 gap-1 text-accent border-accent/40 hover:bg-accent/10"
+                          className="text-xs h-7 px-2 gap-1 text-accent border-accent/40 hover:bg-accent/10"
                           title="将 SthStart 结构化人设与立绘推送到邻舍"
                         >
                           <Send className="h-3 w-3" />
@@ -368,8 +368,8 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                       unoptimized
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-2.5 flex flex-col justify-end gap-1.5">
-                      <p className="text-[10px] text-white/90 line-clamp-2 font-mono leading-tight">
+                    <div className="absolute inset-0 bg-gradient-to-t from-media-backdrop/80 via-media-backdrop/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-2.5 flex flex-col justify-end gap-1.5">
+                      <p className="text-xs text-on-media/90 line-clamp-2 font-mono leading-tight">
                         {item.prompt || item.filename}
                       </p>
                       <Button
@@ -377,7 +377,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                         size="sm"
                         variant="accent"
                         onClick={() => handleOpenImport(item)}
-                        className="w-full text-[11px] h-6 py-0 gap-1 shadow-xs"
+                        className="w-full text-xs h-6 py-0 gap-1 shadow-xs"
                       >
                         <FolderDown className="h-3 w-3" />
                         <span>一键转存资产</span>
@@ -413,7 +413,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                 <h4 className="text-xs font-semibold text-ink truncate">
                   {importTargetItem.filename}
                 </h4>
-                <p className="text-[11px] text-muted truncate mt-0.5">
+                <p className="text-xs text-muted truncate mt-0.5">
                   {importTargetItem.date || '邻舍生成产物'}
                 </p>
               </div>
@@ -438,7 +438,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                     <User className="h-4 w-4" aria-hidden="true" />
                     <span>
                       <span className="block">角色专属资产</span>
-                      <span className="block text-[10px] text-muted font-normal">归属于单个角色的分类库</span>
+                      <span className="block text-xs text-muted font-normal">归属于单个角色的分类库</span>
                     </span>
                   </span>
                 </Button>
@@ -457,7 +457,7 @@ export function LinsheBridgeDrawer({ open, onOpenChange }: LinsheBridgeDrawerPro
                     <Users className="h-4 w-4" aria-hidden="true" />
                     <span>
                       <span className="block">多角色公共资产</span>
-                      <span className="block text-[10px] text-muted font-normal">多人合影/背景/海报</span>
+                      <span className="block text-xs text-muted font-normal">多人合影/背景/海报</span>
                     </span>
                   </span>
                 </Button>

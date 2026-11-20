@@ -52,10 +52,10 @@ export function StageRailNav({
       <div className={`shrink-0 ${isExpanded ? 'space-y-2' : 'flex flex-col items-center'}`}>
         {isExpanded ? (
           <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
-            <div className="flex items-center gap-1.5 font-bold text-xs text-ink">
+            <div className="flex items-center gap-1.5 font-semibold text-xs text-ink">
               <Clapperboard className="h-4 w-4 text-accent" />
               <span>剧本分幕</span>
-              <span className="text-xs text-muted font-mono font-bold bg-surface-muted px-1.5 py-0.2 rounded">
+              <span className="text-xs text-muted font-mono font-semibold bg-surface-muted px-1.5 py-0.2 rounded">
                 {stages.length}
               </span>
             </div>
@@ -118,7 +118,7 @@ export function StageRailNav({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span
-                      className={`font-mono text-xs font-bold px-1.5 py-0.2 rounded ${
+                      className={`font-mono text-xs font-semibold px-1.5 py-0.2 rounded ${
                         isActive ? 'bg-accent text-fg-on-accent' : 'bg-surface-muted text-muted'
                       }`}
                     >
@@ -126,7 +126,7 @@ export function StageRailNav({
                     </span>
                     <span className="text-xs text-muted font-mono flex items-center gap-1">
                       {hasAllMedia ? (
-                        <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                        <span className="text-success-fg font-semibold flex items-center gap-0.5">
                           <CheckCircle2 className="h-3 w-3" />
                           <span>配图齐全</span>
                         </span>
@@ -174,11 +174,11 @@ export function StageRailNav({
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-surface ${
                     hasAllMedia
-                      ? 'bg-emerald-500'
+                      ? 'bg-success-solid'
                       : hasPartialMedia
-                      ? 'bg-sky-500'
+                      ? 'bg-info-solid'
                       : totalBeats > 0
-                      ? 'bg-amber-400'
+                      ? 'bg-warning-solid'
                       : 'bg-border-default'
                   }`}
                 />
@@ -191,15 +191,15 @@ export function StageRailNav({
                   className="absolute left-full ml-2.5 top-0 z-50 w-64 rounded-xl border border-border-default bg-surface/95 backdrop-blur-md p-3 shadow-xl animate-in fade-in zoom-in-95 pointer-events-none"
                 >
                   <div className="flex items-center justify-between text-xs text-fg-subtle mb-1">
-                    <span className="font-mono font-bold text-accent">第 {displayIdx} 幕</span>
+                    <span className="font-mono font-semibold text-accent">第 {displayIdx} 幕</span>
                     <span className="flex items-center gap-1">
                       {hasAllMedia
-                        ? <span className="flex items-center gap-0.5 text-emerald-600 font-medium"><CheckCircle2 className="h-3 w-3" />配图齐全 · {mediaBeats}/{totalBeats} 镜</span>
+                        ? <span className="flex items-center gap-0.5 text-success-fg font-medium"><CheckCircle2 className="h-3 w-3" />配图齐全 · {mediaBeats}/{totalBeats} 镜</span>
                         : <span className="flex items-center gap-0.5 text-muted"><Clock className="h-3 w-3" />{mediaBeats === 0 && totalBeats === 0 ? '分镜 0' : `配图 ${mediaBeats}/${totalBeats} 镜`}</span>}
                     </span>
                   </div>
 
-                  <h4 className="text-sm font-bold text-ink truncate mb-1.5">
+                  <h4 className="text-sm font-semibold text-ink truncate mb-1.5">
                     {cleanStageTitle(stage.title)}
                   </h4>
 

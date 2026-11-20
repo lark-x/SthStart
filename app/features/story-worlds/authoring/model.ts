@@ -1,5 +1,6 @@
 import { Value } from '@sinclair/typebox/value';
 import {
+  STORY_WORLD_METADATA_KEYS,
   WorldAuthoringDraftSchema,
   WorldSuggestionResponseSchema,
   WorldBundleResultSchema,
@@ -1001,10 +1002,7 @@ export function saveWorldDefinition(
 /** 把服务端 StoryWorld 收敛回 strict definition，避免把 id/revision/时间戳写回表单。 */
 export function definitionFromWorld(world: StoryWorld): WorldDefinition {
   const definition: Record<string, unknown> = { ...world };
-  delete definition.id;
-  delete definition.revision;
-  delete definition.createdAt;
-  delete definition.updatedAt;
+  for (const key of STORY_WORLD_METADATA_KEYS) delete definition[key];
   return definition as WorldDefinition;
 }
 

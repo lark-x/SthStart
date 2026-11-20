@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "rules": [
+    "palette",
+    "hex",
+    "tinyText",
+    "heavyWeight",
+    "arbitraryPx",
+    "glyphIcon"
+  ],
+  "counts": {
+    "app/features/activities/playback/components/playback-preview-screen.tsx": {
+      "arbitraryPx": 2
+    },
+    "app/settings/ai-logs/ai-logs-client.tsx": {
+      "arbitraryPx": 2
+    }
+  }
+}
