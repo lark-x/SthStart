@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { UpstreamCharacterBundle } from './types.js';
-import { stripWikiMarkup } from './types.js';
+import { evidenceSource, stripWikiMarkup } from './types.js';
 
 interface YattaAvatarIndexEntry {
   id: number;
@@ -13,7 +13,7 @@ interface YattaAvatarIndexEntry {
   birthday?: [number, number];
 }
 
-let cachedAvatarIndex: { data: Record<string, YattaAvatarIndexEntry>; expiresAt: number } | null = null;
+const avatarCache = new WeakMap<typeof fetch, { data: Record<string, YattaAvatarIndexEntry>; expiresAt: number }>();
 
 const ELEMENT_MAP: Record<string, string> = {
   Wind: '风',
@@ -47,6 +47,7 @@ function cleanGameRichText(text: string): string {
 }
 
 async function fetchAvatarIndex(fetcher: typeof fetch): Promise<Record<string, YattaAvatarIndexEntry>> {
+  const cachedAvatarIndex = avatarCache.get(fetcher);
   if (cachedAvatarIndex && cachedAvatarIndex.expiresAt > Date.now()) {
     return cachedAvatarIndex.data;
   }
@@ -57,7 +58,7 @@ async function fetchAvatarIndex(fetcher: typeof fetch): Promise<Record<string, Y
   if (!res.ok) throw new Error(`yatta_index_http_${res.status}`);
   const json = (await res.json()) as { data?: { items?: Record<string, YattaAvatarIndexEntry> } };
   const items = json.data?.items || {};
-  cachedAvatarIndex = { data: items, expiresAt: Date.now() + 30 * 60_000 };
+  avatarCache.set(fetcher, { data: items, expiresAt: Date.now() + 30 * 60_000 });
   return items;
 }
 
@@ -71,8 +72,10 @@ export async function fetchYattaGenshinCharacter(
   try {
     const items = await fetchAvatarIndex(fetcher);
     const entries = Object.values(items);
+    const normalizeYatta = (s: string) => s.toLowerCase().replace(/[·•・\s]/g, '');
+    const compactNeedle = normalizeYatta(needle);
     const matched = entries.find((item) => item.name?.toLowerCase() === needle || item.route?.toLowerCase() === needle)
-      || entries.find((item) => item.name?.toLowerCase().includes(needle) || item.route?.toLowerCase().includes(needle));
+      || entries.find((item) => (item.name ? normalizeYatta(item.name) === compactNeedle : false) || (item.route ? normalizeYatta(item.route) === compactNeedle : false));
     if (!matched) return null;
 
     const [detailRes, fetterRes] = await Promise.all([
@@ -126,11 +129,27 @@ export async function fetchYattaGenshinCharacter(
         })
       : null;
 
+    const WEAPON_CN: Record<string, string> = {
+      Sword: '单手剑',
+      WEAPON_SWORD_ONE_HAND: '单手剑',
+      Claymore: '双手剑',
+      WEAPON_CLAYMORE: '双手剑',
+      Polearm: '长柄武器',
+      WEAPON_POLE: '长柄武器',
+      Bow: '弓',
+      WEAPON_BOW: '弓',
+      Catalyst: '法器',
+      WEAPON_CATALYST: '法器',
+    };
+
     const facts: string[] = [];
     if (detail.fetter?.title) facts.push(`称号：${detail.fetter.title}`);
     if (detail.fetter?.native) facts.push(`所属：${detail.fetter.native}`);
     else if (detail.region && REGION_MAP[detail.region]) facts.push(`地区：${REGION_MAP[detail.region]}`);
     if (detail.element && ELEMENT_MAP[detail.element]) facts.push(`元素：${ELEMENT_MAP[detail.element]}`);
+    const weaponTypeRaw = (detail as { weaponType?: string }).weaponType || matched.weaponType;
+    if (weaponTypeRaw) facts.push(`武器：${WEAPON_CN[weaponTypeRaw] || weaponTypeRaw}`);
+    if (matched.rank) facts.push(`星级：${matched.rank}星`);
     if (detail.fetter?.detail) facts.push(`简介：${cleanGameRichText(detail.fetter.detail)}`);
     if (detail.fetter?.cv?.CHS) facts.push(`汉语配音：${detail.fetter.cv.CHS}`);
 
@@ -152,7 +171,7 @@ export async function fetchYattaGenshinCharacter(
     const prioritized = [
       ...allQuotes.filter((q) => priorityKeywords.some((kw) => String(q.title).includes(kw))),
       ...allQuotes.filter((q) => !priorityKeywords.some((kw) => String(q.title).includes(kw))),
-    ].slice(0, 26);
+    ];
 
     const voiceLines = prioritized.map((q) => ({
       title: String(q.title),
@@ -202,7 +221,7 @@ export async function fetchYattaGenshinCharacter(
         id: crypto.randomUUID(),
         name: skinName,
         classification: 'skin',
-        outfitDescription: skinDesc || `${detail.name}的「${skinName}」装扮。`,
+        outfitDescription: skinDesc,
         loreStory: skinDesc,
         avatarUrl: skinIconUrl,
         portraitUrl: skinPortraitUrl,
@@ -239,8 +258,8 @@ export async function fetchYattaGenshinCharacter(
 
     const excerptLines = [
       ...facts,
-      ...stories.slice(0, 6).map((s) => `【${s.title}】\n${s.content}`),
-      ...voiceLines.slice(0, 14).map((v) => `【语音·${v.title}】${v.text}`),
+      ...stories.map((s) => `【${s.title}】\n${s.content}`),
+      ...voiceLines.map((v) => `【语音·${v.title}】${v.text}`),
     ];
 
     return {
@@ -255,14 +274,13 @@ export async function fetchYattaGenshinCharacter(
       voiceLines,
       skinOrVariantCandidates,
       assets,
-      sources: [
-        {
-          title: `Project Amber：${detail.name}`,
-          url: `https://gi.yatta.moe/chs/archive/avatar/${detail.id}/${detail.route || ''}`,
-          excerpt: excerptLines.join('\n\n').slice(0, 12_000),
-          sourceType: 'yatta',
-        },
-      ],
+      sources: [evidenceSource({
+        title: `Project Amber：${detail.name}`,
+        url: `https://gi.yatta.moe/chs/archive/avatar/${detail.id}/${detail.route || ''}`,
+        sourceType: 'yatta', externalId: String(detail.id),
+        rawText: excerptLines.join('\n\n'), rawPayload: { index: matched, detail: detailJson, fetter: fetterJson }, evidenceKind: 'structured',
+      })],
+      warnings: fetterRes.ok ? [] : [`Yatta 故事与语音请求失败 HTTP ${fetterRes.status}，仅有基础档案。`],
     };
   } catch (error) {
     return {

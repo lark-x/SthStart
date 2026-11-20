@@ -17,9 +17,9 @@ export function useCharacterVariants({
   const [variants, setVariants] = useState<CharacterVariant[]>([]);
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
 
-  const addVariant = (name: string) => {
+  const addVariant = (name: string, kind: CharacterVariant['variantKind'] = 'form') => {
     if (!name.trim()) return null;
-    const variant = createCharacterVariant(crypto.randomUUID(), name, draft);
+    const variant = createCharacterVariant(crypto.randomUUID(), name, draft, kind);
     setVariants((current) => [...current, variant]);
     setActiveVariantId(variant.id);
     markDirty();

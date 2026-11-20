@@ -1,20 +1,32 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { existsSync, createReadStream } from 'node:fs';
-import { resolve } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import {
-  CHARACTER_PERSONA_COMPILER_VERSION,
-  compileLinshePrompt,
+  LinsheGalleryImageRequestSchema,
+  LinsheGalleryImageResponseSchema,
+  type LinsheGalleryImageRequest,
+  type LinsheGalleryImageResponse,
   type LinsheBridgeStatus,
-  type LinsheBridgeSyncResult,
 } from '@sthstart/contracts';
 import type { ServiceConfig } from './config.js';
 import type { ServiceDatabase } from './database.js';
 import { nowIso } from './database.js';
 import { streamUploadArtifact } from './artifacts.js';
-import { publishCharacterSnapshot } from './characters.js';
+import { syncCharacterSnapshotAfterChange } from './characters/snapshots.js';
+import { toCharacterRuntime } from '@sthstart/contracts';
+import { authenticateApp, hasCapability } from './access.js';
+
+export function resolveLinsheImageUrl(value: string, baseUrl: string) {
+  const decodedInput = decodeURIComponent(value);
+  if (decodedInput.includes('\\') || decodedInput.split('/').some(part => part === '.' || part === '..')) throw new Error('invalid_linshe_image_url');
+  const url = new URL(value, baseUrl);
+  if (url.origin !== new URL(baseUrl).origin || url.username || url.password || url.search || url.hash) throw new Error('invalid_linshe_image_url');
+  const decoded = decodeURIComponent(url.pathname);
+  if (decoded.includes('\\') || decoded.split('/').some(part => part === '.' || part === '..')) throw new Error('invalid_linshe_image_url');
+  if (!/^\/images\/(?:[a-z_]+\/)?[^/]+\.(?:png|jpe?g|webp|avif|gif)$/i.test(decoded)
+    && !/^\/api\/images\/artifacts\/[a-zA-Z0-9_-]+$/.test(decoded)) throw new Error('invalid_linshe_image_url');
+  return url.href;
+}
 
 export function registerLinsheBridgeRoutes(
   app: FastifyInstance,
@@ -23,6 +35,53 @@ export function registerLinsheBridgeRoutes(
   fetcher: typeof fetch = fetch,
 ) {
   const linsheBaseUrl = `http://127.0.0.1:${config.linsheAgentPort}`;
+  const pendingGallery = new Map<string, Promise<LinsheGalleryImageResponse>>();
+
+  app.post<{ Body: LinsheGalleryImageRequest }>('/api/v1/linshe/gallery-images', {
+    schema: { body: LinsheGalleryImageRequestSchema, response: { 200: LinsheGalleryImageResponseSchema, 201: LinsheGalleryImageResponseSchema } },
+  }, async (request, reply) => {
+    const identity = authenticateApp(database, request);
+    if (!identity) return reply.code(401).send({ error: 'invalid_app_token' });
+    if (identity.id !== 'linshe' || !hasCapability(identity, 'artifact')) return reply.code(403).send({ error: 'capability_denied' });
+    let fetchUrl: string;
+    try { fetchUrl = resolveLinsheImageUrl(request.body.imageUrl, linsheBaseUrl); }
+    catch { return reply.code(400).send({ error: 'invalid_linshe_image_url' }); }
+    const { sourceImageId, characterId, title, metadata } = request.body;
+    const existing = database.connection.prepare('SELECT shared_asset_id FROM linshe_gallery_imports WHERE source_image_id=?').get(sourceImageId) as { shared_asset_id: string } | undefined;
+    if (existing) return { sharedAssetId: existing.shared_asset_id, created: false };
+    const inFlight = pendingGallery.get(sourceImageId);
+    if (inFlight) {
+      try { return { ...await inFlight, created: false }; }
+      catch { return reply.code(502).send({ error: 'linshe_gallery_return_failed', message: '邻舍图片回流暂时失败，请重试。' }); }
+    }
+    if (characterId && !database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(characterId)) return reply.code(400).send({ error: 'character_not_found' });
+    const work = (async (): Promise<LinsheGalleryImageResponse> => {
+      const response = await fetcher(fetchUrl, { redirect: 'error', signal: AbortSignal.timeout(15000) });
+      if (!response.ok || !response.body) throw new Error('linshe_image_unavailable');
+      const contentType = (response.headers.get('content-type') || '').split(';')[0];
+      if (!/^image\/(png|jpeg|webp|avif|gif)$/.test(contentType)) throw new Error('invalid_image_content_type');
+      const id = randomUUID();
+      const now = nowIso();
+      const cleanTitle = title?.trim() || `邻舍图片 ${sourceImageId.slice(-12)}`;
+      const extension = contentType === 'image/jpeg' ? 'jpg' : contentType.slice(6);
+      const artifact = await streamUploadArtifact(config, database, {
+        appId: 'linshe', stream: Readable.fromWeb(response.body as any), contentType,
+        originalName: `${id}.${extension}`, refType: 'shared-asset', refId: id,
+        metadata: { sourceImageId, source: 'linshe-generated' },
+      });
+      database.transaction(() => {
+        database.connection.prepare(`INSERT INTO shared_assets(id,title,category,artifact_id,character_ids_json,tags_json,metadata_json,author_note,user_note,source_page,source_url,created_at,updated_at)
+          VALUES (?,?,'other',?,?,'[]',?,'邻舍生成后自动回流','','linshe-generated',?,?,?)`)
+          .run(id, cleanTitle, artifact.id, JSON.stringify(characterId ? [characterId] : []), JSON.stringify({ ...metadata, sourceImageId }), request.body.imageUrl, now, now);
+        database.connection.prepare('INSERT INTO linshe_gallery_imports(source_image_id,shared_asset_id,created_at) VALUES(?,?,?)').run(sourceImageId, id, now);
+      });
+      return { sharedAssetId: id, created: true };
+    })();
+    pendingGallery.set(sourceImageId, work);
+    try { const result = await work; return reply.code(201).send(result); }
+    catch (error) { return reply.code(502).send({ error: 'linshe_gallery_return_failed', message: error instanceof Error ? error.message : String(error) }); }
+    finally { pendingGallery.delete(sourceImageId); }
+  });
 
   // GET /api/v1/admin/linshe-bridge/status — 查询数据互通状态与已关联角色
   app.get('/api/v1/admin/linshe-bridge/status', async (request, reply) => {
@@ -98,16 +157,14 @@ export function registerLinsheBridgeRoutes(
       .get(characterId) as Record<string, unknown> | undefined;
     if (!profile) return reply.code(404).send({ error: 'character_not_found' });
 
-    // 确保将最新 draft_revision（含最新人设与皮肤服饰描写）冻结为版本后再推给邻舍
+    // Original characters only deliver an explicitly published stage. Other origins
+    // keep their automatic authority snapshot current, including asset-only changes.
     let version = profile.latest_version ? Number(profile.latest_version) : null;
-    const currentRevision = Number(profile.draft_revision ?? 1);
-    const latestVerRow = version
-      ? (database.connection.prepare('SELECT draft_revision FROM character_versions WHERE character_id=? AND version=?').get(characterId, version) as { draft_revision: number | null } | undefined)
-      : undefined;
-    if (!version || !latestVerRow || Number(latestVerRow.draft_revision ?? 0) < currentRevision) {
-      const published = publishCharacterSnapshot(database, characterId, { allowIncomplete: true });
-      if (published) version = published.version;
+    if (toCharacterRuntime(JSON.parse(String(profile.draft_json))).originType !== 'original') {
+      const snapshot = syncCharacterSnapshotAfterChange(database, characterId);
+      if (snapshot) version = snapshot.version;
     }
+    if (!version) return reply.code(409).send({ error: 'published_stage_required', message: '原创角色尚无已发布阶段，请先在 SthStart 角色库保存一个阶段，再推送到邻舍。' });
 
     const link = database.connection
       .prepare('SELECT local_id FROM app_character_links WHERE app_id=? AND character_id=?')
@@ -118,7 +175,7 @@ export function registerLinsheBridgeRoutes(
         const updateRes = await fetcher(`${linsheBaseUrl}/api/characters/${encodeURIComponent(link.local_id)}/update-public`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ force: Boolean(force) }),
+          body: JSON.stringify({ force: Boolean(force), version }),
           signal: AbortSignal.timeout(10000),
         });
         const updateBody = (await updateRes.json().catch(() => ({}))) as Record<string, any>;
@@ -218,10 +275,12 @@ export function registerLinsheBridgeRoutes(
     const { imageUrl, target, characterId, characterIds, category, title, tags, setAsActive } = request.body || {};
     if (!imageUrl) return reply.code(400).send({ error: 'image_url_required' });
 
-    const fetchUrl = imageUrl.startsWith('http') ? imageUrl : `${linsheBaseUrl}${imageUrl}`;
+    let fetchUrl: string;
+    try { fetchUrl = resolveLinsheImageUrl(imageUrl, linsheBaseUrl); }
+    catch { return reply.code(400).send({ error: 'invalid_linshe_image_url' }); }
     let imgRes: Response;
     try {
-      imgRes = await fetcher(fetchUrl, { signal: AbortSignal.timeout(15000) });
+      imgRes = await fetcher(fetchUrl, { redirect: 'error', signal: AbortSignal.timeout(15000) });
       if (!imgRes.ok) {
         return reply.code(imgRes.status).send({ error: 'fetch_image_failed' });
       }
@@ -297,6 +356,7 @@ export function registerLinsheBridgeRoutes(
       } else if (setAsActive === 'portrait') {
         database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?, updated_at=? WHERE id=?').run(id, now, characterId);
       }
+      syncCharacterSnapshotAfterChange(database, characterId, { incrementRevision: true });
 
       return reply.code(201).send({
         ok: true,

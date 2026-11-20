@@ -9,11 +9,13 @@ import {
   Brain,
   Camera,
   Clock3,
+  Compass,
   Film,
   GitBranch,
   Globe2,
   Image as ImageIcon,
   Layers,
+  LayoutDashboard,
   Pause,
   Play,
   Plus,
@@ -63,9 +65,14 @@ import {
   useStoryWorlds,
   useWorldBranchDetail,
   useWorldEventPages,
+  useWorldHub,
   useWorldMemories,
   useWorldComparisonBranch,
 } from './queries';
+import { WorldOverviewHub } from './hub/world-overview-hub';
+import { WorldPlanWorkspace, type WorldPlanTarget } from './hub/world-plan-workspace';
+import { WorldCodexView } from './hub/world-codex-view';
+import { buildAiStudioHref } from './hub/world-hub-shared';
 import { useWorkbenchUrl } from './hooks/use-workbench-url';
 import { useStoryWorldActions } from './hooks/use-story-world-actions';
 import { useModelRoutingOptions } from './hooks/use-external-options';
@@ -516,7 +523,19 @@ function MemoryDrawer({
   );
 }
 
-export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: WorldImageAdoptAction } = {}) {
+export interface StoryWorldsWorkspaceProps {
+  imageAdoptAction?: WorldImageAdoptAction;
+  renderIllustrationPanel?: (input: {
+    prompt: string;
+    title?: string;
+    contextKey?: string;
+  }) => React.ReactNode;
+}
+
+export function StoryWorldsWorkspace({
+  imageAdoptAction,
+  renderIllustrationPanel,
+}: StoryWorldsWorkspaceProps = {}) {
   const narrow = useMediaQuery('(max-width: 1151px)', false);
   const router = useRouter();
   const toast = useToast();
@@ -544,7 +563,11 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
     ?? null;
   const branch = branches.find((item) => item.id === url.branchId) ?? null;
   const detailQuery = useWorldBranchDetail(url.worldId, branch?.id);
+  const hubQuery = useWorldHub(pendingWorld ? undefined : url.worldId || undefined, branch?.id);
+  const hub = hubQuery.data;
   const detail = detailQuery.data;
+  const [codexTarget, setCodexTarget] = useState<{ tab: 'regions' | 'factions' | 'lore'; id?: string } | null>(null);
+  const [planTarget, setPlanTarget] = useState<WorldPlanTarget | null>(null);
   const definition = detail?.definition ?? (world
     ? {
         title: world.title,
@@ -697,31 +720,52 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
     return () => clearTimeout(timer);
   }, [eventQuery, events.length]);
 
+  const aiStudioHref = buildAiStudioHref({
+    workName: world?.title ?? null,
+    worldId: world?.id ?? null,
+    branchId: branch?.id ?? null,
+    projectId: hub?.linkedProjects[0]?.project.id ?? null,
+  });
+
+  const openChaptersCopilot = () => {
+    setPlanTarget((prev) => ({
+      ...(prev ?? {}),
+      rightTab: 'copilot',
+      nonce: Date.now(),
+    }));
+    url.selectView('chapters');
+  };
+
   return (
     <WorkspaceShell className="story-worlds-workspace">
       <WorkspaceHeader
-        title="故事世界"
+        title={world?.title ?? '作品工作台'}
+        backHref="/apps/story-worlds"
+        backLabel="作品目录"
         status={(
           <span className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={runStatusTone(run?.status)} dot>{runStatusLabel(run?.status)}</Badge>
-            {run && (
-              <span className="text-xs text-muted">
-                文本 {run.textCallsUsed}/{run.settings.maxTextCalls} · 配图 {run.imagesSubmitted}/{run.settings.maxImages}
-              </span>
+            {(run && (url.view === 'sandbox' || isRunActive(run.status) || run.status === 'uncertain' || run.status === 'paused')) && (
+              <>
+                <Badge variant={runStatusTone(run.status)} dot>{runStatusLabel(run.status)}</Badge>
+                <span className="text-xs text-muted">
+                  文本 {run.textCallsUsed}/{run.settings.maxTextCalls} · 配图 {run.imagesSubmitted}/{run.settings.maxImages}
+                </span>
+              </>
             )}
           </span>
         )}
         actions={(
           <>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => setRunFormOpen(true)}
-              disabled={!world || !branch || !detail}
-            >
-              <Play className="h-4 w-4" aria-hidden="true" />
-              运行设置
-            </Button>
+            {world && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={openChaptersCopilot}
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                AI 创作
+              </Button>
+            )}
             {(run?.status === 'running' || run?.status === 'queued') && (
               <Button
                 size="sm"
@@ -747,11 +791,10 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
               </Button>
             )}
             <RowActionsMenu
-              label="故事世界操作"
+              label="作品操作菜单"
               items={[
-                { label: '新建世界', onSelect: openCreateWorld },
-                { label: '编辑当前世界', onSelect: openEditWorld, hidden: !world },
-                { label: '新建分支', onSelect: () => openBranchForm(), hidden: !world, separatorBefore: true },
+                { label: '新建篇章', onSelect: () => setStoryLineOpen(true), hidden: !branch },
+                { label: '新建平行分支', onSelect: () => openBranchForm(), hidden: !world },
                 {
                   label: '从历史节点分支',
                   onSelect: () => openBranchForm(branch?.id, Math.max(0, (branch?.currentTick ?? 0) - 60)),
@@ -761,10 +804,13 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
                   label: '并排比较分支',
                   onSelect: () => setCompareOpen(true),
                   hidden: !branch || branches.length < 2,
-                  separatorBefore: true,
                 },
-                { label: '新建故事线', onSelect: () => setStoryLineOpen(true), hidden: !branch },
-                { label: '刷新运行状态', onSelect: () => void detailQuery.refetch(), hidden: !branch },
+                { label: '编辑完整世界设定', onSelect: openEditWorld, hidden: !world, separatorBefore: true },
+                { label: '高级编排与运行记录', onSelect: () => router.push(aiStudioHref), hidden: !world },
+                { label: '沙盒调试视图 (旧)', onSelect: () => url.selectView('sandbox', 'reading'), hidden: !world || url.view === 'sandbox' },
+                { label: '沙盒引擎运行设置', onSelect: () => setRunFormOpen(true), hidden: !world || !branch || !detail },
+                { label: '新建作品', onSelect: openCreateWorld, separatorBefore: true },
+                { label: '刷新数据', onSelect: () => void Promise.all([detailQuery.refetch(), hubQuery.refetch()]), hidden: !branch },
               ]}
             />
           </>
@@ -790,9 +836,10 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
                 <option key={item.id} value={item.id}>{item.title}{pendingWorlds.some((entry) => entry.id === item.id) ? ' · 待配置' : ''}</option>
               ))}
             </Select>
-            <Badge variant="warning">待配置</Badge>
-            <p className="text-sm text-muted">添加一个开场地点和一名人物后，就可以建立主线。</p>
-            <Button variant="primary" onClick={openPendingWorld}>补全设定</Button>
+            <h2 className="text-lg font-semibold text-ink">{pendingWorld.title}</h2>
+            <Badge variant="outline">作品已创建</Badge>
+            <p className="text-sm text-muted">可以先整理角色。需要开展故事时，再添加开场地点与人物。</p>
+            <Button variant="primary" onClick={openPendingWorld}>配置故事</Button>
           </div>
         </div>
       ) : worldChoices.length === 0 ? (
@@ -806,7 +853,100 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
         </div>
       ) : (
         <>
-          <div className="sw-runbar">
+          {/* 单一精简二级导航：纯中文 3 视图 + 仅在存在多分支时显示分支选择器 */}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-hairline bg-surface px-4 py-2 sm:px-6">
+            <PageTabs
+              ariaLabel="作品主视图"
+              variant="local"
+              value={url.view === 'sandbox' ? 'overview' : url.view}
+              onChange={(value) => {
+                if (value === 'overview' || value === 'chapters' || value === 'lore') {
+                  url.selectView(value);
+                }
+              }}
+              tabs={[
+                { id: 'overview', label: <><LayoutDashboard className="h-4 w-4" aria-hidden="true" />作品首页</> },
+                { id: 'chapters', label: <><BookOpen className="h-4 w-4" aria-hidden="true" />剧情章节</>, count: storyLines.length },
+                { id: 'lore', label: <><Compass className="h-4 w-4" aria-hidden="true" />设定集</>, count: actors.length },
+              ]}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              {url.view === 'sandbox' && (
+                <Badge variant="warning">沙盒调试视图 (旧)</Badge>
+              )}
+              {branches.length > 1 && (
+                <Select
+                  aria-label="切换平行分支"
+                  value={url.branchId}
+                  onChange={(event) => url.selectBranch(event.target.value)}
+                  className="h-8 w-auto min-w-[160px] text-xs"
+                >
+                  {branches.map((item) => (
+                    <option key={item.id} value={item.id}>{item.title}</option>
+                  ))}
+                </Select>
+              )}
+            </div>
+          </div>
+
+          {url.view === 'overview' && (
+            hub ? (
+              <WorldOverviewHub
+                hub={hub}
+                onNavigateView={(nextView) => url.selectView(nextView)}
+                onOpenCopilot={openChaptersCopilot}
+                onSelectLoreTarget={(target) => setCodexTarget(target)}
+                onSelectChapterTarget={(target) => setPlanTarget({ ...target, nonce: Date.now() })}
+                onCreateArc={() => setStoryLineOpen(true)}
+              />
+            ) : hubQuery.isError ? (
+              <div className="p-6">
+                <AsyncState
+                  status="error"
+                  title="作品概览读取失败"
+                  description={describeError(hubQuery.error)}
+                  onRetry={() => void hubQuery.refetch()}
+                />
+              </div>
+            ) : (
+              <div className="p-6"><AsyncState status="loading" rows={5} /></div>
+            )
+          )}
+
+          {url.view === 'chapters' && (
+            hub ? (
+              <WorldPlanWorkspace
+                key={hub.world.id}
+                hub={hub}
+                initialTarget={planTarget}
+                onCreateArc={() => setStoryLineOpen(true)}
+                renderIllustrationPanel={renderIllustrationPanel}
+              />
+            ) : hubQuery.isError ? (
+              <div className="p-6">
+                <AsyncState
+                  status="error"
+                  title="作品章节读取失败"
+                  description={describeError(hubQuery.error)}
+                  onRetry={() => void hubQuery.refetch()}
+                />
+              </div>
+            ) : (
+              <div className="p-6"><AsyncState status="loading" rows={5} /></div>
+            )
+          )}
+
+          {url.view === 'lore' && (
+            hub ? (
+              <WorldCodexView hub={hub} initialTarget={codexTarget} />
+            ) : (
+              <div className="p-6"><AsyncState status="loading" rows={5} /></div>
+            )
+          )}
+
+          {url.view === 'sandbox' && (
+            <>
+              <div className="sw-runbar">
             <div className="sw-runbar-main">
               <Badge variant={runStatusTone(run?.status)} dot>{runStatusLabel(run?.status)}</Badge>
               {branch ? (
@@ -1168,15 +1308,15 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
               </div>
 
               <PageTabs
-                ariaLabel="故事世界视图"
+                ariaLabel="引擎账本子视图"
                 variant="local"
-                value={url.view}
+                value={url.ledgerSub}
                 onChange={(value) => {
-                  if (value === 'flow' || value === 'reading' || value === 'images') url.selectView(value);
+                  if (value === 'flow' || value === 'reading' || value === 'images') url.selectLedgerSub(value);
                 }}
                 tabs={[
-                  { id: 'flow', label: <><Layers className="h-4 w-4" aria-hidden="true" />故事流</>, count: events.length },
-                  { id: 'reading', label: <><BookOpen className="h-4 w-4" aria-hidden="true" />故事阅读</>, count: events.length },
+                  { id: 'reading', label: <><BookOpen className="h-4 w-4" aria-hidden="true" />事件阅读</>, count: events.length },
+                  { id: 'flow', label: <><Layers className="h-4 w-4" aria-hidden="true" />沙盒轨迹流</>, count: events.length },
                   { id: 'images', label: <><Film className="h-4 w-4" aria-hidden="true" />图像叙事</>, count: images.length },
                 ]}
               />
@@ -1214,7 +1354,7 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
                         {eventQuery.isFetchingNextPage ? '正在加载更多事件…' : '正在更新事件…'}
                       </span>
                     )}
-                    {events.length > 0 && url.view === 'flow' && (
+                    {events.length > 0 && url.ledgerSub === 'flow' && (
                       <StoryWorldFlow
                         actors={actors}
                         locations={locations}
@@ -1228,7 +1368,7 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
                         dataComplete={isAllEventsLoaded}
                       />
                     )}
-                    {events.length > 0 && url.view === 'reading' && (
+                    {events.length > 0 && url.ledgerSub === 'reading' && (
                       <WorldReader
                         events={events}
                         actors={actors}
@@ -1240,7 +1380,7 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
                         className="sw-reader"
                       />
                     )}
-                    {events.length > 0 && url.view === 'images' && (
+                    {events.length > 0 && url.ledgerSub === 'images' && (
                       <WorldImageReader
                         adoptAction={imageAdoptAction}
                         events={events}
@@ -1322,6 +1462,8 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
               </div>
             </aside>
           </div>
+          </>
+          )}
         </>
       )}
 
@@ -1400,7 +1542,7 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
           selectedEventId={selectedEventId}
           onSubmit={(input) => actions.planImages(url.worldId, branch.id, input)}
           onSaved={(result) => {
-            url.selectView('images');
+            url.selectLedgerSub('images');
             toast.success('配图计划已生成', `${result.items.length} 幅待提交`);
           }}
         />
@@ -1518,6 +1660,7 @@ export function StoryWorldsWorkspace({ imageAdoptAction }: { imageAdoptAction?: 
           }}
           actor={promotingActor}
           branch={branch}
+          workNature={world.workNature}
           onSubmit={(input) => actions.promoteActor(world.id, branch.id, promotingActor.id, input)}
           onSaved={(result) => {
             toast.success(

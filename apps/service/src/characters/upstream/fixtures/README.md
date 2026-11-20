@@ -1,0 +1,17 @@
+# Public character evidence fixtures
+
+Captured read-only on 2026-11-16. No user database, user credentials or paid model was accessed.
+
+- `public-character-responses.json` stores complete successful JSON responses from public BWiki and StarRailRes endpoints, exact request URLs and a compact record of initial EdgeOne 567 failures. Duplicate equivalent queries are consolidated.
+- `live-network-adapter-acceptance.json` records the actual production adapter results for 琴 and 雷电芽衣. The capture fetcher only reserialized equivalent MediaWiki query parameters (`format` first, encoded `prop` separator, redirect flags); it did not alter response bodies. This distinction matters because the initial query serialization was intermittently blocked by EdgeOne. The successful sample is evidence of parsing and request behavior at that time, not a promise of future upstream availability.
+- `public-adapter-acceptance.json` records the first actual StarRailRes 三月七 sample and the initial BWiki frequency-limit failure. Its BWiki failure is superseded by the later successful sample, but retained as failure evidence.
+- `production-default-live-acceptance.json` records an additional run with the default production `fetch`: StarRailRes succeeded while BWiki was again frequency-limited. BWiki network availability is intermittent and every affected result carries a warning. Successful actual parsing is established by the captured full bodies and successful earlier adapter run, not by this blocked run.
+- `bwiki-live-acceptance.json` records direct production-parser output from the captured actual page bodies, including full story endings and missing armor lore.
+
+`reliable-upstream.test.ts` replays these complete public bodies through production adapters and asserts character identity, eight 琴 stories, 77 voice lines, two ordinary skin stories and real imageinfo associations, stable March 7th IDs 1224/1413, and verified 雷电芽衣 armor ownership. It separately injects failed image/read responses and controlled LLM output to verify failure handling and grounding. Replay is explicitly distinct from a fresh live upstream test.
+
+Story MCP integration tests exercise `akasha_search` followed by paginated `akasha_read` against a controlled HTTP response. No configured Akasha endpoint was accessed in this task. This adapter supports Story MCP worlds `gi`, `hsr`, `bh3`; it does not claim compatibility with the different `searchAkasha`/`readSource` protocol or support for `zzz`/general works.
+
+Model synthesis tests use only an injected fetcher for `https://controlled.invalid/v1/chat/completions`; no live or paid model was invoked. Evidence is packed by category into at most 18,000 characters per request, with each original story/voice/skin retained as a separately identified segment. The actual 77 琴 voice lines total 2,915 characters and occupy one request, not 77. The tests expand the same voice text and verify the request count grows with evidence length. Skin fields require a quote from that skin's exact segment; packing cannot authorize a cross-skin citation.
+
+The save/runtime regression uses the actual 77-line voice fixture plus one context dialogue and expands the actual stories beyond 60,000 characters. It exercises synthesis → V2 normalization → JSON save/read → V2 normalization → runtime projection and compares the complete persona, >8,000-character speech/behavior sections and all 78 examples. This is an in-memory serialization regression, not a real user database mutation.

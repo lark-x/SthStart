@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, ListTodo, Search } from 'lucide-react';
+import { Menu, ListTodo, Search, Sparkles } from 'lucide-react';
 import type React from 'react';
 import { Button } from '@/app/components/ui/button';
 import { IconButton } from '@/app/components/ui/icon-button';
@@ -39,6 +39,14 @@ export function WorkspaceGlobalActions() {
             <span className="hidden xl:inline">导航</span>
           </span>
         </Button>
+
+        <IconButton
+          icon={Sparkles}
+          label="打开 AI 创作助手"
+          title="AI 创作助手 (Ctrl/Cmd+J)"
+          iconClassName="h-3.5 w-3.5 text-muted"
+          onClick={() => window.dispatchEvent(new CustomEvent('sthstart:open-ai-drawer'))}
+        />
 
         <IconButton
           icon={Search}

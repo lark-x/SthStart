@@ -16,6 +16,9 @@ export interface CastMember {
   displayName: string;
   avatarUrl?: string;
   activityRole?: string;
+  version?: number;
+  variantId?: string;
+  costumeAssetId?: string;
 }
 
 /**

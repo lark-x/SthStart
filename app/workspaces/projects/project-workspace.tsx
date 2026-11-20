@@ -18,7 +18,7 @@ import { KnowledgePicker } from '@/app/features/knowledge/components/knowledge-p
 import { authorshipLabels, natureLabels } from '@/app/features/notebook/schemas';
 import { projectsApi } from '@/app/features/projects/api';
 import { projectBackTarget, projectEditorHref } from '@/app/features/projects/list-state';
-import { useWorldProjectBinding } from '@/app/features/story-worlds/queries';
+import { useStoryWorlds, useWorldProjectBinding } from '@/app/features/story-worlds/queries';
 import { storyKeys } from '@/app/lib/query-keys';
 import { projectKeys } from '@/app/features/projects/query-keys';
 import { CreatePublicationDialog } from '@/app/workspaces/story/create-publication-dialog';
@@ -37,9 +37,9 @@ const kinds: Record<string, string> = {
 };
 
 const TAB_LABELS = {
-  writing: '正文与设定',
+  writing: '正文',
   characters: '角色',
-  references: '参考资料',
+  references: '参考',
   production: '制作',
   media: '媒体',
 } as const;
@@ -66,6 +66,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [dismissedAdoption, setDismissedAdoption] = useState('');
   const adoptedChapterId = searchParams.get('adopted') ?? '';
   const binding = useWorldProjectBinding(projectId);
+  const worlds = useStoryWorlds();
 
   const mutate = async (action: () => Promise<unknown>, success = '已保存') => {
     if (busy) return;
@@ -113,12 +114,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const references = links.filter((link) => link.kind !== 'artifact' && link.kind !== 'activity');
   const media = links.filter((link) => link.kind === 'artifact');
   const chapters = documents.filter((document) => document.kind === 'chapter');
+  const userDocs = documents.filter((document) => document.kind !== 'world');
+  const ledgerDocs = documents.filter((document) => document.kind === 'world');
   const adoptedChapter = adoptedChapterId
     ? chapters.find((chapter) => chapter.id === adoptedChapterId) ?? null
     : null;
   const boundBranch = binding.data?.binding ?? null;
+  const boundWorld = worlds.data?.items.find((world) => world.id === boundBranch?.worldId);
+  const worldWorkbenchHref = boundBranch
+    ? `/apps/story-worlds?world=${encodeURIComponent(boundBranch.worldId)}&branch=${encodeURIComponent(boundBranch.branchId)}&view=chapters`
+    : null;
   const adoptionReviewOpen = Boolean(adoptedChapter) && dismissedAdoption !== adoptedChapterId;
-  const activeTab = adoptionReviewOpen ? 'production' : tab;
+  const showProduction = productions.length > 0 || adoptionReviewOpen;
+  const activeTab = adoptionReviewOpen ? 'production' : (tab === 'production' && !showProduction ? 'writing' : tab);
   const publicationOpen = (publication || adoptionReviewOpen) && chapters.length > 0;
   const publicationInitialChapters = adoptionReviewOpen && adoptedChapter
     ? [adoptedChapter.id]
@@ -147,19 +155,28 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               setTab(next as keyof typeof TAB_LABELS);
             }}
             tabs={[
-              { id: 'writing', label: TAB_LABELS.writing, count: chapters.length, panelId: 'project-panel' },
+              { id: 'writing', label: TAB_LABELS.writing, count: userDocs.length, panelId: 'project-panel' },
               { id: 'characters', label: TAB_LABELS.characters, count: characters.length, panelId: 'project-panel' },
               { id: 'references', label: TAB_LABELS.references, count: references.length, panelId: 'project-panel' },
-              { id: 'production', label: TAB_LABELS.production, count: productions.length, panelId: 'project-panel' },
+              ...(showProduction
+                ? [{ id: 'production', label: TAB_LABELS.production, count: productions.length, panelId: 'project-panel' }]
+                : []),
               { id: 'media', label: TAB_LABELS.media, count: media.length, panelId: 'project-panel' },
             ]}
           />
         }
         actions={
-          <Link href={editor()} className={buttonVariants({ variant: 'primary', size: 'sm' })}>
-            <BookOpen size={16} aria-hidden="true" />
-            继续写作
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {worldWorkbenchHref && (
+              <Link href={worldWorkbenchHref} className={buttonVariants({ variant: 'primary', size: 'sm' })}>
+                <BookOpen size={16} aria-hidden="true" />
+                打开作品工作台
+              </Link>
+            )}
+            <Link href={editor()} className={buttonVariants({ variant: worldWorkbenchHref ? 'outline' : 'primary', size: 'sm' })}>
+              旧版编辑
+            </Link>
+          </div>
         }
       />
 
@@ -175,37 +192,36 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       >
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-panel border border-border-subtle bg-surface-sunken/25 px-4 py-3">
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium text-ink">故事世界衔接</p>
+            <p className="text-sm font-medium text-ink">所属作品工作台</p>
             {binding.isLoading ? (
-              <p className="text-xs text-muted">正在读取世界绑定…</p>
+              <p className="text-xs text-muted">正在读取关联作品…</p>
             ) : binding.isError ? (
-              <p className="text-xs text-danger-fg">世界绑定读取失败；采纳和制作不受影响。</p>
+              <p className="text-xs text-danger-fg">关联作品读取失败，下方手稿内容不受影响。</p>
             ) : boundBranch ? (
               <p className="text-xs leading-relaxed text-muted">
-                已关联世界 {boundBranch.worldId} · 分支 {boundBranch.branchId} · 绑定时修订 {boundBranch.sourceRevision}
-                {' '}（绑定记录不会随分支推进自动更新）
+                已归属作品《{boundWorld?.title || project.workId || '关联作品'}》· 推荐直接在统一「作品 · 剧情章节」工作台中编写正文、检索 MCP 原文与使用 AI 助手。
               </p>
             ) : (
               <p className="text-xs leading-relaxed text-muted">
-                尚未关联故事世界分支。可以在故事世界中采纳事件，或先新建一个世界。
+                这是一个尚未关联「作品」的历史创作项目，建议在作品工作台统一管理设定与章节。
               </p>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {boundBranch && (
+            {worldWorkbenchHref && (
               <Link
-                href={`/apps/story-worlds?world=${encodeURIComponent(boundBranch.worldId)}&branch=${encodeURIComponent(boundBranch.branchId)}&view=reading`}
+                href={worldWorkbenchHref}
                 className={buttonVariants({ variant: 'outline', size: 'sm' })}
               >
-                打开关联世界分支
+                进入作品章节工作台
                 <ArrowRight size={16} aria-hidden="true" />
               </Link>
             )}
             <Link
-              href={`/apps/story-worlds/new?projectId=${encodeURIComponent(projectId)}`}
+              href="/apps/story-worlds"
               className={buttonVariants({ variant: 'ghost', size: 'sm' })}
             >
-              新建故事世界
+              作品目录
             </Link>
           </div>
         </div>
@@ -230,11 +246,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         {activeTab === 'writing' && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <p className="text-sm text-muted">这里的正文与设定是本项目的正式内容。编辑器中保留各次修订。</p>
+              <p className="text-sm text-muted">这里的正文与大纲为正式手稿记录，编辑器内保留完整修订历史。</p>
             </div>
-            {documents.length ? (
+            {userDocs.length ? (
               <ul className="divide-y divide-border-subtle">
-                {documents.map((document) => (
+                {userDocs.map((document) => (
                   <li key={document.id}>
                     <Link
                       href={editor(document.id)}
@@ -256,9 +272,29 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             ) : (
               <EmptyState
                 icon={BookOpen}
-                title="还没有正文或设定"
-                description="先在写作工作区新建章节。保存正文后，就可以创建制作版本。"
+                title="还没有手稿章节"
+                description={worldWorkbenchHref ? '可以前往「作品 · 剧情章节」新建章节，或在此打开旧版编辑器。' : '先在写作工作区新建章节。'}
               />
+            )}
+            {ledgerDocs.length > 0 && (
+              <details className="rounded-control border border-border-subtle bg-surface-sunken/30 px-3 py-2 text-xs text-muted">
+                <summary className="cursor-pointer font-medium text-ink hover:text-accent">
+                  内部设定索引账本（{ledgerDocs.length} 条，由作品数据自动同步）
+                </summary>
+                <ul className="mt-2 divide-y divide-border-subtle">
+                  {ledgerDocs.map((document) => (
+                    <li key={document.id}>
+                      <Link
+                        href={editor(document.id)}
+                        className="flex items-center justify-between gap-3 py-2 text-xs hover:text-ink"
+                      >
+                        <span className="truncate">{document.title}</span>
+                        <span className="shrink-0">修订 {document.revision}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </>
         )}
@@ -452,7 +488,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               <EmptyState
                 icon={Plus}
                 title="还没有媒体引用"
-                description="到媒体库选择作品，再点击“加入项目”。"
+                description="到媒体库选择作品，再点击“收入作品手稿”。"
               />
             )}
           </>

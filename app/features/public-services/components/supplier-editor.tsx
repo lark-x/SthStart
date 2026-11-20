@@ -51,17 +51,24 @@ export function SupplierEditor({ connection, groupConnections, connections, onCl
     setSaving(true);
     try {
       const targets = editingConnections.length > 0
-        ? editingConnections.map(item => ({ id: item.id, kind: mixedProtocols ? item.kind : kind }))
-        : [{ id: savedId || generateInternalId('conn', name, new Set(connections.map(item => item.id))), kind }];
+        ? editingConnections.map(item => ({
+          id: item.id,
+          kind: mixedProtocols ? item.kind : kind,
+          name: name.trim() === connection?.name.trim() ? item.name : name.trim(),
+          baseUrl: baseUrl.trim() === connection?.baseUrl.trim() ? item.baseUrl : baseUrl.trim(),
+          timeoutMs: timeoutMs === connection?.timeoutMs ? item.timeoutMs : timeoutMs,
+          headers: headers === JSON.stringify(connection?.headers ?? {}, null, 2) ? item.headers : parsedHeaders,
+          options: options === JSON.stringify(connection?.options ?? {}, null, 2) ? item.options : parsedOptions,
+        }))
+        : [{ id: savedId || generateInternalId('conn', name, new Set(connections.map(item => item.id))),
+          kind, name: name.trim(), baseUrl: baseUrl.trim(), timeoutMs, headers: parsedHeaders, options: parsedOptions }];
       const warnings: string[] = [];
       const failures: string[] = [];
       let firstId = savedId;
       for (const target of targets) {
         try {
           const result = await saveConnection({
-            id: target.id,
-            name: name.trim(), baseUrl: baseUrl.trim(), kind: target.kind, timeoutMs,
-            headers: parsedHeaders, options: parsedOptions,
+            ...target,
             ...(secret.trim() ? { secret: secret.trim() } : {}),
           });
           firstId = firstId || result.id;
@@ -72,6 +79,8 @@ export function SupplierEditor({ connection, groupConnections, connections, onCl
       }
       setSavedId(firstId);
       if (failures.length) {
+        // Some connections may already have changed; keep the underlying list current.
+        try { await onSaved(); } catch { /* Preserve the save failure and editable draft. */ }
         setError(`部分连接未保存：${failures.join('；')}`);
         return;
       }
@@ -92,10 +101,12 @@ export function SupplierEditor({ connection, groupConnections, connections, onCl
   return (
     <Dialog open onOpenChange={open => { if (!open && !saving) onClose(); }}
       title={connection ? '编辑供应商' : '添加供应商'} description={editingConnections.length > 1
-        ? `此供应商包含 ${editingConnections.length} 条历史连接；名称、地址和密钥会统一保存。`
+        ? `此供应商包含 ${editingConnections.length} 条历史连接；只同步你修改的设置，未修改的设置各自保留。`
         : '保存一次连接信息，之后可反复添加模型。'}>
       <form aria-label="供应商配置" className="space-y-4" onSubmit={handleSave}>
         {error && <Alert variant="warning" title="请检查配置">{error}</Alert>}
+        <fieldset disabled={saving} className="min-w-0 space-y-4">
+        <legend className="sr-only">供应商连接设置</legend>
         <FormField label="供应商名称" required>
           <Input required name="supplier-name" maxLength={160} value={name} onChange={event => setName(event.target.value)} placeholder="例如 Magpie、本地模型" />
         </FormField>
@@ -130,6 +141,7 @@ export function SupplierEditor({ connection, groupConnections, connections, onCl
             <Textarea rows={3} className="font-mono" value={options} onChange={event => setOptions(event.target.value)} />
           </FormField>
         </details>
+        </fieldset>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" disabled={saving} onClick={onClose}>取消</Button>
           <Button type="submit" variant="primary" loading={saving}>保存供应商</Button>

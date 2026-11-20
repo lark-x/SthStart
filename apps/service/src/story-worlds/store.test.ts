@@ -116,6 +116,39 @@ test('pending completion rolls back the world when its initial branch cannot be 
   } finally { database.close(); }
 });
 
+test('setup creation keys bind nature and mother work across draft edits and completion', () => {
+  const database = new ServiceDatabase(':memory:');
+  const store = new StoryWorldStore(database);
+  try {
+    const request = { title: '港口同人', workNature: 'derivative' as const, parentWork: '星铁', idempotencyKey: 'full-identity' };
+    const created = store.createSetup(request);
+    assert.equal(created.parentWork, '崩坏：星穹铁道');
+    assert.deepEqual(store.createSetup({ ...request, parentWork: '崩坏：星穹铁道' }), created);
+    assert.throws(() => store.createSetup({ ...request, workNature: 'original' }), { code: 'story_creation_idempotency_conflict' });
+    assert.throws(() => store.createSetup({ ...request, parentWork: '原神' }), { code: 'story_creation_idempotency_conflict' });
+    const setup = store.getSetup(created.id);
+    const draft = { ...setup.draft, definition: { ...setup.draft.definition, title: '港口新名', locations: definition().locations, actors: definition().actors } };
+    const saved = store.saveSetup(created.id, { expectedRevision: setup.revision, complete: false, draft });
+    assert.equal(saved.status, 'pending');
+    assert.equal(store.createSetup(request).id, created.id);
+    const complete = store.saveSetup(created.id, { expectedRevision: 2, complete: true, draft });
+    assert.equal(complete.status, 'ready');
+    assert.equal(store.createSetup(request).id, created.id);
+    assert.equal(database.connection.prepare('SELECT count(*) n FROM character_works WHERE world_id=?').get(created.id)!.n, 1);
+    assert.equal(database.connection.prepare('SELECT name FROM character_works WHERE world_id=?').get(created.id)!.name, '港口新名');
+  } finally { database.close(); }
+});
+
+test('invalid mother work cannot leave a partial setup or directory', () => {
+  const database = new ServiceDatabase(':memory:');
+  const store = new StoryWorldStore(database);
+  try {
+    assert.throws(() => store.createSetup({ title: '失效同人', workNature: 'derivative', parentWork: '不存在', idempotencyKey: 'invalid' }), { code: 'character_parent_work_missing' });
+    assert.equal(store.listSetups().items.length, 0);
+    assert.equal(database.connection.prepare('SELECT count(*) n FROM character_works WHERE name=?').get('失效同人')!.n, 0);
+  } finally { database.close(); }
+});
+
 function event(
   worldId: string, branchId: string, id: string, tick: number, participantIds: string[],
   patch: Partial<WorldEvent> = {},

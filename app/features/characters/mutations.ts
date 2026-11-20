@@ -12,6 +12,8 @@ import {
   setCharacterActiveAsset,
   matchOfficialAvatar,
   batchMatchOfficialAvatars,
+  batchEnrichRpCards,
+  batchImportLocalCards,
   fetchAvatarFromUrl,
   importTavernCard,
   saveCharacterRelationship,
@@ -70,7 +72,30 @@ export function useFetchAvatarFromUrl() {
 export function useBatchMatchOfficialAvatars() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { ids?: string[]; onlyMissing?: boolean }) => batchMatchOfficialAvatars(payload),
+    mutationFn: (payload: import('@sthstart/contracts').CharacterBatchAvatarRequest) =>
+      batchMatchOfficialAvatars(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+    },
+  });
+}
+
+export function useBatchEnrichRpCards() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: import('@sthstart/contracts').CharacterBatchEnrichRpRequest) =>
+      batchEnrichRpCards(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.all });
+    },
+  });
+}
+
+export function useBatchImportLocalCards() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: import('@sthstart/contracts').CharacterBatchImportLocalCardsRequest) =>
+      batchImportLocalCards(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: characterKeys.all });
     },

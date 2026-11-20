@@ -69,13 +69,14 @@ export function StudioHeader({
       backHref="/apps/activities"
       backLabel="活动列表"
       titleSlot={<Input
+        variant="inline"
         aria-label="活动标题"
         value={titleDraft}
         onChange={event => setTitleDraft(event.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder="未命名活动"
-        className="h-9 min-h-0 w-full min-w-0 max-w-64 rounded-none border-0 border-b border-transparent bg-transparent px-1 text-base font-semibold text-ink shadow-none outline-none hover:border-border-default focus:border-accent sm:text-sm"
+        className="h-9 min-h-0 w-full min-w-0 max-w-64 px-1 text-base font-semibold text-ink sm:text-sm"
       />}
       status={<span title={saveError || undefined}>
         <SaveStatus

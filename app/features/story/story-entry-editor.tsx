@@ -229,6 +229,7 @@ export function StoryEntryEditor({
         >
           {/* 无边框典雅大标题 */}
           <Input
+            variant="inline"
             aria-label="条目标题"
             value={draft.title}
             maxLength={120}
@@ -242,7 +243,7 @@ export function StoryEntryEditor({
               }
             }}
             placeholder="无标题章节…"
-            className="h-auto min-h-0 w-full rounded-none bg-transparent border-0 border-b border-transparent hover:border-border-default/50 focus:border-accent p-0 pb-2 mb-6 text-2xl sm:text-3xl font-semibold tracking-tight outline-none transition-colors"
+            className="h-auto min-h-0 w-full p-0 pb-2 mb-6 text-2xl sm:text-3xl font-semibold tracking-tight"
             style={{ color: currentTheme.textColor, fontFamily: 'var(--font-sans)' }}
           />
 

@@ -8,6 +8,7 @@ import type {
 import {
   fetchWorldBranch,
   fetchWorldEvents,
+  fetchWorldHub,
   fetchWorldMemories,
   fetchWorldOverview,
   fetchWorldProjectBinding,
@@ -36,6 +37,15 @@ export function useStoryWorldOverview(worldId?: string) {
   return useQuery({
     queryKey: storyWorldKeys.overview(worldId ?? ''),
     queryFn: () => fetchWorldOverview(worldId!),
+    enabled: Boolean(worldId),
+    staleTime: 10_000,
+  });
+}
+
+export function useWorldHub(worldId?: string, branchId?: string) {
+  return useQuery({
+    queryKey: storyWorldKeys.hub(worldId ?? '', branchId),
+    queryFn: () => fetchWorldHub(worldId!, branchId),
     enabled: Boolean(worldId),
     staleTime: 10_000,
   });

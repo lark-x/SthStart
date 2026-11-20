@@ -11,7 +11,7 @@
 
 - 产品模块及来源、采用、制作的语义以 [创作工作区与模块职责](PRODUCT_WORKSPACE.md) 为准。
 - 故事世界扩展遵循[故事世界架构标准](development/STORY_WORLDS_ARCHITECTURE.md)，包括个人知识隔离、持久化运行、公共图片队列与历史采纳；实施状态以该模块验收记录为准。
-- 故事世界独立创建与编辑由 `features/story-worlds/authoring` 管理字段、候选和编辑信封；`/new`（名称创建）、`/:worldId/setup`（待配置补全）与 `/:worldId/edit` 是普通滚动页。待配置实体和列表仍由 Query 管理，未保存内容由编辑信封管理；完成配置后服务在同一事务内建立世界与初始分支。项目图片采纳在 `workspaces/story-worlds` 装配，通过插槽交给功能模块，不允许功能模块反向依赖工作台。操作说明见[配置与 AI 填充](development/WORLD_AUTHORING.md)。
+- 作品入口 `/apps/story-worlds` 默认由 `workspaces/story-worlds` 合并作品目录、待配置与已建立故事，按世界ID去重；不带 `world` 参数时保持普通列表滚动，带参数时才进入原故事工作台。独立创建与编辑由 `features/story-worlds/authoring` 管理字段、候选和编辑信封；`/new`（名称与属性创建）、`/:worldId/setup`（按需配置故事）与 `/:worldId/edit` 是普通滚动页。待配置实体和列表仍由 Query 管理，未保存内容由编辑信封管理；完成配置后服务在同一事务内建立世界与初始分支。项目图片采纳在 `workspaces/story-worlds` 装配，通过插槽交给功能模块，不允许功能模块反向依赖工作台。操作说明见[配置与 AI 填充](development/WORLD_AUTHORING.md)。
 - 实施范围、顺序和验收见 [前端架构整理计划](development/FRONTEND_ARCHITECTURE_PLAN.md)。
 - 执行状态唯一登记在 [开发待办](development/BACKLOG.md)，实际架构验收结果记录在可纳入 Git 的 [阶段记录](development/reviews/)；仓库默认忽略 `plans/` 与 `logs/` 的新文件，不将正式标准仅保存在这些目录。
 - 页面布局和交互同时遵循 [前端核心规则](../app/AGENTS.md)。本文件管理代码职责，不替代视觉与交互规范。

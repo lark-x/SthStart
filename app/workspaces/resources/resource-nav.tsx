@@ -40,7 +40,7 @@ export function ResourceNav({
   activeView,
   onViewChange,
   className = '',
-  showQuickLinks = true,
+  showQuickLinks = false,
 }: ResourceNavProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,7 +68,18 @@ export function ResourceNav({
           variant="local"
           ariaLabel="资料库视图切换"
           value={activeView}
-          tabs={RESOURCE_TABS.map((t) => ({ id: t.id, label: t.label }))}
+          tabs={RESOURCE_TABS.map((tab) => {
+            const Icon = tab.icon;
+            return {
+              id: tab.id,
+              label: (
+                <span className="resources-view-tab-label">
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{tab.label}</span>
+                </span>
+              ),
+            };
+          })}
           onChange={handleTabChange}
         />
 

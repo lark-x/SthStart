@@ -374,7 +374,7 @@ export function TopicLibraryView({ embedded = false }: { embedded?: boolean } = 
                       className="h-9 text-sm"
                     />
                   </label>
-                  <Button type="button" size="sm" variant="outline" onClick={openFilters} aria-expanded={filtersOpen}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
+                  <Button type="button" size="sm" variant="outline" className="h-9" onClick={openFilters} aria-expanded={filtersOpen}><SlidersHorizontal className="mr-1.5 h-4 w-4" />筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
                 </div>
                 {activeFilterCount > 0 && <div className="flex flex-wrap items-center gap-2 text-xs text-muted" aria-label="已启用筛选">
                   {workFilter.length > 0 && <span className="rounded-full bg-surface-muted px-2.5 py-1">{workFilter.length} 个作品</span>}
@@ -452,7 +452,7 @@ export function TopicLibraryView({ embedded = false }: { embedded?: boolean } = 
                         </li>
                       ))}
                     </ul>
-                  : <p className="text-xs text-muted">还没有点子批次。选中素材后点「生成活动点子」即可开始。</p>}
+                  : <p className="text-xs text-muted">还没有点子批次。选中素材后点「生成三个点子」即可开始。</p>}
               </section>
             </>
           )}
@@ -484,21 +484,21 @@ export function TopicLibraryView({ embedded = false }: { embedded?: boolean } = 
               )}
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold text-ink">可选要求</span>
-                <Textarea aria-label="点子要求" rows={3} value={requirement} placeholder="例如：用这几个梗给芙宁娜办一场聚会" onChange={(event) => setRequirement(event.target.value)} />
+                <Textarea aria-label="点子要求" rows={3} value={requirement} placeholder="例如：围绕这几条线索构思一段角色互动或番外情节" onChange={(event) => setRequirement(event.target.value)} />
               </label>
               {/* 这里不能包在 label 里：label 会接管内部按钮的可访问名。 */}
               <div className="space-y-1.5">
-                <span className="block text-xs font-semibold text-ink">活动主角</span>
+                <span className="block text-xs font-semibold text-ink">焦点角色</span>
                 <div className="flex items-center gap-2 rounded-control border border-border-default bg-surface-sunken/40 px-3 py-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{leadCharacterName || '未指定'}</span>
-                  <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>选择主角</Button>
-                  {leadCharacterId && <Button size="sm" variant="ghost" aria-label="清除活动主角" onClick={() => { setLeadCharacterId(''); setLeadCharacterName(''); }}><X className="h-3.5 w-3.5" /></Button>}
+                  <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>选择角色</Button>
+                  {leadCharacterId && <Button size="sm" variant="ghost" aria-label="清除焦点角色" onClick={() => { setLeadCharacterId(''); setLeadCharacterName(''); }}><X className="h-3.5 w-3.5" /></Button>}
                 </div>
               </div>
               <Button className="w-full" variant="primary" disabled={busy || !selected.length || selected.length > MAX_SELECTED || !leadCharacterId} onClick={() => { setIdeaOpen(true); void generateIdeas(false); }}>
                 <Wand2 className="h-3.5 w-3.5" />生成三个点子
               </Button>
-              {!leadCharacterId && <p className="text-xs text-warning-fg">请先选择活动主角：采用点子时会用主角建立企划会话。</p>}
+              {!leadCharacterId && <p className="text-xs text-muted">请先选择焦点角色：生成点子时将结合角色设定展开构思。</p>}
               {selected.length > MAX_SELECTED && <Alert variant="warning">一次最多选择 {MAX_SELECTED} 条素材。</Alert>}
               <p className="text-xs text-muted">这里只生成点子方向，不生成完整聊天、图片或视频；详情页与企划会继续沿用已有流程。</p>
             </section>

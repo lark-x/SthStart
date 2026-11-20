@@ -568,8 +568,8 @@ export function selectConnectionForModelType(
       ? ['openai-compatible-image', 'openai-compatible-text']
       : ['openai-compatible-text', 'openai-compatible-image'];
   return [...candidates].sort((left, right) =>
-    preferredKinds.indexOf(left.kind) - preferredKinds.indexOf(right.kind)
-    || Number(right.enabled) - Number(left.enabled)
+    Number(right.enabled) - Number(left.enabled)
+    || preferredKinds.indexOf(left.kind) - preferredKinds.indexOf(right.kind)
     || Number(right.hasCredential) - Number(left.hasCredential)
     || left.createdAt.localeCompare(right.createdAt),
   )[0] ?? null;

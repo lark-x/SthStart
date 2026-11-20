@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   CharacterUpstreamApplyRequestSchema,
+  CharacterUpstreamEvidenceSourceSchema,
   CharacterUpstreamResearchPreviewSchema,
   CharacterVariantSchema,
   stripMachineCharacterIndex,
@@ -11,6 +12,15 @@ import {
   type CharacterUpstreamEvidenceSource,
   type CharacterUpstreamSkinProposal,
 } from './index.js';
+
+test('upstream source contract preserves complete evidence and source identity while accepting legacy excerpts', () => {
+  const legacy = { title: '正文', url: null, excerpt: '摘要', sourceType: 'bwiki' };
+  assert.equal(Value.Check(CharacterUpstreamEvidenceSourceSchema, legacy), true);
+  const full = { ...legacy, rawText: '完整原文'.repeat(5000), rawPayload: { parse: { wikitext: { '*': '完整原文' } } },
+    provider: 'bwiki', externalId: 'ys:55', contentHash: 'a'.repeat(64), retrievedAt: '2026-11-16T00:00:00Z', evidenceKind: 'fulltext' };
+  assert.equal(Value.Check(CharacterUpstreamEvidenceSourceSchema, full), true);
+  assert.equal(Value.Check(CharacterUpstreamEvidenceSourceSchema, { ...full, evidenceKind: 'guessed' }), false);
+});
 
 test('stripMachineCharacterIndex removes machine index lines and keeps persona sections', () => {
   const input = [

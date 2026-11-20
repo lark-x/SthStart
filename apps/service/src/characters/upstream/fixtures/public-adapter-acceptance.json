@@ -1,0 +1,75 @@
+{
+  "retrievedAt": "2026-11-16T12:27:32.684Z",
+  "requests": [
+    {
+      "url": "https://wiki.biligame.com/ys/api.php?action=query&list=search&srsearch=%E7%90%B4&srlimit=6&format=json",
+      "status": 567
+    },
+    {
+      "url": "https://wiki.biligame.com/bh3/api.php?action=query&list=search&srsearch=%E9%9B%B7%E7%94%B5%E8%8A%BD%E8%A1%A3&srlimit=6&format=json",
+      "status": 567
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json",
+      "status": 200
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/nickname.json",
+      "status": 200
+    }
+  ],
+  "summary": {
+    "琴": {
+      "warnings": [
+        "BWiki (ys) 搜索失败: BWiki 触发访问频控 (EdgeOne WAF)",
+        "BWiki (ys) 未匹配角色：琴"
+      ]
+    },
+    "雷电芽衣": {
+      "warnings": [
+        "BWiki (bh3) 搜索失败: BWiki 触发访问频控 (EdgeOne WAF)",
+        "BWiki (bh3) 未匹配角色：雷电芽衣"
+      ]
+    },
+    "三月七": {
+      "name": "三月七",
+      "facts": 4,
+      "candidates": [
+        {
+          "id": "starrailres:1224",
+          "name": "三月七·巡猎",
+          "classification": "variant",
+          "variantKind": "sp",
+          "outfitDescription": "",
+          "loreStory": "",
+          "avatarUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/icon/character/1224.png",
+          "portraitUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/image/character_portrait/1224.png",
+          "source": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json#1224",
+          "isDefault": false
+        },
+        {
+          "id": "starrailres:1413",
+          "name": "长夜月",
+          "classification": "variant",
+          "variantKind": "sp",
+          "outfitDescription": "",
+          "loreStory": "",
+          "avatarUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/icon/character/1413.png",
+          "portraitUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/image/character_portrait/1413.png",
+          "source": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json#1413",
+          "isDefault": false
+        }
+      ],
+      "sources": [
+        {
+          "title": "StarRailRes：三月七 (1001)",
+          "rawLength": 59691,
+          "hash": "d839a2bbd4ce0496067d916f8ba69de43175116a890cc3af19dece5950be809c"
+        }
+      ],
+      "warnings": [
+        "StarRailRes 仅提供角色身份、命途、属性和图像路径，不含衣装描述或背景故事；未生成推测文本。"
+      ]
+    }
+  }
+}

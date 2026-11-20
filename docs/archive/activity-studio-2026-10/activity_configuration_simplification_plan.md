@@ -1,5 +1,7 @@
 # 活动页面配置体系复杂度分析与优化方案
 
+> 2026 年 10 月的方案选型讨论。后续范围与实施证据见[整合实施计划](activity_studio_abc_implementation_plan.md)和[阶段实施记录](activity_studio_abc_implementation_progress.md)。
+
 ## 目标简述 (Goal Description)
 
 当前 SthStart 活动系统（Activities）功能完备，覆盖了从企划向导、分幕编排、镜头绘制、漫画排版到视听回放的完整闭环。但随着迭代演进，界面的**配置链路（Configuration Pipelines）**逐渐累积出较高的认知门槛，存在**“配置层级过深、底层机器参数外露、双制图工作台并存、AI 模式入口散落”**等心智负担。

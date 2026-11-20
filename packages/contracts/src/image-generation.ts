@@ -5,6 +5,7 @@ import { KnowledgeHitSchema, RemovedTagDiagnosticSchema } from './activity-image
 export const ImageContextSelectionSchema = Type.Object({
   characters: Type.Optional(Type.Array(Type.Object({
     characterId: Type.String({ minLength: 1 }),
+    variantId: Type.Optional(Type.String({ minLength: 1 })),
     draftRevision: Type.Optional(Type.Integer({ minimum: 1 })),
     outfitOverride: Type.Optional(Type.String({ maxLength: 4000 })),
   }, { additionalProperties: false }), { maxItems: 8 })),
@@ -62,6 +63,7 @@ export const ImagePreparationResponseSchema = Type.Object({
 });
 export type ImagePreparationResponse = Static<typeof ImagePreparationResponseSchema>;
 export const CharacterAvatarGenerationRequestSchema = Type.Object({
+  variantId: Type.Optional(Type.String({ minLength: 1 })),
   idempotencyKey: Type.Optional(Type.String({ minLength: 8, maxLength: 200 })),
   prompt: Type.Optional(Type.String({ maxLength: 10000 })),
   seed: Type.Optional(Type.Union([Type.Integer({ minimum: 0, maximum: 2147483647 }), Type.Null()])),

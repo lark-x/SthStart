@@ -6,6 +6,7 @@
 
 ## 文档导航
 
+- [文档与工具清理记录](reviews/2026-11-19-docs-tooling-cleanup.md)说明早期方案、旧人设 Skill 和 DSH 本机配置的归档位置。
 - [故事世界架构标准](STORY_WORLDS_ARCHITECTURE.md)：世界与分支、个人知识、持久化运行、公共生图队列和项目采纳的后续开发标准。
  - [邻舍借用台账](LINSHE_BORROW_LEDGER.md)：借用内容的固定提交、许可、为何不跟 main、再生成与校验命令。
 - [故事世界完整计划](STORY_WORLDS_PLAN.md)与[集成验收记录](reviews/2026-11-11-story-worlds-delivery.md)：产品范围和实际证据分开维护。
@@ -17,7 +18,7 @@
 - [BACKLOG.md](BACKLOG.md)：待开发、待修复和文档任务的唯一人工维护清单。
 - [DEFERRED_VALIDATION.md](DEFERRED_VALIDATION.md)：已经明确延后、但不能遗忘的验证工作。
 - [CONTRIBUTING_LOG.md](CONTRIBUTING_LOG.md)：开发者和 Agent 更新这些文档时必须遵守的规则。
-- [logs/](logs/)：按日期保存的阶段开发日志。
+- `logs/` 保存本机阶段开发日志。随仓库维护的交付和审查记录见 [reviews/](reviews/)。
 - [templates/DEVELOPMENT_LOG_TEMPLATE.md](templates/DEVELOPMENT_LOG_TEMPLATE.md)：新建阶段日志时使用的模板。
 
 ## 状态定义

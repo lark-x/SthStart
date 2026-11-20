@@ -42,13 +42,20 @@ test('managed Linshe agent receives its identity, the locked LLM/vector gateways
   const database = new ServiceDatabase(':memory:');
   const settings = new RuntimeSettingsStore(database);
   const logs = new RuntimeLogService(database, root, false);
-  const config = readConfig({ STHSTART_LINSHE_ROOT: root, SERVICE_PORT: '44123', LINSHE_AGENT_PORT: String(agentPort), PROBE_TIMEOUT_MS: '100', PORTAL_ORIGINS: 'http://portal.test:4173' });
+  const config = readConfig({
+    STHSTART_LINSHE_ROOT: root,
+    SERVICE_PORT: '44123',
+    LINSHE_AGENT_PORT: String(agentPort),
+    PROBE_TIMEOUT_MS: '100',
+    PORTAL_ORIGINS: 'http://portal.test:4173',
+    STHSTART_PORTAL_URL: 'http://public-portal.test:9320',
+  });
   const runtime = new RuntimeManager(config, settings, logs, { appToken: 'sth_app_runtime-test-token' });
   await runtime.start('linshe-agent');
   for (let attempt = 0; attempt < 200 && !existsSync(output); attempt++) await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
   assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), {
     token: 'sth_app_runtime-test-token', llm: 'true', vector: 'true', image: 'false', purpose: 'linshe-chat-image',
-    url: 'http://127.0.0.1:44123', portalUrl: 'http://portal.test:4173',
+    url: 'http://127.0.0.1:44123', portalUrl: 'http://public-portal.test:9320',
   });
   await runtime.close(); database.close();
 });

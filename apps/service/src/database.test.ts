@@ -280,3 +280,44 @@ test('migration 47 migrates provider_profiles to service_connections and model_p
   } finally { connection.close(); }
 });
 
+
+
+test('migration 64 preserves version 63 user records and adds nullable selection and idempotency fields', () => {
+  const connection = new DatabaseSync(':memory:');
+  try {
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter(m => m.version <= 63), 'service');
+    connection.prepare(`INSERT INTO sw_world_setups(id,creation_key,creation_title,title,revision,draft_json,created_at,updated_at)
+      VALUES ('setup','retry','原作','原作',1,'{"definition":{"workNature":"canon"}}','then','then')`).run();
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'service');
+    const row = connection.prepare("SELECT * FROM sw_world_setups WHERE id='setup'").get()!;
+    assert.equal(row.title,'原作'); assert.equal(row.creation_request_json,null);
+    assert.equal(JSON.parse(String(row.draft_json)).definition.workNature,'canon');
+    assert.equal(connection.prepare('PRAGMA integrity_check').get()!.integrity_check,'ok');
+    assert.deepEqual(connection.prepare('PRAGMA foreign_key_check').all(),[]);
+    const columns = connection.prepare('PRAGMA table_info(story_characters)').all().map(row => row.name);
+    assert.ok(columns.includes('source_variant_id')); assert.ok(columns.includes('source_costume_asset_id'));
+    assert.equal(connection.prepare('SELECT COUNT(*) n FROM linshe_gallery_imports').get()!.n,0);
+  } finally { connection.close(); }
+});
+
+test('migration 67 adds auto MCP transport without changing existing source records', () => {
+  const connection = new DatabaseSync(':memory:');
+  try {
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS.filter(m => m.version <= 66), 'service');
+    connection.prepare(`INSERT INTO mcp_sources
+      (id,name,url,auth_mode,auth_header_name,credential_account,applicable_works_json,universal,purpose,allowed_tools_json,discovered_tools_json,timeout_ms,status,last_test_json,created_at,updated_at)
+      VALUES ('legacy','Legacy MCP','https://example.com/mcp','none',NULL,NULL,'[]',1,'source','[]','[]',45000,'enabled',NULL,'then','then')`).run();
+
+    migrateDatabase(connection, SERVICE_DATABASE_MIGRATIONS, 'service');
+
+    const row = connection.prepare("SELECT name,url,transport,credential_account FROM mcp_sources WHERE id='legacy'").get()!;
+    assert.deepEqual({ ...row }, {
+      name: 'Legacy MCP',
+      url: 'https://example.com/mcp',
+      transport: 'auto',
+      credential_account: null,
+    });
+    assert.equal(connection.prepare('PRAGMA integrity_check').get()!.integrity_check, 'ok');
+    assert.deepEqual(connection.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { connection.close(); }
+});

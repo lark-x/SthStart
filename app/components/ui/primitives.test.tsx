@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HeadlessMantineProvider } from '@mantine/core';
+import { Sparkles } from 'lucide-react';
 import { Button, type ButtonProps } from './button';
+import { IconButton } from './icon-button';
+import { PageTabs } from './page-tabs';
 import { Input } from './input';
 import { Textarea } from './textarea';
 import { Select } from './select';
@@ -90,6 +93,18 @@ test('single Select renders a decorative chevron in Mantine rightSection with en
   assert.match(html, /data-with-right-section="true"/, 'wrapper reserves the section width');
   const section = /<div[^>]*data-position="right"[^>]*>/.exec(html)?.[0];
   assert.ok(section?.includes('aria-hidden="true"'), 'section itself is not announced');
+});
+
+test('inline text fields expose their variant on the native control without opting normal fields into card skins', () => {
+  for (const Control of [Input, Textarea]) {
+    const inline = renderControl(<Control variant="inline" aria-label="标题" error disabled defaultValue="草稿" />);
+    const tag = inline.match(/<(?:input|textarea)\b[^>]*>/)?.[0] ?? '';
+    assert.match(tag, /data-ui-variant="inline"/);
+    assert.match(tag, /aria-invalid="true"/);
+    assert.match(tag, /disabled=""/);
+    const normal = renderControl(<Control aria-label="普通字段" />);
+    assert.doesNotMatch(normal, /data-ui-variant=/);
+  }
 });
 
 test('Select hides the chevron for multiple and listbox selects and keeps caller padding', () => {
@@ -230,4 +245,37 @@ test('OverlayFlexScrollArea omits Mantine hardcoded 100vh style prop', () => {
     </OverlayFlexScrollArea>
   );
   assert.equal(html, '<span>drawer-body</span>');
+});
+
+test('Button loading keeps loader in leftSection without rendering caller leftSection icon simultaneously', () => {
+  const html = renderControl(
+    <Button loading leftSection={<Sparkles data-testid="btn-icon" />}>
+      生成
+    </Button>
+  );
+  assert.match(html, /animate-spin/);
+  assert.doesNotMatch(html, /data-testid="btn-icon"/);
+});
+
+test('IconButton replaces inner icon with a single spinner when loading', () => {
+  const html = renderControl(<IconButton icon={Sparkles} label="触发" loading />);
+  const spinMatches = html.match(/animate-spin/g) ?? [];
+  assert.equal(spinMatches.length, 1);
+  assert.match(html, /aria-busy="true"/);
+});
+
+test('PageTabs root renders a real layout box instead of display:contents', () => {
+  const html = renderControl(
+    <PageTabs
+      ariaLabel="分段"
+      value="a"
+      onChange={() => {}}
+      tabs={[
+        { id: 'a', label: 'A' },
+        { id: 'b', label: 'B' },
+      ]}
+    />
+  );
+  assert.match(html, /data-page-tabs-root/);
+  assert.doesNotMatch(html, /class="[^"]*\bcontents\b/);
 });

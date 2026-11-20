@@ -1,14 +1,12 @@
-import type {
-  CharacterDraftV2,
-  CharacterUpstreamSkinProposal,
-} from '@sthstart/contracts';
-import { normalizeCharacterDraft, stripMachineCharacterIndex, toCharacterRuntime } from '@sthstart/contracts';
+import type { CharacterDraftV2, CharacterUpstreamSkinProposal } from '@sthstart/contracts';
+import { stripMachineCharacterIndex } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../../database.js';
 import type { SecretStore } from '../../security.js';
 import { resolveAssignedLlmProfile, upstreamHeaders } from '../../providers.js';
 import { resolveAppLlmBindingStatus } from '../../llm-status.js';
 import { collectAiCallRedactionSecrets, fetchAuditedAiResponse, updateAiCallRecord } from '../../ai-call-trace.js';
 import type { UpstreamCharacterBundle } from './types.js';
+import { cleanPersonaProse } from './local-persona-cards.js';
 
 export interface SynthesizedRpResult {
   draft: CharacterDraftV2;
@@ -17,270 +15,239 @@ export interface SynthesizedRpResult {
   warnings: string[];
 }
 
-function buildDeterministicDraft(bundle: UpstreamCharacterBundle): CharacterDraftV2 {
-  const storyBlocks = bundle.stories
+export interface WorldActorCanonicalContext {
+  background?: string;
+  personality?: string;
+  speechStyle?: string;
+  appearance?: string;
+  faction?: string;
+  goals?: string[];
+  worldName?: string;
+}
+
+export function buildDeterministicDraft(
+  bundle: UpstreamCharacterBundle,
+  worldContext?: WorldActorCanonicalContext,
+): CharacterDraftV2 {
+  const cleanStories = bundle.stories
     .slice(0, 5)
-    .map((s) => `### ${s.title}\n${s.content.slice(0, 900)}`)
-    .join('\n\n');
-
+    .map((s) => `### ${s.title}\n${stripMachineCharacterIndex(s.content)}`);
+  const worldSections: string[] = [];
+  if (worldContext?.background) worldSections.push(`### 身份与经历\n${worldContext.background.trim()}`);
+  if (worldContext?.personality) worldSections.push(`### 性格与处世\n${worldContext.personality.trim()}`);
+  if (worldContext?.goals?.length) {
+    worldSections.push(`### 核心诉求与行动线\n${worldContext.goals.map((g) => `- ${g}`).join('\n')}`);
+  }
+  const cleanFacts = bundle.facts
+    .filter((f) => !f.startsWith('内部标识：'))
+    .map((f) => cleanPersonaProse(f, bundle.resolvedName))
+    .filter(Boolean);
   const rawPersona = [
-    bundle.facts.length ? `### 基本档案\n${bundle.facts.join('\n')}` : '',
-    storyBlocks,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+    cleanFacts.length ? `### 基本档案\n${cleanFacts.map((f) => `- ${f}`).join('\n')}` : '',
+    ...worldSections,
+    ...cleanStories,
+  ].filter(Boolean).join('\n\n');
 
-  const voiceExamples = bundle.voiceLines
-    .slice(0, 4)
-    .map((v) => `${v.title}：${v.text}`);
-  const mergedExamples = [...voiceExamples, ...bundle.dialogueSamples].slice(0, 4);
+  const defaultSkin = bundle.skinOrVariantCandidates.find((s) => s.isDefault);
+  const voiceSamples = bundle.voiceLines
+    .slice(0, 6)
+    .map((v) => cleanPersonaProse(`${v.title}：${v.text}`, bundle.resolvedName))
+    .filter(Boolean);
+  const speechText = cleanPersonaProse(
+    worldContext?.speechStyle?.trim()
+      || (bundle.voiceLines.length
+        ? `基于原生语音语料提炼：保持符合「${bundle.resolvedName}」身份、处境与性格节奏的自然口吻，避免空泛说教。`
+        : ''),
+    bundle.resolvedName,
+  );
 
-  const defaultSkin = bundle.skinOrVariantCandidates.find((s) => s.isDefault) || bundle.skinOrVariantCandidates[0];
+  const behaviorLines: string[] = [];
+  if (worldContext?.worldName || bundle.resolvedWork) {
+    behaviorLines.push(`【世界观认知边界】严格立足于「${bundle.resolvedWork || worldContext?.worldName}」本土设定，不了解也不使用跨次元/现代互联网梗或剧透视角。`);
+  }
+  if (worldContext?.faction) {
+    behaviorLines.push(`【阵营与立场】所属「${worldContext.faction}」，言行需符合自身身份与长期立场。`);
+  }
+  if (worldContext?.goals?.length) {
+    behaviorLines.push(`【核心行动底线】优先守护与推进：${worldContext.goals.join('、')}。`);
+  }
 
   return {
-    schemaVersion: 2,
-    displayName: bundle.resolvedName,
-    englishName: bundle.englishName || '',
-    aliases: bundle.aliases,
-    originType: bundle.originType,
-    work: bundle.resolvedWork,
-    summary: bundle.facts.find((f) => f.startsWith('简介：'))?.replace(/^简介：/, '') || `${bundle.resolvedName}${bundle.resolvedWork ? `（${bundle.resolvedWork}）` : ''}角色档案`,
-    personaText: stripMachineCharacterIndex(rawPersona),
-    speechText: bundle.voiceLines.length
-      ? `参考原生语音语流（已采样 ${bundle.voiceLines.length} 条），贴合原角色语气与措辞习惯。`
-      : '',
-    dialogueExamples: mergedExamples,
-    behaviorRules: bundle.resolvedWork
-      ? `严格保持《${bundle.resolvedWork}》世界观认知边界，不使用超出所处世界观的现代网络流行语或元叙事吐槽。`
-      : '',
+    schemaVersion: 2, displayName: bundle.resolvedName, englishName: bundle.englishName || '', aliases: bundle.aliases,
+    originType: bundle.originType, work: bundle.resolvedWork,
+    summary: cleanPersonaProse(
+      cleanFacts.find((f) => f.startsWith('简介：'))?.replace(/^简介：/, '')
+        || worldContext?.background?.split('。')[0]
+        || '',
+      bundle.resolvedName,
+    ),
+    personaText: cleanPersonaProse(stripMachineCharacterIndex(rawPersona), bundle.resolvedName),
+    speechText,
+    dialogueExamples: [...voiceSamples, ...bundle.dialogueSamples.slice(0, 4).map((d) => cleanPersonaProse(d, bundle.resolvedName))].filter(Boolean),
+    behaviorRules: cleanPersonaProse(behaviorLines.join('\n'), bundle.resolvedName),
     appearance: {
-      baseText: `${bundle.resolvedName}的标志性五官、发色、瞳色与体貌特征。`,
-      defaultOutfitText: defaultSkin?.outfitDescription || '',
+      baseText: cleanPersonaProse(bundle.appearanceText || worldContext?.appearance || '', bundle.resolvedName),
+      defaultOutfitText: cleanPersonaProse(defaultSkin?.outfitDescription || '', bundle.resolvedName),
     },
     birthday: bundle.birthday || { status: 'unset', calendar: 'unknown' },
   };
 }
 
-export async function synthesizeRpCharacter(
-  database: ServiceDatabase,
-  secrets: SecretStore,
-  fetcher: typeof fetch,
-  bundle: UpstreamCharacterBundle,
-): Promise<SynthesizedRpResult> {
-  const warnings = [...bundle.warnings];
-  const fallbackDraft = buildDeterministicDraft(bundle);
-
-  const baseProposals: CharacterUpstreamSkinProposal[] = bundle.skinOrVariantCandidates.map((item) => ({
-    id: item.id,
-    name: item.name,
-    classification: item.classification,
-    ...(item.variantKind ? { variantKind: item.variantKind } : {}),
-    outfitDescription: item.outfitDescription,
-    loreStory: item.loreStory,
-    avatarUrl: item.avatarUrl ?? null,
-    portraitUrl: item.portraitUrl ?? null,
-    source: item.source,
-    isDefault: Boolean(item.isDefault),
-    selected: true,
-  }));
-
-  const hasTextEvidence = bundle.facts.length > 0 || bundle.stories.length > 0 || bundle.voiceLines.length > 0 || bundle.dialogueSamples.length > 0;
-  if (!hasTextEvidence) {
-    warnings.push('上游未抓取到足够文本证据，已按基础查询生成占位草稿。');
-    return { draft: fallbackDraft, tags: [], skinsAndVariants: baseProposals, warnings };
-  }
-
-  const bindingStatus = await resolveAppLlmBindingStatus(database, secrets, 'characters', 'text');
-  const profile = bindingStatus.ready ? await resolveAssignedLlmProfile(database, secrets, 'characters', 'text') : null;
-  if (!bindingStatus.ready || !profile?.model) {
-    warnings.push('未配置角色文本模型，已保留上游结构化直采文本（配置后可自动提炼心理深度与防复读示例对话）。');
-    return { draft: fallbackDraft, tags: [], skinsAndVariants: baseProposals, warnings };
-  }
-
-  const evidenceText = [
-    bundle.facts.length ? `【基础事实】\n${bundle.facts.join('\n')}` : '',
-    bundle.stories.length ? `【角色故事与资料】\n${bundle.stories.map((s) => `### ${s.title}\n${s.content}`).join('\n\n').slice(0, 12_000)}` : '',
-    bundle.voiceLines.length ? `【原生语音样本】\n${bundle.voiceLines.map((v) => `- ${v.title}: ${v.text}`).join('\n').slice(0, 6_000)}` : '',
-    bundle.dialogueSamples.length ? `【剧情实景对话切片】\n${bundle.dialogueSamples.join('\n---\n').slice(0, 4_000)}` : '',
-    baseProposals.length
-      ? `【待区分的皮肤与衍生形态】\n${baseProposals.map((s) => `- id:${s.id} | 名称:${s.name} | 初始分类:${s.classification} | 现有描述:${s.outfitDescription} | 现有故事:${s.loreStory}`).join('\n')}`
-      : '',
-  ].filter(Boolean).join('\n\n');
-
-  const prompt = `你是资深的 RP 角色卡架构师与视觉设定编辑。请严格依据提供的上游原生资料，合成一张可用于「沉浸式 AI 故事推演」与「AI 生图/图生视频」的 V2 角色卡 JSON。
-严禁编造与事实冲突的信息；严禁输出任何【MCP角色索引】字段。
-
-核心要求：
-1. personaText：用清晰的 ### 章节整理（如 ### 身份与背景、### 心理防御与软肋、### 核心动机与价值观、### 偏好与忌讳、### 重要关系态度），避免干瘪标签化。
-2. speechText：提炼角色的语流节奏、常用称呼、语气词、以及日常 vs 紧张/防备时的语言切换特征（直接决定 AI 扮演沉浸感）。
-3. dialogueExamples：输出 3~4 条防复读情境对话范例（每条格式为 "情境说明：\\n用户：...\\n角色：*动作描写* 台词"），重语气与节奏而非死背固定台词。
-4. behaviorRules：写明世界观认知边界（角色不知道现代互联网/现实常识）与 OOC 防护底线。
-5. appearance.baseText：仅描述稳定不变的体貌特征（发色、发型、瞳色、身形气质），不写具体某套衣服；appearance.defaultOutfitText：描述默认常态装扮。
-6. skinUpdates：针对“待区分的皮肤与衍生形态”列表，请确保每一项都包含清晰具体的「服装描述 (outfitDescription，可直接给 AI 生图参考)」和「背景故事 (loreStory)」，并校对 classification（崩坏三装甲/星铁 SP/阶段形态填 "variant"，纯换装填 "skin"）。
-
-请只输出纯 JSON（不要 markdown 代码块），结构如下：
-{
-  "displayName": "${bundle.resolvedName}",
-  "englishName": "${bundle.englishName || ''}",
-  "aliases": [],
-  "originType": "${bundle.originType}",
-  "work": "${bundle.resolvedWork}",
-  "summary": "一句话精确概括角色身份与核心气质",
-  "tags": ["3到6个高区分度标签，不要重复写作品名"],
-  "personaText": "...",
-  "speechText": "...",
-  "dialogueExamples": ["...", "...", "..."],
-  "behaviorRules": "...",
-  "appearance": {
-    "baseText": "...",
-    "defaultOutfitText": "..."
-  },
-  "skinUpdates": [
-    {
-      "id": "原样保留输入 id",
-      "classification": "variant 或 skin",
-      "variantKind": "stage 或 sp 或 form（仅 variant 时填写）",
-      "outfitDescription": "详细的视觉服装描写（颜色、剪裁、配饰、特征元素）",
-      "loreStory": "该皮肤或阶段形态的背景故事与意义"
-    }
-  ]
+export interface SynthesisEvidenceSegment { sourceId: string; text: string }
+export interface SynthesisEvidenceChunk {
+  id: string;
+  /** Category used for request logging; field citations resolve to individual segments below. */
+  sourceId: string;
+  text: string;
+  segments: SynthesisEvidenceSegment[];
 }
 
-上游采集资料：
-${evidenceText}`;
-
-  try {
-    const requestBody = {
-      ...profile.extraBody,
-      model: profile.model,
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: '你是严谨的角色资料编辑，只输出合法 JSON 对象。' },
-        { role: 'user', content: prompt },
-      ],
+/** Lossless character-boundary chunks. Complete raw sources remain separately available for snapshots. */
+export function buildSynthesisEvidenceChunks(bundle: UpstreamCharacterBundle, maxCharacters = 18_000): SynthesisEvidenceChunk[] {
+  if (maxCharacters < 2) throw new Error('invalid_evidence_chunk_size');
+  const groups = [
+    // Raw sources can include inactive wiki comments, unrelated navigation or a complete game index.
+    // They are archived losslessly, while the model receives only the character evidence parsed below.
+    { category: 'facts', blocks: [{ sourceId: 'facts', text: bundle.facts.join('\n') }] },
+    { category: 'appearance', blocks: [{ sourceId: 'appearance', text: bundle.appearanceText || '' }] },
+    { category: 'stories', blocks: bundle.stories.map((s, i) => ({ sourceId: `story:${i}:${s.source}`, text: `【${s.title}】\n${s.content}` })) },
+    { category: 'voices', blocks: bundle.voiceLines.map((s, i) => ({ sourceId: `voice:${i}:${s.source}`, text: `【${s.title}】\n${s.text}` })) },
+    { category: 'dialogues', blocks: bundle.dialogueSamples.map((text, i) => ({ sourceId: `dialogue:${i}`, text })) },
+    { category: 'skins', blocks: bundle.skinOrVariantCandidates.map((s) => ({ sourceId: `skin:${s.id}`, text: `【${s.name}】\n${s.outfitDescription}\n${s.loreStory}` })) },
+  ];
+  const chunks: SynthesisEvidenceChunk[] = [];
+  for (const group of groups) {
+    let segments: SynthesisEvidenceSegment[] = []; let length = 0;
+    const flush = () => {
+      if (!segments.length) return;
+      chunks.push({ id: `evidence:${chunks.length}`, sourceId: group.category, text: segments.map((s) => s.text).join('\n\n'), segments });
+      segments = []; length = 0;
     };
-
-    const audited = await fetchAuditedAiResponse(
-      database,
-      {
-        applicationId: 'characters',
-        feature: 'characters',
-        businessEvent: 'character.upstream.synthesize',
-        objectType: 'character',
-        callType: 'llm',
-        provider: profile.name,
-        models: [profile.model],
-        parameters: { temperature: 0.3 },
-        positivePrompt: prompt,
-        redactionSecrets: collectAiCallRedactionSecrets({
-          secret: profile.secret,
-          headers: profile.headers,
-          extraBody: profile.extraBody,
-        }),
-      },
-      fetcher,
-      `${profile.baseUrl}/chat/completions`,
-      {
-        method: 'POST',
-        headers: { ...profile.headers, ...upstreamHeaders(profile.secret) },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(120_000),
-      },
-    );
-
-    const payload = (await audited.response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      error?: { message?: string };
-    };
-    if (!audited.response.ok) {
-      throw new Error(payload.error?.message || `HTTP ${audited.response.status}`);
-    }
-    const raw = payload.choices?.[0]?.message?.content
-      ?.trim()
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '');
-    if (!raw) throw new Error('empty_llm_synthesis');
-
-    updateAiCallRecord(database, audited.callId, {
-      responseText: raw,
-      event: 'content_parsed',
-      redactionSecrets: audited.redactionSecrets,
-    });
-
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const normalized = toCharacterRuntime(normalizeCharacterDraft({
-      schemaVersion: 2,
-      displayName: parsed.displayName || bundle.resolvedName,
-      englishName: parsed.englishName || bundle.englishName || '',
-      aliases: Array.isArray(parsed.aliases) ? parsed.aliases : bundle.aliases,
-      originType: parsed.originType === 'original' ? 'original' : bundle.originType,
-      work: parsed.work || bundle.resolvedWork,
-      summary: parsed.summary || fallbackDraft.summary,
-      personaText: stripMachineCharacterIndex(String(parsed.personaText || fallbackDraft.personaText)),
-      speechText: String(parsed.speechText || fallbackDraft.speechText),
-      dialogueExamples: Array.isArray(parsed.dialogueExamples)
-        ? parsed.dialogueExamples.map((x) => String(x)).filter(Boolean)
-        : fallbackDraft.dialogueExamples,
-      behaviorRules: String(parsed.behaviorRules || fallbackDraft.behaviorRules),
-      appearance: parsed.appearance && typeof parsed.appearance === 'object'
-        ? parsed.appearance
-        : fallbackDraft.appearance,
-      birthday: bundle.birthday || fallbackDraft.birthday,
-    }));
-
-    const draft: CharacterDraftV2 = {
-      schemaVersion: 2,
-      displayName: normalized.displayName,
-      englishName: normalized.englishName,
-      aliases: [...normalized.aliases],
-      originType: normalized.originType,
-      work: normalized.work,
-      summary: normalized.summary,
-      personaText: stripMachineCharacterIndex(normalized.personaText),
-      speechText: normalized.speechText,
-      dialogueExamples: [...normalized.dialogueExamples],
-      behaviorRules: normalized.behaviorRules,
-      appearance: {
-        baseText: normalized.appearance.baseText,
-        defaultOutfitText: normalized.appearance.defaultOutfitText,
-      },
-      birthday: bundle.birthday || fallbackDraft.birthday,
-    };
-
-    const tags = Array.isArray(parsed.tags)
-      ? parsed.tags.map((t) => String(t).trim()).filter((t) => t && t !== draft.work && t !== draft.displayName).slice(0, 8)
-      : [];
-
-    const updatesMap = new Map<string, Record<string, unknown>>();
-    if (Array.isArray(parsed.skinUpdates)) {
-      for (const item of parsed.skinUpdates) {
-        if (item && typeof item === 'object' && typeof (item as Record<string, unknown>).id === 'string') {
-          updatesMap.set(String((item as Record<string, unknown>).id), item as Record<string, unknown>);
-        }
+    for (const block of group.blocks.filter((b) => b.text)) {
+      let offset = 0;
+      while (offset < block.text.length) {
+        const separatorLength = segments.length ? 2 : 0;
+        const capacity = maxCharacters - length - separatorLength;
+        if (capacity < 2) { flush(); continue; }
+        let end = Math.min(offset + capacity, block.text.length);
+        // Never split a surrogate pair. Segments can always be reassembled byte-for-byte.
+        if (end < block.text.length && /[\uD800-\uDBFF]/.test(block.text[end - 1])) end -= 1;
+        const text = block.text.slice(offset, end);
+        segments.push({ sourceId: block.sourceId, text }); length += separatorLength + text.length; offset = end;
+        if (offset < block.text.length) flush();
       }
     }
-
-    const enrichedProposals = baseProposals.map((proposal) => {
-      const upd = updatesMap.get(proposal.id);
-      if (!upd) return proposal;
-      const cls = upd.classification === 'variant' || upd.classification === 'skin'
-        ? upd.classification
-        : proposal.classification;
-      const vKind = cls === 'variant' && (upd.variantKind === 'stage' || upd.variantKind === 'sp' || upd.variantKind === 'form')
-        ? upd.variantKind
-        : proposal.variantKind;
-      return {
-        ...proposal,
-        classification: cls,
-        ...(vKind ? { variantKind: vKind } : {}),
-        outfitDescription: String(upd.outfitDescription || proposal.outfitDescription).trim(),
-        loreStory: String(upd.loreStory || proposal.loreStory).trim(),
-      };
-    });
-
-    return { draft, tags, skinsAndVariants: enrichedProposals, warnings };
-  } catch (error) {
-    warnings.push(`RP 深度提炼降级为直采模式: ${error instanceof Error ? error.message : String(error)}`);
-    return { draft: fallbackDraft, tags: [], skinsAndVariants: baseProposals, warnings };
+    flush();
   }
+  return chunks;
+}
+
+interface GroundedResponse {
+  summary?: string; personaText?: string; speechText?: string; behaviorRules?: string;
+  dialogueExamples?: string[]; appearance?: { baseText?: string; defaultOutfitText?: string };
+  skinUpdates?: Array<{ id: string; outfitDescription?: string; loreStory?: string }>;
+  evidence?: Array<{ field: string; quote: string; sourceId?: string }>;
+}
+
+/** A model may summarize evidence but must cite an exact quote from the current chunk for every accepted field. */
+export function applyGroundedSynthesisResponse(parsed: GroundedResponse, chunk: SynthesisEvidenceChunk,
+  draft: CharacterDraftV2, proposals: CharacterUpstreamSkinProposal[], warnings: string[]): void {
+  const citations = new Map<string, { quote: string; sourceId: string }>();
+  for (const ref of parsed.evidence || []) {
+    if (typeof ref?.field !== 'string' || typeof ref?.quote !== 'string' || ref.quote.trim().length < 4) continue;
+    // A quote spanning two sources is not evidence. Ambiguous same-text sources require an explicit ID.
+    const matches = chunk.segments.filter((s) => (!ref.sourceId || s.sourceId === ref.sourceId) && s.text.includes(ref.quote));
+    if (matches.length === 1) citations.set(ref.field, { quote: ref.quote, sourceId: matches[0].sourceId });
+  }
+  const supported = (field: string, value: unknown): value is string => {
+    if (typeof value !== 'string' || !value.trim()) return false;
+    if (!citations.has(field)) { warnings.push(`LLM 字段 ${field} 缺少可核对的原文引证，已拒绝。`); return false; }
+    return true;
+  };
+  const mark = (_field: string, text: string) => cleanPersonaProse(stripMachineCharacterIndex(text.trim()), draft.displayName);
+  if (supported('summary', parsed.summary) && !draft.summary) draft.summary = parsed.summary.trim();
+  for (const field of ['personaText', 'speechText', 'behaviorRules'] as const) {
+    if (supported(field, parsed[field])) draft[field] = [draft[field], mark(field, parsed[field]!)].filter(Boolean).join('\n\n');
+  }
+  if (Array.isArray(parsed.dialogueExamples)) parsed.dialogueExamples.forEach((text, i) => {
+    // Exact quotations only. Generated lines may be useful creative suggestions but cannot masquerade as native dialogue.
+    if (supported(`dialogueExamples.${i}`, text) && chunk.segments.some((s) => s.sourceId === citations.get(`dialogueExamples.${i}`)!.sourceId && s.text.includes(text))) draft.dialogueExamples.push(mark(`dialogueExamples.${i}`, text));
+    else if (typeof text === 'string' && text.trim()) warnings.push('LLM 对话示例并非原文，未纳入原生对白。');
+  });
+  for (const field of ['baseText', 'defaultOutfitText'] as const) {
+    const text = parsed.appearance?.[field];
+    // Visual facts are especially vulnerable to hallucination: require an extractive span, not a generic citation.
+    if (supported(`appearance.${field}`, text)) {
+      const sourceId = citations.get(`appearance.${field}`)!.sourceId;
+      if (chunk.segments.some((s) => s.sourceId === sourceId && s.text.includes(text)) && (field === 'baseText' ? sourceId === 'appearance' : proposals.some((p) => p.isDefault && sourceId === `skin:${p.id}`))) draft.appearance[field] ||= text;
+      else warnings.push(`LLM 外貌字段 ${field} 不是上游原文，已拒绝。`);
+    }
+  }
+  for (const item of parsed.skinUpdates || []) {
+    const proposal = proposals.find((p) => p.id === item.id);
+    if (!proposal) { warnings.push(`LLM 返回了未检索到的形态 ID，已拒绝。`); continue; }
+    for (const field of ['outfitDescription', 'loreStory'] as const) {
+      const text = item[field];
+      // Classification and identity are authoritative adapter facts, never decided by a text model.
+      if (supported(`skinUpdates.${item.id}.${field}`, text)) {
+        const sourceId = citations.get(`skinUpdates.${item.id}.${field}`)!.sourceId;
+        if (sourceId === `skin:${item.id}` && chunk.segments.some((s) => s.sourceId === sourceId && s.text.includes(text))) proposal[field] ||= text;
+        else warnings.push(`LLM ${proposal.name} 的 ${field} 无对应原文，已拒绝。`);
+      }
+    }
+  }
+}
+
+export async function synthesizeRpCharacter(database: ServiceDatabase, secrets: SecretStore, fetcher: typeof fetch,
+  bundle: UpstreamCharacterBundle): Promise<SynthesizedRpResult> {
+  const warnings = [...bundle.warnings];
+  const fallbackDraft = buildDeterministicDraft(bundle);
+  const proposals: CharacterUpstreamSkinProposal[] = bundle.skinOrVariantCandidates.map((item) => ({ ...item,
+    avatarUrl: item.avatarUrl ?? null, portraitUrl: item.portraitUrl ?? null, isDefault: Boolean(item.isDefault), selected: true }));
+  if (!bundle.appearanceText) warnings.push('上游未提供可核验的稳定体貌文字，外貌字段留空；图像存在不等于已读取图像内容。');
+  if (!bundle.skinOrVariantCandidates.some((s) => s.isDefault && s.outfitDescription)) warnings.push('缺少默认衣装的明确文字证据，默认服饰描述留空。');
+  const chunks = buildSynthesisEvidenceChunks(bundle);
+  if (!chunks.length) {
+    warnings.push('上游未抓取到可核验文本，草稿缺少资料，尚不能作为完整角色档案。');
+    return { draft: fallbackDraft, tags: [], skinsAndVariants: proposals, warnings };
+  }
+  const status = await resolveAppLlmBindingStatus(database, secrets, 'characters', 'text');
+  const profile = status.ready ? await resolveAssignedLlmProfile(database, secrets, 'characters', 'text') : null;
+  if (!profile?.model) {
+    warnings.push('未配置角色文本模型，已保留上游完整直采文本及原文对话；心理深度与语流提炼尚未完成。');
+    return { draft: fallbackDraft, tags: [], skinsAndVariants: proposals, warnings };
+  }
+  // Every chunk is visited. Raw evidence is preserved even if a chunk fails or the model omits content.
+  const draft: CharacterDraftV2 = { ...fallbackDraft, appearance: { ...fallbackDraft.appearance }, dialogueExamples: [...fallbackDraft.dialogueExamples] };
+  for (const chunk of chunks) {
+    const prompt = `你是严谨的角色资料编辑。角色 ${JSON.stringify(bundle.resolvedName)}，作品 ${JSON.stringify(bundle.resolvedWork)}。
+只依据本块资料输出 JSON；未知信息留空。不得改变身份、猜测衣装、编造故事或把图片路径当视觉证据。
+可以整理心理动机、关系态度、语流、认知边界，但每个输出字段必须在 evidence 给出本块逐字 quote 及对应片段的 sourceId。不能混用不同角色形态的证据。
+对话示例、外貌、服饰和形态故事只允许逐字摘录。身份及 skin classification 不由模型修改。
+形态列表：${JSON.stringify(proposals.map((p) => ({ id: p.id, name: p.name })))}
+输出结构：{"summary":"","personaText":"","speechText":"","behaviorRules":"","dialogueExamples":[],"appearance":{"baseText":"","defaultOutfitText":""},"skinUpdates":[],"evidence":[{"field":"personaText","sourceId":"对应片段sourceId","quote":"该片段连续原文"}]}。
+skinUpdates 如有字段使用 {id,outfitDescription,loreStory}，引证 field 为 skinUpdates.<id>.<字段>；数组引证如 dialogueExamples.0。
+资料类别 ${chunk.sourceId}，分块 ${chunk.id}，下列 JSON 数组每个片段均保留独立来源：
+${JSON.stringify(chunk.segments)}`;
+    try {
+      const audited = await fetchAuditedAiResponse(database, { applicationId: 'characters', feature: 'characters',
+        businessEvent: 'character.upstream.synthesize', objectType: 'character', callType: 'llm', provider: profile.name,
+        models: [profile.model], parameters: { temperature: 0.1, evidenceChunk: chunk.id, sourceId: chunk.sourceId, evidenceSourceIds: chunk.segments.map((s) => s.sourceId) }, positivePrompt: prompt,
+        redactionSecrets: collectAiCallRedactionSecrets({ secret: profile.secret, headers: profile.headers, extraBody: profile.extraBody }),
+      }, fetcher, `${profile.baseUrl}/chat/completions`, { method: 'POST',
+        headers: { ...profile.headers, ...upstreamHeaders(profile.secret) },
+        body: JSON.stringify({ ...profile.extraBody, model: profile.model, temperature: 0.1,
+          messages: [{ role: 'system', content: '只输出合法JSON对象。每个事实字段须有本次资料的逐字引证。' }, { role: 'user', content: prompt }] }),
+        signal: AbortSignal.timeout(120_000) });
+      const payload = await audited.response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
+      if (!audited.response.ok) throw new Error(payload.error?.message || `HTTP ${audited.response.status}`);
+      const raw = payload.choices?.[0]?.message?.content?.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      if (!raw) throw new Error('empty_llm_synthesis');
+      updateAiCallRecord(database, audited.callId, { responseText: raw, event: 'content_parsed', redactionSecrets: audited.redactionSecrets });
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid_llm_synthesis_object');
+      applyGroundedSynthesisResponse(parsed as GroundedResponse, chunk, draft, proposals, warnings);
+    } catch (error) { warnings.push(`RP 分块 ${chunk.id} 提炼失败，完整原文已保留: ${error instanceof Error ? error.message : String(error)}`); }
+  }
+  return { draft, tags: [], skinsAndVariants: proposals, warnings: [...new Set(warnings)] };
 }

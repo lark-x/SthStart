@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm, useWatch } from 'react-hook-form';
@@ -10,6 +10,8 @@ import { PageContainer } from '@/app/components/shared/page-layout';
 import { PageHeader } from '@/app/components/shared/page-header';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
+import { Badge } from '@/app/components/ui/badge';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Alert } from '@/app/components/ui/alert';
 import { Skeleton } from '@/app/components/ui/skeleton';
@@ -18,13 +20,15 @@ import { useToast } from '@/app/providers/ui-provider';
 import { useCharacterDetail, useCharacterAssets } from '../queries';
 import { useCharacterBrowser } from '../hooks/use-character-browser';
 import { usePublishCharacter } from '../mutations';
+import { uploadCharacterAsset } from '../api';
 import { EMPTY_DRAFT_V2 } from '../schemas';
 import {
   characterDraftToFormValues,
   characterFormValuesToDraft,
   type CharacterFormValues,
 } from '../model/character-form-values';
-import { buildCharacterAvatarPrompt, type CharacterEditorStatus } from '../model/character-editor-model';
+import { buildCharacterAvatarPrompt, effectiveCharacterDraft, saveCharacterStage, type CharacterEditorStatus } from '../model/character-editor-model';
+import type { CharacterVariant } from '@sthstart/contracts';
 import { useCharacterDraftSession } from '../hooks/use-character-draft-session';
 import { useCharacterAssetActions } from '../hooks/use-character-asset-actions';
 import { useCharacterAvatarGeneration } from '../hooks/use-character-avatar-generation';
@@ -56,12 +60,17 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
   const [aiAvatarDialogOpen, setAiAvatarDialogOpen] = useState(false);
   const [addVariantDialogOpen, setAddVariantDialogOpen] = useState(false);
   const [newVariantName, setNewVariantName] = useState('');
+  const [newVariantKind, setNewVariantKind] = useState<CharacterVariant['variantKind']>('form');
+  const [editing, setEditing] = useState(!characterId);
+  const [uploadingVariant, setUploadingVariant] = useState(false);
+  const [generationVariant, setGenerationVariant] = useState<{ id: string; name: string } | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [multiSourceDialogOpen, setMultiSourceDialogOpen] = useState(false);
   const [upstreamDialogOpen, setUpstreamDialogOpen] = useState(false);
   const [forkDialogOpen, setForkDialogOpen] = useState(false);
   const [stageDialogOpen, setStageDialogOpen] = useState(false);
   const [stageLabel, setStageLabel] = useState('');
+  const [savingStage, setSavingStage] = useState(false);
   const menuPortalTarget = useOverlayPortalTarget();
   const publishMutation = usePublishCharacter();
   const worksBrowser = useCharacterBrowser({ page: 1, pageSize: 20 }, forkDialogOpen);
@@ -90,11 +99,13 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
     variants: variantsApi.variants,
     setVariants: variantsApi.setVariants,
   });
+  const handleSave = session.handleSave;
 
   const assetActions = useCharacterAssetActions({ characterId, refetchDetail, refetchAssets });
   const avatar = useCharacterAvatarGeneration({ characterId, enabled: aiAvatarDialogOpen, refetchDetail });
 
   const currentVariant = variantsApi.variants.find((variant) => variant.id === variantsApi.activeVariantId) || null;
+  const effectiveDraft = effectiveCharacterDraft(draft, currentVariant);
   const currentAvatarUrl = currentVariant?.avatarUrl || detailData?.avatarUrl;
   const currentPortraitUrl = currentVariant?.portraitUrl || detailData?.portraitUrl;
   const assets = assetsData?.items || [];
@@ -106,21 +117,51 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
     setCustomAvatarUrl('');
   };
 
-  const handleTriggerAiAvatar = () => {
+  const handleTriggerAiAvatar = async () => {
     if (!characterId) {
       toast.warning('请先保存角色档案后再生成 AI 头像');
       return;
     }
-    avatar.setPrompt(buildCharacterAvatarPrompt(draft));
+    if (avatar.taskId || avatar.result) { setAiAvatarDialogOpen(true); return; }
+    if (session.hasUnsavedChanges && !(await session.handleSave())) return;
+    setGenerationVariant(currentVariant ? { id: currentVariant.id, name: currentVariant.name } : null);
+    avatar.setPrompt(buildCharacterAvatarPrompt(effectiveDraft));
     setAiAvatarDialogOpen(true);
   };
 
+  const handleUploadAsset = async (event: ChangeEvent<HTMLInputElement>, kind: 'avatar' | 'portrait') => {
+    if (!currentVariant || !characterId) { assetActions.handleUploadAsset(event, kind); return; }
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingVariant(true);
+    try {
+      const asset = await uploadCharacterAsset(characterId, file, kind, false);
+      variantsApi.updateVariant(currentVariant.id, { [`${kind}AssetId`]: asset.id, [`${kind}Url`]: asset.url });
+      await Promise.all([refetchAssets(), refetchDetail()]);
+      toast.success(`已选择「${currentVariant.name}」的${kind === 'avatar' ? '头像' : '立绘'}，保存档案后生效`);
+    } catch (error) { toast.error('上传形态图片失败', error instanceof Error ? error.message : String(error)); }
+    finally { setUploadingVariant(false); event.target.value = ''; }
+  };
+
   const handleAddVariant = () => {
-    const variant = variantsApi.addVariant(newVariantName);
+    const variant = variantsApi.addVariant(newVariantName, newVariantKind);
     if (!variant) return;
     setNewVariantName('');
     setAddVariantDialogOpen(false);
+    setEditing(true);
   };
+
+  useEffect(() => {
+    const saveShortcut = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void handleSave();
+      }
+    };
+    window.addEventListener('keydown', saveShortcut);
+    return () => window.removeEventListener('keydown', saveShortcut);
+  }, [handleSave]);
 
   // Loading Skeleton
   if (characterId && !detailData) {
@@ -150,11 +191,11 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
     }
     return (
       <div className="bg-paper text-ink">
-        <div className="mx-auto max-w-5xl space-y-6 px-4 py-10 sm:px-8">
+        <div className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:px-8">
           <Skeleton className="h-10 w-1/3" />
-          <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-            <Skeleton className="h-96 w-full rounded-xl" />
-            <Skeleton className="h-[600px] w-full rounded-xl" />
+          <div className="grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-5">
+            <Skeleton className="h-[520px] w-full rounded-xl" />
+            <Skeleton className="h-[640px] w-full rounded-xl" />
           </div>
         </div>
       </div>
@@ -169,31 +210,20 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         backLabel="角色资料库"
         title={characterId ? '角色详情' : '新建角色档案'}
         status={
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                status === 'saving'
-                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                  : status === 'saved'
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                  : status === 'dirty' || isDirty
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                  : 'bg-surface-sunken text-muted'
-              }`}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Badge role="status" variant={status === 'error' ? 'error' : status === 'saving' || session.hasUnsavedChanges ? 'warning' : 'online'}
             >
               {status === 'saving' ? (
                 '正在保存...'
-              ) : status === 'saved' ? (
+              ) : status === 'error' ? '保存未完成' : session.hasUnsavedChanges ? '未保存修改' : status === 'saved' ? (
                 <>
                   <Check className="h-3 w-3" />
                   已保存
                 </>
-              ) : status === 'dirty' || isDirty ? (
-                '未保存修改'
               ) : (
                 '就绪'
               )}
-            </span>
+            </Badge>
             {draft.work && (
               <span className="text-xs text-muted truncate max-w-[160px]">
                 {draft.work}
@@ -202,16 +232,22 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           </div>
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {characterId && <Button size="sm" variant="outline" aria-pressed={editing} onClick={() => setEditing(value => !value)}>{editing ? '返回阅读' : currentVariant ? '编辑当前形态' : '编辑档案'}</Button>}
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => setUpstreamDialogOpen(true)}
+              onClick={async () => {
+                if (characterId && session.hasUnsavedChanges && !(await session.handleSave())) return;
+                setUpstreamDialogOpen(true);
+              }}
+              disabled={status === 'saving' || savingStage}
+              aria-label="上游重构 RP 卡"
               className="gap-1.5 text-xs"
             >
               <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-              <span>上游重构 RP 卡</span>
+              <span className="hidden sm:inline">上游重构 RP 卡</span><span className="sm:hidden">上游采集</span>
             </Button>
 
             <Button
@@ -219,6 +255,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
               variant="accent"
               onClick={() => void session.handleSave()}
               loading={status === 'saving'}
+              disabled={savingStage}
               className="px-4 font-semibold shadow-sm"
             >
               <Save className="h-4 w-4 mr-1.5" aria-hidden="true" />
@@ -325,7 +362,10 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => setForkDialogOpen(true)}
+            onClick={async () => {
+              if (session.hasUnsavedChanges && !(await session.handleSave())) return;
+              setForkDialogOpen(true);
+            }}
             className="h-7 min-h-7 gap-1 px-2.5 text-xs"
           >
             <GitFork className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
@@ -373,11 +413,18 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         </div>
       )}
 
-      {/* 双栏工作台：左栏立绘卡片与资产管理，右栏沉浸式档案创作 */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 items-start">
+      {/* 左右双栏工作台：左栏紧凑卡片（立绘 + 核心身份/标签/形态），右栏全宽人设与编辑画布 */}
+      <div className="grid grid-cols-1 lg:grid-cols-[290px_minmax(0,1fr)] gap-5 items-start">
         <CharacterEditorSidebar
           characterId={characterId}
           displayName={draft.displayName || ''}
+          work={draft.work}
+          originType={draft.originType}
+          tags={tags}
+          summary={effectiveDraft.summary}
+          birthday={draft.birthday}
+          editing={editing}
+          onResetVariant={() => variantsApi.setActiveVariantId(null)}
           avatarUrl={currentAvatarUrl ?? undefined}
           portraitUrl={currentPortraitUrl ?? undefined}
           assets={assets}
@@ -388,15 +435,15 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           onRemoveVariant={variantsApi.removeVariant}
           onAddVariant={() => setAddVariantDialogOpen(true)}
           onOpenAssets={() => setActiveTab('assets')}
-          onUploadAsset={assetActions.handleUploadAsset}
+          onUploadAsset={(event, kind) => void handleUploadAsset(event, kind)}
           onSetActiveAsset={assetActions.handleSetActiveAsset}
-          isUploading={assetActions.isUploading}
+          isUploading={assetActions.isUploading || uploadingVariant}
           isSettingActive={assetActions.isSettingActive}
-          onOpenMultiSource={() => setMultiSourceDialogOpen(true)}
-          onOpenUrlImport={() => setUrlDialogOpen(true)}
+          onOpenMultiSource={() => { variantsApi.setActiveVariantId(null); setMultiSourceDialogOpen(true); }}
+          onOpenUrlImport={() => { variantsApi.setActiveVariantId(null); setUrlDialogOpen(true); }}
           onOpenImport={() => setImportDialogOpen(true)}
           onExportTavern={() => void assetActions.exportTavern(draft.displayName)}
-          onTriggerAiAvatar={handleTriggerAiAvatar}
+          onTriggerAiAvatar={() => void handleTriggerAiAvatar()}
           avatarTaskId={avatar.taskId}
           hasAvatarResult={Boolean(avatar.result)}
         />
@@ -428,6 +475,8 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
           }}
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          editing={editing}
+          assets={assets}
         />
       </div>
 
@@ -443,18 +492,20 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
       <CharacterAvatarGenerationOverlay
         open={aiAvatarDialogOpen}
         onOpenChange={setAiAvatarDialogOpen}
-        dirty={isDirty || status === 'dirty' || status === 'saving'}
+        dirty={session.hasUnsavedChanges || status === 'saving'}
         options={avatar.avatarOptions.data}
         optionsLoading={avatar.avatarOptions.isLoading}
         prompt={avatar.prompt}
         characterId={characterId}
         draftRevision={detailData?.draftRevision}
+        variantId={generationVariant?.id}
+        variantName={generationVariant?.name}
         taskId={avatar.taskId}
         pollError={avatar.pollError}
         result={avatar.result}
         applying={avatar.isApplying}
         onRefreshOptions={() => { void avatar.avatarOptions.refetch(); }}
-        onGenerate={avatar.submit}
+        onGenerate={input => avatar.submit(input, generationVariant?.id)}
         onApply={async () => {
           if (await avatar.apply()) setAiAvatarDialogOpen(false);
         }}
@@ -466,7 +517,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         open={addVariantDialogOpen}
         onOpenChange={setAddVariantDialogOpen}
         title="新增衍生形态"
-        description="为角色创建一个情境形态（如：日常常服、雪山特训、夏日泳装），形态将挂在原角色档案下。"
+        description="装甲、SP 与阶段人设作为独立形态保存。普通换装请在「图片皮肤」中管理。"
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setAddVariantDialogOpen(false)}>
@@ -484,17 +535,22 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         }
       >
         <div className="space-y-3 py-2">
-          <label className="block text-xs font-semibold text-ink">形态名称</label>
+          <label htmlFor="character-variant-name" className="block text-sm font-semibold text-ink">形态名称</label>
           <Input
+            id="character-variant-name"
             value={newVariantName}
             onChange={(event) => setNewVariantName(event.target.value)}
-            placeholder="例如：雪山特训"
+            placeholder="例如：觉醒形态"
             autoFocus
             onKeyDown={(event) => {
               if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
               if (event.key === 'Enter') handleAddVariant();
             }}
           />
+          <label htmlFor="character-variant-kind" className="block text-sm font-semibold text-ink">形态类型</label>
+          <Select id="character-variant-kind" value={newVariantKind || 'form'} onChange={event => setNewVariantKind(event.target.value as CharacterVariant['variantKind'])}>
+            <option value="form">独立形态</option><option value="stage">装甲 / 阶段</option><option value="sp">SP 形态</option>
+          </Select>
         </div>
       </Dialog>
 
@@ -543,7 +599,7 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         <CharacterForkDialog
           open={forkDialogOpen}
           onOpenChange={setForkDialogOpen}
-          characterId={detailData?.familyRootId || characterId}
+          characterId={characterId}
           displayName={draft.displayName || detailData?.displayName || '未命名角色'}
           sourceWork={draft.work || ''}
           works={worksBrowser.facets?.works || []}
@@ -557,33 +613,39 @@ export function CharacterEditor({ characterId, generationPanel }: CharacterEdito
         <Dialog
           open={stageDialogOpen}
           onOpenChange={(next) => {
-            if (!publishMutation.isPending) setStageDialogOpen(next);
+            if (!savingStage) setStageDialogOpen(next);
           }}
           title="保存原创角色阶段版本"
           description="为当前人设保存一个阶段快照（例如：序章少年、黑化觉醒期），供故事世界或剧情项目绑定。"
           footer={
             <div className="flex items-center justify-end gap-2">
-              <Button size="sm" variant="ghost" disabled={publishMutation.isPending} onClick={() => setStageDialogOpen(false)}>
+              <Button size="sm" variant="ghost" disabled={savingStage} onClick={() => setStageDialogOpen(false)}>
                 取消
               </Button>
               <Button
                 size="sm"
                 variant="accent"
-                loading={publishMutation.isPending}
+                loading={savingStage}
                 onClick={async () => {
+                  if (savingStage) return;
+                  setSavingStage(true);
                   try {
-                    if (isDirty) await session.handleSave();
-                    const published = await publishMutation.mutateAsync({
-                      id: characterId,
-                      versionLabel: stageLabel.trim() || undefined,
+                    const published = await saveCharacterStage({
+                      prepare: session.preparePublication,
+                      publish: saved => publishMutation.mutateAsync({
+                        id: saved.id,
+                        expectedDraftRevision: saved.draftRevision,
+                        versionLabel: stageLabel.trim() || undefined,
+                      }),
                     });
+                    if (!published) return;
                     toast.success(`已保存阶段版本 v${published.version}${stageLabel.trim() ? `（${stageLabel.trim()}）` : ''}`);
                     setStageLabel('');
                     setStageDialogOpen(false);
                     void refetchDetail();
                   } catch (err) {
                     toast.error('保存阶段失败', err instanceof Error ? err.message : String(err));
-                  }
+                  } finally { setSavingStage(false); }
                 }}
               >
                 确认保存阶段

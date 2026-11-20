@@ -27,7 +27,10 @@ function mcpFetch(tools: Array<{ name: string; description?: string; inputSchema
       return new Response(null, { status: 405 });
     }
     const body = init?.body ? JSON.parse(String(init.body)) as { method?: string; params?: { name?: string } } : {};
-    if (expectedCredential && (body.method === 'initialize' || body.method === 'tools/list')) assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer ' + expectedCredential);
+    if (expectedCredential && (body.method === 'initialize' || body.method === 'tools/list')
+      && new Headers(init?.headers).get('authorization') !== 'Bearer ' + expectedCredential) {
+      throw new Error('mock_auth_mismatch');
+    }
     if (body.method === 'initialize') {
       return Response.json({ jsonrpc: '2.0', id: (body as { id?: number }).id ?? 1, result: { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'TestMcpServer', version: '1.0.0' } } });
     }
@@ -51,6 +54,7 @@ test('mcp sources can be configured, tested, discovered, disabled, and deleted',
     id: 'wiki-source',
     name: '角色百科',
     url: 'https://mcp.example.com/mcp',
+    transport: 'streamable-http',
     authMode: 'bearer',
     secret: 'top-secret',
     applicableWorks: ['原神'],
@@ -61,6 +65,7 @@ test('mcp sources can be configured, tested, discovered, disabled, and deleted',
   } });
   assert.equal(created.statusCode, 201);
   assert.equal(created.json().source.name, '角色百科');
+  assert.equal(created.json().source.transport, 'streamable-http');
   assert.equal(secrets.values.get('mcp-source:wiki-source'), 'top-secret');
   assert.equal(created.json().source.hasCredential, true);
   assert.equal(created.json().source.url.includes('top-secret'), false);
@@ -73,6 +78,7 @@ test('mcp sources can be configured, tested, discovered, disabled, and deleted',
   const tested = await app.inject({ method: 'POST', url: '/api/v1/admin/mcp-sources/wiki-source/test', headers: adminHeaders });
   assert.equal(tested.statusCode, 200);
   assert.equal(tested.json().ok, true);
+  assert.equal(tested.json().transport, 'streamable-http');
   assert.equal(tested.json().tools.length, 2);
 
   const afterTest = await app.inject({ url: '/api/v1/admin/mcp-sources', headers: adminHeaders });
@@ -82,8 +88,33 @@ test('mcp sources can be configured, tested, discovered, disabled, and deleted',
   const discovered = await app.inject({ method: 'POST', url: '/api/v1/admin/mcp-sources/discover', headers: adminHeaders,
     payload: { sourceId: 'wiki-source', url: 'https://mcp.example.com/mcp', authMode: 'bearer' } });
   assert.equal(discovered.json().ok, true, discovered.body);
+  assert.equal(discovered.json().transport, 'streamable-http');
   assert.equal(discovered.json().tools[0].inputSchema.additionalProperties, false);
   assert.deepEqual(discovered.json().tools[0].inputSchema.required, ['keyword']);
+
+  const foreignEndpoint = await app.inject({ method: 'POST', url: '/api/v1/admin/mcp-sources/discover', headers: adminHeaders,
+    payload: { sourceId: 'wiki-source', url: 'https://other.example.com/mcp', authMode: 'bearer' } });
+  assert.equal(foreignEndpoint.json().ok, false);
+  assert.equal(foreignEndpoint.json().message.includes('top-secret'), false);
+
+  const moved = await app.inject({ method: 'PUT', url: '/api/v1/admin/mcp-sources/wiki-source', headers: adminHeaders, payload: {
+    name: '角色百科（新域）',
+    url: 'https://new-mcp.example.com/mcp',
+    transport: 'streamable-http',
+    authMode: 'bearer',
+    applicableWorks: ['原神'],
+    universal: false,
+    purpose: '新端点',
+    allowedTools: ['search_characters'],
+    timeoutMs: 30_000,
+    status: 'enabled',
+  } });
+  assert.equal(moved.statusCode, 200);
+  assert.equal(moved.json().source.hasCredential, false);
+  assert.equal(moved.json().secretStored, false);
+  assert.deepEqual(moved.json().source.discoveredTools, []);
+  assert.equal(moved.json().source.lastTestResult, null);
+  assert.equal(secrets.values.has('mcp-source:wiki-source'), false);
 
   const disabled = await app.inject({ method: 'PATCH', url: '/api/v1/admin/mcp-sources/wiki-source/status', headers: adminHeaders, payload: { status: 'disabled' } });
   assert.equal(disabled.statusCode, 200);

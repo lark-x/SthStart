@@ -59,6 +59,8 @@ export type SceneBeatRenderSettings = Static<typeof SceneBeatRenderSettingsSchem
 export const ActorSnapshotSchema = Type.Object({
   id: Type.String(),
   sourceCharacterId: Type.Optional(Type.String()),
+  sourceVariantId: Type.Optional(Type.String()),
+  sourceCostumeAssetId: Type.Optional(Type.String()),
   sourceVersion: Type.Optional(Type.Number()),
   sourceVersionStatus: Type.Optional(Type.Union([
     Type.Literal('published'), Type.Literal('draft'), Type.Literal('unknown'), Type.Literal('missing'),

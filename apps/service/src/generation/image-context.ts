@@ -4,6 +4,8 @@ import type { ServiceDatabase } from '../database.js';
 import { compileSnapshot, referencePromptBlock } from '../knowledge/references.js';
 import { mergeActivityLoras, readActivityLoraPolicy } from '../activities/image-render-common.js';
 import { imageConfigurationError } from './image-configuration.js';
+import { characterDraftForVariant } from '../characters/draft.js';
+import type { CharacterVariant } from '@sthstart/contracts';
 
 export const contextDigest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -18,12 +20,15 @@ export function buildImageContext(database: ServiceDatabase, selection: ImageCon
   for (const character of selection.characters ?? []) {
     if (seen.has(character.characterId)) throw imageConfigurationError('duplicate_image_character', '同一角色不能重复选择。', 400);
     seen.add(character.characterId);
-    const row = database.connection.prepare('SELECT draft_json,draft_revision FROM character_profiles WHERE id=? AND archived=0')
-      .get(character.characterId) as { draft_json: string; draft_revision: number } | undefined;
+    const row = database.connection.prepare('SELECT draft_json,draft_revision,variants_json FROM character_profiles WHERE id=? AND archived=0')
+      .get(character.characterId) as { draft_json: string; draft_revision: number; variants_json: string } | undefined;
     if (!row) throw imageConfigurationError('image_character_not_found', '所选角色不可用。');
     if (character.draftRevision !== undefined && character.draftRevision !== row.draft_revision)
       throw imageConfigurationError('image_context_changed', '角色资料已变化，请重新准备。');
-    const draft = JSON.parse(row.draft_json) as Record<string, unknown>;
+    const variants = JSON.parse(row.variants_json || '[]') as CharacterVariant[];
+    const variant = character.variantId ? variants.find(item => item.id === character.variantId) : undefined;
+    if (character.variantId && !variant) throw imageConfigurationError('image_variant_not_found', '所选形态已不可用。');
+    const draft = characterDraftForVariant(JSON.parse(row.draft_json), variant) as unknown as Record<string, unknown>;
     const runtime = toCharacterRuntime(draft);
     const visual = buildCharacterVisualContext(draft, { outfitOverride: character.outfitOverride });
     actors.push({ actorId: character.characterId, displayName: runtime.displayName });

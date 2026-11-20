@@ -178,7 +178,9 @@ export function PlanningWizard({ onExitWizard }: { onExitWizard?: () => void }) 
           birthdayIds: current.templateId === 'birthday' ? [...new Set([...current.birthdayIds, ...actors.map((actor) => String(actor.sourceCharacterId))])] : current.birthdayIds,
           title: current.title || (names.length ? `${names.join('、')}的生日聚会` : current.title),
         }));
-      } catch { /* 带入失败不阻塞：仍可手动选择角色。 */ }
+      } catch (cause) {
+        if (mountedRef.current) setError(`${cause instanceof Error ? cause.message : '带入角色失败。'} 请在角色库保存原创角色的具名阶段，再从“选择角色”加入企划。`);
+      }
     })();
   }, [initialCharacterIds, maxActors]);
 
@@ -194,6 +196,9 @@ export function PlanningWizard({ onExitWizard }: { onExitWizard?: () => void }) 
         try { tasks = await fetchPlanningResearchTasks(resumeId); } catch { tasks = []; }
         if (!mountedRef.current) return;
         const latest = [...tasks].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0] ?? null;
+        response.session.document.actors.forEach(actor => {
+          if (actor.sourceCharacterId) castSnapshotsRef.current.set(String(actor.sourceCharacterId), actor);
+        });
         const restoredCast = response.session.document.actors
           .filter((actor) => actor.sourceCharacterId && response.session.form.characters.some((member) => member.characterId === actor.sourceCharacterId))
           .map((actor) => ({
@@ -201,6 +206,9 @@ export function PlanningWizard({ onExitWizard }: { onExitWizard?: () => void }) 
             displayName: actor.displayName,
             avatarUrl: actor.avatarUrl,
             activityRole: actor.activityRole,
+            ...(actor.sourceVersion != null ? { version: actor.sourceVersion } : {}),
+            ...(actor.sourceVariantId ? { variantId: actor.sourceVariantId } : {}),
+            ...(actor.sourceCostumeAssetId ? { costumeAssetId: actor.sourceCostumeAssetId } : {}),
           }));
         const form = response.session.form;
         setReferences((form.references ?? []).map((selection: PlanningReferenceSelection) => referenceFromSelection(selection, form.knowledgeSnapshot)));

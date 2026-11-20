@@ -265,6 +265,8 @@ export function registerActivityRoutes(
       rules?: string;
       actors?: Array<{
         sourceCharacterId?: string;
+        sourceVariantId?: string;
+        sourceCostumeAssetId?: string;
         sourceVersion?: number;
         displayName: string;
         activityRole?: string;
@@ -291,7 +293,7 @@ export function registerActivityRoutes(
 
     const requestedActors = body.document?.actors ?? body.actors ?? [];
     for (const actor of requestedActors) {
-      if (actor.sourceCharacterId && !createActorSnapshotFromCharacter(database, actor.sourceCharacterId, { sourceVersion: actor.sourceVersion })) {
+      if (actor.sourceCharacterId && !createActorSnapshotFromCharacter(database, actor.sourceCharacterId, { sourceVersion: actor.sourceVersion, sourceVariantId: actor.sourceVariantId, sourceCostumeAssetId: actor.sourceCostumeAssetId })) {
         return reply.code(409).send({ error: 'character_snapshot_not_found', characterId: actor.sourceCharacterId, version: actor.sourceVersion ?? null });
       }
     }
@@ -303,6 +305,7 @@ export function registerActivityRoutes(
         if (!actor.sourceCharacterId) return actor;
         const snapshot = createActorSnapshotFromCharacter(database, actor.sourceCharacterId, {
           sourceVersion: actor.sourceVersion,
+          sourceVariantId: actor.sourceVariantId, sourceCostumeAssetId: actor.sourceCostumeAssetId,
           activityRole: actor.activityRole,
           outfitDescription: actor.outfitDescription,
           avatarAssetId: actor.avatarAssetId,
@@ -330,6 +333,7 @@ export function registerActivityRoutes(
         if (a.sourceCharacterId) {
           const snapshot = createActorSnapshotFromCharacter(database, a.sourceCharacterId, {
             sourceVersion: a.sourceVersion,
+            sourceVariantId: a.sourceVariantId, sourceCostumeAssetId: a.sourceCostumeAssetId,
             activityRole: a.activityRole,
             outfitDescription: a.outfitDescription,
             avatarAssetId: (a as Record<string, unknown>).avatarAssetId as string | undefined,
@@ -984,11 +988,11 @@ export function registerActivityRoutes(
     };
   });
 
-  app.get<{ Params: { characterId: string }; Querystring: { version?: string } }>('/api/v1/admin/activities/characters/:characterId/snapshot', async (request, reply) => {
+  app.get<{ Params: { characterId: string }; Querystring: { version?: string; variantId?: string; costumeAssetId?: string } }>('/api/v1/admin/activities/characters/:characterId/snapshot', async (request, reply) => {
     if (!checkAdmin(request, reply)) return;
     const version = request.query.version == null ? undefined : Number(request.query.version);
     if (version != null && (!Number.isSafeInteger(version) || version < 1)) return reply.code(400).send({ error: 'invalid_character_version' });
-    const snapshot = createActorSnapshotFromCharacter(database, request.params.characterId, { sourceVersion: version });
+    const snapshot = createActorSnapshotFromCharacter(database, request.params.characterId, { sourceVersion: version, sourceVariantId: request.query.variantId, sourceCostumeAssetId: request.query.costumeAssetId });
     return snapshot ?? reply.code(404).send({ error: 'character_snapshot_not_found' });
   });
 

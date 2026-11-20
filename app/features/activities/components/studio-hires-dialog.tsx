@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { LoaderCircle, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type { HiresPreviewResponse, StudioJob, StudioTarget, StudioVersionContext } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Button } from '@/app/components/ui/button';
@@ -133,7 +133,7 @@ export function StudioHiresDialog({ activityId, target, sourceArtifactId, source
         <Button variant="outline" disabled={busy} onClick={close}>取消</Button>
         <Button variant="outline" loading={previewing} disabled={!sourceArtifactId || busy} onClick={() => void runPreview()}>{preview ? '重新预览' : '预览'}</Button>
         <Button loading={submitting} disabled={!canSubmitHires(preview) || busy} onClick={() => void submit()}>
-          {submitting ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}开始细化
+          {!submitting && <Sparkles className="mr-1.5 h-4 w-4" />}开始细化
         </Button>
       </>}>
       <div className="space-y-5">

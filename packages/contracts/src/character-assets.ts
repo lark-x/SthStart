@@ -27,7 +27,7 @@ export const CharacterAssetDetailSchema = Type.Object({
   kind: Type.Union([Type.Literal('avatar'), Type.Literal('portrait'), Type.Literal('reference')]),
   category: CharacterAssetCategorySchema,
   title: Type.String(),
-  url: Type.String(),
+  url: Type.Union([Type.String(), Type.Null()]),
   artifactId: Type.Union([Type.String(), Type.Null()]),
   tags: Type.Array(Type.String()),
   metadata: Type.Record(Type.String(), Type.Unknown()),
@@ -180,3 +180,16 @@ export const LinsheBridgeSyncResultSchema = Type.Object({
   message: Type.Optional(Type.String()),
 });
 export type LinsheBridgeSyncResult = Static<typeof LinsheBridgeSyncResultSchema>;
+
+export const LinsheGalleryImageRequestSchema = Type.Object({
+  sourceImageId: Type.String({ minLength: 1, maxLength: 300 }),
+  imageUrl: Type.String({ minLength: 1, maxLength: 4000 }),
+  characterId: Type.Optional(Type.String({ minLength: 1 })),
+  title: Type.Optional(Type.String({ maxLength: 300 })),
+  metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+}, { additionalProperties: false });
+export type LinsheGalleryImageRequest = Static<typeof LinsheGalleryImageRequestSchema>;
+export const LinsheGalleryImageResponseSchema = Type.Object({
+  sharedAssetId: Type.String(), created: Type.Boolean(),
+});
+export type LinsheGalleryImageResponse = Static<typeof LinsheGalleryImageResponseSchema>;

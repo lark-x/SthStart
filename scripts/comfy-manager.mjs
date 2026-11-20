@@ -159,7 +159,7 @@ async function start() {
     cwd: COMFY_DIR,
     detached: true,
     stdio: ['ignore', out, err],
-    windowsHide: false,
+    windowsHide: true,
   });
 
   child.unref();

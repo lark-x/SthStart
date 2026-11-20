@@ -327,6 +327,9 @@ test('supplier view groups legacy connections by endpoint and routes new models 
   assert.equal(magpie?.baseUrl, 'https://provider.example/v1');
   assert.equal(selectConnectionForModelType(magpie!.connections, 'image')?.id, 'conn-image');
   assert.equal(selectConnectionForModelType(magpie!.connections, 'chat')?.id, 'conn-chat');
+  assert.equal(selectConnectionForModelType(magpie!.connections.map(connection => ({
+    ...connection, enabled: connection.id !== 'conn-image',
+  })), 'image')?.id, 'conn-chat', '新增绘图模型优先使用仍启用的兼容连接');
   assert.equal(supplierModelTypeLabel(models[1]), '绘图');
   assert.equal(groups.find(group => group.name === '本地向量')?.modelCounts.embedding, 0);
 });

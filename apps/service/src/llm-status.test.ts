@@ -4,6 +4,7 @@ import { ServiceDatabase, nowIso } from './database.js';
 import { createService } from './server.js';
 import { readConfig } from './config.js';
 import { SecretStore } from './security.js';
+import { publishCharacterSnapshot } from './characters/snapshots.js';
 
 /**
  * 模型绑定状态统一规则回归：
@@ -271,9 +272,10 @@ test('企划任务在未绑定时返回 409 llm_not_ready 且不产生排队任�
   const database = new ServiceDatabase();
   const { app } = await createService({ config: testConfig(), database, secrets: new MemorySecrets() });
   try {
-    // 先选一个角色以通过角色校验；这里直接插入一个最小角色。
+    // 先提供一个已保存的角色阶段，让此用例实际走到模型预检。
     database.connection.prepare(`INSERT INTO character_profiles(id,slug,display_name,draft_json,draft_revision,archived,tags_json,created_at,updated_at)
-      VALUES (?,?,?,?,0,0,'[]',?,?)`).run('char-1', 'char-1', '测试角色', JSON.stringify({ displayName: '测试角色' }), nowIso(), nowIso());
+      VALUES (?,?,?,?,1,0,'[]',?,?)`).run('char-1', 'char-1', '测试角色', JSON.stringify({ displayName: '测试角色', originType: 'original', summary: '测试用角色阶段。' }), nowIso(), nowIso());
+    assert.ok(publishCharacterSnapshot(database, 'char-1', { versionLabel: '初始阶段', expectedDraftRevision: 1 }));
     const created = await app.inject({
       method: 'POST', url: '/api/v1/admin/activity-planning-sessions', headers: ADMIN,
       payload: { form: { characters: [{ characterId: 'char-1' }] } },

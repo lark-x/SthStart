@@ -46,6 +46,7 @@ test('app registry returns the configured linshe descriptor', async () => {
 
 test('configuration rejects unsafe URL protocols', () => {
   assert.throws(() => readConfig({ LINSHE_APP_URL: 'file:///tmp/index.html' }), /http or https/);
+  assert.throws(() => readConfig({ STHSTART_PORTAL_URL: 'file:///tmp/portal.html' }), /http or https/);
   assert.throws(() => readConfig({ SERVICE_HOST: '0.0.0.0' }), /loopback/);
 });
 

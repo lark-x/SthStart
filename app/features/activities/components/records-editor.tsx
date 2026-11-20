@@ -746,11 +746,12 @@ export function RecordsEditor({
               />
 
               <Input
+                variant="inline"
                 value={composerText}
                 onChange={(e) => setComposerText(e.target.value)}
                 placeholder="追加角色台词或剧本旁白，按回车快速添加…"
                 disabled={disabled}
-                className="h-8 text-xs flex-1 bg-transparent border-0 ring-0 focus:ring-0 focus-visible:ring-0"
+                className="h-8 text-xs flex-1"
               />
 
               <Button

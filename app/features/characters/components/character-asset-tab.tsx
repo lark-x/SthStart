@@ -13,15 +13,16 @@ import {
   Check,
   Edit2,
   Tag,
-  Sparkles,
-  RefreshCw,
   Send,
   Eye,
   X,
   ExternalLink,
+  Shirt,
 } from 'lucide-react';
 import { CharacterAssetImage } from './character-image-fallback';
 import { Button } from '@/app/components/ui/button';
+import { Card } from '@/app/components/ui/card';
+import { Badge } from '@/app/components/ui/badge';
 import { IconButton } from '@/app/components/ui/icon-button';
 import { Input } from '@/app/components/ui/input';
 import { Select } from '@/app/components/ui/select';
@@ -35,7 +36,7 @@ import {
   deleteCharacterAsset,
   syncCharacterWithLinshe,
 } from '../api';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 interface CharacterAssetTabProps {
   characterId: string;
@@ -43,6 +44,8 @@ interface CharacterAssetTabProps {
   portraitAssetId?: string | null;
   displayName: string;
   onRefreshCharacter?: () => void;
+  variantName?: string;
+  onSelectVariantImage?: (asset: CharacterAssetDetail, kind: 'avatar' | 'portrait') => void;
 }
 
 export function CharacterAssetTab({
@@ -51,9 +54,10 @@ export function CharacterAssetTab({
   portraitAssetId,
   displayName,
   onRefreshCharacter,
+  variantName,
+  onSelectVariantImage,
 }: CharacterAssetTabProps) {
   const toast = useToast();
-  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 状态筛选
@@ -128,6 +132,7 @@ export function CharacterAssetTab({
 
   // 操作：设为头像/立绘
   const handleSetActive = async (asset: CharacterAssetDetail, type: 'avatar' | 'portrait') => {
+    if (onSelectVariantImage) { onSelectVariantImage(asset, type); return; }
     try {
       await updateCharacterAsset(characterId, asset.id, { setAsActive: type });
       toast.success(`已将此资产设为当前生效${type === 'avatar' ? '头像' : '立绘'}`);
@@ -167,7 +172,7 @@ export function CharacterAssetTab({
         characterId,
         uploadFile,
         uploadCategory === 'avatar' ? 'avatar' : uploadCategory === 'portrait' ? 'portrait' : 'reference',
-        uploadSetAsActive !== 'none',
+        !variantName && uploadSetAsActive !== 'none',
         {
           category: uploadCategory,
           title: uploadTitle.trim() || uploadFile.name,
@@ -214,6 +219,7 @@ export function CharacterAssetTab({
       toast.success('资产信息已更新');
       setEditingAsset(null);
       void refetch();
+      onRefreshCharacter?.();
     } catch (err: unknown) {
       toast.error('更新失败', err instanceof Error ? err.message : String(err));
     } finally {
@@ -248,7 +254,7 @@ export function CharacterAssetTab({
             <span className="text-xs font-normal text-muted">共 {assets.length} 件资产</span>
           </h3>
           <p className="text-xs text-muted mt-0.5">
-            分类容纳角色的多形态头像、全身立绘、差分表情、私服穿着、剧情CG及设定草图。
+            {variantName ? `共享资产库。下方选图仅用于「${variantName}」，保存档案后生效。` : '主档案资产库。普通换装归入皮肤，服装描述与故事可独立于图片保留。'}
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -367,9 +373,9 @@ export function CharacterAssetTab({
             const catMeta = CHARACTER_ASSET_CATEGORIES.find((c) => c.id === asset.category);
 
             return (
-              <div
+              <Card
                 key={asset.id}
-                className="group relative flex flex-col bg-surface border border-border-default/70 rounded-xl overflow-hidden shadow-2xs hover:shadow-xs hover:border-accent/40 transition-all"
+                className="group relative flex flex-col overflow-hidden !p-0"
               >
                 {/* 缩略图区域 */}
                 <Button
@@ -379,36 +385,36 @@ export function CharacterAssetTab({
                   onClick={() => setPreviewAsset(asset)}
                   className="relative block aspect-square h-auto min-h-0 w-full overflow-hidden rounded-none border-0 bg-surface-muted/50 p-0 text-left"
                 >
-                  <CharacterAssetImage
+                  {asset.url ? <CharacterAssetImage
                     src={asset.url}
                     alt={asset.title || '角色资产'}
                     fill
                     className="object-cover group-hover:scale-105 transition-transform duration-200"
-                  />
+                  /> : <span className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center text-muted"><Shirt className="h-8 w-8" aria-hidden="true" /><span className="text-sm">皮肤文字档案</span><span className="text-xs">图片尚未获取</span></span>}
                   {/* 角标状态徽标 */}
                   <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
                     {isAvatar && (
-                      <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-500 text-white shadow-2xs flex items-center gap-0.5">
+                      <Badge variant="accent" className="gap-0.5">
                         <Check className="h-2.5 w-2.5" aria-hidden="true" /> 当前头像
-                      </span>
+                      </Badge>
                     )}
                     {isPortrait && (
-                      <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-500 text-white shadow-2xs flex items-center gap-0.5">
+                      <Badge variant="accent" className="gap-0.5">
                         <Check className="h-2.5 w-2.5" aria-hidden="true" /> 当前立绘
-                      </span>
+                      </Badge>
                     )}
                   </div>
 
                   {/* 分类徽标 */}
                   <div className="absolute bottom-2 left-2">
-                    <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-black/60 backdrop-blur-xs text-white/90">
+                    <Badge>
                       {catMeta?.label || '其它'}
-                    </span>
+                    </Badge>
                   </div>
 
                   {/* 悬停放大镜 */}
-                  <div className="pointer-events-none absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Eye className="h-5 w-5 text-white/90" aria-hidden="true" />
+                  <div className="pointer-events-none absolute inset-0 bg-surface/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Eye className="h-5 w-5 text-ink" aria-hidden="true" />
                   </div>
                 </Button>
 
@@ -441,28 +447,28 @@ export function CharacterAssetTab({
                   {/* 悬浮/常驻操作栏 */}
                   <div className="mt-2.5 pt-2 border-t border-border-default/40 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1">
-                      {!isAvatar && (
+                      {asset.url && !isAvatar && (
                         <Button
                           type="button"
                           size="sm"
                           variant="ghost"
                           onClick={() => handleSetActive(asset, 'avatar')}
-                          className="h-auto min-h-6 rounded px-1.5 py-0.5 text-xs font-normal text-muted hover:text-amber-600"
+                          className="h-auto min-h-6 rounded px-1.5 py-0.5 text-sm font-normal text-muted hover:text-accent"
                           title="设为当前生效头像"
                         >
-                          设头像
+                          {variantName ? '用于形态头像' : '设头像'}
                         </Button>
                       )}
-                      {!isPortrait && (
+                      {asset.url && !isPortrait && (
                         <Button
                           type="button"
                           size="sm"
                           variant="ghost"
                           onClick={() => handleSetActive(asset, 'portrait')}
-                          className="h-auto min-h-6 rounded px-1.5 py-0.5 text-xs font-normal text-muted hover:text-indigo-600"
+                          className="h-auto min-h-6 rounded px-1.5 py-0.5 text-sm font-normal text-muted hover:text-accent"
                           title="设为当前生效立绘"
                         >
-                          设立绘
+                          {variantName ? '用于形态立绘' : '设立绘'}
                         </Button>
                       )}
                     </div>
@@ -497,7 +503,7 @@ export function CharacterAssetTab({
                     </div>
                   </div>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -567,7 +573,7 @@ export function CharacterAssetTab({
             />
           </div>
 
-          <div>
+          {!variantName && <div>
             <span id="character-asset-upload-active-label" className="mb-1 block font-semibold text-ink">设为当前生效角色形象</span>
             {/* 单选语义保留原生 name/radio：Mantine Checkbox 是复选框，不替代互斥选择。 */}
             <div role="radiogroup" aria-labelledby="character-asset-upload-active-label" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-muted">
@@ -588,7 +594,7 @@ export function CharacterAssetTab({
                 </label>
               ))}
             </div>
-          </div>
+          </div>}
 
           <div className="flex justify-end gap-2 pt-3 border-t border-border-default/60">
             <Button
@@ -714,23 +720,26 @@ export function CharacterAssetTab({
       >
         {previewAsset && (
           <div className="flex flex-col items-center gap-3">
-            <div className="relative max-h-[70vh] w-full flex items-center justify-center bg-black/5 rounded-lg overflow-hidden p-2">
+            {previewAsset.url ? <div className="relative max-h-[70vh] w-full flex items-center justify-center bg-surface-sunken rounded-lg overflow-hidden p-2">
               <img
                 src={previewAsset.url}
                 alt={previewAsset.title || ''}
                 className="max-h-[65vh] w-auto object-contain rounded"
               />
-            </div>
+            </div> : <p className="text-sm text-muted">图片尚未获取，服装描述与故事已保存在此皮肤档案中。</p>}
+            {(previewAsset.metadata?.outfitDescription || previewAsset.userNote) && <section className="w-full space-y-1"><h3 className="text-sm font-semibold text-ink">服装描述</h3><p className="whitespace-pre-wrap text-base leading-relaxed">{String(previewAsset.metadata?.outfitDescription || previewAsset.userNote)}</p></section>}
+            {(previewAsset.metadata?.loreStory || previewAsset.authorNote) && <section className="w-full space-y-1"><h3 className="text-sm font-semibold text-ink">背景故事 / 出处说明</h3><p className="whitespace-pre-wrap text-base leading-relaxed">{String(previewAsset.metadata?.loreStory || previewAsset.authorNote)}</p></section>}
+            {Boolean(previewAsset.metadata?.imageWarning) && <p className="w-full text-sm text-muted">{String(previewAsset.metadata?.imageWarning)}</p>}
             <div className="w-full flex items-center justify-between text-xs text-muted">
               <span>分类: {CHARACTER_ASSET_CATEGORIES.find((c) => c.id === previewAsset.category)?.label}</span>
-              <a
+              {previewAsset.url && <a
                 href={previewAsset.url}
                 target="_blank"
                 rel="noreferrer"
                 className="text-accent hover:underline flex items-center gap-1"
               >
                 查看原图 <ExternalLink className="h-3 w-3" />
-              </a>
+              </a>}
             </div>
           </div>
         )}

@@ -1,9 +1,12 @@
 # 当前开发状态
 
-最近局部更新：2026-11-15（DEV-032/033 已随 schema62 部署至本地 9320；供应商/多类型模型/免费搜索交付见[记录](reviews/2026-11-15-suppliers-search-unification.md)，下方既有业务状态未在本轮全面复核）
+2026-11-19，「一幕故事」首版部署到本地 `9320`。作品目录提供「新建一幕」和最近草稿，独立草稿页支持证据、提要、正文、构图与收录。 [首版交付记录](reviews/2026-11-19-story-scene-drafts-delivery.md)
+
+2026-11-18 重评估后的研发重点见本页「当前开发重点」。2026-11-15，DEV-032/033 随 schema62 部署，涉及供应商、多类型模型和免费搜索。 [对应交付记录](reviews/2026-11-15-suppliers-search-unification.md)
+
 本轮前端基线：`feat/warm-paper-ui@68090f7`，包含已有未提交修改；下方业务记录保留各自历史基线。
 
-本页只描述当前状态。具体变更过程见 [logs/](logs/)，未完成事项见 [BACKLOG.md](BACKLOG.md)，延后验证见 [DEFERRED_VALIDATION.md](DEFERRED_VALIDATION.md)。
+交付证据、后续事项和延后验证分别见[审查记录](reviews/)、[待办](BACKLOG.md)和[延后验收](DEFERRED_VALIDATION.md)。
 
 ## 前端架构治理
 
@@ -65,7 +68,9 @@
 
 ## 当前开发重点
 
-1. 先收敛 Generation 模块边界，避免继续向单个执行文件堆叠功能。
-2. 完成 Worker/H3 工作流的管理闭环和严格就绪检查。
-3. 补齐 Worker 系统资源、GPU、模型、节点和 Generation Queue 诊断。
-4. 真实 H3、跨平台、大文件和完整浏览器验收统一保留到稳定化阶段执行。
+按 [AI_CREATIVE_SYSTEM_PLAN.md](AI_CREATIVE_SYSTEM_PLAN.md) 的 `2026-11-18 项目计划重评估与三阶段收敛路线`，当前研发重点收敛如下：
+
+1. **统一创作入口至作品工作台 (`/apps/story-worlds`)**：侧栏仅保留“作品”作为主创作入口，`创作项目`（`/apps/projects`）与 `AI 创作工作台`（`/apps/ai-studio`）退居侧栏隐藏但保留 `Ctrl/Cmd+K` 命令面板与直达 URL 兼容，并将正文工作区回跳链接统一至 `/apps/story-worlds?...&view=chapters`。
+2. **打通 MCP `检索 -> 原文精读 (akasha_read) -> 参考篮引用` 闭环**：在作品工作台内支持按定位符分段精读原作/设定原文，并将确认片段收集至参考篮供创作直接引用。
+3. **落地轻量化章节副驾（`场纲节拍 -> 纯文本写正文 -> 事后非阻断一致性体检`）**：围绕章节纯文本创作与版本安全保存，以交互式节拍/起草/润色/事后体检替代脆弱的多节点巨型 JSON 双阻断审核流。
+4. **冻结 / 远期池 (Icebox) 边界**：暂缓 **H3 动态视频（`FIX-001`、`DEV-004`）**、**ReactFlow 复杂工作流画布扩建** 与 **无人值守 20 场机械评测**；既往 Generation 模块边界收敛与 Worker 诊断事项保留台账跟踪，不再阻塞核心写作闭环。

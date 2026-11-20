@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { Compass, BookOpen } from 'lucide-react';
+import { Compass, BookOpen, Palette } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Dialog } from '@/app/components/ui/dialog';
+import { PageHeader } from '@/app/components/shared/page-header';
+import { PageContainer } from '@/app/components/shared/page-layout';
 import { AccentColorDialog } from '@/app/shell/accent-color-dialog';
 import { useTheme } from '@/app/providers/ui-provider';
 import { THEMES, UI_SKINS, deriveCustomAccent, type ThemeId, type UiSkinId } from '@/app/lib/theme-preference';
@@ -27,18 +29,29 @@ export function AppearanceSettings() {
   } as CSSProperties : undefined;
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold text-ink">外观</h1>
-        <p className="mt-1 text-sm text-muted">先看预览，满意后再应用到工作区。</p>
-      </header>
-      <section aria-labelledby="appearance-theme" className="space-y-2">
-        <h2 id="appearance-theme" className="font-semibold text-ink">主题</h2>
-        <ul className="divide-y divide-border-subtle rounded-panel border border-border-subtle bg-surface">
+    <PageContainer width="settings" className="space-y-4">
+      <PageHeader
+        compact
+        title="外观"
+        description="先看预览，满意后再应用到工作区。"
+        actions={
+          <Button size="sm" variant="outline" onClick={() => setAccentOpen(true)}>
+            <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+            自定义主题色
+          </Button>
+        }
+      />
+
+      <section aria-labelledby="appearance-theme" className="tpl-panel space-y-3 p-4">
+        <h2 id="appearance-theme" className="text-base font-semibold text-ink">主题</h2>
+        <ul className="divide-y divide-border-subtle">
           {THEMES.map((theme) => (
-            <li key={theme.id} className="flex items-center justify-between gap-3 px-3 py-3">
+            <li key={theme.id} className="flex items-center justify-between gap-3 py-3 first:pt-1 last:pb-1">
               <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">{theme.name} {theme.id === themeId && <Badge>使用中</Badge>}</p>
+                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+                  {theme.name}
+                  {theme.id === themeId && <Badge>使用中</Badge>}
+                </p>
                 <p className="mt-1 text-sm text-muted">{theme.description}</p>
               </div>
               <Button className="shrink-0" size="sm" variant="outline" aria-label={`预览${theme.name}`} onClick={() => setPreview({ kind: 'theme', id: theme.id })}>预览</Button>
@@ -46,13 +59,17 @@ export function AppearanceSettings() {
           ))}
         </ul>
       </section>
-      <section aria-labelledby="appearance-skin" className="space-y-2">
-        <h2 id="appearance-skin" className="font-semibold text-ink">皮肤</h2>
-        <ul className="divide-y divide-border-subtle rounded-panel border border-border-subtle bg-surface">
+
+      <section aria-labelledby="appearance-skin" className="tpl-panel space-y-3 p-4">
+        <h2 id="appearance-skin" className="text-base font-semibold text-ink">皮肤</h2>
+        <ul className="divide-y divide-border-subtle">
           {UI_SKINS.map((skin) => (
-            <li key={skin.id} className="flex items-center justify-between gap-3 px-3 py-3">
+            <li key={skin.id} className="flex items-center justify-between gap-3 py-3 first:pt-1 last:pb-1">
               <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">{skin.name} {skin.id === uiSkin && <Badge>使用中</Badge>}</p>
+                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+                  {skin.name}
+                  {skin.id === uiSkin && <Badge>使用中</Badge>}
+                </p>
                 <p className="mt-1 text-sm text-muted">{skin.description}</p>
               </div>
               <Button className="shrink-0" size="sm" variant="outline" aria-label={`预览${skin.name}`} onClick={() => setPreview({ kind: 'skin', id: skin.id })}>预览</Button>
@@ -60,7 +77,7 @@ export function AppearanceSettings() {
           ))}
         </ul>
       </section>
-      <Button variant="outline" onClick={() => setAccentOpen(true)}>自定义主题色</Button>
+
       {accentOpen && <AccentColorDialog onClose={() => setAccentOpen(false)} />}
       <Dialog open={Boolean(preview)} onOpenChange={() => setPreview(null)} title={`预览${name ? `：${name}` : ''}`}
         footer={
@@ -79,7 +96,7 @@ export function AppearanceSettings() {
           data-custom-accent={accentColor ?? undefined} style={accent}>
           <div className={styles.nav}>
             <span>SthStart</span>
-            <span className={styles.active}><Compass size={14} aria-hidden /> 故事世界</span>
+            <span className={styles.active}><Compass size={14} aria-hidden /> 作品</span>
             <span><BookOpen size={14} aria-hidden /> 资料库</span>
           </div>
           <div className={styles.paper}>
@@ -91,6 +108,6 @@ export function AppearanceSettings() {
           </div>
         </div>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

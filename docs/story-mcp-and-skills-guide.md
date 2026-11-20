@@ -70,24 +70,24 @@ stdio 用于客户端与 MCP 子进程通信，子进程仍通过 HTTP 访问 St
 
 ## 4. 创作 Skill 的维护与同步
 
-写作 skill 的唯一编辑源为 `apps/service/src/story/skills/`。`.agents/skills/` 下对应文件是生成副本，不在两处分别修改。
+DSH 直接加载 `apps/service/src/story/skills/` 下的五个源 Skill。项目脚本将它们合成一份工作区套件，更新写作指导时编辑源文件。 [生成套件](../.agents/skills/story-creative-suite/SKILL.md)
 
-| 源目录 | 工作区副本目录 | 职责 |
-| --- | --- | --- |
-| `character-design` | `story-character-design` | 人物目标、需求、关系和说话方式 |
-| `continuity-check` | `story-continuity-check` | 剧情一致性、证据与最小修复 |
-| `scene-writing` | `story-scene-writing` | 场景和对白创作、审查 |
-| `story-outline` | `story-outline` | 大纲推进、转折和收束 |
-| `story-scene-flow` | `story-scene-flow` | 符合当前编译器的剧本流 |
+| 源目录 | 职责 |
+| --- | --- |
+| `character-design` | 人物目标、需求、关系和说话方式 |
+| `continuity-check` | 剧情一致性、证据与最小修复 |
+| `scene-writing` | 场景和对白创作、审查 |
+| `story-outline` | 大纲推进、转折和收束 |
+| `story-scene-flow` | 符合当前编译器的剧本流 |
 
 ```bash
 npm run skills:sync
 npm run skills:sync -- --check
 ```
 
-同步脚本只维护上述五个副本，调整 frontmatter 的 name 并添加来源说明；其他 frontmatter 字段和正文保留。副本相同时不重写。`--check` 不创建目录、不写文件，缺失或不一致时列出文件并以非零退出码结束。
+同步命令更新 `story-creative-suite/SKILL.md`，并清理脚本中列出的旧版单体副本目录。`--check` 以只读方式检查生成套件和遗留目录，发现差异时列出路径并返回非零退出码。
 
-当前 skill 均为自包含的 `SKILL.md`，脚本不复制 references、scripts 或 assets。未来若新增辅助资源，需要同时扩展同步与检查范围；新增写作 skill 需显式登记到脚本的 managedSkills，不能依靠脚本扫描覆盖其他工作区 skill。
+五个源 Skill 均为自包含的 `SKILL.md`。新增模块时在同步脚本的 `sourceNames` 和 `suiteModules` 中登记。 [同步脚本](../scripts/sync-story-skills.mjs)
 
 skill 是否被发现和自动选择取决于客户端的发现机制、触发描述与任务上下文，不保证任何客户端自动加载，也不享有高于用户或系统指令的优先级。
 
@@ -99,7 +99,7 @@ skill 是否被发现和自动选择取决于客户端的发现机制、触发�
 
 - 仅修改 skill 或本指南：检查 frontmatter、触发描述、路径、工具名和参数，再执行同步与 `--check`。不因此部署、启动模型或提交真实提案。
 - 修改同步脚本：在临时目录检查同步、幂等、差异检测、只读行为，以及不会修改其他 skill。
-- 修改 MCP 实现或契约：运行 `npm run test:mcp`，覆盖两套 stdio 适配器、历史/制作桥接业务及受限传输；`npm run test:mcp:dsh` 验证真实 DSH 插件与独立客户端、本地模型夹具及原生 Web 配置。其他类型检查和测试按实际改动选择。
+- 修改 MCP 实现或契约时运行 `npm run test:mcp`，检查原生 Story、Publication、历史与制作桥接以及受限传输。`npm run test:mcp:dsh` 使用模型夹具检查 DSH 插件和原生 Web 配置。
 - 需要检查现场连接或交互报文时，可运行 `npm run mcp:inspect`。脚本可能发现项目、申请桥接令牌并通过 npx 启动 Inspector，属于连接调试，不是只读格式检查，也不是日常 skill 修改的必备步骤。
 
 没有可用服务或凭据时说明未验证的连接范围，不把语法检查通过当作真实创作链路已运行。不强制每次修改完成全部业务测试或实际 Agent 闭环。

@@ -1,0 +1,248 @@
+.co-workbench {
+  color: var(--ink);
+}
+.co-workbench [hidden] {
+  display: none !important;
+}
+.co-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.co-field input,
+.co-field textarea,
+.co-field select {
+  font-weight: 400;
+}
+.co-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-panel, 12px);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+}
+.co-studio {
+  display: grid;
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  gap: 1.75rem;
+  align-items: start;
+}
+.co-tasks {
+  border-inline-start: 1px solid var(--border-subtle);
+  padding-inline-start: 1.75rem;
+  min-width: 0;
+}
+.co-alt-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem;
+}
+.co-messages {
+  max-height: 44vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+.co-task-row {
+  border-radius: var(--radius-control);
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+}
+.co-task-row:hover {
+  background: var(--surface-hover);
+}
+.co-task-row.is-active {
+  background: var(--surface-sunken);
+}
+.co-task-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+.co-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+}
+.co-editor.no-inspector {
+  grid-template-columns: minmax(0, 1fr);
+}
+.co-node-settings {
+  border-inline-start: 1px solid var(--border-subtle);
+  max-height: 48rem;
+  overflow-y: auto;
+}
+.co-canvas {
+  height: clamp(26rem, 62vh, 44rem);
+  min-width: 0;
+}
+.co-canvas-floating-bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 0.5rem;
+}
+.co-canvas .react-flow {
+  --xy-background-color: var(--surface-sunken);
+  --xy-background-pattern-dots-color: var(--border-default);
+  --xy-node-background-color: transparent;
+  --xy-node-color: var(--ink);
+  --xy-node-border: none;
+  --xy-edge-stroke: var(--muted);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-color: var(--ink);
+  --xy-controls-button-border-color: var(--border-default);
+}
+.co-canvas .react-flow__node {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+}
+.co-flow-node {
+  position: relative;
+  width: 248px;
+  padding: 12px 14px;
+  border-radius: var(--radius-panel, 12px);
+  background: var(--surface, #fcfbf8);
+  border: 1px solid var(--hairline, rgba(31, 30, 28, 0.12));
+  border-inline-start: 3px solid var(--co-node-tone, var(--accent));
+  box-shadow: var(--elev-xs, 0 1px 3px rgba(0, 0, 0, 0.05));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+.co-flow-node:hover {
+  box-shadow: var(--elev-sm, 0 3px 10px rgba(0, 0, 0, 0.08));
+}
+.co-flow-node.is-selected {
+  background: var(--surface-raised, #ffffff);
+  box-shadow: 0 0 0 2px var(--accent, #665995), var(--elev-sm, 0 3px 10px rgba(0, 0, 0, 0.08));
+}
+.co-flow-node.has-issue {
+  border-color: var(--tone-orange, #b86e2b);
+}
+.co-flow-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.co-flow-node-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--co-node-tone, var(--accent));
+  background: color-mix(in srgb, var(--co-node-tone, var(--accent)) 12%, transparent);
+}
+.co-flow-node-kind {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+.co-flow-node-stage {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.co-flow-node-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  word-break: break-word;
+}
+.co-flow-node-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.co-flow-node-pill {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.co-flow-node-warn {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--tone-orange, #b86e2b);
+}
+.co-flow-handle {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 999px !important;
+  background: var(--surface, #fff) !important;
+  border: 2px solid var(--co-node-tone, var(--accent)) !important;
+}
+.co-flow-edge-badge {
+  position: absolute;
+  pointer-events: all;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--surface, #fcfbf8);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.co-flow-edge-badge.is-feedback {
+  cursor: default;
+  border-style: dashed;
+}
+.co-canvas .react-flow__minimap {
+  background: color-mix(in srgb, var(--surface, #fcfbf8) 90%, transparent) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-control) !important;
+}
+.co-scene-prose {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 1rem;
+  line-height: 1.9;
+}
+@media (max-width: 1050px) {
+  .co-studio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .co-tasks {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border-subtle);
+    padding-inline-start: 0;
+    padding-block-start: 1.5rem;
+  }
+  .co-alt-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .co-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .co-node-settings {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--border-subtle);
+    max-height: none;
+  }
+  .co-canvas {
+    height: 26rem;
+  }
+}

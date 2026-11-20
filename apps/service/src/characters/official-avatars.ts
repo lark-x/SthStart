@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import crypto from 'node:crypto';
-import type { CharacterAssetCategory } from '@sthstart/contracts';
-import { inferWorkTarget } from './upstream/types.js';
+import type { CharacterAssetCategory, CharacterPreferredSources } from '@sthstart/contracts';
+import { inferWorkTarget, type UpstreamCharacterBundle } from './upstream/types.js';
 import { fetchYattaGenshinCharacter } from './upstream/yatta-adapter.js';
-import { fetchStarRailResCharacter } from './upstream/starrailres-adapter.js';
+import { fetchStarRailResCharacter, starRailMirrorUrls } from './upstream/starrailres-adapter.js';
 import { fetchBwikiCharacter } from './upstream/bwiki-adapter.js';
+import { fetchFandomCharacter, fetchMoegirlCharacter } from './upstream/fandom-moegirl-adapter.js';
 
 interface GenshinCatalogItem {
   id: number;
@@ -41,7 +42,7 @@ function loadGenshinCatalog(): GenshinCatalogItem[] {
 }
 
 /**
- * 原神角色在游戏内内部资源命名（Enka / Ambr 等 CDN 使用的 UI_AvatarIcon_xxx 标识）
+ * 原神角色在游戏内内部资源命名（Enka / Ambr / Yatta 等 CDN 使用的 UI_AvatarIcon_xxx 标识）
  * 往往与角色的英文译名不同（如使用拼音、原案名、去掉氏族姓氏等）。
  */
 export const GENSHIN_INTERNAL_ICON_MAP: Record<string, string | string[]> = {
@@ -105,9 +106,17 @@ export const GENSHIN_INTERNAL_ICON_MAP: Record<string, string | string[]> = {
 };
 
 /**
- * 尚未实装或无独立可玩角色头像图标的特殊角色（剧情/执行官等）的官方/百科高质立绘与头像
+ * 尚未实装或无独立可玩角色头像图标的特殊角色（向导/剧情/执行官等）的官方/百科高质立绘与头像
  */
 export const SPECIAL_CHARACTER_AVATAR_MAP: Record<string, { avatars?: string[]; portraits?: string[] }> = {
+  '派蒙': {
+    avatars: [
+      'https://patchwiki.biligame.com/images/ys/8/8c/gmu2ekzva3yldyws9cwnrba5gx1pqb6.png',
+    ],
+    portraits: [
+      'https://patchwiki.biligame.com/images/ys/b/b5/485l5hkt4xeqmn3wbj22eqzhzhwq68j.jpg',
+    ],
+  },
   '丝柯克': {
     portraits: [
       'https://patchwiki.biligame.com/images/ys/f/f0/gbjq3bhxswsoicaonopqlbgy5lomh10.png',
@@ -171,8 +180,124 @@ export interface OfficialAssetCandidate {
   loreStory?: string;
 }
 
+export interface ResolvedOfficialAssetItem {
+  kind: 'avatar' | 'portrait' | 'reference';
+  category: CharacterAssetCategory;
+  title: string;
+  url: string;
+  candidateUrls: string[];
+  source: string;
+  skinName?: string;
+  outfitDescription?: string;
+  loreStory?: string;
+}
+
+export interface OfficialAssetBundle {
+  sourceUsed: string;
+  avatar: ResolvedOfficialAssetItem | null;
+  portrait: ResolvedOfficialAssetItem | null;
+  costumes: ResolvedOfficialAssetItem[];
+}
+
+function genshinMirrorUrls(kind: 'avatar' | 'portrait' | 'costume', iconFile: string): string[] {
+  const clean = iconFile.replace(/^.*\//, '').replace(/\.png$/i, '');
+  if (kind === 'portrait') {
+    const gachaName = clean.replace('UI_AvatarIcon_', 'UI_Gacha_AvatarImg_');
+    return [
+      `https://gi.yatta.moe/assets/UI/${gachaName}.png`,
+      `https://enka.network/ui/${gachaName}.png`,
+      `https://api.ambr.top/assets/UI/${gachaName}.png`,
+    ];
+  }
+  if (kind === 'costume') {
+    const costumeName = clean.replace('UI_AvatarIcon_', 'UI_Costume_');
+    return [
+      `https://gi.yatta.moe/assets/UI/${costumeName}.png`,
+      `https://enka.network/ui/${costumeName}.png`,
+      `https://api.ambr.top/assets/UI/${costumeName}.png`,
+    ];
+  }
+  return [
+    `https://gi.yatta.moe/assets/UI/${clean}.png`,
+    `https://enka.network/ui/${clean}.png`,
+    `https://api.ambr.top/assets/UI/${clean}.png`,
+  ];
+}
+
+function candidateUrlsForStarRailUrl(url: string): string[] {
+  const match = url.match(/StarRailRes\/(?:master|@master)\/(.+)$/);
+  if (!match) return [url];
+  return starRailMirrorUrls(match[1]);
+}
+
+function extractBwikiAssetBundle(
+  bundle: Partial<UpstreamCharacterBundle> | null,
+  displayName: string,
+  sourceLabel: string,
+): OfficialAssetBundle | null {
+  if (!bundle?.assets?.length) return null;
+  const seenSkins = new Set<string>();
+  let avatar: ResolvedOfficialAssetItem | null = null;
+  let portrait: ResolvedOfficialAssetItem | null = null;
+  const costumes: ResolvedOfficialAssetItem[] = [];
+
+  for (const item of bundle.assets) {
+    if (!item.url) continue;
+    if (item.category === 'avatar' || (item.kind === 'avatar' && !item.skinName && item.category !== 'costume')) {
+      if (!avatar) {
+        avatar = {
+          kind: 'avatar',
+          category: 'avatar',
+          title: `${displayName} 官方头像`,
+          url: item.url,
+          candidateUrls: [item.url],
+          source: item.source || sourceLabel,
+        };
+      }
+      continue;
+    }
+    if (item.category === 'portrait' || (item.kind === 'portrait' && !item.skinName && item.category !== 'costume')) {
+      if (!portrait) {
+        portrait = {
+          kind: 'portrait',
+          category: 'portrait',
+          title: `${displayName} 官方立绘`,
+          url: item.url,
+          candidateUrls: [item.url],
+          source: item.source || sourceLabel,
+        };
+      }
+      continue;
+    }
+    if (item.category === 'costume' || item.skinName) {
+      const skinName = (item.skinName || item.title || '').replace(/^(?:皮肤立绘|皮肤头像|皮肤|形态立绘)\s*[·•]\s*/, '').trim();
+      if (!skinName || seenSkins.has(skinName)) continue;
+      // 同一皮肤优先只保留立绘（非纯小头像）
+      if (item.kind === 'avatar' && bundle.assets.some((other) => other.skinName === item.skinName && other.kind !== 'avatar')) {
+        continue;
+      }
+      seenSkins.add(skinName);
+      const skinMeta = bundle.skinOrVariantCandidates?.find((s) => s.name.trim() === skinName);
+      costumes.push({
+        kind: 'reference',
+        category: 'costume',
+        title: `皮肤 · ${skinName}`,
+        url: item.url,
+        candidateUrls: [item.url],
+        source: item.source || sourceLabel,
+        skinName,
+        outfitDescription: skinMeta?.outfitDescription,
+        loreStory: skinMeta?.loreStory,
+      });
+    }
+  }
+
+  if (!avatar && !portrait && costumes.length === 0) return null;
+  return { sourceUsed: sourceLabel, avatar, portrait, costumes };
+}
+
 /**
- * 尝试为角色匹配官方高清头像 URL 及候选地址列表
+ * 尝试为角色匹配官方高清头像 URL 及候选地址列表（同步快速表查，主要用于兼容原神单头像兜底）
  */
 export function matchOfficialAvatarUrl(
   displayName: string,
@@ -182,9 +307,11 @@ export function matchOfficialAvatarUrl(
   const trimmed = displayName.trim();
   const trimmedEn = (englishName || '').trim().toLowerCase();
 
-  // 1. 检查特殊未实装角色
+  const normalizeExact = (s: string) => s.trim().toLowerCase().replace(/[·•・\s]/g, '');
+  const trimmedKey = normalizeExact(trimmed);
+
   for (const [key, conf] of Object.entries(SPECIAL_CHARACTER_AVATAR_MAP)) {
-    if (trimmed === key || trimmed.includes(key) || key.includes(trimmed)) {
+    if (normalizeExact(key) === trimmedKey) {
       const urls = conf.avatars || conf.portraits || [];
       if (urls.length > 0) {
         return {
@@ -197,25 +324,20 @@ export function matchOfficialAvatarUrl(
     }
   }
 
-  // 2. 检查已知别名与特殊内部名称映射
   let matchedInternal = GENSHIN_INTERNAL_ICON_MAP[trimmed];
   if (!matchedInternal) {
     for (const [key, val] of Object.entries(GENSHIN_INTERNAL_ICON_MAP)) {
-      if (trimmed.includes(key) || key.includes(trimmed)) {
+      if (normalizeExact(key) === trimmedKey) {
         matchedInternal = val;
         break;
       }
     }
   }
 
-  // 3. 官方角色列表检索
   const catalog = loadGenshinCatalog();
-  let match = catalog.find((c) => c.name === trimmed);
+  let match = catalog.find((c) => normalizeExact(c.name) === trimmedKey);
   if (!match && trimmedEn) {
     match = catalog.find((c) => c.nameEn.toLowerCase() === trimmedEn);
-  }
-  if (!match) {
-    match = catalog.find((c) => trimmed.includes(c.name) || c.name.includes(trimmed));
   }
 
   const iconNames: string[] = [];
@@ -243,6 +365,7 @@ export function matchOfficialAvatarUrl(
 
   const candidateUrls: string[] = [];
   for (const icon of uniqueIcons) {
+    candidateUrls.push(`https://gi.yatta.moe/assets/UI/UI_AvatarIcon_${icon}.png`);
     candidateUrls.push(`https://enka.network/ui/UI_AvatarIcon_${icon}.png`);
     candidateUrls.push(`https://api.ambr.top/assets/UI/UI_AvatarIcon_${icon}.png`);
   }
@@ -253,6 +376,242 @@ export function matchOfficialAvatarUrl(
     matchedName: match ? match.name : trimmed,
     nameEn: uniqueIcons[0],
   };
+}
+
+/**
+ * 为单个角色按「作品单一最佳默认源（可配置）」解析不重复的官方形象套装：
+ * - 唯一主头像（avatar）
+ * - 唯一全身主立绘（portrait）
+ * - 全部去重皮肤 / 衍生形态立绘（costumes）
+ */
+export async function resolveCharacterOfficialAssetBundle(
+  displayName: string,
+  englishName?: string,
+  work?: string,
+  preferredSources?: CharacterPreferredSources,
+  fetcher: typeof fetch = fetch,
+): Promise<OfficialAssetBundle | null> {
+  const trimmed = displayName.trim();
+  if (!trimmed) return null;
+  const workTarget = inferWorkTarget(trimmed, work);
+
+  if (workTarget === 'genshin') {
+    const source = preferredSources?.genshin ?? 'yatta';
+    const normalizeExact = (s: string) => s.trim().toLowerCase().replace(/[·•・\s]/g, '');
+    const trimmedNorm = normalizeExact(trimmed);
+
+    if (source === 'bwiki') {
+      const bwiki = await fetchBwikiCharacter(trimmed, 'genshin', fetcher);
+      return extractBwikiAssetBundle(bwiki, trimmed, 'BWiki (原神)');
+    }
+
+    if (source === 'yatta') {
+      const yatta = await fetchYattaGenshinCharacter(trimmed, fetcher);
+      if (yatta?.assets?.length || yatta?.skinOrVariantCandidates?.length) {
+        const avatarAsset = yatta.assets?.find((a) => a.category === 'avatar' && !a.skinName);
+        const portraitAsset = yatta.assets?.find((a) => a.category === 'portrait' && !a.skinName);
+
+        const iconToken = avatarAsset?.url.match(/\/(UI_AvatarIcon_[^/.]+)\.png/i)?.[1];
+        const avatarUrls = avatarAsset
+          ? (iconToken ? genshinMirrorUrls('avatar', iconToken) : [avatarAsset.url])
+          : [];
+        const portraitUrls = portraitAsset
+          ? (iconToken ? genshinMirrorUrls('portrait', iconToken) : [portraitAsset.url])
+          : [];
+
+        const costumes: ResolvedOfficialAssetItem[] = [];
+        const seenSkins = new Set<string>();
+        for (const skin of yatta.skinOrVariantCandidates || []) {
+          if (skin.isDefault) continue;
+          const skinName = skin.name.trim();
+          if (!skinName || seenSkins.has(skinName)) continue;
+          const targetUrl = skin.portraitUrl || skin.avatarUrl;
+          if (!targetUrl) continue;
+          seenSkins.add(skinName);
+          const skinIconToken = (skin.avatarUrl || targetUrl).match(/\/(UI_(?:AvatarIcon|Costume)_[^/.]+)\.png/i)?.[1];
+          const mirrorList = skinIconToken && skin.portraitUrl
+            ? genshinMirrorUrls('costume', skinIconToken)
+            : [targetUrl];
+          costumes.push({
+            kind: 'reference',
+            category: 'costume',
+            title: `皮肤 · ${skinName}`,
+            url: mirrorList[0],
+            candidateUrls: mirrorList,
+            source: 'Project Amber (Yatta)',
+            skinName,
+            outfitDescription: skin.outfitDescription,
+            loreStory: skin.loreStory,
+          });
+        }
+
+        if (avatarAsset || portraitAsset || costumes.length > 0) {
+          return {
+            sourceUsed: 'Project Amber (Yatta)',
+            avatar: avatarAsset
+              ? {
+                  kind: 'avatar',
+                  category: 'avatar',
+                  title: `${trimmed} 官方头像`,
+                  url: avatarUrls[0] || avatarAsset.url,
+                  candidateUrls: avatarUrls.length ? avatarUrls : [avatarAsset.url],
+                  source: 'Project Amber (Yatta)',
+                }
+              : null,
+            portrait: portraitAsset
+              ? {
+                  kind: 'portrait',
+                  category: 'portrait',
+                  title: `${trimmed} 官方抽卡立绘`,
+                  url: portraitUrls[0] || portraitAsset.url,
+                  candidateUrls: portraitUrls.length ? portraitUrls : [portraitAsset.url],
+                  source: 'Project Amber (Yatta)',
+                }
+              : null,
+            costumes,
+          };
+        }
+      }
+    }
+
+    // 非实装或 Yatta 未收录特殊角色（如派蒙、桑多涅）精确命中内置精选来源
+    for (const [key, conf] of Object.entries(SPECIAL_CHARACTER_AVATAR_MAP)) {
+      if (normalizeExact(key) === trimmedNorm) {
+        const av = conf.avatars?.[0];
+        const pt = conf.portraits?.[0];
+        if (av || pt) {
+          return {
+            sourceUsed: '官方图鉴精选 (特殊角色)',
+            avatar: av
+              ? {
+                  kind: 'avatar',
+                  category: 'avatar',
+                  title: `${trimmed} 官方头像`,
+                  url: av,
+                  candidateUrls: conf.avatars || [av],
+                  source: '官方图鉴精选',
+                }
+              : null,
+            portrait: pt
+              ? {
+                  kind: 'portrait',
+                  category: 'portrait',
+                  title: `${trimmed} 官方立绘`,
+                  url: pt,
+                  candidateUrls: conf.portraits || [pt],
+                  source: '官方图鉴精选',
+                }
+              : null,
+            costumes: [],
+          };
+        }
+      }
+    }
+
+    // Enka 直连或 Yatta 未匹配到（如 旅行者 组合别名）时的内部标识映射
+    const fallbackMatch = matchOfficialAvatarUrl(trimmed, englishName, work);
+    if (fallbackMatch) {
+      const iconName = fallbackMatch.nameEn;
+      return {
+        sourceUsed: source === 'enka' ? 'Enka CDN' : 'Project Amber / Enka 镜像',
+        avatar: {
+          kind: 'avatar',
+          category: 'avatar',
+          title: `${trimmed} 官方头像`,
+          url: fallbackMatch.candidateUrls[0],
+          candidateUrls: fallbackMatch.candidateUrls,
+          source: source === 'enka' ? 'Enka CDN' : 'Project Amber (Yatta)',
+        },
+        portrait: {
+          kind: 'portrait',
+          category: 'portrait',
+          title: `${trimmed} 官方立绘`,
+          url: `https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_${iconName}.png`,
+          candidateUrls: [
+            `https://gi.yatta.moe/assets/UI/UI_Gacha_AvatarImg_${iconName}.png`,
+            `https://enka.network/ui/UI_Gacha_AvatarImg_${iconName}.png`,
+            `https://api.ambr.top/assets/UI/UI_Gacha_AvatarImg_${iconName}.png`,
+          ],
+          source: source === 'enka' ? 'Enka CDN' : 'Project Amber (Yatta)',
+        },
+        costumes: [],
+      };
+    }
+
+    return null;
+  }
+
+  if (workTarget === 'starrail') {
+    const source = preferredSources?.starrail ?? 'starrailres';
+    if (source === 'bwiki') {
+      const bwiki = await fetchBwikiCharacter(trimmed, 'starrail', fetcher);
+      return extractBwikiAssetBundle(bwiki, trimmed, 'BWiki (星穹铁道)');
+    }
+
+    const hsr = await fetchStarRailResCharacter(trimmed, fetcher);
+    if (!hsr?.assets?.length) return null;
+
+    const avatarAsset = hsr.assets.find((a) => a.category === 'avatar');
+    const portraitAsset = hsr.assets.find((a) => a.category === 'portrait');
+    const costumes: ResolvedOfficialAssetItem[] = [];
+    const seenSkins = new Set<string>();
+
+    for (const skin of hsr.skinOrVariantCandidates || []) {
+      const targetUrl = skin.portraitUrl || skin.avatarUrl;
+      const skinName = skin.name.trim();
+      if (!targetUrl || !skinName || seenSkins.has(skinName)) continue;
+      seenSkins.add(skinName);
+      costumes.push({
+        kind: 'reference',
+        category: 'costume',
+        title: `形态立绘 · ${skinName}`,
+        url: targetUrl,
+        candidateUrls: candidateUrlsForStarRailUrl(targetUrl),
+        source: 'StarRailRes',
+        skinName,
+        outfitDescription: skin.outfitDescription,
+        loreStory: skin.loreStory,
+      });
+    }
+
+    return {
+      sourceUsed: 'StarRailRes (星铁结构化主源)',
+      avatar: avatarAsset
+        ? {
+            kind: 'avatar',
+            category: 'avatar',
+            title: `${trimmed} 官方头像`,
+            url: avatarAsset.url,
+            candidateUrls: candidateUrlsForStarRailUrl(avatarAsset.url),
+            source: 'StarRailRes',
+          }
+        : null,
+      portrait: portraitAsset
+        ? {
+            kind: 'portrait',
+            category: 'portrait',
+            title: `${trimmed} 官方全身立绘`,
+            url: portraitAsset.url,
+            candidateUrls: candidateUrlsForStarRailUrl(portraitAsset.url),
+            source: 'StarRailRes',
+          }
+        : null,
+      costumes,
+    };
+  }
+
+  // 其他/通用作品默认单一源
+  const generalSource = preferredSources?.default ?? 'bwiki';
+  if (generalSource === 'moegirl') {
+    const mg = await fetchMoegirlCharacter(trimmed, work || trimmed, fetcher);
+    return extractBwikiAssetBundle(mg, trimmed, '萌娘百科');
+  }
+  if (generalSource === 'fandom') {
+    const fd = await fetchFandomCharacter(englishName || trimmed, workTarget, fetcher);
+    return extractBwikiAssetBundle(fd, trimmed, 'Fandom Wiki');
+  }
+  const bwiki = await fetchBwikiCharacter(trimmed, workTarget, fetcher);
+  return extractBwikiAssetBundle(bwiki, trimmed, 'BWiki');
 }
 
 /**
@@ -309,13 +668,11 @@ export async function searchBwikiAssets(
       const width = info.width || 0;
       const height = info.height || 0;
 
-      // 过滤非角色本体的道具/材料/技能/图标
       const ignoreWords = ['武器', '名片', '命之座', '图鉴', '技能', '天赋', '料理', '便携式', '材料', '圣遗物', '突破', '成就', '徽章'];
       if (ignoreWords.some((w) => rawTitle.includes(w))) {
         continue;
       }
 
-      // 区分头像与立绘
       let kind: 'avatar' | 'portrait' = 'portrait';
       if (rawTitle.includes('头像') || rawTitle === trimmed || (width > 0 && width <= 300 && height > 0 && height <= 300)) {
         kind = 'avatar';
@@ -360,7 +717,6 @@ export async function previewCharacterMultiSourceAssets(
   const trimmedEn = (englishName || '').trim();
   const workTarget = inferWorkTarget(trimmed, work);
 
-  // 1. 并发检索结构化上游与 BWiki 页面资源（支持皮肤/SP立绘与防 WAF 节流）
   const structuredPromise = workTarget === 'genshin'
     ? fetchYattaGenshinCharacter(trimmed)
     : workTarget === 'starrail'
@@ -369,7 +725,6 @@ export async function previewCharacterMultiSourceAssets(
   const bwikiPagePromise = fetchBwikiCharacter(trimmed, workTarget);
   const bwikiPromise = searchBwikiAssets(trimmed, work);
 
-  // 2. 收集角色可能对应的英文名与内部标识
   const iconNames: string[] = [];
   const searchNames: string[] = [trimmed];
   if (trimmedEn) searchNames.push(trimmedEn);
@@ -423,7 +778,6 @@ export async function previewCharacterMultiSourceAssets(
     previewUrl?: string;
   }> = [];
 
-  // 3. 特殊未实装角色直接注入
   for (const [key, conf] of Object.entries(SPECIAL_CHARACTER_AVATAR_MAP)) {
     if (trimmed === key || trimmed.includes(key) || key.includes(trimmed)) {
       for (const a of conf.avatars || []) {
@@ -435,32 +789,25 @@ export async function previewCharacterMultiSourceAssets(
     }
   }
 
-  // 4. Enka 解包资源探针 (Avatar + Gacha Portrait + Costume)
-  for (const icon of uniqueIcons) {
-    candidateProbes.push({
-      kind: 'avatar',
-      url: `https://enka.network/ui/UI_AvatarIcon_${icon}.png`,
-      source: 'Enka CDN (游戏解包)',
-      title: '官方高清头像图标',
-      previewUrl: `https://enka.network/ui/UI_AvatarIcon_${icon}.png`,
-    });
-    candidateProbes.push({
-      kind: 'portrait',
-      url: `https://enka.network/ui/UI_Gacha_AvatarImg_${icon}.png`,
-      source: 'Enka CDN (游戏解包)',
-      title: '官方祈愿立绘大图',
-      previewUrl: `https://enka.network/ui/UI_Gacha_AvatarImg_${icon}.png`,
-    });
-    candidateProbes.push({
-      kind: 'portrait',
-      url: `https://enka.network/ui/UI_Costume_${icon}.png`,
-      source: 'Enka CDN (游戏解包)',
-      title: '官方服饰立绘',
-      previewUrl: `https://enka.network/ui/UI_Costume_${icon}.png`,
-    });
+  if (workTarget === 'genshin') {
+    for (const icon of uniqueIcons) {
+      candidateProbes.push({
+        kind: 'avatar',
+        url: `https://enka.network/ui/UI_AvatarIcon_${icon}.png`,
+        source: 'Enka CDN (游戏解包)',
+        title: '官方高清头像图标',
+        previewUrl: `https://enka.network/ui/UI_AvatarIcon_${icon}.png`,
+      });
+      candidateProbes.push({
+        kind: 'portrait',
+        url: `https://enka.network/ui/UI_Gacha_AvatarImg_${icon}.png`,
+        source: 'Enka CDN (游戏解包)',
+        title: '官方祈愿立绘大图',
+        previewUrl: `https://enka.network/ui/UI_Gacha_AvatarImg_${icon}.png`,
+      });
+    }
   }
 
-  // 5. 汇聚结构化上游皮肤/立绘、BWiki 页面与搜索结果
   const [structuredBundle, bwikiPageBundle, bwikiCandidates] = await Promise.all([
     structuredPromise,
     bwikiPagePromise,
@@ -489,8 +836,7 @@ export async function previewCharacterMultiSourceAssets(
     });
   }
 
-  // 6. Fandom Wiki 原神百科探针（仅当国内 BWiki 资源较少时作为海外百科兜底）
-  if (bwikiCandidates.length < 2) {
+  if (bwikiCandidates.length < 2 && workTarget === 'genshin') {
     for (const name of uniqueSearchNames) {
       try {
         const wikiUrl = `https://genshin-impact.fandom.com/api.php?action=query&titles=${encodeURIComponent(name)}&prop=pageimages&format=json&pithumbsize=1024`;
@@ -515,11 +861,9 @@ export async function previewCharacterMultiSourceAssets(
     }
   }
 
-  // 7. 并发探测外部 URL 可用性与去重
   const seenUrls = new Set<string>();
   const verified: OfficialAssetCandidate[] = [];
 
-  // 首先放入结构化直连与 BWiki 候选（去重）
   for (const cand of [...structuredCandidates, ...bwikiCandidates]) {
     if (!seenUrls.has(cand.url)) {
       seenUrls.add(cand.url);
@@ -540,6 +884,7 @@ export async function previewCharacterMultiSourceAssets(
         verified.push({
           id: crypto.randomUUID(),
           kind: probe.kind,
+          category: probe.kind === 'avatar' ? 'avatar' : 'portrait',
           url: probe.url,
           source: probe.source,
           title: probe.title,
@@ -553,10 +898,9 @@ export async function previewCharacterMultiSourceAssets(
 
   await Promise.all(probeTasks);
 
-  // 排序：头像在前，立绘在后；同类中 BWiki 优先，其次 Enka 解包
   return verified.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'avatar' ? -1 : 1;
-    const sourceScore = (s: string) => s.includes('BWiki') ? 0 : s.includes('Enka') ? 1 : 2;
+    const sourceScore = (s: string) => s.includes('Yatta') || s.includes('StarRailRes') ? 0 : s.includes('BWiki') ? 1 : 2;
     return sourceScore(a.source) - sourceScore(b.source);
   });
 }

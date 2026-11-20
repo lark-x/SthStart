@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  CHARACTER_PERSONA_COMPILER_VERSION, compileLinshePrompt, normalizeCharacterAppearance,
   type CharacterDraftV2, type PromoteWorldActor, type StoryWorld, type WorldActor,
   type WorldActorCharacterLink, type WorldActorPromotionResult, type WorldBranch, type WorldDefinition,
 } from '@sthstart/contracts';
 import { nowIso } from '../database.js';
 import { toAuthorityDraft } from '../characters/draft.js';
+import { canonicalWork, characterWorks } from '../characters/organization.js';
+import { publishCharacterSnapshot } from '../characters/snapshots.js';
 import { StoryWorldError, type StoryWorldStore } from './store.js';
 
 type Row = Record<string, unknown>;
@@ -96,7 +97,6 @@ export class StoryWorldActorService {
   private resolveCharacter(
     world: StoryWorld, branch: WorldBranch, definition: WorldDefinition, actor: WorldActor, input: PromoteWorldActor,
   ): WorldActorCharacterLink | null {
-    const database = this.store.database;
     if (actor.characterId) {
       return this.existingCharacter(world, actor, actor.characterId, actor.characterVersion, input.addToLibrary);
     }
@@ -163,22 +163,30 @@ export class StoryWorldActorService {
     const isDerivativeWorld = world.workNature === 'derivative';
     const isCanonWorld = world.workNature === 'canon';
     const originType = isDerivativeWorld ? 'derivative' : isCanonWorld ? 'ip' : 'original';
+    const versionLabel = text(input.versionLabel, 120);
+    if (originType === 'original' && !versionLabel) {
+      fail('story_character_stage_required', 400, '原创角色入库前请填写阶段名称，并确认保存阶段后入库。');
+    }
     let parentCharacterId: string | null = null;
     if (isDerivativeWorld && world.parentWork) {
+      const parentName = canonicalWork(database, world.parentWork);
+      const mother = characterWorks(database).find(work => work.name === parentName);
+      const names = mother ? [mother.name, ...mother.aliases] : [parentName];
       const rootRow = database.connection.prepare(
-        "SELECT id FROM character_profiles WHERE archived=0 AND parent_character_id IS NULL AND display_name=? AND json_extract(draft_json,'$.work') COLLATE NOCASE = ? LIMIT 1",
-      ).get(displayName, world.parentWork) as { id: string } | undefined;
-      if (rootRow) parentCharacterId = String(rootRow.id);
+        `SELECT id FROM character_profiles WHERE archived=0 AND parent_character_id IS NULL AND display_name=?
+          AND json_extract(draft_json,'$.originType')<>'derivative'
+          AND json_extract(draft_json,'$.work') COLLATE NOCASE IN (${names.map(() => '?').join(',')}) LIMIT 2`,
+      ).all(displayName, ...names) as { id: string }[];
+      // A same-name match is safe only when there is one unambiguous root.
+      if (rootRow.length === 1) parentCharacterId = String(rootRow[0].id);
     }
     const draft = toAuthorityDraft({
-      schemaVersion: 2, displayName, englishName: '', aliases: [], originType, work: definition.title,
+      schemaVersion: 2, displayName, englishName: '', aliases: [], originType, work: world.title,
       ...(parentCharacterId ? { parentCharacterId } : {}),
       summary, personaText, speechText: text(actor.speechStyle, 4000), dialogueExamples: [],
       behaviorRules: actor.goals.map((goal) => `- ${goal}`).join('\n').slice(0, 8000),
       appearance: { baseText: text(actor.appearance, 5000), defaultOutfitText: '' },
     }) as CharacterDraftV2;
-    const compiled = compileLinshePrompt(draft);
-    const appearanceSnapshot = normalizeCharacterAppearance({ description: draft.appearance.baseText });
     const snapshotPayload = {
       version: 1,
       worldId: world.id, worldTitle: world.title,
@@ -206,19 +214,10 @@ export class StoryWorldActorService {
     }
 
     const slug = this.uniqueSlug(displayName, actor.id);
-    const provenance = JSON.stringify({
-      kind: SOURCE_FORMAT, sourceSnapshotId, worldId: world.id, branchId: branch.id,
-      actorId: actor.id, tick: branch.currentTick, sourceRevision: branch.sourceRevision,
-    });
     database.connection.prepare(`INSERT INTO character_profiles
       (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json,parent_character_id)
-      VALUES (?,?,?,?,?,NULL,1,0,?,?,1,'[]',?)`).run(
+      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,'[]',?)`).run(
       id, slug, displayName, JSON.stringify(draft), JSON.stringify(tags), now, now, parentCharacterId,
-    );
-    database.connection.prepare(`INSERT INTO character_versions
-      (character_id,version,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json,compiler_version)
-      VALUES (?,1,?,?,?,'[]',1,?,?,?)`).run(
-      id, JSON.stringify(draft), compiled, now, JSON.stringify(appearanceSnapshot), provenance, CHARACTER_PERSONA_COMPILER_VERSION,
     );
     database.connection.prepare(`INSERT INTO character_sources
       (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
@@ -241,12 +240,10 @@ export class StoryWorldActorService {
         JSON.stringify({ worldId: world.id, branchId: branch.id, actorId: actor.id, tick: branch.currentTick }), now,
       );
     }
-    database.connection.prepare(`INSERT INTO personas(id,display_name,tags_json,source,latest_version,created_at,updated_at)
-      VALUES (?,?,?,?,1,?,?)`).run(id, displayName, JSON.stringify(tags), 'character-library', now, now);
-    database.connection.prepare('INSERT OR REPLACE INTO persona_versions VALUES (?,?,?,?,?,?,?,?)').run(
-      id, 1, displayName, compiled, draft.appearance.baseText || null, null,
-      JSON.stringify({ characterData: draft, storyWorldSource: { worldId: world.id, branchId: branch.id, actorId: actor.id, tick: branch.currentTick, sourceSnapshotId } }), now,
-    );
+    const published = publishCharacterSnapshot(database, id, {
+      expectedDraftRevision: 1, ...(versionLabel ? { versionLabel } : {}), allowIncomplete: originType !== 'original',
+    });
+    if (!published) fail('story_character_incomplete', 400, '保存阶段前请填写角色名称，以及简介或人设正文。');
     return { characterId: id, displayName, version: 1, created: true, archived: false, sourceSnapshotId };
   }
 

@@ -18,6 +18,36 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Inline document fields opt out of form chrome across every skin. Reserve
+ * the underline at rest so focusing never shifts the document. */
+html[data-theme] .ui-control[data-ui-variant='inline'] {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+html[data-theme] .ui-control[data-ui-variant='inline']:hover:where(:not(:disabled, :focus-visible)) {
+  border-bottom-color: var(--border-default);
+}
+html[data-theme] .ui-control[data-ui-variant='inline']:focus-visible {
+  outline: none;
+  border-bottom-color: currentColor;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-theme] .ui-control[data-ui-variant='inline'][aria-invalid='true'] {
+  border-bottom-color: var(--danger-fg);
+}
+@media (forced-colors: active) {
+  html[data-theme] .ui-control[data-ui-variant='inline']:focus-visible {
+    border-bottom-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
 /*
  * Mantine 的基础变量：官方 `default-css-variables.layer.css` 会输出全部色板与
  * 尺寸（约 27 KB），而当前已接入的组件只引用下面这一小组。这里直接以项目 token

@@ -563,7 +563,7 @@ export class RuntimeManager {
           STHSTART_PUBLIC_VECTOR: 'true',
           STHSTART_PUBLIC_IMAGE: runtime.linsheImageViaGateway ? 'true' : 'false',
           STHSTART_GENERATION_PURPOSE: 'linshe-chat-image',
-          STHSTART_PORTAL_URL: this.config.portalOrigins[0] ?? 'http://127.0.0.1:4173',
+          STHSTART_PORTAL_URL: this.config.linshePortalUrl,
         } : {}),
         EXTRA_LORA_FOLDERS: runtime.extraLoraFolders.join(';'),
       },

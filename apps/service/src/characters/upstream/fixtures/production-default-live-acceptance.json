@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-11-16T12:51:45.917Z",
+  "scope": "Actual production adapter default global fetch with no transport transformation, no paid model, no user DB. Public network only.",
+  "results": {
+    "琴": {
+      "warnings": [
+        "BWiki (ys) 搜索失败: BWiki 触发访问频控 (EdgeOne WAF)",
+        "BWiki (ys) 未匹配角色：琴"
+      ]
+    },
+    "雷电芽衣": {
+      "warnings": [
+        "BWiki (bh3) 搜索失败: BWiki 触发访问频控 (EdgeOne WAF)",
+        "BWiki (bh3) 未匹配角色：雷电芽衣"
+      ]
+    },
+    "三月七": {
+      "name": "三月七",
+      "candidates": [
+        {
+          "id": "starrailres:1224",
+          "name": "三月七·巡猎",
+          "classification": "variant",
+          "variantKind": "sp",
+          "outfitDescription": "",
+          "loreStory": "",
+          "avatarUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/icon/character/1224.png",
+          "portraitUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/image/character_portrait/1224.png",
+          "source": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json#1224",
+          "isDefault": false
+        },
+        {
+          "id": "starrailres:1413",
+          "name": "长夜月",
+          "classification": "variant",
+          "variantKind": "sp",
+          "outfitDescription": "",
+          "loreStory": "",
+          "avatarUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/icon/character/1413.png",
+          "portraitUrl": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/image/character_portrait/1413.png",
+          "source": "https://raw.githubusercontent.com/Mar-7th/StarRailRes/master/index_min/cn/characters.json#1413",
+          "isDefault": false
+        }
+      ],
+      "sources": [
+        {
+          "title": "StarRailRes：三月七 (1001)",
+          "hash": "246950a62552d6216b946e02a38f182c409b7c9f0b01aa38a2a815b5be75dd16",
+          "rawLength": 2387
+        }
+      ],
+      "warnings": [
+        "StarRailRes 仅提供角色身份、命途、属性和图像路径，不含衣装描述或背景故事；未生成推测文本。"
+      ]
+    }
+  }
+}

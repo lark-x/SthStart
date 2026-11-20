@@ -83,6 +83,8 @@ export function CharacterAvatarGenerationOverlay({
   onGenerate,
   onApply,
   generationPanel,
+  variantId,
+  variantName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -100,27 +102,30 @@ export function CharacterAvatarGenerationOverlay({
   onGenerate: (input: ImageGenerationSubmission) => Promise<void>;
   onApply: () => Promise<void>;
   generationPanel?: CharacterAvatarGenerationPanel;
+  variantId?: string;
+  variantName?: string;
 }) {
   const GenerationPanel = generationPanel ?? ImageGenerationPanel;
   return (
     <ResponsiveEditOverlay
       open={open}
       onOpenChange={onOpenChange}
-      title="生成角色头像"
+      title={variantName ? `生成形态头像 · ${variantName}` : '生成角色头像'}
       description="根据角色外观生成图片，预览后再应用为头像。"
     >
       <div className="space-y-4">
-        {dirty && <p role="status" className="rounded-control bg-surface-sunken p-3 text-xs text-muted">角色修改尚未保存完成；生成读取已保存的角色版本。请先保存外观或 LoRA 修改，再生成头像。</p>}
+        <p className="text-sm text-muted">{variantName ? `当前生成范围：${variantName}，使用该形态的外貌、服装与参考图片。` : '当前生成范围：主档案。'}</p>
+        {dirty && <p role="status" className="rounded-control bg-surface-sunken p-3 text-sm text-muted">角色修改尚未保存完成，请先保存外观或 LoRA 修改，再生成头像。</p>}
         <GenerationPanel
           appId="characters"
           purpose="character-avatar"
-          contextKey={`character-avatar:${characterId}`}
+          contextKey={`character-avatar:${characterId}:${variantId || 'main'}`}
           options={options}
           loading={optionsLoading}
           initialDescription={prompt}
-          context={characterId ? { characters: [{ characterId, draftRevision }] } : undefined}
+          context={characterId ? { characters: [{ characterId, draftRevision, ...(variantId ? { variantId } : {}) }] } : undefined}
           onRefresh={onRefreshOptions}
-          blockedReason={taskId ? '已有头像任务正在生成，完成后可预览结果。' : undefined}
+          blockedReason={dirty ? '请先保存当前角色修改。' : taskId ? '已有头像任务正在生成，完成后可预览结果。' : undefined}
           onGenerate={onGenerate}
         />
         {pollError && (
@@ -146,7 +151,7 @@ export function CharacterAvatarGenerationOverlay({
                 />
               ))}
             <Button variant="accent" loading={applying} onClick={onApply}>
-              应用为头像
+              {variantName ? '应用为该形态头像' : '应用为头像'}
             </Button>
           </section>
         )}

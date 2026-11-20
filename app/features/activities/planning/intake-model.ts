@@ -43,6 +43,9 @@ export function mergeCast(current: CastMember[], actors: ActorSnapshot[], maxAct
       displayName: actor.displayName,
       avatarUrl: actor.avatarUrl,
       activityRole: actor.activityRole,
+      ...(actor.sourceVersion != null ? { version: actor.sourceVersion } : {}),
+      ...(actor.sourceVariantId ? { variantId: actor.sourceVariantId } : {}),
+      ...(actor.sourceCostumeAssetId ? { costumeAssetId: actor.sourceCostumeAssetId } : {}),
     }));
   return added.length ? [...current, ...added].slice(0, maxActors) : current;
 }
@@ -86,6 +89,9 @@ export function buildPlanningFormPayload({
     scheduledDate: intake.scheduledDate || null,
     characters: intake.cast.map((member) => ({
       characterId: member.characterId,
+      ...(member.version != null ? { version: member.version } : {}),
+      ...(member.variantId ? { variantId: member.variantId } : {}),
+      ...(member.costumeAssetId ? { costumeAssetId: member.costumeAssetId } : {}),
       ...(member.activityRole ? { activityRole: member.activityRole } : {}),
     })),
     birthdayCharacterIds: intake.birthdayIds,

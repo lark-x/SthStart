@@ -18,6 +18,16 @@ import {
   type CreateWorldBundle, type UpdateWorldBranch,
   CreateWorldSetupSchema, UpdateWorldSetupSchema, WorldSetupSummarySchema, WorldSetupListSchema, WorldSetupSchema,
   WorldSetupResultSchema, type CreateWorldSetup, type UpdateWorldSetup,
+  WorldHubSchema, WorldMcpLookupRequestSchema, WorldMcpLookupResponseSchema,
+  WorldMcpReadRequestSchema, WorldMcpReadResponseSchema,
+  WorldManuscriptCreateDocSchema, WorldManuscriptSaveDocSchema, WorldManuscriptDocResponseSchema,
+  WorldManuscriptDeleteQuerySchema, WorldManuscriptDeleteResponseSchema,
+  WorldChapterCopilotRequestSchema, WorldChapterCopilotResponseSchema,
+  type WorldHub, type WorldMcpLookupRequest, type WorldMcpLookupResponse,
+  type WorldMcpReadRequest, type WorldMcpReadResponse,
+  type WorldManuscriptCreateDoc, type WorldManuscriptSaveDoc, type WorldManuscriptDocResponse,
+  type WorldManuscriptDeleteQuery, type WorldManuscriptDeleteResponse,
+  type WorldChapterCopilotRequest, type WorldChapterCopilotResponse,
 } from '@sthstart/contracts';
 import {
   RefreshWorldSourcesSchema, WorldSourceUpdatePreviewSchema, type RefreshWorldSources,
@@ -47,13 +57,22 @@ export interface WorldRouteServices {
     expectedBinding?: WorldProjectBinding | null,
   ): WorldProjectBinding;
   getProjectBinding?(projectId: string): WorldProjectBinding | null;
+  hub?(worldId: string, branchId?: string): WorldHub | Promise<WorldHub>;
+  mcpLookup?(worldId: string, input: WorldMcpLookupRequest): Promise<WorldMcpLookupResponse>;
+  mcpRead?(worldId: string, input: WorldMcpReadRequest): Promise<WorldMcpReadResponse>;
+  createManuscriptDoc?(worldId: string, input: WorldManuscriptCreateDoc): WorldManuscriptDocResponse | Promise<WorldManuscriptDocResponse>;
+  saveManuscriptDoc?(worldId: string, docId: string, input: WorldManuscriptSaveDoc): WorldManuscriptDocResponse | Promise<WorldManuscriptDocResponse>;
+  deleteManuscriptDoc?(worldId: string, docId: string, projectId?: string): WorldManuscriptDeleteResponse | Promise<WorldManuscriptDeleteResponse>;
+  copilot?(worldId: string, input: WorldChapterCopilotRequest): Promise<WorldChapterCopilotResponse>;
 }
 const key = Type.String({ minLength: 1, maxLength: 160 });
 const worldParams = Type.Object({ worldId: key });
+const docParams = Type.Object({ worldId: key, docId: key });
 const branchParams = Type.Object({ worldId: key, branchId: key });
 const runParams = Type.Object({ ...branchParams.properties, runId: key });
 const imageParams = Type.Object({ ...branchParams.properties, imageId: key });
 type WorldParams = Static<typeof worldParams>;
+type DocParams = Static<typeof docParams>;
 type BranchParams = Static<typeof branchParams>;
 type Revision = Static<typeof WorldRevisionRequestSchema>;
 const root = '/api/v1/admin/story-worlds';
@@ -100,6 +119,114 @@ export function registerStoryWorldRoutes(app: FastifyInstance, config: ServiceCo
   app.get<{ Params: WorldParams }>(worldPath, {
     preHandler: guard, schema: { params: worldParams, response: { 200: WorldOverviewSchema } },
   }, (req, reply) => handle(reply, () => store.overview(req.params.worldId)));
+  app.get<{ Params: WorldParams; Querystring: { branchId?: string } }>(worldPath + '/hub', {
+    preHandler: guard,
+    schema: {
+      params: worldParams,
+      querystring: Type.Object({ branchId: Type.Optional(key) }, { additionalProperties: false }),
+      response: { 200: WorldHubSchema },
+    },
+  }, (req, reply) => handle(reply, () => {
+    if (!services.hub) return reply.code(503).send({ error: 'world_hub_unavailable' });
+    return services.hub(req.params.worldId, req.query.branchId);
+  }));
+  app.post<{ Params: WorldParams; Body: WorldMcpLookupRequest }>(worldPath + '/mcp-lookup', {
+    preHandler: guard,
+    schema: {
+      params: worldParams,
+      body: WorldMcpLookupRequestSchema,
+      response: { 200: WorldMcpLookupResponseSchema },
+    },
+  }, (req, reply) => handle(reply, () => {
+    if (!services.mcpLookup) {
+      throw Object.assign(new Error('MCP 检索服务未就绪。'), {
+        statusCode: 503,
+        code: 'world_mcp_lookup_unavailable',
+      });
+    }
+    return services.mcpLookup(req.params.worldId, req.body);
+  }));
+  app.post<{ Params: WorldParams; Body: WorldMcpReadRequest }>(worldPath + '/mcp-read', {
+    preHandler: guard,
+    schema: {
+      params: worldParams,
+      body: WorldMcpReadRequestSchema,
+      response: { 200: WorldMcpReadResponseSchema },
+    },
+  }, (req, reply) => handle(reply, () => {
+    if (!services.mcpRead) {
+      throw Object.assign(new Error('MCP 原文读取服务未就绪。'), {
+        statusCode: 503,
+        code: 'world_mcp_read_unavailable',
+      });
+    }
+    return services.mcpRead(req.params.worldId, req.body);
+  }));
+  app.post<{ Params: WorldParams; Body: WorldManuscriptCreateDoc }>(worldPath + '/manuscript/documents', {
+    preHandler: guard,
+    schema: {
+      params: worldParams,
+      body: WorldManuscriptCreateDocSchema,
+      response: { 201: WorldManuscriptDocResponseSchema },
+    },
+  }, (req, reply) => handle(reply, async () => {
+    if (!services.createManuscriptDoc) {
+      throw Object.assign(new Error('作品手稿服务未就绪。'), {
+        statusCode: 503,
+        code: 'world_manuscript_unavailable',
+      });
+    }
+    const created = await services.createManuscriptDoc(req.params.worldId, req.body);
+    return reply.code(201).send(created);
+  }));
+  app.put<{ Params: DocParams; Body: WorldManuscriptSaveDoc }>(worldPath + '/manuscript/documents/:docId', {
+    preHandler: guard,
+    schema: {
+      params: docParams,
+      body: WorldManuscriptSaveDocSchema,
+      response: { 200: WorldManuscriptDocResponseSchema },
+    },
+  }, (req, reply) => handle(reply, () => {
+    if (!services.saveManuscriptDoc) {
+      throw Object.assign(new Error('作品手稿服务未就绪。'), {
+        statusCode: 503,
+        code: 'world_manuscript_unavailable',
+      });
+    }
+    return services.saveManuscriptDoc(req.params.worldId, req.params.docId, req.body);
+  }));
+  app.delete<{ Params: DocParams; Querystring: WorldManuscriptDeleteQuery }>(worldPath + '/manuscript/documents/:docId', {
+    preHandler: guard,
+    schema: {
+      params: docParams,
+      querystring: WorldManuscriptDeleteQuerySchema,
+      response: { 200: WorldManuscriptDeleteResponseSchema },
+    },
+  }, (req, reply) => handle(reply, () => {
+    if (!services.deleteManuscriptDoc) {
+      throw Object.assign(new Error('作品手稿服务未就绪。'), {
+        statusCode: 503,
+        code: 'world_manuscript_unavailable',
+      });
+    }
+    return services.deleteManuscriptDoc(req.params.worldId, req.params.docId, req.query.projectId);
+  }));
+  app.post<{ Params: WorldParams; Body: WorldChapterCopilotRequest }>(worldPath + '/copilot', {
+    preHandler: guard,
+    schema: {
+      params: worldParams,
+      body: WorldChapterCopilotRequestSchema,
+      response: { 200: WorldChapterCopilotResponseSchema },
+    },
+  }, (req, reply) => handle(reply, () => {
+    if (!services.copilot) {
+      throw Object.assign(new Error('章节写作助手服务未就绪。'), {
+        statusCode: 503,
+        code: 'world_copilot_unavailable',
+      });
+    }
+    return services.copilot(req.params.worldId, req.body);
+  }));
   app.put<{ Params: WorldParams; Body: Static<typeof UpdateStoryWorldSchema> }>(worldPath, {
     preHandler: guard, schema: { params: worldParams, body: UpdateStoryWorldSchema, response: { 200: StoryWorldSchema } },
   }, (req, reply) => handle(reply, () => store.updateWorld(req.params.worldId, req.body)));

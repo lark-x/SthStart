@@ -71,6 +71,20 @@ import { registerStoryWorldRunRecoveryRoutes } from './story-worlds/run-recovery
 import { registerWorldSuggestionRoutes } from './story-worlds/suggestions-routes.js';
 import { registerWebSearchRoutes } from './web-search/routes.js';
 import { registerGenerationRecoveryRoutes } from './generation/recovery-routes.js';
+import { CreativeService } from './creative-orchestration/service.js';
+import { registerCreativeOrchestrationRoutes } from './creative-orchestration/routes.js';
+import { registerStorySceneDraftRoutes } from './story-scene-drafts/routes.js';
+import { StorySceneService } from './story-scene-drafts/service.js';
+import { createStorySceneTextActions } from './story-scene-drafts/text.js';
+import { createSceneDraftMedia } from './story-scene-drafts/media.js';
+import { getWorldHub, lookupWorldChapterViaMcp, readWorldMcpDocument } from './creative-orchestration/hub.js';
+import {
+  createWorldManuscriptDocument,
+  deleteWorldManuscriptDocument,
+  runWorldChapterCopilot,
+  saveWorldManuscriptDocument,
+} from './creative-orchestration/copilot.js';
+import { registerCreativeBridge } from './creative-orchestration/bridge.js';
 
 const SERVICE_VERSION = '0.1.0';
 
@@ -323,13 +337,40 @@ export async function createService(options: ServiceOptions = {}) {
     adopt: worldAdoptions.adopt.bind(worldAdoptions),
     bindProject: worldAdoptions.bindProject.bind(worldAdoptions),
     getProjectBinding: worldAdoptions.getProjectBinding.bind(worldAdoptions),
+    hub: (worldId, branchId) => getWorldHub(database, worldId, branchId),
+    mcpLookup: (worldId, input) => lookupWorldChapterViaMcp(database, secrets, worldId, input, options.fetcher),
+    mcpRead: (worldId, input) => readWorldMcpDocument(database, secrets, worldId, input, options.fetcher),
+    createManuscriptDoc: (worldId, input) => createWorldManuscriptDocument(database, worldId, input),
+    saveManuscriptDoc: (worldId, docId, input) => saveWorldManuscriptDocument(database, worldId, docId, input),
+    deleteManuscriptDoc: (worldId, docId, projectId) => deleteWorldManuscriptDocument(database, worldId, docId, projectId),
+    copilot: (worldId, input) => runWorldChapterCopilot(database, secrets, worldId, input, options.fetcher),
   });
   registerStoryWorldActorRoutes(app, config, worldStore);
+  const sceneContext = { config, database, secrets, fetcher: options.fetcher };
+  registerStorySceneDraftRoutes(app, config, new StorySceneService(database,
+    createStorySceneTextActions(sceneContext), createSceneDraftMedia(sceneContext)));
   registerStoryWorldRunRecoveryRoutes(app, config, worldRuntime);
   registerWorldSuggestionRoutes(app, { config, database, secrets, fetcher: options.fetcher });
   registerWebSearchRoutes(app, { config, database, secrets, fetcher: options.fetcher });
   registerGenerationRecoveryRoutes(app, config, database);
-  app.addHook('onReady', async () => { worldRuntime.startScheduler(); });
+  const creativeOrchestration = new CreativeService({ config, database, secrets, fetcher: options.fetcher });
+  registerCreativeOrchestrationRoutes(app, config, creativeOrchestration);
+  registerCreativeBridge(app, config, creativeOrchestration.store, {
+    startRun: input => creativeOrchestration.startRun(input),
+    stopRun: id => {
+      const run = creativeOrchestration.run(id).run;
+      return creativeOrchestration.cancelRun(id, run.revision);
+    },
+    propose: input => creativeOrchestration.message(input),
+    submitCandidate: input => creativeOrchestration.submitCandidate(input),
+    readContext: async scope => creativeOrchestration.readContext(scope),
+    readMemoryFacts: async (scope, query) => creativeOrchestration.readMemoryFacts(scope, query),
+    readMemoryEntries: async (scope, query) => creativeOrchestration.readMemoryEntries(scope, query),
+  });
+  app.addHook('onReady', async () => {
+    worldRuntime.startScheduler();
+    creativeOrchestration.start();
+  });
   registerMediaLibraryRoutes(app, config, database);
   registerCharacterRoutes(app, config, database, secrets, options.fetcher);
   registerSharedAssetRoutes(app, config, database);
@@ -398,6 +439,7 @@ export async function createService(options: ServiceOptions = {}) {
   });
 
   app.addHook('onClose', async () => {
+    await creativeOrchestration.close();
     await worldRuntime.stop();
     clearInterval(retentionTimer);
     genScheduler.stop();

@@ -40,8 +40,8 @@ export function ActorAssetPickerDialog({
   }, [open, actor]);
 
   const allAssets = assetsData?.items || [];
-  const avatarCandidates = allAssets.filter((a) => a.kind === 'avatar');
-  const portraitCandidates = allAssets.filter((a) => a.kind === 'portrait');
+  const avatarCandidates = allAssets.filter((a): a is typeof a & { url: string } => a.kind === 'avatar' && Boolean(a.url));
+  const portraitCandidates = allAssets.filter((a): a is typeof a & { url: string } => a.kind === 'portrait' && Boolean(a.url));
 
   // 如果角色未指定，默认选择第一个
   useEffect(() => {
@@ -59,9 +59,9 @@ export function ActorAssetPickerDialog({
 
     onConfirm({
       avatarAssetId: chosenAvatar?.id,
-      avatarUrl: chosenAvatar?.url,
+      avatarUrl: chosenAvatar?.url ?? undefined,
       portraitAssetId: chosenPortrait?.id,
-      portraitUrl: chosenPortrait?.url,
+      portraitUrl: chosenPortrait?.url ?? undefined,
     });
     onOpenChange(false);
   };

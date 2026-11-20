@@ -110,12 +110,12 @@ async function bootstrapPlanningSession(customLlm?: typeof fetch) {
   database.connection.prepare("INSERT INTO app_llm_assignments VALUES ('activities', 'text', 'llm', ?)").run(now);
   const first = await app.inject({ method: 'POST', url: '/api/v1/admin/characters', headers: adminHeaders, payload: {
     displayName: '旅行者',
-    draft: { schemaVersion: 2, displayName: '旅行者', work: '原神', identity: '异乡的旅行者', personality: ['勇敢'], speech: { tone: '坚定' }, appearance: { description: '金发异乡人' } },
+    draft: { schemaVersion: 2, originType: 'ip', displayName: '旅行者', work: '原神', identity: '异乡的旅行者', personality: ['勇敢'], speech: { tone: '坚定' }, appearance: { description: '金发异乡人' } },
     tags: ['原神'],
   } });
   const second = await app.inject({ method: 'POST', url: '/api/v1/admin/characters', headers: adminHeaders, payload: {
     displayName: '临时同伴',
-    draft: { schemaVersion: 2, displayName: '临时同伴', work: '原神', identity: '临时的同行者', personality: ['沉稳'], speech: { tone: '平静' }, appearance: { description: '短发旅人' } },
+    draft: { schemaVersion: 2, originType: 'ip', displayName: '临时同伴', work: '原神', identity: '临时的同行者', personality: ['沉稳'], speech: { tone: '平静' }, appearance: { description: '短发旅人' } },
     tags: ['原神'],
   } });
   await app.inject({ method: 'POST', url: '/api/v1/admin/mcp-sources', headers: adminHeaders, payload: {
@@ -314,7 +314,7 @@ test('research flow: create task, poll progress, save selection, preserve result
 
   const character = await app.inject({ method: 'POST', url: '/api/v1/admin/characters', headers: adminHeaders, payload: {
     displayName: '旅行者',
-    draft: { schemaVersion: 2, displayName: '旅行者', work: '原神', identity: '异乡的旅行者', personality: ['勇敢'], speech: { tone: '坚定' }, appearance: { description: '金发异乡人' } },
+    draft: { schemaVersion: 2, originType: 'ip', displayName: '旅行者', work: '原神', identity: '异乡的旅行者', personality: ['勇敢'], speech: { tone: '坚定' }, appearance: { description: '金发异乡人' } },
     tags: ['原神'],
   } });
   assert.equal(character.statusCode, 201);

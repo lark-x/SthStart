@@ -951,9 +951,9 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
   return (
     <PageContainer width="wide" className="wa-page pb-16 pt-2">
       <PageHeader
-        title={pending ? '补全设定' : isEdit ? '世界设定' : '新建世界'}
+        title={pending ? '补全作品设定' : isEdit ? '作品设定' : '新建作品'}
         backHref={pending ? pendingBackHref : '/apps/story-worlds'}
-        backLabel="故事世界"
+        backLabel="作品"
         status={(
           <span
             className={`text-xs font-medium ${session.isDirty ? 'text-warning-fg' : 'text-muted'}`}
@@ -973,7 +973,7 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
             )}
             <Button variant="primary" size="sm" onClick={() => void save('all')} loading={saving}>
               <Save className="h-4 w-4" aria-hidden="true" />
-              {pending ? validation.ok ? '完成配置' : '保存设定' : isEdit ? '保存全部' : '创建世界'}
+              {pending ? validation.ok ? '完成配置' : '保存设定' : isEdit ? '保存全部' : '创建作品'}
             </Button>
           </>
         )}
@@ -1074,10 +1074,10 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
           >
           <OptionalSection enabled={pending} title="名称与简介">
           <FormSection
-            title="世界简介"
+            title="作品简介"
             description="先写清这是一个怎样的世界。人物、地点与方向都建立在这段简介上。"
           >
-            <FormField label="世界名称" required error={issueFor(shownValidation, 'title')}>
+            <FormField label="作品名称" required error={issueFor(shownValidation, 'title')}>
               <Input
                 value={definition.title}
                 maxLength={200}
@@ -1103,7 +1103,7 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
                 </Select>
               </FormField>
               {definition.workNature === 'derivative' && (
-                <FormField label="所属母原作">
+                <FormField label="所属母原作" required hint="填写已登记的原作或原创作品名。" error={issueFor(shownValidation, 'parentWork')}>
                   <Input
                     value={definition.parentWork ?? ''}
                     maxLength={200}
@@ -1114,7 +1114,7 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
               )}
             </div>
             <FormField
-              label="世界简介"
+              label="作品简介"
               hint="写下时代、冲突与基调；事实与推测分开表述，AI 会把不确定处列入缺口。"
               error={issueFor(shownValidation, 'summary')}
             >
@@ -1656,7 +1656,7 @@ export function WorldAuthoringPage({ worldId, pending = false }: WorldAuthoringP
               ) : (
                 <Button variant="primary" onClick={() => void save('all')} loading={saving}>
                   <Save className="h-4 w-4" aria-hidden="true" />
-                  创建世界
+                  创建作品
                 </Button>
               )}
             </div>
@@ -1749,12 +1749,13 @@ function ActorCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Input
+              variant="inline"
               value={actor.name}
               maxLength={200}
               placeholder="人物名称"
               aria-label="人物名称"
               aria-invalid={Boolean(nameError) || undefined}
-              className="h-9 min-w-0 flex-1 border-transparent bg-transparent px-0 text-sm font-semibold hover:border-border-subtle focus:border-border-control"
+              className="h-9 min-w-0 flex-1 px-0 text-sm font-semibold"
               onChange={(event) => onPatch({ name: event.target.value })}
             />
             <Badge variant={actor.role === 'main' ? 'accent' : 'secondary'}>
@@ -1832,14 +1833,14 @@ function ActorCard({
               <div className="flex min-h-[var(--control-h)] min-w-0 flex-wrap items-center gap-2 rounded-control border border-border-subtle bg-surface-sunken/40 px-3 py-2">
                 <span className="min-w-0 flex-1 truncate text-sm text-muted">
                   {actor.characterId
-                    ? `${actor.characterId}${actor.characterVersion !== null ? ` · v${actor.characterVersion}` : ' · 缺少版本'}`
+                    ? `${actor.name || '人物'} · 已绑定角色库资料${actor.characterVersion === null ? '（请重新选择资料）' : ''}`
                     : '原创人物（未绑定角色库）'}
                 </span>
                 {actor.characterId && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => onPatch({ characterId: null, characterVersion: null })}
+                    onClick={() => onPatch({ characterId: null, characterVersion: null, characterVariantId: undefined, characterCostumeAssetId: undefined })}
                   >
                     解除绑定
                   </Button>

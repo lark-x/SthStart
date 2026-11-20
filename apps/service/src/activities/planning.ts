@@ -37,6 +37,7 @@ import { nowIso, type ServiceDatabase } from '../database.js';
 import type { NarrativeDatabase } from '../narrative-database.js';
 import { toAuthorityDraft } from '../characters/draft.js';
 import { upsertCharacterBirthday } from '../characters/birthday.js';
+import { publishCharacterSnapshot, syncCharacterSnapshotAfterChange } from '../characters/snapshots.js';
 import type { CharacterDraftV2 } from '@sthstart/contracts';
 import { resolveAssignedLlmProfile } from '../providers.js';
 import { errorConfigurationPath, llmNotReadyError, resolveAppLlmBindingStatus } from '../llm-status.js';
@@ -78,7 +79,9 @@ function normalizeForm(value: unknown): ActivityPlanningFormExtended {
         .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
         .map((item) => ({
           characterId: String(item.characterId || ''),
-          ...(item.version === null || item.version === undefined ? {} : { version: Number(item.version) }),
+          ...(item.version === undefined ? {} : { version: item.version === null ? null : Number(item.version) }),
+          ...(typeof item.variantId === 'string' && item.variantId ? { variantId: item.variantId } : {}),
+          ...(typeof item.costumeAssetId === 'string' && item.costumeAssetId ? { costumeAssetId: item.costumeAssetId } : {}),
           ...(typeof item.activityRole === 'string' && item.activityRole.trim() ? { activityRole: item.activityRole.trim() } : {}),
         }))
         .filter((item) => item.characterId)
@@ -137,16 +140,28 @@ function normalizeForm(value: unknown): ActivityPlanningFormExtended {
   };
 }
 
-/** 冻结本次企划使用的角色人设：发布版固定使用该版本，草稿记录当时的修订号。 */
+function planningCharacterSnapshot(database: ServiceDatabase, characterId: string, overrides: Parameters<typeof createActorSnapshotFromCharacter>[2]) {
+  const snapshot = createActorSnapshotFromCharacter(database, characterId, overrides);
+  if (snapshot) return snapshot;
+  const profile = database.connection.prepare('SELECT draft_json,latest_version,archived FROM character_profiles WHERE id=?').get(characterId);
+  if (!profile || profile.archived) throw badRequest('character_snapshot_not_found', '角色不存在或已被归档，请重新选择。');
+  const original = toAuthorityDraft(JSON.parse(String(profile.draft_json))).originType === 'original';
+  if (original && (overrides?.sourceVersion === null || profile.latest_version == null)) {
+    throw badRequest('character_stage_required', '原创角色需要先在角色库保存具名阶段，再从选角窗选择该阶段用于企划。');
+  }
+  throw badRequest('character_selection_invalid', '所选角色阶段、形态或服装不可用，请重新选择已保存的资料。');
+}
+
+/** 冻结本次企划使用的已保存阶段和选定形态、服装。 */
 function freezeCharacters(database: ServiceDatabase, form: ActivityPlanningForm): { actors: ContentDocument['actors']; refs: ActivityPlanningCharacterRef[] } {
   const actors: ContentDocument['actors'] = [];
   const refs: ActivityPlanningCharacterRef[] = [];
   for (const entry of form.characters) {
-    const snapshot = createActorSnapshotFromCharacter(database, entry.characterId, {
-      sourceVersion: entry.version ?? undefined,
+    const snapshot = planningCharacterSnapshot(database, entry.characterId, {
+      sourceVersion: entry.version,
+      sourceVariantId: entry.variantId, sourceCostumeAssetId: entry.costumeAssetId,
       activityRole: entry.activityRole,
     });
-    if (!snapshot) throw badRequest('character_snapshot_not_found', '角色不存在或已被删除。');
     actors.push(snapshot);
     refs.push({
       characterId: entry.characterId,
@@ -156,6 +171,8 @@ function freezeCharacters(database: ServiceDatabase, form: ActivityPlanningForm)
       draftRevision: Number(snapshot.characterDraftRevision ?? 1),
       actorId: snapshot.id,
       personaHash: hash(snapshot.persona),
+      ...(snapshot.sourceVariantId ? { sourceVariantId: snapshot.sourceVariantId } : {}),
+      ...(snapshot.sourceCostumeAssetId ? { sourceCostumeAssetId: snapshot.sourceCostumeAssetId } : {}),
     });
   }
   return { actors, refs };
@@ -164,7 +181,10 @@ function freezeCharacters(database: ServiceDatabase, form: ActivityPlanningForm)
 /** 生成结束后重新确认人设未变，避免企划依据与实际活动快照不一致。 */
 function assertCharactersStable(database: ServiceDatabase, refs: ActivityPlanningCharacterRef[]) {
   for (const ref of refs) {
-    const snapshot = createActorSnapshotFromCharacter(database, ref.characterId, { sourceVersion: ref.sourceVersion ?? undefined });
+    const snapshot = createActorSnapshotFromCharacter(database, ref.characterId, {
+      sourceVersion: ref.sourceVersion,
+      sourceVariantId: ref.sourceVariantId, sourceCostumeAssetId: ref.sourceCostumeAssetId,
+    });
     if (!snapshot) throw conflict('character_missing', `角色「${ref.displayName}」已被删除，请重新选择。`);
     if (ref.sourceVersionStatus === 'draft' && Number(snapshot.characterDraftRevision ?? 1) !== ref.draftRevision) {
       throw conflict('character_draft_changed', `角色「${ref.displayName}」的草稿已更新，请重新读取角色后再创建活动。`);
@@ -458,7 +478,7 @@ function draftFromPersona(persona: ActorPersona, displayName: string): Character
     displayName,
     englishName: asText(source.englishName),
     aliases: asList(source.aliases),
-    originType: source.originType === 'ip' ? 'ip' : 'original',
+    originType: source.originType === 'ip' || source.originType === 'derivative' ? source.originType : 'original',
     work: asText(source.work),
     summary: asText(source.summary),
     personaText: asText(source.personaText),
@@ -995,6 +1015,13 @@ export function resolvePlanningActor(
   actorId: string,
   input: ActivityPlanningActorResolveInput,
 ): PlanningActorResolveResult {
+  const resolve = () => resolvePlanningActorInTransaction(options, sessionId, actorId, input);
+  return options.database.connection.isTransaction ? resolve() : options.database.transaction(resolve);
+}
+
+function resolvePlanningActorInTransaction(
+  options: PlanningServiceOptions, sessionId: string, actorId: string, input: ActivityPlanningActorResolveInput,
+): PlanningActorResolveResult {
   const planning = new ActivityPlanningStore(options.database);
   const session = planning.getSession(sessionId);
   if (!session) throw badRequest('session_not_found', '企划会话不存在。');
@@ -1048,14 +1075,26 @@ export function resolvePlanningActor(
   let snapshot: ActorSnapshot | null = null;
   let createdCharacterId: string | undefined;
   if (input.mode === 'match') {
-    snapshot = createActorSnapshotFromCharacter(options.database, input.characterId, { activityRole: previous.activityRole?.trim() || undefined });
-    if (!snapshot) throw badRequest('character_snapshot_not_found', '角色不存在或已被删除。');
+    snapshot = planningCharacterSnapshot(options.database, input.characterId, {
+      activityRole: previous.activityRole?.trim() || undefined,
+      sourceVersion: input.version, sourceVariantId: input.variantId, sourceCostumeAssetId: input.costumeAssetId,
+    });
   } else {
     const draft = toAuthorityDraft(draftFromPersona(input.persona, (input.displayName || previous.displayName).trim()));
     if (!draft.displayName) throw badRequest('display_name_required', '请填写角色名。');
+    const versionLabel = typeof input.versionLabel === 'string' ? input.versionLabel.trim() : '';
+    if (draft.originType === 'original' && (!versionLabel || versionLabel.length > 120)) {
+      throw badRequest('character_stage_required', '请填写原创角色的阶段名称，再点击“保存阶段并用于企划”。');
+    }
     createdCharacterId = createLocalCharacter(options.database, draft, { sessionId, note: [input.sourceNote || '用户确认的企划人设草稿', draft.personaText || ''].filter(Boolean).join('\n').slice(0, 12000) });
-    snapshot = createActorSnapshotFromCharacter(options.database, createdCharacterId, { activityRole: input.activityRole?.trim() || previous.activityRole?.trim() || undefined });
-    if (!snapshot) throw badRequest('character_snapshot_not_found', '新角色已创建，但读取人设快照失败。');
+    if (draft.originType === 'original') {
+      const version = publishCharacterSnapshot(options.database, createdCharacterId, { versionLabel, expectedDraftRevision: 1 });
+      if (!version) throw badRequest('character_incomplete', '保存阶段前请至少填写角色名，以及简介或人设正文。');
+    } else syncCharacterSnapshotAfterChange(options.database, createdCharacterId);
+    snapshot = planningCharacterSnapshot(options.database, createdCharacterId, {
+      activityRole: input.activityRole?.trim() || previous.activityRole?.trim() || undefined,
+      ...(draft.originType === 'original' ? { sourceVersion: 1 } : {}),
+    });
   }
   const resolved = snapshot;
   document.actors[index] = snapshotToResolvedActor(previous, resolved);
@@ -1067,6 +1106,8 @@ export function resolvePlanningActor(
     draftRevision: Number(resolved.characterDraftRevision ?? 1),
     actorId: previous.id,
     personaHash: hash(resolved.persona),
+    ...(resolved.sourceVariantId ? { sourceVariantId: resolved.sourceVariantId } : {}),
+    ...(resolved.sourceCostumeAssetId ? { sourceCostumeAssetId: resolved.sourceCostumeAssetId } : {}),
   };
   planning.updateSessionCharacters(session.id, [...session.characters.filter((item) => item.actorId !== previous.id), ref]);
   // 匹配人设不改变用户的必选/可选状态。

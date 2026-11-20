@@ -48,10 +48,12 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   loading?: boolean;
+  leftSection?: React.ReactNode;
+  rightSection?: React.ReactNode;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, disabled, children, type = 'button', onClick, onClickCapture, 'aria-disabled': ariaDisabled, 'aria-busy': ariaBusy, ...props }, ref) => {
+  ({ className, variant, size, loading, disabled, children, leftSection, rightSection, type = 'button', onClick, onClickCapture, 'aria-disabled': ariaDisabled, 'aria-busy': ariaBusy, ...props }, ref) => {
     const unavailable = loading || ariaDisabled === true || ariaDisabled === 'true';
     return (
       <MantineButton
@@ -81,7 +83,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             inner: mantineControlClasses.buttonInner,
             label: mantineControlClasses.buttonLabel,
           }}
-          leftSection={loading ? <Loader2 className="h-4 w-4 animate-spin text-current" aria-hidden="true" /> : undefined}
+          leftSection={loading ? <Loader2 className="h-4 w-4 animate-spin text-current" aria-hidden="true" /> : leftSection}
+          rightSection={rightSection}
           data-ui-variant={variant ?? 'secondary'}
           data-ui-size={size ?? 'md'}
           data-variant={variant ?? 'secondary'}

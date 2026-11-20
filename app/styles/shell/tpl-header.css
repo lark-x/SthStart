@@ -55,14 +55,16 @@
   .tpl-header-main > :first-child { flex: 1 1 auto; }
 }
 
-.tpl-section-title {
-  margin: 0;
-  color: var(--fg-default);
-  font-family: var(--font-sans);
-  font-size: var(--text-section);
-  font-weight: 620;
-  letter-spacing: -0.015em;
-  line-height: 1.35;
+@layer components {
+  .tpl-section-title {
+    margin: 0;
+    color: var(--fg-default);
+    font-family: var(--font-sans);
+    font-size: var(--text-section);
+    font-weight: 620;
+    letter-spacing: -0.015em;
+    line-height: 1.35;
+  }
 }
 
 .tpl-toolbar {

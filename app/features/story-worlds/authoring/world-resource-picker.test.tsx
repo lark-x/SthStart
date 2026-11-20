@@ -14,6 +14,7 @@ import {
   actorAlreadyPresent,
   actorDraftSignature,
   actorFromProjectCharacter,
+  actorFromSelectedVersion,
   actorSelectionIsStale,
   actorUpdateCandidates,
   actorVersionDiff,
@@ -118,6 +119,26 @@ test('character version selection resolves the chosen published snapshot', () =>
   assert.equal(resolveCharacterVersion(versions, 3), null);
   assert.equal(resolveCharacterVersion(versions, null), null);
   assert.equal(resolveCharacterVersion([], 4), null);
+});
+
+test('world cast consumes frozen form and costume, and notices visual changes within the same stage', () => {
+  const profile = { id: 'character-1', displayName: '林' } as CharacterProfile;
+  const version = {
+    characterId: 'character-1', version: 2, data: { displayName: '林', identity: '信使', originType: 'original' }, compiledLinshePrompt: '', relationships: [], createdAt: '2026-01-01',
+    variants: [{ id: 'sp', name: 'SP', personaText: '觉醒故事', appearance: { baseText: '银发', defaultOutfitText: '铠甲' } }],
+    assets: [{ id: 'coat', characterId: 'character-1', title: '冬衣', kind: 'reference', category: 'costume', url: '', artifactId: null, metadata: { outfitDescription: '雪白冬衣', loreStory: '远行纪念' }, tags: [], createdAt: '2026-01-01', sourceUrl: null, sourcePage: null }],
+  } as unknown as CharacterVersion;
+  const incoming = actorFromSelectedVersion(profile, version, 'location-1', { variantId: 'sp', costumeAssetId: 'coat' });
+  assert.match(incoming.background, /觉醒故事/);
+  assert.match(incoming.background, /远行纪念/);
+  assert.match(incoming.appearance, /银发/);
+  assert.match(incoming.appearance, /雪白冬衣/);
+  assert.equal(incoming.characterVariantId, 'sp');
+  assert.equal(incoming.characterCostumeAssetId, 'coat');
+  const current = actor({ characterId: profile.id, characterVersion: 2 });
+  const selection = { profile, versions: [version], version: 2, actorId: current.id, draftSignature: actorDraftSignature(current), variantId: 'sp', costumeAssetId: 'coat' };
+  assert.equal(actorUpdateCandidates([selection], [current]).length, 1);
+  assert.equal(version.data.displayName, '林');
 });
 
 test('actor version updates replace text while preserving location, role and media', () => {

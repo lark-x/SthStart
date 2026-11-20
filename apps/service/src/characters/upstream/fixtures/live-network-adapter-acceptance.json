@@ -1,0 +1,205 @@
+{
+  "generatedAt": "2026-11-16T12:44:46.343Z",
+  "scope": "Read-only actual production adapter with equivalent MediaWiki query parameter serialization. Full captured public bodies in sibling fixture. No paid models or user DB.",
+  "results": {
+    "琴": {
+      "name": "琴",
+      "stories": [
+        {
+          "title": "角色详细",
+          "length": 148
+        },
+        {
+          "title": "角色故事1",
+          "length": 330
+        },
+        {
+          "title": "角色故事2",
+          "length": 354
+        },
+        {
+          "title": "角色故事3",
+          "length": 468
+        },
+        {
+          "title": "角色故事4",
+          "length": 531
+        },
+        {
+          "title": "角色故事5",
+          "length": 499
+        },
+        {
+          "title": "琴团长生活作息表·第十七版",
+          "length": 200
+        },
+        {
+          "title": "神之眼",
+          "length": 284
+        }
+      ],
+      "voices": 77,
+      "candidates": [
+        {
+          "id": "bwiki:ys:海风之梦",
+          "name": "海风之梦",
+          "classification": "skin",
+          "outfitDescription": "琴的夏日装束。\n清凉而不失优雅，是海滨之游的绝佳搭配。",
+          "loreStory": "代理团长的生活就如机械齿轮，被沉重的责任驱动，在繁重的工作中衰损。\n\n长此以往，骑士守则所铸的「甲胄」，逐渐与琴的肌肤相融。维持得体的衣着，以正装的形象示人，成了一种习惯。\n\n但琴的年龄，其实与平凡的少女相差无几。\n\n少女们钟爱的小说中，绚丽的衣物就如晴夜星光般不可或缺，更有作风奢靡的贵族后裔，坐拥宫殿般宽敞的衣橱，长裙裙摆交叠，织物的海浪翻腾。\n\n或许琴也曾有过浪漫的憧憬…毕竟，谁不向往绮罗珠履之美？\n\n如今琴的心愿已被满足——她得到了最为合身的夏日装束。只此一身的分量，就远胜小说中的万千华服。\n\n「听说最初的提案来自芭芭拉，她和丽莎找遍各个商店，看中了最合适的一款泳装。」\n\n「凯亚居然说动了迪卢克前辈，让他聘请工匠，适当改进设计…」\n\n「布料由安柏挑选，用到了制作兔兔伯爵的经验，相当舒适，好在不算贵重…」\n\n「饰物所用的宝石中，也有着阿贝多和可莉的收藏。」\n\n「裁缝工作由诺艾尔负责，每针每线都恰到好处。」\n\n「而详细的尺寸，也是丽莎提供的…她居然还亲手缝制了如此精美的蔷薇饰品…」\n\n众人为琴精心制作的礼物，成了前所未有的惊喜。\n\n如果说上次假期是百忙之中的休憩，那这次的海滨之行，则在巧合之中，让琴彻底放松身心。\n\n卸去「甲胄」之后的身姿，如飘旋的蒲公英般轻盈，在海光之下隐泛微光。\n\n「我还是头一次…度过如此安逸的夏日假期。」",
+          "source": "https://wiki.biligame.com/ys/%E6%B5%B7%E9%A3%8E%E4%B9%8B%E6%A2%A6",
+          "portraitUrl": "https://patchwiki.biligame.com/images/ys/8/8a/ekwq9cb7ahzpdmci7gerbw4rsfnyzo2.png"
+        },
+        {
+          "id": "bwiki:ys:古恩希尔德的传承",
+          "name": "古恩希尔德的传承",
+          "classification": "skin",
+          "outfitDescription": "琴的装扮款式。典雅干练的骑士礼服，适用于多种场合。",
+          "loreStory": "「姐姐，这件衣服应该是你的吧？我是整理房间的时候翻到的…」\n\n芭芭拉双手捧着折叠齐整的礼服，骑士团的纹样在阳光下折射出金色的光辉。\n\n乍一看款式确实熟悉，但琴可以断定自己从未拥有过这样的衣物。\n\n这样想来，自己平时所着的制服，也是出自母亲的针线之下。\n\n「难道是…母亲的？」\n\n面对女儿的询问，芙蕾德莉卡的脸上露出了罕见的笑容。\n\n「久远到我都快忘了这回事，原来西蒙还一直留着它啊。」\n\n「这是我获授『赤杨骑士』时所着的礼服。如果你不嫌弃的话，就拿去穿吧。」\n\n昔日幼苗早已茁壮，其树阴庇护着熟悉的土地。\n\n过往的荣誉得以传承，而光彩更甚。\n\n她们以骑士礼回应彼此，紧接着撞进怀里的是久违的、来自家人的拥抱。",
+          "source": "https://wiki.biligame.com/ys/%E5%8F%A4%E6%81%A9%E5%B8%8C%E5%B0%94%E5%BE%B7%E7%9A%84%E4%BC%A0%E6%89%BF",
+          "portraitUrl": "https://patchwiki.biligame.com/images/ys/a/a0/efi7092dap34w5q66gtyjs3b4uzm0la.png"
+        }
+      ],
+      "sources": [
+        {
+          "title": "BWiki：琴",
+          "rawLength": 12050,
+          "hash": "cf681aa49aef87e1572315f14b400b0841527d255010aa0990f0f2865c5d62a0"
+        },
+        {
+          "title": "BWiki：琴语音",
+          "rawLength": 28834,
+          "hash": "6c03d8c0ceb3c9a16854f99c2173db5b7d3c5fac63b9ef0f4ddb98cc84dbe51f"
+        },
+        {
+          "title": "BWiki：海风之梦",
+          "rawLength": 816,
+          "hash": "65b651e05765fb32eb3707055475eac151044461a4c9755d47255bfbb182d04a"
+        },
+        {
+          "title": "BWiki：古恩希尔德的传承",
+          "rawLength": 464,
+          "hash": "4a08286064f752ab43bfe191d531b8116b24f671f9ac38b2d284c5070595c384"
+        }
+      ],
+      "warnings": []
+    },
+    "雷电芽衣": {
+      "name": "雷电芽衣",
+      "stories": [],
+      "voices": 0,
+      "candidates": [
+        {
+          "id": "bwiki:bh3:雷之律者",
+          "name": "雷之律者",
+          "classification": "variant",
+          "variantKind": "stage",
+          "outfitDescription": "",
+          "loreStory": "",
+          "source": "https://wiki.biligame.com/bh3/%E9%9B%B7%E4%B9%8B%E5%BE%8B%E8%80%85",
+          "portraitUrl": "https://patchwiki.biligame.com/images/bh3/e/e7/tpi4cqwogx8418jbd17zpq3ajr3k6hp.png"
+        },
+        {
+          "id": "bwiki:bh3:断罪影舞",
+          "name": "断罪影舞",
+          "classification": "variant",
+          "variantKind": "stage",
+          "outfitDescription": "",
+          "loreStory": "",
+          "source": "https://wiki.biligame.com/bh3/%E6%96%AD%E7%BD%AA%E5%BD%B1%E8%88%9E",
+          "portraitUrl": "https://patchwiki.biligame.com/images/bh3/8/85/ksl6glzsuhgogyootgjnba7ma28ijmn.png"
+        },
+        {
+          "id": "bwiki:bh3:影舞冲击",
+          "name": "影舞冲击",
+          "classification": "variant",
+          "variantKind": "stage",
+          "outfitDescription": "",
+          "loreStory": "",
+          "source": "https://wiki.biligame.com/bh3/%E5%BD%B1%E8%88%9E%E5%86%B2%E5%87%BB",
+          "portraitUrl": "https://patchwiki.biligame.com/images/bh3/0/0f/frr1vnifi2c520fz0qezpg6p04n6f42.png"
+        },
+        {
+          "id": "bwiki:bh3:破晓强袭",
+          "name": "破晓强袭",
+          "classification": "variant",
+          "variantKind": "stage",
+          "outfitDescription": "",
+          "loreStory": "",
+          "source": "https://wiki.biligame.com/bh3/%E7%A0%B4%E6%99%93%E5%BC%BA%E8%A2%AD",
+          "portraitUrl": "https://patchwiki.biligame.com/images/bh3/7/7b/e5tqjdtzhc6wqkgg6ccada1vxx64u8n.png"
+        },
+        {
+          "id": "bwiki:bh3:雷电女王的鬼铠",
+          "name": "雷电女王的鬼铠",
+          "classification": "variant",
+          "variantKind": "stage",
+          "outfitDescription": "",
+          "loreStory": "",
+          "source": "https://wiki.biligame.com/bh3/%E9%9B%B7%E7%94%B5%E5%A5%B3%E7%8E%8B%E7%9A%84%E9%AC%BC%E9%93%A0",
+          "portraitUrl": "https://patchwiki.biligame.com/images/bh3/4/47/csi1xgev55p64gom45ud0q2mpvy1kp2.png"
+        },
+        {
+          "id": "bwiki:bh3:始源之律者",
+          "name": "始源之律者",
+          "classification": "variant",
+          "variantKind": "stage",
+          "outfitDescription": "",
+          "loreStory": "",
+          "source": "https://wiki.biligame.com/bh3/%E5%A7%8B%E6%BA%90%E4%B9%8B%E5%BE%8B%E8%80%85",
+          "portraitUrl": "https://patchwiki.biligame.com/images/bh3/e/e4/g6g0cfrwbvtumtzz5i2hiswq7iyl0tb.png"
+        }
+      ],
+      "sources": [
+        {
+          "title": "BWiki：雷电芽衣",
+          "rawLength": 369,
+          "hash": "b8238a4ec4f8482af5ed7af7f80c60436f981909ad54cd1a383110498c15ff3c"
+        },
+        {
+          "title": "BWiki：雷之律者",
+          "rawLength": 3632,
+          "hash": "4a5ab5db3d0650048521af58e7fbd763248933f17bea431549d6d94ce16f150e"
+        },
+        {
+          "title": "BWiki：断罪影舞",
+          "rawLength": 2500,
+          "hash": "d10f09ccbaee997075b87cb94e55650a821ae77d31ae6b15ea0df3966cfc6acb"
+        },
+        {
+          "title": "BWiki：影舞冲击",
+          "rawLength": 2318,
+          "hash": "93d55f3cc0c19a98f31ce2636f060a799ab55bb41dcda7e3a2d41fa5d9504468"
+        },
+        {
+          "title": "BWiki：破晓强袭",
+          "rawLength": 2972,
+          "hash": "0a3845a2cd583c79e67471de9d307cb9d3d14ce5eaebb7ff4a22e0ab09291496"
+        },
+        {
+          "title": "BWiki：雷电女王的鬼铠",
+          "rawLength": 2579,
+          "hash": "df767311f4df751a5941ba1ab2864efc03126512b83635318d3156a1e1c50a02"
+        },
+        {
+          "title": "BWiki：始源之律者",
+          "rawLength": 988,
+          "hash": "408e67efbd1e6a077eccf0d9ddfeb7a35f94b8bf439d9b8a9e29965460a3a529"
+        }
+      ],
+      "warnings": [
+        "雷之律者：来源没有具体衣装描述，已留空。",
+        "雷之律者：来源没有背景故事，已留空。",
+        "断罪影舞：来源没有具体衣装描述，已留空。",
+        "断罪影舞：来源没有背景故事，已留空。",
+        "影舞冲击：来源没有具体衣装描述，已留空。",
+        "影舞冲击：来源没有背景故事，已留空。",
+        "破晓强袭：来源没有具体衣装描述，已留空。",
+        "破晓强袭：来源没有背景故事，已留空。",
+        "雷电女王的鬼铠：来源没有具体衣装描述，已留空。",
+        "雷电女王的鬼铠：来源没有背景故事，已留空。",
+        "始源之律者：来源没有具体衣装描述，已留空。",
+        "始源之律者：来源没有背景故事，已留空。"
+      ]
+    }
+  }
+}

@@ -1,71 +1,141 @@
 'use client';
 import { useState } from 'react';
-import Image from 'next/image';
-import { useQueryClient } from '@tanstack/react-query';
-import { Star } from 'lucide-react';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
-import { Checkbox } from '@/app/components/ui/checkbox';
-import { IconButton } from '@/app/components/ui/icon-button';
-import { useCharacterBrowser } from '@/app/features/characters/public';
-import { CharacterFilters, CharacterPagination } from '@/app/features/characters/public-ui';
-import { editCharacterOrganization } from '@/app/features/characters/api';
+import { Alert } from '@/app/components/ui/alert';
+import {
+  CharacterBrowserPicker,
+  activityActorFromCharacterSelection,
+  type CharacterBrowserSelection,
+} from '@/app/features/characters/public-ui';
 import { useActivityCapabilities } from '@/app/features/activities/queries/activities';
-import { fetchActivityCharacterSnapshot } from '@/app/features/activities/api/images';
-import type { ActorSnapshot, CharacterProfile } from '@sthstart/contracts';
-import { characterKeys } from '@/app/lib/query-keys';
+import type { ActorSnapshot } from '@sthstart/contracts';
 
 interface CharacterPickerDialogProps {
-  open: boolean; onOpenChange: (open: boolean) => void; existingSourceCharacterIds: string[]; existingActorCount: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  existingSourceCharacterIds: string[];
+  existingActorCount: number;
   onSelectCharacter: (actor: ActorSnapshot) => void;
 }
-export function CharacterPickerDialog({ open, onOpenChange, existingSourceCharacterIds, existingActorCount, onSelectCharacter }: CharacterPickerDialogProps) {
-  const [hideAdded, setHideAdded] = useState(false);
-  const browser = useCharacterBrowser({ excludeIds: hideAdded ? existingSourceCharacterIds : [] }, open);
+export function CharacterPickerDialog({
+  open,
+  onOpenChange,
+  existingSourceCharacterIds,
+  existingActorCount,
+  onSelectCharacter,
+}: CharacterPickerDialogProps) {
   const { data: capabilities } = useActivityCapabilities();
-  const remaining = Math.max(0, (capabilities?.limits.maxActors ?? 20) - existingActorCount);
-  const client = useQueryClient();
-  const [selected, setSelected] = useState<Record<string, CharacterProfile>>({});
+  const remaining = Math.max(
+    0,
+    (capabilities?.limits.maxActors ?? 20) - existingActorCount
+  );
+  const [selected, setSelected] = useState<
+    Record<string, CharacterBrowserSelection>
+  >({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const isPageTransition = browser.isFetching && browser.isPlaceholderData;
-  const candidates = Object.values(selected).filter(c => !existingSourceCharacterIds.includes(c.id));
-  const toggle = (character: CharacterProfile) => setSelected(current => { const next = { ...current }; if (next[character.id]) delete next[character.id]; else next[character.id] = character; return next; });
+  const candidates = Object.values(selected).filter(
+    (item) => !existingSourceCharacterIds.includes(item.profile.id)
+  );
   const confirm = async () => {
     if (busy || !candidates.length) return;
-    if (candidates.length > remaining) { setError(`本场还可加入 ${remaining} 位，请减少选择`); return; }
-    setBusy(true); setError('');
+    if (candidates.length > remaining) {
+      setError(`本场还可加入 ${remaining} 位，请减少选择`);
+      return;
+    }
+    setBusy(true);
+    setError('');
     try {
-      // Resolve every snapshot before changing the activity: failed reads cannot partially add a cast.
-      const actors: ActorSnapshot[] = [];
-      for (const character of candidates) actors.push(await fetchActivityCharacterSnapshot(character.id, character.latestVersion ?? undefined));
-      for (const actor of actors) onSelectCharacter(actor);
-      setSelected({}); onOpenChange(false);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+      const actors = await Promise.all(
+        candidates.map(activityActorFromCharacterSelection)
+      );
+      actors.forEach(onSelectCharacter);
+      setSelected({});
+      onOpenChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '无法加入角色');
+    } finally {
+      setBusy(false);
+    }
   };
-  const favorite = async (character: CharacterProfile) => {
-    try { await editCharacterOrganization({ ids: [character.id], favorite: !character.organization?.favorite }); void client.invalidateQueries({ queryKey: characterKeys.all }); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  };
-  return <Dialog open={open} onOpenChange={v => { if (!busy) onOpenChange(v); }} title="选择活动角色" description="可跨页多选。加入时使用角色已发布版本；尚未发布的角色使用当前草稿。" className="max-w-4xl" footer={<div className="flex w-full items-center justify-between gap-2"><span className="text-sm">已选 {candidates.length} 位 · 还可加入 {remaining} 位</span><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>取消</Button><Button disabled={busy || !candidates.length || candidates.length > remaining} onClick={() => void confirm()}>{busy ? '正在添加…' : `确认加入 ${candidates.length} 位`}</Button></div></div>}>
-    <fieldset disabled={busy} className="space-y-3">
-      <CharacterFilters filter={browser.filter} onChange={browser.change} onReset={() => { browser.reset(); setHideAdded(false); }} facets={browser.facets} />
-      <Checkbox label="隐藏已加入角色" checked={hideAdded} disabled={!existingSourceCharacterIds.length} onChange={e => { setHideAdded(e.target.checked); browser.change({ page: 1 }); }} />
-      {!!candidates.length && <div className="flex flex-wrap gap-2 rounded-lg bg-accent/5 p-3">{candidates.map(c => <Button key={c.id} type="button" size="sm" variant="outline" className="h-auto min-h-0 px-2 py-1 text-sm font-normal" onClick={() => toggle(c)}>{c.displayName} ×</Button>)}<Button size="sm" variant="ghost" onClick={() => setSelected({})}>清空已选</Button></div>}
-      {(error || browser.error) && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger-fg"><span>{error || (browser.error instanceof Error ? browser.error.message : '角色列表读取失败')}</span>{browser.error && <Button size="sm" variant="outline" disabled={browser.isFetching} onClick={() => void browser.refetch()}>重试</Button>}</div>}
-      {isPageTransition && <p role="status" className="text-xs text-muted">筛选或页码已变化，正在读取新结果；下方暂时保留上一次结果。</p>}
-      {browser.isLoading ? <p role="status" className="py-6 text-center text-muted">正在加载角色…</p> : <div className="grid gap-2 sm:grid-cols-2">{browser.data?.items.map(character => {
-        const added = existingSourceCharacterIds.includes(character.id);
-        return <div key={character.id} className={`flex items-center gap-3 rounded-lg border p-3 ${selected[character.id] ? 'border-accent bg-accent/5' : 'border-border-subtle'}`}><label className={`flex min-w-0 flex-1 items-center gap-3 ${added ? 'opacity-50' : 'cursor-pointer'}`}><span className="shrink-0"><Checkbox checked={added || !!selected[character.id]} disabled={added || (!selected[character.id] && candidates.length >= remaining)} onChange={() => toggle(character)} aria-label={character.displayName} /></span>{character.avatarUrl ? <Image src={character.avatarUrl} width={40} height={40} alt="" unoptimized className="h-10 w-10 rounded object-cover" /> : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-surface-muted">{character.displayName.slice(0, 1)}</span>}<span className="min-w-0"><span className="block truncate text-sm font-medium">{character.displayName}{added ? ' · 已加入' : ''}</span><span className="block truncate text-sm text-muted">{character.draft.work || '未分类'} · {character.organization?.interpretation || (character.draft.originType === 'ip' ? '原作' : character.draft.originType === 'derivative' ? '同人' : (character.latestVersion ? `v${character.latestVersion}` : '原创草稿'))}</span></span></label><IconButton icon={Star} label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`} size="icon" className="size-9 shrink-0" iconClassName={`h-4 w-4 ${character.organization?.favorite ? 'fill-accent text-accent' : 'text-muted'}`} onClick={() => void favorite(character)} /></div>;
-      })}</div>}
-      {!browser.isLoading && !browser.isError && browser.data?.total === 0 && <p className="py-6 text-center text-muted">没有匹配角色，请调整筛选。</p>}
-      <CharacterPagination
-        data={browser.data}
-        onPage={(page) => browser.change({ page })}
-        onPageSizeChange={(pageSize) => browser.change({ pageSize, page: 1 })}
-        loading={isPageTransition}
-      />
-    </fieldset>
-  </Dialog>;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) onOpenChange(next);
+      }}
+      title="选择活动角色"
+      description="跨页选择角色、具名阶段、形态和服装，采用的设定将用于活动及生图。"
+      className="max-w-4xl"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <span className="text-sm">
+            已选 {candidates.length} 位 · 还可加入 {remaining} 位
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => onOpenChange(false)}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={
+                busy || !candidates.length || candidates.length > remaining
+              }
+              onClick={() => void confirm()}
+            >
+              {busy ? '正在添加…' : `确认加入 ${candidates.length} 位`}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {error && (
+          <Alert variant="danger" title="无法加入角色">
+            {error}
+          </Alert>
+        )}
+        {!!candidates.length && (
+          <div className="flex flex-wrap gap-2">
+            {candidates.map((item) => (
+              <Button
+                key={item.profile.id}
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setSelected((current) => {
+                    const next = { ...current };
+                    delete next[item.profile.id];
+                    return next;
+                  })
+                }
+              >
+                {item.profile.displayName} ×
+              </Button>
+            ))}
+          </div>
+        )}
+        <CharacterBrowserPicker
+          active={open}
+          selected={selected}
+          maxSelected={remaining}
+          disabled={busy}
+          existingIds={existingSourceCharacterIds}
+          onSelectionChange={(selection, checked) =>
+            setSelected((current) => {
+              const next = { ...current };
+              if (checked) next[selection.profile.id] = selection;
+              else delete next[selection.profile.id];
+              return next;
+            })
+          }
+        />
+      </div>
+    </Dialog>
+  );
 }

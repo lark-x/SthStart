@@ -61,6 +61,8 @@ services:
       # 邻舍内嵌应用
       # 门户 iframe 与“新窗口打开”使用的地址，由浏览器解析；本机访问保持回环即可
       - LINSHE_APP_URL=${LINSHE_APP_URL:-http://127.0.0.1:3099}
+      # 邻舍打开 SthStart 页面时使用的浏览器地址，不能用容器内 4173
+      - STHSTART_PORTAL_URL=${STHSTART_PORTAL_URL:-http://127.0.0.1:${PORTAL_PORT:-4173}}
       # 邻舍 Agent 的监听端口（与上面的端口映射保持一致）
       - LINSHE_AGENT_PORT=3099
       # 容器内的 localhost 指向容器自身，宿主机 ComfyUI 必须显式指向 host.docker.internal

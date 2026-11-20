@@ -7,6 +7,7 @@ import {
   CreateWorldBranchSchema, CreateWorldInterventionSchema, CreateWorldStoryLineSchema,
   WorldActorSchema, WorldActorStateSchema, WorldDefinitionSchema, WorldEventSchema, WorldMemorySchema,
   WorldRunSchema, WorldSourceSchema, type CreateWorldBranch, type CreateWorldIntervention,
+  resolveCharacterVersionSelection,
   type CreateWorldStoryLine, type StoryWorld, type WorldActorState, type WorldBranch,
   type WorldBranchDetail, type WorldDefinition, type WorldEvent, type WorldEventPage, type WorldEventQuery,
   type WorldIntervention, type WorldMemory, type WorldOverview, type WorldRun, type WorldStoryLine,
@@ -20,7 +21,8 @@ import {
 } from '@sthstart/contracts';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
-import { upsertCharacterWorkHierarchy } from '../characters/organization.js';
+import { canonicalWork, upsertCharacterWorkHierarchy } from '../characters/organization.js';
+import { mapCharacterVersion } from '../characters/snapshots.js';
 
 type Row = Record<string, unknown>;
 type SqlValue = string | number | null;
@@ -180,6 +182,18 @@ export class StoryWorldStore {
     return this.insertWorld(definition, randomUUID(), nowIso());
   }
 
+  private syncWork(definition: WorldDefinition, worldId: string): void {
+    const existing = this.get('SELECT work_nature,parent_work FROM character_works WHERE world_id=?', worldId);
+    if (!definition.workNature && !existing) return;
+    const work = upsertCharacterWorkHierarchy(this.database, {
+      name: definition.title, workNature: definition.workNature ?? existing?.work_nature as WorldDefinition['workNature'],
+      parentWork: definition.parentWork === undefined ? existing?.parent_work as string | null | undefined : definition.parentWork,
+      worldId, summary: definition.summary,
+    }, { syncWorldDefinition: false });
+    definition.workNature = work.workNature;
+    definition.parentWork = work.parentWork;
+  }
+
   private insertWorld(definition: WorldDefinition, id: string, createdAt: string): StoryWorld {
     this.validateDefinition(definition);
     const now = nowIso();
@@ -188,17 +202,9 @@ export class StoryWorldStore {
       id, revision: 1, createdAt, updatedAt: now,
     };
     this.atomic(() => {
+      this.syncWork(world, id);
       this.exec('INSERT INTO sw_worlds(id,revision,data_json,created_at,updated_at) VALUES (?,?,?,?,?)',
         id, 1, JSON.stringify(world), createdAt, now);
-      if (world.workNature) {
-        upsertCharacterWorkHierarchy(this.database, {
-          name: world.title,
-          workNature: world.workNature,
-          parentWork: world.parentWork ?? null,
-          worldId: world.id,
-          summary: world.summary,
-        });
-      }
     });
     return clone(world);
   }
@@ -219,22 +225,36 @@ export class StoryWorldStore {
   createSetup(input: CreateWorldSetup): { id: string; title: string; workNature?: 'canon' | 'derivative' | 'original'; parentWork?: string | null } {
     assertSchema<CreateWorldSetup>(CreateWorldSetupSchema, input, 'story_setup_invalid', '创建请求');
     const title = requiredText(input.title, '世界名称');
+    const request = {
+      title, workNature: input.workNature ?? null,
+      parentWork: input.workNature === 'derivative' ? canonicalWork(this.database, input.parentWork ?? '') || null : null,
+    };
     return this.atomic(() => {
       const previous = this.get('SELECT * FROM sw_world_setups WHERE creation_key=?', input.idempotencyKey);
       if (previous) {
-        if (previous.creation_title !== title) fail('story_creation_idempotency_conflict', 409, '该创建请求已用于其他名称。');
         const prevDraft = parse<WorldAuthoringDraft>(previous.draft_json);
+        const completed = previous.completed_branch_id ? this.requireWorld(asString(previous, 'id')) : null;
+        const previousDefinition = prevDraft.definition ?? completed;
+        const previousRequest = previous.creation_request_json ? parse(previous.creation_request_json) : {
+          title: previous.creation_title, workNature: previousDefinition?.workNature ?? null,
+          parentWork: previousDefinition?.workNature === 'derivative' ? canonicalWork(this.database, previousDefinition.parentWork ?? '') || null : null,
+        };
+        const previousIdentity = previousRequest as { title: string; workNature: string | null; parentWork: string | null };
+        if (previousIdentity.parentWork) previousIdentity.parentWork = canonicalWork(this.database, previousIdentity.parentWork);
+        if (canonicalJson(previousRequest) !== canonicalJson(request)) {
+          fail('story_creation_idempotency_conflict', 409, '该创建请求已用于其他作品名称或属性。');
+        }
         return {
           id: asString(previous, 'id'),
           title: asString(previous, 'title'),
-          ...(prevDraft.definition?.workNature ? { workNature: prevDraft.definition.workNature } : {}),
-          ...(prevDraft.definition?.parentWork !== undefined ? { parentWork: prevDraft.definition.parentWork } : {}),
+          ...(previousDefinition?.workNature ? { workNature: previousDefinition.workNature } : {}),
+          ...(previousDefinition?.parentWork !== undefined ? { parentWork: previousDefinition.parentWork } : {}),
         };
       }
       const id = randomUUID();
       const now = nowIso();
       const workNature = input.workNature;
-      const parentWork = workNature === 'derivative' ? (input.parentWork?.trim() || null) : null;
+      const parentWork = request.parentWork;
       const initialMode = workNature === 'derivative'
         ? 'adaptation'
         : workNature === 'original'
@@ -256,16 +276,9 @@ export class StoryWorldStore {
         },
         initialBranch: { title: '主线', mode: initialMode, direction: '' },
       };
-      this.exec(`INSERT INTO sw_world_setups(id,creation_key,creation_title,title,revision,draft_json,created_at,updated_at)
-        VALUES (?,?,?,?,1,?,?,?)`, id, input.idempotencyKey, title, title, JSON.stringify(draft), now, now);
-      if (workNature) {
-        upsertCharacterWorkHierarchy(this.database, {
-          name: title,
-          workNature,
-          parentWork,
-          worldId: id,
-        });
-      }
+      this.syncWork(draft.definition, id);
+      this.exec(`INSERT INTO sw_world_setups(id,creation_key,creation_title,title,revision,draft_json,created_at,updated_at,creation_request_json)
+        VALUES (?,?,?,?,1,?,?,?,?)`, id, input.idempotencyKey, title, title, JSON.stringify(draft), now, now, canonicalJson(request));
       return {
         id,
         title,
@@ -303,6 +316,7 @@ export class StoryWorldStore {
           branch.id, hash, world.title, id);
         return { status: 'ready', world, branch };
       }
+      this.syncWork(draft.definition, id);
       this.exec('UPDATE sw_world_setups SET title=?, revision=revision+1, draft_json=?, updated_at=? WHERE id=?',
         draft.definition.title, JSON.stringify(draft), nowIso(), id);
       return { status: 'pending', setup: this.getSetup(id) };
@@ -363,18 +377,10 @@ export class StoryWorldStore {
       id: worldId, revision: input.expectedRevision + 1, createdAt: current.createdAt, updatedAt: now,
     };
     this.atomic(() => {
+      this.syncWork(world, worldId);
       const result = this.exec('UPDATE sw_worlds SET revision=?,data_json=?,updated_at=? WHERE id=? AND revision=?',
         world.revision, JSON.stringify(world), now, worldId, input.expectedRevision);
       if (result.changes !== 1) this.conflictWorld(worldId);
-      if (world.workNature) {
-        upsertCharacterWorkHierarchy(this.database, {
-          name: world.title,
-          workNature: world.workNature,
-          parentWork: world.parentWork ?? null,
-          worldId,
-          summary: world.summary,
-        });
-      }
     });
     return this.requireWorld(worldId);
   }
@@ -645,6 +651,15 @@ export class StoryWorldStore {
     this.assertActorsExist(definition, actorIds, 'story_line_invalid');
     const line: WorldStoryLine = {
       id: randomUUID(), worldId, branchId, title, description: input.description, actorIds,
+      ...(input.arcKind ? { arcKind: input.arcKind } : {}),
+      ...(input.chapterCode !== undefined ? { chapterCode: input.chapterCode } : {}),
+      ...(input.mcpQueryHint !== undefined ? { mcpQueryHint: input.mcpQueryHint } : {}),
+      ...(input.timeWindowLabel !== undefined ? { timeWindowLabel: input.timeWindowLabel } : {}),
+      ...(input.regionIds ? { regionIds: [...input.regionIds] } : {}),
+      ...(input.locationIds ? { locationIds: [...input.locationIds] } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.orderIndex !== undefined ? { orderIndex: input.orderIndex } : {}),
+      ...(input.chapterIds ? { chapterIds: [...input.chapterIds] } : {}),
     };
     const now = nowIso();
     this.atomic(() => {
@@ -1059,15 +1074,23 @@ export class StoryWorldStore {
   private assertCharacterSource(actor: WorldActor) {
     if (!actor.characterId) {
       if (actor.characterVersion !== null) fail('story_actor_source_missing', 400, `角色 ${actor.name} 没有来源角色却声明了版本。`);
+      if (actor.characterVariantId || actor.characterCostumeAssetId) fail('story_actor_selection_invalid', 400, `角色 ${actor.name} 没有来源角色却声明了形态或皮肤。`);
       return;
     }
     if (actor.characterVersion === null) {
       fail('story_actor_source_missing', 400, `角色 ${actor.name} 必须显式采用一个角色库版本。`);
     }
     const profile = this.get('SELECT 1 FROM character_profiles WHERE id=?', actor.characterId);
-    const version = this.get('SELECT 1 FROM character_versions WHERE character_id=? AND version=?', actor.characterId, actor.characterVersion);
+    const version = this.get('SELECT * FROM character_versions WHERE character_id=? AND version=?', actor.characterId, actor.characterVersion);
     if (!profile || !version) {
       fail('story_actor_source_missing', 400, `角色 ${actor.name} 引用的角色库版本 ${actor.characterId}@${actor.characterVersion} 不存在。`);
+    }
+    try {
+      resolveCharacterVersionSelection(mapCharacterVersion(version), {
+        variantId: actor.characterVariantId, costumeAssetId: actor.characterCostumeAssetId,
+      });
+    } catch (error) {
+      fail('story_actor_selection_invalid', 400, error instanceof Error ? error.message : '角色形态或皮肤不在所选阶段中。');
     }
   }
 

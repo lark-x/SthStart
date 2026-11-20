@@ -6,7 +6,6 @@ import {
   Sparkles,
   Check,
   Loader2,
-  ExternalLink,
   Image as ImageIcon,
   User,
 } from 'lucide-react';
@@ -14,6 +13,7 @@ import type { CharacterOfficialAssetCandidate } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
+import { Alert } from '@/app/components/ui/alert';
 import { useToast } from '@/app/providers/ui-provider';
 import {
   usePreviewCharacterOfficialAssets,
@@ -40,17 +40,20 @@ export function CharacterMultiSourceDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [setActiveAvatar, setSetActiveAvatar] = useState(true);
   const [setActivePortrait, setSetActivePortrait] = useState(true);
+  const [importResult, setImportResult] = useState<{ imported: number; requested: number; warnings: string[] } | null>(null);
 
   const previewMutation = usePreviewCharacterOfficialAssets();
   const importMutation = useImportCharacterAssets();
 
   // Load preview when dialog opens
+  const previewMutate = previewMutation.mutate;
+  /* eslint-disable react-hooks/set-state-in-effect -- begin a fresh external preview session whenever this mounted dialog opens */
   useEffect(() => {
-    if (!open || !characterId) return;
-    setCandidates([]);
-    setSelectedIds(new Set());
-
-    previewMutation.mutate(characterId, {
+    if (open) {
+      setCandidates([]);
+      setSelectedIds(new Set());
+      setImportResult(null);
+      previewMutate(characterId, {
       onSuccess: (data) => {
         setCandidates(data.items);
         // 默认全选所有探测到的优质资产
@@ -60,8 +63,10 @@ export function CharacterMultiSourceDialog({
       onError: (err) => {
         toast.error('探测多源官方资产失败', err instanceof Error ? err.message : String(err));
       },
-    });
-  }, [open, characterId]);
+      });
+    }
+  }, [open, characterId, previewMutate, toast]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -81,6 +86,7 @@ export function CharacterMultiSourceDialog({
   };
 
   const handleImport = async () => {
+    if (importMutation.isPending || importResult) return;
     const selected = candidates.filter((c) => selectedIds.has(c.id));
     if (selected.length === 0) {
       toast.warning('请至少勾选一个要导入的资产');
@@ -118,8 +124,11 @@ export function CharacterMultiSourceDialog({
         id: characterId,
         payload: { items: payloadAssets },
       });
-      toast.success(`成功导入 ${res.imported.length} 个官方形象资产并保存到本地！`);
-      onOpenChange(false);
+      const warnings = [...(res.warnings || [])];
+      if (res.imported.length < selected.length && !warnings.length) warnings.push(`所选 ${selected.length} 个资产中有 ${selected.length - res.imported.length} 个未导入，请检查来源图片是否可用。`);
+      setImportResult({ imported: res.imported.length, requested: selected.length, warnings });
+      if (warnings.length) toast.warning('部分图片未导入', '请查看导入结果与原因。');
+      else toast.success(`已导入 ${res.imported.length} 个形象资产`);
       onSuccess?.();
     } catch (err) {
       toast.error('导入资产失败', err instanceof Error ? err.message : String(err));
@@ -129,7 +138,7 @@ export function CharacterMultiSourceDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={next => { if (!importMutation.isPending) onOpenChange(next); }}
       title={`多源获取头像与立绘 · ${characterName}`}
       description="自动探测 BWiki (B站游戏维基)、Enka CDN (解包图)、官方角色百科等多个来源，支持勾选后一键保存到本地。"
       size="lg"
@@ -139,11 +148,13 @@ export function CharacterMultiSourceDialog({
             <Checkbox
               label="首选头像设为主头像"
               checked={setActiveAvatar}
+              disabled={Boolean(importResult) || importMutation.isPending}
               onChange={(e) => setSetActiveAvatar(e.target.checked)}
             />
             <Checkbox
               label="首设立绘设为主立绘"
               checked={setActivePortrait}
+              disabled={Boolean(importResult) || importMutation.isPending}
               onChange={(e) => setSetActivePortrait(e.target.checked)}
             />
           </div>
@@ -153,25 +164,31 @@ export function CharacterMultiSourceDialog({
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
+              disabled={importMutation.isPending}
             >
-              取消
+              {importResult ? '完成并关闭' : '取消'}
             </Button>
             <Button
               type="button"
               variant="accent"
               size="sm"
-              disabled={selectedIds.size === 0 || importMutation.isPending}
+              disabled={selectedIds.size === 0 || importMutation.isPending || Boolean(importResult)}
               loading={importMutation.isPending}
               onClick={handleImport}
             >
               <Sparkles className="h-3.5 w-3.5 mr-1" />
-              <span>导入选中的资产 ({selectedIds.size})</span>
+              <span>{importResult ? '本次导入已结束' : `导入选中的资产 (${selectedIds.size})`}</span>
             </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-4 py-2">
+        {importResult && <Alert variant={importResult.warnings.length ? 'warning' : 'success'} title={importResult.warnings.length ? '部分图片未导入' : '本次所选图片已保存'}>
+          <p>已保存 {importResult.imported} / {importResult.requested} 个资产。</p>
+          {importResult.warnings.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{importResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+          <p className="mt-2">关闭后可在图片皮肤中查看已保存内容，本次结果不会重复导入。</p>
+        </Alert>}
         {/* Loading State */}
         {previewMutation.isPending && (
           <div className="flex flex-col items-center justify-center py-16 text-muted space-y-3">
@@ -193,7 +210,7 @@ export function CharacterMultiSourceDialog({
         )}
 
         {/* Results list */}
-        {!previewMutation.isPending && candidates.length > 0 && (
+        {!importResult && !previewMutation.isPending && candidates.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-muted pb-1 border-b border-border-subtle">
               <span>共找到 {candidates.length} 个官方形象候选资源</span>

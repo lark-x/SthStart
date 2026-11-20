@@ -10,8 +10,7 @@ import { FormField } from '@/app/components/ui/form-field';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ResponsiveEditOverlay } from '@/app/components/ui/responsive-edit-overlay';
 import { useActivityPage } from '@/app/features/activities/use-activity-page';
-import { useCharacterBrowser } from '@/app/features/characters/public';
-import { CharacterPagination } from '@/app/features/characters/public-ui';
+import { CharacterBrowserPicker, type CharacterBrowserSelection } from '@/app/features/characters/public-ui';
 import { publishedCharacterInput } from '@/app/features/projects/published-character';
 import { projectsApi } from '@/app/features/projects/api';
 import { storyApi } from '@/app/features/story/api';
@@ -37,19 +36,21 @@ export function ProjectAddSourceDialog({
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const library = useCharacterBrowser({}, mode === 'character');
+  const [selectedCharacter, setSelectedCharacter] = useState<Record<string, CharacterBrowserSelection>>({});
   const [activityFilter, setActivityFilter] = useState({ q: '', page: 1, pageSize: 20 });
   const activities = useActivityPage({ ...activityFilter, independent: true }, mode === 'activity');
 
   const reset = () => {
     setSelected('');
+    setSelectedCharacter({});
     setError('');
   };
 
   const addCharacter = async () => {
-    const character = library.data?.items.find((item) => item.id === selected);
-    if (!character) throw new Error('请选择要加入的角色。');
-    const resolved = await publishedCharacterInput(character);
+    const choice = Object.values(selectedCharacter)[0];
+    if (!choice) throw new Error('请选择要加入的角色。');
+    const character = choice.profile;
+    const resolved = await publishedCharacterInput(character, choice);
     if (overview.characters.some((existing) =>
       existing.sourceCharacterId === character.id && existing.sourceVersion === resolved.sourceVersion)) {
       throw new Error('这个角色版本已经加入项目。');
@@ -62,7 +63,7 @@ export function ProjectAddSourceDialog({
   };
 
   const confirm = async () => {
-    if (!mode || !selected || busy) return;
+    if (!mode || (mode === 'character' ? !Object.keys(selectedCharacter).length : !selected) || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -78,9 +79,8 @@ export function ProjectAddSourceDialog({
     }
   };
 
-  const unavailable = mode === 'character'
-    ? library.isFetching || library.isSearchPending
-    : activities.isFetching || activities.isError;
+  const unavailable = mode === 'activity' && (activities.isFetching || activities.isError);
+  const hasSelection = mode === 'character' ? Boolean(Object.keys(selectedCharacter).length) : Boolean(selected);
 
   return (
     <ResponsiveEditOverlay
@@ -88,7 +88,7 @@ export function ProjectAddSourceDialog({
       onOpenChange={(next) => { if (!next && !busy) { onClose(); reset(); } }}
       title={mode === 'character' ? '从角色库加入' : '关联已有制作'}
       description={mode === 'character'
-        ? '从角色库引入当前档案快照到项目；角色名相同也按来源 ID 区分。'
+        ? '从角色库选择作品、同源成员和形态；原创采用你保存的具名阶段。'
         : '章节制作版本自动属于其来源项目；这里关联独立创建的互动制作。'}
       footer={
         <>
@@ -96,7 +96,7 @@ export function ProjectAddSourceDialog({
           <Button
             variant="primary"
             loading={busy}
-            disabled={!selected || unavailable}
+            disabled={!hasSelection || unavailable}
             onClick={() => void confirm()}
           >
             确认加入
@@ -107,62 +107,7 @@ export function ProjectAddSourceDialog({
       <div className="space-y-4">
         {mode === 'character' ? (
           <>
-            <FormField label="搜索角色库角色">
-              <Input
-                placeholder="搜索角色名称"
-                value={library.filter.q ?? ''}
-                onChange={(event) => { setSelected(''); library.change({ q: event.target.value }); }}
-              />
-            </FormField>
-            {library.isLoading && <AsyncState status="loading" rows={2} />}
-            {library.isError && (
-              <AsyncState
-                status="error"
-                title="角色读取失败"
-                description={library.error.message}
-                onRetry={() => void library.refetch()}
-              />
-            )}
-            {(library.isPlaceholderData || library.isSearchPending) && (
-              <p role="status" className="text-sm text-muted">正在更新角色列表…</p>
-            )}
-            <FormField label="选择角色">
-              <Select
-                className="w-full"
-                value={selected}
-                disabled={library.isFetching || library.isSearchPending}
-                onChange={(event) => setSelected(event.target.value)}
-              >
-                <option value="">选择角色</option>
-                {(library.data?.items ?? [])
-                  .filter((character) => !character.archived)
-                  .map((character) => {
-                    const originTag =
-                      character.draft.originType === 'ip'
-                        ? '原作'
-                        : character.draft.originType === 'derivative'
-                          ? '同人'
-                          : character.latestVersion
-                            ? `v${character.latestVersion}`
-                            : '原创草稿';
-                    return (
-                      <option key={character.id} value={character.id}>
-                        {character.displayName} · {character.draft.work || '未分类'} · {originTag}
-                      </option>
-                    );
-                  })}
-              </Select>
-            </FormField>
-            {library.isSuccess && !library.isPlaceholderData && !library.isSearchPending
-              && !library.data.items.length && (
-                <p role="status" className="text-sm text-muted">没有匹配的角色，可换一个关键词。</p>
-              )}
-            <CharacterPagination
-              data={library.data}
-              loading={library.isFetching || library.isSearchPending}
-              onPage={(page) => { setSelected(''); library.change({ page }); }}
-              onPageSizeChange={(pageSize) => { setSelected(''); library.change({ pageSize }); }}
-            />
+            <CharacterBrowserPicker active={mode === 'character'} selected={selectedCharacter} maxSelected={1} disabled={busy} onSelectionChange={(selection, checked) => setSelectedCharacter(checked ? { [selection.profile.id]: selection } : {})} />
           </>
         ) : (
           <>

@@ -9,6 +9,7 @@ import {
   cleanUpstreamQuery,
   createEmptyBundle,
   dedupeAssets,
+  hasSubstantiveEvidence,
   inferWorkTarget,
   isPreferredSource,
   type UpstreamCharacterBundle,
@@ -22,10 +23,11 @@ import { synthesizeRpCharacter } from './rp-synthesizer.js';
 
 function mergeBundle(base: UpstreamCharacterBundle, patch: Partial<UpstreamCharacterBundle> | null) {
   if (!patch) return;
-  if (patch.resolvedName && (!base.resolvedName || base.resolvedName === base.resolvedWork)) {
+  if (patch.resolvedName && (!base.sources.length || !base.resolvedName || base.resolvedName === base.resolvedWork)) {
     base.resolvedName = patch.resolvedName;
   }
   if (patch.resolvedWork && !base.resolvedWork) base.resolvedWork = patch.resolvedWork;
+  if (patch.appearanceText && !base.appearanceText) base.appearanceText = patch.appearanceText;
   if (patch.englishName && !base.englishName) base.englishName = patch.englishName;
   if (patch.birthday && (!base.birthday || base.birthday.status === 'unset')) base.birthday = patch.birthday;
   if (patch.originType) base.originType = patch.originType;
@@ -77,6 +79,10 @@ export async function runUpstreamCharacterResearch(
   const bundle = createEmptyBundle(name, work);
 
   const tasks: Array<Promise<Partial<UpstreamCharacterBundle> | null>> = [];
+  const unsupported = (prefer || []).filter((id) => ['mihoyo-obc', 'enka'].includes(id));
+  for (const id of unsupported) bundle.warnings.push(`来源 ${id} 尚无可用采集适配器，未执行。`);
+  if (prefer?.includes('yatta') && target !== 'genshin') bundle.warnings.push('Yatta 适配器仅声明支持原神，该作品未执行。');
+  if (prefer?.includes('starrailres') && target !== 'starrail') bundle.warnings.push('StarRailRes 适配器仅声明支持星穹铁道，该作品未执行。');
 
   if (target === 'genshin' && isPreferredSource(prefer, 'yatta')) {
     tasks.push(fetchYattaGenshinCharacter(name, fetcher));
@@ -84,8 +90,10 @@ export async function runUpstreamCharacterResearch(
   if (target === 'starrail' && isPreferredSource(prefer, 'starrailres')) {
     tasks.push(fetchStarRailResCharacter(name, fetcher));
   }
-  if (isPreferredSource(prefer, 'bwiki')) {
+  if (target !== 'general' && isPreferredSource(prefer, 'bwiki')) {
     tasks.push(fetchBwikiCharacter(name, target, fetcher));
+  } else if (target === 'general') {
+    bundle.warnings.push(`未声明作品「${work || name}」的上游路由，已拒绝猜测为原神。`);
   }
   if (isPreferredSource(prefer, 'akasha-mcp')) {
     tasks.push(fetchAkashaDialogueSlices(name, target, config, fetcher));
@@ -95,7 +103,7 @@ export async function runUpstreamCharacterResearch(
   for (const res of primaryResults) mergeBundle(bundle, res);
 
   // 若主源故事与语音均较薄（或非米系通用角色），自动触发萌娘百科与 Fandom 兜底
-  const needFallback = bundle.stories.length === 0 || (target === 'bh3' && bundle.skinOrVariantCandidates.length === 0);
+  const needFallback = !hasSubstantiveEvidence(bundle) || (target === 'bh3' && bundle.skinOrVariantCandidates.length === 0);
   if (needFallback) {
     const fallbacks: Array<Promise<Partial<UpstreamCharacterBundle> | null>> = [];
     if (isPreferredSource(prefer, 'moegirl')) {
@@ -118,6 +126,7 @@ export async function runUpstreamCharacterResearch(
     bundle.voiceLines = [];
   }
 
+  if (!hasSubstantiveEvidence(bundle)) bundle.warnings.push('已检索资料仍较薄或只有索引信息；原文不足，不能视为完整角色档案。');
   bundle.assets = dedupeAssets(bundle.assets);
 
   const synthesized = await synthesizeRpCharacter(database, secrets, fetcher, bundle);

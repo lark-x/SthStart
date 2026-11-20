@@ -4,7 +4,7 @@
 >
 > 本文是实施规格，不是完成报告。只创建此计划文档；本轮未修改业务代码、运行迁移、部署或发起模型请求。
 >
-> 对应原讨论：docs/activity_configuration_simplification_plan.md。原文保留为背景；执行时以本文的边界、配置规则和阶段门槛为准。
+> 当时的决策背景和阶段结果见[配置简化讨论](activity_configuration_simplification_plan.md)和[实施记录](activity_studio_abc_implementation_progress.md)。
 
 ## 1. 最终目标与已经确定的决策
 

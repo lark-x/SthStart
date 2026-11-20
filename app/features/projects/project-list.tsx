@@ -144,11 +144,19 @@ export function ProjectList() {
   return (
     <PageContainer className="project-directory space-y-4">
       <PageHeader compact
-        title="创作项目"
+        title="历史创作项目"
+        description="剧情与设定创作已统一整合至「作品」工作台，这里仅保留历史兼容手稿入口。"
         actions={
-          <Button variant="primary" onClick={() => setOpen(true)}>
-            <Plus size={16} />新建项目
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/apps/story-worlds" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
+              前往作品目录
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+            <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+              <Plus size={15} aria-hidden="true" />
+              新建兼容项目
+            </Button>
+          </div>
         }
       />
       <section aria-label="项目列表" className="space-y-4">
@@ -162,10 +170,10 @@ export function ProjectList() {
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Button size="sm" variant="ghost" disabled={query.isFetching} onClick={() => void query.refetch()}>刷新列表</Button>
           <Link
-            href="/apps/activities"
+            href="/apps/story-worlds"
             className={buttonVariants({ variant: "ghost", size: "sm" })}
           >
-            查看全部制作 <ArrowRight size={16} />
+            前往作品目录 <ArrowRight size={16} />
           </Link>
         </div>
       </div>

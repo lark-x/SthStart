@@ -5,7 +5,7 @@ import { openCommandPalette } from '@/app/shell/command-palette-events';
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Menu, PanelLeftClose, PanelLeftOpen, Search, ListTodo, ChevronDown, MoreHorizontal, SlidersHorizontal, Sun, Moon } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, Search, ListTodo, ChevronDown, MoreHorizontal, SlidersHorizontal, Sun, Moon, Sparkles } from 'lucide-react';
 import { Menu as MantineMenu } from '@mantine/core';
 import { NAV_APPS, NAV_PORTAL, NAV_SECTIONS, navDisplayLabel, type NavApp, type NavSection } from '@/app/shell/navigation';
 import { findBestActiveApp } from '@/app/shell/nav-match';
@@ -19,6 +19,7 @@ import { Drawer } from '@/app/components/ui/drawer';
 import { TaskDrawer } from '@/app/shell/task-drawer';
 import { useTheme } from '@/app/providers/ui-provider';
 import { useGlobalTasks } from '@/app/features/tasks/queries';
+import { GlobalAiDrawer } from '@/app/features/creative-orchestration/global-ai-drawer';
 
 const COLLAPSED_SECTIONS_KEY = 'sthstart_nav_collapsed_sections';
 const subscribePlatform = () => () => {};
@@ -92,6 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const collapsed = useSyncExternalStore(subscribeNavPref, readCollapsedPref, serverCollapsedPref);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const { data: globalTasksData } = useGlobalTasks({ state: 'active' });
   const activeTasksCount = globalTasksData?.activeCount ?? 0;
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -184,11 +186,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       openNavDrawer(trigger instanceof HTMLElement ? trigger : null);
     };
     const handleOpenTasks = () => setTaskDrawerOpen(true);
+    const handleOpenAi = () => setAiDrawerOpen(true);
+    const handleAiShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j' && !event.isComposing) {
+        event.preventDefault();
+        setAiDrawerOpen((prev) => !prev);
+      }
+    };
     window.addEventListener('sthstart:open-nav-drawer', handleOpenNav);
     window.addEventListener('sthstart:open-task-drawer', handleOpenTasks);
+    window.addEventListener('sthstart:open-ai-drawer', handleOpenAi);
+    window.addEventListener('keydown', handleAiShortcut);
     return () => {
       window.removeEventListener('sthstart:open-nav-drawer', handleOpenNav);
       window.removeEventListener('sthstart:open-task-drawer', handleOpenTasks);
+      window.removeEventListener('sthstart:open-ai-drawer', handleOpenAi);
+      window.removeEventListener('keydown', handleAiShortcut);
     };
   }, [openNavDrawer]);
 
@@ -323,6 +336,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {navContent}
         </Drawer>
         <TaskDrawer isOpen={taskDrawerOpen} onClose={() => setTaskDrawerOpen(false)} />
+        <GlobalAiDrawer open={aiDrawerOpen} onClose={() => setAiDrawerOpen(false)} />
       </div>
     );
   }
@@ -364,6 +378,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
 
               <div className="shell-toolbar-actions">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="shell-command-action [&_.ui-mantine-button-label]:gap-1.5"
+                  onClick={() => setAiDrawerOpen(true)}
+                  title="打开全站 AI 创作助手 (Ctrl/Cmd+J)"
+                  aria-label="打开全站 AI 创作助手"
+                >
+                  <Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />
+                  <span className="hidden sm:inline">AI 助手</span>
+                </Button>
+
                 <Button
                   type="button"
                   size="sm"
@@ -426,6 +453,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Drawer>
 
       <TaskDrawer isOpen={taskDrawerOpen} onClose={() => setTaskDrawerOpen(false)} />
+      <GlobalAiDrawer open={aiDrawerOpen} onClose={() => setAiDrawerOpen(false)} />
       {navHint && collapsed && !drawerOpen && (
         <div className="shell-nav-tooltip" role="tooltip" style={{ left: navHint.left, top: navHint.top }}>{navHint.text}</div>
       )}

@@ -11,6 +11,7 @@ import type {
   CharacterImportSession,
 } from '@sthstart/contracts';
 import { applyV1PatchToV2 } from '@sthstart/contracts';
+import { syncCharacterSnapshotAfterChange } from './snapshots.js';
 import type { ServiceConfig } from '../config.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
@@ -415,7 +416,8 @@ export async function commitCharacterImportSession(
           randomUUID(), characterId, null, mapping.fieldPath, mapping.valueHash, mapping.status, snapshotId, mapping.sourcePointer, JSON.stringify({ note: mapping.note ?? null }), '[]', 1, now,
         );
       }
-      const commitResult = { characterId, created: !targetId, draftRevision: newDraftRevision, sourceSnapshotId: snapshotId, version: null };
+      const version = syncCharacterSnapshotAfterChange(database, characterId);
+      const commitResult = { characterId, created: !targetId, draftRevision: newDraftRevision, sourceSnapshotId: snapshotId, version: version?.version ?? null };
       if (formalSourcePath && snapshotId) database.connection.prepare('UPDATE character_source_snapshots SET raw_file_path=? WHERE id=?').run(formalSourcePath, snapshotId);
       const commitUpdate = database.connection.prepare("UPDATE character_import_sessions SET status='committed',target_character_id=?,commit_result_json=?,idempotency_key=?,updated_at=? WHERE id=? AND status='ready'")
         .run(characterId, JSON.stringify(commitResult), input.idempotencyKey, now, id);

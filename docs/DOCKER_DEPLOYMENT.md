@@ -240,6 +240,7 @@ npm run db:integrity
 
 - 端口：容器内邻舍核心监听 `3099`，`docker-compose.yml` 只把它发布到宿主机回环（`127.0.0.1:3099`），与 `4100` 一样不进入局域网；远程访问请沿用 Cloudflare Tunnel + Access。改动宿主机端口时同步调整 `LINSHE_PORT`。
 - 地址：门户的 iframe 与“新窗口打开”使用 `LINSHE_APP_URL`，由浏览器解析。改用域名或 Tunnel 时把它改成对外地址，并与 `LINSHE_PORT` 一起调整。
+- 管理跳转：邻舍中的“前往 SthStart 修改”使用 `STHSTART_PORTAL_URL`。它必须指向宿主机或公网可访问的门户地址，不能填写容器内部的 `http://127.0.0.1:4173`；留空时 Compose 按 `PORTAL_PORT` 自动生成。
 - 数据：邻舍的数据库、生成图片和头像写入 `agent-core/data`，已映射到宿主机 `./data/linshe`；备份 `./data` 即可覆盖。
 - 算力：容器内的 `localhost` 指向容器自身，宿主机 ComfyUI 必须通过 `COMFYUI_URL=http://host.docker.internal:8188` 指定。
 - 向量服务：镜像会随同 Python 运行时、向量依赖和 Jina 本地模型一起构建；Chroma 数据持久化在宿主机 `./data/linshe-vector`。首次构建会额外下载约 155 MB 模型并安装 Python 依赖。

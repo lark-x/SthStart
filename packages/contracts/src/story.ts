@@ -62,6 +62,7 @@ export type UpdateStoryDocument = Static<typeof UpdateStoryDocumentSchema>;
 
 export const StoryCharacterSchema = Type.Object({
   id: Type.String(), projectId: Type.String(), name: Type.String(), notes: Type.String(),
+  sourceVariantId: Type.Optional(Type.String()), sourceCostumeAssetId: Type.Optional(Type.String()),
   sourceCharacterId: Type.Union([Type.String(), Type.Null()]),
   sourceVersion: Type.Union([Type.Integer(), Type.Null()]),
   revision: Type.Integer(), createdAt: Type.String(), updatedAt: Type.String(),
@@ -72,6 +73,7 @@ export type StoryEntry = Static<typeof StoryEntrySchema>;
 export const CreateStoryCharacterSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 120 }),
   notes: Type.Optional(Type.String({ maxLength: 100000 })),
+  sourceVariantId: Type.Optional(Type.String()), sourceCostumeAssetId: Type.Optional(Type.String()),
   sourceCharacterId: Type.Optional(Type.String()),
   sourceVersion: Type.Optional(Type.Integer({ minimum: 1 })),
 });
@@ -151,7 +153,8 @@ export type CreateNativeStoryProposal = Static<typeof CreateNativeStoryProposalS
 export const StoryEntrySnapshotSchema = Type.Union([
   Type.Object({ kind: StoryDocumentKindSchema, title: Type.String(), body: Type.String() }),
   Type.Object({ kind: Type.Literal('character'), name: Type.String(), notes: Type.String(),
-    sourceCharacterId: Type.Union([Type.String(), Type.Null()]), sourceVersion: Type.Union([Type.Integer(), Type.Null()]) }),
+    sourceVariantId: Type.Optional(Type.String()), sourceCostumeAssetId: Type.Optional(Type.String()),
+  sourceCharacterId: Type.Union([Type.String(), Type.Null()]), sourceVersion: Type.Union([Type.Integer(), Type.Null()]) }),
 ]);
 export type StoryEntrySnapshot = Static<typeof StoryEntrySnapshotSchema>;
 export const StoryEntryRevisionSchema = Type.Object({

@@ -60,7 +60,7 @@ export function useCharacterBrowser(
     return () => window.removeEventListener('popstate', restore);
   }, [persist]);
 
-  const request = { ...filter, ...overrides, q: debouncedQ };
+  const request = { collapseDerivatives: true, ...filter, ...overrides, q: debouncedQ };
   const result = useQuery({
     queryKey: characterKeys.browse(request),
     queryFn: ({ signal }) => browseCharacters(request, signal),

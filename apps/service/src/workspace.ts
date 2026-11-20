@@ -6,15 +6,37 @@ export function registerWorkspaceRoutes(app: FastifyInstance, database: ServiceD
   app.get<{ Querystring: { limit?: number } }>('/api/v1/admin/workspace/recent', {
     schema: { querystring: RecentWorkQuerySchema, response: { 200: RecentWorkResponseSchema } },
   }, async (request): Promise<RecentWorkResponse> => {
+    const hasTable = (name: string) => Boolean(
+      database.connection.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name),
+    );
+    const hasWorlds = hasTable('sw_worlds');
+    const hasBindings = hasTable('sw_project_bindings');
+
+    const worldSelect = hasWorlds
+      ? `
+        UNION ALL
+        SELECT w.id, COALESCE(json_extract(w.data_json, '$.title'), '未命名作品') AS title, 'world' AS kind,
+          ${hasBindings
+            ? `MAX(w.updated_at, COALESCE((SELECT MAX(d.updated_at) FROM sw_project_bindings b JOIN story_documents d ON d.project_id = b.project_id WHERE b.world_id = w.id), w.updated_at))`
+            : 'w.updated_at'
+          } AS updatedAt
+          FROM sw_worlds w`
+      : '';
+
+    const storyFilter = hasBindings
+      ? "WHERE project_type='fiction' AND NOT EXISTS (SELECT 1 FROM sw_project_bindings b WHERE b.project_id=p.id)"
+      : "WHERE project_type='fiction'";
+
     const items = database.connection.prepare(`
       SELECT id,title,kind,updatedAt FROM (
         SELECT id,title,CASE WHEN type='publication' THEN 'publication' ELSE 'activity' END AS kind,updated_at AS updatedAt FROM activities WHERE archived=0
+        ${worldSelect}
         UNION ALL
         SELECT p.id,p.title,'story' AS kind,MAX(p.updated_at,
           COALESCE((SELECT MAX(updated_at) FROM story_documents WHERE project_id=p.id),p.updated_at),
           COALESCE((SELECT MAX(updated_at) FROM story_characters WHERE project_id=p.id),p.updated_at),
           COALESCE((SELECT MAX(captured_at) FROM project_links WHERE project_id=p.id),p.updated_at)) AS updatedAt
-          FROM story_projects p WHERE project_type='fiction'
+          FROM story_projects p ${storyFilter}
         UNION ALL
         SELECT id,title,'note' AS kind,updated_at AS updatedAt FROM creative_notes
         UNION ALL

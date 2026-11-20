@@ -58,7 +58,7 @@ export function CalendarView() {
   if (!ready) {
     return (
       <PageContainer className="space-y-4">
-        <PageHeader compact title="角色日历" />
+        <PageHeader compact title="创作日历" />
         <p role="status" className="py-8 text-muted">正在载入日历…</p>
       </PageContainer>
     );
@@ -192,7 +192,7 @@ function LocalCalendarView() {
 
   return (
     <PageContainer className="space-y-4">
-      <PageHeader compact title="角色日历" />
+      <PageHeader compact title="创作日历" />
 
       <ResponsiveEditOverlay
         open={filtersOpen}

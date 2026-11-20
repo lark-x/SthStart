@@ -39,7 +39,7 @@ export function MediaToolbar({
   isLoading,
 }: MediaToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-panel bg-surface p-3 shadow-[var(--elev-xs),0_0_0_1px_var(--hairline)]">
+    <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle pb-3">
       {/* 搜索框 */}
       <div className="relative min-w-0 w-full sm:min-w-56 sm:flex-1">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted pointer-events-none" />
@@ -51,7 +51,7 @@ export function MediaToolbar({
           onCompositionStart={onSearchCompositionStart}
           onCompositionEnd={(e) => onSearchCompositionEnd?.(e.currentTarget.value)}
           placeholder="按文件名、ID 或格式搜索媒体…"
-          className="h-9 pl-9 text-sm"
+          className="h-9 min-h-0 pl-9 text-sm"
         />
       </div>
 
@@ -62,7 +62,7 @@ export function MediaToolbar({
           value={selectedKind}
           onChange={(e) => onKindChange(e.target.value as MediaLibraryKind | 'all')}
           aria-label="按产物类型筛选"
-          className="h-9 w-auto text-sm"
+          className="h-9 min-h-0 w-auto text-sm"
         >
           <option value="all">全部类型</option>
           <option value="image">图像 (Image)</option>
@@ -76,7 +76,7 @@ export function MediaToolbar({
           value={selectedApp}
           onChange={(e) => onAppChange(e.target.value)}
           aria-label="按来源应用筛选"
-          className="h-9 w-auto max-w-48 text-sm"
+          className="h-9 min-h-0 w-auto max-w-48 text-sm"
         >
           <option value="all">全部来源</option>
           {appOptions.map((app) => (
@@ -91,7 +91,7 @@ export function MediaToolbar({
           value={selectedStatus}
           onChange={(e) => onStatusChange(e.target.value as MediaLibraryStatus | 'all')}
           aria-label="按可用状态筛选"
-          className="h-9 w-auto text-sm"
+          className="h-9 min-h-0 w-auto text-sm"
         >
           <option value="all">全部状态</option>
           <option value="ready">可用</option>
@@ -106,7 +106,7 @@ export function MediaToolbar({
           onClick={onRefresh}
           loading={isLoading}
           aria-label="刷新媒体库"
-          className="px-2.5 py-1.5 h-auto text-sm"
+          className="h-9 min-h-0 px-2.5 text-sm"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">刷新</span>

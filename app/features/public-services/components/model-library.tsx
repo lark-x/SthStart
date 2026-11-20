@@ -249,7 +249,7 @@ export function ModelLibrary({
       </section>
 
       {supplierEditor && <SupplierEditor
-        key={supplierEditor.group?.key ?? 'new'}
+        key={`supplier-editor:${supplierEditor.group?.key ?? 'new'}`}
         connection={supplierEditor.group?.primary ?? null}
         groupConnections={supplierEditor.group?.connections}
         connections={connections}
@@ -257,7 +257,7 @@ export function ModelLibrary({
         onSaved={onRefresh}
       />}
       {picker && <SupplierModelPicker
-        key={`${picker.group.key}:${picker.type}`}
+        key={`supplier-picker:${picker.group.key}:${picker.type}`}
         connections={picker.group.connections}
         supplierName={picker.group.name}
         initialType={picker.type}
@@ -266,8 +266,8 @@ export function ModelLibrary({
         onSaved={onRefresh}
       />}
       {detailGroup && <SupplierDetailDialog
-        key={detailGroup.key}
-        open
+        key={`supplier-detail:${detailGroup.key}`}
+        open={!supplierEditor && !picker && !editTarget && !deleteTarget && !deleteSupplier}
         onOpenChange={open => { if (!open) setDetailKey(null); }}
         group={detailGroup}
         onAddModel={type => setPicker({ group: detailGroup, type })}

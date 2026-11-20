@@ -1,17 +1,20 @@
 'use client';
 
+import { useId } from 'react';
 import { useFieldArray, type Control, type FieldErrors, type UseFormClearErrors, type UseFormGetValues, type UseFormRegister, type UseFormSetValue } from 'react-hook-form';
 import { Camera, Images, RotateCcw, User } from 'lucide-react';
-import type { CharacterDraftV2, CharacterVariant } from '@sthstart/contracts';
+import type { CharacterAssetDetail, CharacterDraftV2, CharacterVariant } from '@sthstart/contracts';
 import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
+import { Select } from '@/app/components/ui/select';
+import { Card } from '@/app/components/ui/card';
 import { TagsInput } from '@/app/components/shared/tags-input';
 import type { CharacterFormValues } from '../model/character-form-values';
-import type { CharacterEditorStatus } from '../model/character-editor-model';
+import { effectiveCharacterDraft, type CharacterEditorStatus } from '../model/character-editor-model';
 import { CharacterAssetTab } from './character-asset-tab';
-import { CharacterPersonaPanel, CharacterVisualPanel } from './character-editor-fields';
+import { CharacterDossierReading, CharacterPersonaPanel, CharacterVisualPanel } from './character-editor-fields';
 
 export type CharacterEditorTab = 'persona' | 'visual' | 'assets';
 
@@ -39,6 +42,8 @@ export function CharacterEditorForm({
   onRefreshCharacter,
   activeTab,
   onTabChange,
+  editing,
+  assets,
 }: {
   characterId?: string;
   control: Control<CharacterFormValues>;
@@ -63,16 +68,20 @@ export function CharacterEditorForm({
   onRefreshCharacter: () => void;
   activeTab: CharacterEditorTab;
   onTabChange: (tab: CharacterEditorTab) => void;
+  editing: boolean;
+  assets: CharacterAssetDetail[];
 }) {
+  const panelPrefix = useId();
+  const effectiveDraft = effectiveCharacterDraft(draft, activeVariant);
   const { fields: visualLoraFields, append: appendVisualLora, remove: removeVisualLora } = useFieldArray({
     control,
     name: 'visualLoras',
   });
 
   return (
-    <div className="order-1 w-full min-w-0 space-y-5 tpl-panel p-5 lg:order-2">
-      {/* Dossier Hero Header: 档案大标题 + 结构化属性栏 */}
-      <div className="space-y-3.5">
+    <Card className="order-2 flex w-full min-w-0 flex-col gap-5">
+      {/* Dossier Hero Header: 仅编辑主档案时展示表单输入（阅读态由顶部名片横幅统一展示） */}
+      {editing && !activeVariant && <div className="space-y-3.5">
         <div className="flex items-center justify-between gap-3 [&_.ui-mantine-input-wrapper]:min-w-0 [&_.ui-mantine-input-wrapper]:flex-1">
           <Input
             type="text"
@@ -84,11 +93,10 @@ export function CharacterEditorForm({
               },
             })}
             error={Boolean(errors.displayName)}
+            variant="inline"
             aria-label="角色名称"
             placeholder="角色名称（例如：芙宁娜）"
-            className={`!h-auto !min-h-0 !rounded-none !border-0 !border-b !border-transparent !bg-transparent !px-0 !py-1 !text-[26px] sm:!text-[28px] !font-[680] !tracking-[-0.02em] text-ink placeholder:text-fg-subtle hover:!border-border-subtle focus:!border-accent focus-visible:!outline-none transition-colors ${
-              errors.displayName ? '!border-danger focus:!border-danger' : ''
-            }`}
+            className="!h-auto !min-h-0 !px-0 !py-1 !text-[26px] sm:!text-[28px] !font-[680] !tracking-[-0.02em] text-ink placeholder:text-fg-subtle"
           />
           {hasActiveVariant && (
             <Button
@@ -170,11 +178,11 @@ export function CharacterEditorForm({
             />
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* 衍生形态专属属性面板（装甲 / SP / 阶段形态自带服装描述与背景故事） */}
-      {activeVariant && onUpdateVariant && (
-        <div className="rounded-panel border border-[var(--selection-border)] bg-[var(--selection-bg)]/35 p-4 space-y-3">
+      {editing && activeVariant && onUpdateVariant && (
+        <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-semibold text-ink">
               正在编辑衍生形态：{activeVariant.name}
@@ -183,6 +191,10 @@ export function CharacterEditorForm({
             <span className="text-xs text-muted">以下服装描写与背景故事归属当前形态</span>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block space-y-1 text-sm"><span>形态名称</span><Input value={activeVariant.name} onChange={e => onUpdateVariant(activeVariant.id, { name: e.target.value })} /></label>
+            <label className="block space-y-1 text-sm"><span>形态类型</span><Select value={activeVariant.variantKind || 'form'} onChange={e => onUpdateVariant(activeVariant.id, { variantKind: e.target.value as CharacterVariant['variantKind'] })}><option value="form">独立形态</option><option value="stage">装甲 / 阶段</option><option value="sp">SP 形态</option></Select></label>
+            <label className="block space-y-1 text-sm sm:col-span-2"><span>形态概述</span><Textarea rows={2} value={activeVariant.summary ?? draft.summary} onChange={e => onUpdateVariant(activeVariant.id, { summary: e.target.value })} /></label>
+            <label className="block space-y-1 text-sm"><span>形态基础外貌</span><Textarea rows={3} value={activeVariant.appearance?.baseText ?? draft.appearance.baseText} onChange={e => onUpdateVariant(activeVariant.id, { appearance: { baseText: e.target.value, defaultOutfitText: activeVariant.appearance?.defaultOutfitText ?? draft.appearance.defaultOutfitText } })} /></label>
             <label className="block space-y-1 text-xs">
               <span className="font-medium text-ink">形态服装描述（用于生图与出装）</span>
               <Textarea
@@ -191,7 +203,7 @@ export function CharacterEditorForm({
                 onChange={(e) =>
                   onUpdateVariant(activeVariant.id, {
                     appearance: {
-                      baseText: activeVariant.appearance?.baseText || draft.appearance.baseText,
+                      baseText: activeVariant.appearance?.baseText ?? draft.appearance.baseText,
                       defaultOutfitText: e.target.value,
                     },
                   })
@@ -203,44 +215,52 @@ export function CharacterEditorForm({
               <span className="font-medium text-ink">形态背景故事（阶段设定）</span>
               <Textarea
                 rows={3}
-                value={activeVariant.personaText || ''}
+                value={activeVariant.personaText ?? draft.personaText}
                 onChange={(e) => onUpdateVariant(activeVariant.id, { personaText: e.target.value })}
                 className="bg-surface text-xs"
               />
             </label>
+            {(['avatar', 'portrait'] as const).map(kind => <label key={kind} className="block space-y-1 text-sm"><span>{kind === 'avatar' ? '形态头像' : '形态立绘'}</span>
+              <Select value={activeVariant[`${kind}AssetId`] || ''} onChange={e => { const asset = assets.find(item => item.id === e.target.value); onUpdateVariant(activeVariant.id, { [`${kind}AssetId`]: asset?.id ?? null, [`${kind}Url`]: asset?.url ?? null }); }}>
+                <option value="">沿用主档案图片</option>{assets.filter(asset => asset.url).map(asset => <option key={asset.id} value={asset.id}>{asset.title || '未命名图片'}</option>)}
+              </Select></label>)}
           </div>
         </div>
       )}
 
       {/* 分段创作画布导航（精简为 3 项，LoRA 收进外貌高级区） */}
       <PageTabs variant="local" ariaLabel="角色档案编辑分段" value={activeTab} onChange={id => onTabChange(id as CharacterEditorTab)} className="character-editor-tabs w-fit max-w-full" tabs={[
-        { id: 'persona', label: <><User className="hidden h-4 w-4 sm:inline" aria-hidden="true" />人设演绎</> },
-        { id: 'visual', label: <><Camera className="hidden h-4 w-4 sm:inline" aria-hidden="true" />外貌生图</> },
-        { id: 'assets', label: <><Images className="hidden h-4 w-4 sm:inline" aria-hidden="true" />图片皮肤</>, count: assetsCount },
+        { id: 'persona', panelId: `${panelPrefix}-persona`, label: <><User className="hidden h-4 w-4 sm:inline" aria-hidden="true" />人设演绎</> },
+        { id: 'visual', panelId: `${panelPrefix}-visual`, label: <><Camera className="hidden h-4 w-4 sm:inline" aria-hidden="true" />外貌生图</> },
+        { id: 'assets', panelId: `${panelPrefix}-assets`, label: <><Images className="hidden h-4 w-4 sm:inline" aria-hidden="true" />图片皮肤</>, count: assetsCount },
       ]} />
 
       {activeTab === 'persona' && (
-        <CharacterPersonaPanel control={control} register={register} draft={draft} onDirty={onDirty} />
+        <div id={`${panelPrefix}-persona`} role="tabpanel" aria-label="人设演绎" tabIndex={0}>
+          {editing && !activeVariant ? <CharacterPersonaPanel control={control} register={register} draft={draft} onDirty={onDirty} /> : <CharacterDossierReading draft={effectiveDraft} />}
+        </div>
       )}
 
       {activeTab === 'visual' && (
-        <CharacterVisualPanel
+        <div id={`${panelPrefix}-visual`} role="tabpanel" aria-label="外貌生图" tabIndex={0}>{editing && !activeVariant ? <CharacterVisualPanel
           register={register}
           onDirty={onDirty}
           loraFields={visualLoraFields}
           onAppendLora={() => appendVisualLora({ model: '', strength: 1, triggerWord: '', enabled: true })}
           onRemoveLora={removeVisualLora}
-        />
+        /> : <CharacterDossierReading draft={effectiveDraft} visual />}</div>
       )}
 
       {activeTab === 'assets' && (
-        <div className="space-y-5 animate-in fade-in duration-200">
+        <div id={`${panelPrefix}-assets`} role="tabpanel" aria-label="图片皮肤" tabIndex={0} className="space-y-5">
           {characterId ? (
             <CharacterAssetTab
               characterId={characterId}
-              avatarAssetId={avatarAssetId ?? undefined}
-              portraitAssetId={portraitAssetId ?? undefined}
+              avatarAssetId={activeVariant?.avatarAssetId ?? avatarAssetId ?? undefined}
+              portraitAssetId={activeVariant?.portraitAssetId ?? portraitAssetId ?? undefined}
               displayName={draft.displayName || '未命名角色'}
+              variantName={activeVariant?.name}
+              onSelectVariantImage={activeVariant && onUpdateVariant ? (asset, kind) => onUpdateVariant(activeVariant.id, { [`${kind}AssetId`]: asset.id, [`${kind}Url`]: asset.url }) : undefined}
               onRefreshCharacter={onRefreshCharacter}
             />
           ) : (
@@ -258,16 +278,16 @@ export function CharacterEditorForm({
       {/* 底部保存状态栏 */}
       <div className="pt-4 border-t border-border-subtle flex items-center justify-between text-xs text-muted">
         <span className="text-xs text-muted">
-          {status === 'dirty' || isDirty
+          {status === 'error' ? '保存未完成，请查看错误提示后重试' : status === 'saving' ? '正在保存完整档案' : status === 'dirty' || isDirty
             ? '档案有未保存更改'
             : status === 'saved'
             ? '全部更改已保存到本地数据库'
             : '档案处于就绪状态'}
         </span>
-        <span className="hidden sm:inline text-[11px] text-muted">
+        <span className="hidden sm:inline text-xs text-muted">
           顶部按钮与快捷键随时可提交
         </span>
       </div>
-    </div>
+    </Card>
   );
 }

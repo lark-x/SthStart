@@ -53,6 +53,7 @@ export interface CommonLlmResult {
   profileId?: string;
   aiCallId?: string;
   tokenUsage?: Record<string, number>;
+  finishReason?: string;
 }
 
 /**
@@ -244,7 +245,7 @@ async function executeTextLlmOnce(options: ExecuteTextLlmOptions): Promise<strin
   }
 
   let data: {
-    choices?: { message?: { content?: string } }[];
+    choices?: { message?: { content?: string }; finish_reason?: unknown }[];
     usage?: Record<string, unknown>;
   };
   try {
@@ -267,6 +268,7 @@ async function executeTextLlmOnce(options: ExecuteTextLlmOptions): Promise<strin
     });
   }
   options.onResult?.({ text: content, model, profileId: profile.id, aiCallId: audited?.callId,
+    ...(typeof data.choices?.[0]?.finish_reason === 'string' ? { finishReason: data.choices[0].finish_reason } : {}),
     tokenUsage: data.usage ? Object.fromEntries(Object.entries(data.usage).filter((entry): entry is [string, number] => typeof entry[1] === 'number')) : undefined });
 
   return content;

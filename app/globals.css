@@ -269,9 +269,16 @@
 
   /* Mantine Button.layer.css / Menu.layer.css / Tabs.layer.css margins can be zeroed by Tailwind Preflight in @layer base, and Button.label lacks gap. */
   .mantine-Button-inner,
+  .ui-mantine-button-inner,
   .mantine-Menu-item,
   .mantine-Tabs-tab {
     gap: 0.45rem;
+  }
+
+  .mantine-Button-inner,
+  .ui-mantine-button-inner {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .mantine-Button-label,
@@ -280,7 +287,9 @@
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    overflow: visible;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     text-box-trim: initial;
   }
 

@@ -6,6 +6,11 @@ import { WORLD_RUNTIME_MIGRATION_STATEMENTS, WORLD_RUNTIME_NOTIFICATION_MIGRATIO
 import { WORLD_ROUTINE_MIGRATION_STATEMENTS } from './story-worlds/runtime-routine-migration.js';
 import { STORY_WORLD_IMAGES_MIGRATION_STATEMENTS } from './story-worlds/images-migration.js';
 import { storyWorldQueueStatements } from './generation/story-world-queue-migration.js';
+import { CREATIVE_ORCHESTRATION_STATEMENTS } from './creative-orchestration/migration.js';
+import { CREATIVE_AGENT_GRANT_STATEMENTS } from './creative-orchestration/agent-migration.js';
+import { CREATIVE_INTEGRATION_STATEMENTS } from './creative-orchestration/integration-migration.js';
+import { CREATIVE_MEMORY_STATEMENTS } from './creative-orchestration/memory-migration.js';
+import { CREATIVE_ACTION_STATEMENTS } from './creative-orchestration/action-migration.js';
 
 export interface DatabaseMigration {
   version: number;
@@ -2081,6 +2086,47 @@ export const SERVICE_DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
     'ALTER TABLE character_profiles ADD COLUMN parent_character_id TEXT REFERENCES character_profiles(id) ON DELETE SET NULL',
     'CREATE INDEX IF NOT EXISTS idx_character_profiles_parent ON character_profiles(parent_character_id)',
     "ALTER TABLE character_versions ADD COLUMN version_label TEXT NOT NULL DEFAULT ''",
+  ] },
+  { version: 64, name: 'character-authority-and-gallery-return', statements: [
+    'ALTER TABLE sw_world_setups ADD COLUMN creation_request_json TEXT',
+    `CREATE TABLE linshe_gallery_imports (
+      source_image_id TEXT PRIMARY KEY,
+      shared_asset_id TEXT NOT NULL REFERENCES shared_assets(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL)`,
+    'ALTER TABLE story_characters ADD COLUMN source_variant_id TEXT',
+    'ALTER TABLE story_characters ADD COLUMN source_costume_asset_id TEXT',
+  ] },
+  { version: 65, name: 'creative-orchestration', statements: [
+    ...CREATIVE_ORCHESTRATION_STATEMENTS,
+    ...CREATIVE_AGENT_GRANT_STATEMENTS,
+    ...CREATIVE_INTEGRATION_STATEMENTS,
+    ...CREATIVE_MEMORY_STATEMENTS,
+    ...CREATIVE_ACTION_STATEMENTS,
+  ] },
+  { version: 66, name: 'story-scene-drafts', statements: [
+    `CREATE TABLE story_scene_drafts (
+      id TEXT PRIMARY KEY, create_key TEXT NOT NULL UNIQUE, create_input TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      summary_json TEXT NOT NULL, draft_json TEXT NOT NULL
+    )`,
+    'CREATE INDEX story_scene_drafts_recent ON story_scene_drafts(updated_at DESC, id DESC)',
+    `CREATE TABLE story_scene_actions (
+      sequence INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE,
+      draft_id TEXT NOT NULL REFERENCES story_scene_drafts(id) ON DELETE CASCADE,
+      idempotency_key TEXT NOT NULL, action TEXT NOT NULL, status TEXT NOT NULL,
+      input_revision INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      request_json TEXT NOT NULL, input_json TEXT NOT NULL, snapshot_json TEXT NOT NULL,
+      message_id TEXT, retry_of TEXT, task_id TEXT, result_json TEXT, error_json TEXT,
+      UNIQUE (draft_id, idempotency_key)
+    )`,
+    'CREATE INDEX story_scene_actions_recent ON story_scene_actions(draft_id, sequence DESC)',
+    "CREATE UNIQUE INDEX story_scene_actions_running ON story_scene_actions(draft_id) WHERE status = 'running'",
+    'CREATE UNIQUE INDEX story_scene_actions_task ON story_scene_actions(task_id) WHERE task_id IS NOT NULL',
+  ] },
+  { version: 67, name: 'mcp-source-transport', statements: [
+    `ALTER TABLE mcp_sources ADD COLUMN transport TEXT NOT NULL DEFAULT 'auto'
+      CHECK(transport IN ('auto','streamable-http','sse'))`,
   ] },
 ];
 

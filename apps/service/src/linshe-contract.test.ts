@@ -67,6 +67,7 @@ test('SthStart public character response is consumable by the Linshe adapter', a
       method: 'POST',
       url: `/api/v1/admin/characters/${characterId}/publish`,
       headers: { 'x-sthstart-admin-token': ADMIN_TOKEN },
+      payload: { expectedDraftRevision: 1 },
     });
     assert.equal(published.statusCode, 201, published.body);
 

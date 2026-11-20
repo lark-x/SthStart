@@ -5,6 +5,8 @@ export const storyWorldKeys = {
   all: ['story-worlds'] as const,
   list: () => [...storyWorldKeys.all, 'list'] as const,
   overview: (worldId: string) => [...storyWorldKeys.all, 'overview', worldId] as const,
+  hub: (worldId: string, branchId?: string) =>
+    [...storyWorldKeys.all, 'hub', worldId, branchId ?? 'default'] as const,
   branch: (worldId: string, branchId: string) =>
     [...storyWorldKeys.all, 'branch', worldId, branchId] as const,
   events: (worldId: string, branchId: string, query: WorldEventQuery) =>

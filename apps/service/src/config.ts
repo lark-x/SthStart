@@ -7,6 +7,7 @@ export interface ServiceConfig {
   host: string;
   port: number;
   portalOrigins: readonly string[];
+  linshePortalUrl: string;
   linsheAgentPort: number;
   linsheWebPort: number;
   linsheAppUrl: string;
@@ -108,6 +109,10 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
   const portalOrigins = (environment.PORTAL_ORIGINS ?? 'http://127.0.0.1:4173,http://localhost:4173')
     .split(',')
     .map((origin) => httpUrl(origin.trim(), 'PORTAL_ORIGINS'));
+  const linshePortalUrl = httpUrl(
+    environment.STHSTART_PORTAL_URL ?? portalOrigins[0] ?? 'http://127.0.0.1:4173',
+    'STHSTART_PORTAL_URL',
+  );
   const linsheAgentPort = integer(environment.LINSHE_AGENT_PORT, 3099, 'LINSHE_AGENT_PORT', 1, 65_535);
   const linsheWebPort = integer(environment.LINSHE_WEB_PORT, 5173, 'LINSHE_WEB_PORT', 1, 65_535);
 
@@ -115,6 +120,7 @@ export function readConfig(environment: Readonly<Record<string, string | undefin
     host: loopbackHost(environment.SERVICE_HOST ?? '127.0.0.1'),
     port: integer(environment.SERVICE_PORT, 4100, 'SERVICE_PORT', 1, 65_535),
     portalOrigins,
+    linshePortalUrl,
     linsheAgentPort,
     linsheWebPort,
     linsheAppUrl: httpUrl(environment.LINSHE_APP_URL ?? `http://127.0.0.1:${linsheWebPort}`, 'LINSHE_APP_URL'),

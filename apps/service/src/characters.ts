@@ -1,4 +1,4 @@
-import { browseCharacters, canonicalWork, characterWorks, editCharacterOrganization, normalizeOrganization, upsertCharacterWorkHierarchy } from './characters/organization.js';
+import { browseCharacters, canonicalWork, editCharacterOrganization, normalizeOrganization, upsertCharacterWorkHierarchy } from './characters/organization.js';
 import type { OrganizationEdit } from './characters/organization.js';
 import type {
   CharacterBrowseQuery,
@@ -10,15 +10,22 @@ import type {
 import { createHash, randomUUID } from 'node:crypto';
 import {
   CharacterAvatarGenerationRequestSchema,
+  CharacterBatchAvatarRequestSchema,
+  CharacterBatchEnrichRpRequestSchema,
+  CharacterBatchImportLocalCardsRequestSchema,
   CharacterForkDerivativeRequestSchema,
   CharacterUpstreamApplyRequestSchema,
   CharacterUpstreamResearchRequestSchema,
   stripMachineCharacterIndex,
   type CharacterAssetCategory,
   type CharacterAvatarGenerationRequest,
+  type CharacterBatchAvatarRequest,
+  type CharacterBatchEnrichRpRequest,
+  type CharacterBatchImportLocalCardsRequest,
   type CharacterUpstreamApplyRequest,
   type CharacterUpstreamResearchRequest,
   type CharacterVariant,
+  type CharacterUpstreamEvidenceSource,
 } from '@sthstart/contracts';
 import { runUpstreamCharacterResearch } from './characters/upstream/orchestrator.js';
 import { imageGenerationAudit, mergeImageParameters, resolveImageConfiguration } from './generation/image-configuration.js';
@@ -27,7 +34,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { CharacterDraftV2, CharacterMigrationReview, CharacterProfile, CharacterRelationship, CharacterSource, CharacterVersion } from '@sthstart/contracts';
+import type { CharacterDraftV2, CharacterMigrationReview, CharacterProfile, CharacterRelationship, CharacterSource } from '@sthstart/contracts';
 import { CHARACTER_PERSONA_COMPILER_VERSION, compileLinshePrompt, migrateCharacterDraftToV2 } from '@sthstart/contracts';
 import { authenticateApp, hasCapability } from './access.js';
 import type { ServiceConfig } from './config.js';
@@ -40,7 +47,7 @@ import type { SecretStore } from './security.js';
 import { createArtifactReadStream, createArtifactReference, readArtifact, removeArtifactReference, streamUploadArtifact } from './artifacts.js';
 import { createGenerationTask, getGenerationTask } from './generation.js';
 import { sanitizeErrorMessage } from './generation.js';
-import { isV2Draft, normalizeCharacterDraft, text, list, toAuthorityDraft } from './characters/draft.js';
+import { characterDraftForVariant, isV2Draft, normalizeCharacterDraft, text, list, toAuthorityDraft } from './characters/draft.js';
 import { effectiveBirthday, rebuildCharacterBirthdays, upsertCharacterBirthday } from './characters/birthday.js';
 export { normalizeCharacterDraft } from './characters/draft.js';
 import { CharacterCardProviderRegistry } from './characters/source-providers/registry.js';
@@ -57,7 +64,15 @@ import { listCharacterLlmAssignments, resolveCharacterLlmProfile, setCharacterLl
 import { buildAuditionPrompt, normalizeCharacterAppearance } from './characters/persona-compiler.js';
 import { buildCharacterVisualContext, previewAppearanceCandidateApplication, toCharacterRuntime } from '@sthstart/contracts';
 import { assertPreparedImageContext, buildImageContext } from './generation/image-context.js';
-import { matchOfficialAvatarUrl, previewCharacterMultiSourceAssets } from './characters/official-avatars.js';
+import { previewCharacterMultiSourceAssets, resolveCharacterOfficialAssetBundle } from './characters/official-avatars.js';
+import {
+  repairCharacterAssetsMetadata,
+  runBatchEnrichRpCards,
+  runBatchImportLocalPersonaCards,
+  runBatchOfficialAssets,
+} from './characters/batch-enrichment.js';
+import { characterVisualReferenceRows as visualReferenceRows, mapCharacterVersion as mapVersion, publishCharacterSnapshot, readStoredCharacterSnapshot, syncCharacterSnapshotAfterChange } from './characters/snapshots.js';
+export { publishCharacterSnapshot } from './characters/snapshots.js';
 
 function hash(value: unknown) { return createHash('sha256').update(value instanceof Uint8Array || typeof value === 'string' ? value : JSON.stringify(value)).digest('hex'); }
 
@@ -148,20 +163,6 @@ function mapProfile(database: ServiceDatabase, row: Record<string, unknown>, ass
   };
 }
 
-function mapVersion(row: Record<string, unknown>): CharacterVersion {
-  const appearanceSnapshot = row.appearance_snapshot_json ? normalizeCharacterAppearance(JSON.parse(String(row.appearance_snapshot_json))) : undefined;
-  const rawProvenance = row.provenance_json ? JSON.parse(String(row.provenance_json)) : undefined;
-  const provenance = Array.isArray(rawProvenance) ? { fields: rawProvenance } : rawProvenance;
-  return {
-    characterId: String(row.character_id), version: Number(row.version),
-    ...(row.version_label ? { versionLabel: String(row.version_label) } : {}),
-    data: normalizeCharacterDraft(JSON.parse(String(row.data_json))),
-    compiledLinshePrompt: String(row.compiled_linshe_prompt), relationships: JSON.parse(String(row.relationships_json ?? '[]')) as CharacterRelationship[], createdAt: String(row.created_at),
-    ...(row.draft_revision != null ? { draftRevision: Number(row.draft_revision) } : {}),
-    ...(row.compiler_version != null ? { compilerVersion: String(row.compiler_version) } : {}),
-    ...(appearanceSnapshot ? { appearanceSnapshot } : {}), ...(provenance ? { provenance } : {}),
-  };
-}
 
 function uniqueSlug(database: ServiceDatabase, input: string, except?: string) {
   const base = input.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 54) || `character-${Date.now()}`;
@@ -220,78 +221,28 @@ function sourceRows(database: ServiceDatabase, characterId: string): CharacterSo
   }));
 }
 
-function compileLinshePromptWithCostumes(database: ServiceDatabase, characterId: string, draft: unknown): string {
-  const basePrompt = compileLinshePrompt(draft);
-  const costumeRows = database.connection.prepare(
-    "SELECT title, user_note, metadata_json FROM character_assets WHERE character_id=? AND category='costume' ORDER BY created_at ASC LIMIT 20",
-  ).all(characterId) as Array<{ title: string | null; user_note: string | null; metadata_json: string | null }>;
-  const lines: string[] = [];
-  for (const asset of costumeRows) {
-    let meta: Record<string, unknown> = {};
-    try { meta = asset.metadata_json ? JSON.parse(asset.metadata_json) as Record<string, unknown> : {}; } catch {}
-    const skinName = text(meta.skinName ?? asset.title, 100);
-    const outfitDesc = text(meta.outfitDescription ?? asset.user_note, 600);
-    if (skinName && outfitDesc) lines.push(`- ${skinName}：${outfitDesc}`);
+function saveUpstreamEvidence(database: ServiceDatabase, characterId: string, sources: CharacterUpstreamEvidenceSource[], now: string) {
+  for (const [sourceIndex, src] of sources.entries()) {
+    const provider = src.provider || src.sourceType || 'web';
+    const evidenceKind = src.evidenceKind || (src.rawText ? 'fulltext' : src.rawPayload ? 'structured' : 'snippet');
+    const sourcePayload = JSON.stringify({ ...src, evidenceKind });
+    const { retrievedAt: _retrievedAt, ...stableEvidence } = src;
+    const payloadHash = hash({ ...stableEvidence, evidenceKind });
+    const externalId = src.externalId || src.url || src.title;
+    const existingSnapshot = database.connection.prepare('SELECT id FROM character_source_snapshots WHERE provider_id=? AND external_id=? AND payload_hash=?').get(provider, externalId, payloadHash) as { id: string } | undefined;
+    const snapshotId = existingSnapshot?.id || randomUUID();
+    if (!existingSnapshot) database.connection.prepare(`INSERT INTO character_source_snapshots
+      (id,provider_id,external_id,source_url,fetched_at,payload_hash,format,parser_version,raw_payload_json,created_at)
+      VALUES (?,?,?,?,?,?,'upstream-evidence-json-v1','upstream-evidence-v1',?,?)`).run(snapshotId, provider, externalId, src.url, src.retrievedAt || now, payloadHash, sourcePayload, now);
+    database.connection.prepare(`INSERT INTO character_sources
+      (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(), characterId, src.title, src.url, src.excerpt.slice(0, 12_000), src.sourceType || 'web', now, provider, externalId, payloadHash, snapshotId);
+    database.connection.prepare(`INSERT INTO character_field_provenance
+      (id,character_id,field_path,value_hash,source_kind,source_snapshot_id,source_pointer,evidence_json,confirmed,created_at)
+      VALUES (?,?,?,?,?,?,?,?,1,?)`).run(randomUUID(), characterId, `/sources/${sourceIndex}`, payloadHash, 'source_extract', snapshotId, `/sources/${sourceIndex}`, JSON.stringify({ evidenceKind, contentHash: src.contentHash || null, url: src.url }), now);
   }
-  if (lines.length === 0) return basePrompt;
-  const marker = '\n\n## 你的外观\n';
-  const idx = basePrompt.indexOf(marker);
-  const skinSection = `\n\n## 可选皮肤与装扮参考\n${lines.join('\n')}`;
-  return idx >= 0
-    ? `${basePrompt.slice(0, idx)}${skinSection}${basePrompt.slice(idx)}`
-    : `${basePrompt}${skinSection}`;
 }
 
-export function publishCharacterSnapshot(
-  database: ServiceDatabase,
-  characterId: string,
-  options?: { versionLabel?: string; allowIncomplete?: boolean },
-): CharacterVersion | null {
-  const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(characterId) as Record<string, unknown> | undefined;
-  if (!row) return null;
-  const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
-  const runtime = toCharacterRuntime(draft);
-  if (!options?.allowIncomplete && (!runtime.displayName || (!runtime.personaText.trim() && !runtime.summary.trim()))) {
-    return null;
-  }
-  const version = Number(row.latest_version ?? 0) + 1;
-  const prompt = compileLinshePromptWithCostumes(database, characterId, draft);
-  const now = nowIso();
-  const versionLabel = text(options?.versionLabel, 120);
-  const appearance = normalizeCharacterAppearance(runtime.appearance.legacy);
-  appearance.description = runtime.appearance.baseText;
-  const publishedReferences = database.connection.prepare('SELECT id FROM character_visual_references WHERE character_id=? AND enabled=1 ORDER BY created_at ASC').all(characterId) as Array<{ id: string }>;
-  appearance.referenceIds = [...new Set([...(appearance.referenceIds ?? []), ...publishedReferences.map((reference) => reference.id)])];
-  const appearanceSnapshot = JSON.stringify({ ...appearance, avatarAssetId: row.avatar_asset_id ?? null, references: visualReferenceRows(database, characterId).filter((reference) => reference.enabled) });
-  const provenance = JSON.stringify(database.connection.prepare('SELECT field_path,value_hash,source_kind,source_snapshot_id,source_pointer,evidence_json,confirmed FROM character_field_provenance WHERE character_id=? ORDER BY created_at DESC').all(characterId));
-  const writeVersion = () => {
-    database.connection.prepare(`INSERT INTO character_versions
-      (character_id,version,version_label,data_json,compiled_linshe_prompt,created_at,relationships_json,draft_revision,appearance_snapshot_json,provenance_json,compiler_version)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
-      characterId,
-      version,
-      versionLabel,
-      JSON.stringify(draft),
-      prompt,
-      now,
-      JSON.stringify(relationshipRows(database, characterId)),
-      Number(row.draft_revision ?? 1),
-      appearanceSnapshot,
-      provenance,
-      CHARACTER_PERSONA_COMPILER_VERSION,
-    );
-    const frozenAssets = database.connection.prepare(`SELECT DISTINCT a.artifact_id FROM character_assets a
-      WHERE a.character_id=? AND a.artifact_id IS NOT NULL AND (a.id=? OR a.id IN (SELECT asset_id FROM character_visual_references WHERE character_id=? AND enabled=1))`).all(characterId, row.avatar_asset_id ? String(row.avatar_asset_id) : null, characterId) as Array<{ artifact_id: string }>;
-    for (const asset of frozenAssets) createArtifactReference(database, { artifactId: asset.artifact_id, appId: 'characters', refType: 'character-version', refId: `${characterId}:${version}` });
-    database.connection.prepare('UPDATE character_profiles SET latest_version=?,updated_at=? WHERE id=?').run(version, now, characterId);
-    database.connection.prepare(`INSERT INTO personas(id,display_name,tags_json,source,latest_version,created_at,updated_at) VALUES (?,?,?,?,?,?,?)
-      ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,tags_json=excluded.tags_json,latest_version=excluded.latest_version,updated_at=excluded.updated_at`).run(characterId, runtime.displayName, String(row.tags_json), 'character-library', version, String(row.created_at), now);
-    database.connection.prepare('INSERT OR REPLACE INTO persona_versions VALUES (?,?,?,?,?,?,?,?)').run(characterId, version, runtime.displayName, prompt, runtime.appearance.baseText || null, row.avatar_asset_id ? String(row.avatar_asset_id) : null, JSON.stringify({ characterData: draft }), now);
-  };
-  if (database.connection.isTransaction) writeVersion();
-  else database.transaction(writeVersion);
-  return mapVersion(database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(characterId, version) as Record<string, unknown>);
-}
 
 /**
  * 迁移复核：从归档原文现场重算冲突，不另存一份可能漂移的复核状态。
@@ -507,23 +458,15 @@ async function sendCharacterAsset(database: ServiceDatabase, assetId: string, re
   return reply.send(createArtifactReadStream(artifact.localPath));
 }
 
-function visualReferenceRows(database: ServiceDatabase, characterId: string) {
-  // 参考图只保存「作为生成参考的配置」（用途/启用/裁剪）；来源、备注、哈希与尺寸
-  // 属于该角色对文件的资产记录，统一从这里 JOIN 读取。
-  return (database.connection.prepare(`SELECT r.id,r.character_id,r.asset_id,r.purposes_json,r.enabled,r.crop_json,r.created_at,
-      a.artifact_id,art.sha256,art.width,art.height,art.content_type,art.original_name,a.source_page,a.source_url,a.author_note,a.user_note
-    FROM character_visual_references r
-    JOIN character_assets a ON a.id=r.asset_id
-    LEFT JOIN artifacts art ON art.id=a.artifact_id
-    WHERE r.character_id=? ORDER BY r.created_at DESC`).all(characterId) as Record<string, unknown>[]).map((row) => ({
-    id: String(row.id), characterId: String(row.character_id), assetId: String(row.asset_id), artifactId: row.artifact_id ? String(row.artifact_id) : null,
-    sha256: String(row.sha256 ?? ''), width: row.width == null ? null : Number(row.width), height: row.height == null ? null : Number(row.height),
-    purposes: JSON.parse(String(row.purposes_json ?? '[]')) as string[], outfitId: null,
-    sourcePage: row.source_page ? String(row.source_page) : null, originalUrl: row.source_url ? String(row.source_url) : null,
-    authorNote: String(row.author_note ?? ''), userNote: String(row.user_note ?? ''), enabled: Boolean(row.enabled), crop: row.crop_json ? JSON.parse(String(row.crop_json)) as Record<string, unknown> : null,
-    url: `/api/admin/characters/assets/${row.asset_id}`, createdAt: String(row.created_at),
-  }));
+async function sendFrozenCharacterAsset(database: ServiceDatabase, characterId: string, version: number, assetId: string, reply: FastifyReply) {
+  const row = database.connection.prepare('SELECT data_json FROM character_versions WHERE character_id=? AND version=?').get(characterId, version) as { data_json: string } | undefined;
+  const asset = row && readStoredCharacterSnapshot(row.data_json)?.assets.find(item => item.id === assetId);
+  if (!asset?.artifactId) return reply.code(404).send({ error: 'version_asset_not_found' });
+  const artifact = await readArtifact(database, asset.artifactId);
+  if (!artifact?.localPath || artifact.fileStatus !== 'ready' || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'artifact_not_ready' });
+  return reply.type(artifact.contentType || 'application/octet-stream').send(createArtifactReadStream(artifact.localPath));
 }
+
 
 async function referenceBytes(database: ServiceDatabase, row: Record<string, unknown>) {
   if (!row.artifact_id) throw new Error('reference_artifact_missing');
@@ -585,6 +528,8 @@ async function downloadAndSaveCharacterAsset(
     loreStory?: string;
     tags?: string[];
   },
+  deferSnapshot = false,
+  stagedWrites?: Array<() => void>,
 ): Promise<{ id: string; kind: 'avatar' | 'portrait' | 'reference'; category: CharacterAssetCategory; url: string; setAvatar: boolean; setPortrait: boolean } | null> {
   if (!item.url) return null;
   try {
@@ -619,7 +564,7 @@ async function downloadAndSaveCharacterAsset(
 
     let setAvatar = false;
     let setPortrait = false;
-    database.transaction(() => {
+    const saveAsset = () => {
       database.connection.prepare(`INSERT INTO character_assets
         (id,character_id,kind,created_at,artifact_id,source_url,author_note,user_note,category,title,tags_json,metadata_json)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
@@ -651,7 +596,10 @@ async function downloadAndSaveCharacterAsset(
           setPortrait = true;
         }
       }
-    });
+      if (!deferSnapshot) syncCharacterSnapshotAfterChange(database, characterId, { incrementRevision: true });
+    };
+    if (stagedWrites) stagedWrites.push(saveAsset);
+    else database.transaction(saveAsset);
 
     return { id: assetId, kind: item.kind, category, url: `/api/admin/characters/assets/${assetId}`, setAvatar, setPortrait };
   } catch {
@@ -663,6 +611,8 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   migrateLegacyPersonas(database);
   // 生日投影完全由角色草稿推导，启动时重建可以覆盖旧数据并保持筛选、日历一致。
   rebuildCharacterBirthdays(database);
+  // 历史遗留头像/立绘可能未写入 category/title 或产生重复记录，启动时自愈。
+  repairCharacterAssetsMetadata(database);
   const cardProviders = new CharacterCardProviderRegistry(fetcher);
 
   app.get('/api/v1/admin/characters/card-providers', async () => ({
@@ -767,9 +717,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   app.put<{ Body: CharacterWork }>('/api/v1/admin/characters/works', async (request, reply) => {
     const name = text(request.body?.name, 200); const aliases = [...new Set(list(request.body?.aliases, 50))];
     if (!name) return reply.code(400).send({ error: '请填写作品名称' });
-    const all = [name, ...aliases].map(n => n.toLowerCase());
-    if (characterWorks(database).filter(w => database.connection.prepare('SELECT 1 FROM character_works WHERE name=?').get(w.name)).some(w => w.name.toLowerCase() !== name.toLowerCase() && [w.name, ...w.aliases].some(n => all.includes(n.toLowerCase())))) return reply.code(409).send({ error: '名称或别名已属于其他作品，请先整理已有角色的作品' });
-    return upsertCharacterWorkHierarchy(database, {
+    try { return upsertCharacterWorkHierarchy(database, {
       name,
       aliases,
       mediaType: request.body?.mediaType,
@@ -777,7 +725,10 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       parentWork: request.body?.parentWork,
       worldId: request.body?.worldId,
       summary: request.body?.summary,
-    });
+    }); } catch (error) {
+      const detail = error as Error & { statusCode?: number; code?: string };
+      return reply.code(detail.statusCode === 409 ? 409 : 400).send({ error: detail.code || detail.message });
+    }
   });
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/import-sessions/:id/duplicates', async (request, reply) => {
     const session = getCharacterImportSession(database, request.params.id);
@@ -807,143 +758,67 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const id = randomUUID(); const now = nowIso(); const slug = uniqueSlug(database, request.body?.slug || draft.englishName || draft.displayName);
     const variants = Array.isArray(request.body?.variants) ? request.body.variants : [];
     const parentCharacterId = text(body.parentCharacterId ?? incoming.parentCharacterId, 200) || null;
-    database.connection.prepare(`INSERT INTO character_profiles
-      (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json,parent_character_id)
-      VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,?,?)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now, JSON.stringify(variants), parentCharacterId);
-    upsertCharacterBirthday(database, id, draft);
-    if (draft.originType !== 'original') {
-      publishCharacterSnapshot(database, id, { allowIncomplete: true });
-    }
+    database.transaction(() => {
+      database.connection.prepare(`INSERT INTO character_profiles
+        (id,slug,display_name,draft_json,tags_json,avatar_asset_id,latest_version,archived,created_at,updated_at,draft_revision,variants_json,parent_character_id)
+        VALUES (?,?,?,?,?,NULL,NULL,0,?,?,1,?,?)`).run(id, slug, draft.displayName, JSON.stringify(draft), JSON.stringify(list(request.body?.tags, 50)), now, now, JSON.stringify(variants), parentCharacterId);
+      upsertCharacterBirthday(database, id, draft);
+      syncCharacterSnapshotAfterChange(database, id);
+    });
     return reply.code(201).send(mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(id) as Record<string, unknown>));
   });
 
-  // 批量匹配官方头像
-  app.post<{ Body: { ids?: string[]; onlyMissing?: boolean } }>('/api/v1/admin/characters/batch-match-official-avatars', async (request) => {
-    const onlyMissing = request.body?.onlyMissing !== false;
-    let rows: Record<string, unknown>[] = [];
-    if (Array.isArray(request.body?.ids) && request.body.ids.length > 0) {
-      const placeholders = request.body.ids.map(() => '?').join(',');
-      rows = database.connection.prepare(`SELECT id, display_name, draft_json, avatar_asset_id FROM character_profiles WHERE id IN (${placeholders}) AND archived=0`).all(...request.body.ids) as Record<string, unknown>[];
-    } else {
-      rows = database.connection.prepare('SELECT id, display_name, draft_json, avatar_asset_id FROM character_profiles WHERE archived=0').all() as Record<string, unknown>[];
-    }
-
-    if (onlyMissing) {
-      rows = rows.filter((r) => !r.avatar_asset_id);
-    }
-
-    let updated = 0;
-    let skipped = 0;
-    let failed = 0;
-    const items: Array<{ id: string; displayName: string; success: boolean; error?: string }> = [];
-
-    const concurrency = 6;
-    let index = 0;
-
-    async function worker() {
-      while (index < rows.length) {
-        const row = rows[index++];
-        const id = String(row.id);
-        const displayName = String(row.display_name);
-        try {
-          const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
-          const match = matchOfficialAvatarUrl(displayName, (draft as Record<string, unknown>).englishName as string | undefined, (draft as Record<string, unknown>).work as string | undefined);
-          if (!match) {
-            skipped++;
-            items.push({ id, displayName, success: false, error: '未在官方角色库中匹配到' });
-            continue;
-          }
-
-          const urls = match.candidateUrls && match.candidateUrls.length > 0
-            ? match.candidateUrls
-            : [
-                match.url,
-                `https://api.ambr.top/assets/UI/UI_AvatarIcon_${match.nameEn}.png`,
-              ];
-          let buffer: Buffer | null = null;
-          let contentType = 'image/png';
-          for (const u of urls) {
-            try {
-              const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-              if (res.ok) {
-                buffer = Buffer.from(await res.arrayBuffer());
-                contentType = res.headers.get('content-type') || 'image/png';
-                break;
-              }
-            } catch {
-              // try next
-            }
-          }
-
-          if (!buffer || buffer.length === 0) {
-            failed++;
-            items.push({ id, displayName, success: false, error: '下载官方头像失败' });
-            continue;
-          }
-
-          const assetId = randomUUID();
-          const now = nowIso();
-          const filename = `${match.nameEn || displayName}_avatar.png`;
-          const artifact = await streamUploadArtifact(config, database, {
-            appId: 'characters',
-            stream: Readable.from([buffer]),
-            contentType,
-            originalName: filename,
-            refType: 'character-asset',
-            refId: assetId,
-            metadata: { characterId: id, kind: 'avatar' },
-          });
-
-          database.transaction(() => {
-            database.connection.prepare(`INSERT INTO character_assets
-              (id,character_id,kind,created_at,artifact_id,source_url,user_note)
-              VALUES (?,?,?,?,?,?,?)`).run(assetId, id, 'avatar', now, artifact.id, match.url, `官方批量抓取: ${match.matchedName}`);
-            database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, id);
-          });
-
-          updated++;
-          items.push({ id, displayName, success: true });
-        } catch (e) {
-          failed++;
-          items.push({ id, displayName, success: false, error: e instanceof Error ? e.message : String(e) });
-        }
-      }
-    }
-
-    const workers = Array.from({ length: Math.min(concurrency, rows.length) }, () => worker());
-    await Promise.all(workers);
-
-    return {
-      total: rows.length,
-      updated,
-      skipped,
-      failed,
-      items,
-    };
+  // 批量匹配官方形象（头像 / 立绘 / 全部皮肤，按作品单一默认源去重入库）
+  app.post<{ Body: CharacterBatchAvatarRequest }>('/api/v1/admin/characters/batch-match-official-avatars', {
+    preValidation: async (request) => { request.body ??= {}; },
+    schema: { body: CharacterBatchAvatarRequestSchema },
+  }, async (request) => {
+    return runBatchOfficialAssets(config, database, fetcher, request.body ?? {});
   });
 
-  // 官方角色头像一键匹配抓取
+  // 批量获取并补全角色卡（RP 设定）
+  app.post<{ Body: CharacterBatchEnrichRpRequest }>('/api/v1/admin/characters/batch-enrich-rp-cards', {
+    preValidation: async (request) => { request.body ??= {}; },
+    schema: { body: CharacterBatchEnrichRpRequestSchema },
+  }, async (request) => {
+    return runBatchEnrichRpCards(database, fetcher, request.body ?? {});
+  });
+
+  // 从本地精选人设库一键批量导入（自机 + 剧情 + NPC）
+  app.post<{ Body: CharacterBatchImportLocalCardsRequest }>('/api/v1/admin/characters/batch-import-local-cards', {
+    preValidation: async (request) => { request.body ??= {}; },
+    schema: { body: CharacterBatchImportLocalCardsRequestSchema },
+  }, async (request) => {
+    return runBatchImportLocalPersonaCards(database, request.body ?? {});
+  });
+
+  // 官方角色头像一键匹配抓取（同步兼容单角快速按钮，支持全作品官方源）
   app.post<{ Params: { id: string } }>('/api/v1/admin/characters/:id/match-official-avatar', async (request, reply) => {
     const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
     const draft = normalizeCharacterDraft(JSON.parse(String(row.draft_json)));
-    const match = matchOfficialAvatarUrl(String(row.display_name), (draft as Record<string, unknown>).englishName as string | undefined, (draft as Record<string, unknown>).work as string | undefined);
-    if (!match) return reply.code(404).send({ error: 'no_official_avatar_found', message: `未在官方角色库中匹配到角色“${row.display_name}”。` });
+    const bundle = await resolveCharacterOfficialAssetBundle(
+      String(row.display_name),
+      (draft as Record<string, unknown>).englishName as string | undefined,
+      (draft as Record<string, unknown>).work as string | undefined,
+      undefined,
+      fetcher,
+    );
+    if (!bundle?.avatar) {
+      return reply.code(404).send({ error: 'no_official_avatar_found', message: `未在官方角色库中匹配到角色“${row.display_name}”。` });
+    }
 
-    const urls = match.candidateUrls && match.candidateUrls.length > 0
-      ? match.candidateUrls
-      : [
-          match.url,
-          `https://api.ambr.top/assets/UI/UI_AvatarIcon_${match.nameEn}.png`,
-        ];
+    const urls = bundle.avatar.candidateUrls.length ? bundle.avatar.candidateUrls : [bundle.avatar.url];
     let buffer: Buffer | null = null;
     let contentType = 'image/png';
+    let resolvedUrl = urls[0];
     for (const u of urls) {
       try {
-        const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const res = await fetcher(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10_000) });
         if (res.ok) {
           buffer = Buffer.from(await res.arrayBuffer());
           contentType = res.headers.get('content-type') || 'image/png';
+          resolvedUrl = u;
           break;
         }
       } catch {
@@ -951,11 +826,12 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       }
     }
     if (!buffer || buffer.length === 0) {
-      return reply.code(502).send({ error: 'fetch_official_avatar_failed', message: `下载官方头像失败 (${match.matchedName})，请检查网络连接或稍后重试。` });
+      return reply.code(502).send({ error: 'fetch_official_avatar_failed', message: `下载官方头像失败 (${row.display_name})，请检查网络连接或稍后重试。` });
     }
 
     const assetId = randomUUID(); const now = nowIso();
-    const filename = `${match.nameEn || row.display_name}_avatar.png`;
+    const title = `${row.display_name} 官方头像`;
+    const filename = `${row.display_name}_avatar.png`;
     const artifact = await streamUploadArtifact(config, database, {
       appId: 'characters',
       stream: Readable.from([buffer]),
@@ -963,13 +839,17 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       originalName: filename,
       refType: 'character-asset',
       refId: assetId,
-      metadata: { characterId: request.params.id, kind: 'avatar' },
+      metadata: { characterId: request.params.id, kind: 'avatar', category: 'avatar' },
     });
     database.transaction(() => {
       database.connection.prepare(`INSERT INTO character_assets
-        (id,character_id,kind,created_at,artifact_id,source_url,user_note)
-        VALUES (?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id, match.url, `官方抓取: ${match.matchedName}`);
+        (id,character_id,kind,created_at,artifact_id,source_url,user_note,category,title,tags_json)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+          assetId, request.params.id, 'avatar', now, artifact.id, resolvedUrl,
+          `官方抓取 (${bundle.sourceUsed})`, 'avatar', title, JSON.stringify(['官方头像']),
+        );
       database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+      syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
     });
     const updated = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
     return mapProfile(database, updated);
@@ -987,16 +867,18 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       const buffer = Buffer.from(await res.arrayBuffer());
       const contentType = res.headers.get('content-type') || 'image/png';
       const assetId = randomUUID(); const now = nowIso();
+      const title = `${row.display_name} 头像`;
       const artifact = await streamUploadArtifact(config, database, {
         appId: 'characters', stream: Readable.from([buffer]), contentType,
         originalName: `avatar_${assetId}.png`, refType: 'character-asset', refId: assetId,
-        metadata: { characterId: request.params.id, kind: 'avatar' },
+        metadata: { characterId: request.params.id, kind: 'avatar', category: 'avatar' },
       });
       database.transaction(() => {
         database.connection.prepare(`INSERT INTO character_assets
-          (id,character_id,kind,created_at,artifact_id,source_url,user_note)
-          VALUES (?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id, targetUrl, 'URL导入头像');
+          (id,character_id,kind,created_at,artifact_id,source_url,user_note,category,title)
+          VALUES (?,?,?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id, targetUrl, 'URL导入头像', 'avatar', title);
         database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+        syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
       });
       const updated = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
       return mapProfile(database, updated);
@@ -1074,22 +956,30 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const nextRevision = currentRevision + 1;
     const variantsJson = request.body?.variants !== undefined ? JSON.stringify(request.body.variants) : String(current.variants_json || '[]');
     const statement = database.connection.prepare(`UPDATE character_profiles SET slug=?,display_name=?,draft_json=?,tags_json=?,avatar_asset_id=?,draft_revision=?,updated_at=?,variants_json=? WHERE id=?${request.body?.expectedDraftRevision != null ? ' AND draft_revision=?' : ''}`);
-    const result = request.body?.expectedDraftRevision != null
-      ? statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id, currentRevision)
-      : statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id);
-    if (Number(result.changes) !== 1) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
-    upsertCharacterBirthday(database, request.params.id, draft);
-    if (draft.originType !== 'original') {
-      publishCharacterSnapshot(database, request.params.id, { allowIncomplete: true });
-    }
+    const updated = database.transaction(() => {
+      const result = request.body?.expectedDraftRevision != null
+        ? statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id, currentRevision)
+        : statement.run(slug, draft.displayName, JSON.stringify(draft), JSON.stringify(tags), avatar, nextRevision, nowIso(), variantsJson, request.params.id);
+      if (Number(result.changes) !== 1) return false;
+      upsertCharacterBirthday(database, request.params.id, draft);
+      syncCharacterSnapshotAfterChange(database, request.params.id);
+      return true;
+    });
+    if (!updated) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: currentRevision });
     return mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>);
   });
 
   app.post<{ Params: { id: string }; Body: { expectedDraftRevision?: number; versionLabel?: string } }>('/api/v1/admin/characters/:id/publish', async (request, reply) => {
     const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown> | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
+    if (normalizeCharacterDraft(JSON.parse(String(row.draft_json))).originType === 'original' && !Number.isSafeInteger(request.body?.expectedDraftRevision)) {
+      return reply.code(409).send({ error: 'expected_draft_revision_required', draftRevision: Number(row.draft_revision ?? 1) });
+    }
     if (request.body?.expectedDraftRevision != null && Number(request.body.expectedDraftRevision) !== Number(row.draft_revision ?? 1)) return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: Number(row.draft_revision ?? 1) });
-    const published = publishCharacterSnapshot(database, request.params.id, { versionLabel: request.body?.versionLabel });
+    const original = normalizeCharacterDraft(JSON.parse(String(row.draft_json))).originType === 'original';
+    const published = original
+      ? publishCharacterSnapshot(database, request.params.id, { versionLabel: request.body?.versionLabel, expectedDraftRevision: request.body?.expectedDraftRevision })
+      : syncCharacterSnapshotAfterChange(database, request.params.id);
     if (!published) return reply.code(400).send({ error: 'character_incomplete', message: '发布前至少需要角色名称，以及人设正文或摘要。' });
     return reply.code(201).send(published);
   });
@@ -1102,10 +992,14 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!source) return reply.code(404).send({ error: 'not_found' });
 
     const sourceDraft = toAuthorityDraft(JSON.parse(String(source.draft_json)));
-    const targetWorkName = text(request.body.targetWork, 200);
+    const targetWorkName = canonicalWork(database, text(request.body.targetWork, 200));
     if (!targetWorkName) return reply.code(400).send({ error: 'target_work_required', message: '请填写衍生同人作品名称。' });
 
     const parentWorkName = text(request.body.parentWork, 200) || canonicalWork(database, sourceDraft.work) || null;
+    const existingWork = database.connection.prepare('SELECT work_nature,parent_work FROM character_works WHERE name=?').get(targetWorkName) as { work_nature: string; parent_work: string | null } | undefined;
+    if (existingWork && (existingWork.work_nature !== 'derivative' || canonicalWork(database, existingWork.parent_work || '') !== canonicalWork(database, parentWorkName || ''))) {
+      return reply.code(409).send({ error: 'derivative_work_conflict', message: '目标作品已经存在，请选择母作品一致的同人作品，或先在作品目录中调整分类。' });
+    }
     const rootId = source.parent_character_id ? String(source.parent_character_id) : String(source.id);
     const newId = randomUUID();
     const now = nowIso();
@@ -1129,7 +1023,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const tags = JSON.parse(String(source.tags_json || '[]')) as string[];
 
     let createdWork!: CharacterWork;
-    database.transaction(() => {
+    try { database.transaction(() => {
       createdWork = upsertCharacterWorkHierarchy(database, {
         name: targetWorkName,
         workNature: 'derivative',
@@ -1140,12 +1034,50 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
         try { return JSON.parse(String(source.variants_json || '[]')) as CharacterVariant[]; } catch { return []; }
       })();
       const assetIdMap = new Map<string, string>();
+      const sourceAssets = shareAssets
+        ? (database.connection.prepare('SELECT * FROM character_assets WHERE character_id=? ORDER BY created_at ASC').all(String(source.id)) as Array<Record<string, string | number | bigint | Uint8Array | null>>)
+        : [];
+      for (const asset of sourceAssets) {
+        assetIdMap.set(String(asset.id), randomUUID());
+      }
+
+      const clonedAvatarId = source.avatar_asset_id ? (assetIdMap.get(String(source.avatar_asset_id)) ?? null) : null;
+      const clonedPortraitId = source.portrait_asset_id ? (assetIdMap.get(String(source.portrait_asset_id)) ?? null) : null;
+      const clonedVariants = shareAssets
+        ? sourceVariants.map((variant) => ({
+            ...variant,
+            avatarAssetId: variant.avatarAssetId ? (assetIdMap.get(variant.avatarAssetId) ?? null) : null,
+            avatarUrl: variant.avatarAssetId && assetIdMap.has(variant.avatarAssetId)
+              ? `/api/admin/characters/assets/${assetIdMap.get(variant.avatarAssetId)}`
+              : variant.avatarUrl,
+            portraitAssetId: variant.portraitAssetId ? (assetIdMap.get(variant.portraitAssetId) ?? null) : null,
+            portraitUrl: variant.portraitAssetId && assetIdMap.has(variant.portraitAssetId)
+              ? `/api/admin/characters/assets/${assetIdMap.get(variant.portraitAssetId)}`
+              : variant.portraitUrl,
+          }))
+        : [];
+
+      // Insert character_profiles first so child character_assets/visual_references foreign keys resolve cleanly.
+      database.connection.prepare(`INSERT INTO character_profiles
+        (id,slug,display_name,draft_json,tags_json,avatar_asset_id,portrait_asset_id,latest_version,archived,created_at,updated_at,draft_revision,organization_json,variants_json,parent_character_id)
+        VALUES (?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?)`).run(
+        newId,
+        slug,
+        derivativeDraft.displayName,
+        JSON.stringify(derivativeDraft),
+        JSON.stringify(tags),
+        clonedAvatarId,
+        clonedPortraitId,
+        now,
+        now,
+        JSON.stringify(org),
+        JSON.stringify(clonedVariants),
+        rootId,
+      );
 
       if (shareAssets) {
-        const sourceAssets = database.connection.prepare('SELECT * FROM character_assets WHERE character_id=? ORDER BY created_at ASC').all(String(source.id)) as Array<Record<string, string | number | bigint | Uint8Array | null>>;
         for (const asset of sourceAssets) {
-          const clonedAssetId = randomUUID();
-          assetIdMap.set(String(asset.id), clonedAssetId);
+          const clonedAssetId = assetIdMap.get(String(asset.id))!;
           database.connection.prepare(`INSERT INTO character_assets
             (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note,category,title,tags_json,metadata_json)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
@@ -1174,39 +1106,6 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
         }
       }
 
-      const clonedAvatarId = source.avatar_asset_id ? (assetIdMap.get(String(source.avatar_asset_id)) ?? null) : null;
-      const clonedPortraitId = source.portrait_asset_id ? (assetIdMap.get(String(source.portrait_asset_id)) ?? null) : null;
-      const clonedVariants = shareAssets
-        ? sourceVariants.map((variant) => ({
-            ...variant,
-            avatarAssetId: variant.avatarAssetId ? (assetIdMap.get(variant.avatarAssetId) ?? null) : null,
-            avatarUrl: variant.avatarAssetId && assetIdMap.has(variant.avatarAssetId)
-              ? `/api/admin/characters/assets/${assetIdMap.get(variant.avatarAssetId)}`
-              : variant.avatarUrl,
-            portraitAssetId: variant.portraitAssetId ? (assetIdMap.get(variant.portraitAssetId) ?? null) : null,
-            portraitUrl: variant.portraitAssetId && assetIdMap.has(variant.portraitAssetId)
-              ? `/api/admin/characters/assets/${assetIdMap.get(variant.portraitAssetId)}`
-              : variant.portraitUrl,
-          }))
-        : [];
-
-      database.connection.prepare(`INSERT INTO character_profiles
-        (id,slug,display_name,draft_json,tags_json,avatar_asset_id,portrait_asset_id,latest_version,archived,created_at,updated_at,draft_revision,organization_json,variants_json,parent_character_id)
-        VALUES (?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?)`).run(
-        newId,
-        slug,
-        derivativeDraft.displayName,
-        JSON.stringify(derivativeDraft),
-        JSON.stringify(tags),
-        clonedAvatarId,
-        clonedPortraitId,
-        now,
-        now,
-        JSON.stringify(org),
-        JSON.stringify(clonedVariants),
-        rootId,
-      );
-
       if (shareAssets) {
         const sourceRefs = database.connection.prepare('SELECT * FROM character_visual_references WHERE character_id=?').all(String(source.id)) as Array<Record<string, string | number | bigint | Uint8Array | null>>;
         for (const ref of sourceRefs) {
@@ -1229,7 +1128,11 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
       upsertCharacterBirthday(database, newId, derivativeDraft);
       publishCharacterSnapshot(database, newId, { versionLabel: targetWorkName, allowIncomplete: true });
-    });
+    }); } catch (error) {
+      const detail = error as Error & { statusCode?: number; code?: string };
+      if (!detail.statusCode) throw error;
+      return reply.code(detail.statusCode === 409 ? 409 : 400).send({ error: detail.code || detail.message });
+    }
 
     const createdProfile = mapProfile(database, database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(newId) as Record<string, unknown>);
     return reply.code(201).send({ character: createdProfile, work: createdWork });
@@ -1249,14 +1152,15 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       const draft = preview ? preview.draft : await generateDraft(database, secrets, fetcher, description, []);
       const found = preview?.sources ?? [];
       const now = nowIso(); database.transaction(() => {
+        const latest = database.connection.prepare('SELECT draft_revision FROM character_profiles WHERE id=?').get(request.params.id) as { draft_revision: number } | undefined;
+        if (Number(latest?.draft_revision) !== Number(row.draft_revision ?? 1)) throw new Error('draft_revision_conflict');
         database.connection.prepare('UPDATE character_profiles SET display_name=?,draft_json=?,draft_revision=?,updated_at=? WHERE id=?').run(draft.displayName, JSON.stringify(draft), Number(row.draft_revision ?? 1) + 1, now, request.params.id);
         upsertCharacterBirthday(database, request.params.id, draft);
-        for (const source of found) database.connection.prepare(`INSERT INTO character_sources
-          (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
-          VALUES (?,?,?,?,?,?,?,?,?,?,NULL)`).run(randomUUID(), request.params.id, source.title, source.url, source.excerpt, source.sourceType, now, null, null, null);
+        saveUpstreamEvidence(database, request.params.id, found, now);
+        syncCharacterSnapshotAfterChange(database, request.params.id);
       });
       return { draft, sources: sourceRows(database, request.params.id) };
-    } catch (error) { return reply.code(502).send({ error: 'generation_failed', message: error instanceof Error ? error.message : String(error) }); }
+    } catch (error) { return reply.code(error instanceof Error && error.message === 'draft_revision_conflict' ? 409 : 502).send({ error: error instanceof Error && error.message === 'draft_revision_conflict' ? 'draft_revision_conflict' : 'generation_failed', message: error instanceof Error ? error.message : String(error) }); }
   });
 
   // 上游多源 RP 卡与皮肤/衍生形态预览采集
@@ -1312,14 +1216,22 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
     const existingVariants: CharacterVariant[] = (() => { try { return JSON.parse(String(profileRow.variants_json || '[]')); } catch { return []; } })();
     const warnings: string[] = [];
+    const createdAssetIds: string[] = [];
+    const stagedAssetWrites: Array<() => void> = [];
+    let selectedAvatar: string | undefined;
+    let selectedPortrait: string | undefined;
     let importedAssetCount = 0;
     let createdSkinCount = 0;
     let createdVariantCount = 0;
 
     // 1. 导入选中的通用资产（主头像、主立绘等）
     for (const assetReq of request.body.selectedAssets || []) {
-      const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, assetReq);
-      if (saved) importedAssetCount += 1;
+      const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, { ...assetReq, setAsActive: false }, true, stagedAssetWrites);
+      if (saved) {
+        importedAssetCount += 1; createdAssetIds.push(saved.id);
+        if (assetReq.setAsActive && assetReq.kind === 'avatar') selectedAvatar = saved.id;
+        if (assetReq.setAsActive && assetReq.kind === 'portrait') selectedPortrait = saved.id;
+      }
       else warnings.push(`资产下载失败: ${assetReq.title || assetReq.url}`);
     }
 
@@ -1327,9 +1239,10 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     for (const skin of request.body.selectedSkins || []) {
       if (!skin.selected) continue;
       const targetUrl = skin.portraitUrl || skin.avatarUrl;
+      let skinSaved = false;
       if (targetUrl) {
         const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, {
-          kind: skin.portraitUrl ? 'reference' : 'avatar',
+          kind: 'reference',
           category: 'costume',
           title: `皮肤 · ${skin.name}`,
           url: targetUrl,
@@ -1339,10 +1252,21 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
           outfitDescription: skin.outfitDescription,
           loreStory: skin.loreStory,
           tags: [skin.name, '皮肤'],
-        });
-        if (saved) { importedAssetCount += 1; createdSkinCount += 1; }
-        else warnings.push(`皮肤「${skin.name}」图片下载失败`);
+        }, true, stagedAssetWrites);
+        if (saved) { importedAssetCount += 1; skinSaved = true; createdAssetIds.push(saved.id); }
+        else warnings.push(`皮肤「${skin.name}」图片下载失败，服装描述和故事已保留。`);
       }
+      if (!skinSaved) {
+        const textAssetId = randomUUID();
+        stagedAssetWrites.push(() => { database.connection.prepare(`INSERT INTO character_assets
+          (id,character_id,kind,created_at,artifact_id,source_page,source_url,author_note,user_note,category,title,tags_json,metadata_json)
+          VALUES (?,?,'reference',?,NULL,?,?,?,?,'costume',?,?,?)`).run(
+          textAssetId, request.params.id, nowIso(), skin.source || null, targetUrl || null, skin.loreStory, skin.outfitDescription,
+          `皮肤 · ${skin.name}`, JSON.stringify([skin.name, '皮肤']), JSON.stringify({ skinName: skin.name, outfitDescription: skin.outfitDescription, loreStory: skin.loreStory, imageStatus: 'unavailable', ...(targetUrl ? { imageWarning: '图片下载失败' } : {}) }),
+        ); });
+        createdAssetIds.push(textAssetId);
+      }
+      createdSkinCount += 1;
     }
 
     // 3. 导入选中的「衍生形态」（崩坏三装甲 / 星铁 SP 等，携带独立服装描述、背景故事与立绘）
@@ -1362,8 +1286,10 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
           outfitDescription: variant.outfitDescription,
           loreStory: variant.loreStory,
           tags: [variant.name, '衍生形态'],
-        });
-        if (savedAv) { avatarAssetId = savedAv.id; importedAssetCount += 1; }
+          setAsActive: false,
+        }, true, stagedAssetWrites);
+        if (savedAv) { avatarAssetId = savedAv.id; importedAssetCount += 1; createdAssetIds.push(savedAv.id); }
+        else warnings.push(`形态「${variant.name}」头像下载失败，形态文字已保留。`);
       }
       if (variant.portraitUrl) {
         const savedPort = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, {
@@ -1377,21 +1303,29 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
           outfitDescription: variant.outfitDescription,
           loreStory: variant.loreStory,
           tags: [variant.name, '衍生形态'],
-        });
-        if (savedPort) { portraitAssetId = savedPort.id; importedAssetCount += 1; }
+        }, true, stagedAssetWrites);
+        if (savedPort) { portraitAssetId = savedPort.id; importedAssetCount += 1; createdAssetIds.push(savedPort.id); }
+        else warnings.push(`形态「${variant.name}」立绘下载失败，形态文字已保留。`);
       }
 
       const idx = nextVariants.findIndex((v) => v.name.trim() === variant.name.trim());
+      const previousVariant = idx >= 0 ? nextVariants[idx] : undefined;
+      const hasStory = Boolean(variant.loreStory.trim());
+      const hasOutfit = Boolean(variant.outfitDescription.trim());
+      const missingFields = [!hasStory && '形态故事', !hasOutfit && '服装描述'].filter(Boolean);
+      if (missingFields.length) warnings.push(`形态「${variant.name}」缺少${missingFields.join('、')}，对应内容沿用主档案或已保存的形态资料。`);
       const builtVariant: CharacterVariant = {
+        ...previousVariant,
         id: idx >= 0 ? nextVariants[idx].id : randomUUID(),
         name: variant.name,
         ...(variant.variantKind ? { variantKind: variant.variantKind } : {}),
-        summary: variant.loreStory.slice(0, 120) || `${nextDraft.displayName}的衍生形态「${variant.name}」`,
-        personaText: variant.loreStory,
-        appearance: {
-          baseText: nextDraft.appearance.baseText,
+        // Upstream stories describe a form, not the character's complete identity.
+        // Missing evidence inherits the main draft; manual empty-string overrides remain meaningful.
+        ...(hasStory ? { personaText: [nextDraft.personaText, `## 形态经历：${variant.name}`, variant.loreStory].filter(Boolean).join('\n\n') } : {}),
+        ...(hasOutfit ? { appearance: {
+          baseText: previousVariant?.appearance?.baseText ?? nextDraft.appearance.baseText,
           defaultOutfitText: variant.outfitDescription,
-        },
+        } } : {}),
         ...(avatarAssetId ? { avatarAssetId, avatarUrl: `/api/admin/characters/assets/${avatarAssetId}` } : {}),
         ...(portraitAssetId ? { portraitAssetId, portraitUrl: `/api/admin/characters/assets/${portraitAssetId}` } : {}),
       };
@@ -1400,7 +1334,11 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     }
 
     const now = nowIso();
-    database.transaction(() => {
+    try { database.transaction(() => {
+      const latest = database.connection.prepare('SELECT draft_revision FROM character_profiles WHERE id=?').get(request.params.id) as { draft_revision: number };
+      // Asset downloads await network I/O; never overwrite a draft edited in the meantime.
+      if (Number(latest.draft_revision) !== currentRevision) throw new Error('draft_revision_conflict');
+      for (const saveAsset of stagedAssetWrites) saveAsset();
       database.connection.prepare(
         'UPDATE character_profiles SET display_name=?,draft_json=?,tags_json=?,variants_json=?,draft_revision=?,updated_at=? WHERE id=?',
       ).run(
@@ -1413,26 +1351,26 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
         request.params.id,
       );
       upsertCharacterBirthday(database, request.params.id, nextDraft);
-      for (const src of request.body.sources || []) {
-        database.connection.prepare(`INSERT INTO character_sources
-          (id,character_id,title,url,excerpt,source_type,fetched_at,provider_id,external_id,payload_hash,source_snapshot_id)
-          VALUES (?,?,?,?,?,?,?,?,?,?,NULL)`).run(
-          randomUUID(),
-          request.params.id,
-          src.title,
-          src.url,
-          src.excerpt.slice(0, 12_000),
-          src.sourceType || 'web',
-          now,
-          null,
-          null,
-          null,
-        );
-      }
+      if (selectedAvatar) database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=? WHERE id=?').run(selectedAvatar, request.params.id);
+      if (selectedPortrait) database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=? WHERE id=?').run(selectedPortrait, request.params.id);
+      saveUpstreamEvidence(database, request.params.id, request.body.sources || [], now);
       if (nextDraft.originType !== 'original') {
         publishCharacterSnapshot(database, request.params.id, { allowIncomplete: true });
       }
-    });
+    }); } catch (error) {
+      database.transaction(() => {
+        for (const assetId of createdAssetIds) {
+          database.connection.prepare('DELETE FROM character_visual_references WHERE asset_id=?').run(assetId);
+          database.connection.prepare('DELETE FROM character_assets WHERE id=? AND character_id=?').run(assetId, request.params.id);
+          database.connection.prepare('DELETE FROM artifact_references WHERE app_id=? AND ref_id=?').run('characters', assetId);
+        }
+      });
+      if (error instanceof Error && error.message === 'draft_revision_conflict') {
+        const latest = database.connection.prepare('SELECT draft_revision FROM character_profiles WHERE id=?').get(request.params.id) as { draft_revision: number };
+        return reply.code(409).send({ error: 'draft_revision_conflict', draftRevision: latest.draft_revision });
+      }
+      throw error;
+    }
 
     const updatedRow = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
     return {
@@ -1448,9 +1386,11 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     preValidation: async request => { request.body ??= {}; },
     schema: { body: CharacterAvatarGenerationRequestSchema },
   }, async (request, reply) => {
-    const row = database.connection.prepare('SELECT draft_json FROM character_profiles WHERE id=?').get(request.params.id) as { draft_json: string } | undefined;
+    const row = database.connection.prepare('SELECT draft_json,variants_json FROM character_profiles WHERE id=?').get(request.params.id) as { draft_json: string; variants_json: string } | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
-    const draft = normalizeCharacterDraft(JSON.parse(row.draft_json));
+    const variant = request.body.variantId ? (JSON.parse(row.variants_json || '[]') as CharacterVariant[]).find(item => item.id === request.body.variantId) : undefined;
+    if (request.body.variantId && !variant) return reply.code(404).send({ error: 'variant_not_found' });
+    const draft = characterDraftForVariant(JSON.parse(row.draft_json), variant);
     const prompt = text(request.body?.prompt, 10_000) || characterAvatarPrompt(draft);
     if (prompt.length < 2) return reply.code(400).send({ error: 'appearance_required', message: '请先补充角色外观描述。' });
     const seed = request.body?.seed == null ? null : Number(request.body.seed);
@@ -1458,19 +1398,36 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const header = request.headers['idempotency-key'];
     try {
       const body = request.body ?? {};
+      if (body.preparationId) {
+        const preparation = database.connection.prepare('SELECT request_snapshot_json FROM ai_call_records WHERE id=?').get(body.preparationId) as { request_snapshot_json: string } | undefined;
+        const preparedCharacters = preparation ? JSON.parse(preparation.request_snapshot_json)?.context?.characters ?? [] : [];
+        if (!preparedCharacters.some((item: { characterId: string; variantId?: string }) => item.characterId === request.params.id && (item.variantId || null) === (body.variantId || null))) {
+          return reply.code(409).send({ error: 'prompt_preparation_variant_mismatch', message: '形态已变化，请重新准备提示词。' });
+        }
+      }
       const avatarConfiguration = resolveImageConfiguration(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision });
+      const referenceAssetId = variant?.portraitAssetId || variant?.avatarAssetId;
+      const referenceArtifact = referenceAssetId ? database.connection.prepare('SELECT artifact_id FROM character_assets WHERE id=? AND character_id=?').get(referenceAssetId, request.params.id) as { artifact_id: string | null } | undefined : undefined;
+      const referenceInputKey = avatarConfiguration.configuration.referenceInputKey;
       const preparedContext = body.preparationId
         ? assertPreparedImageContext(database, 'characters', body.preparationId, body.contextHash, request.params.id, {
           workflowId: avatarConfiguration.workflow.id, workflowVersion: avatarConfiguration.workflow.version,
           configurationHash: avatarConfiguration.configuration.configurationHash })
-        : { loras: buildImageContext(database, { characters: [{ characterId: request.params.id }] }, resolveImageConfiguration(database,
+        : { loras: buildImageContext(database, { characters: [{ characterId: request.params.id, ...(body.variantId ? { variantId: body.variantId } : {}) }] }, resolveImageConfiguration(database,
           { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }).workflow).loras };
       const audit = body.configurationHash || body.optimizerCallId
         ? imageGenerationAudit(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }, body.configurationHash, body.optimizerCallId, body.sourceDescription) : {};
       const avatarInputs = body.parameters ? mergeImageParameters(resolveImageConfiguration(database, { appId: 'characters', purpose: 'character-avatar', presetId: body.presetId, presetRevision: body.presetRevision }), body.parameters) : { prompt };
       const task = await createGenerationTask(config, database, secrets, {
         appId: 'characters', purpose: 'character-avatar',
-        inputs: { ...avatarInputs, characterId: request.params.id },
+        inputs: { ...avatarInputs, characterId: request.params.id, ...(body.variantId ? { variantId: body.variantId } : {}) },
+        ...(referenceArtifact?.artifact_id && referenceInputKey ? { inputArtifacts: [{ artifactId: referenceArtifact.artifact_id, inputKey: referenceInputKey }] } : {}),
+        onInsertTask: ({ taskId }) => {
+          const stored = database.connection.prepare('SELECT request_params_json FROM generation_tasks WHERE id=?').get(taskId) as { request_params_json: string };
+          const params = JSON.parse(stored.request_params_json);
+          params.context = { ...params.context, character: { characterId: request.params.id, ...(body.variantId ? { variantId: body.variantId } : {}) } };
+          database.connection.prepare('UPDATE generation_tasks SET request_params_json=? WHERE id=?').run(JSON.stringify(params), taskId);
+        },
         presetId: body.presetId, presetRevision: body.presetRevision,
         activityLoras: preparedContext.loras,
         audit: { feature: 'character-avatar', ...audit, ...(body.preparationId ? { parentId: body.preparationId } : {}),
@@ -1489,7 +1446,8 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
   app.post<{ Params: { id: string; taskId: string } }>('/api/v1/admin/characters/:id/generation-tasks/:taskId/apply-avatar', async (request, reply) => {
     if (!database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(request.params.id)) return reply.code(404).send({ error: 'not_found' });
-    if (!characterGenerationTask(database, request.params.taskId, request.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const generationRow = characterGenerationTask(database, request.params.taskId, request.params.id);
+    if (!generationRow) return reply.code(404).send({ error: 'not_found' });
     const task = getGenerationTask(database, request.params.taskId, 'characters');
     if (!task) return reply.code(404).send({ error: 'not_found' });
     if (task.status !== 'succeeded') return reply.code(409).send({ error: 'task_not_succeeded', status: task.status });
@@ -1497,19 +1455,25 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!output) return reply.code(409).send({ error: 'image_output_missing' });
     const artifact = await readArtifact(database, output.artifactId);
     if (!artifact || artifact.fileStatus !== 'ready' || !artifact.localPath || !existsSync(artifact.localPath)) return reply.code(404).send({ error: 'artifact_not_ready' });
-    const current = database.connection.prepare('SELECT avatar_asset_id FROM character_profiles WHERE id=?').get(request.params.id) as { avatar_asset_id: string | null };
-    const oldAsset = current.avatar_asset_id
-      ? database.connection.prepare('SELECT artifact_id FROM character_assets WHERE id=?').get(current.avatar_asset_id) as { artifact_id: string | null } | undefined
-      : undefined;
+    const storedRequest = JSON.parse(generationRow.request_params_json);
+    const variantId = storedRequest.context?.character?.variantId || storedRequest.inputs?.variantId;
+    const current = database.connection.prepare('SELECT avatar_asset_id,variants_json FROM character_profiles WHERE id=?').get(request.params.id) as { avatar_asset_id: string | null; variants_json: string };
+    const variants = JSON.parse(current.variants_json || '[]') as CharacterVariant[];
+    const variant = variantId ? variants.find(item => item.id === variantId) : undefined;
+    if (variantId && !variant) return reply.code(409).send({ error: 'variant_not_found', message: '生成时选择的形态已删除，不能写入主档案。' });
     const assetId = randomUUID(); const now = nowIso();
     try {
       database.transaction(() => {
         database.connection.prepare(`INSERT INTO character_assets
-          (id,character_id,kind,created_at,artifact_id)
-          VALUES (?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id);
-        database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
-        createArtifactReference(database, { artifactId: artifact.id, appId: 'characters', refType: 'character-avatar', refId: request.params.id });
-        if (oldAsset?.artifact_id && oldAsset.artifact_id !== artifact.id) removeArtifactReference(database, { artifactId: oldAsset.artifact_id, appId: 'characters', refId: request.params.id });
+          (id,character_id,kind,created_at,artifact_id,category,title)
+          VALUES (?,?,?,?,?,?,?)`).run(assetId, request.params.id, 'avatar', now, artifact.id, 'avatar', variant ? `形态头像 · ${variant.name}` : 'AI 生成头像');
+        if (variant) {
+          variant.avatarAssetId = assetId;
+          variant.avatarUrl = `/api/admin/characters/assets/${assetId}`;
+          database.connection.prepare('UPDATE character_profiles SET variants_json=?,updated_at=? WHERE id=?').run(JSON.stringify(variants), now, request.params.id);
+        } else database.connection.prepare('UPDATE character_profiles SET avatar_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
+        createArtifactReference(database, { artifactId: artifact.id, appId: 'characters', refType: 'character-asset', refId: assetId });
+        syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
       });
     } catch (error) { return generationError(reply, error); }
     return reply.code(201).send({ id: assetId, url: `/api/admin/characters/assets/${assetId}` });
@@ -1543,11 +1507,14 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     const target = request.body?.toCharacterId; if (!target || target === request.params.id || !database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(target)) return reply.code(400).send({ error: 'invalid_relationship_target' });
     const existing = database.connection.prepare('SELECT id FROM character_relationships WHERE from_character_id=? AND to_character_id=?').get(request.params.id, target) as { id: string } | undefined; const id = existing?.id ?? randomUUID();
     database.connection.prepare(`INSERT INTO character_relationships VALUES (?,?,?,?,?,?) ON CONFLICT(from_character_id,to_character_id) DO UPDATE SET relation_type=excluded.relation_type,description=excluded.description,updated_at=excluded.updated_at`).run(id, request.params.id, target, text(request.body.relationType, 200), text(request.body.description, 4_000), nowIso());
+    for (const affected of [request.params.id, target]) syncCharacterSnapshotAfterChange(database, affected, { incrementRevision: true });
     return { id };
   });
 
   app.delete<{ Params: { id: string; relationshipId: string } }>('/api/v1/admin/characters/:id/relationships/:relationshipId', async (request, reply) => {
+    const relationship = database.connection.prepare('SELECT from_character_id,to_character_id FROM character_relationships WHERE id=? AND (from_character_id=? OR to_character_id=?)').get(request.params.relationshipId, request.params.id, request.params.id) as { from_character_id: string; to_character_id: string } | undefined;
     const result = database.connection.prepare('DELETE FROM character_relationships WHERE id=? AND (from_character_id=? OR to_character_id=?)').run(request.params.relationshipId, request.params.id, request.params.id);
+    if (result.changes && relationship) for (const affected of [relationship.from_character_id, relationship.to_character_id]) syncCharacterSnapshotAfterChange(database, affected, { incrementRevision: true });
     return result.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
@@ -1591,6 +1558,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       }
     }
     const reference = kind === 'reference' ? visualReferenceRows(database, request.params.id).find((item) => item.assetId === id) : null;
+    syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
     return reply.code(201).send({ id, url: `/api/admin/characters/assets/${id}`, category, title, tags, metadata, ...(reference ? { reference } : {}) });
   });
 
@@ -1600,8 +1568,8 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     if (!profile) return reply.code(404).send({ error: 'not_found' });
     const rows = database.connection.prepare(`SELECT a.id, a.character_id, a.kind, a.created_at, a.artifact_id,
         a.source_url, a.source_page, a.author_note, a.user_note, a.category, a.title, a.tags_json, a.metadata_json
-      FROM character_assets a JOIN artifacts art ON art.id=a.artifact_id
-      WHERE a.character_id=? AND art.file_status='ready' AND art.local_path IS NOT NULL
+      FROM character_assets a LEFT JOIN artifacts art ON art.id=a.artifact_id
+      WHERE a.character_id=? AND (a.artifact_id IS NULL OR (art.file_status='ready' AND art.local_path IS NOT NULL))
       ORDER BY a.created_at DESC`).all(request.params.id) as Record<string, unknown>[];
     return {
       characterId: profile.id,
@@ -1618,7 +1586,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
           kind: String(r.kind) as 'avatar' | 'portrait' | 'reference',
           category: (r.category ? String(r.category) : (r.kind === 'avatar' ? 'avatar' : r.kind === 'portrait' ? 'portrait' : 'other')) as any,
           title: String(r.title || ''),
-          url: `/api/admin/characters/assets/${r.id}`,
+          url: r.artifact_id ? `/api/admin/characters/assets/${r.id}` : null,
           artifactId: r.artifact_id ? String(r.artifact_id) : null,
           tags,
           metadata,
@@ -1634,8 +1602,9 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
   // 更新角色单项资产
   app.patch<{ Params: { id: string; assetId: string }; Body: { title?: string; category?: string; tags?: string[]; metadata?: Record<string, unknown>; userNote?: string; authorNote?: string; setAsActive?: 'avatar' | 'portrait' | 'none' } }>('/api/v1/admin/characters/:id/assets/:assetId', async (request, reply) => {
-    const existing = database.connection.prepare('SELECT id, kind, category FROM character_assets WHERE id=? AND character_id=?').get(request.params.assetId, request.params.id) as { id: string; kind: string; category: string } | undefined;
+    const existing = database.connection.prepare('SELECT id, kind, category,artifact_id FROM character_assets WHERE id=? AND character_id=?').get(request.params.assetId, request.params.id) as { id: string; kind: string; category: string; artifact_id: string | null } | undefined;
     if (!existing) return reply.code(404).send({ error: 'not_found' });
+    if ((request.body?.setAsActive === 'avatar' || request.body?.setAsActive === 'portrait') && !existing.artifact_id) return reply.code(400).send({ error: 'asset_image_required' });
     const now = nowIso();
     const updates: string[] = [];
     const values: any[] = [];
@@ -1672,6 +1641,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     } else if (request.body?.setAsActive === 'portrait') {
       database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?, updated_at=? WHERE id=?').run(existing.id, now, request.params.id);
     }
+    if (updates.length > 0 || request.body?.setAsActive) syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
     return { ok: true, id: existing.id };
   });
 
@@ -1685,9 +1655,16 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=NULL, updated_at=? WHERE id=? AND portrait_asset_id=?').run(now, request.params.id, existing.id);
       database.connection.prepare('DELETE FROM character_visual_references WHERE asset_id=?').run(existing.id);
       database.connection.prepare('DELETE FROM character_assets WHERE id=?').run(existing.id);
+      const profile = database.connection.prepare('SELECT variants_json FROM character_profiles WHERE id=?').get(request.params.id) as { variants_json: string };
+      const variants = (JSON.parse(profile.variants_json || '[]') as CharacterVariant[]).map(variant => ({ ...variant,
+        ...(variant.avatarAssetId === existing.id ? { avatarAssetId: null, avatarUrl: null } : {}),
+        ...(variant.portraitAssetId === existing.id ? { portraitAssetId: null, portraitUrl: null } : {}),
+      }));
+      database.connection.prepare('UPDATE character_profiles SET variants_json=? WHERE id=?').run(JSON.stringify(variants), request.params.id);
       if (existing.artifact_id) {
         removeArtifactReference(database, { artifactId: existing.artifact_id, appId: 'characters', refId: existing.id });
       }
+      syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
     });
     return { ok: true, id: existing.id };
   });
@@ -1774,12 +1751,13 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
 
     let activeAvatarAssetId = profile.avatar_asset_id;
     let activePortraitAssetId = profile.portrait_asset_id;
+    const warnings: string[] = [];
     const imported: Array<{ id: string; kind: 'avatar' | 'portrait' | 'reference'; url: string }> = [];
 
     for (const item of assetsToImport) {
       if (!item.url || !['avatar', 'portrait', 'reference'].includes(item.kind)) continue;
       const saved = await downloadAndSaveCharacterAsset(config, database, fetcher, request.params.id, item);
-      if (!saved) continue;
+      if (!saved) { warnings.push(`资产下载失败：${item.title || item.url}`); continue; }
       if (saved.setAvatar) activeAvatarAssetId = saved.id;
       if (saved.setPortrait) activePortraitAssetId = saved.id;
       imported.push({ id: saved.id, kind: saved.kind, url: saved.url });
@@ -1789,6 +1767,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
       imported,
       activeAvatarAssetId,
       activePortraitAssetId,
+      warnings,
     };
   });
 
@@ -1804,6 +1783,8 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     }
     const asset = database.connection.prepare('SELECT id, character_id FROM character_assets WHERE id=? AND character_id=?').get(assetId, request.params.id);
     if (!asset) return reply.code(404).send({ error: 'asset_not_found' });
+    const media = database.connection.prepare('SELECT artifact_id FROM character_assets WHERE id=?').get(assetId) as { artifact_id: string | null };
+    if (!media.artifact_id) return reply.code(400).send({ error: 'asset_image_required', message: '这条服饰记录只有文字，请先添加图片。' });
 
     const now = nowIso();
     if (kind === 'avatar') {
@@ -1811,12 +1792,15 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
     } else {
       database.connection.prepare('UPDATE character_profiles SET portrait_asset_id=?,updated_at=? WHERE id=?').run(assetId, now, request.params.id);
     }
+    syncCharacterSnapshotAfterChange(database, request.params.id, { incrementRevision: true });
 
     const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(request.params.id) as Record<string, unknown>;
     return mapProfile(database, row);
   });
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/assets/:id', async (request, reply) => sendCharacterAsset(database, request.params.id, reply, config));
+  app.get<{ Params: { id: string; version: string; assetId: string } }>('/api/v1/admin/characters/:id/versions/:version/assets/:assetId', async (request, reply) =>
+    sendFrozenCharacterAsset(database, request.params.id, Number(request.params.version), request.params.assetId, reply));
 
   app.get<{ Params: { id: string } }>('/api/v1/admin/characters/:id/visual-references', async (request, reply) => {
     if (!database.connection.prepare('SELECT 1 FROM character_profiles WHERE id=?').get(request.params.id)) return reply.code(404).send({ error: 'not_found' });
@@ -1916,6 +1900,7 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(), request.params.id, null, fieldPath, hash(value), 'image_observed', null, `/character-ai-candidates/${request.params.taskId}`, JSON.stringify({ evidence: extraction.evidence, conflicts: extraction.conflicts }), '[]', 1, now);
       }
       database.connection.prepare("UPDATE character_ai_candidates SET status='applied' WHERE id=?").run(request.params.taskId);
+      syncCharacterSnapshotAfterChange(database, request.params.id);
     });
     return { draft: nextDraft, draftRevision: nextRevision, candidateId: request.params.taskId };
   });
@@ -1968,18 +1953,49 @@ export function registerCharacterRoutes(app: FastifyInstance, config: ServiceCon
   app.get('/api/v1/characters', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
     const rows = database.connection.prepare('SELECT * FROM character_profiles WHERE archived=0 AND latest_version IS NOT NULL ORDER BY display_name').all();
-    return { items: rows.map((row) => mapProfile(database, row as Record<string, unknown>, '/api/v1/characters/assets')) };
+    return { items: rows.map((row) => {
+      const profile = mapProfile(database, row as Record<string, unknown>, '/api/v1/characters/assets');
+      const latest = database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(profile.id, profile.latestVersion!) as Record<string, unknown>;
+      const version = mapVersion(latest);
+      const frozen = readStoredCharacterSnapshot(latest.data_json);
+      const url = (assetId?: string | null) => assetId ? `/api/v1/characters/${profile.id}/versions/${version.version}/assets/${assetId}` : null;
+      return { ...profile, draft: version.data, displayName: version.data.displayName, tags: version.tags ?? [], variants: version.variants ?? [],
+        familyMembers: (profile.familyMembers ?? []).flatMap(member => {
+          const published = database.connection.prepare('SELECT v.data_json,v.version FROM character_profiles p JOIN character_versions v ON v.character_id=p.id AND v.version=p.latest_version WHERE p.id=?').get(member.id) as { data_json: string; version: number } | undefined;
+          if (!published) return [];
+          const draft = normalizeCharacterDraft(JSON.parse(published.data_json));
+          const snapshot = readStoredCharacterSnapshot(published.data_json);
+          return [{ ...member, displayName: draft.displayName, work: draft.work, originType: draft.originType,
+            avatarUrl: snapshot?.avatarAssetId ? `/api/v1/characters/${member.id}/versions/${published.version}/assets/${snapshot.avatarAssetId}` : null }];
+        }),
+        draftRevision: version.draftRevision, avatarAssetId: frozen?.avatarAssetId ?? null, portraitAssetId: frozen?.portraitAssetId ?? null,
+        avatarUrl: url(frozen?.avatarAssetId), portraitUrl: url(frozen?.portraitAssetId) };
+    }) };
   });
   app.get<{ Params: { id: string } }>('/api/v1/characters/assets/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
     return sendCharacterAsset(database, request.params.id, reply, config);
+  });
+  app.get<{ Params: { id: string; version: string; assetId: string } }>('/api/v1/characters/:id/versions/:version/assets/:assetId', async (request, reply) => {
+    const identity = requirePersonaApp(database, request, reply); if (!identity) return;
+    return sendFrozenCharacterAsset(database, request.params.id, Number(request.params.version), request.params.assetId, reply);
   });
   app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/api/v1/characters/:id', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;
     const profile = database.connection.prepare('SELECT id,slug,display_name,tags_json,latest_version,avatar_asset_id FROM character_profiles WHERE id=? AND archived=0').get(request.params.id) as Record<string, unknown> | undefined; if (!profile?.latest_version) return reply.code(404).send({ error: 'not_found' });
     const version = Number(request.query.version || profile.latest_version); const row = database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(request.params.id, version) as Record<string, unknown> | undefined; if (!row) return reply.code(404).send({ error: 'version_not_found' });
     const snapshot = mapVersion(row);
-    return { ...profile, avatar_url: profile.avatar_asset_id ? `/api/v1/characters/assets/${profile.avatar_asset_id}` : null, version: snapshot, relationships: snapshot.relationships };
+    const frozen = readStoredCharacterSnapshot(row.data_json);
+    const frozenAvatarId = frozen?.avatarAssetId ?? null;
+    const frozenPortraitId = frozen?.portraitAssetId ?? null;
+    const url = (assetId?: string | null) => assetId ? `/api/v1/characters/${request.params.id}/versions/${version}/assets/${assetId}` : null;
+    const publicSnapshot = { ...snapshot,
+      assets: snapshot.assets?.map(asset => ({ ...asset, url: asset.artifactId ? url(asset.id) : null })),
+      visualReferences: snapshot.visualReferences?.map(reference => ({ ...reference, url: url(reference.assetId)! })),
+      variants: snapshot.variants?.map(variant => ({ ...variant, ...(variant.avatarAssetId ? { avatarUrl: url(variant.avatarAssetId) } : {}), ...(variant.portraitAssetId ? { portraitUrl: url(variant.portraitAssetId) } : {}) })),
+    };
+    return { ...profile, display_name: snapshot.data.displayName, tags_json: JSON.stringify(snapshot.tags ?? []), avatar_asset_id: frozenAvatarId,
+      portrait_asset_id: frozenPortraitId, avatar_url: url(frozenAvatarId), portrait_url: url(frozenPortraitId), version: publicSnapshot, relationships: snapshot.relationships };
   });
   app.post<{ Body: { characterId?: string; version?: number; localId?: string } }>('/api/v1/app-characters', async (request, reply) => {
     const identity = requirePersonaApp(database, request, reply); if (!identity) return;

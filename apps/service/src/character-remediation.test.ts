@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createService } from './server.js';
+import { publishCharacterSnapshot } from './characters/snapshots.js';
 import { ServiceDatabase } from './database.js';
 import { readConfig } from './config.js';
 import { SecretStore } from './security.js';
@@ -93,7 +94,7 @@ test('activity snapshots select exact character_versions and reference transfer 
   const { app, database, artifactDirectory } = await setup();
   const created = await app.inject({ method: 'POST', url: '/api/v1/admin/characters', headers: adminHeaders, payload: { displayName: '快照角色', draft: { displayName: '快照角色', identity: 'v1 身份', summary: 'v1 摘要', appearance: { description: 'v1 外观' } } } });
   const characterId = created.json().id as string;
-  await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${characterId}/publish`, headers: adminHeaders });
+  await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${characterId}/publish`, headers: adminHeaders, payload: { expectedDraftRevision: 1 } });
   await app.inject({ method: 'PUT', url: `/api/v1/admin/characters/${characterId}`, headers: adminHeaders, payload: { draft: { displayName: '快照角色', identity: 'draft 身份', summary: 'draft 摘要', appearance: { description: 'draft 外观' } } } });
   const snapshot = createActorSnapshotFromCharacter(database, characterId, { sourceVersion: 1 });
   assert.ok(snapshot);
@@ -109,10 +110,11 @@ test('activity snapshots select exact character_versions and reference transfer 
   const uploaded = await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${characterId}/assets`, headers: adminHeaders, payload: { dataUrl: `data:image/png;base64,${pngBase64}`, filename: 'reference.png', kind: 'reference', purposes: ['identity', 'outfit'] } });
   assert.equal(uploaded.statusCode, 201);
   const referenceId = uploaded.json().reference.id as string;
+  publishCharacterSnapshot(database, characterId, { versionLabel: '参考图阶段', expectedDraftRevision: Number(database.connection.prepare('SELECT draft_revision FROM character_profiles WHERE id=?').get(characterId)!.draft_revision) });
   const activity = await app.inject({ method: 'POST', url: '/api/v1/admin/activities', headers: adminHeaders, payload: { title: '参考图活动', stageTitles: ['一', '二'] } });
   assert.equal(activity.statusCode, 201);
   const activityId = activity.json().activity.id as string;
-  const transfer = await app.inject({ method: 'POST', url: `/api/v1/admin/activities/${activityId}/character-references`, headers: { ...adminHeaders, 'idempotency-key': 'transfer-1' }, payload: { characterId, referenceId, version: null } });
+  const transfer = await app.inject({ method: 'POST', url: `/api/v1/admin/activities/${activityId}/character-references`, headers: { ...adminHeaders, 'idempotency-key': 'transfer-1' }, payload: { characterId, referenceId, version: 2 } });
   assert.equal(transfer.statusCode, 201);
   const transferRow = database.connection.prepare(`SELECT source.app_id source_app,target.app_id target_app,source.local_path source_path,target.local_path target_path
     FROM activity_character_asset_transfers t JOIN artifacts source ON source.id=t.source_artifact_id JOIN artifacts target ON target.id=t.target_artifact_id WHERE t.activity_id=?`).get(activityId) as { source_app: string; target_app: string; source_path: string; target_path: string };
@@ -149,6 +151,7 @@ test('ordinary image imports become character-owned artifacts before activity tr
   // 参考图只保存「作为参考的配置」；artifact 归属由它指向的角色资产承载。
   const reference = database.connection.prepare('SELECT r.id,a.artifact_id FROM character_visual_references r JOIN character_assets a ON a.id=r.asset_id WHERE r.character_id=?').get(characterId) as { id: string; artifact_id: string | null };
   assert.equal(reference.artifact_id, asset.artifact_id);
+  publishCharacterSnapshot(database, characterId, { versionLabel: '确认图片阶段', expectedDraftRevision: 1, allowIncomplete: true });
   const activity = await app.inject({ method: 'POST', url: '/api/v1/admin/activities', headers: adminHeaders, payload: { title: '普通图片活动', stageTitles: ['一', '二'] } });
   const transfer = await app.inject({ method: 'POST', url: `/api/v1/admin/activities/${activity.json().activity.id}/character-references`, headers: { ...adminHeaders, 'idempotency-key': 'transfer-ordinary-image-1' }, payload: { characterId, referenceId: reference.id } });
   assert.equal(transfer.statusCode, 201);
@@ -181,7 +184,7 @@ test('preview edits preserve unrelated character fields, record user provenance 
     const provenance = database.connection.prepare('SELECT source_kind,value_hash FROM character_field_provenance WHERE character_id=? AND field_path=?').get(characterId, '/identity') as { source_kind: string; value_hash: string };
     assert.equal(provenance.source_kind, 'user_edit');
     assert.equal(provenance.value_hash, createHash('sha256').update('我修改后的身份').digest('hex'));
-    const published = await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${characterId}/publish`, headers: adminHeaders });
+    const published = await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${characterId}/publish`, headers: adminHeaders, payload: { expectedDraftRevision: 2 } });
     assert.equal(published.statusCode, 201, published.body);
     assert.equal(Value.Check(CharacterVersionSchema, published.json()), true, 'published response must pass the same schema used by the frontend');
     const publishedDetail = (await app.inject({ method: 'GET', url: `/api/v1/admin/characters/${characterId}`, headers: adminHeaders })).json();
@@ -225,7 +228,7 @@ test('published avatars stay frozen and enter the activity package when adding t
     const png = await readFile(defaultAvatarPath);
     const payload = { dataUrl: `data:image/png;base64,${(png as unknown as { toString(encoding: string): string }).toString('base64')}`, filename: 'avatar.png', kind: 'avatar' };
     const firstAvatar = (await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${created.id}/assets`, headers: adminHeaders, payload })).json();
-    await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${created.id}/publish`, headers: adminHeaders });
+    await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${created.id}/publish`, headers: adminHeaders, payload: { expectedDraftRevision: 2 } });
     await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${created.id}/assets`, headers: adminHeaders, payload });
     const snapshotResponse = await app.inject({ method: 'GET', url: `/api/v1/admin/activities/characters/${created.id}/snapshot?version=1`, headers: adminHeaders });
     assert.equal(snapshotResponse.statusCode, 200, snapshotResponse.body);

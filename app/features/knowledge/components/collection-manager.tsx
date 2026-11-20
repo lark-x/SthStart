@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarClock, ChevronDown, ChevronRight, Pencil, Play, Plus, RotateCcw, Square, Trash2,
@@ -17,7 +16,6 @@ import { Spinner } from '@/app/components/ui/spinner';
 import { Textarea } from '@/app/components/ui/textarea';
 import { EmptyState } from '@/app/components/ui/empty-state';
 import { Checkbox } from '@/app/components/ui/checkbox';
-import { buttonVariants } from '@/app/components/ui/button';
 import { formatTopicTime } from '@/app/features/topics/components/topic-card';
 import { fetchMcpSources } from '@/app/features/mcp-sources/api';
 import { browseCharacters } from '@/app/features/characters/api';
@@ -203,14 +201,6 @@ export function CollectionManager({ onOpenPending }: { onOpenPending?: () => voi
 
       {error && <Alert variant="danger" title="操作未完成">{error}</Alert>}
       {notice && <Alert variant="info">{notice}</Alert>}
-      {/* 批量导入入口：复用现有叙事档案的规范化 JSON 导入流程，不在资料库里另做一套导入。 */}
-      <section className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-dashed border-border-default bg-surface px-3 py-2">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-ink">从叙事档案批量导入</p>
-          <p className="text-xs text-muted">导入规范化 JSON 后，原文会进入本地检索；可以挑选片段整理成资料。重复导入同一份数据不会重复建资料。</p>
-        </div>
-        <Link href="/apps/narrative" className={buttonVariants({ variant: 'outline', size: 'sm' })}>打开叙事档案</Link>
-      </section>
 
       {collectionsQuery.isError && <Alert variant="warning" title="任务加载失败">{collectionsQuery.error instanceof Error ? collectionsQuery.error.message : '请稍后重试'}<Button size="sm" onClick={() => void collectionsQuery.refetch()}>重试</Button></Alert>}
       {collectionsQuery.isLoading && <Spinner size="sm" label="正在加载任务…" />}

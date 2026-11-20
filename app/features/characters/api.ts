@@ -92,12 +92,33 @@ export async function matchOfficialAvatar(id: string): Promise<CharacterProfile>
   return postJson<CharacterProfile>(`characters/${id}/match-official-avatar`, undefined, undefined, CharacterProfileSchema);
 }
 
-export async function batchMatchOfficialAvatars(payload: {
-  ids?: string[];
-  onlyMissing?: boolean;
-}): Promise<import('@sthstart/contracts').CharacterBatchAvatarResponse> {
+export async function batchMatchOfficialAvatars(
+  payload: import('@sthstart/contracts').CharacterBatchAvatarRequest,
+): Promise<import('@sthstart/contracts').CharacterBatchAvatarResponse> {
   return postJson<import('@sthstart/contracts').CharacterBatchAvatarResponse>(
     'characters/batch-match-official-avatars',
+    payload,
+    undefined,
+    undefined
+  );
+}
+
+export async function batchEnrichRpCards(
+  payload: import('@sthstart/contracts').CharacterBatchEnrichRpRequest,
+): Promise<import('@sthstart/contracts').CharacterBatchEnrichRpResponse> {
+  return postJson<import('@sthstart/contracts').CharacterBatchEnrichRpResponse>(
+    'characters/batch-enrich-rp-cards',
+    payload,
+    undefined,
+    undefined
+  );
+}
+
+export async function batchImportLocalCards(
+  payload: import('@sthstart/contracts').CharacterBatchImportLocalCardsRequest,
+): Promise<import('@sthstart/contracts').CharacterBatchImportLocalCardsResponse> {
+  return postJson<import('@sthstart/contracts').CharacterBatchImportLocalCardsResponse>(
+    'characters/batch-import-local-cards',
     payload,
     undefined,
     undefined
@@ -232,7 +253,7 @@ export async function previewCharacterOfficialAssets(id: string): Promise<Charac
 export async function importCharacterAssets(
   id: string,
   payload: CharacterImportAssetsRequest
-): Promise<{ imported: Array<{ id: string; kind: 'avatar' | 'portrait'; url: string }>; activeAvatarAssetId?: string | null; activePortraitAssetId?: string | null }> {
+): Promise<{ imported: Array<{ id: string; kind: 'avatar' | 'portrait' | 'reference'; url: string }>; warnings?: string[]; activeAvatarAssetId?: string | null; activePortraitAssetId?: string | null }> {
   return postJson(`characters/${id}/import-assets`, payload);
 }
 

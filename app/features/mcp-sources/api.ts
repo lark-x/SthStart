@@ -36,6 +36,7 @@ export async function testMcpSource(id: string): Promise<McpConnectionTest> {
 export async function discoverMcpTools(payload: {
   sourceId?: string;
   url: string;
+  transport?: McpSourceSave['transport'];
   authMode?: McpSourceSave['authMode'];
   authHeaderName?: string;
   secret?: string;

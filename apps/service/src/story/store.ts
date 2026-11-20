@@ -5,6 +5,8 @@ import type {
   StoryMessage, StoryProject, StoryProjectType, StoryProposal, StoryProposalKind, StorySession, StorySearchResult,
   UpdateStoryCharacter, UpdateStoryDocument, UpdateStoryProject,
 } from '@sthstart/contracts';
+import { resolveCharacterVersionSelection } from '@sthstart/contracts';
+import { mapCharacterVersion } from '../characters/snapshots.js';
 import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 
@@ -47,6 +49,8 @@ function document(row: Row): StoryDocument {
 }
 function character(row: Row): StoryCharacter {
   return { id: str(row, 'id'), projectId: str(row, 'project_id'), name: str(row, 'name'), notes: str(row, 'notes'),
+    ...(row.source_variant_id ? { sourceVariantId: str(row, 'source_variant_id') } : {}),
+    ...(row.source_costume_asset_id ? { sourceCostumeAssetId: str(row, 'source_costume_asset_id') } : {}),
     sourceCharacterId: row.source_character_id === null ? null : str(row, 'source_character_id'),
     sourceVersion: row.source_version === null ? null : num(row, 'source_version'), revision: num(row, 'revision'),
     createdAt: str(row, 'created_at'), updatedAt: str(row, 'updated_at') };
@@ -82,12 +86,26 @@ function entryRevision(row: Row): StoryEntryRevision {
 
 function snapshotOf(item: StoryDocument | StoryCharacter): StoryEntrySnapshot {
   return 'name' in item
-    ? { kind: 'character', name: item.name, notes: item.notes, sourceCharacterId: item.sourceCharacterId, sourceVersion: item.sourceVersion }
+    ? { kind: 'character', name: item.name, notes: item.notes, sourceCharacterId: item.sourceCharacterId, sourceVersion: item.sourceVersion, sourceVariantId: item.sourceVariantId, sourceCostumeAssetId: item.sourceCostumeAssetId }
     : { kind: item.kind, title: item.title, body: item.body };
 }
 
 export class StoryStore {
   constructor(private readonly db: ServiceDatabase) {}
+  private atomic<T>(operation: () => T): T {
+    if (!this.db.connection.isTransaction) return this.db.transaction(operation);
+    const savepoint = `story_${randomUUID().replaceAll('-', '')}`;
+    this.db.connection.exec(`SAVEPOINT ${savepoint}`);
+    try {
+      const result = operation();
+      this.db.connection.exec(`RELEASE SAVEPOINT ${savepoint}`);
+      return result;
+    } catch (error) {
+      this.db.connection.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      this.db.connection.exec(`RELEASE SAVEPOINT ${savepoint}`);
+      throw error;
+    }
+  }
   private get(sql: string, ...args: unknown[]) { return this.db.connection.prepare(sql).get(...args as []) as Row | undefined; }
   private all(sql: string, ...args: unknown[]) { return this.db.connection.prepare(sql).all(...args as []) as Row[]; }
   private recordRevision(projectId: string, item: StoryDocument | StoryCharacter, source: StoryEntryRevision['source'], proposalId: string | null = null) {
@@ -106,7 +124,7 @@ export class StoryStore {
   createProject(input: CreateStoryProject): StoryProject {
     const id = randomUUID(); const now = nowIso();
     const workId = input.workId?.trim() || null; const projectType = input.projectType ?? 'fiction'; const outlineTitle = projectType === 'reflection' ? '思考纲要' : '主线大纲';
-    this.db.transaction(() => {
+    this.atomic(() => {
       this.db.connection.prepare('INSERT INTO story_projects(id,title,summary,revision,context_settings_json,created_at,updated_at,work_id,project_type) VALUES (?,?,?,?,?,?,?,?,?)')
         .run(id, requiredText(input.title, '项目名称'), input.summary?.trim() ?? '', 1, JSON.stringify(DEFAULT_STORY_CONTEXT), now, now, workId, projectType);
       const outlineId = randomUUID();
@@ -140,7 +158,7 @@ export class StoryStore {
     if (input.kind === 'outline') throw new StoryError('story_outline_exists', 409, '项目已有主线大纲。');
     const id = randomUUID(); const now = nowIso();
     const position = Number((this.get('SELECT COALESCE(MAX(position),-1)+1 AS next FROM story_documents WHERE project_id=? AND kind=?', projectId, input.kind))?.next ?? 0);
-    return this.db.transaction(() => {
+    return this.atomic(() => {
       this.db.connection.prepare('INSERT INTO story_documents VALUES (?,?,?,?,?,?,?,?,?)')
         .run(id, projectId, input.kind, requiredText(input.title, '条目标题'), input.body ?? '', position, 1, now, now);
       const created = this.getDocument(projectId, id)!;
@@ -150,7 +168,7 @@ export class StoryStore {
     });
   }
   updateDocument(projectId: string, id: string, input: UpdateStoryDocument): StoryDocument {
-    return this.db.transaction(() => {
+    return this.atomic(() => {
       const result = this.db.connection.prepare(`UPDATE story_documents SET title=?,body=?,revision=revision+1,updated_at=?
         WHERE project_id=? AND id=? AND revision=?`).run(requiredText(input.title, '条目标题'), input.body, nowIso(), projectId, id, input.expectedRevision);
       if (result.changes !== 1) throw new StoryError('story_revision_conflict', 409, '内容已变化，请刷新后重试。');
@@ -169,8 +187,8 @@ export class StoryStore {
   }
   getCharacterSourceSnapshot(item: StoryCharacter): unknown | null {
     if (!item.sourceCharacterId || item.sourceVersion === null) return null;
-    const row = this.get('SELECT data_json FROM character_versions WHERE character_id=? AND version=?', item.sourceCharacterId, item.sourceVersion);
-    return row ? JSON.parse(str(row, 'data_json')) as unknown : null;
+    const row = this.get('SELECT * FROM character_versions WHERE character_id=? AND version=?', item.sourceCharacterId, item.sourceVersion);
+    return row ? resolveCharacterVersionSelection(mapCharacterVersion(row), { variantId: item.sourceVariantId, costumeAssetId: item.sourceCostumeAssetId }).draft : null;
   }
   createCharacter(projectId: string, input: CreateStoryCharacter): StoryCharacter {
     this.requireProject(projectId);
@@ -178,10 +196,16 @@ export class StoryStore {
     if (input.sourceCharacterId && !this.get('SELECT 1 FROM character_versions WHERE character_id=? AND version=?', input.sourceCharacterId, input.sourceVersion)) {
       throw new StoryError('story_character_source_missing', 400, '角色资料库中找不到指定版本。');
     }
+    if ((input.sourceVariantId || input.sourceCostumeAssetId) && !input.sourceCharacterId) throw new StoryError('story_character_source_invalid', 400, '形态与皮肤需要来源角色。');
+    if (input.sourceCharacterId) {
+      const source = this.get('SELECT * FROM character_versions WHERE character_id=? AND version=?', input.sourceCharacterId, input.sourceVersion)!;
+      try { resolveCharacterVersionSelection(mapCharacterVersion(source), { variantId: input.sourceVariantId, costumeAssetId: input.sourceCostumeAssetId }); }
+      catch (error) { throw new StoryError('story_character_selection_invalid', 400, (error as Error).message); }
+    }
     const id = randomUUID(); const now = nowIso();
     return this.db.transaction(() => {
-      this.db.connection.prepare('INSERT INTO story_characters VALUES (?,?,?,?,?,?,?,?,?)')
-        .run(id, projectId, requiredText(input.name, '角色名称'), input.notes ?? '', input.sourceCharacterId ?? null, input.sourceVersion ?? null, 1, now, now);
+      this.db.connection.prepare('INSERT INTO story_characters (id,project_id,name,notes,source_character_id,source_version,revision,created_at,updated_at,source_variant_id,source_costume_asset_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+        .run(id, projectId, requiredText(input.name, '角色名称'), input.notes ?? '', input.sourceCharacterId ?? null, input.sourceVersion ?? null, 1, now, now, input.sourceVariantId ?? null, input.sourceCostumeAssetId ?? null);
       const created = this.getCharacter(projectId, id)!;
       this.recordRevision(projectId, created, 'manual');
       return created;
@@ -244,9 +268,9 @@ export class StoryStore {
         if (sourceId && sourceVersion !== null && !this.get('SELECT 1 FROM character_versions WHERE character_id=? AND version=?', sourceId, sourceVersion)) {
           throw new StoryError('story_revision_source_unavailable', 409, '该版本引用的角色来源已不可用，不能直接恢复。');
         }
-        const changed = this.db.connection.prepare(`UPDATE story_characters SET name=?,notes=?,source_character_id=?,source_version=?,
+        const changed = this.db.connection.prepare(`UPDATE story_characters SET name=?,notes=?,source_character_id=?,source_version=?,source_variant_id=?,source_costume_asset_id=?,
           revision=revision+1,updated_at=? WHERE project_id=? AND id=? AND revision=?`)
-          .run(old.snapshot.name, old.snapshot.notes, sourceId, sourceVersion, nowIso(), projectId, entryId, expectedRevision);
+          .run(old.snapshot.name, old.snapshot.notes, sourceId, sourceVersion, old.snapshot.sourceVariantId ?? null, old.snapshot.sourceCostumeAssetId ?? null, nowIso(), projectId, entryId, expectedRevision);
         if (changed.changes !== 1) throw new StoryError('story_revision_conflict', 409, '角色内容已变化，请刷新后重试。');
         const updated = this.getCharacter(projectId, entryId)!;
         this.recordRevision(projectId, updated, 'restore');

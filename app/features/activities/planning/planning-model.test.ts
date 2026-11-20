@@ -32,6 +32,14 @@ test('intake keeps template defaults and mergeCast removes duplicates without mu
   assert.deepEqual(mergeCast([first], snapshots, 1), [first]);
 });
 
+test('planning cast payload retains the exact saved stage, variant and costume', () => {
+  const intake = defaultIntake('blank', '');
+  const actor = { id: 'actor-a', sourceCharacterId: 'a', displayName: '甲', sourceVersion: 3, sourceVariantId: 'awake', sourceCostumeAssetId: 'skin', persona: {} } as ActorSnapshot;
+  intake.cast = mergeCast([], [actor], 5);
+  const payload = buildPlanningFormPayload({ intake, references: [], selection: null, researchRevisionId: null });
+  assert.deepEqual(payload.characters, [{ characterId: 'a', version: 3, variantId: 'awake', costumeAssetId: 'skin' }]);
+});
+
 test('planning payload preserves entered text, optional omissions, frozen references and inspiration', () => {
   const intake = defaultIntake('blank', '');
   intake.title = '天台晚餐';

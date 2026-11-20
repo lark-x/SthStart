@@ -6,6 +6,7 @@ import type { CharacterWork } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { Select } from '@/app/components/ui/select';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { useToast } from '@/app/providers/ui-provider';
@@ -34,16 +35,19 @@ export function CharacterForkDialog({
   const [parentWorkDraft, setParentWorkDraft] = useState<string | null>(null);
   const [summary, setSummary] = useState('');
   const [shareAssets, setShareAssets] = useState(true);
-  const parentWork = parentWorkDraft ?? sourceWork;
+  const sourceCatalog = works.find(work => work.name === sourceWork || work.aliases.includes(sourceWork));
+  const sourceParentWork = sourceCatalog?.workNature === 'derivative' ? sourceCatalog.parentWork || '' : sourceWork;
+  const parentWork = parentWorkDraft ?? sourceParentWork;
+  const parentWorks = works.filter(work => work.workNature !== 'derivative');
 
   const derivativeWorks = useMemo(() => {
-    const normalizedSource = sourceWork.trim().toLowerCase();
+    const normalizedSource = sourceParentWork.trim().toLowerCase();
     return works.filter((w) => {
       if (w.workNature !== 'derivative') return false;
       if (!normalizedSource) return true;
       return (w.parentWork || '').trim().toLowerCase() === normalizedSource;
     });
-  }, [works, sourceWork]);
+  }, [works, sourceParentWork]);
 
   const handleFork = async () => {
     const nextWork = targetWork.trim();
@@ -79,7 +83,7 @@ export function CharacterForkDialog({
         if (!forkMutation.isPending) onOpenChange(next);
       }}
       title={`复制「${displayName}」为同人衍生版`}
-      description="从原作角色复制一份同人/AU/IF 专属设定，默认共享立绘与皮肤资产，改动只影响该同人作品。"
+      description="从当前角色已保存的设定复制同人/AU/IF 版本，默认共享立绘与皮肤资产，改动只影响目标同人作品。"
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -139,12 +143,15 @@ export function CharacterForkDialog({
           <label htmlFor="fork-parent-work" className="block text-xs font-semibold text-ink">
             母原作（用于同源聚合与筛选联动）
           </label>
-          <Input
+          <Select
             id="fork-parent-work"
             value={parentWork}
             onChange={(e) => setParentWorkDraft(e.target.value)}
-            placeholder="例如：原神"
-          />
+          >
+            <option value="">选择已登记的母作品</option>
+            {sourceParentWork && !parentWorks.some(work => work.name === sourceParentWork) && <option value={sourceParentWork}>{sourceParentWork}</option>}
+            {parentWorks.map(work => <option key={work.name} value={work.name}>{work.name}</option>)}
+          </Select>
         </div>
 
         <div className="space-y-1.5">

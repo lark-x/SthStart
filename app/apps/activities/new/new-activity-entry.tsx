@@ -11,7 +11,6 @@ import {
   Compass,
   ArrowRight,
   Layers,
-  Check,
   Plus,
 } from 'lucide-react';
 import { PageHeader } from '@/app/components/shared/page-header';
@@ -27,8 +26,7 @@ import { storyApi } from '@/app/features/story/api';
 import { publicationApi } from '@/app/features/activities/publication/api';
 import { createActivity } from '@/app/features/activities/api/activities';
 import { PlanningWizard } from '@/app/features/activities/components/planning-wizard';
-import { publishCharacter } from '@/app/features/characters/api';
-import { useCharacters } from '@/app/features/characters/queries';
+import { CharacterBrowserPicker, type CharacterBrowserSelection } from '@/app/features/characters/public-ui';
 
 type EntryMode = 'quick' | 'wizard';
 type QuickTab = 'story' | 'character' | 'blank';
@@ -57,7 +55,7 @@ export function NewActivityEntry() {
   // 快速角色创建状态
   const [customTitle, setCustomTitle] = useState('');
   const [customTheme, setCustomTheme] = useState('');
-  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+  const [selectedCharacters, setSelectedCharacters] = useState<Record<string, CharacterBrowserSelection>>({});
   const [quickCreating, setQuickCreating] = useState(false);
   const [quickError, setQuickError] = useState('');
 
@@ -84,17 +82,10 @@ export function NewActivityEntry() {
     staleTime: 30_000,
   });
 
-  const charactersQuery = useCharacters();
 
   const projects = projectsQuery.data?.items ?? [];
   // 不允许 outline 作为正式制作来源，仅允许 chapter 正文
   const chapters = (documentsQuery.data?.items ?? []).filter((d) => d.kind === 'chapter');
-  const allCharacters = charactersQuery.data?.items ?? [];
-
-  const selectedCharacters = selectedCharacterIds
-    .map((id) => allCharacters.find((c) => c.id === id))
-    .filter((c): c is (typeof allCharacters)[number] => Boolean(c));
-
   // 1. 从小说章节派生正式制作版本
   const handleDeriveFromStory = async () => {
     if (!selectedProjectId || !selectedChapterId || deriving) return;
@@ -127,25 +118,18 @@ export function NewActivityEntry() {
     setQuickCreating(true);
     setQuickError('');
     try {
-      if (selectedCharacters.length === 0) {
+      if (Object.keys(selectedCharacters).length === 0) {
         throw new Error('请至少选择一位出镜角色。');
       }
 
-      // 自动将尚未定档的角色快照固化为可用版本，不阻断制作创建
-      const actors = await Promise.all(
-        selectedCharacters.map(async (c) => {
-          const sourceVersion =
-            typeof c.latestVersion === 'number' && c.latestVersion > 0
-              ? c.latestVersion
-              : (await publishCharacter(c.id)).version;
-          return {
-            sourceCharacterId: c.id,
-            sourceVersion,
-            displayName: c.displayName,
-            activityRole: '核心主角',
-          };
-        })
-      );
+      const actors = Object.values(selectedCharacters).map(selection => ({
+        sourceCharacterId: selection.profile.id,
+        sourceVersion: selection.version.version,
+        sourceVariantId: selection.variantId,
+        sourceCostumeAssetId: selection.costumeAssetId,
+        displayName: selection.profile.displayName,
+        activityRole: '核心主角',
+      }));
 
       const res = await createActivity({
         title: customTitle.trim(),
@@ -210,7 +194,7 @@ export function NewActivityEntry() {
       />
 
       {/* 核心方式三选一导航 */}
-      {[projectsQuery, documentsQuery, charactersQuery].map((query, index) => query.isError ? <Alert key={index} variant="danger" title={`${['项目', '章节', '角色'][index]}读取失败`}><Button size="sm" variant="outline" className="mt-2" disabled={query.isFetching} onClick={() => void query.refetch()}>重新读取</Button></Alert> : query.isLoading && query.fetchStatus === 'fetching' ? <Spinner key={index} size="sm" label={`正在读取${['项目', '章节', '角色'][index]}…`} /> : null)}
+      {[projectsQuery, documentsQuery].map((query, index) => query.isError ? <Alert key={index} variant="danger" title={`${['项目', '章节', '角色'][index]}读取失败`}><Button size="sm" variant="outline" className="mt-2" disabled={query.isFetching} onClick={() => void query.refetch()}>重新读取</Button></Alert> : query.isLoading && query.fetchStatus === 'fetching' ? <Spinner key={index} size="sm" label={`正在读取${['项目', '章节', '角色'][index]}…`} /> : null)}
       <PageTabs
         ariaLabel="创建方式"
         variant="local"
@@ -323,7 +307,7 @@ export function NewActivityEntry() {
           <div className="border-b border-border-subtle pb-3">
             <h3 className="text-base font-semibold text-ink">挑选出镜角色与题材</h3>
             <p className="text-xs text-muted mt-1 leading-relaxed">
-              从角色库中挑选已发布版本角色，快速建立独立分镜漫剧工程。角色将绑定真实版本与外貌设定。
+              按作品、同源角色和形态选角，快速建立分镜漫剧工程。原创角色采用已保存阶段，所选服装将用于生图。
             </p>
           </div>
 
@@ -364,61 +348,10 @@ export function NewActivityEntry() {
                   挑选登场角色 <span className="text-danger-fg" aria-hidden="true">*</span>
                 </span>
                 <span className="text-xs text-muted tabular-nums">
-                  {selectedCharacterIds.length > 0 ? `已选 ${selectedCharacterIds.length} 位` : '至少选 1 位'}
+                  {Object.keys(selectedCharacters).length > 0 ? `已选 ${Object.keys(selectedCharacters).length} 位` : '至少选 1 位'}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-2.5 rounded-control border border-border-subtle bg-surface-sunken">
-                {charactersQuery.isLoading && <Spinner size="sm" label="正在读取角色库…" />}
-                {charactersQuery.isError && (
-                  <div className="flex w-full flex-wrap items-center gap-2 text-xs text-danger-fg">
-                    <span>角色库读取失败。</span>
-                    <Button size="sm" variant="outline" disabled={charactersQuery.isFetching} onClick={() => void charactersQuery.refetch()}>
-                      重新读取
-                    </Button>
-                  </div>
-                )}
-                {!charactersQuery.isLoading && !charactersQuery.isError && allCharacters.length === 0 && (
-                  <p className="px-1 py-1.5 text-xs leading-relaxed text-muted">
-                    角色库还没有角色。可以先到 <Link href="/apps/characters" className="font-medium text-ink underline">角色库</Link> 建好角色后再回来挑选；也可以改用「空白画卷起步」。
-                  </p>
-                )}
-                {allCharacters.map((c) => {
-                  const isSelected = selectedCharacterIds.includes(c.id);
-                  const isPublished = typeof c.latestVersion === 'number' && c.latestVersion > 0;
-                  const originText =
-                    c.draft.originType === 'ip'
-                      ? '原作'
-                      : c.draft.originType === 'derivative'
-                        ? '同人'
-                        : isPublished
-                          ? `v${c.latestVersion}`
-                          : '原创';
-                  return (
-                    <Button
-                      key={c.id}
-                      type="button"
-                      size="sm"
-                      variant={isSelected ? 'accent' : 'outline'}
-                      aria-pressed={isSelected}
-                      onClick={() => {
-                        setSelectedCharacterIds((prev) =>
-                          isSelected ? prev.filter((id) => id !== c.id) : [...prev, c.id]
-                        );
-                      }}
-                      className={`h-auto min-h-0 px-2.5 py-1 text-sm font-normal ${
-                        isSelected
-                          ? 'font-medium'
-                          : 'border-border-subtle bg-surface text-ink hover:border-border-strong'
-                      }`}
-                    >
-                      {isSelected && <Check className="size-3" />}
-                      <span>{c.displayName}</span>
-                      <span className="opacity-60 text-xs">{originText}</span>
-                      {c.tags?.[0] && <span className="opacity-60 text-xs">· {c.tags[0]}</span>}
-                    </Button>
-                  );
-                })}
-              </div>
+              <CharacterBrowserPicker active={quickTab === 'character'} selected={selectedCharacters} onSelectionChange={(selection, checked) => setSelectedCharacters(current => { const next = { ...current }; if (checked) next[selection.profile.id] = selection; else delete next[selection.profile.id]; return next; })} disabled={quickCreating} />
             </div>
           </div>
 

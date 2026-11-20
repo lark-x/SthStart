@@ -55,11 +55,15 @@ export function useStoryWorldActions() {
     queryClient.invalidateQueries({ queryKey: storyWorldKeys.list() });
 
   const invalidateOverview = (worldId: string) =>
-    queryClient.invalidateQueries({ queryKey: storyWorldKeys.overview(worldId) });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: storyWorldKeys.overview(worldId) }),
+      queryClient.invalidateQueries({ queryKey: [...storyWorldKeys.all, 'hub', worldId] }),
+    ]);
 
   const invalidateBranch = async (worldId: string, branchId: string) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: storyWorldKeys.branch(worldId, branchId) }),
+      queryClient.invalidateQueries({ queryKey: storyWorldKeys.hub(worldId, branchId) }),
       queryClient.invalidateQueries({ queryKey: eventsPrefix(worldId, branchId) }),
       queryClient.invalidateQueries({ queryKey: memoriesPrefix(worldId, branchId) }),
       queryClient.invalidateQueries({ queryKey: storyWorldKeys.comparison(worldId, branchId) }),

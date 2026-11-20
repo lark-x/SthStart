@@ -169,18 +169,6 @@ html[data-nav-collapsed='false'] .shell-sidebar .shell-collapse-expand-icon {
   box-shadow: var(--elev-xs), 0 0 0 1px var(--hairline);
 }
 
-.shell-nav-link:is([aria-current='page'], [data-active='true'])::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: 2px;
-  top: 50%;
-  width: 2px;
-  height: 12px;
-  border-radius: 2px;
-  background: var(--tone, var(--accent));
-  transform: translateY(-50%);
-}
-
 /* 图标放进 24px 的模块色小方块：未选中只着色图标，选中时铺上模块浅底。 */
 .shell-nav-icon-wrap {
   display: grid;

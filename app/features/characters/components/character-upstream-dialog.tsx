@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Search, Sparkles, User, Layers, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import type {
   CharacterUpstreamAssetCandidate,
   CharacterUpstreamResearchPreview,
   CharacterUpstreamSkinProposal,
+  CharacterUpstreamApplyResponse,
 } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
@@ -13,6 +14,7 @@ import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { Badge } from '@/app/components/ui/badge';
+import { Alert } from '@/app/components/ui/alert';
 import { useToast } from '@/app/providers/ui-provider';
 import { createCharacter } from '../api';
 import { useApplyCharacterUpstream, useUpstreamResearchCharacter } from '../mutations';
@@ -57,10 +59,16 @@ export function CharacterUpstreamDialog({
     tags: true,
   });
   const [applying, setApplying] = useState(false);
+  const [appliedResult, setAppliedResult] = useState<CharacterUpstreamApplyResponse | null>(null);
+  const [applyError, setApplyError] = useState('');
+  const [hasTarget, setHasTarget] = useState(Boolean(characterId));
+  const target = useRef<{ id: string; revision?: number } | null>(null);
+  const wasOpen = useRef(false);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- hydrate defaults when dialog opens */
   useEffect(() => {
-    if (!open) return;
+    if (!open) { wasOpen.current = false; return; }
+    if (wasOpen.current) return;
+    wasOpen.current = true;
     setQuery(initialName);
     setWork(initialWork);
     setPreview(null);
@@ -68,10 +76,14 @@ export function CharacterUpstreamDialog({
     setSelectedAssetIds(new Set());
     setActiveAvatarId(null);
     setActivePortraitId(null);
-  }, [open, initialName, initialWork]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+    setAppliedResult(null);
+    setApplyError('');
+    target.current = characterId ? { id: characterId, revision: draftRevision } : null;
+    setHasTarget(Boolean(characterId));
+  }, [open, initialName, initialWork, characterId, draftRevision]);
 
   const runResearch = async () => {
+    if (applying || appliedResult) return;
     const trimmed = query.trim();
     if (!trimmed) {
       toast.warning('请先输入要检索的角色名称');
@@ -136,11 +148,12 @@ export function CharacterUpstreamDialog({
   };
 
   const handleApply = async () => {
-    if (!preview) return;
+    if (!preview || applying || appliedResult) return;
     setApplying(true);
+    setApplyError('');
     try {
-      let targetId = characterId;
-      let expectedRevision = draftRevision;
+      let targetId = target.current?.id || characterId;
+      let expectedRevision = target.current?.revision ?? draftRevision;
       if (!targetId) {
         const created = await createCharacter({
           displayName: preview.draft.displayName || query.trim(),
@@ -149,6 +162,9 @@ export function CharacterUpstreamDialog({
         });
         targetId = created.id;
         expectedRevision = created.draftRevision;
+        // Preserve the created ID even if the following import fails.
+        target.current = { id: targetId, revision: expectedRevision };
+        setHasTarget(true);
       }
 
       const selectedVariants = proposals.filter((p) => p.selected && p.classification === 'variant');
@@ -180,26 +196,32 @@ export function CharacterUpstreamDialog({
         },
       });
 
-      toast.success(
-        `已完成 RP 卡写入：导入 ${res.importedAssetCount} 张图像、${res.createdVariantCount} 个衍生形态、${res.createdSkinCount} 套皮肤`,
-      );
-      onOpenChange(false);
-      onApplied(targetId);
+      target.current = { id: targetId, revision: res.profile.draftRevision };
+      setAppliedResult(res);
+      if (res.warnings.length) toast.warning('档案已保存，部分内容需要检查', '请查看向导中的导入结果与原因。');
+      else toast.success('角色档案与所选内容已保存');
     } catch (err) {
-      toast.error('应用上游档案失败', err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setApplyError(message);
+      toast.error('应用上游档案失败', message);
     } finally {
       setApplying(false);
     }
   };
 
   const isBusy = researchMutation.isPending || applying || applyMutation.isPending;
+  const closeDialog = () => {
+    if (isBusy) return;
+    onOpenChange(false);
+    if (target.current && (!characterId || appliedResult)) onApplied(target.current.id);
+  };
 
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
-      title={characterId ? `从上游重构 RP 卡 · ${initialName || '当前角色'}` : '从上游生成完整 RP 角色卡'}
-      description="自动汇聚结构化游戏库、BWiki 皮肤图库与剧情对话切片，生成适配故事推演与 AI 生图/视频的完整档案。"
+      onOpenChange={next => { if (!next) closeDialog(); }}
+      title={characterId ? `从上游重构 RP 卡 · ${initialName || '当前角色'}` : '从上游采集 RP 角色卡'}
+      description="汇聚可用的角色资料、皮肤图片与剧情文本。确认采集范围和缺失项后，再写入角色档案。"
       size="lg"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3 w-full">
@@ -207,28 +229,36 @@ export function CharacterUpstreamDialog({
             {preview ? preview.evidenceSummary : '输入角色名与作品后点击开始采集'}
           </span>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-              取消
+            <Button type="button" variant={appliedResult ? 'accent' : 'ghost'} size="sm" disabled={isBusy} onClick={closeDialog}>
+              {appliedResult ? '完成并查看角色' : '关闭'}
             </Button>
             <Button
               type="button"
               variant="accent"
               size="sm"
-              disabled={!preview || isBusy}
+              disabled={!preview || isBusy || Boolean(appliedResult)}
               loading={applying || applyMutation.isPending}
               onClick={() => void handleApply()}
             >
-              <Check className="h-3.5 w-3.5 mr-1" />
-              <span>{characterId ? '确认合并到角色档案' : '创建角色并保存全部资产'}</span>
+              {!(applying || applyMutation.isPending) && <Check className="h-3.5 w-3.5 mr-1" />}
+              <span>{appliedResult ? '本次内容已保存' : hasTarget ? '确认合并到角色档案' : '创建角色并保存所选内容'}</span>
             </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-4">
+        {applyError && <Alert variant="danger" title="本次应用未完成">{applyError}{hasTarget && <p className="mt-1">已保留同一角色档案，继续操作会使用该档案。关闭向导可查看当前保存内容。</p>}</Alert>}
+        {appliedResult && <Alert variant={appliedResult.warnings.length ? 'warning' : 'success'} title={appliedResult.warnings.length ? '已保存档案，部分内容未导入' : '本次所选内容已保存'}>
+          <p>图片 {appliedResult.importedAssetCount} 张 · 形态 {appliedResult.createdVariantCount} 个 · 皮肤 {appliedResult.createdSkinCount} 套</p>
+          {appliedResult.warnings.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{appliedResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+          <p className="mt-2">已保留导入结果。请查看缺失原因后，到角色档案补充对应内容。</p>
+        </Alert>}
         {/* 检索输入条 */}
         <div className="flex flex-col sm:flex-row gap-2">
           <Input
+            aria-label="采集角色名称"
+            disabled={isBusy || Boolean(appliedResult)}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="角色名称（如：琴、丹恒·饮月、琪亚娜）"
@@ -239,6 +269,8 @@ export function CharacterUpstreamDialog({
             }}
           />
           <Input
+            aria-label="采集所属作品"
+            disabled={isBusy || Boolean(appliedResult)}
             value={work}
             onChange={(e) => setWork(e.target.value)}
             placeholder="所属作品（如：原神、星穹铁道、崩坏三）"
@@ -253,10 +285,11 @@ export function CharacterUpstreamDialog({
             variant="primary"
             size="sm"
             loading={researchMutation.isPending}
+            disabled={isBusy || Boolean(appliedResult)}
             onClick={() => void runResearch()}
             className="h-9 px-4 shrink-0"
           >
-            {researchMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Search className="h-3.5 w-3.5 mr-1" />}
+            {!researchMutation.isPending && <Search className="h-3.5 w-3.5 mr-1" />}
             <span>开始采集</span>
           </Button>
         </div>
@@ -270,7 +303,7 @@ export function CharacterUpstreamDialog({
         )}
 
         {preview && !researchMutation.isPending && (
-          <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
+          <fieldset disabled={Boolean(appliedResult) || applying} className="min-w-0 space-y-5 max-h-[60vh] overflow-y-auto pr-1">
             {preview.warnings.length > 0 && (
               <div className="rounded-panel border border-border-subtle bg-surface-sunken px-3 py-2 text-xs text-muted flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-accent mt-0.5" />
@@ -470,7 +503,7 @@ export function CharacterUpstreamDialog({
                 </div>
               </div>
             )}
-          </div>
+          </fieldset>
         )}
       </div>
     </Dialog>

@@ -82,12 +82,13 @@ export function StudioBeatStream({
       <div className="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-border-subtle bg-surface px-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Input
+            variant="inline"
             aria-label="场次标题"
             value={cleanTitle}
             onChange={(e) => onUpdateScene({ title: e.target.value })}
             onKeyDown={handleTitleKeyDown}
             placeholder="场次标题"
-            className="h-8 min-h-0 w-full min-w-0 max-w-56 truncate rounded-none border-0 border-b border-transparent bg-transparent px-0 text-base font-semibold text-ink shadow-none outline-none transition-colors placeholder:font-normal placeholder:text-muted/60 hover:border-border-subtle focus:border-accent md:text-sm"
+            className="h-8 min-h-0 w-full min-w-0 max-w-56 truncate px-0 text-base font-semibold text-ink placeholder:font-normal placeholder:text-muted/60 md:text-sm"
             title="点击修改场次标题"
           />
 

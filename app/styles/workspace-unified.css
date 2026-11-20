@@ -37,7 +37,10 @@
  * Layer 2: 紧凑模板头部与说明折叠
  * 职责：标题行单行对齐、文字说明抽屉折叠（disclosure）、导航弹性分配。
  * ============================================================================ */
-.shell-root .tpl-header { min-height: 56px; margin: 0; padding-block: 8px; gap: 4px; }
+@layer components {
+  .shell-root .tpl-header { margin: 0; }
+}
+.shell-root .tpl-header { min-height: 56px; padding-block: 8px; gap: 4px; }
 .shell-root .tpl-header-main { flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; min-width: 0; flex-wrap: wrap; }
 .shell-root .tpl-header-main > .tpl-heading { flex: 0 1 auto; gap: 8px; }
 .tpl-heading-text { display: flex; align-items: center; gap: 12px; }

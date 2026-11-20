@@ -149,8 +149,8 @@ test('fetchYattaGenshinCharacter maps stories, quotes, portraits, and costume sk
 test('fetchStarRailResCharacter resolves 丹恒•饮月 as an SP variant', async () => {
   const requests: string[] = [];
   const characters = {
-    '1001': {
-      id: '1001',
+    '1002': {
+      id: '1002',
       name: '丹恒',
       tag: '1001',
       rarity: 4,
@@ -174,7 +174,7 @@ test('fetchStarRailResCharacter resolves 丹恒•饮月 as an SP variant', asyn
   };
   const nicknames = {
     characters: {
-      '1001': ['冷面小青龙'],
+      '1002': ['冷面小青龙'],
       '1213': ['饮月君'],
     },
   };
@@ -203,9 +203,9 @@ test('fetchStarRailResCharacter resolves 丹恒•饮月 as an SP variant', asyn
   assert.equal(spVariant.variantKind, 'sp');
   assert.equal(spVariant.avatarUrl, `${STARRAIL_RES_BASE}/avatar/1213.png`);
   assert.equal(spVariant.portraitUrl, `${STARRAIL_RES_BASE}/portrait/1213.png`);
-  assert.match(spVariant.outfitDescription, /智识/);
-  assert.match(spVariant.outfitDescription, /虚数/);
-  assert.match(spVariant.loreStory, /丹恒的衍生 SP 形态/);
+  assert.equal(spVariant.outfitDescription, '');
+  assert.equal(spVariant.loreStory, '');
+  assert.ok(result.warnings?.some((w) => w.includes('不含衣装描述或背景故事')));
 
   assert.equal(requests.length, 2);
   assert.deepEqual(new Set(requests), new Set([STARRAIL_CHARACTERS_URL, STARRAIL_NICKNAMES_URL]));
@@ -280,7 +280,7 @@ test('fetchBwikiCharacter parses sections and filters skill and undersized image
   assert.equal(result.resolvedName, '阿蕾奇诺');
   assert.ok(result.stories?.some((story) => story.title === '角色故事' && story.content.includes('壁炉之家')));
   assert.ok(result.voiceLines?.some((line) => line.text.includes('请证明你的价值')));
-  assert.ok(result.skinOrVariantCandidates?.some((skin) => skin.name === '装扮' && skin.classification === 'skin'));
+  assert.ok(result.skinOrVariantCandidates?.some((skin) => skin.name === '致终幕的欢宴' && skin.classification === 'skin'));
 
   const assetUrls = (result.assets ?? []).map((asset) => asset.url);
   assert.ok(assetUrls.includes('https://example.test/bwiki/aventurine-avatar.png'));

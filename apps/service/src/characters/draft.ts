@@ -8,6 +8,7 @@ import {
   normalizeCharacterDraftV2,
   type CharacterDraft,
   type CharacterDraftV2,
+  type CharacterVariant,
 } from '@sthstart/contracts';
 import { EMPTY_BIRTHDAY, normalizeBirthday } from './birthday.js';
 
@@ -49,6 +50,15 @@ export function toV1View(draft: CharacterDraftAny): CharacterDraft {
 export function toAuthorityDraft(raw: unknown): CharacterDraftV2 {
   if (isCharacterDraftV2(raw)) return normalizeCharacterDraft(raw) as CharacterDraftV2;
   return migrateCharacterDraftToV2(raw).draft;
+}
+
+/** A form changes only fields it actually owns; all other sections keep the main character identity. */
+export function characterDraftForVariant(raw: unknown, variant?: CharacterVariant): CharacterDraftV2 {
+  const draft = toAuthorityDraft(raw);
+  if (!variant) return draft;
+  return { ...draft, ...(variant.summary !== undefined ? { summary: variant.summary } : {}),
+    ...(variant.personaText !== undefined ? { personaText: variant.personaText } : {}),
+    appearance: { ...draft.appearance, ...(variant.appearance ?? {}) } };
 }
 
 /**

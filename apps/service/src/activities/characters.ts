@@ -7,7 +7,8 @@ import { nowIso } from '../database.js';
 import { createArtifactReference, streamUploadArtifact } from '../artifacts.js';
 import { normalizeCharacterDraft } from '../characters/draft.js';
 import { normalizeCharacterAppearance, projectCharacterPersona } from '../characters/persona-compiler.js';
-import { buildCharacterVisualContext } from '@sthstart/contracts';
+import { mapCharacterVersion, syncCharacterSnapshotAfterChange } from '../characters/snapshots.js';
+import { buildCharacterVisualContext, resolveCharacterVersionSelection } from '@sthstart/contracts';
 
 export function listAvailableCharacters(database: ServiceDatabase): {
   id: string;
@@ -43,28 +44,43 @@ function parseDraft(value: unknown) {
 }
 
 function characterVersionRow(database: ServiceDatabase, characterId: string, version: number | null | undefined) {
-  const profile = database.connection.prepare('SELECT * FROM character_profiles WHERE id=? AND archived=0').get(characterId) as Record<string, unknown> | undefined;
+  let profile = database.connection.prepare('SELECT * FROM character_profiles WHERE id=? AND archived=0').get(characterId) as Record<string, unknown> | undefined;
   if (!profile) return null;
-  if (version === null) return { profile, version: null, draft: parseDraft(profile.draft_json), draftRevision: Number(profile.draft_revision ?? 1), appearanceSnapshot: null, status: 'draft' as const };
+  const original = parseDraft(profile.draft_json).originType === 'original';
+  if (original && (version === null || (version === undefined && profile.latest_version == null))) return null;
+  if (!original && version === undefined) {
+    syncCharacterSnapshotAfterChange(database, characterId);
+    profile = database.connection.prepare('SELECT * FROM character_profiles WHERE id=?').get(characterId) as Record<string, unknown>;
+  }
+  if (version === null) return { profile, version: null, draft: parseDraft(profile.draft_json), draftRevision: Number(profile.draft_revision ?? 1), appearanceSnapshot: null, frozenVersion: null, status: 'draft' as const };
   const selectedVersion = version === undefined ? (profile.latest_version == null ? null : Number(profile.latest_version)) : version;
-  if (selectedVersion === null) return { profile, version: null, draft: parseDraft(profile.draft_json), draftRevision: Number(profile.draft_revision ?? 1), appearanceSnapshot: null, status: 'draft' as const };
-  const row = database.connection.prepare('SELECT version,data_json,draft_revision,appearance_snapshot_json FROM character_versions WHERE character_id=? AND version=?').get(characterId, selectedVersion) as { version: number; data_json: string; draft_revision?: number; appearance_snapshot_json?: string } | undefined;
+  if (selectedVersion === null) return { profile, version: null, draft: parseDraft(profile.draft_json), draftRevision: Number(profile.draft_revision ?? 1), appearanceSnapshot: null, frozenVersion: null, status: 'draft' as const };
+  const row = database.connection.prepare('SELECT * FROM character_versions WHERE character_id=? AND version=?').get(characterId, selectedVersion) as { version: number; data_json: string; draft_revision?: number; appearance_snapshot_json?: string } | undefined;
   if (!row) return null;
   let appearanceSnapshot: Record<string, unknown> | null = null;
   if (row.appearance_snapshot_json && row.appearance_snapshot_json !== '{}') {
     try { appearanceSnapshot = JSON.parse(row.appearance_snapshot_json) as Record<string, unknown>; } catch { appearanceSnapshot = null; }
   }
-  return { profile, version: Number(row.version), draft: parseDraft(row.data_json), draftRevision: Number(row.draft_revision ?? profile.draft_revision ?? 1), appearanceSnapshot, status: 'published' as const };
+  return { profile, version: Number(row.version), draft: parseDraft(row.data_json), draftRevision: Number(row.draft_revision ?? profile.draft_revision ?? 1), appearanceSnapshot, frozenVersion: mapCharacterVersion(row as unknown as Record<string, unknown>), status: 'published' as const };
 }
 
 export function createActorSnapshotFromCharacter(
   database: ServiceDatabase,
   characterId: string,
-  overrides: { activityRole?: string; outfitDescription?: string; avatarAssetKey?: string; avatarAssetId?: string; portraitAssetId?: string; sourceVersion?: number | null } = {},
+  overrides: { activityRole?: string; outfitDescription?: string; avatarAssetKey?: string; avatarAssetId?: string; portraitAssetId?: string; sourceVersion?: number | null; sourceVariantId?: string; sourceCostumeAssetId?: string } = {},
 ): ActorSnapshot | null {
   const selected = characterVersionRow(database, characterId, overrides.sourceVersion);
   if (!selected) return null;
-  const { profile, draft, version, draftRevision, appearanceSnapshot, status } = selected;
+  const { profile, version, draftRevision, appearanceSnapshot, status } = selected;
+  // A selected variant or costume must belong to the frozen stage, never the live profile.
+  let effective;
+  try {
+    effective = selected.frozenVersion ? resolveCharacterVersionSelection(selected.frozenVersion, {
+      variantId: overrides.sourceVariantId, costumeAssetId: overrides.sourceCostumeAssetId,
+    }) : null;
+  } catch { return null; }
+  if (!effective && (overrides.sourceVariantId || overrides.sourceCostumeAssetId)) return null;
+  const draft = effective?.draft ?? selected.draft;
   const appearance = normalizeCharacterAppearance(draft.appearance);
   const referenceIds = Array.isArray(appearanceSnapshot?.referenceIds)
     ? appearanceSnapshot.referenceIds.filter((value): value is string => typeof value === 'string')
@@ -73,17 +89,19 @@ export function createActorSnapshotFromCharacter(
     ? (referenceIds.length ? database.connection.prepare(`SELECT id,asset_id FROM character_visual_references WHERE character_id=? AND enabled=1 AND id IN (${referenceIds.map(() => '?').join(',')})`).all(characterId, ...referenceIds) as Array<{ id: string; asset_id: string }> : [])
     : database.connection.prepare(`SELECT id,asset_id FROM character_visual_references WHERE character_id=? AND enabled=1 ORDER BY created_at DESC`).all(characterId) as Array<{ id: string; asset_id: string }>;
   const referenceById = new Map(referenceRows.map((row) => [row.id, row.asset_id]));
-  const orderedReferenceAssetIds = referenceIds ? referenceIds.flatMap((id) => { const assetId = referenceById.get(id); return assetId ? [assetId] : []; }) : referenceRows.map((row) => String(row.asset_id));
+  const orderedReferenceAssetIds = effective ? effective.visualReferences.map(ref => ref.assetId) : referenceIds ? referenceIds.flatMap((id) => { const assetId = referenceById.get(id); return assetId ? [assetId] : []; }) : referenceRows.map((row) => String(row.asset_id));
   const actorId = `actor_${crypto.randomUUID().slice(0, 8)}`;
-  const chosenAvatar = overrides.avatarAssetId || (appearanceSnapshot && Object.hasOwn(appearanceSnapshot, 'avatarAssetId') ? appearanceSnapshot.avatarAssetId : profile.avatar_asset_id);
+  const chosenAvatar = effective ? effective.avatarAssetId : overrides.avatarAssetId || (appearanceSnapshot && Object.hasOwn(appearanceSnapshot, 'avatarAssetId') ? appearanceSnapshot.avatarAssetId : profile.avatar_asset_id);
   const avatarAssetId = chosenAvatar ? String(chosenAvatar) : undefined;
-  const chosenPortrait = overrides.portraitAssetId || profile.portrait_asset_id;
+  const chosenPortrait = effective ? effective.portraitAssetId : overrides.portraitAssetId || profile.portrait_asset_id;
   const portraitAssetId = chosenPortrait ? String(chosenPortrait) : undefined;
   const projected = projectCharacterPersona(draft);
   const selectedOutfit = buildCharacterVisualContext(draft).outfitText;
   return {
     id: actorId,
     sourceCharacterId: String(profile.id),
+    ...(overrides.sourceVariantId ? { sourceVariantId: overrides.sourceVariantId } : {}),
+    ...(overrides.sourceCostumeAssetId ? { sourceCostumeAssetId: overrides.sourceCostumeAssetId } : {}),
     ...(version == null ? {} : { sourceVersion: version }),
     sourceVersionStatus: status,
     characterDraftRevision: draftRevision,
@@ -92,9 +110,9 @@ export function createActorSnapshotFromCharacter(
     visualLoras: 'visualLoras' in draft ? [...(draft.visualLoras ?? [])] : [],
     ...(overrides.avatarAssetKey ? { avatarAssetKey: overrides.avatarAssetKey } : {}),
     ...(avatarAssetId ? { avatarAssetId } : {}),
-    ...(avatarAssetId ? { avatarUrl: `/api/admin/characters/assets/${avatarAssetId}` } : {}),
+    ...(avatarAssetId ? { avatarUrl: effective?.avatarUrl ?? `/api/admin/characters/assets/${avatarAssetId}` } : {}),
     ...(portraitAssetId ? { portraitAssetId } : {}),
-    ...(portraitAssetId ? { portraitUrl: `/api/admin/characters/assets/${portraitAssetId}` } : {}),
+    ...(portraitAssetId ? { portraitUrl: effective?.portraitUrl ?? `/api/admin/characters/assets/${portraitAssetId}` } : {}),
     activityRole: overrides.activityRole?.trim() || '活动参与者',
     outfitDescription: overrides.outfitDescription !== undefined ? overrides.outfitDescription.trim() : selectedOutfit,
     appearanceReferenceAssetKeys: [],
@@ -117,7 +135,9 @@ export async function transferCharacterReferenceToActivity(
   if (!selected) throw new Error('character_version_not_found');
   if (selected.appearanceSnapshot && Array.isArray(selected.appearanceSnapshot.referenceIds) && !selected.appearanceSnapshot.referenceIds.includes(input.referenceId)) throw new Error('reference_not_in_character_version');
   // 文件信息只存在 artifacts；参考图自身只有参考配置。
-  const row = database.connection.prepare(`SELECT r.id,r.asset_id,a.artifact_id,art.sha256,art.local_path AS source_local_path,art.content_type AS source_content_type,a.artifact_id AS asset_artifact_id
+  const frozenReference = selected.frozenVersion?.visualReferences?.find(ref => ref.id === input.referenceId && ref.enabled);
+  if (selected.frozenVersion && !frozenReference) throw new Error('reference_not_in_character_version');
+  const row = frozenReference ? { id: frozenReference.id, asset_id: frozenReference.assetId, artifact_id: frozenReference.artifactId, sha256: frozenReference.sha256 } as Record<string, unknown> : database.connection.prepare(`SELECT r.id,r.asset_id,a.artifact_id,art.sha256,art.local_path AS source_local_path,art.content_type AS source_content_type,a.artifact_id AS asset_artifact_id
     FROM character_visual_references r
     JOIN character_assets a ON a.id=r.asset_id
     LEFT JOIN artifacts art ON art.id=a.artifact_id
@@ -183,7 +203,9 @@ export async function materializeCharacterAvatars(config: ServiceConfig, databas
   for (const actor of document.actors) {
     if (actor.avatarAssetKey || !actor.avatarAssetId || !actor.sourceCharacterId) { actors.push(actor); continue; }
     // 角色资产只指向 artifacts 中的文件；文件路径与 MIME 一律从 artifacts 读取。
-    const source = database.connection.prepare(`SELECT a.artifact_id,art.file_status,art.local_path AS artifact_path,art.content_type
+    const frozen = actor.sourceVersion ? characterVersionRow(database, actor.sourceCharacterId, actor.sourceVersion)?.frozenVersion : null;
+    const frozenAsset = frozen?.assets?.find(asset => asset.id === actor.avatarAssetId);
+    const source = frozen ? (frozenAsset?.artifactId ? database.connection.prepare('SELECT id AS artifact_id,file_status,local_path AS artifact_path,content_type FROM artifacts WHERE id=?').get(frozenAsset.artifactId) as Record<string, unknown> | undefined : undefined) : database.connection.prepare(`SELECT a.artifact_id,art.file_status,art.local_path AS artifact_path,art.content_type
       FROM character_assets a LEFT JOIN artifacts art ON art.id=a.artifact_id WHERE a.id=? AND a.character_id=?`).get(actor.avatarAssetId, actor.sourceCharacterId) as Record<string, unknown> | undefined;
     const path = source?.artifact_path;
     if (!source || !source.artifact_id || typeof path !== 'string' || !existsSync(path) || source.file_status !== 'ready') { actors.push(actor); continue; }

@@ -53,10 +53,11 @@ export function NoteDocument({
         <label className="notebook-title-field">
           <span className="sr-only">笔记标题</span>
           <Input
+            variant="inline"
             value={note.title}
             onChange={(e) => onChange((prev) => ({ ...prev, title: e.target.value }))}
             placeholder="无标题笔记"
-            className="notebook-title-input w-full rounded-none border-0 bg-transparent !px-0 py-1 text-2xl font-semibold tracking-tight text-ink placeholder:text-muted focus-visible:shadow-none sm:text-[28px]"
+            className="notebook-title-input w-full py-1 text-2xl font-semibold tracking-tight text-ink placeholder:text-muted sm:text-[28px]"
           />
         </label>
         {!zenMode && (
@@ -153,12 +154,13 @@ export function NoteDocument({
                   </div>
                   <label className="notebook-caption-field flex items-center gap-2">
                     <span className="notebook-field-label shrink-0 text-sm text-muted">说明</span>
-                  <Input
+                    <Input
+                      variant="inline"
                       data-block-entry
                       value={block.caption}
                       onChange={(e) => onUpdateBlock(block.id, { caption: e.target.value })}
                       placeholder="为这张图片写一句说明（可选）"
-                    className="notebook-caption-input min-w-0 flex-1 border-0 bg-transparent text-sm text-muted"
+                      className="notebook-caption-input min-w-0 flex-1 text-sm text-muted"
                     />
                   </label>
                 </div>
@@ -167,26 +169,31 @@ export function NoteDocument({
               {block.type === 'link' && (
                 <div className="space-y-2 mt-1">
                   <Input
+                    variant="inline"
                     type="url"
                     data-block-entry
                     aria-label="参考链接地址"
                     value={block.url}
                     onChange={(e) => onUpdateBlock(block.id, { url: e.target.value })}
                     placeholder="https://..."
-                    className="w-full border-0 bg-transparent font-mono text-sm text-ink"
+                    className="w-full font-mono text-sm text-ink"
                   />
                   <Input
+                    variant="inline"
+                    aria-label="链接标题"
                     value={block.label}
                     onChange={(e) => onUpdateBlock(block.id, { label: e.target.value })}
                     placeholder="链接标题"
-                    className="w-full border-0 bg-transparent text-sm font-semibold text-ink"
+                    className="w-full text-sm font-semibold text-ink"
                   />
                   <Textarea
+                    variant="inline"
+                    aria-label="收藏链接的原因"
                     rows={2}
                     value={block.note}
                     onChange={(e) => onUpdateBlock(block.id, { note: e.target.value })}
                     placeholder="为什么收藏此链接？"
-                    className="w-full border-0 bg-transparent text-sm text-muted"
+                    className="w-full text-sm text-muted"
                   />
                   {block.url.startsWith('http') && (
                     <a

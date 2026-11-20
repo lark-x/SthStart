@@ -5,11 +5,16 @@ node_modules
 .github
 .next
 .wrangler
+.worktrees
 .pai
 .zcode
 dist
 data
 artifacts
+.codex
+dsh-mcp-servers
+_CONTEXT_COMPRESSION.md
+docs/archive/_CONTEXT_COMPRESSION.md
 *.log
 npm-debug.log*
 .env

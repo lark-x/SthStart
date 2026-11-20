@@ -86,6 +86,8 @@ test('draft fingerprint ignores key order but tracks content', () => {
       locations: draft.definition.locations,
       timeLabel: draft.definition.timeLabel,
       summary: draft.definition.summary,
+      workNature: draft.definition.workNature,
+      parentWork: draft.definition.parentWork,
       title: draft.definition.title,
     },
   } as WorldAuthoringDraft;
@@ -100,6 +102,16 @@ test('draft fingerprint ignores key order but tracks content', () => {
     ...draft,
     initialBranch: { ...draft.initialBranch, direction: '向北塔推进。' },
   }));
+});
+
+test('new authoring drafts carry original identity and derivative drafts require a mother work', () => {
+  const draft = baseDraft();
+  assert.equal(draft.definition.workNature, 'original');
+  assert.equal(draft.definition.parentWork, null);
+  draft.definition.workNature = 'derivative';
+  assert.equal(validateDraft(draft).issues.find(issue => issue.path === 'parentWork')?.message, '同人作品必须选择所属母原作。');
+  draft.definition.parentWork = '原神';
+  assert.equal(validateDraft(draft).ok, true);
 });
 
 test('legacy world-form drafts migrate into an authoring draft', () => {

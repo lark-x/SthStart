@@ -8,13 +8,15 @@ import { mantineControlClasses } from './mantine-controls';
 
 export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: boolean | string;
+  variant?: 'default' | 'inline';
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, error, rows = 3, onKeyDown, onCompositionStart, onCompositionEnd, style, 'aria-invalid': ariaInvalid, ...props }, ref) => {
+  ({ className, error, variant = 'default', rows = 3, onKeyDown, onCompositionStart, onCompositionEnd, style, 'aria-invalid': ariaInvalid, ...props }, ref) => {
     const imeHandlers = useImeSafeHandlers({ onKeyDown, onCompositionStart, onCompositionEnd });
     return (
       <MantineTextarea
+          data-ui-variant={variant === 'inline' ? 'inline' : undefined}
           ref={ref}
           rows={rows}
           resize="vertical"

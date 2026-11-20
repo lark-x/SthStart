@@ -2,17 +2,17 @@
 
 import Link from 'next/link';
 import { useRef } from 'react';
-import { BookOpen, CalendarDays, ChevronDown, Film, PenLine, Plus, Sparkles, Users } from 'lucide-react';
+import { BookOpen, CalendarDays, ChevronDown, Compass, PenLine, Plus, Sparkles, Users } from 'lucide-react';
 import { Menu } from '@mantine/core';
 import { Button } from '@/app/components/ui/button';
 
 const ACTIONS = [
-  { href: '/apps/projects?new=1', label: '新建创作项目', description: '串联大纲正文、角色设定与制作版本', icon: BookOpen },
-  { href: '/apps/activities/new', label: '新建制作', description: '从章节制作，或开始独立互动创作', icon: Film },
+  { href: '/apps/story-worlds/new', label: '新建作品', description: '建立世界观、舞台地图、核心角色与故事分支', icon: Compass },
+  { href: '/apps/story-worlds', label: '进入章节创作', description: '在作品工作台中浏览章节、检索原文并撰写正文', icon: BookOpen },
   { href: '/apps/characters/new', label: '新建角色', description: '手写或导入角色公共设定', icon: Users },
   { href: '/apps/notebook/new', label: '新建创作笔记', description: '记录灵感、设定与参考资料', icon: PenLine },
-  { href: '/apps/creative', label: '自由生成', description: '文本生图、图生图与创意工坊', icon: Sparkles },
-  { href: '/apps/calendar', label: '查看日历', description: '角色生日与活动排期', icon: CalendarDays },
+  { href: '/apps/creative', label: '自由生成', description: '文本生图与图生图创意工坊', icon: Sparkles },
+  { href: '/apps/calendar', label: '查看日历', description: '角色生日与创作日程', icon: CalendarDays },
 ];
 
 /** 工作台顶部的新建入口：一个明确的主动作加一个菜单，替代四散的入口网格。 */

@@ -4,4 +4,8 @@
  */
 export { CharacterFilters } from './components/character-filters';
 export { CharacterPagination } from './components/character-pagination';
+export { CharacterBrowserPicker } from './components/character-browser-picker';
+export { resolveCharacterSelection, characterStageLabel } from './model/character-selection';
+export type { CharacterBrowserSelection } from './model/character-selection';
+export { activityActorFromCharacterSelection, storyCharacterFromCharacterSelection } from './model/selection-consumers';
 export type { CharacterAvatarGenerationPanel } from './components/character-avatar-dialogs';

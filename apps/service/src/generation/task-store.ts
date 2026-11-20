@@ -133,6 +133,8 @@ export function getGenerationTask(database: ServiceDatabase, taskId: string, req
     WHERE ta.task_id = ? ORDER BY ta.sort_order ASC
   `).all(taskId) as Array<{ output_name: string; sort_order: number; artifact_id: string; content_type: string | null; media_type: string | null; byte_size: number; sha256: string | null; thumbnail_artifact_id: string | null }>;
   const status = String(task.status);
+  const request = parseJsonObject(task.request_params_json);
+  const requestContext = parseJsonObject(request.context);
   const priority = task.priority === 'interactive' || task.priority === 'background' || task.priority === 'normal'
     ? task.priority
     : 'normal';
@@ -147,6 +149,7 @@ export function getGenerationTask(database: ServiceDatabase, taskId: string, req
     cancellationScope: (task.cancellation_scope ?? 'none') as GenerationTaskDescriptor['cancellationScope'],
     retryOf: task.retry_of ? String(task.retry_of) : null, createdAt: String(task.created_at), updatedAt: String(task.updated_at),
     finishedAt: task.finished_at ? String(task.finished_at) : null,
+    ...(Object.keys(requestContext).length ? { context: requestContext } : {}),
     artifacts: artifacts.map((item) => ({
       artifactId: item.artifact_id, outputName: item.output_name, sortOrder: item.sort_order,
       url: `/api/v1/artifacts/${item.artifact_id}`, byteSize: Number(item.byte_size), contentType: item.content_type, sha256: item.sha256,

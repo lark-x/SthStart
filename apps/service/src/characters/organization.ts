@@ -3,6 +3,38 @@ import type { ServiceDatabase } from '../database.js';
 import { nowIso } from '../database.js';
 import { list, text } from './draft.js';
 import { upsertCharacterBirthday } from './birthday.js';
+import { syncCharacterSnapshotAfterChange } from './snapshots.js';
+
+const workKey = (name: string) => name.trim().toLowerCase();
+const workNames = (work: CharacterWork) => [work.name, ...work.aliases];
+function workError(code: string, statusCode: number, message: string): never {
+  throw Object.assign(new Error(message), { code, statusCode });
+}
+let workSavepoint = 0;
+function atomicWork<T>(database: ServiceDatabase, operation: () => T): T {
+  if (!database.connection.isTransaction) return database.transaction(operation);
+  const savepoint = `character_work_${++workSavepoint}`;
+  database.connection.exec(`SAVEPOINT ${savepoint}`);
+  try {
+    const result = operation();
+    database.connection.exec(`RELEASE ${savepoint}`);
+    return result;
+  } catch (error) {
+    database.connection.exec(`ROLLBACK TO ${savepoint}`);
+    database.connection.exec(`RELEASE ${savepoint}`);
+    throw error;
+  }
+}
+
+function registeredWorks(database: ServiceDatabase): CharacterWork[] {
+  return database.connection.prepare('SELECT * FROM character_works ORDER BY name').all().map((row) => ({
+    name: String(row.name), aliases: JSON.parse(String(row.aliases_json || '[]')) as string[],
+    mediaType: String(row.media_type || ''),
+    workNature: row.work_nature === 'derivative' || row.work_nature === 'original' ? row.work_nature : 'canon',
+    parentWork: row.parent_work ? String(row.parent_work) : null,
+    worldId: row.world_id ? String(row.world_id) : null, summary: String(row.summary || ''),
+  }));
+}
 
 export function normalizeOrganization(value: unknown): CharacterOrganization {
   const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
@@ -14,15 +46,7 @@ function inferWorkNatureFromOrigin(originType: unknown): WorkNature {
   return 'canon';
 }
 export function characterWorks(database: ServiceDatabase): CharacterWork[] {
-  const works: CharacterWork[] = database.connection.prepare('SELECT * FROM character_works ORDER BY name').all().map((row) => ({
-    name: String(row.name),
-    aliases: JSON.parse(String(row.aliases_json)) as string[],
-    mediaType: String(row.media_type),
-    workNature: (row.work_nature === 'derivative' || row.work_nature === 'original' ? row.work_nature : 'canon') as WorkNature,
-    parentWork: row.parent_work ? String(row.parent_work) : null,
-    worldId: row.world_id ? String(row.world_id) : null,
-    summary: String(row.summary ?? ''),
-  }));
+  const works = registeredWorks(database);
   const names = database.connection.prepare("SELECT json_extract(draft_json,'$.work') name, json_extract(draft_json,'$.originType') originType FROM character_profiles WHERE archived=0").all();
   for (const row of names) {
     if (row.name && !works.some(w => [w.name, ...w.aliases].some(n => n.toLowerCase() === String(row.name).toLowerCase()))) {
@@ -50,31 +74,117 @@ export function upsertCharacterWorkHierarchy(
     worldId?: string | null;
     summary?: string;
   },
+  options: { syncWorldDefinition?: boolean } = {},
 ): CharacterWork {
-  const name = text(input.name, 200);
-  const existing = database.connection.prepare('SELECT * FROM character_works WHERE name=?').get(name) as Record<string, unknown> | undefined;
-  const aliases = input.aliases !== undefined
-    ? [...new Set(list(input.aliases, 50))]
-    : existing ? JSON.parse(String(existing.aliases_json || '[]')) as string[] : [];
-  const mediaType = input.mediaType !== undefined ? text(input.mediaType, 50) : existing ? String(existing.media_type || '') : '';
-  const workNature: WorkNature = input.workNature ?? (existing?.work_nature as WorkNature | undefined) ?? 'canon';
-  const parentWork = workNature === 'derivative'
-    ? (input.parentWork !== undefined ? (text(input.parentWork, 200) || null) : (existing?.parent_work ? String(existing.parent_work) : null))
-    : null;
-  const worldId = input.worldId !== undefined ? (text(input.worldId, 160) || null) : (existing?.world_id ? String(existing.world_id) : null);
-  const summary = input.summary !== undefined ? text(input.summary, 2000) : existing ? String(existing.summary || '') : '';
-  database.connection.prepare(
-    `INSERT INTO character_works(name,aliases_json,media_type,work_nature,parent_work,world_id,summary)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT(name) DO UPDATE SET
-       aliases_json=excluded.aliases_json,
-       media_type=excluded.media_type,
-       work_nature=excluded.work_nature,
-       parent_work=excluded.parent_work,
-       world_id=coalesce(excluded.world_id, character_works.world_id),
-       summary=CASE WHEN excluded.summary <> '' THEN excluded.summary ELSE character_works.summary END`,
-  ).run(name, JSON.stringify(aliases), mediaType, workNature, parentWork, worldId, summary);
-  return { name, aliases, mediaType, workNature, parentWork, worldId, summary };
+  return atomicWork(database, () => {
+    let name = text(input.name, 200);
+    if (!name) workError('character_work_invalid', 400, '请填写作品名称。');
+    const works = registeredWorks(database);
+    const named = works.find(work => workNames(work).some(value => workKey(value) === workKey(name)));
+    if (input.worldId === undefined && named) name = named.name;
+    const worldId = input.worldId !== undefined ? text(input.worldId, 160) || null : named?.worldId ?? null;
+    const linked = worldId ? works.filter(work => work.worldId === worldId) : [];
+    if (named?.worldId && worldId !== named.worldId) workError('character_work_conflict', 409, '该作品名称已关联另一个世界。');
+    const existing = linked.find(work => workKey(work.name) === workKey(name)) ?? linked[0] ?? named;
+    const merged = [...new Set([...linked, ...(named ? [named] : [])])];
+    const workNature = input.workNature ?? existing?.workNature ?? 'canon';
+    if (!['canon', 'derivative', 'original'].includes(workNature)) workError('character_work_invalid', 400, '作品属性无效。');
+    const identities = new Set([name, ...merged.flatMap(workNames)].map(workKey));
+    const aliases = [...new Map([
+      ...list(input.aliases ?? existing?.aliases, 50),
+      ...(worldId ? merged.flatMap(workNames) : []),
+    ].filter(value => workKey(value) !== workKey(name)).map(value => [workKey(value), value])).values()];
+    const desiredNames = new Set([name, ...aliases].map(workKey));
+    const outsiders = works.filter(work => !merged.includes(work));
+    if (outsiders.some(work => workNames(work).some(value => desiredNames.has(workKey(value))))) {
+      workError('character_work_conflict', 409, '名称或别名已属于其他作品。');
+    }
+    let parentWork: string | null = null;
+    if (workNature === 'derivative') {
+      const parent = text(input.parentWork === undefined ? existing?.parentWork : input.parentWork, 200);
+      if (!parent) workError('character_parent_work_required', 400, '同人作品必须选择所属母原作。');
+      if (identities.has(workKey(parent)) || desiredNames.has(workKey(parent))) workError('character_work_cycle', 400, '作品不能以自身作为母原作。');
+      const mother = outsiders.find(work => workNames(work).some(value => workKey(value) === workKey(parent)));
+      if (!mother) workError('character_parent_work_missing', 400, '母原作不存在，请先登记原作或原创作品。');
+      if (mother.workNature === 'derivative') workError('character_parent_work_invalid', 400, '母原作必须是原作或原创作品，不能是同人作品。');
+      if (outsiders.some(work => work.parentWork && identities.has(workKey(work.parentWork)))) {
+        workError('character_work_cycle', 400, '该作品已作为母原作被引用，不能改为同人作品。');
+      }
+      parentWork = mother.name;
+    }
+    if (worldId && named && !named.worldId && (
+      named.workNature !== workNature || (named.parentWork ?? null) !== parentWork
+    )) workError('character_work_conflict', 409, '该名称已有不同属性的作品，请使用新作品名称。');
+    const mediaType = input.mediaType !== undefined ? text(input.mediaType, 50) : existing?.mediaType ?? '';
+    const summary = input.summary !== undefined ? text(input.summary, 2000) : existing?.summary ?? '';
+    // A world ID is the stable identity. Remove only rows proven to belong to it;
+    // names owned by another world are rejected above, never silently merged.
+    for (const work of merged) database.connection.prepare('DELETE FROM character_works WHERE name=?').run(work.name);
+    database.connection.prepare(`INSERT INTO character_works(name,aliases_json,media_type,work_nature,parent_work,world_id,summary)
+      VALUES (?,?,?,?,?,?,?)`).run(name, JSON.stringify(aliases), mediaType, workNature, parentWork, worldId, summary);
+    for (const child of outsiders) {
+      if (child.parentWork && identities.has(workKey(child.parentWork))) {
+        database.connection.prepare('UPDATE character_works SET parent_work=? WHERE name=?').run(name, child.name);
+      }
+    }
+    // Current authoring definitions follow the directory rename as well.
+    // Historical branch definitions and released character versions stay frozen.
+    for (const row of database.connection.prepare('SELECT id,data_json FROM sw_worlds').all()) {
+      const world = JSON.parse(String(row.data_json));
+      const ownWorld = options.syncWorldDefinition !== false && worldId === String(row.id);
+      const parentRenamed = typeof world.parentWork === 'string' && identities.has(workKey(world.parentWork)) && world.parentWork !== name;
+      const ownChanged = ownWorld && (world.title !== name || world.workNature !== workNature || (world.parentWork ?? null) !== parentWork);
+      if (!ownChanged && !parentRenamed) continue;
+      if (ownWorld) Object.assign(world, { title: name, workNature, parentWork });
+      else if (parentRenamed) world.parentWork = name;
+      world.revision = Number(world.revision) + 1;
+      world.updatedAt = nowIso();
+      database.connection.prepare('UPDATE sw_worlds SET data_json=?,revision=?,updated_at=? WHERE id=?')
+        .run(JSON.stringify(world), world.revision, world.updatedAt, String(row.id));
+    }
+    for (const row of database.connection.prepare('SELECT id,draft_json FROM sw_world_setups WHERE completed_branch_id IS NULL').all()) {
+      const draft = JSON.parse(String(row.draft_json));
+      const parent = draft.definition?.parentWork;
+      const ownWorld = options.syncWorldDefinition !== false && worldId === String(row.id);
+      const parentRenamed = typeof parent === 'string' && identities.has(workKey(parent)) && parent !== name;
+      const ownChanged = ownWorld && (draft.definition.title !== name || draft.definition.workNature !== workNature || (parent ?? null) !== parentWork);
+      if (!ownChanged && !parentRenamed) continue;
+      if (ownWorld) Object.assign(draft.definition, { title: name, workNature, parentWork });
+      else if (parentRenamed) draft.definition.parentWork = name;
+      database.connection.prepare('UPDATE sw_world_setups SET title=?,draft_json=?,revision=revision+1,updated_at=? WHERE id=?')
+        .run(draft.definition.title, JSON.stringify(draft), nowIso(), String(row.id));
+    }
+    for (const row of database.connection.prepare('SELECT id,draft_json FROM character_profiles').all()) {
+      const draft = JSON.parse(String(row.draft_json)) as Record<string, unknown>;
+      let changed = false;
+      for (const field of ['work', 'parentWork']) {
+        if (typeof draft[field] === 'string' && identities.has(workKey(draft[field])) && draft[field] !== name) {
+          draft[field] = name; changed = true;
+        }
+      }
+      if (changed) {
+        const id = String(row.id);
+        database.connection.prepare('UPDATE character_profiles SET draft_json=?,draft_revision=draft_revision+1,updated_at=? WHERE id=?')
+          .run(JSON.stringify(draft), nowIso(), id);
+        syncCharacterSnapshotAfterChange(database, id);
+      }
+    }
+    return { name, aliases, mediaType, workNature, parentWork, worldId, summary };
+  });
+}
+
+/** Idempotently repair the old name-based duplicate rows for one known world. */
+export function repairCharacterWorkHierarchy(database: ServiceDatabase, worldId: string): CharacterWork | null {
+  const row = database.connection.prepare('SELECT data_json FROM sw_worlds WHERE id=?').get(worldId);
+  const setup = row ? null : database.connection.prepare('SELECT draft_json FROM sw_world_setups WHERE id=? AND completed_branch_id IS NULL').get(worldId);
+  const definition = row ? JSON.parse(String(row.data_json)) : setup ? JSON.parse(String(setup.draft_json)).definition : null;
+  if (!definition) return null;
+  const linked = registeredWorks(database).find(work => work.worldId === worldId);
+  if (!definition.workNature && !linked) return null;
+  return upsertCharacterWorkHierarchy(database, {
+    name: definition.title, worldId, workNature: definition.workNature ?? linked?.workNature,
+    parentWork: definition.parentWork ?? linked?.parentWork, summary: definition.summary,
+  });
 }
 export function canonicalWork(database: ServiceDatabase, name: string) {
   const trimmed = name.trim();
@@ -117,9 +227,7 @@ export function browseCharacters(database: ServiceDatabase, query: CharacterBrow
     const expectedOrigin = query.workNature === 'canon' ? 'ip' : query.workNature;
     if (matchingWorkNames.length) {
       add(`(json_extract(p.draft_json,'$.work') COLLATE NOCASE IN (${matchingWorkNames.map(() => '?').join(',')}) OR (coalesce(json_extract(p.draft_json,'$.work'),'')='' AND json_extract(p.draft_json,'$.originType')=?))`, ...matchingWorkNames, expectedOrigin);
-    } else {
-      add("json_extract(p.draft_json,'$.originType')=?", expectedOrigin);
-    }
+    } else add("coalesce(json_extract(p.draft_json,'$.work'),'')='' AND json_extract(p.draft_json,'$.originType')=?", expectedOrigin);
   }
   if (query.parentWork) {
     const parentAliases = expandWorks([query.parentWork]);
@@ -147,7 +255,7 @@ export function browseCharacters(database: ServiceDatabase, query: CharacterBrow
   }
   if (query.interpretation) add("json_extract(p.organization_json,'$.interpretation')=?", query.interpretation);
   if (query.reference) add(`${query.reference === 'no' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM character_visual_references r WHERE r.character_id=p.id AND r.enabled=1)`);
-  if (query.appearance) add(`(length(trim(coalesce(json_extract(p.draft_json,'$.appearance.description'),'')))>0)=${query.appearance === 'yes' ? 1 : 0}`);
+  if (query.appearance) add(`(length(trim(coalesce(json_extract(p.draft_json,'$.appearance.baseText'),json_extract(p.draft_json,'$.appearance.description'),'')))>0)=${query.appearance === 'yes' ? 1 : 0}`);
   if (query.source === 'manual') add('NOT EXISTS(SELECT 1 FROM character_sources s WHERE s.character_id=p.id)');
   else if (query.source) add('EXISTS(SELECT 1 FROM character_sources s WHERE s.character_id=p.id AND coalesce(s.provider_id,s.source_type)=?)', query.source);
   if (query.unclassified === 'work') add("coalesce(json_extract(p.draft_json,'$.work'),'')=''");
@@ -183,24 +291,27 @@ export function editCharacterOrganization(database: ServiceDatabase, input: Orga
   if (!Array.isArray(input.ids) || input.ids.length > 500 || input.ids.some(id => typeof id !== 'string')) throw new Error('每次请选择 1 至 500 位角色');
   const ids = [...new Set(list(input.ids, 500))];
   if (!ids.length) throw new Error('请选择角色');
-  return database.transaction(() => {
+  return atomicWork(database, () => {
     for (const id of ids) {
       const row = database.connection.prepare('SELECT * FROM character_profiles WHERE id=? AND archived=0').get(id);
       if (!row) throw new Error('角色已删除，请刷新列表');
       const draft = JSON.parse(String(row.draft_json));
       if (input.originType === 'ip' || input.originType === 'derivative' || input.originType === 'original') draft.originType = input.originType;
+      const parentCharacterId = input.originType && input.originType !== 'derivative' ? null : row.parent_character_id;
+      if (input.originType && input.originType !== 'derivative') delete draft.parentCharacterId;
       const organization = normalizeOrganization(JSON.parse(String(row.organization_json)));
       if (input.work !== undefined && (!input.fillEmpty || !draft.work)) draft.work = canonicalWork(database, text(input.work, 200));
       if (input.interpretation !== undefined && (!input.fillEmpty || !organization.interpretation)) organization.interpretation = text(input.interpretation, 100);
       if (input.favorite !== undefined) organization.favorite = input.favorite === true;
       if (input.groups) organization.groups = [...new Set([...(input.replaceGroups ? [] : organization.groups), ...list(input.groups, 50)])].slice(0, 50);
       const tags = input.tags ? [...new Set([...(input.replaceTags ? [] : JSON.parse(String(row.tags_json)) as string[]), ...list(input.tags, 50)])].slice(0, 50) : JSON.parse(String(row.tags_json));
-      const changedDraft = JSON.stringify(draft) !== String(row.draft_json);
+      const changedDraft = JSON.stringify(draft) !== String(row.draft_json) || parentCharacterId !== row.parent_character_id;
       // Tags are included in the editor's full save, so batch tag edits must
       // invalidate the same revision as persona edits.
       const changedTags = JSON.stringify(tags) !== String(row.tags_json);
-      database.connection.prepare('UPDATE character_profiles SET draft_json=?,tags_json=?,organization_json=?,draft_revision=draft_revision+?,updated_at=? WHERE id=?').run(JSON.stringify(draft), JSON.stringify(tags), JSON.stringify(organization), changedDraft || changedTags ? 1 : 0, nowIso(), id);
+      database.connection.prepare('UPDATE character_profiles SET draft_json=?,tags_json=?,organization_json=?,parent_character_id=?,draft_revision=draft_revision+?,updated_at=? WHERE id=?').run(JSON.stringify(draft), JSON.stringify(tags), JSON.stringify(organization), parentCharacterId ?? null, changedDraft || changedTags ? 1 : 0, nowIso(), id);
       if (changedDraft) upsertCharacterBirthday(database, id, draft);
+      if (changedDraft || changedTags) syncCharacterSnapshotAfterChange(database, id);
     }
     return { updated: ids.length };
   });

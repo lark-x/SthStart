@@ -225,6 +225,21 @@
   background: transparent;
   box-shadow: none;
 }
+/* Document paragraphs already indicate focus with the block's side marker.
+ * Do not let a skin turn each paragraph back into a raised form control. */
+html[data-theme] .notebook-editor-compact .notebook-paragraph .ui-control.notebook-textarea {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+@media (forced-colors: active) {
+  html[data-theme] .notebook-editor-compact .notebook-paragraph .ui-control.notebook-textarea:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 4px;
+  }
+}
 .notebook-block, .notebook-block [data-block-entry] { scroll-margin-block: 88px 24px; }
 .notebook-insert-options { display: grid; min-width: 128px; }
 .notebook-insert-options button { justify-content: flex-start; }
@@ -239,9 +254,9 @@
 }
 .notebook-start-writing:hover { color: var(--accent); }
 
-.notebook-editor-compact :is(button, summary, a, input, select, textarea):not(.notebook-textarea):focus-visible,
+.notebook-editor-compact :is(button, summary, a, input, select, textarea):not(.ui-control):focus-visible,
 .notebook-workspace-shell :is(.notebook-list-toggle, .notebook-new-note-action):focus-visible,
-.notebook-properties-drawer :is(button, summary, a, input, select, textarea):focus-visible {
+.notebook-properties-drawer :is(button, summary, a, input, select, textarea):not(.ui-control):focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }

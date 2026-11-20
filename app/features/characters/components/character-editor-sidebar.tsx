@@ -3,6 +3,7 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import Image from 'next/image';
 import {
+  Cake,
   Camera,
   Check,
   ChevronDown,
@@ -11,12 +12,14 @@ import {
   Layers,
   Palette,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
   Upload,
   User,
 } from 'lucide-react';
 import type { CharacterAssetDetail, CharacterVariant } from '@sthstart/contracts';
+import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { IconButton } from '@/app/components/ui/icon-button';
 import { AnchoredPopover } from '@/app/components/ui/anchored-popover';
@@ -24,10 +27,16 @@ import { CharacterVisualPreview } from './character-image-fallback';
 
 type AssetKind = 'avatar' | 'portrait';
 
-/** 左栏：角色卡预览、素材操作菜单、形象资产列表与衍生形态。 */
+/** 左栏：紧凑视觉预览卡 + 核心身份/标签/衍生形态（与右侧详情等高协同，不产生多余横幅留白）。 */
 export function CharacterEditorSidebar({
   characterId,
   displayName,
+  work,
+  originType,
+  tags = [],
+  birthday,
+  editing = false,
+  onResetVariant,
   avatarUrl,
   portraitUrl,
   assets,
@@ -48,6 +57,13 @@ export function CharacterEditorSidebar({
 }: {
   characterId?: string;
   displayName: string;
+  work?: string;
+  originType?: 'ip' | 'derivative' | 'original';
+  tags?: string[];
+  summary?: string;
+  birthday?: { month?: number; day?: number } | null;
+  editing?: boolean;
+  onResetVariant?: () => void;
   avatarUrl?: string;
   portraitUrl?: string;
   assets: CharacterAssetDetail[];
@@ -76,13 +92,16 @@ export function CharacterEditorSidebar({
   const [mobileVisualExpanded, setMobileVisualExpanded] = useState(false);
 
   const currentVariant = variants.find((variant) => variant.id === activeVariantId) || null;
+  const originLabel = originType === 'original' ? '原创角色' : originType === 'derivative' ? '同人衍生' : '原作角色';
+  const hasBirthday = Boolean(birthday?.month && birthday?.day);
 
   return (
-    <div
-      className="order-2 space-y-4 lg:order-1 lg:sticky"
+    <aside
+      aria-label="角色概览名片"
+      className="order-1 space-y-4 lg:sticky"
       style={{ top: 'calc(var(--shell-sticky-top) + 1rem)' }}
     >
-      {/* 移动端紧凑可展开条目：在小屏上收纳预览，不挡主表单首屏 */}
+      {/* 移动端紧凑折叠入口 */}
       <div className="lg:hidden rounded-panel border border-border-subtle bg-surface p-3">
         <Button
           type="button"
@@ -94,7 +113,7 @@ export function CharacterEditorSidebar({
         >
           <span className="flex w-full items-center justify-between gap-3">
             <span className="flex min-w-0 items-center gap-2.5">
-              <span className="relative h-8 w-8 flex-none overflow-hidden rounded-control border border-border-subtle bg-surface-sunken">
+              <span className="relative h-9 w-9 flex-none overflow-hidden rounded-control border border-border-subtle bg-surface-sunken">
                 {avatarUrl ? (
                   <Image src={avatarUrl} alt="" fill unoptimized className="object-cover" />
                 ) : portraitUrl ? (
@@ -104,7 +123,9 @@ export function CharacterEditorSidebar({
                 )}
               </span>
               <span className="block min-w-0">
-                <span className="block truncate text-xs font-semibold text-ink">视觉预览与资产形态</span>
+                <span className="block truncate text-xs font-semibold text-ink">
+                  {displayName || '未命名角色'} · 视觉与基础档案
+                </span>
                 <span className="block text-[11px] text-muted">
                   {currentVariant ? `形态：${currentVariant.name}` : '主档案'} · {assetsLoaded ? `${assets.length} 个资产` : '暂无资产'}
                 </span>
@@ -118,28 +139,27 @@ export function CharacterEditorSidebar({
         </Button>
       </div>
 
-      <div className={`space-y-5 ${mobileVisualExpanded ? 'block' : 'hidden lg:block'}`}>
-        {/* 角色卡牌预览 */}
-        <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3">
+      <div className={`space-y-4 ${mobileVisualExpanded ? 'block' : 'hidden lg:block'}`}>
+        {/* 视觉立绘 + 核心身份信息卡片 */}
+        <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-3.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-              视觉预览
+              角色档案卡
             </span>
             <span className="inline-flex items-center rounded-full border border-[var(--selection-border)] bg-[var(--selection-bg)] px-2.5 py-0.5 text-xs font-medium text-[var(--selection-fg)]">
               {currentVariant ? `形态: ${currentVariant.name}` : '主档案形态'}
             </span>
           </div>
 
-          {/* 立绘与头像展示区 */}
           <CharacterVisualPreview portraitUrl={portraitUrl} avatarUrl={avatarUrl} displayName={displayName} />
 
-          {/* 精简双操作：更换图片(下拉) + AI 生图 */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          {/* 立绘操作 */}
+          <div className="grid grid-cols-2 gap-2">
             <AnchoredPopover
               title="更换或获取图片"
               open={uploadMenuOpen}
               onOpenChange={setUploadMenuOpen}
-              side="top"
+              side="bottom"
               align="start"
               className="w-48"
               trigger={
@@ -148,7 +168,7 @@ export function CharacterEditorSidebar({
                   size="sm"
                   variant="outline"
                   disabled={!characterId || isUploading}
-                  className="min-h-9 w-full justify-center gap-1.5 px-2.5 text-xs"
+                  className="min-h-8 w-full justify-center gap-1 px-2 text-xs"
                 >
                   <Upload className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true" />
                   <span>更换图片</span>
@@ -170,7 +190,7 @@ export function CharacterEditorSidebar({
                   className="h-auto min-h-9 w-full justify-start gap-1.5 px-2.5 py-1.5 text-xs font-normal"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-                  <span>多源探测立绘与皮肤</span>
+                  <span>主档案：多源获取图片</span>
                 </Button>
                 <Button
                   type="button"
@@ -221,12 +241,65 @@ export function CharacterEditorSidebar({
               variant="outline"
               onClick={onTriggerAiAvatar}
               disabled={!characterId}
-              className="min-h-9 w-full justify-center gap-1.5 px-2.5 text-xs hover:border-accent hover:text-accent"
+              className="min-h-8 w-full justify-center gap-1 px-2 text-xs hover:border-accent hover:text-accent"
               title="基于外观与服装特征生成头像"
             >
               <Palette className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
               <span>{avatarTaskId ? '生成中...' : hasAvatarResult ? '预览新图' : 'AI 生图'}</span>
             </Button>
+          </div>
+
+          {/* 角色基本身份与标签信息区（充实左栏并避免右侧重复堆叠） */}
+          <div className="border-t border-hairline pt-3 space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 space-y-1">
+                <h2 className="text-lg font-bold tracking-tight text-ink leading-snug">
+                  {displayName || '未命名角色'}
+                  {currentVariant ? ` · ${currentVariant.name}` : ''}
+                </h2>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline">{originLabel}</Badge>
+                  {work && <Badge variant="outline">{work}</Badge>}
+                  {hasBirthday && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-sunken/50 px-2 py-0.5 text-[11px] text-muted">
+                      <Cake className="h-3 w-3 text-accent" aria-hidden="true" />
+                      <span>{birthday?.month}月{birthday?.day}日</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+              {currentVariant && onResetVariant && (
+                <Button size="sm" variant="outline" onClick={onResetVariant} className="h-7 min-h-7 shrink-0 px-2 text-xs">
+                  <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" />
+                  <span>主档案</span>
+                </Button>
+              )}
+            </div>
+
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-md border border-hairline bg-surface-sunken/50 px-2 py-0.5 text-[11px] text-muted"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {currentVariant && (
+              <p role="status" className="text-[11px] leading-relaxed text-muted">
+                当前处于衍生形态「{currentVariant.name}」，人设与图片独立保存。
+              </p>
+            )}
+
+            {editing && !currentVariant && (
+              <p className="text-[11px] font-medium text-accent-dark">
+                正在编辑主档案信息。
+              </p>
+            )}
           </div>
 
           <div className="border-t border-hairline pt-2.5 flex items-center justify-between text-xs">
@@ -243,7 +316,6 @@ export function CharacterEditorSidebar({
             </Button>
           </div>
 
-          {/* 隐藏的本地图片选择器 */}
           <input
             ref={avatarInputRef}
             type="file"
@@ -262,7 +334,7 @@ export function CharacterEditorSidebar({
           />
         </div>
 
-        {/* 仅当存在衍生形态（装甲 / SP / 阶段形态）时展开，单形态角色不占左栏空间 */}
+        {/* 仅当存在衍生形态（装甲 / SP / 阶段形态）时展开 */}
         {variants.length > 0 && (
           <div className="rounded-panel border border-border-subtle bg-surface p-4 space-y-2.5">
             <div className="flex items-center justify-between">
@@ -333,6 +405,6 @@ export function CharacterEditorSidebar({
           </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

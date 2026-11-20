@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Plus, Terminal, Palette } from 'lucide-react';
+import { Sun, Plus, Terminal, Palette, Sparkles } from 'lucide-react';
 import type { CommandItem } from '@/app/components/ui/command';
 import { NAV_APPS, NAV_PORTAL, SETTINGS_SUB_PAGES } from '@/app/shell/navigation';
 import { THEMES, type ThemeId } from '@/app/lib/theme-preference';
@@ -30,7 +30,7 @@ export function createCommandRegistry(
       icon: <NAV_PORTAL.icon className="h-4 w-4" />,
       action: () => push(NAV_PORTAL.href),
     },
-    ...NAV_APPS.map((app) => ({
+    ...NAV_APPS.filter((app) => !app.hiddenFromSidebar).map((app) => ({
       id: `app-${app.id}`,
       title: app.title,
       description: app.description,
@@ -73,22 +73,31 @@ export function createCommandRegistry(
 
   const quickActions: CommandItem[] = [
     {
-      id: 'action-new-activity',
-      title: '新建互动活动',
-      description: '策划并生成一场多角色互动活动',
+      id: 'action-open-ai-assistant',
+      title: '打开 AI 创作助手 (Ctrl+J)',
+      description: '在当前页面侧栏唤起 AI 创作总管，分析进度、修改流程或启动创作',
       category: '快捷操作',
-      keywords: ['new', 'activity', '新建活动', '活动'],
-      icon: <Plus className="h-4 w-4" />,
-      action: () => push('/apps/activities/new'),
+      keywords: ['ai', 'assistant', '助手', '总管', '创作助手'],
+      icon: <Sparkles className="h-4 w-4" />,
+      action: () => window.dispatchEvent(new CustomEvent('sthstart:open-ai-drawer')),
     },
     {
-      id: 'action-new-story',
-      title: '进入剧情创作 (Story Studio)',
-      description: '编剧工作室、大纲世界观与角色设定',
+      id: 'action-new-world',
+      title: '新建作品',
+      description: '建立一部作品的世界观、舞台、角色阵营与故事分支',
       category: '快捷操作',
-      keywords: ['new', 'story', '剧情', '剧本', '大纲', '小说'],
+      keywords: ['new', 'world', '新建作品', '作品', '世界观'],
       icon: <Plus className="h-4 w-4" />,
-      action: () => push('/apps/story'),
+      action: () => push('/apps/story-worlds/new'),
+    },
+    {
+      id: 'action-open-worlds',
+      title: '打开作品与章节工作台',
+      description: '在统一工作台查看设定集、章节序并开启 AI 协同写作',
+      category: '快捷操作',
+      keywords: ['story', 'world', '作品', '剧情', '章节', '小说'],
+      icon: <Plus className="h-4 w-4" />,
+      action: () => push('/apps/story-worlds'),
     },
     {
       id: 'action-new-character',

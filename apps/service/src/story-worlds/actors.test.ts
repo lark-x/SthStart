@@ -122,6 +122,7 @@ test('adding a supporting actor to the library creates one source snapshot and r
     const first = f.service.promote(f.world.id, f.branch.id, 'actor-b', {
       expectedRevision: committed.revision, promoteToMain: true, addToLibrary: true,
       displayName: '码头少年', tags: ['故事世界', '配角'], summary: '从码头成长起来的少年。',
+      versionLabel: '码头初识',
     });
     assert.equal(first.character?.created, true);
     assert.equal(first.character?.version, 1);
@@ -176,6 +177,7 @@ test('an active run blocks cast changes and rolls back any newly created card', 
       .run('active-run', f.world.id, f.branch.id, 'running', '{}', null, at, at);
     assert.throws(() => f.service.promote(f.world.id, f.branch.id, 'actor-b', {
       expectedRevision: f.branch.revision, promoteToMain: true, addToLibrary: true,
+      versionLabel: '运行时应回滚',
     }), (error: unknown) => error instanceof StoryWorldError
       && error.code === 'story_run_conflict' && error.statusCode === 409);
     assert.equal((f.database.connection.prepare('SELECT COUNT(*) AS count FROM character_profiles').get() as { count: number }).count, 0);
@@ -208,6 +210,56 @@ test('an already linked character is reused without creating or overwriting a se
     assert.equal((database.connection.prepare('SELECT COUNT(*) AS count FROM character_versions').get() as { count: number }).count, 1);
     assert.deepEqual(database.connection.prepare('SELECT display_name,draft_json FROM character_profiles WHERE id=?').get(existing.id), before);
   } finally { database.close(); }
+});
+
+test('actor library entry follows the current work title even when the branch keeps an old definition', () => {
+  const database = new ServiceDatabase(':memory:');
+  try {
+    const store = new StoryWorldStore(database);
+    const original = { ...definition(), workNature: 'derivative' as const, parentWork: '星铁' };
+    const world = store.create(original);
+    const branch = store.createBranch(world.id, { title: '改名前分支', mode: 'adaptation', direction: '', expectedRevision: 1 });
+    store.updateWorld(world.id, { expectedRevision: 1, definition: { ...original, title: '新作品名' } });
+    const result = new StoryWorldActorService(store).promote(world.id, branch.id, 'actor-b', {
+      expectedRevision: branch.revision, promoteToMain: false, addToLibrary: true,
+    });
+    const row = database.connection.prepare('SELECT draft_json FROM character_profiles WHERE id=?').get(result.character!.characterId)!;
+    assert.equal(JSON.parse(String(row.draft_json)).work, '新作品名');
+    assert.equal(JSON.parse(String(row.draft_json)).originType, 'derivative');
+    assert.equal(store.definition(world.id, branch.id).title, original.title);
+  } finally { database.close(); }
+});
+
+test('world binding validates frozen variant and costume selections without consulting mutable profile fields', () => {
+  const database = new ServiceDatabase(':memory:');
+  try {
+    const existing = insertExistingCard(database);
+    database.connection.prepare('UPDATE character_profiles SET variants_json=? WHERE id=?').run(JSON.stringify([{ id: 'live-only', name: '未发布形态' }]), existing.id);
+    const store = new StoryWorldStore(database);
+    const input = definition();
+    input.actors[0] = { ...input.actors[0], characterId: existing.id, characterVersion: 1, characterVariantId: 'live-only' };
+    assert.throws(() => store.create(input), { code: 'story_actor_selection_invalid' });
+    input.actors[0] = { ...input.actors[0], characterVariantId: undefined, characterCostumeAssetId: 'live-skin' };
+    assert.throws(() => store.create(input), { code: 'story_actor_selection_invalid' });
+    input.actors[0] = { ...input.actors[0], characterId: null, characterVersion: null };
+    assert.throws(() => store.create(input), { code: 'story_actor_selection_invalid' });
+  } finally { database.close(); }
+});
+
+test('original actor entry requires a named stage and stores the shared frozen snapshot', () => {
+  const f = fixture();
+  try {
+    assert.throws(() => f.service.promote(f.world.id, f.branch.id, 'actor-b', {
+      expectedRevision: f.branch.revision, promoteToMain: false, addToLibrary: true,
+    }), { code: 'story_character_stage_required' });
+    assert.equal(f.database.connection.prepare('SELECT count(*) n FROM character_profiles').get()!.n, 0);
+    const result = f.service.promote(f.world.id, f.branch.id, 'actor-b', {
+      expectedRevision: f.branch.revision, promoteToMain: false, addToLibrary: true, versionLabel: '码头初识',
+    });
+    const row = f.database.connection.prepare('SELECT data_json,version_label FROM character_versions WHERE character_id=?').get(result.character!.characterId)!;
+    assert.equal(row.version_label, '码头初识');
+    assert.ok(JSON.parse(String(row.data_json)).snapshot);
+  } finally { f.database.close(); }
 });
 
 test('actor promotion route enforces admin auth, strict body and response schemas', async () => {
@@ -243,7 +295,7 @@ test('actor promotion route enforces admin auth, strict body and response schema
 
     // 4. Valid body and auth succeeds
     const created = await app.inject({ method: 'POST', url: path, headers,
-      payload: { expectedRevision: f.branch.revision, promoteToMain: true, addToLibrary: true, displayName: '路由建卡' } });
+      payload: { expectedRevision: f.branch.revision, promoteToMain: true, addToLibrary: true, displayName: '路由建卡', versionLabel: '路由阶段' } });
     assert.equal(created.statusCode, 200, created.body);
     assert.ok(Value.Check(WorldActorPromotionResultSchema, created.json()));
     assert.equal(created.json().character.created, true);

@@ -121,7 +121,7 @@ export function NoteEditorHeader({
         </span>
       </div>
 
-      <div className="notebook-editor-actions flex items-center gap-2">
+      <div className="notebook-editor-actions flex items-center gap-2" role="toolbar" aria-label="笔记工具栏">
         <AnchoredPopover
           title="插入内容"
           open={insertOpen}

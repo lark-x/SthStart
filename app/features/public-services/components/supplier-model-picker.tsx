@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import type { ModelProfile, ServiceConnection } from '@sthstart/contracts';
 import { Dialog } from '@/app/components/ui/dialog';
@@ -40,9 +40,14 @@ export function SupplierModelPicker({ connections, supplierName, initialType, mo
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const discoveryRequest = useRef(0);
+  const [savedModels, setSavedModels] = useState(new Set<string>());
   const groupConnectionIds = new Set(connections.map(connection => connection.id));
   const targetConnection = selectConnectionForModelType(connections, modelType);
   const existing = new Set(models.filter(model => groupConnectionIds.has(model.connectionId) && (model.modelType ?? 'chat') === modelType).map(model => model.modelId));
+  for (const saved of savedModels) {
+    if (saved.startsWith(`${modelType}:`)) existing.add(saved.slice(modelType.length + 1));
+  }
   const rows = [...new Set([...catalog, ...selected])].filter(id => id.toLowerCase().includes(query.toLowerCase()));
 
   const handleSave = async (event: FormEvent) => {
@@ -57,31 +62,40 @@ export function SupplierModelPicker({ connections, supplierName, initialType, mo
     const ids = new Set(models.map(model => model.id));
     for (const modelId of selected) {
       try {
-        if (existing.has(modelId)) continue;
+        const savedKey = `${modelType}:${modelId}`;
+        if (existing.has(modelId) || savedModels.has(savedKey)) continue;
         const id = generateInternalId('model', `${targetConnection.id}-${modelType}-${modelId}`, ids);
         ids.add(id);
         await saveModelProfile({ id, connectionId: targetConnection.id, name: modelId, modelId, modelType,
           capabilities: modelType === 'chat' ? vision ? ['text', 'multimodal'] : ['text'] : [] });
+        setSavedModels(previous => new Set([...previous, savedKey]));
       } catch (caught) {
         failed.push(modelId);
         reasons.push(`${modelId}：${caught instanceof Error ? caught.message : '保存失败'}`);
       }
     }
+    setSelected(failed);
     try {
       await onSaved();
       if (failed.length) { setSelected(failed); setError(`部分模型未保存。${reasons.join('；')}`); }
       else onClose();
-    } catch { setError('模型已保存，列表刷新失败，请关闭后刷新页面。'); }
+    } catch { setError(failed.length
+      ? `部分模型未保存。${reasons.join('；')}。列表刷新失败，可重试未保存项。`
+      : '模型已保存，列表刷新失败，请关闭后刷新页面。'); }
     finally { setSaving(false); }
   };
 
   const discover = async () => {
     if (!targetConnection) return;
+    const request = ++discoveryRequest.current;
     setLoading(true);
     setError('');
-    try { setCatalog((await discoverConnectionModels({ connectionId: targetConnection.id })).models); }
-    catch { setError('模型目录暂时不可用，可在下方手动填写模型 ID。'); }
-    finally { setLoading(false); }
+    try {
+      const result = await discoverConnectionModels({ connectionId: targetConnection.id });
+      if (request === discoveryRequest.current) setCatalog(result.models);
+    }
+    catch { if (request === discoveryRequest.current) setError('模型目录暂时不可用，可在下方手动填写模型 ID。'); }
+    finally { if (request === discoveryRequest.current) setLoading(false); }
   };
 
   return (
@@ -93,7 +107,7 @@ export function SupplierModelPicker({ connections, supplierName, initialType, mo
         {error && <Alert variant="warning" title="操作提示">{error}</Alert>}
         {targetConnection && !targetConnection.enabled && <p className="text-sm text-muted">对应连接已停用。仍可手动添加模型，启用供应商后才能获取目录或调用。</p>}
         <FormField label="模型用途">
-          <Select value={modelType} disabled={saving} onChange={event => { setModelType(event.target.value as SupplierModelType); setSelected([]); setCatalog([]); setQuery(''); setError(''); }}>
+          <Select value={modelType} disabled={saving} onChange={event => { discoveryRequest.current += 1; setLoading(false); setModelType(event.target.value as SupplierModelType); setSelected([]); setCatalog([]); setQuery(''); setManual(''); setVision(false); setError(''); }}>
             {availableTypes.includes('chat') && <option value="chat">文本 / 看图</option>}
             {availableTypes.includes('embedding') && <option value="embedding">向量计算</option>}
             {availableTypes.includes('image') && <option value="image">绘图</option>}

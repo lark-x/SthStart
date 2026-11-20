@@ -62,6 +62,7 @@ export function useCharacterDraftSession({
   const recovering = useRef(false);
 
   const [errorMessage, setErrorMessage] = useState('');
+  const [baselineSnapshot, setBaselineSnapshot] = useState<string | null>(null);
   const [revisionConflict, setRevisionConflict] = useState(false);
   const recoveryKey = `sthstart:character-recovery:${characterId ?? 'new'}`;
   const recoveryAvailable = useSyncExternalStore(subscribeRecovery, useCallback(() => {
@@ -71,9 +72,9 @@ export function useCharacterDraftSession({
   const createMutation = useCreateCharacter();
   const updateMutation = useUpdateCharacter();
 
-  useEffect(() => {
-    liveSnapshot.current = characterDraftSnapshot(getValues(), tags, variants);
-  });
+  const renderedSnapshot = characterDraftSnapshot(getValues(), tags, variants);
+  const hasUnsavedChanges = baselineSnapshot === null ? !characterId : renderedSnapshot !== baselineSnapshot;
+  useEffect(() => { liveSnapshot.current = renderedSnapshot; });
 
   // 服务器内容载入后建立基线；后台刷新不能覆盖正在编辑的脏表单。
   useEffect(() => {
@@ -84,12 +85,18 @@ export function useCharacterDraftSession({
     const previous = baseline.current;
     if (previous && previous.id === characterId) {
       if ((detailData.draftRevision ?? 0) < (previous.revision ?? 0)) return;
-      if (previous.snapshot === snapshot && previous.revision === detailData.draftRevision) return;
+      if (previous.snapshot === snapshot) {
+        // Asset writes may advance the revision without changing any editable text.
+        // This revision is safe to adopt even while local form values are dirty.
+        baseline.current = { ...previous, revision: detailData.draftRevision };
+        return;
+      }
       // A background refresh may update the avatar while text is still dirty.
       // Preserve both the input and the revision on which it was based.
       if (characterDraftSnapshot(getValues(), tags, variants) !== previous.snapshot) return;
     }
     baseline.current = { id: characterId, snapshot, revision: detailData.draftRevision };
+    setBaselineSnapshot(snapshot);
     reset(values);
     setTags(detailData.tags || []);
     setVariants(detailData.variants || []);
@@ -128,13 +135,14 @@ export function useCharacterDraftSession({
           revision: res.draftRevision,
           snapshot: characterDraftSnapshot(savedValues, res.tags, res.variants || []),
         };
+        setBaselineSnapshot(baseline.current.snapshot);
         if (liveSnapshot.current === submittedSnapshot) {
           reset(savedValues); setTags(res.tags); setVariants(res.variants || []);
           setStatus('saved');
         } else setStatus('dirty');
         toast.success('角色档案已保存');
         await refetchDetail();
-        return res.id;
+        return { id: res.id, draftRevision: res.draftRevision };
       } else {
         const res = await createMutation.mutateAsync({
           displayName: currentDraft.displayName.trim(),
@@ -145,7 +153,7 @@ export function useCharacterDraftSession({
         setStatus('saved');
         toast.success('角色档案创建成功');
         router.push(`/apps/characters/${res.id}`);
-        return res.id;
+        return { id: res.id, draftRevision: res.draftRevision };
       }
     } catch (err: unknown) {
       setStatus('error');
@@ -158,6 +166,24 @@ export function useCharacterDraftSession({
       return null;
     } finally { saving.current = false; }
   }, [characterId, clearErrors, createMutation, getValues, refetchDetail, reset, router, setError, setStatus, setTags, setVariants, tags, toast, updateMutation, variants]);
+
+  const preparePublication = async (): Promise<{ id: string; draftRevision: number } | null> => {
+    if (!characterId || saving.current) return null;
+    const snapshot = characterDraftSnapshot(getValues(), tags, variants);
+    const saved = snapshot !== baseline.current?.snapshot
+      ? await handleSave()
+      : { id: characterId, draftRevision: baseline.current?.revision };
+    if (!saved) return null;
+    if (liveSnapshot.current !== baseline.current?.snapshot) {
+      setErrorMessage('保存期间又有新修改，请先保存当前内容后再创建阶段。');
+      return null;
+    }
+    if (saved.draftRevision == null) {
+      setErrorMessage('无法确认已保存的档案修订，请载入最新版本后重试。');
+      return null;
+    }
+    return { id: saved.id, draftRevision: saved.draftRevision };
+  };
 
   const preserveAndReload = async () => {
     if (saving.current) return;
@@ -183,6 +209,7 @@ export function useCharacterDraftSession({
         revision: latest.data.draftRevision,
         snapshot: characterDraftSnapshot(values, latest.data.tags, latest.data.variants || []),
       };
+      setBaselineSnapshot(baseline.current.snapshot);
       reset(values); setTags(latest.data.tags); setVariants(latest.data.variants || []);
       setStatus('saved'); setErrorMessage(''); setRevisionConflict(false);
       toast.success('已载入最新版本', '原有本机草稿已保留，可下载后对照合并。');
@@ -207,8 +234,10 @@ export function useCharacterDraftSession({
     errorMessage,
     setErrorMessage,
     revisionConflict,
+    hasUnsavedChanges,
     recoveryAvailable,
     handleSave,
+    preparePublication,
     preserveAndReload,
     downloadRecovery,
   };

@@ -57,7 +57,7 @@ export function ResourcesWorkspace({ initialView = 'notes' }: ResourcesWorkspace
           <PageHeader
             compact
             title="资料库"
-            description="集中管理创作笔记、灵感素材与搜集任务，供创作项目引用。"
+            description="集中管理创作笔记、灵感素材与搜集任务，供作品创作引用。"
             navigation={<ResourceNav activeView={currentView} onViewChange={handleViewChange} />}
           />
         </div>

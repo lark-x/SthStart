@@ -12,7 +12,30 @@ export const WorldSourceSchema = Type.Object({
   id, title: text(300), nature: WorldSourceNatureSchema, content: text(100000),
   sourceUrl: text(2000), sourceVersion: text(200), capturedAt: Type.String(),
 }, strict);
-export const WorldLocationSchema = Type.Object({ id, name: text(200), description: text(5000) }, strict);
+export const WorldRegionSchema = Type.Object({
+  id,
+  name: text(200),
+  description: Type.Optional(text(3000)),
+}, strict);
+export type WorldRegion = Static<typeof WorldRegionSchema>;
+
+export const WorldFactionSchema = Type.Object({
+  id,
+  name: text(200),
+  description: Type.Optional(text(3000)),
+  alignment: Type.Optional(text(200)),
+}, strict);
+export type WorldFaction = Static<typeof WorldFactionSchema>;
+
+export const WorldLocationSchema = Type.Object({
+  id,
+  name: text(200),
+  description: text(5000),
+  region: Type.Optional(text(200)),
+  regionId: Type.Optional(id),
+  parentLocationId: Type.Optional(nullableId),
+  tier: Type.Optional(Type.Union([Type.Literal('region'), Type.Literal('sublocation')])),
+}, strict);
 /**
  * 场景/重要道具的画面参考设定。仅用于配图一致性，不作为世界事实或角色记忆写入。
  * locationId 对场景锚点可省略：省略时用 id 匹配地点，便于直接复用地点 ID。
@@ -27,6 +50,10 @@ export type WorldVisualReference = Static<typeof WorldVisualReferenceSchema>;
 export type WorldVisualReferenceKind = Static<typeof WorldVisualReferenceKindSchema>;
 export const WorldActorSchema = Type.Object({
   id, name: text(200), role: Type.Union([Type.Literal('main'), Type.Literal('supporting')]),
+  faction: Type.Optional(text(200)),
+  factionId: Type.Optional(id),
+  regionId: Type.Optional(nullableId),
+  characterVariantId: Type.Optional(id), characterCostumeAssetId: Type.Optional(id),
   characterId: nullableId, characterVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
   background: text(), personality: text(8000), speechStyle: text(4000), appearance: text(5000),
   goals: Type.Array(text(1000), { maxItems: 30 }), locationId: id,
@@ -45,6 +72,9 @@ export const WorldDefinitionSchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 200 }), summary: text(), timeLabel: text(200),
   workNature: Type.Optional(Type.Union([Type.Literal('canon'), Type.Literal('derivative'), Type.Literal('original')])),
   parentWork: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
+  narrativeMode: Type.Optional(Type.Union([Type.Literal('quest-chapter'), Type.Literal('sandbox-tick')])),
+  regions: Type.Optional(Type.Array(WorldRegionSchema, { maxItems: 100 })),
+  factions: Type.Optional(Type.Array(WorldFactionSchema, { maxItems: 100 })),
   /** 世界起点对应的日内分钟（0=00:00，1439=23:59）；缺省表示未定义，不推测昼夜。 */
   startMinuteOfDay: Type.Optional(Type.Integer({ minimum: 0, maximum: 1439 })),
   locations: Type.Array(WorldLocationSchema, { minItems: 1, maxItems: 100 }),
@@ -94,11 +124,47 @@ export const WorldEventSchema = Type.Object({
   stateChanges: Type.Array(WorldActorStateSchema), createdAt: Type.String(),
 }, strict);
 export type WorldEvent = Static<typeof WorldEventSchema>;
+export const WorldStoryLineArcKindSchema = Type.Union([
+  Type.Literal('canon-chapter'),
+  Type.Literal('main'),
+  Type.Literal('quest'),
+  Type.Literal('companion'),
+  Type.Literal('side'),
+]);
+export type WorldStoryLineArcKind = Static<typeof WorldStoryLineArcKindSchema>;
+
+export const WorldStoryLineStatusSchema = Type.Union([
+  Type.Literal('planned'),
+  Type.Literal('active'),
+  Type.Literal('completed'),
+]);
+export type WorldStoryLineStatus = Static<typeof WorldStoryLineStatusSchema>;
+
 export const WorldStoryLineSchema = Type.Object({
   id, worldId: id, branchId: id, title: text(200), description: text(3000), actorIds: Type.Array(id),
+  arcKind: Type.Optional(WorldStoryLineArcKindSchema),
+  chapterCode: Type.Optional(text(120)),
+  mcpQueryHint: Type.Optional(text(300)),
+  timeWindowLabel: Type.Optional(text(200)),
+  regionIds: Type.Optional(Type.Array(id, { maxItems: 50 })),
+  locationIds: Type.Optional(Type.Array(id, { maxItems: 50 })),
+  status: Type.Optional(WorldStoryLineStatusSchema),
+  orderIndex: Type.Optional(Type.Integer({ minimum: 0, maximum: 1000 })),
+  chapterIds: Type.Optional(Type.Array(id, { maxItems: 200 })),
 }, strict);
 export type WorldStoryLine = Static<typeof WorldStoryLineSchema>;
-export const CreateWorldStoryLineSchema = Type.Object({ expectedRevision: revision, title: text(200), description: text(3000), actorIds: Type.Array(id) }, strict);
+export const CreateWorldStoryLineSchema = Type.Object({
+  expectedRevision: revision, title: text(200), description: text(3000), actorIds: Type.Array(id),
+  arcKind: Type.Optional(WorldStoryLineArcKindSchema),
+  chapterCode: Type.Optional(text(120)),
+  mcpQueryHint: Type.Optional(text(300)),
+  timeWindowLabel: Type.Optional(text(200)),
+  regionIds: Type.Optional(Type.Array(id, { maxItems: 50 })),
+  locationIds: Type.Optional(Type.Array(id, { maxItems: 50 })),
+  status: Type.Optional(WorldStoryLineStatusSchema),
+  orderIndex: Type.Optional(Type.Integer({ minimum: 0, maximum: 1000 })),
+  chapterIds: Type.Optional(Type.Array(id, { maxItems: 200 })),
+}, strict);
 export const WorldRunSettingsSchema = Type.Object({
   durationTicks: Type.Integer({ minimum: 1, maximum: 10080, default: 1440 }),
   stepTicks: Type.Integer({ minimum: 1, maximum: 1440, default: 60 }),

@@ -8,7 +8,6 @@ function layout(pathname: string, query = '') {
 
 test('pages that render WorkspaceHeader suppress the duplicate shell toolbar', () => {
   for (const pathname of [
-    '/apps/story-worlds',
     '/apps/story-worlds/world-1',
     '/apps/story/project-1',
     '/apps/notebook/note-1',
@@ -32,6 +31,8 @@ test('library and creation pages keep their own layout', () => {
   assert.equal(layout('/apps/notebook').workspaceKind, 'library');
   assert.equal(layout('/apps/creative').workspaceKind, 'creative');
   assert.equal(layout('/apps/activities/new').workspaceHeader, false);
+  assert.equal(layout('/apps/story-worlds').workspace, false);
+  assert.equal(layout('/apps/story-worlds', 'world=world-1').workspace, true);
   assert.equal(layout('/apps/notebook/offline').workspaceHeader, false);
   for (const pathname of ['/apps/story-worlds/new', '/apps/story-worlds/world-1/edit']) {
     assert.equal(layout(pathname).workspaceHeader, false, pathname);

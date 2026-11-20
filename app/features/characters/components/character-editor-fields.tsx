@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useFieldArray, type Control, type FieldArrayWithId, type UseFormRegister } from 'react-hook-form';
-import { BookOpen, PenLine, Plus, Trash2 } from 'lucide-react';
+import { BookOpen, MessageSquareQuote, PenLine, Plus, ShieldCheck, Trash2, Volume2 } from 'lucide-react';
 import { stripMachineCharacterIndex, type CharacterDraftV2 } from '@sthstart/contracts';
 import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
@@ -57,6 +57,296 @@ function parsePersonaBlocks(text: string): PersonaBlock[] {
   return blocks;
 }
 
+type DossierSection = {
+  title: string;
+  blocks: PersonaBlock[];
+};
+
+function groupPersonaSections(blocks: PersonaBlock[]): DossierSection[] {
+  const sections: DossierSection[] = [];
+  let current: DossierSection | null = null;
+
+  for (const block of blocks) {
+    if (block.type === 'heading') {
+      if (current && current.blocks.length > 0) sections.push(current);
+      current = { title: block.text, blocks: [] };
+      continue;
+    }
+    if (!current) {
+      current = { title: '详细设定', blocks: [] };
+    }
+    current.blocks.push(block);
+  }
+  if (current && current.blocks.length > 0) sections.push(current);
+  return sections;
+}
+
+function splitKeyedText(text: string): { key: string; body: string } | null {
+  const match = /^([^：:\n]{1,32})[：:]\s*([\s\S]+)$/.exec(text.trim());
+  if (!match) return null;
+  return { key: match[1].trim(), body: match[2].trim() };
+}
+
+function isCompactSpecSection(section: DossierSection): boolean {
+  if (!/基础档案|基本资料|属性/.test(section.title) && section.blocks.length > 4) return false;
+  if (section.blocks.length === 0 || section.blocks.length > 6) return false;
+  return section.blocks.every((block) => {
+    if (block.type === 'field') return block.content.length <= 28;
+    if (block.type === 'bullet') return block.text.length <= 36 && Boolean(splitKeyedText(block.text));
+    return false;
+  });
+}
+
+function renderReadingBlocks(blocks: PersonaBlock[]) {
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, index) => {
+        if (block.type === 'field') {
+          return (
+            <div
+              key={index}
+              className="rounded-lg border border-hairline bg-surface-sunken/35 px-3.5 py-2.5 space-y-1"
+            >
+              <div className="text-xs font-semibold text-accent-dark">{block.label}</div>
+              <p className="font-reading text-[14.5px] leading-[1.75] text-ink">{block.content || '—'}</p>
+            </div>
+          );
+        }
+        if (block.type === 'bullet') {
+          const keyed = splitKeyedText(block.text);
+          if (keyed) {
+            return (
+              <div key={index} className="space-y-1 border-b border-hairline/70 pb-2.5 last:border-b-0 last:pb-0">
+                <div className="text-[13px] font-semibold text-ink flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                  <span>{keyed.key}</span>
+                </div>
+                <p className="pl-3.5 font-reading text-[14.5px] leading-[1.8] text-ink/90 whitespace-pre-wrap">
+                  {keyed.body}
+                </p>
+              </div>
+            );
+          }
+          return (
+            <div key={index} className="flex items-start gap-2 font-reading text-[14.5px] leading-[1.8] text-ink">
+              <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+              <span className="whitespace-pre-wrap">{block.text}</span>
+            </div>
+          );
+        }
+        return (
+          <p key={index} className="whitespace-pre-wrap font-reading text-[14.5px] leading-[1.8] text-ink">
+            {block.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 完整阅读态：采用全宽分栏卡片网格（核心语态/行为边界并排、分节卡片自适应填满），告别单侧留白窄栏。 */
+export function CharacterDossierReading({ draft, visual = false }: { draft: CharacterDraftV2; visual?: boolean }) {
+  if (visual) {
+    const visualSections = [
+      { title: '基础外貌特征', text: draft.appearance.baseText, hint: '尚未填写基础外貌特征，可进入编辑补充。' },
+      { title: '代表性装扮与配饰', text: draft.appearance.defaultOutfitText, hint: '尚未填写代表性装扮与配饰，可进入编辑补充。' },
+    ];
+    return (
+      <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 break-words">
+        {visualSections.map((sec) => {
+          const blocks = parsePersonaBlocks(sec.text || '');
+          return (
+            <section
+              key={sec.title}
+              className="rounded-xl border border-border-subtle bg-surface-sunken/25 p-5 space-y-3"
+            >
+              <h3 className="flex items-center gap-2 border-b border-hairline pb-2.5 text-[15px] font-semibold text-ink">
+                <span className="h-4 w-1 rounded-full bg-accent shrink-0" aria-hidden="true" />
+                <span>{sec.title}</span>
+              </h3>
+              {blocks.length > 0 ? renderReadingBlocks(blocks) : <p className="text-sm text-muted">{sec.hint}</p>}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const personaSections = groupPersonaSections(parsePersonaBlocks(stripMachineCharacterIndex(draft.personaText || '')));
+  const specSections = personaSections.filter(isCompactSpecSection);
+  const richSections = personaSections.filter((sec) => !isCompactSpecSection(sec));
+
+  const speechBlocks = parsePersonaBlocks(draft.speechText || '');
+  const behaviorBlocks = parsePersonaBlocks(draft.behaviorRules || '');
+  const exampleCount = draft.dialogueExamples.length;
+  const examplesGridCols =
+    exampleCount <= 1
+      ? 'grid-cols-1'
+      : exampleCount === 2
+        ? 'grid-cols-1 lg:grid-cols-2'
+        : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3';
+
+  return (
+    <div className="w-full space-y-5 break-words">
+      {/* 0. 一句话概述导读 + 基础档案参数条（放入右侧阅读区顶部，左栏保持紧凑不留白） */}
+      {(draft.summary || specSections.length > 0) && (
+        <div className="space-y-3">
+          {draft.summary && (
+            <div className="rounded-xl border border-hairline bg-surface-sunken/40 px-4 py-3.5 font-reading text-[15px] leading-[1.75] text-ink">
+              {draft.summary}
+            </div>
+          )}
+          {specSections.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-surface-sunken/30 px-4 py-2.5">
+              {specSections.map((sec) => (
+                <span key={sec.title} className="text-xs font-semibold text-muted mr-1">
+                  {sec.title}
+                </span>
+              ))}
+              {specSections.flatMap((sec) =>
+                sec.blocks.map((block, idx) => {
+                  const rawText = block.type === 'field' ? `${block.label}：${block.content}` : block.type === 'bullet' ? block.text : '';
+                  const keyed = splitKeyedText(rawText);
+                  return (
+                    <span
+                      key={`${sec.title}-${idx}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1 text-xs"
+                    >
+                      {keyed ? (
+                        <>
+                          <span className="text-muted">{keyed.key}</span>
+                          <span className="font-semibold text-ink">{keyed.body}</span>
+                        </>
+                      ) : (
+                        <span className="font-medium text-ink">{rawText}</span>
+                      )}
+                    </span>
+                  );
+                }),
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2. 核心演绎双栏卡：说话方式与语气 + 认知边界与行为底线 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-border-subtle bg-surface-sunken/25 p-4 sm:p-5 space-y-3">
+          <h3 className="flex items-center gap-2 border-b border-hairline pb-2.5 text-[15px] font-semibold text-ink">
+            <Volume2 className="h-4 w-4 text-accent shrink-0" aria-hidden="true" />
+            <span>说话方式与语气</span>
+          </h3>
+          {speechBlocks.length > 0 ? (
+            renderReadingBlocks(speechBlocks)
+          ) : (
+            <p className="text-sm text-muted">尚未填写说话方式与语气，可进入编辑补充。</p>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-border-subtle bg-surface-sunken/25 p-4 sm:p-5 space-y-3">
+          <h3 className="flex items-center gap-2 border-b border-hairline pb-2.5 text-[15px] font-semibold text-ink">
+            <ShieldCheck className="h-4 w-4 text-accent shrink-0" aria-hidden="true" />
+            <span>认知边界与行为底线</span>
+          </h3>
+          {behaviorBlocks.length > 0 ? (
+            renderReadingBlocks(behaviorBlocks)
+          ) : (
+            <p className="text-sm text-muted">尚未填写认知边界与行为底线，可进入编辑补充。</p>
+          )}
+        </section>
+      </div>
+
+      {/* 3. 详细人设背景（按章节分卡，双栏自适应，奇数末卡自动全宽） */}
+      <div className="space-y-2.5">
+        <h3 className="text-sm font-semibold text-muted">详细人设档案</h3>
+        {richSections.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {richSections.map((sec, idx) => {
+              const spanFull = richSections.length % 2 === 1 && idx === richSections.length - 1;
+              return (
+                <section
+                  key={`${sec.title}-${idx}`}
+                  className={`rounded-xl border border-border-subtle bg-surface-raised/60 p-4 sm:p-5 space-y-3 ${
+                    spanFull ? 'xl:col-span-2' : ''
+                  }`}
+                >
+                  <h4 className="flex items-center gap-2 border-b border-hairline pb-2.5 text-[15.5px] font-semibold text-ink">
+                    <span className="h-4 w-1 rounded-full bg-accent shrink-0" aria-hidden="true" />
+                    <span>{sec.title}</span>
+                  </h4>
+                  {renderReadingBlocks(sec.blocks)}
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border-subtle bg-surface-sunken/20 p-6 text-sm text-muted">
+            尚未填写详细人设背景，可进入编辑补充或使用「上游重构 RP 卡」。
+          </div>
+        )}
+      </div>
+
+      {/* 4. 情境对话范例（全宽对话脚本卡网格） */}
+      {exampleCount > 0 && (
+        <section className="space-y-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-muted">
+            <MessageSquareQuote className="h-4 w-4 text-accent shrink-0" aria-hidden="true" />
+            <span>情境对话范例</span>
+          </h3>
+          <div className={`grid gap-4 ${examplesGridCols}`}>
+            {draft.dialogueExamples.map((example, index) => {
+              const lines = example
+                .split(/\r?\n/)
+                .map((l) => l.trim())
+                .filter(Boolean);
+              return (
+                <div
+                  key={index}
+                  className="rounded-xl border border-hairline bg-surface-sunken/30 p-4 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between border-b border-hairline/70 pb-2 text-xs font-semibold text-muted">
+                    <span>对话示例 {index + 1}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {lines.map((line, lIdx) => {
+                      const speakerMatch = /^([^：:\n]{1,12})[：:]\s*(.+)$/.exec(line);
+                      if (speakerMatch) {
+                        const speaker = speakerMatch[1].trim();
+                        const speech = speakerMatch[2].trim();
+                        const isUserTurn = /^(用户|我|旅伴|开拓者|旅行者|user)$/i.test(speaker);
+                        return (
+                          <div
+                            key={lIdx}
+                            className={`rounded-lg px-3 py-2 text-[13.5px] leading-[1.7] ${
+                              isUserTurn
+                                ? 'bg-surface border border-hairline text-muted'
+                                : 'bg-surface-raised border border-border-subtle text-ink'
+                            }`}
+                          >
+                            <span className={`mr-1.5 font-semibold ${isUserTurn ? 'text-muted' : 'text-accent-dark'}`}>
+                              {speaker}：
+                            </span>
+                            <span className="whitespace-pre-wrap">{speech}</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <p key={lIdx} className="whitespace-pre-wrap text-[13.5px] leading-[1.7] text-ink">
+                          {line}
+                        </p>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export function CharacterPersonaPanel({
   control,
   register,
@@ -69,7 +359,7 @@ export function CharacterPersonaPanel({
   onDirty: () => void;
 }) {
   const cleanPersona = stripMachineCharacterIndex(draft.personaText || '');
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>(() => (cleanPersona ? 'preview' : 'edit'));
+  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
   const blocks = parsePersonaBlocks(cleanPersona);
   const exampleFields = useFieldArray({
     control,
@@ -149,12 +439,13 @@ export function CharacterPersonaPanel({
         ) : (
           <div className="space-y-2">
             {exampleFields.fields.map((field, index) => (
-              <div key={field.id} className="flex items-start gap-2">
+              <div key={field.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                 <Textarea
                   rows={2}
+                  aria-label={`第 ${index + 1} 条情境对话范例`}
                   {...register(`dialogueExamples.${index}.value`, { onChange: onDirty })}
                   placeholder="情境：日常交流 / 被质疑时……"
-                  className="flex-1 bg-surface-input text-xs leading-relaxed p-2.5"
+                  className="w-full bg-surface-input text-xs leading-relaxed p-2.5"
                 />
                 <Button
                   type="button"

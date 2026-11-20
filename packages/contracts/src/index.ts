@@ -586,6 +586,9 @@ export const GenerationTaskArtifactSchema = Type.Object({
 export type GenerationTaskArtifact = Static<typeof GenerationTaskArtifactSchema>;
 
 export const GenerationTaskDescriptorSchema = Type.Object({
+  context: Type.Optional(Type.Object({
+    character: Type.Optional(Type.Object({ characterId: Type.String(), variantId: Type.Optional(Type.String()) })),
+  })),
   id: Type.String(),
   appId: Type.String(),
   engineId: Type.String(),
@@ -1338,6 +1341,15 @@ function runtimeText(value: unknown, max = 60_000): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+// V2 is the authoritative archive. Generation budgets belong to explicit prompt projection,
+// never to normalization, saving or published snapshot reads.
+function authorityText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+function authorityExamples(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean) : [];
+}
+
 function runtimeList(value: unknown, maxItems = 200, max = 20_000): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -1448,10 +1460,10 @@ function v2ToRuntime(draft: CharacterDraftV2): CharacterRuntime {
     originType: normalizeCharacterOriginType(draft.originType),
     work: runtimeText(draft.work, 300),
     summary: runtimeText(draft.summary, 2_000),
-    personaText: runtimeText(draft.personaText),
-    speechText: runtimeText(draft.speechText, 8_000),
-    dialogueExamples: runtimeList(draft.dialogueExamples, 30, 40_000),
-    behaviorRules: runtimeText(draft.behaviorRules, 8_000),
+    personaText: authorityText(draft.personaText),
+    speechText: authorityText(draft.speechText),
+    dialogueExamples: authorityExamples(draft.dialogueExamples),
+    behaviorRules: authorityText(draft.behaviorRules),
     appearance: {
       baseText: runtimeText(draft.appearance?.baseText, 8_000),
       defaultOutfitText: runtimeText(draft.appearance?.defaultOutfitText, 4_000),
@@ -1482,10 +1494,10 @@ export function toCharacterRuntime(input: unknown): CharacterRuntime {
       originType: normalizeCharacterOriginType(source.originType ?? snapshot.originType),
       work: runtimeText(source.work ?? snapshot.work, 300),
       summary: runtimeText(source.summary ?? snapshot.summary, 2_000),
-      personaText: runtimeText(source.personaText),
-      speechText: runtimeText(source.speechText, 8_000),
-      dialogueExamples: runtimeList(source.dialogueExamples ?? asRecord(snapshot.speech).examples, 30, 40_000),
-      behaviorRules: runtimeText(source.behaviorRules, 8_000),
+      personaText: authorityText(source.personaText),
+      speechText: authorityText(source.speechText),
+      dialogueExamples: authorityExamples(source.dialogueExamples ?? asRecord(snapshot.speech).examples),
+      behaviorRules: authorityText(source.behaviorRules),
       appearance: {
         baseText: runtimeText(asRecord(source.appearance).baseText, 8_000),
         defaultOutfitText: runtimeText(asRecord(source.appearance).defaultOutfitText, 4_000),
@@ -1612,10 +1624,10 @@ export function normalizeCharacterDraftV2(raw: unknown): CharacterDraftV2 {
         ? { parentCharacterId: null }
         : {}),
     summary: runtimeText(source.summary, 2_000),
-    personaText: runtimeText(source.personaText),
-    speechText: runtimeText(source.speechText, 8_000),
-    dialogueExamples: runtimeList(source.dialogueExamples, 30, 40_000),
-    behaviorRules: runtimeText(source.behaviorRules, 8_000),
+    personaText: authorityText(source.personaText),
+    speechText: authorityText(source.speechText),
+    dialogueExamples: authorityExamples(source.dialogueExamples),
+    behaviorRules: authorityText(source.behaviorRules),
     appearance: {
       baseText: runtimeText(appearance.baseText, 8_000),
       defaultOutfitText: runtimeText(appearance.defaultOutfitText, 4_000),
@@ -2208,11 +2220,59 @@ export const CharacterMigrationReviewListSchema = Type.Object({
 export type CharacterMigrationReviewList = Static<typeof CharacterMigrationReviewListSchema>;
 
 
+export const CharacterVariantSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  isDefault: Type.Optional(Type.Boolean()),
+  variantKind: Type.Optional(CharacterVariantKindSchema),
+  summary: Type.Optional(Type.String()),
+  personaText: Type.Optional(Type.String()),
+  appearance: Type.Optional(Type.Object({
+    baseText: Type.String(),
+    defaultOutfitText: Type.String(),
+  })),
+  avatarUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+export type CharacterVariant = Static<typeof CharacterVariantSchema>;
+
+export const CharacterVisualReferenceSchema = Type.Object({
+  id: Type.String(),
+  characterId: Type.String(),
+  assetId: Type.String(),
+  artifactId: Type.Union([Type.String(), Type.Null()]),
+  sha256: Type.String(),
+  width: Type.Union([Type.Number(), Type.Null()]),
+  height: Type.Union([Type.Number(), Type.Null()]),
+  purposes: Type.Array(Type.Union([
+    Type.Literal('avatar'), Type.Literal('identity'), Type.Literal('outfit'),
+    Type.Literal('pose'), Type.Literal('style'), Type.Literal('init_image'),
+  ])),
+  outfitId: Type.Union([Type.String(), Type.Null()]),
+  sourcePage: Type.Union([Type.String(), Type.Null()]),
+  originalUrl: Type.Union([Type.String(), Type.Null()]),
+  authorNote: Type.String(),
+  userNote: Type.String(),
+  enabled: Type.Boolean(),
+  crop: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
+  url: Type.String(),
+  createdAt: Type.String(),
+});
+export type CharacterVisualReference = Static<typeof CharacterVisualReferenceSchema>;
+
 export const CharacterVersionSchema = Type.Object({
   characterId: Type.String(),
   version: Type.Number(),
   versionLabel: Type.Optional(Type.String()),
   data: CharacterDraftAnySchema,
+  variants: Type.Optional(Type.Array(CharacterVariantSchema)),
+  assets: Type.Optional(Type.Array(CharacterAssetDetailSchema)),
+  visualReferences: Type.Optional(Type.Array(CharacterVisualReferenceSchema)),
+  tags: Type.Optional(Type.Array(Type.String())),
+  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   compiledLinshePrompt: Type.String(),
   relationships: Type.Array(CharacterRelationshipSchema),
   createdAt: Type.String(),
@@ -2226,6 +2286,51 @@ export const CharacterVersionSchema = Type.Object({
   provenance: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 export type CharacterVersion = Static<typeof CharacterVersionSchema>;
+
+/** Resolve only frozen version data; never substitute mutable profile assets. */
+export function resolveCharacterVersionSelection(
+  version: CharacterVersion,
+  selection: { variantId?: string; costumeAssetId?: string } = {},
+) {
+  const draft = structuredClone(migrateCharacterDraftToV2(version.data).draft);
+  const variant = selection.variantId ? version.variants?.find(item => item.id === selection.variantId) : undefined;
+  const costume = selection.costumeAssetId ? version.assets?.find(item => item.id === selection.costumeAssetId && item.category === 'costume') : undefined;
+  if (selection.variantId && !variant) throw new Error('所选阶段中不存在该形态，请重新选择。');
+  if (selection.costumeAssetId && !costume) throw new Error('所选阶段中不存在该皮肤，请重新选择。');
+  if (variant) {
+    if (variant.summary !== undefined) draft.summary = variant.summary;
+    if (variant.personaText !== undefined) draft.personaText = variant.personaText;
+    if (variant.appearance) draft.appearance = { ...draft.appearance, ...variant.appearance };
+  }
+  if (costume) {
+    const outfit = costume.metadata.outfitDescription;
+    const lore = costume.metadata.loreStory;
+    if (typeof outfit === 'string' && outfit.trim()) draft.appearance.defaultOutfitText = outfit;
+    if (typeof lore === 'string' && lore.trim()) draft.personaText = [draft.personaText, `## ${costume.title}`, lore].filter(Boolean).join('\n\n');
+  }
+  const avatarAssetId = variant?.avatarAssetId ?? version.avatarAssetId ?? undefined;
+  const portraitAssetId = costume?.artifactId ? costume.id : variant?.portraitAssetId ?? version.portraitAssetId ?? undefined;
+  const assets = version.assets ?? [];
+  const selectedAssetIds = new Set([avatarAssetId, portraitAssetId, costume?.id].filter(Boolean));
+  const alternativeAssetIds = new Set([
+    ...assets.filter(asset => asset.category === 'costume').map(asset => asset.id),
+    ...(version.variants ?? []).flatMap(item => [item.avatarAssetId, item.portraitAssetId]).filter(Boolean),
+  ]);
+  const visualReferences = (version.visualReferences ?? []).filter(ref => ref.enabled
+    && (selectedAssetIds.has(ref.assetId) || (!alternativeAssetIds.has(ref.assetId) && !ref.outfitId
+      && (ref.purposes.includes('identity') || (!variant && !costume)))));
+  const referenceArtifactIds = [...new Set([
+    ...assets.filter(asset => selectedAssetIds.has(asset.id)).map(asset => asset.artifactId),
+    ...visualReferences.map(ref => ref.artifactId),
+  ].filter((id): id is string => Boolean(id)))];
+  return {
+    draft, prompt: compileLinshePrompt(draft), appearance: draft.appearance, referenceArtifactIds,
+    visualReferences, avatarAssetId, portraitAssetId,
+    avatarUrl: assets.find(asset => asset.id === avatarAssetId)?.url ?? variant?.avatarUrl ?? undefined,
+    portraitUrl: costume?.url ?? assets.find(asset => asset.id === portraitAssetId)?.url ?? variant?.portraitUrl ?? undefined,
+    variant, costume,
+  };
+}
 
 export const CharacterOrganizationSchema = Type.Object({
   favorite: Type.Boolean(),
@@ -2261,23 +2366,7 @@ export type CharacterBrowseResult = {
   };
 };
 
-export const CharacterVariantSchema = Type.Object({
-  id: Type.String(),
-  name: Type.String(),
-  isDefault: Type.Optional(Type.Boolean()),
-  variantKind: Type.Optional(CharacterVariantKindSchema),
-  summary: Type.Optional(Type.String()),
-  personaText: Type.Optional(Type.String()),
-  appearance: Type.Optional(Type.Object({
-    baseText: Type.String(),
-    defaultOutfitText: Type.String(),
-  })),
-  avatarUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  avatarAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  portraitUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  portraitAssetId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-});
-export type CharacterVariant = Static<typeof CharacterVariantSchema>;
+
 
 export const CharacterFamilyMemberSummarySchema = Type.Object({
   id: Type.String(),
@@ -2336,9 +2425,25 @@ export const CharacterListResponseSchema = Type.Object({
 });
 export type CharacterListResponse = Static<typeof CharacterListResponseSchema>;
 
+export const CharacterAssetBatchTypeSchema = Type.Union([
+  Type.Literal('avatar'),
+  Type.Literal('portrait'),
+  Type.Literal('costume'),
+]);
+export type CharacterAssetBatchType = Static<typeof CharacterAssetBatchTypeSchema>;
+
+export const CharacterPreferredSourcesSchema = Type.Object({
+  genshin: Type.Optional(Type.Union([Type.Literal('yatta'), Type.Literal('enka'), Type.Literal('bwiki')])),
+  starrail: Type.Optional(Type.Union([Type.Literal('starrailres'), Type.Literal('bwiki')])),
+  default: Type.Optional(Type.Union([Type.Literal('bwiki'), Type.Literal('moegirl'), Type.Literal('fandom')])),
+});
+export type CharacterPreferredSources = Static<typeof CharacterPreferredSourcesSchema>;
+
 export const CharacterBatchAvatarRequestSchema = Type.Object({
   ids: Type.Optional(Type.Array(Type.String())),
   onlyMissing: Type.Optional(Type.Boolean()),
+  assetTypes: Type.Optional(Type.Array(CharacterAssetBatchTypeSchema)),
+  preferredSources: Type.Optional(CharacterPreferredSourcesSchema),
 });
 export type CharacterBatchAvatarRequest = Static<typeof CharacterBatchAvatarRequestSchema>;
 
@@ -2352,11 +2457,75 @@ export const CharacterBatchAvatarResponseSchema = Type.Object({
       id: Type.String(),
       displayName: Type.String(),
       success: Type.Boolean(),
+      avatarAdded: Type.Optional(Type.Boolean()),
+      portraitAdded: Type.Optional(Type.Boolean()),
+      skinsAdded: Type.Optional(Type.Number()),
+      sourceUsed: Type.Optional(Type.String()),
       error: Type.Optional(Type.String()),
     })
   ),
 });
 export type CharacterBatchAvatarResponse = Static<typeof CharacterBatchAvatarResponseSchema>;
+
+export const CharacterBatchEnrichRpRequestSchema = Type.Object({
+  ids: Type.Optional(Type.Array(Type.String())),
+  scope: Type.Optional(Type.Union([Type.Literal('incomplete'), Type.Literal('selected'), Type.Literal('all')])),
+  overwriteExisting: Type.Optional(Type.Boolean()),
+  preferredSources: Type.Optional(CharacterPreferredSourcesSchema),
+});
+export type CharacterBatchEnrichRpRequest = Static<typeof CharacterBatchEnrichRpRequestSchema>;
+
+export const CharacterBatchEnrichRpResponseSchema = Type.Object({
+  total: Type.Number(),
+  updated: Type.Number(),
+  skipped: Type.Number(),
+  failed: Type.Number(),
+  items: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      displayName: Type.String(),
+      success: Type.Boolean(),
+      sourceUsed: Type.Optional(Type.String()),
+      filledFields: Type.Optional(Type.Array(Type.String())),
+      error: Type.Optional(Type.String()),
+    })
+  ),
+});
+export type CharacterBatchEnrichRpResponse = Static<typeof CharacterBatchEnrichRpResponseSchema>;
+
+export const CharacterBatchImportLocalCardsRequestSchema = Type.Object({
+  includePlayable: Type.Optional(Type.Boolean()),
+  includeStory: Type.Optional(Type.Boolean()),
+  includeNpc: Type.Optional(Type.Boolean()),
+  overwriteExisting: Type.Optional(Type.Boolean()),
+});
+export type CharacterBatchImportLocalCardsRequest = Static<typeof CharacterBatchImportLocalCardsRequestSchema>;
+
+export const CharacterBatchImportLocalCardsResponseSchema = Type.Object({
+  totalFiles: Type.Number(),
+  created: Type.Number(),
+  updated: Type.Number(),
+  skipped: Type.Number(),
+  failed: Type.Number(),
+  importedIds: Type.Array(Type.String()),
+  playableIds: Type.Array(Type.String()),
+  items: Type.Array(
+    Type.Object({
+      id: Type.Optional(Type.String()),
+      displayName: Type.String(),
+      work: Type.String(),
+      category: Type.Union([Type.Literal('playable'), Type.Literal('story'), Type.Literal('npc')]),
+      action: Type.Union([
+        Type.Literal('created'),
+        Type.Literal('updated'),
+        Type.Literal('skipped'),
+        Type.Literal('failed'),
+      ]),
+      error: Type.Optional(Type.String()),
+    })
+  ),
+});
+export type CharacterBatchImportLocalCardsResponse = Static<typeof CharacterBatchImportLocalCardsResponseSchema>;
 
 export const CharacterAssetItemSchema = CharacterAssetDetailSchema;
 export type CharacterAssetItem = CharacterAssetDetail;
@@ -2587,29 +2756,7 @@ export const CharacterImportSessionSchema = Type.Object({
 });
 export type CharacterImportSession = Static<typeof CharacterImportSessionSchema>;
 
-export const CharacterVisualReferenceSchema = Type.Object({
-  id: Type.String(),
-  characterId: Type.String(),
-  assetId: Type.String(),
-  artifactId: Type.Union([Type.String(), Type.Null()]),
-  sha256: Type.String(),
-  width: Type.Union([Type.Number(), Type.Null()]),
-  height: Type.Union([Type.Number(), Type.Null()]),
-  purposes: Type.Array(Type.Union([
-    Type.Literal('avatar'), Type.Literal('identity'), Type.Literal('outfit'),
-    Type.Literal('pose'), Type.Literal('style'), Type.Literal('init_image'),
-  ])),
-  outfitId: Type.Union([Type.String(), Type.Null()]),
-  sourcePage: Type.Union([Type.String(), Type.Null()]),
-  originalUrl: Type.Union([Type.String(), Type.Null()]),
-  authorNote: Type.String(),
-  userNote: Type.String(),
-  enabled: Type.Boolean(),
-  crop: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
-  url: Type.String(),
-  createdAt: Type.String(),
-});
-export type CharacterVisualReference = Static<typeof CharacterVisualReferenceSchema>;
+
 
 export const CharacterAppearanceExtractionSchema = Type.Object({
   description: Type.String(),
@@ -3828,6 +3975,8 @@ export type ActorPersona = Static<typeof ActorPersonaSchema>;
 export const ActorSnapshotSchema = Type.Object({
   id: Type.String(),
   sourceCharacterId: Type.Optional(Type.String()),
+  sourceVariantId: Type.Optional(Type.String()),
+  sourceCostumeAssetId: Type.Optional(Type.String()),
   candidateRefId: Type.Optional(Type.String()),
   personaStatus: Type.Optional(Type.Union([Type.Literal('resolved'), Type.Literal('pending'), Type.Literal('removed')])),
   sourceVersion: Type.Optional(Type.Number()),
@@ -5110,6 +5259,8 @@ export interface ActivityPlanningCharacterRef {
   characterId: string;
   displayName: string;
   sourceVersion: number | null;
+  sourceVariantId?: string;
+  sourceCostumeAssetId?: string;
   sourceVersionStatus: 'published' | 'draft' | 'unknown' | 'missing';
   draftRevision: number;
   actorId: string;
@@ -5126,7 +5277,7 @@ export interface ActivityPlanningForm {
   location: string;
   rules: string;
   scheduledDate: string | null;
-  characters: Array<{ characterId: string; version?: number | null; activityRole?: string }>;
+  characters: Array<{ characterId: string; version?: number | null; variantId?: string; costumeAssetId?: string; activityRole?: string }>;
   birthdayCharacterIds: string[];
   instruction?: string;
 }
@@ -5192,6 +5343,13 @@ export const McpAuthModeSchema = Type.Union([
 ]);
 export type McpAuthMode = Static<typeof McpAuthModeSchema>;
 
+export const McpTransportSchema = Type.Union([
+  Type.Literal('auto'),
+  Type.Literal('streamable-http'),
+  Type.Literal('sse'),
+]);
+export type McpTransport = Static<typeof McpTransportSchema>;
+
 export const McpSourceStatusSchema = Type.Union([
   Type.Literal('enabled'),
   Type.Literal('disabled'),
@@ -5202,6 +5360,7 @@ export const McpSourceSchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
   url: Type.String(),
+  transport: Type.Optional(McpTransportSchema),
   authMode: McpAuthModeSchema,
   authHeaderName: Type.Optional(Type.String()),
   // credentialAccount 只用于服务端凭据引用，接口返回不包含明文。
@@ -5223,6 +5382,7 @@ export const McpSourceSchema = Type.Object({
     ok: Type.Boolean(),
     message: Type.String(),
     testedAt: Type.String(),
+    transport: Type.Optional(McpTransportSchema),
   })])),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -5238,6 +5398,7 @@ export const McpSourceSaveSchema = Type.Object({
   id: Type.Optional(Type.String()),
   name: Type.String(),
   url: Type.String(),
+  transport: Type.Optional(McpTransportSchema),
   authMode: McpAuthModeSchema,
   authHeaderName: Type.Optional(Type.String()),
   secret: Type.Optional(Type.String()),
@@ -5262,6 +5423,8 @@ export const McpConnectionTestSchema = Type.Object({
     name: Type.Optional(Type.String()),
     version: Type.Optional(Type.String()),
   })),
+  /** 实际成功使用的传输；auto 模式失败时表示最后尝试的传输。 */
+  transport: Type.Optional(McpTransportSchema),
   testedAt: Type.String(),
 });
 export type McpConnectionTest = Static<typeof McpConnectionTestSchema>;
@@ -5474,8 +5637,8 @@ export interface ActivityPlanningPendingActor {
 
 /** 待补人设的解析方式：匹配已有角色、写入已确认人设、或从企划中移除。 */
 export type ActivityPlanningActorResolveInput =
-  | { mode: 'match'; characterId: string }
-  | { mode: 'persona'; persona: ActorPersona; displayName?: string; activityRole?: string; sourceNote?: string }
+  | { mode: 'match'; characterId: string; version?: number; variantId?: string; costumeAssetId?: string }
+  | { mode: 'persona'; versionLabel?: string; persona: ActorPersona; displayName?: string; activityRole?: string; sourceNote?: string }
   | { mode: 'remove' };
 
 /** 依据已保存研究资料生成的简版人设草稿，仅供预览确认，不直接入库。 */
@@ -6578,8 +6741,12 @@ export * from './image-generation.js';
 export * from './generation-recovery.js';
 export * from './workspace.js';
 export * from './story-worlds.js';
+export * from './creative-orchestration.js';
 export * from './world-authoring.js';
 export * from './web-search.js';
 export * from './model-routing.js';
 export * from './story-world-actors.js';
 export * from './story-world-source-updates.js';
+export * from './story-blueprint.js';
+export * from './story-hub.js';
+export * from './story-scene-drafts.js';

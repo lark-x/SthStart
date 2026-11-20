@@ -64,6 +64,9 @@ export function SupplierDetailDialog({
     count: group.modelCounts[type],
   }));
 
+  // Keep the selected type, but release the modal portal while editing a child.
+  if (!open) return null;
+
   return (
     <Dialog
       open={open}

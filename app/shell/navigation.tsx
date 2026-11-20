@@ -70,10 +70,18 @@ export const NAV_PORTAL: NavApp = {
 export const NAV_APPS: NavApp[] = [
   // 1. 创作
   {
-    id: 'story-worlds', title: '故事世界', navLabel: '故事世界', navSection: '创作',
+    id: 'ai-studio', title: 'AI 创作工作台', navLabel: 'AI 创作', navSection: '创作',
+    tone: 'blue', href: '/apps/ai-studio', group: '创作', icon: Sparkles,
+    description: '与创作总管对话，编排团队流程并确认故事与媒体产物',
+    keywords: ['ai-studio', 'AI创作', '工作流', '岗位', '模型', '审核', '故事生成'],
+    hiddenFromSidebar: true,
+  },
+  {
+    id: 'story-worlds', title: '作品', navLabel: '作品', navSection: '创作',
     tone: 'violet', href: '/apps/story-worlds', group: '创作', icon: Compass,
-    description: '推进角色的生活，沿交织时间线阅读与分支故事',
-    keywords: ['story-worlds', '故事世界', '人物轨迹', '时间线', '分支', '模拟'],
+    description: '作品世界观、正史章节脉络、MCP 原文检索与沉浸式正文创作工作台',
+    keywords: ['story-worlds', '作品', '故事世界', '篇章', '设定集', '分支'],
+    activePaths: ['/apps/story-worlds', '/apps/projects', '/apps/story'],
   },
   {
     id: 'projects',
@@ -86,7 +94,7 @@ export const NAV_APPS: NavApp[] = [
     icon: FolderKanban,
     description: '串联大纲正文、角色、资料参考与多模态制作',
     keywords: ['projects', '创作项目', '项目', '正文', '小说', '大纲'],
-    activePaths: ['/apps/projects', '/apps/story', '/apps/activities'],
+    hiddenFromSidebar: true,
   },
 
   // 2. 资源

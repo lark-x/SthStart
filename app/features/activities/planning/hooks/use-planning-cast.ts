@@ -39,10 +39,10 @@ export function usePlanningCast({
   const [importTarget, setImportTarget] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState<ResearchCharacterCandidate | null>(null);
   const [personaOpen, setPersonaOpen] = useState<{ actorId: string; draft: ActivityPlanningPersonaDraft } | null>(null);
-  const [personaValue, setPersonaValue] = useState({ displayName: '', work: '', summary: '', personaText: '', baseText: '', defaultOutfitText: '' });
+  const [personaValue, setPersonaValue] = useState({ displayName: '', work: '', summary: '', personaText: '', baseText: '', defaultOutfitText: '', versionLabel: '' });
 
   const resolveActor = async (actorId: string, input: ActivityPlanningActorResolveInput) => {
-    if (!sessionId) return;
+    if (!sessionId) return false;
     setBusy(true); setError(null); setNotice(null);
     try {
       const result = await resolvePlanningActor(sessionId, actorId, input);
@@ -57,8 +57,10 @@ export function usePlanningCast({
         setNotice('已匹配到本地角色快照。');
       }
       void client.invalidateQueries({ queryKey: characterKeys.all });
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '处理待补人设失败。');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -78,6 +80,7 @@ export function usePlanningCast({
         personaText: typeof persona.personaText === 'string' ? persona.personaText : '',
         baseText: typeof appearance.baseText === 'string' ? appearance.baseText : '',
         defaultOutfitText: typeof appearance.defaultOutfitText === 'string' ? appearance.defaultOutfitText : '',
+        versionLabel: '',
       });
       setPersonaOpen({ actorId, draft });
     } catch (caught) {
@@ -90,8 +93,12 @@ export function usePlanningCast({
   const confirmPersonaDraft = async () => {
     if (!personaOpen) return;
     const base = personaOpen.draft.persona as Record<string, unknown>;
+    if (base.originType !== 'ip' && base.originType !== 'derivative' && !personaValue.versionLabel.trim()) {
+      setError('请填写阶段名称，再保存阶段并用于企划。');
+      return;
+    }
     const displayName = personaValue.displayName.trim() || personaOpen.draft.displayName;
-    await resolveActor(personaOpen.actorId, {
+    const saved = await resolveActor(personaOpen.actorId, {
       mode: 'persona',
       displayName,
       persona: {
@@ -103,8 +110,9 @@ export function usePlanningCast({
         appearance: { ...(base.appearance as Record<string, unknown> | undefined), baseText: personaValue.baseText, defaultOutfitText: personaValue.defaultOutfitText },
       },
       sourceNote: personaOpen.draft.basisNote,
+      ...(base.originType !== 'ip' && base.originType !== 'derivative' ? { versionLabel: personaValue.versionLabel.trim() } : {}),
     });
-    setPersonaOpen(null);
+    if (saved) setPersonaOpen(null);
   };
 
   /** 导入角色卡后把新角色加入名单：先读快照，避免把未发布草稿当作已发布版本使用。 */

@@ -69,6 +69,14 @@ export const CharacterUpstreamEvidenceSourceSchema = Type.Object({
   url: Type.Union([Type.String(), Type.Null()]),
   excerpt: Type.String(),
   sourceType: Type.String(),
+  /** Display excerpts may be abbreviated; rawText/rawPayload preserve the complete retrieved evidence. */
+  rawText: Type.Optional(Type.String()),
+  rawPayload: Type.Optional(Type.Unknown()),
+  provider: Type.Optional(Type.String()),
+  externalId: Type.Optional(Type.String()),
+  contentHash: Type.Optional(Type.String()),
+  retrievedAt: Type.Optional(Type.String()),
+  evidenceKind: Type.Optional(Type.Union([Type.Literal('fulltext'), Type.Literal('structured'), Type.Literal('snippet')])),
 });
 export type CharacterUpstreamEvidenceSource = Static<typeof CharacterUpstreamEvidenceSourceSchema>;
 
@@ -104,7 +112,11 @@ export function stripMachineCharacterIndex(text: string): string {
   if (!text) return '';
   return text
     .split(/\r?\n/)
-    .filter((line) => !/^\s*【MCP角色索引】/.test(line))
+    .flatMap((line) => {
+      if (/^\s*【MCP角色索引】/.test(line)) return [];
+      const cleaned = line.replace(/【MCP角色索引】[^\n]*/g, '').trimEnd();
+      return line.trim() && !cleaned.trim() ? [] : [cleaned];
+    })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

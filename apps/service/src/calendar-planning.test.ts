@@ -23,7 +23,7 @@ async function waitFor<T>(check: () => Promise<T | null> | T | null, timeoutMs =
 async function createCharacter(app: Awaited<ReturnType<typeof createService>>['app'], input: { name: string; identity?: string; birthday?: unknown; work?: string }) {
   const response = await app.inject({
     method: 'POST', url: '/api/v1/admin/characters', headers: adminHeaders,
-    payload: { displayName: input.name, draft: { displayName: input.name, work: input.work || '', identity: input.identity || '普通身份', ...(input.birthday ? { birthday: input.birthday } : {}) } },
+    payload: { displayName: input.name, draft: { originType: 'ip', displayName: input.name, work: input.work || '', identity: input.identity || '普通身份', ...(input.birthday ? { birthday: input.birthday } : {}) } },
   });
   assert.equal(response.statusCode, 201, response.body);
   return response.json();
@@ -216,7 +216,7 @@ test('planning session freezes personas, generates a candidate, and creates an i
     const rejected = await app.inject({ method: 'POST', url: `/api/v1/admin/activity-planning-sessions/${session2.id}/create-activity`, headers: adminHeaders, payload: { document: tamperDoc } });
     assert.equal(rejected.statusCode, 409, rejected.body);
 
-    // 草稿在生成后发生变化时拒绝创建。
+    // IP后续保存新快照，企划继续使用已冻结的旧快照。
     const third = (await createCharacter(app, { name: '草稿角色', identity: '初版设定' })).id as string;
     const session3 = (await app.inject({
       method: 'POST', url: '/api/v1/admin/activity-planning-sessions', headers: adminHeaders,
@@ -225,6 +225,8 @@ test('planning session freezes personas, generates a candidate, and creates an i
     const current = (await app.inject({ url: `/api/v1/admin/characters/${third}`, headers: adminHeaders })).json();
     await app.inject({ method: 'PUT', url: `/api/v1/admin/characters/${third}`, headers: adminHeaders, payload: { draft: { ...current.draft, identity: '改过的设定' }, expectedDraftRevision: current.draftRevision } });
     const stale = await app.inject({ method: 'POST', url: `/api/v1/admin/activity-planning-sessions/${session3.id}/create-activity`, headers: adminHeaders, payload: { document: session3.document } });
-    assert.equal(stale.statusCode, 409, stale.body);
+    assert.equal(stale.statusCode, 201, stale.body);
+    assert.notEqual(stale.json().session.document.actors[0].sourceVersion,
+      (await app.inject({ url: `/api/v1/admin/characters/${third}`, headers: adminHeaders })).json().latestVersion);
   } finally { await app.close(); database.close(); }
 });

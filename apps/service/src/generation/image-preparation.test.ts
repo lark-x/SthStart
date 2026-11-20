@@ -325,7 +325,7 @@ test('V2 role context and outfit inheritance survive preparation; changed source
   const { database, secrets, input } = fixture();
   try {
     const now = nowIso();
-    const draft = { schemaVersion: 2, displayName: 'Alice', englishName: 'Alice', appearance: {
+    const draft = { schemaVersion: 2, originType: 'ip', displayName: 'Alice', englishName: 'Alice', appearance: {
       baseText: 'silver hair, blue eyes', defaultOutfitText: 'blue coat', stableFeatures: ['star hairpin'] } };
     database.connection.prepare(`INSERT INTO character_profiles(id,slug,display_name,draft_json,tags_json,archived,created_at,updated_at,draft_revision)
       VALUES ('alice','alice','Alice',?,'[]',0,?,?,1)`).run(JSON.stringify(draft), now, now);

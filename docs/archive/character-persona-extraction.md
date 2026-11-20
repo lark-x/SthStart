@@ -5,6 +5,8 @@ description: Extract evidence-backed, multi-dimensional character persona cards 
 
 # GamesMcp 角色人设卡提取技能 (Extract Character Persona)
 
+> 归档于 2026-11-19。GamesMcp 暂停维护，以下取证流程和卡片模板供既有原神与星铁批次查阅。
+
 本技能用于指导 Agent/LLM 调用 **GamesMcp**（原神与星穹铁道知识图谱与叙事证据库）的 MCP 工具链，系统化检索角色的原生设定、故事文本、社交图谱与对话切片，最终提炼出一张具备**“心理深度、认知边界、语流签名、防复读范例”**的高质量 AI 聊天人设卡。
 
 ---

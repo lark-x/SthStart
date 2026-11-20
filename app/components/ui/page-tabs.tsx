@@ -88,7 +88,8 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, className, variant 
         onChange={(next) => {
           if (next !== null) onChange(next);
         }}
-        className="contents"
+        data-page-tabs-root=""
+        className="block min-w-0 max-w-full"
       >
         <Tabs.List
           ref={listRef}

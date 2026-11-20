@@ -35,11 +35,11 @@ export interface PlanningCastDialogsProps {
   setEvidenceOpen: (candidate: ResearchCharacterCandidate | null) => void;
   personaOpen: { actorId: string; draft: ActivityPlanningPersonaDraft } | null;
   setPersonaOpen: (value: { actorId: string; draft: ActivityPlanningPersonaDraft } | null) => void;
-  personaValue: { displayName: string; work: string; summary: string; personaText: string; baseText: string; defaultOutfitText: string };
-  setPersonaValue: React.Dispatch<React.SetStateAction<{ displayName: string; work: string; summary: string; personaText: string; baseText: string; defaultOutfitText: string }>>;
+  personaValue: { displayName: string; work: string; summary: string; personaText: string; baseText: string; defaultOutfitText: string; versionLabel: string };
+  setPersonaValue: React.Dispatch<React.SetStateAction<{ displayName: string; work: string; summary: string; personaText: string; baseText: string; defaultOutfitText: string; versionLabel: string }>>;
   research: ResearchTask | null;
   busy: boolean;
-  resolveActor: (actorId: string, input: ActivityPlanningActorResolveInput) => Promise<void>;
+  resolveActor: (actorId: string, input: ActivityPlanningActorResolveInput) => Promise<unknown>;
   confirmPersonaDraft: () => Promise<void>;
   onAddImportedCharacter: (characterId: string) => Promise<void>;
 }
@@ -69,6 +69,8 @@ export function PlanningCastDialogs({
   confirmPersonaDraft,
   onAddImportedCharacter,
 }: PlanningCastDialogsProps) {
+  const personaOrigin = personaOpen?.draft.persona?.originType;
+  const savingOriginalStage = personaOrigin !== 'ip' && personaOrigin !== 'derivative';
   return (
     <>
       <CharacterPickerDialog
@@ -84,12 +86,13 @@ export function PlanningCastDialogs({
               ...current,
               cast: current.cast.some((member) => member.characterId === characterId)
                 ? current.cast
-                : [...current.cast, { characterId, displayName: actor.displayName, avatarUrl: actor.avatarUrl, activityRole: actor.activityRole }],
+                : mergeCast(current.cast, [actor], maxActors),
               leadCharacterId: characterId,
               birthdayIds: current.templateId === 'birthday' ? [...new Set([...current.birthdayIds, characterId])] : current.birthdayIds,
             }));
           } else if (pickerTarget && typeof pickerTarget === 'object') {
-            void resolveActor(pickerTarget.match, { mode: 'match', characterId });
+            void resolveActor(pickerTarget.match, { mode: 'match', characterId, version: actor.sourceVersion,
+              variantId: actor.sourceVariantId, costumeAssetId: actor.sourceCostumeAssetId });
           } else {
             setIntake((current) => ({ ...current, cast: mergeCast(current.cast, [actor], maxActors) }));
           }
@@ -137,11 +140,18 @@ export function PlanningCastDialogs({
         footer={(
           <div className="flex justify-end gap-2">
             <Button variant="outline" disabled={busy} onClick={() => setPersonaOpen(null)}>取消</Button>
-            <Button variant="primary" disabled={busy} onClick={() => void confirmPersonaDraft()}>{busy ? '正在写入…' : '确认并写入角色库'}</Button>
+            <Button variant="primary" disabled={busy} onClick={() => void confirmPersonaDraft()}>{busy ? '正在写入…' : savingOriginalStage ? '保存阶段并用于企划' : '确认并写入角色库'}</Button>
           </div>
         )}
       >
         <div className="space-y-3">
+          {savingOriginalStage && <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-ink">阶段名称（必填）</span>
+            <Input required maxLength={120} aria-label="阶段名称" value={personaValue.versionLabel}
+              placeholder="例如：初到港口"
+              onChange={(event) => setPersonaValue((current) => ({ ...current, versionLabel: event.target.value }))} />
+            <span className="block text-xs text-muted">确认后会保存这个阶段，并将其固定用于本次企划。</span>
+          </label>}
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-ink">角色名</span>
             <Input aria-label="角色名" value={personaValue.displayName} onChange={(event) => setPersonaValue((current) => ({ ...current, displayName: event.target.value }))} />

@@ -6,6 +6,7 @@ import type {
   WorldActor,
   WorldActorPromotionResult,
   WorldBranch,
+  WorkNature,
 } from '@sthstart/contracts';
 import { Alert } from '@/app/components/ui/alert';
 import { Badge } from '@/app/components/ui/badge';
@@ -24,6 +25,7 @@ export interface ActorPromoteFormProps {
   onOpenChange: (open: boolean) => void;
   actor: WorldActor;
   branch: WorldBranch;
+  workNature?: WorkNature;
   onSubmit: (input: PromoteWorldActor) => Promise<WorldActorPromotionResult>;
   onSaved?: (result: WorldActorPromotionResult) => void;
 }
@@ -34,6 +36,7 @@ interface ActorPromoteDraft {
   displayName: string;
   tagsString: string;
   summary: string;
+  versionLabel: string;
   expectedRevision: number;
 }
 
@@ -42,11 +45,12 @@ export function ActorPromoteForm({
   onOpenChange,
   actor,
   branch,
+  workNature,
   onSubmit,
   onSaved,
 }: ActorPromoteFormProps) {
   const formId = useId();
-  const { draft, setDraft, reset, clear, isDirty, hasConflict, rebase } = useStoredDraft<ActorPromoteDraft>(
+  const { draft, setDraft, reset, clear, hasConflict, rebase } = useStoredDraft<ActorPromoteDraft>(
     `actor-promote:${branch.id}:${actor.id}`,
     () => ({
       promoteToMain: actor.role !== 'main',
@@ -54,6 +58,7 @@ export function ActorPromoteForm({
       displayName: actor.name,
       tagsString: '',
       summary: actor.background || actor.personality || actor.name,
+      versionLabel: '',
       expectedRevision: branch.revision,
     }),
     { open, expectedRevision: branch.revision },
@@ -79,6 +84,11 @@ export function ActorPromoteForm({
       setValidationError('存入角色库需要填写角色展示名称。');
       return;
     }
+    const original = workNature !== 'canon' && workNature !== 'derivative';
+    if (draft.addToLibrary && !hasCharacterCard && original && !draft.versionLabel?.trim()) {
+      setValidationError('请填写阶段名称，再保存阶段并入库。');
+      return;
+    }
 
     setValidationError(null);
     setError(null);
@@ -99,6 +109,7 @@ export function ActorPromoteForm({
               displayName: draft.displayName.trim(),
               ...(parsedTags.length > 0 ? { tags: parsedTags } : {}),
               ...(draft.summary.trim() ? { summary: draft.summary.trim() } : {}),
+              ...(draft.versionLabel?.trim() ? { versionLabel: draft.versionLabel.trim() } : {}),
             }
           : {}),
       };
@@ -142,7 +153,7 @@ export function ActorPromoteForm({
             取消
           </Button>
           <Button type="submit" form={formId} variant="primary" loading={submitting}>
-            确认执行
+            {draft.addToLibrary && !hasCharacterCard && workNature !== 'canon' && workNature !== 'derivative' ? '保存阶段并入库' : '确认执行'}
           </Button>
         </>
       }
@@ -198,6 +209,12 @@ export function ActorPromoteForm({
 
         {draft.addToLibrary && (
           <FormSection title="角色库建卡信息">
+            {!hasCharacterCard && workNature !== 'canon' && workNature !== 'derivative' && (
+              <FormField label="阶段名称" required hint="保存此刻的人设阶段，供角色库与其他作品选用。">
+                <Input required maxLength={120} value={draft.versionLabel ?? ''} placeholder="例如：初到港口"
+                  onChange={(event) => setDraft(current => ({ ...current, versionLabel: event.target.value }))} />
+              </FormField>
+            )}
             <FormField label="角色展示名" required>
               <Input
                 value={draft.displayName}

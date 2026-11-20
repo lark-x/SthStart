@@ -335,7 +335,8 @@
   gap: 6px;
 }
 
-.sw-canvas > .page-tabs {
+.sw-canvas > .page-tabs,
+.sw-canvas > [data-page-tabs-root] > .page-tabs {
   flex-shrink: 0;
   padding: 0 20px;
 }
@@ -491,7 +492,8 @@
     padding: 12px 14px 8px;
   }
 
-  .sw-canvas > .page-tabs {
+  .sw-canvas > .page-tabs,
+  .sw-canvas > [data-page-tabs-root] > .page-tabs {
     padding: 0 14px;
   }
 

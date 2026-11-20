@@ -133,11 +133,6 @@ export function CreativeClient() {
   const serviceError = statusQuery.error ?? optionsQuery.error ?? tasksQuery.error ?? artifactsQuery.error;
   const sortedTasks = useMemo(() => tasks.slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [tasks]);
   const isVideoMode = mode.startsWith('h3-');
-  const videoTabs = [
-    { value: 'h3-t2v' as const, label: '文生视频', Icon: Sparkles },
-    { value: 'h3-i2v' as const, label: '图生视频', Icon: ImagePlus },
-    { value: 'h3-fl2va' as const, label: '首尾帧视频', Icon: ImagePlus },
-  ];
 
   useGenerationEvents((event) => {
     if (event.appId !== 'creative-center') return;
@@ -361,7 +356,7 @@ export function CreativeClient() {
       <PageHeader
         compact
         title="自由生成"
-        description="画面与视频创意工作台。"
+        description="文本生图与图生图创意工坊。"
         navigation={
           <PageTabs
             variant="local"
@@ -369,7 +364,7 @@ export function CreativeClient() {
             value={mode}
             onChange={(id) => handleModeChange(id as CreativeMode)}
             className="max-w-full flex-nowrap overflow-x-auto"
-            tabs={[...IMAGE_TABS, ...videoTabs].map(({ value, label, Icon }) => ({
+            tabs={IMAGE_TABS.map(({ value, label, Icon }) => ({
               id: value,
               panelId: `creative-panel-${value}`,
               label: <><Icon className="h-4 w-4" aria-hidden="true" />{label}</>,

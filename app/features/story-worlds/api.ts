@@ -1,4 +1,4 @@
-import { getJson, postJson, putJson } from '@/app/lib/api-client';
+import { deleteJson, getJson, postJson, putJson } from '@/app/lib/api-client';
 import { Type } from '@sinclair/typebox';
 import type { Static } from '@sinclair/typebox';
 import {
@@ -12,7 +12,13 @@ import {
   WorldBranchDetailSchema,
   WorldBranchSchema,
   WorldEventPageSchema,
+  WorldHubSchema,
   WorldImageListSchema,
+  WorldMcpLookupResponseSchema,
+  WorldMcpReadResponseSchema,
+  WorldManuscriptDeleteResponseSchema,
+  WorldManuscriptDocResponseSchema,
+  WorldChapterCopilotResponseSchema,
   WorldImageSchema,
   WorldInterventionSchema,
   WorldListSchema,
@@ -53,7 +59,18 @@ import type {
   WorldBranchDetail,
   WorldEventPage,
   WorldEventQuery,
+  WorldHub,
   WorldImage,
+  WorldMcpLookupRequest,
+  WorldMcpLookupResponse,
+  WorldMcpReadRequest,
+  WorldMcpReadResponse,
+  WorldManuscriptCreateDoc,
+  WorldManuscriptSaveDoc,
+  WorldManuscriptDocResponse,
+  WorldManuscriptDeleteResponse,
+  WorldChapterCopilotRequest,
+  WorldChapterCopilotResponse,
   WorldIntervention,
   WorldOverview,
   WorldProjectBinding,
@@ -94,6 +111,87 @@ export function createWorld(definition: WorldDefinition): Promise<StoryWorld> {
 
 export function fetchWorldOverview(worldId: string): Promise<WorldOverview> {
   return getJson<WorldOverview>(worldPath(worldId), undefined, WorldOverviewSchema);
+}
+
+export function fetchWorldHub(worldId: string, branchId?: string): Promise<WorldHub> {
+  const params = new URLSearchParams();
+  if (branchId) params.set('branchId', branchId);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return getJson<WorldHub>(`${worldPath(worldId)}/hub${suffix}`, undefined, WorldHubSchema);
+}
+
+export function lookupWorldChapterMcp(
+  worldId: string,
+  input: WorldMcpLookupRequest,
+): Promise<WorldMcpLookupResponse> {
+  return postJson<WorldMcpLookupResponse>(
+    `${worldPath(worldId)}/mcp-lookup`,
+    input,
+    undefined,
+    WorldMcpLookupResponseSchema,
+  );
+}
+
+export function readWorldChapterMcp(
+  worldId: string,
+  input: WorldMcpReadRequest,
+): Promise<WorldMcpReadResponse> {
+  return postJson<WorldMcpReadResponse>(
+    `${worldPath(worldId)}/mcp-read`,
+    input,
+    undefined,
+    WorldMcpReadResponseSchema,
+  );
+}
+
+export function createWorldManuscriptDoc(
+  worldId: string,
+  input: WorldManuscriptCreateDoc,
+): Promise<WorldManuscriptDocResponse> {
+  return postJson<WorldManuscriptDocResponse>(
+    `${worldPath(worldId)}/manuscript/documents`,
+    input,
+    undefined,
+    WorldManuscriptDocResponseSchema,
+  );
+}
+
+export function saveWorldManuscriptDoc(
+  worldId: string,
+  docId: string,
+  input: WorldManuscriptSaveDoc,
+): Promise<WorldManuscriptDocResponse> {
+  return putJson<WorldManuscriptDocResponse>(
+    `${worldPath(worldId)}/manuscript/documents/${encodeURIComponent(docId)}`,
+    input,
+    undefined,
+    WorldManuscriptDocResponseSchema,
+  );
+}
+
+export function deleteWorldManuscriptDoc(
+  worldId: string,
+  docId: string,
+  projectId?: string,
+): Promise<WorldManuscriptDeleteResponse> {
+  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+  return deleteJson<WorldManuscriptDeleteResponse>(
+    `${worldPath(worldId)}/manuscript/documents/${encodeURIComponent(docId)}${qs}`,
+    undefined,
+    WorldManuscriptDeleteResponseSchema,
+  );
+}
+
+export function runWorldChapterCopilot(
+  worldId: string,
+  input: WorldChapterCopilotRequest,
+): Promise<WorldChapterCopilotResponse> {
+  return postJson<WorldChapterCopilotResponse>(
+    `${worldPath(worldId)}/copilot`,
+    input,
+    undefined,
+    WorldChapterCopilotResponseSchema,
+  );
 }
 
 export function updateWorld(

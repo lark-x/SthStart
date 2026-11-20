@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Star, Plus, Search, Upload, Sparkles, Loader2, SlidersHorizontal, CheckSquare, Check, User, Users, MoreHorizontal, Tags, LayoutGrid, CircleUser, GitFork } from 'lucide-react';
+import { Star, Plus, Search, Upload, Sparkles, SlidersHorizontal, User, Users, MoreHorizontal, Tags, LayoutGrid, CircleUser, GitFork, CheckSquare, Images } from 'lucide-react';
 import { Menu } from '@mantine/core';
 import { Button, buttonVariants } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -25,7 +25,6 @@ import { hasCharacterFilters } from '../model/filter-chips';
 import { useCharacterBrowser } from '../hooks/use-character-browser';
 import { CharacterOrganizationFields, emptyOrganizationFields, splitLabels } from './character-organization-editor';
 import { editCharacterOrganization, saveCharacterWork } from '../api';
-import { useBatchMatchOfficialAvatars } from '../mutations';
 import { CharacterAvatar } from './character-image-fallback';
 import { characterFilterUrl } from '../filter-url';
 import { stripMachineCharacterIndex, type CharacterBrowseQuery, type CharacterWork } from '@sthstart/contracts';
@@ -33,7 +32,9 @@ import { SharedAssetVault } from './shared-asset-vault';
 import { LinsheCharacterVault } from './linshe-character-vault';
 import { CharacterUpstreamDialog } from './character-upstream-dialog';
 import { CharacterForkDialog } from './character-fork-dialog';
+import { CharacterBatchAssetsDialog, CharacterBatchEnrichRpDialog, CharacterBatchImportLocalDialog } from './character-batch-dialogs';
 import { characterKeys } from '../query-keys';
+import { useToast } from '@/app/providers/ui-provider';
 
 const DISPLAY_MODE_STORAGE_KEY = 'sthstart:character-display-mode';
 
@@ -59,7 +60,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const hasFilters = hasCharacterFilters(browser.filter);
   const router = useRouter();
   const client = useQueryClient();
-  const batchMatchMutation = useBatchMatchOfficialAvatars();
+  const toast = useToast();
   const [assetsVisited, setAssetsVisited] = useState(false);
   const [viewTab, setViewTab] = useState<'characters' | 'shared-assets' | 'linshe'>('characters');
   const displayMode = useSyncExternalStore(subscribeDisplayMode, readDisplayMode, () => 'card' as const);
@@ -79,7 +80,9 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const [worksOpen, setWorksOpen] = useState(false);
   const [batchAvatarOpen, setBatchAvatarOpen] = useState(false);
   const [batchAvatarScope, setBatchAvatarScope] = useState<'missing' | 'selected' | 'all'>('missing');
-  const [batchAvatarResult, setBatchAvatarResult] = useState<import('@sthstart/contracts').CharacterBatchAvatarResponse | null>(null);
+  const [batchEnrichRpOpen, setBatchEnrichRpOpen] = useState(false);
+  const [batchEnrichRpScope, setBatchEnrichRpScope] = useState<'incomplete' | 'selected' | 'all'>('incomplete');
+  const [batchImportLocalOpen, setBatchImportLocalOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<Record<string, string>>({});
   const pushCharacterPage = (next: CharacterBrowseQuery) => {
@@ -93,6 +96,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const [replaceGroups, setReplaceGroups] = useState(false);
   const [work, setWork] = useState<CharacterWork>({ name: '', aliases: [], mediaType: '', workNature: 'canon', parentWork: null });
   const [aliases, setAliases] = useState('');
+  const [editingWorkName, setEditingWorkName] = useState('');
+  const newWork = () => { setEditingWorkName(''); setWork({ name: '', aliases: [], mediaType: '', workNature: 'canon', parentWork: null }); setAliases(''); setError(''); };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const menuPortalTarget = useOverlayPortalTarget();
@@ -100,22 +105,6 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
   const [previewArtifact, setPreviewArtifact] = useState<{ name: string; url: string } | null>(null);
 
   const refresh = () => { void client.invalidateQueries({ queryKey: characterKeys.all }); };
-  const handleBatchAvatar = async () => {
-    setBusy(true);
-    setError('');
-    setBatchAvatarResult(null);
-    try {
-      const ids = batchAvatarScope === 'selected' ? Object.keys(selected) : undefined;
-      const onlyMissing = batchAvatarScope === 'missing';
-      const result = await batchMatchMutation.mutateAsync({ ids, onlyMissing });
-      setBatchAvatarResult(result);
-      refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   const organize = async () => {
     setBusy(true); setError('');
     try {
@@ -129,21 +118,29 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
   const saveWork = async () => {
+    if (busy) return;
     setBusy(true); setError('');
-    try { await saveCharacterWork({ ...work, aliases: splitLabels(aliases) }); refresh(); setWorksOpen(false); }
+    try {
+      const saved = await saveCharacterWork({ ...work, aliases: splitLabels(aliases) }) as CharacterWork;
+      setWork(saved);
+      setAliases(saved.aliases.join('，'));
+      setEditingWorkName(saved.name);
+      await client.invalidateQueries({ queryKey: characterKeys.all });
+      toast.success(editingWorkName ? '作品修改已保存' : '作品已创建', saved.name);
+    }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
   return (
     <div className="text-ink">
       <PageContainer className="space-y-4">
         <PageHeader compact
-          title="角色资料库"
+          title="角色库"
           navigation={
             <PageTabs
               variant="local" ariaLabel="角色资料视图" value={viewTab}
               tabs={[
-                { id: 'characters', label: <><User className="size-3.5" aria-hidden="true" />专属角色卡</>, panelId: 'character-cards' },
-                { id: 'shared-assets', label: <><Users className="size-3.5" aria-hidden="true" />多角色公共资产库</>, panelId: 'character-shared-assets' },
+                { id: 'characters', label: <><User className="size-3.5" aria-hidden="true" />角色卡</>, panelId: 'character-cards' },
+                { id: 'shared-assets', label: <><Users className="size-3.5" aria-hidden="true" />公共资产</>, panelId: 'character-shared-assets' },
                 { id: 'linshe', label: <><Sparkles className="size-3.5" aria-hidden="true" />邻舍角色</>, panelId: 'character-linshe' },
               ]}
               onChange={value => {
@@ -170,7 +167,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     className="gap-1.5 text-sm font-medium"
                   >
                     <Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />
-                    <span>上游生成 RP 卡</span>
+                    <span>RP 卡生成</span>
                   </Button>
 
                   <Button
@@ -180,7 +177,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     className="gap-1.5 text-sm font-medium"
                   >
                     <Search className="h-4 w-4 text-muted" aria-hidden="true" />
-                    <span>搜索 / 导入</span>
+                    <span>导入</span>
                   </Button>
                 </>
               )}
@@ -218,16 +215,35 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     <MoreHorizontal className="size-4" aria-hidden="true" />
                   </Button>
                 </Menu.Target>
-                <Menu.Dropdown aria-label="更多角色操作" className="ui-row-menu w-44">
+                <Menu.Dropdown aria-label="更多角色操作" className="ui-row-menu w-52">
+                  <Menu.Item
+                    leftSection={<Images className="size-3.5 text-muted" aria-hidden="true" />}
+                    onClick={() => {
+                      setError('');
+                      setBatchAvatarScope('missing');
+                      setBatchAvatarOpen(true);
+                    }}
+                  >
+                    批量获取形象与皮肤
+                  </Menu.Item>
                   <Menu.Item
                     leftSection={<Sparkles className="size-3.5 text-muted" aria-hidden="true" />}
                     onClick={() => {
                       setError('');
-                      setBatchAvatarResult(null);
-                      setBatchAvatarOpen(true);
+                      setBatchEnrichRpScope('incomplete');
+                      setBatchEnrichRpOpen(true);
                     }}
                   >
-                    批量获取头像
+                    批量补全角色卡
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<Users className="size-3.5 text-muted" aria-hidden="true" />}
+                    onClick={() => {
+                      setError('');
+                      setBatchImportLocalOpen(true);
+                    }}
+                  >
+                    导入本地精选人设库
                   </Menu.Item>
                   <Menu.Item
                     leftSection={<Upload className="size-3.5 text-muted" aria-hidden="true" />}
@@ -242,6 +258,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     leftSection={<Tags className="size-3.5 text-muted" aria-hidden="true" />}
                     onClick={() => {
                       setError('');
+                      newWork();
                       setWorksOpen(true);
                     }}
                   >
@@ -280,17 +297,17 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
             onReset={browser.reset}
             facets={browser.facets}
             leftSlot={
-              <div role="group" aria-label="展示模式" className="inline-flex shrink-0 items-center rounded-control border border-hairline bg-surface-sunken p-0.5 text-xs">
+              <div role="group" aria-label="展示模式" className="inline-flex h-9 shrink-0 items-center rounded-control border border-hairline bg-surface-sunken p-0.5 text-xs">
                 <Button
                   type="button"
                   size="sm"
                   variant={displayMode === 'avatar' ? 'secondary' : 'ghost'}
                   aria-pressed={displayMode === 'avatar'}
                   onClick={() => updateDisplayMode('avatar')}
-                  className="h-7 min-h-7 gap-1 px-2 text-xs"
+                  className="h-7.5 min-h-0 gap-1 px-2 text-xs"
                 >
                   <CircleUser className="size-3.5" aria-hidden="true" />
-                  <span>只看头像</span>
+                  <span>头像</span>
                 </Button>
                 <Button
                   type="button"
@@ -298,27 +315,27 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                   variant={displayMode === 'card' ? 'secondary' : 'ghost'}
                   aria-pressed={displayMode === 'card'}
                   onClick={() => updateDisplayMode('card')}
-                  className="h-7 min-h-7 gap-1 px-2 text-xs"
+                  className="h-7.5 min-h-0 gap-1 px-2 text-xs"
                 >
                   <LayoutGrid className="size-3.5" aria-hidden="true" />
-                  <span>信息卡片</span>
+                  <span>卡片</span>
                 </Button>
               </div>
             }
             actions={
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted tabular-nums">
-                  共 {browser.data?.total ?? '—'} 位角色{browser.isFetching ? ' · 筛选中…' : ''}
+                <span className="whitespace-nowrap text-xs text-muted tabular-nums">
+                  共 {browser.data?.total ?? '—'} 位{browser.isFetching ? ' · 筛选中…' : ''}
                 </span>
                 <Button
                   size="sm"
-                  variant={selectionMode ? 'secondary' : 'ghost'}
+                  variant={selectionMode ? 'secondary' : 'outline'}
                   onClick={() => {
                     const nextMode = !selectionMode;
                     setSelectionMode(nextMode);
                     if (!nextMode) setSelected({});
                   }}
-                  className="h-8 px-2 text-sm font-medium"
+                  className="h-9 min-h-0 px-2.5 text-sm font-medium"
                 >
                   <CheckSquare className="size-3.5 text-muted" aria-hidden="true" />
                   <span>{selectionMode ? '退出管理' : '批量管理'}</span>
@@ -390,12 +407,25 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               onClick={() => {
                 setError('');
                 setBatchAvatarScope('selected');
-                setBatchAvatarResult(null);
                 setBatchAvatarOpen(true);
               }}
             >
+              <Images className="size-3.5 text-muted" aria-hidden="true" />
+              <span>获取形象与皮肤</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 px-3 text-xs"
+              disabled={!Object.keys(selected).length}
+              onClick={() => {
+                setError('');
+                setBatchEnrichRpScope('selected');
+                setBatchEnrichRpOpen(true);
+              }}
+            >
               <Sparkles className="size-3.5 text-muted" aria-hidden="true" />
-              <span>获取所选头像</span>
+              <span>补全角色卡</span>
             </Button>
             <Button
               size="sm"
@@ -465,8 +495,8 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={`!absolute top-1.5 right-1.5 z-10 !h-7 !min-h-7 !w-7 text-muted transition-opacity hover:!bg-surface-sunken hover:!text-accent ${
-                        character.organization?.favorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                      className={`!absolute top-1.5 right-1.5 z-10 !h-11 !min-h-11 !w-11 sm:!h-7 sm:!min-h-7 sm:!w-7 text-muted transition-opacity hover:!bg-surface-sunken hover:!text-accent ${
+                        character.organization?.favorite ? 'opacity-100' : 'opacity-70 hover:opacity-100 focus-visible:opacity-100'
                       }`}
                       aria-label={`${character.organization?.favorite ? '取消收藏' : '收藏'} ${character.displayName}`}
                       aria-pressed={character.organization?.favorite || false}
@@ -513,7 +543,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                               key={member.id}
                               onClick={() => router.push(`/apps/characters/${member.id}`)}
                             >
-                              {member.originType === 'ip' ? '★ 原作' : member.originType === 'derivative' ? '同人' : '原创'} · {member.work || member.displayName}
+                              {member.originType === 'ip' ? '原作' : member.originType === 'derivative' ? '同人' : '原创'} · {member.work || member.displayName}
                             </Menu.Item>
                           ))}
                           <Menu.Divider />
@@ -521,7 +551,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                             leftSection={<GitFork className="h-3.5 w-3.5" aria-hidden="true" />}
                             onClick={() =>
                               setForkTarget({
-                                id: character.familyRootId || character.id,
+                                id: character.id,
                                 displayName: character.displayName,
                                 work: character.draft.work || '',
                               })
@@ -635,7 +665,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                                   key={member.id}
                                   onClick={() => router.push(`/apps/characters/${member.id}`)}
                                 >
-                                  {member.originType === 'ip' ? '★ 原作' : member.originType === 'derivative' ? '同人' : '原创'} · {member.work || member.displayName}
+                                  {member.originType === 'ip' ? '原作' : member.originType === 'derivative' ? '同人' : '原创'} · {member.work || member.displayName}
                                 </Menu.Item>
                               ))}
                               <Menu.Divider />
@@ -643,7 +673,7 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                                 leftSection={<GitFork className="h-3.5 w-3.5" aria-hidden="true" />}
                                 onClick={() =>
                                   setForkTarget({
-                                    id: character.familyRootId || character.id,
+                                    id: character.id,
                                     displayName: character.displayName,
                                     work: character.draft.work || '',
                                   })
@@ -772,29 +802,36 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
           onOpenChange={(v) => {
             if (!busy) setWorksOpen(v);
           }}
-          title="作品与别名"
-          description="新增作品，或选择已有作品编辑别名与类型。别名可以用于搜索和筛选。"
+          title="作品目录"
+          description="填写名称与作品属性即可创建，同人作品再选择母原作。"
           footer={
             <Button disabled={busy || !work.name.trim()} onClick={() => void saveWork()}>
-              保存作品
+              {editingWorkName ? '保存作品修改' : '新建作品'}
             </Button>
           }
         >
           <div className="space-y-3">
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={newWork}>新建作品 · 清空表单</Button>
             <label className="block text-sm font-medium text-ink">
               <span>选择已有作品</span>
               <Select
                 className="mt-1 h-10 min-h-10 text-base sm:text-sm"
-                value=""
+                value={editingWorkName}
+                disabled={busy}
                 onChange={(e) => {
+                  if (!e.target.value) { newWork(); return; }
                   const next = browser.facets?.works.find((w) => w.name === e.target.value);
                   if (next) {
+                    setEditingWorkName(next.name);
                     setWork(next);
                     setAliases(next.aliases.join('，'));
                   }
                 }}
               >
                 <option value="">选择作品，或在下方新建</option>
+                {editingWorkName && !browser.facets?.works.some((item) => item.name === editingWorkName) && (
+                  <option value={editingWorkName}>{editingWorkName}</option>
+                )}
                 {browser.facets?.works.map((w) => (
                   <option key={w.name} value={w.name}>
                     {w.name}
@@ -802,27 +839,22 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                 ))}
               </Select>
             </label>
-            <label className="block text-sm font-medium text-ink">
+            <label className="block space-y-1 text-sm font-medium text-ink">
               <span>标准名称</span>
               <Input
                 value={work.name}
+                disabled={busy}
+                readOnly={Boolean(editingWorkName)}
                 onChange={(e) => setWork({ ...work, name: e.target.value })}
                 className="text-base sm:text-sm"
               />
             </label>
-            <label className="block text-sm font-medium text-ink">
-              <span>别名（逗号分隔）</span>
-              <Input
-                value={aliases}
-                onChange={(e) => setAliases(e.target.value)}
-                className="text-base sm:text-sm"
-              />
-            </label>
-            <label className="block text-sm font-medium text-ink">
+            <label className="block space-y-1 text-sm font-medium text-ink">
               <span>作品属性</span>
               <Select
-                className="mt-1 h-10 min-h-10 text-base sm:text-sm"
+                className="h-10 min-h-10 text-base sm:text-sm"
                 value={work.workNature || 'canon'}
+                disabled={busy}
                 onChange={(e) =>
                   setWork({
                     ...work,
@@ -837,21 +869,27 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
               </Select>
             </label>
             {work.workNature === 'derivative' && (
-              <label className="block text-sm font-medium text-ink">
-                <span>母原作名称</span>
-                <Input
-                  value={work.parentWork || ''}
-                  onChange={(e) => setWork({ ...work, parentWork: e.target.value })}
-                  placeholder="例如：原神"
-                  className="text-base sm:text-sm"
-                />
+              <label className="block space-y-1 text-sm font-medium text-ink">
+                <span>母原作</span>
+                <Select disabled={busy} value={work.parentWork || ''} onChange={event => setWork({ ...work, parentWork: event.target.value || null })}>
+                  <option value="">选择已登记的母原作</option>
+                  {(browser.facets?.works || []).filter(item => item.name !== work.name && item.workNature !== 'derivative').map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
+                </Select>
               </label>
             )}
-            <label className="block text-sm font-medium text-ink">
+            <details>
+              <summary className="cursor-pointer py-2 text-sm font-medium text-ink">更多信息（可选）</summary>
+              <div className="space-y-3 pt-2">
+                <label className="block space-y-1 text-sm font-medium text-ink">
+                  <span>别名（逗号分隔）</span>
+                  <Input disabled={busy} value={aliases} onChange={(e) => setAliases(e.target.value)} className="text-base sm:text-sm" />
+                </label>
+            <label className="block space-y-1 text-sm font-medium text-ink">
               <span>作品类型</span>
               <Select
-                className="mt-1 h-10 min-h-10 text-base sm:text-sm"
+                className="h-10 min-h-10 text-base sm:text-sm"
                 value={work.mediaType}
+                disabled={busy}
                 onChange={(e) => setWork({ ...work, mediaType: e.target.value })}
               >
                 <option value="">未分类</option>
@@ -860,133 +898,32 @@ export function CharacterLibrary({ initialFilter }: { initialFilter?: CharacterB
                 ))}
               </Select>
             </label>
+              </div>
+            </details>
             {error && <p role="alert" className="text-sm text-danger-fg">{error}</p>}
           </div>
         </Dialog>
 
-        <Dialog
+        <CharacterBatchAssetsDialog
           open={batchAvatarOpen}
-          onOpenChange={(v) => {
-            if (!busy) {
-              setBatchAvatarOpen(v);
-              if (!v) setBatchAvatarResult(null);
-            }
-          }}
-          title="批量获取官方头像"
-          description="自动从官方素材库检索并下载角色的官方高清头像。"
-          footer={
-            batchAvatarResult ? (
-              <Button
-                onClick={() => {
-                  setBatchAvatarOpen(false);
-                  setBatchAvatarResult(null);
-                }}
-              >
-                完成
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Button variant="outline" disabled={busy} onClick={() => setBatchAvatarOpen(false)}>
-                  取消
-                </Button>
-                <Button disabled={busy} onClick={() => void handleBatchAvatar()}>
-                  {busy ? '正在匹配下载…' : '开始获取'}
-                </Button>
-              </div>
-            )
-          }
-        >
-          <div className="space-y-4 text-sm">
-            {!batchAvatarResult ? (
-              <>
-                <p className="text-muted">
-                  系统将根据角色名称（如原神等角色）在官方素材库中检索官方头像，下载并保存为角色头像资产。
-                </p>
-                <div className="space-y-2 rounded-lg border border-border-default bg-surface-muted/50 p-3">
-                  <span className="font-semibold text-ink">获取范围：</span>
-                  <div className="mt-2 space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="avatarScope"
-                        value="missing"
-                        checked={batchAvatarScope === 'missing'}
-                        onChange={() => setBatchAvatarScope('missing')}
-                        disabled={busy}
-                        className="accent-accent"
-                      />
-                      <span>仅为<strong>缺失头像</strong>的角色获取 (推荐)</span>
-                    </label>
-                    {Object.keys(selected).length > 0 && (
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="avatarScope"
-                          value="selected"
-                          checked={batchAvatarScope === 'selected'}
-                          onChange={() => setBatchAvatarScope('selected')}
-                          disabled={busy}
-                          className="accent-accent"
-                        />
-                        <span>仅为<strong>当前选中的 {Object.keys(selected).length} 位</strong>角色获取</span>
-                      </label>
-                    )}
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="avatarScope"
-                        value="all"
-                        checked={batchAvatarScope === 'all'}
-                        onChange={() => setBatchAvatarScope('all')}
-                        disabled={busy}
-                        className="accent-accent"
-                      />
-                      <span>为<strong>全部角色</strong>重新匹配获取 (覆盖已有头像)</span>
-                    </label>
-                  </div>
-                </div>
-                {busy && (
-                  <div className="flex items-center justify-center gap-2 py-4 text-muted">
-                    <Loader2 className="size-4 animate-spin text-accent" />
-                    <span>正在批量匹配与下载官方头像，请稍候…</span>
-                  </div>
-                )}
-                {error && <p role="alert" className="text-sm text-danger-fg">{error}</p>}
-              </>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-emerald-500/10 p-3 border border-emerald-500/20">
-                    <div className="text-2xl font-semibold text-success-fg">{batchAvatarResult.updated}</div>
-                    <div className="text-xs text-muted">成功获取</div>
-                  </div>
-                  <div className="rounded-lg bg-surface-muted p-3 border border-border-default">
-                    <div className="text-2xl font-semibold text-ink">{batchAvatarResult.skipped}</div>
-                    <div className="text-xs text-muted">跳过/未匹配</div>
-                  </div>
-                  <div className="rounded-lg bg-rose-500/10 p-3 border border-rose-500/20">
-                    <div className="text-2xl font-semibold text-danger-fg">{batchAvatarResult.failed}</div>
-                    <div className="text-xs text-muted">失败</div>
-                  </div>
-                </div>
-                <div className="max-h-60 overflow-y-auto rounded-lg border border-border-default bg-surface p-2 text-xs space-y-1">
-                  {batchAvatarResult.items.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between py-1 px-2 rounded hover:bg-surface-muted/50">
-                      <span className="font-medium text-ink">{item.displayName}</span>
-                      {item.success ? (
-                        <span className="inline-flex items-center gap-1 text-success-fg font-medium">
-                          <Check className="h-3 w-3" aria-hidden="true" />已更新
-                        </span>
-                      ) : (
-                        <span className="text-muted">{item.error || '未匹配到'}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Dialog>
+          onOpenChange={setBatchAvatarOpen}
+          initialScope={batchAvatarScope}
+          selectedIds={Object.keys(selected)}
+          onCompleted={refresh}
+        />
+
+        <CharacterBatchEnrichRpDialog
+          open={batchEnrichRpOpen}
+          onOpenChange={setBatchEnrichRpOpen}
+          initialScope={batchEnrichRpScope}
+          selectedIds={Object.keys(selected)}
+          onCompleted={refresh}
+        />
+        <CharacterBatchImportLocalDialog
+          open={batchImportLocalOpen}
+          onOpenChange={setBatchImportLocalOpen}
+          onCompleted={refresh}
+        />
         <CharacterUpstreamDialog
           open={upstreamOpen}
           onOpenChange={setUpstreamOpen}

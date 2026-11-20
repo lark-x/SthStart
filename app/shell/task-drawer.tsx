@@ -18,6 +18,7 @@ import {
   Lightbulb,
   Search,
   ListTodo,
+  Loader2,
 } from 'lucide-react';
 import type { TaskDomain } from '@sthstart/contracts';
 import { Drawer } from '@/app/components/ui/drawer';
@@ -179,7 +180,7 @@ export function TaskDrawer({ isOpen, onClose }: TaskDrawerProps) {
                     <div className="flex-shrink-0">
                       {isRunning && (
                         <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
-                          <Spinner className="h-2.5 w-2.5" />
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
                           处理中
                         </Badge>
                       )}

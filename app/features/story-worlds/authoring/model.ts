@@ -111,6 +111,7 @@ export function createEmptyDraft(): WorldAuthoringDraft {
   return {
     definition: {
       title: '',
+      workNature: 'original', parentWork: null,
       summary: '',
       timeLabel: '故事时间',
       locations: [location],
@@ -694,6 +695,9 @@ export function validateDraft(draft: WorldAuthoringDraft): DraftValidation {
 
   if (!definition.title.trim()) issues.push({ path: 'title', message: '世界名称不能为空。' });
   if (definition.title.length > 200) issues.push({ path: 'title', message: '世界名称最多 200 字。' });
+  if (definition.workNature === 'derivative' && !definition.parentWork?.trim()) {
+    issues.push({ path: 'parentWork', message: '同人作品必须选择所属母原作。' });
+  }
   if (definition.summary.length > 20000) issues.push({ path: 'summary', message: '世界简介最多 20000 字。' });
   if (definition.timeLabel.length > 200) issues.push({ path: 'timeLabel', message: '时间标签最多 200 字。' });
   if (definition.visualStyle.length > 8000) issues.push({ path: 'visualStyle', message: '画面风格最多 8000 字。' });

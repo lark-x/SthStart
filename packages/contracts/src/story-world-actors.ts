@@ -11,6 +11,7 @@ const strict = { additionalProperties: false };
  * 幂等由当前分支状态保证：已是主角、已关联角色库时不重复写卡或递增 revision。
  */
 export const PromoteWorldActorSchema = Type.Object({
+  versionLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
   expectedRevision: revision,
   promoteToMain: Type.Boolean(),
   addToLibrary: Type.Boolean(),

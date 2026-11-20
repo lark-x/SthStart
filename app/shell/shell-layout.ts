@@ -32,8 +32,8 @@ export interface ShellLayout {
 export function resolveShellLayout({ pathname, searchParams }: ShellLocation): ShellLayout {
   const isActivityStudio = pathname.startsWith('/apps/activities/') && pathname !== '/apps/activities/new';
   const isStoryWorkspace = pathname.startsWith('/apps/story/') && pathname.split('/').filter(Boolean).length === 3;
-  const isWorldAuthoring = pathname === '/apps/story-worlds/new' || /^\/apps\/story-worlds\/[^/]+\/(?:edit|setup)\/?$/.test(pathname);
-  const isStoryWorldsWorkspace = !isWorldAuthoring && (pathname === '/apps/story-worlds' || pathname.startsWith('/apps/story-worlds/'));
+  const isWorldAuthoring = pathname === '/apps/story-worlds/new' || pathname === '/apps/story-worlds/scenes/new' || /^\/apps\/story-worlds\/[^/]+\/(?:edit|setup)\/?$/.test(pathname);
+  const isStoryWorldsWorkspace = !isWorldAuthoring && ((pathname === '/apps/story-worlds' && Boolean(searchParams.get('world')?.trim())) || pathname.startsWith('/apps/story-worlds/'));
   const isNarrativeFocus = pathname === '/apps/narrative'
     && (searchParams.get('view') === 'review'
       || (!searchParams.has('project') && !['research', 'import'].includes(searchParams.get('mode') ?? 'read')));

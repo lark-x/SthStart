@@ -504,7 +504,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               ...(withIndicator
                 ? {
                     appearance: 'none' as const,
-                    overflow: 'clip',
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    lineHeight: 'normal',
+                    textOverflow: 'ellipsis',
                     paddingInlineEnd: INDICATOR_INPUT_PADDING_END,
                   }
                 : null),

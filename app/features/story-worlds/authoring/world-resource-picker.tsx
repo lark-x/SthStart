@@ -39,9 +39,9 @@ import { PageTabs } from '@/app/components/ui/page-tabs';
 import { Pagination } from '@/app/components/ui/pagination';
 import { Select } from '@/app/components/ui/select';
 import { Spinner } from '@/app/components/ui/spinner';
-import { useCharacterBrowser } from '@/app/features/characters/public';
-import { CharacterPagination } from '@/app/features/characters/public-ui';
-import { fetchCharacterDetail, publishCharacter } from '@/app/features/characters/api';
+import { CharacterBrowserPicker, type CharacterBrowserSelection } from '@/app/features/characters/public-ui';
+import { fetchCharacterDetail } from '@/app/features/characters/api';
+import { resolveCharacterVersionSelection } from '@sthstart/contracts';
 import { fetchPending } from '@/app/features/knowledge/api';
 import { fetchNotes } from '@/app/features/notebook/api';
 import { fetchReadingNode, fetchWorks, fetchWorkTree } from '@/app/features/narrative/api';
@@ -297,7 +297,7 @@ export function mergeActorVersion(
     id: current.id,
     locationId: current.locationId,
     role: current.role,
-    referenceArtifactIds: [...current.referenceArtifactIds],
+    referenceArtifactIds: [...new Set([...current.referenceArtifactIds, ...incoming.referenceArtifactIds])],
   };
 }
 
@@ -307,6 +307,8 @@ export interface ActorVersionSelection {
   version: number | null;
   actorId: string | null;
   draftSignature: string | null;
+  variantId?: string;
+  costumeAssetId?: string;
 }
 
 export interface ActorUpdateCandidate {
@@ -334,6 +336,8 @@ export function actorDraftSignature(current: WorldActor | null): string | null {
     current.role,
     current.characterId,
     current.characterVersion,
+    current.characterVariantId,
+    current.characterCostumeAssetId,
     current.background,
     current.personality,
     current.speechStyle,
@@ -376,6 +380,12 @@ export function actorSelectionIsStale(
   return Boolean(lookup.blocked) || lookup.stale;
 }
 
+export function actorFromSelectedVersion(profile: CharacterProfile, version: CharacterVersion, locationId: string, options: { variantId?: string; costumeAssetId?: string } = {}): WorldActor {
+  const effective = resolveCharacterVersionSelection(version, options);
+  const actor = actorFromCharacterVersion(profile, { ...version, data: effective.draft }, locationId);
+  return { ...actor, characterVariantId: options.variantId, characterCostumeAssetId: options.costumeAssetId, referenceArtifactIds: effective.referenceArtifactIds };
+}
+
 export function actorUpdateCandidates(
   selections: readonly ActorVersionSelection[],
   actors: readonly WorldActor[],
@@ -389,13 +399,9 @@ export function actorUpdateCandidates(
     if (!version) return [];
     const incoming = mergeActorVersion(
       current,
-      actorFromCharacterVersion(
-        selection.profile,
-        version,
-        current.locationId,
-      ),
+      actorFromSelectedVersion(selection.profile, version, current.locationId, selection),
     );
-    if (current.characterVersion === incoming.characterVersion) return [];
+    if (current.characterVersion === incoming.characterVersion && current.characterVariantId === incoming.characterVariantId && current.characterCostumeAssetId === incoming.characterCostumeAssetId) return [];
     return [{ current, incoming }];
   });
 }
@@ -767,87 +773,31 @@ function CharactersTab({
   onAddActors: (actors: WorldActor[]) => void;
   onReplaceActors?: (actors: WorldActor[]) => void;
 }) {
-  const browser = useCharacterBrowser({}, active);
   const [selected, setSelected] = useState<Record<string, ActorVersionSelection>>({});
-  const [versionLoadingId, setVersionLoadingId] = useState('');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [query, setQuery] = useState('');
-  const deferredQuery = useDeferredValue(query);
   const actors = draft.definition.actors;
-  const pageSize = browser.filter.pageSize ?? PAGE_SIZES[0];
-  const total = browser.data?.total ?? 0;
-  const changeQuery = browser.change;
-
-  useEffect(() => {
-    changeQuery({ q: deferredQuery, page: 1 });
-  }, [deferredQuery, changeQuery]);
-
-  const changePage = (next: number) => {
-    const lastPage = Math.max(1, Math.ceil(total / pageSize));
-    browser.change({ page: Math.min(Math.max(1, next), lastPage) });
-  };
-
-  const changePageSize = (nextPageSize: number) => {
-    browser.change({ pageSize: nextPageSize, page: 1 });
-  };
-
-  const toggle = async (profile: CharacterProfile) => {
-    if (selected[profile.id]) {
-      setSelected((current) => toggleRecord(current, profile.id, current[profile.id]));
-      setError('');
-      setNotice('');
-      return;
-    }
-    setVersionLoadingId(profile.id);
-    setError('');
-    setNotice('');
-    try {
-      if (!profile.latestVersion) {
-        await publishCharacter(profile.id);
-      }
-      const detail = await fetchCharacterDetail(profile.id);
-      const versions = [...detail.versions].sort(
-        (left, right) => right.version - left.version,
-      );
-      const effectiveLatest = detail.latestVersion ?? profile.latestVersion;
-      const version = resolveCharacterVersion(versions, effectiveLatest);
-      if (!version) {
-        setError(`角色「${profile.displayName}」缺少有效设定文本，请先补充名称与简介或人设。`);
-        return;
-      }
-      const currentActor = actors.find(
-        (actor) => actor.characterId === profile.id,
-      ) ?? null;
-      setSelected((current) => ({
-        ...current,
-        [profile.id]: {
-          profile: detail,
-          versions,
-          version: version.version,
-          actorId: currentActor?.id ?? null,
-          draftSignature: actorDraftSignature(currentActor),
-        },
-      }));
-    } catch (versionError) {
-      setError(describeError(versionError));
-    } finally {
-      setVersionLoadingId('');
-    }
-  };
-
-  const chooseVersion = (profileId: string, version: number) => {
-    setSelected((current) => {
-      const entry = current[profileId];
-      if (!entry) return current;
-      return {
-        ...current,
-        [profileId]: { ...entry, version },
+  const browserSelected = Object.fromEntries(Object.entries(selected).flatMap(([id, entry]) => {
+    const version = entry.versions.find(item => item.version === entry.version);
+    return version ? [[id, { profile: entry.profile, versions: entry.versions, version, variantId: entry.variantId, costumeAssetId: entry.costumeAssetId }]] : [];
+  })) as Record<string, CharacterBrowserSelection>;
+  const selectCharacter = (choice: CharacterBrowserSelection, checked: boolean) => {
+    setSelected(current => {
+      const next = { ...current };
+      if (!checked) { delete next[choice.profile.id]; return next; }
+      const previous = current[choice.profile.id];
+      const actor = actors.find(item => item.characterId === choice.profile.id) ?? null;
+      next[choice.profile.id] = {
+        profile: choice.profile, versions: choice.versions, version: choice.version.version,
+        actorId: previous?.actorId ?? actor?.id ?? null,
+        draftSignature: previous?.draftSignature ?? actorDraftSignature(actor),
+        variantId: previous ? choice.variantId : choice.variantId ?? (choice.version.variants?.some(item => item.id === actor?.characterVariantId) ? actor?.characterVariantId : undefined),
+        costumeAssetId: previous ? choice.costumeAssetId : choice.costumeAssetId ?? (choice.version.assets?.some(item => item.id === actor?.characterCostumeAssetId && item.category === 'costume') ? actor?.characterCostumeAssetId : undefined),
       };
+      return next;
     });
-    setError('');
-    setNotice('');
+    setError(''); setNotice('');
   };
 
   const updateCandidates = useMemo(
@@ -937,7 +887,7 @@ function CharactersTab({
         if (!version) {
           throw new Error(`角色「${entry.profile.displayName}」的所选版本不可读取。`);
         }
-        nextActors.push(actorFromCharacterVersion(entry.profile, version, locationId));
+        nextActors.push(actorFromSelectedVersion(entry.profile, version, locationId, entry));
       }
       const added = mergeActors(actors, nextActors).length - actors.length;
       if (!added) {
@@ -976,149 +926,7 @@ function CharactersTab({
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Input
-          aria-label="搜索角色库"
-          placeholder="按名称搜索角色库"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="flex-1"
-        />
-        <p className="text-xs leading-relaxed text-muted">
-          支持直接引入原作、同人衍生或原创角色；同人世界可自由选用原作与同人分支。
-        </p>
-      </div>
-
-      {browser.isError && (
-        <QueryError
-          title="角色库读取失败"
-          error={browser.error}
-          onRetry={() => void browser.refetch()}
-        />
-      )}
-      {browser.isLoading ? (
-        <div className="flex items-center gap-2 py-6 text-sm text-muted">
-          <Spinner size="sm" label="正在读取角色库…" />
-        </div>
-      ) : null}
-      {!browser.isLoading
-        && !browser.isError
-        && (browser.data?.items.length ?? 0) === 0 && (
-          <EmptyState
-            icon={UserRound}
-            title="没有匹配角色"
-            description="调整搜索词，或在角色库新建角色。"
-          />
-        )}
-
-      <div className="grid gap-2 sm:grid-cols-2">
-        {(browser.data?.items ?? []).map((profile) => {
-          const existing = draft.definition.actors.find(
-            (actor) => actor.characterId === profile.id,
-          );
-          const added = Boolean(existing);
-          const selectedItem = selected[profile.id];
-          const originLabel = profile.draft.originType === 'ip' ? '原作' : profile.draft.originType === 'derivative' ? '同人' : '原创';
-          return (
-            <div
-              key={profile.id}
-              className="space-y-2"
-            >
-              <div
-                className={[
-                  'flex items-start gap-3 rounded-panel border p-3 transition-colors',
-                  selectedItem
-                    ? 'border-accent bg-[var(--selection-bg)]'
-                    : 'border-border-subtle bg-surface',
-                ].join(' ')}
-              >
-                <Checkbox
-                  aria-label={`选择 ${profile.displayName}`}
-                    checked={Boolean(selectedItem)}
-                  disabled={importing || versionLoadingId === profile.id}
-                  onChange={() => void toggle(profile)}
-                />
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 text-left"
-                  disabled={importing || versionLoadingId === profile.id}
-                  onClick={() => void toggle(profile)}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-control bg-surface-sunken text-sm font-semibold text-muted">
-                      {profile.displayName.slice(0, 1)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-ink">
-                        {profile.displayName}
-                      </span>
-                      <span className="block truncate text-xs text-muted">
-                        {originLabel} · {profile.draft.work || '未分类'}
-                        {profile.draft.originType === 'original' && profile.latestVersion
-                          ? ` · 阶段 v${profile.latestVersion}`
-                          : ''}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="mt-2 line-clamp-2 block text-xs leading-relaxed text-muted">
-                    {profile.draft.summary || '没有角色摘要'}
-                  </span>
-                  {added && (
-                    <Badge variant="secondary" className="mt-2">
-                      已在当前世界
-                      {existing?.characterVersion && profile.draft.originType === 'original'
-                        ? ` · v${existing.characterVersion}`
-                        : ''}
-                    </Badge>
-                  )}
-                  {versionLoadingId === profile.id && (
-                    <span className="mt-2 block text-xs text-muted">
-                      正在同步角色设定…
-                    </span>
-                  )}
-                </button>
-              </div>
-              {selectedItem && profile.draft.originType === 'original' && selectedItem.versions.length > 1 && (
-                <label className="flex flex-wrap items-center gap-2 rounded-panel bg-surface-sunken px-3 py-2 text-xs text-muted">
-                  <span className="font-medium text-ink">采用阶段版本</span>
-                  <Select
-                    aria-label={`选择 ${profile.displayName} 的版本`}
-                    value={String(selectedItem.version ?? '')}
-                    disabled={importing}
-                    className="min-w-32 flex-1"
-                    onChange={(event) => chooseVersion(
-                      profile.id,
-                      Number(event.target.value),
-                    )}
-                  >
-                    {selectedItem.versions.map((version) => (
-                      <option key={version.version} value={version.version}>
-                        v{version.version}
-                        {version.versionLabel ? ` · ${version.versionLabel}` : ''}
-                        {version.version === profile.latestVersion ? '（最新）' : ''}
-                      </option>
-                    ))}
-                  </Select>
-                  {existing && selectedItem.version !== null
-                    && selectedItem.version !== existing.characterVersion && (
-                      <span className="basis-full text-warning-fg">
-                        将从 v{existing.characterVersion ?? '未绑定'}
-                        {' '}更新到 v{selectedItem.version}；确认后替换同一个人物快照。
-                      </span>
-                    )}
-                </label>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <CharacterPagination
-        data={browser.data}
-        onPage={changePage}
-        onPageSizeChange={changePageSize}
-        loading={browser.isFetching}
-      />
+      <CharacterBrowserPicker active={active} initialFilter={draft.definition.workNature === 'derivative' && draft.definition.parentWork ? { works: [draft.definition.title, draft.definition.parentWork] } : undefined} selected={browserSelected} disabled={importing} allowExisting existingIds={actors.flatMap(actor => actor.characterId ? [actor.characterId] : [])} onSelectionChange={selectCharacter} />
 
       <SelectionActions
         count={Object.keys(selected).length}
@@ -1179,15 +987,15 @@ function CharactersTab({
           </div>
           <ul className="space-y-3">
             {updateCandidates.map(({ current, incoming }) => {
-              const differences = actorVersionDiff(current, incoming);
+              const differences = actorVersionDiff(current, incoming).filter(item => item.field !== 'version' || selected[current.characterId || '']?.profile.draft.originType === 'original');
               return (
                 <li key={current.id} className="space-y-2 rounded-control bg-surface p-3">
                   <p className="text-sm font-medium text-ink">
                     {current.name}
                     {' · '}
-                    v{current.characterVersion ?? '未绑定'}
-                    {' → '}
-                    v{incoming.characterVersion ?? '未绑定'}
+                    {selected[current.characterId || '']?.profile.draft.originType === 'original'
+                      ? (selected[current.characterId || '']?.versions.find(version => version.version === incoming.characterVersion)?.versionLabel || '所选阶段')
+                      : '采用新快照与外观选择'}
                   </p>
                   <p className="text-xs text-muted">
                     保留：地点「{draft.definition.locations.find(
@@ -2065,12 +1873,14 @@ function ProjectTab({
       const current = draft.definition.actors.find(
         (actor) => actor.characterId === character.sourceCharacterId,
       );
-      if (!current || current.characterVersion === character.sourceVersion) continue;
+      if (!current || (current.characterVersion === character.sourceVersion && current.characterVariantId === character.sourceVariantId && current.characterCostumeAssetId === character.sourceCostumeAssetId)) continue;
       updates.push({
         current,
         incoming: {
           ...current,
           characterVersion: character.sourceVersion,
+          characterVariantId: character.sourceVariantId,
+          characterCostumeAssetId: character.sourceCostumeAssetId,
           name: character.name,
           background: character.notes,
         },
@@ -2144,7 +1954,7 @@ function ProjectTab({
           if (!version) {
             throw new Error(`项目角色「${character.name}」的来源版本 v${character.sourceVersion} 不可读取。`);
           }
-          actors.push(actorFromCharacterVersion(detail, version, locationId!));
+          actors.push(actorFromSelectedVersion(detail, version, locationId!, { variantId: character.sourceVariantId, costumeAssetId: character.sourceCostumeAssetId }));
         } else {
           actors.push(actorFromProjectCharacter(character, locationId!));
         }
@@ -2164,7 +1974,7 @@ function ProjectTab({
         const current = incoming.characterId
           ? draft.definition.actors.find((actor) => actor.characterId === incoming.characterId)
           : undefined;
-        if (!current || current.characterVersion === incoming.characterVersion) continue;
+        if (!current || (current.characterVersion === incoming.characterVersion && current.characterVariantId === incoming.characterVariantId && current.characterCostumeAssetId === incoming.characterCostumeAssetId)) continue;
         const merged = mergeActorVersion(current, incoming);
         if (actorUpdates.some((item) => item.current.id === current.id)) continue;
         actorUpdates.push({ current, incoming: merged });
@@ -2369,7 +2179,7 @@ function ProjectTab({
               const updating = Boolean(
                 existing
                 && character.sourceVersion
-                && existing.characterVersion !== character.sourceVersion,
+                && (existing.characterVersion !== character.sourceVersion || existing.characterVariantId !== character.sourceVariantId || existing.characterCostumeAssetId !== character.sourceCostumeAssetId),
               );
               const selectedItem = Boolean(selectedCharacters[character.id]);
               return (
@@ -2400,7 +2210,7 @@ function ProjectTab({
                       </span>
                       {character.sourceCharacterId && character.sourceVersion ? (
                         <Badge variant="online">
-                          角色库 v{character.sourceVersion}
+                          角色库快照
                         </Badge>
                       ) : (
                         <Badge variant="outline">项目原创</Badge>
@@ -2408,7 +2218,7 @@ function ProjectTab({
                       {added && <Badge variant="secondary">已加入</Badge>}
                       {updating && (
                         <Badge variant="warning">
-                          v{existing?.characterVersion ?? '未绑定'} → v{character.sourceVersion}
+                          可更新到项目所选设定
                         </Badge>
                       )}
                     </span>
@@ -2555,12 +2365,10 @@ function ProjectTab({
                     <p className="text-sm font-medium text-ink">
                       {current.name}
                       {' · '}
-                      v{current.characterVersion ?? '未绑定'}
-                      {' → '}
-                      v{incoming.characterVersion ?? '未绑定'}
+                      更新为项目所选设定
                     </p>
                     <VersionDifferenceList
-                      differences={actorVersionDiff(current, incoming)}
+                      differences={actorVersionDiff(current, incoming).filter(item => item.field !== 'version')}
                     />
                   </li>
                 ))}

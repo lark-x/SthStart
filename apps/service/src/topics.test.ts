@@ -140,9 +140,10 @@ async function bootstrap(options: { failSource?: boolean; delayMs?: number; fetc
   } });
   const character = await app.inject({ method: 'POST', url: '/api/v1/admin/characters', headers: adminHeaders, payload: {
     displayName: '钟离',
-    draft: { schemaVersion: 2, displayName: '钟离', work: '原神', identity: '往生堂客卿', personality: ['沉稳'], speech: { tone: '平稳' }, appearance: { description: '棕色长发' } },
+    draft: { schemaVersion: 2, displayName: '钟离', originType: 'ip', work: '原神', summary: '往生堂客卿，待人沉稳。', appearance: { baseText: '棕色长发' } },
     tags: ['原神'],
   } });
+  assert.equal(character.statusCode, 201, character.body);
   return { app, database, secrets, characterId: character.json().id as string };
 }
 

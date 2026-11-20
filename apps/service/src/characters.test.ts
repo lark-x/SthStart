@@ -34,7 +34,7 @@ test('character drafts publish immutable snapshots and route them to an authoriz
   assert.equal(first.statusCode, 201); assert.equal(second.statusCode, 201);
   const firstId = first.json().id as string; const secondId = second.json().id as string;
   await app.inject({ method: 'PUT', url: `/api/v1/admin/characters/${firstId}/relationship`, headers: adminHeaders, payload: { toCharacterId: secondId, relationType: '朋友', description: '互相信赖' } });
-  const published = await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${firstId}/publish`, headers: adminHeaders });
+  const published = await app.inject({ method: 'POST', url: `/api/v1/admin/characters/${firstId}/publish`, headers: adminHeaders, payload: { expectedDraftRevision: 2 } });
   assert.equal(published.statusCode, 201); assert.equal(published.json().version, 1); assert.equal(published.json().relationships[0].relationType, '朋友');
   assert.equal(published.json().compilerVersion, CHARACTER_PERSONA_COMPILER_VERSION, '发布版本必须记录生成提示词的编译器版本');
   await app.inject({ method: 'PUT', url: `/api/v1/admin/characters/${firstId}`, headers: adminHeaders, payload: { draft: { ...draft('阿澄'), summary: '后来修改的草稿' } } });
@@ -224,7 +224,7 @@ test('character avatar generation uses the common task and applies a central art
   assert.equal(asset.artifact_id, artifactId);
   const served = await app.inject({ method: 'GET', url: `/api/v1/admin/characters/assets/${stored.avatar_asset_id}`, headers: adminHeaders });
   assert.equal(served.statusCode, 200); assert.equal(served.body, 'avatar-bytes');
-  assert.equal(database.connection.prepare("SELECT COUNT(*) count FROM artifact_references WHERE artifact_id=? AND app_id='characters' AND ref_type='character-avatar'").get(artifactId)!.count, 1);
+  assert.equal(database.connection.prepare("SELECT COUNT(*) count FROM artifact_references WHERE artifact_id=? AND app_id='characters' AND ref_type='character-asset'").get(artifactId)!.count, 1);
   await app.close(); database.close();
 });
 

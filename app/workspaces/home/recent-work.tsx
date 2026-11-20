@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { CalendarDays, PenLine, Users, ArrowRight, BookOpen, Film } from 'lucide-react';
+import { CalendarDays, Compass, PenLine, Users, ArrowRight, BookOpen, Film } from 'lucide-react';
 import { useRecentWork } from '@/app/features/workspace/queries';
 import { useLocalNotebookNotes } from '@/app/features/notebook/hooks';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Button } from '@/app/components/ui/button';
 import type { NavTone } from '@/app/shell/navigation';
 
-export type WorkKind = '项目' | '制作' | '活动' | '笔记' | '角色';
+export type WorkKind = '作品' | '项目' | '制作' | '活动' | '笔记' | '角色';
 
 interface WorkItem {
   id: string;
@@ -19,6 +19,7 @@ interface WorkItem {
 }
 
 const KIND_ICON: Record<WorkKind, React.ComponentType<{ className?: string; 'data-visual-dynamic'?: string }>> = {
+  作品: Compass,
   项目: BookOpen,
   制作: Film,
   活动: CalendarDays,
@@ -27,6 +28,7 @@ const KIND_ICON: Record<WorkKind, React.ComponentType<{ className?: string; 'dat
 };
 
 const KIND_TONE: Record<WorkKind, NavTone> = {
+  作品: 'blue',
   项目: 'blue',
   制作: 'pink',
   活动: 'orange',
@@ -49,6 +51,8 @@ function formatUpdated(value: string) {
 
 function resolveWorkHref(kind: string, id: string): string {
   switch (kind) {
+    case 'world':
+      return `/apps/story-worlds?world=${encodeURIComponent(id)}&view=chapters`;
     case 'story':
       return `/apps/projects/${encodeURIComponent(id)}`;
     case 'publication':
@@ -59,11 +63,12 @@ function resolveWorkHref(kind: string, id: string): string {
     case 'character':
       return `/apps/characters/${encodeURIComponent(id)}`;
     default:
-      return `/apps/projects/${encodeURIComponent(id)}`;
+      return `/apps/story-worlds`;
   }
 }
 
 const KIND_LABELS: Record<string, WorkKind> = {
+  world: '作品',
   story: '项目',
   publication: '制作',
   activity: '活动',
@@ -71,7 +76,7 @@ const KIND_LABELS: Record<string, WorkKind> = {
   character: '角色',
 };
 
-/** 工作台主区：按更新时间合并展示最近处理过的创作项目、制作、活动、笔记与角色。 */
+/** 工作台主区：按更新时间合并展示最近处理过的作品、创作笔记与角色。 */
 export function RecentWork({ limit = 8 }: { limit?: number }) {
   const visibleLimit = Math.min(50, Math.max(1, Math.trunc(limit) || 8));
   const localNotes = useLocalNotebookNotes();
@@ -140,10 +145,10 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
       <div className="mb-4 flex items-baseline justify-between gap-3 border-b border-border-subtle pb-3">
         <div>
           <h2 id="recent-work-title" className="tpl-section-title">最近工作</h2>
-          <p className="mt-0.5 text-xs text-muted">最近编辑的创作项目、活动、笔记与角色</p>
+          <p className="mt-0.5 text-xs text-muted">最近编辑的作品、创作笔记与角色</p>
         </div>
-        <Link href="/apps/projects" className="inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-accent">
-          <span>全部项目</span>
+        <Link href="/apps/story-worlds" className="inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-accent">
+          <span>全部作品</span>
           <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
@@ -170,10 +175,10 @@ export function RecentWork({ limit = 8 }: { limit?: number }) {
         </Button>
       ) : items.length === 0 ? (
         <div className="space-y-4 py-4">
-          <p className="text-sm text-muted">还没有记录。先新建一个创作项目或角色，这里会显示最近处理过的内容。</p>
+          <p className="text-sm text-muted">还没有记录。先新建一部作品或角色，这里会显示最近处理过的内容。</p>
           <div className="flex flex-wrap gap-2">
-            <Link href="/apps/projects" className="inline-flex min-h-9 items-center rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent transition-colors hover:bg-accent-dark">
-              创作项目
+            <Link href="/apps/story-worlds" className="inline-flex min-h-9 items-center rounded-control bg-accent px-3.5 text-sm font-semibold text-fg-on-accent transition-colors hover:bg-accent-dark">
+              作品目录
             </Link>
             <Link href="/apps/resources" className="inline-flex min-h-9 items-center rounded-control border border-border-default bg-surface px-3.5 text-sm font-medium text-ink transition-colors hover:bg-surface-hover">
               资料库

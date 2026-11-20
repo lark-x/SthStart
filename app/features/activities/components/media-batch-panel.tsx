@@ -19,6 +19,7 @@ import {
   Layers,
   Image as ImageIcon,
   Bookmark,
+  Loader2,
 } from 'lucide-react';
 import type {
   Activity,
@@ -576,15 +577,13 @@ export function MediaBatchPanel({
               <Button
                 type="button"
                 size="sm"
+                loading={starting || createBatchMutation.isPending}
                 onClick={handleStartBatch}
                 disabled={disabled || starting || selectedSlotIds.length === 0 || createBatchMutation.isPending}
                 className="bg-accent hover:bg-accent-dark text-fg-on-accent flex items-center gap-1.5"
               >
                 {starting || createBatchMutation.isPending ? (
-                  <>
-                    <Spinner className="h-3.5 w-3.5" />
-                    正在排队中…
-                  </>
+                  '正在排队中…'
                 ) : (
                   <>
                     <Play className="h-3.5 w-3.5" />
@@ -617,7 +616,7 @@ export function MediaBatchPanel({
                       {summary?.displayState === 'preparing' && <Badge>正在准备任务</Badge>}
                       {summary?.displayState === 'running' && (
                         <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-300 flex items-center gap-1">
-                          <Spinner className="h-3 w-3" />
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                           正在生图 ({summary.succeeded}/{summary.total})
                         </Badge>
                       )}

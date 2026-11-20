@@ -69,9 +69,9 @@ export function useCharacterAvatarGeneration({
     };
   }, [characterId, taskId, toast]);
 
-  const submit = async (input: ImageGenerationSubmission) => {
+  const submit = async (input: ImageGenerationSubmission, variantId?: string) => {
     if (!characterId) throw new Error('请先保存角色。');
-    const task = await generateMutation.mutateAsync({ id: characterId, input });
+    const task = await generateMutation.mutateAsync({ id: characterId, input: { ...input, ...(variantId ? { variantId } : {}) } });
     setTaskId(task.id);
     toast.success('头像任务已提交');
   };

@@ -10,7 +10,7 @@
  * 容器会反复重启、健康检查变成 unhealthy。
  * 所以这里一次性同步「运行时会读到的全部位置」，不做子集更新。
  */
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -33,6 +33,11 @@ const runtimePaths = [
   { from: 'packages/activity-playback/dist', to: '/app/packages/activity-playback/dist', label: '回放编译产物' },
   { from: 'scripts', to: '/app/scripts', label: '脚本（db:migrate 等）' },
   { from: 'public', to: '/app/public', label: '静态资源' },
+  { from: 'upstream/linshe/agent-core/src', to: '/app/upstream/linshe/agent-core/src', label: '邻舍服务源码' },
+  { from: 'upstream/linshe/agent-core/app.js', to: '/app/upstream/linshe/agent-core/app.js', label: '邻舍服务入口' },
+  { from: 'upstream/linshe/agent-core/public', to: '/app/upstream/linshe/agent-core/public', label: '邻舍界面构建产物' },
+  { from: '角色人设卡_skill', to: '/app/角色人设卡_skill', label: '原神精选人设库' },
+  { from: '星铁人设卡_skill', to: '/app/星铁人设卡_skill', label: '星铁精选人设库' },
 ];
 
 function run(command, args, options = {}) {
@@ -70,6 +75,8 @@ if (skipBuild) {
   console.log('[部署] 正在构建 Portal 与 Service…');
   const build = runNpm(['run', 'build'], { stdio: 'inherit' });
   if (build.status !== 0) fail(`构建失败（退出码 ${build.status}）。`);
+  const linsheBuild = runNpm(['run', 'build', '--prefix', 'upstream/linshe/web-ui'], { stdio: 'inherit' });
+  if (linsheBuild.status !== 0) fail('邻舍界面构建失败。');
 }
 
 // 2. 同步前先确认产物齐全：不完整的构建比不部署更糟。
@@ -90,17 +97,22 @@ if (status !== 'running') {
 // Source-only hot deployment cannot introduce new runtime packages. Check before
 // copying anything so a missing DSH dependency cannot leave a half-updated app.
 const requiredRuntimePackages = [
-  '@deepseek-ai/dsh', '@deepseek-ai/dsh-sdk-client',
-  '@deepseek-ai/dsh-sdk-jsonrpc-server', '@deepseek-ai/dsh-sdk-protocol',
-  '@napi-rs/canvas',
+  { name: '@deepseek-ai/dsh', roots: ['/app/node_modules'] },
+  { name: '@deepseek-ai/dsh-sdk-client', roots: ['/app/node_modules'] },
+  { name: '@deepseek-ai/dsh-sdk-jsonrpc-server', roots: ['/app/node_modules'] },
+  { name: '@deepseek-ai/dsh-sdk-protocol', roots: ['/app/node_modules'] },
+  { name: '@napi-rs/canvas', roots: ['/app/node_modules', '/app/upstream/linshe/agent-core/node_modules'] },
+  { name: 'fflate', roots: ['/app/node_modules', '/app/upstream/linshe/agent-core/node_modules'] },
+  { name: 'rubberband-wasm', roots: ['/app/node_modules', '/app/upstream/linshe/agent-core/node_modules'] },
+  { name: 'undici', roots: ['/app/node_modules', '/app/upstream/linshe/agent-core/node_modules'] },
 ];
-for (const packageName of requiredRuntimePackages) {
+for (const { name: packageName, roots } of requiredRuntimePackages) {
   // Some ESM-only packages intentionally do not export a package root, so
   // require.resolve(packageName) reports ERR_PACKAGE_PATH_NOT_EXPORTED even
   // when the dependency is installed. The deployment guard is about presence.
-  const manifestPath = `/app/node_modules/${packageName}/package.json`;
+  const manifestPaths = roots.map((nodeModulesRoot) => `${nodeModulesRoot}/${packageName}/package.json`);
   const probe = run('docker', ['exec', container, 'node', '-e',
-    `process.exit(require('node:fs').existsSync(${JSON.stringify(manifestPath)}) ? 0 : 1)`]);
+    `process.exit([${manifestPaths.map((path) => JSON.stringify(path)).join(',')}].some((path) => require('node:fs').existsSync(path)) ? 0 : 1)`]);
   if (probe.status !== 0) fail(`容器缺少运行依赖 ${packageName}。先运行 docker compose up -d --build 更新镜像，再部署源码；尚未同步任何文件。`);
 }
 
@@ -115,7 +127,8 @@ if (mediaProbe.status !== 0) {
 // 3. 全量同步。不做子集更新——dist 与 src 必须同时换，否则运行时会对不上。
 for (const item of runtimePaths) {
   console.log(`[部署] 同步 ${item.label}：${item.from} → ${item.to}`);
-  const copy = run('docker', ['cp', `${resolve(root, item.from)}${item.from.endsWith('.json') ? '' : '/.'}`, `${container}:${item.to}${item.from.endsWith('.json') ? '' : '/'}`]);
+  const directory = statSync(resolve(root, item.from)).isDirectory();
+  const copy = run('docker', ['cp', `${resolve(root, item.from)}${directory ? '/.' : ''}`, `${container}:${item.to}${directory ? '/' : ''}`]);
   if (copy.status !== 0) {
     fail(`复制 ${item.from} 失败：${(copy.stderr || '').trim() || `退出码 ${copy.status}`}`);
   }

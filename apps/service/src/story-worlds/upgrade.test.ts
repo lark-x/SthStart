@@ -214,11 +214,11 @@ test('version 54 database with projects, chapter text, character snapshots, and 
 
     // Verify exact content of character profile
     const preservedProfile = reopened.prepare('SELECT * FROM character_profiles WHERE id = ?').get(testCharacterProfile.id) as Record<string, unknown>;
-    assert.deepEqual({ ...preservedProfile }, testCharacterProfile);
+    assert.deepEqual({ ...preservedProfile }, { ...testCharacterProfile, parent_character_id: null });
 
     // Verify exact content of character version snapshot
     const preservedVersion = reopened.prepare('SELECT * FROM character_versions WHERE character_id = ? AND version = ?').get(testCharacterVersion.character_id, testCharacterVersion.version) as Record<string, unknown>;
-    assert.deepEqual({ ...preservedVersion }, testCharacterVersion);
+    assert.deepEqual({ ...preservedVersion }, { ...testCharacterVersion, version_label: '' });
 
     // Verify exact content of project links
     const preservedLink = reopened.prepare('SELECT * FROM project_links WHERE id = ?').get(testProjectLink.id) as Record<string, unknown>;

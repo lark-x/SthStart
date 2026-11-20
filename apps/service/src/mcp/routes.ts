@@ -5,7 +5,7 @@ import type { ServiceDatabase } from '../database.js';
 import { authenticateAdmin } from '../access.js';
 import type { ServiceConfig } from '../config.js';
 import type { SecretStore } from '../security.js';
-import { McpSourceStore } from './store.js';
+import { McpSourceStore, normalizeMcpSourceUrl } from './store.js';
 import { McpClient } from './client.js';
 import type { NarrativeSourceConnector } from '../narrative-types.js';
 import type { AkashaMcpConnector } from '../narrative-connectors.js';
@@ -151,23 +151,30 @@ export function registerMcpSourceRoutes(app: FastifyInstance, options: McpServic
     return result;
   });
 
-  app.post<{ Body: { sourceId?: string; url?: string; authMode?: McpSourceSave['authMode']; authHeaderName?: string; secret?: string; timeoutMs?: number } }>(
+  app.post<{ Body: { sourceId?: string; url?: string; transport?: McpSourceSave['transport']; authMode?: McpSourceSave['authMode']; authHeaderName?: string; secret?: string; timeoutMs?: number } }>(
     '/api/v1/admin/mcp-sources/discover',
     async (request, reply) => {
       if (!checkAdmin(config, request, reply)) return;
       const body = request.body || {};
-      const url = body.url?.trim();
+      const saved = body.sourceId ? store.get(body.sourceId) : null;
+      const url = body.url?.trim() || saved?.url;
       if (!url) return reply.code(400).send({ error: 'url_required' });
       try {
+        const authMode = body.authMode ?? saved?.authMode ?? 'none';
+        const authHeaderName = body.authHeaderName ?? saved?.authHeaderName ?? undefined;
+        const transport = body.transport ?? saved?.transport ?? 'auto';
         const source = {
           url,
-          authMode: body.authMode || 'none',
-          authHeaderName: body.authHeaderName || undefined,
+          transport,
+          authMode,
+          authHeaderName,
         };
-        const saved = body.sourceId ? store.get(body.sourceId) : null;
-        const sameEndpoint = saved && saved.url === url && saved.authMode === source.authMode && (saved.authHeaderName || '') === (source.authHeaderName || '');
-        const secret = body.secret?.trim() || (sameEndpoint ? await store.getSecret(saved) : null);
-        const client = new McpClient(source, secret, { timeoutMs: body.timeoutMs || 45_000, fetcher });
+        const sameEndpoint = saved
+          && normalizeMcpSourceUrl(saved.url) === normalizeMcpSourceUrl(url)
+          && saved.authMode === source.authMode
+          && (saved.authHeaderName || '') === (source.authHeaderName || '');
+        const secret = body.secret ? body.secret : sameEndpoint ? await store.getSecret(saved) : null;
+        const client = new McpClient(source, secret, { timeoutMs: body.timeoutMs || saved?.timeoutMs || 45_000, fetcher });
         const result = await client.testConnection();
         await client.close();
         return result;

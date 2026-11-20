@@ -386,10 +386,8 @@ export function NotebookWorkspace({
                 );
               })}
             </div>
-          </div>
-
           {/* Advanced Filter Toggle & Drawer */}
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle bg-surface/50 text-sm">
+          <div className="notebook-filter-advanced-row flex items-center justify-between text-sm">
             <Button
               type="button"
               size="sm"
@@ -423,7 +421,7 @@ export function NotebookWorkspace({
           </div>
 
           {filterPanelOpen && (
-            <div id="notebook-advanced-filters" className="notebook-advanced-filters grid grid-cols-2 gap-2 p-3 bg-surface-muted/50 border-b border-border-subtle anim-zoom-in-95">
+            <div id="notebook-advanced-filters" className="notebook-advanced-filters grid grid-cols-2 gap-2 anim-zoom-in-95">
               {([
                 ['work', '作品', (data?.facets?.works ?? []).map((v) => [v, v])],
                 ['character', '角色', (data?.facets?.characters ?? []).map((v) => [v, v])],
@@ -452,6 +450,7 @@ export function NotebookWorkspace({
               ))}
             </div>
           )}
+          </div>
 
           {isError && <Alert variant="danger" className="m-3 text-sm" title="资料列表加载失败">
             {error instanceof Error ? error.message : '暂时无法读取服务端资料。'}
